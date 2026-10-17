@@ -1,0 +1,676 @@
+/* KUMODeck Studio shell — the rebrand of 2026-10-16 ("one list, one card,
+   one input"), finished in a second pass the same day (the "ive finish": the
+   same places, order and presses; a new material, light, corners, type and
+   motion). The tools are three things only: the list on the left, a small
+   card over the game's top right corner while something is picked, and one
+   input at the bottom of the game that is also the ⌘K list. On a phone: the
+   game, one strip under the picked object, and the input with the picked
+   object's card above it.
+
+   Where things are did not change in the finish (a play test found the list,
+   the card and the input easy to use, also with hundreds of things); what
+   they are made of did. The rules, and nothing outside them:
+
+   1. TWO SURFACES. The DESK (top bar and list column: one surface, no line
+      between them) and the GLASS (everything that floats over the game: card,
+      input, ⌘K list, the AI's note, the strip and menus inside the game, the
+      phone sheets). One glass for all of them — if each plate had its own
+      look, the editor would read as parts from different boxes. The glass is
+      frosted (blur + a little saturation), so the game's colours show
+      through faintly and the plates belong to the game instead of covering it.
+      The game itself sits on the desk as one plate with round corners: the
+      desk is the editor, the plate is the thing being made.
+   2. COLOUR — none of its own. Greys (text in three steps, fills in three),
+      plus two colours that each mean one thing and are never decoration:
+        --you  #ff6b1a  your hand: what you picked (outline, name tag, chip, dot);
+        --ai   #8b7cff  the AI's hand: what its change touched, the ask spark,
+                        the light that runs round the input while it works;
+      one green dot (the AI wrote back) and red only on Delete. Axis letters
+      are grey: a third, fourth and fifth colour said nothing the letter did not.
+   3. CORNERS — inner = outer − gap, so corners nest. A plate is 18 (phone 22),
+      what sits inside it 8 in is 10 (phone 14). The input is a capsule and
+      whatever is round inside it is round with the same centre. Rows, fields,
+      buttons and pictures are all a "part": 10. Before the finish: 4, 5, 6, 8,
+      12 and 16 on one screen.
+   4. TYPE — two sizes: PC 13 and 11, phone 17 and 13 (--fs / --fs-s, from
+      the View page's size), two weights (400, 600). Numbers in the same face
+      with tabular figures (they do not shake sideways while they change); the
+      second, monospaced face is gone.
+   5. HEIGHT — PC: rows, buttons and fields 28; bars and the input 44.
+      Phone: anything pressed is 44 or more, the picked object's card 56.
+      Spacing in multiples of 4.
+   6. MOTION — one curve (--ease) and two durations: .16 s for a state
+      (hover, press), .24 s for something arriving (rises 6 px and grows from
+      98.5 %). Nothing loops except the AI's light, and that only while it works.
+
+   Colours are custom properties set per theme on <html data-theme>. The
+   names from before the rebrand (--studio-bg, -fg, -muted, -line, -card,
+   -accent…) are all still defined and mapped onto the new greys, so a
+   .studio/ui/studio.css written against them, and the Library's own styles,
+   still apply. */
+/* The base names are the ones from before the rebrand (--studio-page, -bg,
+   -card, -fg, -muted, -line, -accent), so a .studio/ui/studio.css that sets
+   them recolours the whole editor; the short names below are read from them. */
+:root, :root[data-theme="dark"] {
+  --studio-page: #1c1c1e;     /* the desk: top bar and list column, one surface (Apple's dark grouped grey) */
+  --studio-bg: #1c1c1e;
+  --studio-card: #1e1e20;     /* the glass tint; see --glass */
+  --studio-fg: #f5f5f7;
+  --studio-muted: #a1a1a6;
+  --studio-line: rgba(255, 255, 255, .1);
+  --studio-accent: #ff6b1a;   /* your hand */
+  --raise: rgba(255, 255, 255, .06);
+  --raise-2: rgba(255, 255, 255, .1);
+  --raise-3: rgba(255, 255, 255, .15);
+  --line: rgba(255, 255, 255, .07);
+  --text-3: #6e6e73;
+  --solid: #f5f5f7; --solid-fg: #1c1c1e;   /* Play and send: the solid ones */
+  --you-soft: rgba(255, 107, 26, .14); --you-text: #ffb48a;
+  --ai: #8b7cff; --ai-soft: rgba(139, 124, 255, .16); --ai-text: #c1b8ff;
+  --live: #30d158;
+  --danger: #ff453a;
+  --x: var(--text-3); --y: var(--text-3); --z: var(--text-3);   /* axis letters: grey (rule 2) */
+  --scrim: rgba(0, 0, 0, .28);
+  /* The glass: dark 86 % + blur. --glass-thick for the Assets sheet (a page of pictures: reading beats see-through).
+     72 % with saturate(1.7) (the first try, from the Stage proposal), then 80 %, turned every plate over grass into a
+     green slab: the game's colour should show faintly, not become the plate's colour. */
+  --glass: rgba(28, 28, 30, .86); --glass-thick: rgba(28, 28, 30, .94);
+  --glass-blur: blur(30px);   /* no saturation on dark: it was what made the plates olive over grass */
+  --glass-edge: rgba(255, 255, 255, .09);
+  --glass-shadow: 0 1px 1px rgba(0, 0, 0, .2), 0 10px 32px rgba(0, 0, 0, .36);
+  --plate-shadow: 0 0 0 .5px rgba(255, 255, 255, .06);
+  --plate: #262628;           /* the plate when it holds the editor's own page (Assets) instead of the game: one step up from the desk */
+  --thumb-bg: #2c2c2e;
+  --check: none;
+  --studio-thumb: var(--thumb-bg);
+  --studio-warn-bg: rgba(255, 159, 10, .14); --studio-warn-fg: #ffcf87;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --studio-page: #ececf0;     /* the desk: a cool light grey, so the white glass and the game both stand on it */
+  --studio-bg: #ececf0;
+  --studio-card: #fbfbfd;
+  --studio-fg: #1d1d1f;
+  --studio-muted: #6e6e73;
+  --studio-line: rgba(0, 0, 0, .1);
+  --raise: rgba(0, 0, 0, .045);
+  --raise-2: rgba(0, 0, 0, .075);
+  --raise-3: rgba(0, 0, 0, .11);
+  --line: rgba(0, 0, 0, .07);
+  --text-3: #a1a1a6;
+  --solid: #1d1d1f; --solid-fg: #ffffff;
+  /* The same two colours; text on their soft tint a step darker to read on white. */
+  --you-soft: rgba(255, 107, 26, .12); --you-text: #c2410c;
+  --ai-soft: rgba(139, 124, 255, .14); --ai-text: #5b4bd6;
+  --live: #1f9d55;
+  --danger: #d70015;
+  --scrim: rgba(20, 21, 24, .14);
+  --glass: rgba(251, 251, 253, .8); --glass-thick: rgba(251, 251, 253, .94);
+  --glass-blur: blur(30px) saturate(1.25);   /* light glass may carry a little of the game's colour: it reads as light through it */
+  --glass-edge: rgba(255, 255, 255, .7);
+  --glass-shadow: 0 1px 1px rgba(0, 0, 0, .04), 0 10px 32px rgba(0, 0, 0, .13);
+  --plate-shadow: 0 0 0 .5px rgba(0, 0, 0, .06), 0 1px 3px rgba(0, 0, 0, .05);
+  --plate: #f8f8fa;
+  --thumb-bg: #e3e3e8;
+  --check: none;
+  --studio-warn-bg: #fff3dc; --studio-warn-fg: #7a4a00;
+  color-scheme: light;
+}
+:root {
+  /* The short names, read from the base ones above. */
+  --bg: var(--studio-page); --col: var(--studio-bg); --float-solid: var(--studio-card);
+  --float: var(--glass);
+  --text: var(--studio-fg); --text-2: var(--studio-muted); --line-2: var(--studio-line);
+  --you: var(--studio-accent);
+  /* Other names from before the rebrand, for .studio/ui/ CSS that reads them. */
+  --studio-btn: var(--raise); --studio-btn-hover: var(--raise-2); --studio-input: var(--raise); --studio-hover: var(--raise);
+  --studio-sel: var(--raise-2); --studio-sel-fg: var(--text); --studio-info-bg: var(--ai-soft); --studio-info-fg: var(--ai-text);
+  --studio-ok: var(--live); --studio-link: var(--text); --studio-danger: var(--danger);
+  /* --studio-font = the person's base size (View page, 13 by default). Two sizes only (rule 4). */
+  --studio-font: 13px; --studio-panel-w: 248px; --studio-panel-h: 42dvh;
+  --fs: var(--studio-font); --fs-s: calc(var(--fs) - 2px); --fs-l: var(--fs);
+  /* Corners (rule 3): --R a plate, --r a part inside it (= --R − --gap). */
+  --gap: 8px; --R: 18px; --r: calc(var(--R) - var(--gap)); --h: 28px; --bar: 44px;
+  --shadow: inset 0 0 0 .5px var(--glass-edge), var(--glass-shadow);
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Segoe UI", "Noto Sans JP", sans-serif;
+  /* No second face: numbers are the same face with tabular figures (rule 4). The name stays for .studio/ui/ CSS. */
+  --mono: var(--sans);
+  --ease: cubic-bezier(.2, .8, .2, 1); --dur: .16s; --dur-in: .24s;
+  /* Old names for the same things. */
+  --studio-r-s: var(--r); --studio-r: var(--r); --studio-r-l: var(--R); --studio-mono: var(--mono);
+  --studio-fs-s: var(--fs-s); --studio-fs-l: var(--fs-l); --studio-dur: var(--dur); --studio-ease: var(--ease);
+}
+/* The one material: anything that floats over the game is made of it (rule 1). */
+.card, .ask-box, .ai-caption, .palette, .assets-page .gsl-detail {
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
+  font: 400 var(--fs)/1.4 var(--sans); letter-spacing: -.005em; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+/* [hidden] always wins over a display set below (the mock's lesson: a phone-only rule beat it). */
+html body [hidden] { display: none !important; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid color-mix(in srgb, var(--you) 70%, transparent); outline-offset: 1px; }
+::selection { background: var(--you-soft); }
+
+button { font: inherit; letter-spacing: inherit; color: inherit; background: none; border: 0; border-radius: var(--r); padding: 0 8px; min-height: var(--h);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; white-space: nowrap;
+  transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), opacity var(--dur); -webkit-tap-highlight-color: transparent; }
+button:hover:not(:disabled) { background: var(--raise); }
+button:active:not(:disabled) { background: var(--raise-2); transition-duration: 0s; }
+button:disabled { opacity: .35; cursor: default; }
+button.primary { background: var(--solid); color: var(--solid-fg); font-weight: 500; }
+button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
+svg.icon { width: 16px; height: 16px; flex: none; stroke-width: 1.6px; }
+/* Shortcuts are plain grey text, as in a Mac menu: a keycap drawing per key was a second set of little boxes. */
+kbd { font: 400 var(--fs-s)/1 var(--sans); color: var(--text-3); padding: 0; background: none; letter-spacing: .02em; }
+.mono, .n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.n { margin-left: auto; color: var(--text-3); font-size: var(--fs-s); font-weight: 400; }
+.muted { color: var(--text-2); }
+.icon-btn { width: var(--h); padding: 0; color: var(--text-2); }
+.icon-btn:hover:not(:disabled) { color: var(--text); }
+.link, .link-btn { color: var(--text); background: none; padding: 0 2px; min-height: 24px; font-weight: 500; }
+.link-btn:hover:not(:disabled) { background: none; text-decoration: underline; text-underline-offset: 3px; }
+.pill { display: inline-flex; align-items: center; height: 20px; font-weight: 600; padding: 0 8px; border-radius: 999px; background: var(--raise-2); color: var(--text-2); font-size: var(--fs-s); white-space: nowrap; }
+.thumb { display: block; flex: none; object-fit: contain; border-radius: 4px; background: var(--studio-thumb); }
+.thumb.empty { background: var(--raise); }
+/* A near-white object (a cloud, a snowman) on a mid-grey tile, so its picture shows (thumb-tone.ts, polish pass). */
+.thumb[data-tone="light"] { background: #8d9199; }
+/* No picture yet (the shell asks the game for 200 at a time; with hundreds of things some rows wait): a quiet tile, not the
+   browser's frame for an image without a source (that drew a hollow square on every row of a long list). */
+img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"); }
+.shell[data-thumbs="off"] .thumb { display: none; }
+
+/* ----- Layout ----- */
+.shell { display: grid; height: 100dvh; grid-template: var(--bar) minmax(0, 1fr) / var(--studio-panel-w) minmax(0, 1fr); grid-template-areas: "head head" "side stage"; }
+.shell[data-panel="right"] { grid-template-columns: minmax(0, 1fr) var(--studio-panel-w); grid-template-areas: "head head" "stage side"; }
+.shell[data-panel="bottom"] { grid-template: var(--bar) minmax(0, 1fr) var(--studio-panel-h) / minmax(0, 1fr); grid-template-areas: "head" "stage" "side"; }
+/* The Look and Ideas pages need a little more room than a list. */
+.shell[data-page="settings"]:not([data-layout="phone"]):not([data-panel="bottom"]), .shell[data-page="next"]:not([data-layout="phone"]):not([data-panel="bottom"]) { --studio-panel-w: max(var(--studio-panel-w), 320px) !important; }
+/* Playing: everything but the top bar steps away. */
+.shell[data-playing="on"]:not([data-layout="phone"]) { grid-template-columns: 0 minmax(0, 1fr); }
+.shell[data-playing="on"][data-panel="right"]:not([data-layout="phone"]) { grid-template-columns: minmax(0, 1fr) 0; }
+.shell[data-playing="on"] .side, .shell[data-playing="on"] .dock, .shell[data-playing="on"] .inspector, .shell[data-playing="on"] .assets-page { display: none; }
+.stage { grid-area: stage; position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #000; }
+/* PC: the game is one plate on the desk (rule 1), 8 in from the window's edges, corners of a part.
+   The list side keeps no gap: the column is the desk itself, its rows end where the plate begins. */
+.shell:not([data-layout="phone"]) .stage { margin: 0 8px 8px 0; border-radius: var(--r); box-shadow: var(--plate-shadow); isolation: isolate; }
+.shell:not([data-layout="phone"])[data-panel="right"] .stage { margin: 0 0 8px 8px; }
+.shell:not([data-layout="phone"])[data-panel="bottom"] .stage { margin: 0 8px 0 8px; }
+.shell:not([data-layout="phone"])[data-playing="on"] .stage { margin: 0 8px 8px 8px; }
+.game { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: #000; }
+.scrim { position: absolute; inset: 0; background: var(--scrim); z-index: 4; animation: studio-fade var(--dur-in) var(--ease); }
+
+/* ----- Top bar: where you are · state · Play ----- */
+.top { grid-area: head; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px; background: var(--bg); min-width: 0; }
+/* On the desk, buttons are capsules: the round end says "press", the square-ish rows below say "pick". */
+.top button { border-radius: 999px; }
+.brand { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand .mark { display: grid; color: var(--text); }
+.brand .mark .icon { width: 20px; height: 20px; }
+.brand .app { font-weight: 600; letter-spacing: -.01em; }
+.brand .sep { color: var(--text-3); }
+.brand .title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.brand .here { color: var(--text-2); }
+.brand .adapter { color: var(--text-3); font-size: var(--fs-s); }
+.brand .lang { font-size: var(--fs-s); color: var(--text-2); }
+.top-right { flex: none; display: flex; align-items: center; gap: 12px; }
+.save-state { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; gap: 6px; color: var(--text-3); font-size: var(--fs-s); }
+.save-state .icon { width: 14px; height: 14px; }
+.top .actions { display: flex; align-items: center; gap: 4px; }
+/* PC: undo / redo are ⌘Z / ⇧⌘Z and rows of the ⌘K list. */
+.shell:not([data-layout="phone"]) .top [data-action="undo"], .shell:not([data-layout="phone"]) .top [data-action="redo"] { display: none; }
+/* "Save · 3": a quiet button, only while something is not saved. */
+[data-action="save"] { background: var(--raise-2); font-weight: 600; padding: 0 12px; }
+[data-action="save"] .n { margin-left: 0; color: var(--text-2); }
+.peer { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-s); }
+.peer .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.peer[data-state="live"] { color: var(--text-2); }
+.peer[data-state="live"] .dot { background: var(--live); }
+.peer[data-state="busy"] { color: var(--ai-text); }
+.peer[data-state="busy"] .dot { background: var(--ai); animation: studio-pulse 1.2s var(--ease) infinite; }
+.top-actions { display: flex; align-items: center; gap: 4px; }
+.top-actions .play { background: var(--solid); color: var(--solid-fg); font-weight: 600; padding: 0 12px 0 10px; }
+.top-actions .play:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
+.top-actions .play .icon { width: 12px; height: 12px; }
+.top-actions .play kbd { background: none; padding: 0; margin-left: 2px; color: color-mix(in srgb, var(--solid-fg) 45%, transparent); }
+.top-actions > button:not(.play) { background: var(--raise); }
+.game-tools { display: flex; gap: 4px; align-items: center; min-width: 0; }
+.game-tools .label { color: var(--text-3); font-size: var(--fs-s); }
+.game-tools button { background: var(--raise); }
+.game-tools button[aria-pressed="true"] { background: var(--solid); color: var(--solid-fg); }
+.tool-hint { color: var(--text-2); font-size: var(--fs-s); }
+
+/* ----- Left column: Scene / Assets · the list · its foot ----- */
+/* No lines on the desk: the top bar, the column and their sections are told apart by space alone. */
+.side { grid-area: side; display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--col); padding: 0 8px 8px; }
+.tabs { display: grid; gap: 2px; padding-bottom: 4px; flex: none; }
+.nav-row { justify-content: flex-start; gap: 8px; color: var(--text-2); padding: 0 8px; font-weight: 600; }
+.nav-row[aria-selected="true"] { background: var(--raise-2); color: var(--text); }
+.nav-row .n { color: var(--text-3); }
+.panel { flex: 1; min-height: 0; overflow: auto; margin: 0 -8px; padding: 0 8px; }
+.tool-body:has(> .placement) { height: 100%; }
+.status { margin: 8px 8px 0; font-size: var(--fs-s); flex: none; }
+.status.info { color: var(--text-2); display: flex; gap: 8px; align-items: center; }
+.status.info::before { content: ""; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--line-2); border-top-color: var(--text-2); animation: studio-spin .8s linear infinite; }
+.status.warn { background: var(--studio-warn-bg); color: var(--studio-warn-fg); padding: 8px 12px; border-radius: var(--r); }
+.status ul { margin: 4px 0 0; padding-left: 16px; }
+.placement { display: flex; flex-direction: column; min-height: 0; }
+.shell[data-items="waiting"] .placement { visibility: hidden; }
+.list-tools { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 4px; flex: none; }
+.list-title { color: var(--text-3); font-size: var(--fs-s); font-weight: 600; }
+.list-tools .toggle { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: var(--fs-s); font-weight: 600; color: var(--text-2); }
+.list-tools .toggle[aria-pressed="true"] { color: var(--you-text); background: var(--you-soft); }
+.list-hint { display: block; width: 100%; padding: 4px 0 0; font-size: var(--fs-s); }
+.list-tools:has(.list-hint) { flex-wrap: wrap; }
+.list-scroll { min-height: 0; }
+.objects { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; position: relative; }
+.obj { height: var(--h); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: var(--r); cursor: pointer; white-space: nowrap; min-width: 0; color: var(--text); user-select: none; -webkit-user-select: none; }
+.obj:hover { background: var(--raise); }
+.obj[aria-selected="true"] { background: var(--raise-2); }
+/* Picked rows next to each other read as one block (as in a Mac list): the corners between them go square
+   and the 1 px gap is filled. */
+.obj[aria-selected="true"]:has(+ .obj[aria-selected="true"]) { border-bottom-left-radius: 0; border-bottom-right-radius: 0; box-shadow: 0 1px 0 var(--raise-2); }
+.obj[aria-selected="true"] + .obj[aria-selected="true"] { border-top-left-radius: 0; border-top-right-radius: 0; }
+.obj .thumb { width: 16px; height: 16px; }
+.obj .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.obj .name.unnamed { color: var(--text-3); font-style: italic; }
+.obj .n, .obj .count { flex: none; }
+/* With hundreds of things the list is long: a kind's heading stays at the top while its rows scroll under it
+   (the last heading passed covers the one before, as section headings do on a phone), so a row far down
+   still says which kind it belongs to. Order and presses are unchanged; only where the heading is drawn. */
+.obj.group-row { position: sticky; top: 0; z-index: 1; background: var(--col); }
+.obj.group-row:hover { background: linear-gradient(var(--raise), var(--raise)), var(--col); }
+.obj.group-row[aria-selected="true"] { background: linear-gradient(var(--raise-2), var(--raise-2)), var(--col); }
+.obj.sub { padding-left: 32px; color: var(--text-2); }
+.obj.sub[aria-selected="true"] { color: var(--text); }
+.obj .expand { width: 16px; min-height: 16px; height: 16px; padding: 0; margin: 0 -4px 0 -4px; color: var(--text-3); }
+.obj .expand .icon { width: 12px; height: 12px; transition: transform var(--dur) var(--ease); }
+.obj .expand[aria-expanded="true"] .icon { transform: rotate(90deg); }
+.obj:not(.group-row) > .thumb:first-child { margin-left: 12px; }
+.obj.sub > .thumb:first-child { margin-left: 0; }
+.objects.by-layer .obj > .thumb:first-child, .objects.by-layer .obj .grip + .thumb { margin-left: 0; }
+/* Dots at the row's end: orange = picked (your hand), violet = the AI changed it, grey ring = not handed to the AI yet. */
+.obj > .tag.ai, .obj > .unsaved-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; padding: 0; margin-left: auto; }
+.obj > .tag.ai { background: var(--ai); }
+.obj > .unsaved-dot { box-shadow: inset 0 0 0 1.5px var(--text-3); }
+.obj > .tag.ai + .unsaved-dot { margin-left: 0; }
+.obj[aria-selected="true"]::after { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--you); margin-left: auto; }
+.obj[aria-selected="true"] > .unsaved-dot, .obj[aria-selected="true"] > .tag.ai { display: none; }
+.obj:has(> .n, > .count, > .badge-warn)[aria-selected="true"]::after { margin-left: 0; }
+.obj > .tag:not(.ai) { flex: none; height: 18px; padding: 0 6px; border-radius: 999px; font-size: var(--fs-s); color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-2); display: inline-flex; align-items: center; }
+.obj > .tag.ghost { border: 1px dashed var(--line-2); box-shadow: none; }
+.layer-head { padding: 12px 8px 4px; font-size: var(--fs-s); color: var(--text-3); cursor: pointer; list-style: none; }
+.grip { width: 16px; height: 16px; display: grid; place-items: center; color: var(--text-3); cursor: grab; touch-action: none; flex: none; margin-left: -4px; }
+.grip .icon { width: 14px; height: 14px; }
+.grip.off { visibility: hidden; }
+.obj.dragging { opacity: .5; }
+.drop-mark { position: absolute; left: 4px; right: 4px; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--you); pointer-events: none; }
+.side-foot { flex: none; display: grid; gap: 2px; padding: 8px 0 0; margin-top: 4px; }
+.foot-row { justify-content: flex-start; gap: 8px; width: 100%; color: var(--text-2); font-size: var(--fs-s); padding: 0 8px; }
+.foot-row .icon { width: 14px; height: 14px; color: var(--ai); }
+.foot-row kbd { min-width: 22px; text-align: center; }
+span.foot-row { display: flex; align-items: center; min-height: var(--h); }
+
+/* ----- The card (picked object): floats over the game's top right corner ----- */
+.inspector { position: absolute; top: 12px; right: 12px; width: 272px; z-index: 3; display: grid; }
+.inspector:empty, .inspector:has(> .card[hidden]) { display: none; }
+/* Assets has its own card (the file's); the object's waits until you are back in the scene. */
+.shell[data-view="library"] .inspector { display: none; }
+.card { border-radius: var(--R); padding: var(--gap); color: var(--text); position: relative; max-height: calc(100dvh - var(--bar) - 112px); overflow: auto; }
+.card.enter { animation: studio-rise var(--dur-in) var(--ease); }
+.card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.card-head > .thumb { width: 36px; height: 36px; border-radius: var(--r); }
+.card-head .stack { display: flex; flex: none; }
+.card-head .stack .thumb { width: 26px; height: 26px; border-radius: 8px; box-shadow: 0 0 0 2px var(--float-solid); }
+.card-head .stack .thumb + .thumb { margin-left: -10px; }
+.head-text { flex: 1; min-width: 0; display: grid; }
+.head-text strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head-text .key { color: var(--text-3); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.2em; }
+.card-actions { display: flex; gap: 2px; flex: none; }
+.card-actions .icon-btn .icon { width: 16px; height: 16px; }
+/* The numbers sit in one fill, a part inside the plate (no line between head and body). */
+.card-body { display: grid; gap: 8px; margin-top: var(--gap); padding: 8px; border-radius: var(--r); background: var(--raise); }
+/* Several picked: no numbers, only a line of words — a fill around one link was a box for nothing. */
+.card-body:not(:has(.fields, .f-row, .fine)) { background: none; padding: 0 8px 4px; margin-top: 4px; }
+.card-body:empty { display: none; }
+.fine { display: grid; gap: 8px; }
+.fine > summary { list-style: none; }
+.fine > summary::-webkit-details-marker { display: none; }
+.shell:not([data-layout="phone"]) .fine > summary { display: none; }
+.fields { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 4px 0; align-items: center; }
+.f-l { color: var(--text-2); font-size: var(--fs-s); }
+.f-cells { display: grid; grid-template-columns: 1fr; gap: 4px; min-width: 0; }
+.f-cells.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.f-cells.n2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Inside the fill a field is only a value: it gets its own fill on hover and while typing. Corner: 10 − 4 = 6. */
+.num { height: var(--h); display: flex; align-items: center; gap: 4px; padding: 0 0 0 6px; border-radius: 6px; background: none; min-width: 0; cursor: ew-resize;
+  transition: background-color var(--dur) var(--ease); }
+.num:hover { background: var(--raise); }
+.num:focus-within { background: var(--raise-2); box-shadow: inset 0 0 0 1px var(--you); }
+.num .scrub { font: 600 var(--fs-s) var(--sans); color: var(--text-3); cursor: ew-resize; touch-action: none; user-select: none; -webkit-user-select: none; flex: none; }
+.num .scrub:empty { display: none; }
+.num .scrub[data-axis="x"] { color: var(--x); } .num .scrub[data-axis="y"] { color: var(--y); } .num .scrub[data-axis="z"] { color: var(--z); }
+.num .scrub.on { color: var(--you); }
+.num input { flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; background: none; color: var(--text); font: 400 var(--fs) var(--sans); font-variant-numeric: tabular-nums; padding: 0 6px 0 0; outline: none; -moz-appearance: textfield; }
+.num input::-webkit-inner-spin-button, .num input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.num.wide { padding-left: 8px; }
+.f-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--raise); }
+.seg button { min-height: 24px; height: 24px; border-radius: 6px; }
+.layer-seg button { width: 32px; padding: 0; color: var(--text-2); }
+.layer-seg button:hover:not(:disabled) { background: var(--raise-2); color: var(--text); }
+.layer-seg button .icon { width: 14px; height: 14px; }
+.layer-pos { color: var(--text-3); font-size: var(--fs-s); }
+.rules-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.f-files { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; grid-column: span 2; }
+.asset-link { background: var(--raise-2); border-radius: 999px; padding: 0 8px 0 4px; min-width: 0; max-width: 100%; font-size: var(--fs-s); }
+.asset-link .label { overflow: hidden; text-overflow: ellipsis; }
+.asset-link .thumb { width: 18px; height: 18px; border-radius: 50%; }
+.asset-link .icon { width: 12px; height: 12px; color: var(--text-3); }
+.more-files { font-size: var(--fs-s); align-self: center; }
+.note-line { margin: 0; font-size: var(--fs-s); color: var(--text-2); }
+.note-line.warn { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.card-body > .link-btn { justify-self: start; font-size: var(--fs-s); color: var(--text-2); }
+
+/* ----- The bar at the bottom of the game: news · (phone: card) · ⌘K list · the input ----- */
+/* One column that never grows past the dock: a long ⌘K row (17 px type on a phone) pushed the grid wider than the screen. */
+.dock { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(600px, calc(100% - 32px)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; z-index: 5; }
+.shell[data-view="library"]:not([data-layout="phone"]) .dock { z-index: 6; }
+.bar { display: flex; align-items: center; gap: 4px; }
+.bar [data-action="sheet"] { display: none; }
+.ask-slot { flex: 1; min-width: 0; }
+/* A capsule; the send button is a circle on the same centre line, 6 in (44 / 2 − 6 = 16 = its own radius). */
+.ask-box { position: relative; height: var(--bar); border-radius: 999px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 16px; margin: 0;
+  transition: box-shadow var(--dur) var(--ease); }
+.shell[data-palette="open"] .ask-box { box-shadow: inset 0 0 0 1px var(--ai), var(--glass-shadow); }
+/* The AI is working: a thin violet light runs slowly round the input's edge — in the place you asked, no spinner,
+   no words that blink. Violet because it is the AI's hand (rule 2). Stops when it is done. */
+@property --studio-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.shell:has(.peer[data-state="busy"]) .ask-box::after, .shell:has(.peer[data-state="busy"])[data-layout="phone"] .bar::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 2px; pointer-events: none;
+  background: conic-gradient(from var(--studio-a), transparent 0deg 60deg, color-mix(in srgb, var(--ai) 25%, transparent) 200deg, var(--ai) 335deg, transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: studio-light 2.4s linear infinite; }
+@keyframes studio-light { to { --studio-a: 360deg; } }
+/* Under the light, the whole edge is a faint violet while the AI works: readable in a still and with reduced motion
+   (a first try showed only a short arc — on a long capsule the light runs fast past the ends, slow past the middle). */
+.shell:has(.peer[data-state="busy"]) .ask-box, .shell:has(.peer[data-state="busy"])[data-layout="phone"] .bar {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 40%, transparent), var(--glass-shadow); }
+.shell:has(.peer[data-state="busy"])[data-layout="phone"] .ask-box { box-shadow: none; }
+.ask-spark { display: grid; color: var(--ai); flex: none; }
+.ask-spark .icon { width: 14px; height: 14px; }
+.ask-chip { flex: none; height: 24px; padding: 0 10px; border-radius: 999px; display: inline-flex; align-items: center; font-size: var(--fs-s); font-weight: 600;
+  color: var(--you-text); background: var(--you-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you) 45%, transparent); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ask-input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: inherit; outline: none; padding: 0; }
+.ask-input::placeholder { color: var(--text-2); }
+.ask-kbd { flex: none; margin-right: 4px; }
+.ask-box:focus-within .ask-kbd, .ask-box:has(.ask-input:not(:placeholder-shown)) .ask-kbd { display: none; }
+.ask-send { width: 32px; min-height: 32px; height: 32px; padding: 0; border-radius: 50%; flex: none; background: var(--solid); color: var(--solid-fg); }
+.ask-send:disabled { opacity: 1; background: var(--raise-2); color: var(--text-3); }
+.ask-send:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
+.ask-box:not(:focus-within):has(.ask-input:placeholder-shown) .ask-send:disabled { display: none; }
+.ai-caption { display: grid; gap: 4px; padding: 8px 8px 8px 16px; border-radius: var(--R); font-size: var(--fs); animation: studio-rise var(--dur-in) var(--ease); }
+.ai-caption > * { margin: 0; }
+.toast { display: none; }
+.toast.on { display: block; }
+.ai-line { display: flex; align-items: center; gap: 12px; min-height: var(--h); }
+.ai-line::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ai); }
+.ai-line.nudge::before { background: var(--text-3); }
+.ai-line.working::before, .ai-line.received::before { animation: studio-pulse 1.2s var(--ease) infinite; }
+.ai-line.failed::before { background: var(--danger); }
+/* AI feel (2026-10-16): sent → has it → working → updating pulse (the light runs round the input meanwhile);
+   "isn't watching" is grey and says what to do in full (two lines, never cut: it is the way out). */
+.ai-line.sent::before, .ai-line.seen::before, .ai-line.updating::before { animation: studio-pulse 1.2s var(--ease) infinite; }
+.ai-line.away::before, .ai-line.undone::before { background: var(--text-3); }
+.ai-line.away .ai-sub { white-space: normal; }
+.ai-line .link.icon-only { width: var(--h); padding: 0; justify-content: center; }
+/* "Handed to your AI." under the field said the same as the AI line above it (play test: "the same news twice").
+   With a host that knows whether an AI watches, the line says it; the note stays for the offline demo ("waiting"). */
+.shell[data-ai]:not([data-ai="waiting"]):not([data-ai="none"]) .ask-note { display: none; }
+/* Reload without a flash: the old frame (a still picture) stays on top until the new game has drawn, then fades. */
+.game.leaving { pointer-events: none; }
+.game.gone { opacity: 0; transition: opacity .22s var(--ease); }
+.ai-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-head { font-weight: 600; }
+.ai-text.two { display: grid; white-space: normal; }
+.ai-text.two > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-sub { color: var(--text-2); font-size: var(--fs-s); }
+.ai-asked, .ai-note { color: var(--text-2); }
+/* The AI note's one action: a filled capsule (a press). */
+.ai-line .link { flex: none; gap: 6px; color: var(--text); background: var(--raise-2); border-radius: 999px; padding: 0 12px 0 10px; min-height: var(--h); font-weight: 600; }
+.ai-line .link:hover { background: var(--raise-3); }
+.ai-line .link .icon { width: 14px; height: 14px; }
+.ai-same { color: var(--text-2); font-size: var(--fs-s); }
+.ask-note { color: var(--text-2); font-size: var(--fs-s); }
+.play-note { color: var(--text-2); }
+/* The first hint: a small plate of its own, centred (on grass a bare line could not be read). */
+.ai-caption:has(> .first-hint:not([hidden])):not(:has(> .ai-line:not([hidden]), > .toast.on, > .ask-note:not([hidden]), > .play-note:not([hidden]))) {
+  justify-self: center; padding: 0 12px; height: var(--h); align-content: center; border-radius: 999px; }
+.first-hint { color: var(--text-2); font-size: var(--fs-s); display: flex; align-items: center; gap: 8px; }
+/* The intro's "2/4": mono and quiet, the same voice as the key hints. */
+.intro-n { flex: none; font-family: var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.intro-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intro-x { flex: none; width: 20px; height: 20px; min-height: 20px; padding: 0; margin-right: -6px; border-radius: 50%; color: var(--text-3); background: none; }
+.intro-x:hover { color: var(--text); background: var(--raise-2); }
+.intro-x .icon { width: 12px; height: 12px; }
+.palette { max-height: min(400px, 52dvh); overflow: auto; overscroll-behavior: contain; padding: var(--gap); border-radius: var(--R); animation: studio-rise var(--dur-in) var(--ease); transform-origin: 50% 100%; }
+.p-sec { padding: 8px 10px 4px; color: var(--text-3); font-size: var(--fs-s); font-weight: 600; }
+.p-row { width: 100%; height: 32px; justify-content: flex-start; gap: 10px; padding: 0 10px; color: var(--text); border-radius: var(--r); }
+.p-row .icon { width: 14px; height: 14px; color: var(--text-2); }
+.p-row.ai .icon { color: var(--ai); }
+.p-row.on, .p-row:hover:not(:disabled) { background: var(--raise-2); }
+.p-row .thumb { width: 16px; height: 16px; }
+.p-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.p-k { margin-left: auto; font: 400 var(--fs-s) var(--sans); letter-spacing: .02em; color: var(--text-3); flex: none; }
+.p-blank { width: 14px; flex: none; }
+.card-slot:empty, .card-slot:has(> .card[hidden]) { display: none; }
+/* While the ⌘K list is open it is the one thing in the bar (the news and the phone card wait). */
+.shell[data-palette="open"] .ai-caption, .shell[data-palette="open"] .card-slot,
+.shell[data-palette="suggest"] .ai-caption, .shell[data-palette="suggest"] .card-slot { display: none; }
+
+/* ----- Assets: takes the game's place (PC), a sheet (phone) ----- */
+/* Assets fill the plate (the game's place); the plate keeps its own shade, so it still reads as the plate. */
+.assets-page { position: absolute; inset: 0; z-index: 3; background: var(--plate); overflow: hidden; }
+.assets-page .tool-mount { height: 100%; }
+.assets-page .gsl { --gsl-bg: transparent; --gsl-card: var(--raise); --gsl-line: var(--line-2); --gsl-accent: var(--you); --gsl-fg: var(--text); --gsl-muted: var(--text-2);
+  font: inherit; background: none; color: var(--text); padding: 24px 24px 96px; gap: 12px; display: grid; grid-template-columns: minmax(0, 1fr) 288px;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; grid-template-areas: "bar detail" "ai detail" "chips detail" "count detail" "grid detail" "foot detail"; column-gap: 24px; height: 100%; }
+.assets-page .gsl-bar { grid-area: bar; gap: 8px; }
+.assets-page .gsl-chips { grid-area: chips; }
+/* "Make with AI" (optional KUMODeck sign-in, 2026-10-16): a raised part under the bar, only while opened. */
+.assets-page .gsl-ai { grid-area: ai; border: 0; border-radius: var(--R); background: var(--raise); padding: 14px; max-height: none; max-width: 560px; }
+.assets-page .gsl-ai-prompt, .assets-page .gsl-ai-cmd code { border: 0; background: var(--plate); color: var(--text); border-radius: var(--r); }
+.assets-page .gsl-ai .gsl-type { background: var(--plate); }
+.assets-page .gsl-ai .gsl-btn:not(.gsl-primary) { background: var(--plate); }
+.assets-page .gsl-ai .gsl-close { width: var(--h); padding: 0; }
+.assets-page .gsl-ai-terms { border-top-color: var(--line-2); }
+.assets-page .gsl-count { grid-area: count; color: var(--text-3); font-size: var(--fs-s); }
+.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.assets-page .gsl-detail { grid-area: detail; align-self: start; max-height: 100%; border: 0; border-radius: var(--R); padding: 12px; }
+.assets-page .gsl-foot { grid-area: foot; min-height: 0; }
+.assets-page .gsl-search, .assets-page .gsl-type { height: var(--h); border: 0; border-radius: 999px; background: var(--raise); color: var(--text); padding: 0 10px; font: inherit; }
+.assets-page .gsl-btn { min-height: var(--h); border: 0; border-radius: 999px; font-weight: 600; background: var(--raise); color: var(--text); font: inherit; padding: 0 10px; }
+.assets-page .gsl-btn:hover { background: var(--raise-2); }
+.assets-page .gsl-primary { background: var(--solid); color: var(--solid-fg); }
+.assets-page .gsl-chip { border: 0; background: var(--raise); height: 24px; padding: 0 10px; border-radius: 999px; font-size: var(--fs-s); font-weight: 600; color: var(--text-2); }
+/* A pressed filter is ink on the desk, not orange: orange is your hand on the game (rule 2). */
+.assets-page .gsl-chip[aria-pressed="true"] { background: var(--solid); color: var(--solid-fg); }
+/* Tile 16 = picture 10 + the 6 around it (rule 3). */
+.assets-page .gsl-tile { border: 0; border-radius: calc(var(--r) + 6px); background: none; padding: 6px; gap: 4px; transition: background-color var(--dur) var(--ease); }
+.assets-page .gsl-tile:hover { background: var(--raise); }
+.assets-page .gsl-tile.gsl-open { background: var(--raise); box-shadow: none; }
+.assets-page .gsl-tile.gsl-open .gsl-thumb { box-shadow: 0 0 0 2px var(--you); }
+.assets-page .gsl-thumb { border-radius: var(--r); background: var(--studio-thumb); }
+.assets-page .gsl-name { font-weight: 600; padding: 4px 2px 0; }
+.assets-page .gsl-meta { padding: 0 2px; }
+.assets-page .gsl-badge { background: none; color: var(--text-3); padding: 0; font-size: var(--fs-s); }
+.assets-page .gsl-badge-missing { color: var(--danger); }
+.assets-page .gsl-badge-unused { color: var(--text-2); }
+.assets-page .gsl-tag { border-color: var(--line-2); color: var(--text-2); }
+.assets-page .gsl-tag-new { border-color: var(--you); color: var(--you-text); }
+.assets-page .gsl-tag-del { border-color: var(--line-2); color: var(--text-2); }
+.assets-page .gsl-dot-used { background: var(--live); } .assets-page .gsl-dot-codeOnly { background: var(--text-2); } .assets-page .gsl-dot-unused { background: var(--text-3); } .assets-page .gsl-dot-missing { background: var(--danger); }
+.assets-page .gsl-key { border: 0; background: var(--raise); color: var(--text); font: var(--fs-s) var(--sans); min-height: 24px; border-radius: 999px; padding: 0 10px; }
+.assets-page .gsl-section h4 { text-transform: none; letter-spacing: 0; color: var(--text-2); font-weight: 600; font-size: var(--fs-s); }
+.assets-page .gsl-play { background: var(--solid); color: var(--solid-fg); }
+.assets-page .gsl-drop { border-color: var(--line-2); border-radius: var(--r); }
+
+/* ----- Look and Ideas pages (in the left column) ----- */
+.page-head { display: flex; align-items: center; gap: 8px; padding: 4px 0 8px; position: sticky; top: 0; background: var(--col); z-index: 1; }
+.page-head .link { color: var(--text-2); gap: 2px; padding: 0 6px 0 2px; }
+.page-head .link .icon { width: 14px; height: 14px; }
+.page-head h2 { margin: 0; font-size: var(--fs); font-weight: 600; }
+.page-intro { color: var(--text-2); font-size: var(--fs-s); margin: 0 0 12px; padding: 0 4px; }
+.page-intro a { color: var(--text); }
+.set-row { display: grid; grid-template-columns: 1fr; gap: 6px; padding: 10px 4px; }
+.set-row > .set-label { color: var(--text-2); font-size: var(--fs-s); }
+label.set-row { grid-template-columns: 1fr auto; }
+label.set-row > .set-label { grid-column: 1 / -1; }
+.set-row output { font-size: var(--fs-s); font-variant-numeric: tabular-nums; color: var(--text-3); }
+.set-row input[type="range"] { accent-color: var(--you); width: 100%; }
+.seg[role="radiogroup"] { display: flex; }
+.seg[role="radiogroup"] button { flex: 1; padding: 0 6px; font-size: var(--fs-s); color: var(--text-2); }
+.seg[role="radiogroup"] button[aria-checked="true"] { background: var(--raise-3); color: var(--text); }
+.set-toggles { display: grid; gap: 2px; }
+.set-toggle { display: flex; align-items: center; justify-content: space-between; min-height: var(--h); font-size: var(--fs); }
+.set-toggle input { accent-color: var(--you); width: 16px; height: 16px; }
+[data-action="ui-reset"] { margin: 12px 4px; background: var(--raise); }
+.steps-title { margin: 16px 4px 4px; font-size: var(--fs-s); font-weight: 600; color: var(--text-3); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.step { width: 100%; display: grid; justify-items: start; gap: 2px; padding: 8px; height: auto; white-space: normal; text-align: left; }
+.step strong { font-weight: 600; }
+.step span { color: var(--text-2); font-size: var(--fs-s); }
+.small-text { font-size: var(--fs-s); margin: 0 4px 4px; }
+.step-detail { display: grid; gap: 8px; padding: 0 4px; }
+.step-detail h3 { margin: 0; font-size: var(--fs-l); font-weight: 600; }
+.step-detail p { margin: 0; color: var(--text-2); }
+.step-detail a { color: var(--text); }
+.set-label { color: var(--text-2); font-size: var(--fs-s); }
+textarea.prompt { width: 100%; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 8px; resize: vertical; }
+textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
+.step-actions { display: flex; gap: 8px; }
+.step-actions button:not(.primary) { background: var(--raise); }
+.step-detail .note { color: var(--ai-text); font-size: var(--fs-s); min-height: 1.2em; }
+
+/* ----- Motion ----- */
+@keyframes studio-rise { from { opacity: 0; transform: translateY(6px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes studio-fade { from { opacity: 0; } }
+@keyframes studio-spin { to { transform: rotate(360deg); } }
+@keyframes studio-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
+
+/* ═════════ Phone: built for a thumb, not the PC layout made small ═════════
+   Top bar 48: the mark, the game's name, Undo (once there is something to
+   undo), Play. Then the game, edge to edge. At the bottom, the input (52):
+   the list button at its left end, send at its right. Right above it, the
+   picked object's card (56). The list and Assets rise as sheets. Nothing at
+   the top of the game: that is where you look.
+   The finish: the same rules at a thumb's size — type 17 / 13 (the phone's
+   own body and footnote sizes), plates 22 with parts 14, and the sheets are
+   glass that floats 8 in from the screen's edges like the card and the input
+   (before, they were the only things on the phone glued to an edge). */
+.shell[data-layout="phone"] { --fs: calc(var(--studio-font) + 4px); --fs-s: calc(var(--fs) - 4px); --fs-l: var(--fs); --h: 44px; --bar: 48px; --R: 22px;
+  grid-template: var(--bar) minmax(0, 1fr) / minmax(0, 1fr); grid-template-areas: "head" "stage"; }
+.shell[data-layout="phone"] .top { padding: 0 6px 0 16px; gap: 4px; }
+.shell[data-layout="phone"] .brand .app, .shell[data-layout="phone"] .brand .sep, .shell[data-layout="phone"] .brand .here { display: none; }
+.shell[data-layout="phone"] .brand .title { font-size: var(--fs-l); font-weight: 600; }
+.shell[data-layout="phone"] .top-right { gap: 2px; }
+.shell[data-layout="phone"] .peer { display: none; }
+.shell[data-layout="phone"] .save-state { padding: 0 6px; }
+.shell[data-layout="phone"] .top [data-action="undo"]:disabled, .shell[data-layout="phone"] .top [data-action="redo"] { display: none; }
+.shell[data-layout="phone"] .top .icon-btn { width: 44px; }
+.shell[data-layout="phone"] .top .icon-btn .icon { width: 20px; height: 20px; }
+/* Save and Play are drawn 36 high (a 44 capsule filled the 48 bar edge to edge) and pressed 44 high (::after). */
+.shell[data-layout="phone"] [data-action="save"] { min-height: 36px; padding: 0 12px; font-size: var(--fs-s); }
+.shell[data-layout="phone"] .top-actions .play { min-height: 36px; padding: 0 14px 0 12px; font-size: var(--fs-s); }
+.shell[data-layout="phone"] [data-action="save"], .shell[data-layout="phone"] .top-actions .play,
+.shell[data-layout="phone"] .list-tools .toggle, .shell[data-layout="phone"] .assets-page .gsl-chip, .shell[data-layout="phone"] .assets-page .gsl-key { position: relative; }
+.shell[data-layout="phone"] [data-action="save"]::after, .shell[data-layout="phone"] .top-actions .play::after,
+.shell[data-layout="phone"] .list-tools .toggle::after, .shell[data-layout="phone"] .assets-page .gsl-chip::after, .shell[data-layout="phone"] .assets-page .gsl-key::after {
+  content: ""; position: absolute; inset: -4px 0; }
+/* The list and the Look / Ideas pages: a sheet from the bottom, behind the bar. */
+.shell[data-layout="phone"] .side { position: fixed; left: 8px; right: 8px; bottom: 8px; height: max(var(--studio-panel-h), 36dvh); z-index: 4; border: 0; border-radius: var(--R); padding: 4px 12px 88px;
+  background: var(--col); box-shadow: var(--shadow);
+  transform: translateY(calc(100% + 16px)); transition: transform var(--dur-in) var(--ease); visibility: hidden; }
+.shell[data-layout="phone"][data-sheet="open"] .side, .shell[data-layout="phone"][data-page="settings"] .side, .shell[data-layout="phone"][data-page="next"] .side { transform: none; visibility: visible; }
+/* With something picked, its 56 card stands on the input over the sheet's foot: before the tool-modes pass
+   (10/16) that left the list ~1 row (49 px of 354). Now the sheet grows by the card and its gap (64) plus room for
+   about four more rows (96), and its own foot padding grows by the card, so the rows clear it. The taller sheet
+   no longer hides the picked object: the bridge slides the view (pan only, the least move) so the object and its
+   strip sit in the part above the sheet (editor.ts slideIntoFree; the inset the shell sends is the sheet's final
+   height). The first try in the finish (58 % + the card, no slide) hid the object and failed studio-fit. */
+.shell[data-layout="phone"]:has(.card-slot > .card:not([hidden])) .side { height: min(calc(max(var(--studio-panel-h), 36dvh) + 160px), 66dvh); padding-bottom: 152px; }
+.shell[data-layout="phone"] .side::before { content: ""; display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--raise-3); margin: 4px auto 8px; flex: none; }
+.shell[data-layout="phone"] .page-head { background: transparent; }
+.shell[data-layout="phone"] .side-foot kbd { display: none; }
+/* "All actions" stays in the phone's list sheet: since the AI-feel pass (10/16) a tap on the ask bar only writes to
+   the AI (it used to open the list over the game), so this row is the phone's way to the list. */
+.shell[data-layout="phone"] .foot-row { min-height: 44px; }
+.shell[data-layout="phone"] .panel { margin: 0 -12px; padding: 0 12px; }
+.shell[data-layout="phone"] .obj { height: 44px; }
+.shell[data-layout="phone"] .obj .thumb { width: 28px; height: 28px; border-radius: 6px; }
+.shell[data-layout="phone"] .obj { border-radius: 14px; }
+/* The list sheet is the PC's list column (the desk) brought up as a floating sheet: solid, because a long list is
+   read, not looked through, and its sticky kind headings must be the sheet's own colour (on see-through glass they
+   showed as white boxes). It is --studio-bg, so a .studio/ui/studio.css that recolours the column recolours it too. */
+.shell[data-layout="phone"] .list-tools .toggle { min-height: 36px; padding: 0 10px; }
+.shell[data-layout="phone"] .nav-row { height: 44px; }
+/* The bar: ≡ [✦ chip field ↑]. */
+.shell[data-layout="phone"] .dock { left: 12px; right: 12px; width: auto; transform: none; bottom: calc(12px + env(safe-area-inset-bottom)); }
+.shell[data-layout="phone"] .bar { position: relative; height: 52px; border-radius: 999px; background: var(--glass); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); padding: 0 6px 0 4px; gap: 2px; }
+.shell[data-layout="phone"] .bar [data-action="sheet"] { display: inline-flex; width: 44px; min-height: 44px; border-radius: 50%; }
+.shell[data-layout="phone"] .bar [data-action="sheet"] .icon { width: 20px; height: 20px; }
+.shell[data-layout="phone"] .ask-box { background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; height: 52px; padding: 0; gap: 6px; position: static; }
+.shell[data-layout="phone"] .ask-box::after { display: none; }
+.shell[data-layout="phone"][data-palette="open"] .bar { box-shadow: inset 0 0 0 1px var(--ai), var(--glass-shadow); }
+.shell[data-layout="phone"] .ask-kbd { display: none; }
+.shell[data-layout="phone"] .ask-input { font-size: max(16px, var(--fs)); } /* below 16 px iOS zooms the page on focus */
+.shell[data-layout="phone"] .ask-send { width: 40px; height: 40px; min-height: 40px; }
+.shell[data-layout="phone"] .ask-box .ask-send:disabled { display: inline-flex; }
+/* The picked object's card: 56 px — picture, name over the numbers, copy, delete, "…". */
+.shell[data-layout="phone"] .card { padding: 6px 4px 6px 10px; max-height: 52dvh; }
+.shell[data-layout="phone"] .card-head { min-height: 44px; gap: 8px; padding-right: 44px; }
+.shell[data-layout="phone"] .card-head > .thumb { width: 40px; height: 40px; border-radius: 12px; }
+.shell[data-layout="phone"] .card-head .stack .thumb { width: 28px; height: 28px; }
+.shell[data-layout="phone"] .head-text .key { font-size: var(--fs-s); }
+.shell[data-layout="phone"] .card-actions .icon-btn { width: 44px; }
+.shell[data-layout="phone"] .card-actions .icon-btn .icon, .shell[data-layout="phone"] .fine > summary .icon { width: 20px; height: 20px; }
+.shell[data-layout="phone"] .card-body { margin-top: 6px; padding: 8px 8px 4px 0; }
+/* Folded (56 + the 2D layer row): the row sits on the plate itself; the fill is for the open numbers only. */
+.shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body { background: none; }
+.shell[data-layout="phone"] .card:has(.fine[open]) .card-body { padding: 8px; }
+/* Folded (the 56 px card): only the "…" (the fold's summary, drawn in the head) and, in 2D, the
+   one Layer row stay (draw order is a main 2D move: it must not be a level down on a phone). */
+.shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body > :not(.fine, .layer-row) { display: none; }
+.shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body:not(:has(> .layer-row)) { display: block; height: 0; margin: 0; padding: 0; border: 0; }
+.shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body:has(> .layer-row) .fine { display: contents; }
+/* Assets open on a phone: its sheet, and the input under it. */
+.shell[data-layout="phone"][data-view="library"] .card-slot { display: none; }
+.shell[data-layout="phone"] .fine > summary { position: absolute; top: 6px; right: 4px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2); cursor: pointer; }
+.shell[data-layout="phone"] .fine[open] > summary { background: var(--raise-2); color: var(--text); }
+.shell[data-layout="phone"] .fields { grid-template-columns: 56px minmax(0, 1fr); gap: 6px 0; }
+.shell[data-layout="phone"] .num { height: 40px; }
+.shell[data-layout="phone"] .num input { font-size: max(16px, var(--fs)); }
+.shell[data-layout="phone"] .layer-seg button { width: 44px; height: 40px; min-height: 40px; }
+.shell[data-layout="phone"] .f-row { grid-template-columns: 56px minmax(0, 1fr) auto; }
+.shell[data-layout="phone"] .card-body > .link-btn, .shell[data-layout="phone"] .note-line .link-btn { min-height: 44px; }
+.shell[data-layout="phone"] .ai-caption { padding: 6px 4px 6px 14px; }
+.shell[data-layout="phone"] .ai-caption:has(> .first-hint:not([hidden])):not(:has(> .ai-line:not([hidden]), > .toast.on, > .ask-note:not([hidden]), > .play-note:not([hidden]))) { height: 32px; padding: 0 14px; }
+.shell[data-layout="phone"] .ai-line { flex-wrap: wrap; gap: 4px 8px; }
+.shell[data-layout="phone"] .ai-text { flex-basis: calc(100% - 24px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.shell[data-layout="phone"] .ai-text.two { display: grid; }
+.shell[data-layout="phone"] .ai-line .link { min-height: 40px; }
+.shell[data-layout="phone"] .p-row { height: 44px; }
+.shell[data-layout="phone"] .palette { max-height: 46dvh; }
+/* Assets: a sheet of its own, two big columns of pictures. */
+.shell[data-layout="phone"] .assets-page { inset: auto 8px 8px 8px; top: 18%; border-radius: var(--R); background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  animation: studio-rise var(--dur-in) var(--ease); }
+.shell[data-layout="phone"] .assets-page::before { content: ""; display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--raise-3); margin: 8px auto 0; }
+.shell[data-layout="phone"] .assets-page .tool-mount { height: calc(100% - 13px); }
+.shell[data-layout="phone"] .assets-page .gsl { display: flex; padding: 8px 16px 96px; overflow: auto; }
+.shell[data-layout="phone"] .assets-page .gsl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; flex: none; }
+.shell[data-layout="phone"] .assets-page .gsl-detail { max-height: none; }
+.shell[data-layout="phone"] .assets-page .gsl-btn, .shell[data-layout="phone"] .assets-page .gsl-search, .shell[data-layout="phone"] .assets-page .gsl-type { min-height: 44px; height: 44px; }
+.shell[data-layout="phone"] .assets-page .gsl-chip, .shell[data-layout="phone"] .assets-page .gsl-key { min-height: 36px; height: 36px; }
+.shell[data-layout="phone"] .page-head .link { min-height: 44px; }
+.shell[data-layout="phone"] .step { min-height: 44px; }

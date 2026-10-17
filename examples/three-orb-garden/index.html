@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#bfe3d0" />
+  <title>Orb Garden — three.js example</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- three.js r186 (0.186.1) from a CDN, pinned via the import map. No build step. -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <div class="pill"><b id="orbs">0</b> orbs</div>
+    <div class="pill"><b id="time">60</b> s</div>
+  </div>
+  <section id="panel" class="panel">
+    <h1>Orb Garden</h1>
+    <p>Roll around and collect glowing orbs in 60 seconds.</p>
+    <p class="muted">WASD / arrows · or drag anywhere to steer</p>
+    <p id="best" class="muted" hidden></p>
+    <button id="start" class="cta">Play</button>
+  </section>
+  <div id="stick" class="stick" hidden><div id="knob"></div></div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

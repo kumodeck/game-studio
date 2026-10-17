@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Game Studio demo</title>
+  <!-- The web demo's first page: pick a sample, then the editor opens it (studio/?game=<id>).
+       Built into the output folder by scripts/build-web-demo.mjs; the list comes from studio/games.json. -->
+  <style>
+    :root { --bg: #f4f3f0; --card: #fff; --text: #1d1d1f; --text-2: #6e6e73; --line: rgba(0,0,0,.08); --accent: #ff6a2b; color-scheme: light dark; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #161617; --card: #232325; --text: #f5f5f7; --text-2: #a1a1a6; --line: rgba(255,255,255,.1); }
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; }
+    /* padding-left: room for the "Test" chip KUMODeck's test version keeps at the top-left (see demo.css). */
+    .line { height: 24px; display: flex; align-items: center; padding: 0 12px 0 48px; font-size: 12px; font-weight: 500; color: var(--text-2); border-bottom: 1px solid var(--line); }
+    main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; }
+    h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; }
+    p.lead { margin: 0 0 28px; color: var(--text-2); }
+    .list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    a.card { display: block; overflow: hidden; border-radius: 18px; background: var(--card); color: inherit; text-decoration: none;
+      border: 1px solid var(--line); transition: transform .15s ease, border-color .15s ease; -webkit-tap-highlight-color: transparent; }
+    /* The starter's thumb.png is 640x400 (16:10); the box keeps that shape before it loads, so the list does not jump. */
+    a.card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--line); }
+    a.card .text { display: block; padding: 14px 18px 16px; }
+    a.card:hover, a.card:focus-visible { border-color: var(--accent); transform: translateY(-1px); outline: none; }
+    .kind { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+    .name { display: block; font-size: 18px; font-weight: 600; margin: 8px 0 2px; }
+    .desc { color: var(--text-2); font-size: 14px; }
+    footer { margin-top: 32px; color: var(--text-2); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="line" id="line">Demo · saves stay in this browser only</div>
+  <main>
+    <h1 id="title">Game Studio</h1>
+    <p class="lead" id="lead">Move, turn and resize the things in a game, right in your browser. Pick a sample.</p>
+    <div class="list" id="list"></div>
+    <footer id="foot">Nothing is sent anywhere: what you change stays in this browser. This demo is not connected to an AI.</footer>
+  </main>
+  <script src="strings.js"></script>
+  <script>
+    // Japanese when the browser prefers it (or ?lang=ja), like the editor. Words: strings.js.
+    (function () {
+      var q = new URLSearchParams(location.search).get('lang');
+      var ja = q ? q === 'ja' : /^ja/i.test(navigator.language || '');
+      var T = window.DEMO_LIST_TEXT[ja ? 'ja' : 'en'];
+      if (ja) document.documentElement.lang = 'ja';
+      ['line', 'title', 'lead', 'foot'].forEach(function (id) { document.getElementById(id).textContent = T[id]; });
+      var list = document.getElementById('list');
+      fetch('studio/games.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (m) {
+        m.games.forEach(function (g) {
+          var a = document.createElement('a');
+          a.className = 'card';
+          a.href = 'studio/?game=' + encodeURIComponent(g.id) + (q ? '&lang=' + encodeURIComponent(q) : '');
+          a.dataset.game = g.id;
+          var kind = document.createElement('span'); kind.className = 'kind'; kind.textContent = g.dim.toUpperCase();
+          var name = document.createElement('span'); name.className = 'name'; name.textContent = g.title;
+          // English: the starter's own line (starter.json "blurb", in games.json); other languages: strings.js.
+          var desc = document.createElement('span'); desc.className = 'desc'; desc.textContent = (ja && T[g.id]) || g.blurb || T[g.id] || T.open;
+          if (g.thumb) {
+            var img = document.createElement('img');
+            img.src = g.thumb; img.alt = ''; img.width = 640; img.height = 400; img.decoding = 'async';
+            a.append(img);
+          }
+          var text = document.createElement('span'); text.className = 'text';
+          text.append(kind, name, desc);
+          a.append(text);
+          list.append(a);
+        });
+      }, function () { list.textContent = T.error; });
+    })();
+  </script>
+</body>
+</html>

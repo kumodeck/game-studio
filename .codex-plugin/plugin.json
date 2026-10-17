@@ -1,0 +1,46 @@
+{
+  "name": "game-studio",
+  "version": "0.1.0",
+  "description": "Turn your Claude or Codex into a game studio: a free, local editor where you drag, turn and resize the objects in your web game, see every asset it uses, and ask your AI for changes. three.js works out of the box; your AI writes a small adapter for Phaser, PixiJS, canvas, DOM, or Godot web games. No account needed.",
+  "author": {
+    "name": "KUMODeck",
+    "email": "support@kumodeck.com",
+    "url": "https://kumodeck.com"
+  },
+  "homepage": "https://github.com/kumodeck/game-studio",
+  "repository": "https://github.com/kumodeck/game-studio",
+  "license": "MIT",
+  "keywords": [
+    "game-studio",
+    "level-editor",
+    "placement",
+    "assets",
+    "threejs",
+    "phaser",
+    "pixijs",
+    "godot",
+    "gamedev",
+    "games",
+    "kumodeck"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "KUMODeck Game Studio",
+    "shortDescription": "Turn Codex into a game studio for your web game",
+    "longDescription": "A free, local editor for your web game. Drag, turn and resize objects, see every asset the game uses, swap assets, and ask your AI for changes in a box under the game. Click Save and your AI updates the code. three.js works out of the box; for Phaser, PixiJS, plain canvas, DOM, or Godot web exports, your AI writes a small adapter from the bundled examples. No account needed, and nothing leaves your computer.",
+    "developerName": "KUMODeck",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/kumodeck/game-studio",
+    "defaultPrompt": [
+      "Open the arrange editor so I can move things in my game.",
+      "Show me every asset my game uses.",
+      "Apply the placement I just saved."
+    ],
+    "screenshots": []
+  }
+}

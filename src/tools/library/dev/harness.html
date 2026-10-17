@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Library harness</title>
+  <!-- Test double of the shell: game on the left (top on phones), the tool panel on the right (bottom). -->
+  <style>
+    :root { color-scheme: light dark; }
+    html, body { margin: 0; height: 100%; background: #e9edf2; font: 13px system-ui, sans-serif; }
+    @media (prefers-color-scheme: dark) { html, body { background: #0d1014; color: #e6ebf1; } }
+    .app { display: grid; grid-template-columns: 1fr 380px; height: 100%; }
+    #game { width: 100%; height: 100%; border: 0; background: #000; display: block; }
+    .side { display: flex; flex-direction: column; min-height: 0; border-left: 1px solid #8884; }
+    .top { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-bottom: 1px solid #8884; }
+    .top b { flex: 1; }
+    #status { color: #5d6b7a; padding: 0 10px; min-height: 18px; }
+    #library { flex: 1; min-height: 0; }
+    #placement { padding: 8px 10px; flex: 1; }
+    #placement h3 { margin: 0 0 6px; font-size: 13px; }
+    .gsl-objfiles { display: flex; flex-wrap: wrap; gap: 6px; }
+    .gsl-objfiles button { display: inline-flex; gap: 6px; align-items: center; padding: 4px 8px; border-radius: 8px; border: 1px solid #8886; background: transparent; color: inherit; font: inherit; }
+    body[data-tool=placement] #library { display: none; }
+    body[data-tool=library] #placement { display: none; }
+    button { min-height: 32px; }
+    @media (max-width: 720px) {
+      .app { grid-template-columns: 1fr; grid-template-rows: 38% 62%; }
+      .side { border-left: 0; border-top: 1px solid #8884; }
+    }
+  </style>
+  <script type="module" src="/__lib/tools/library/dev/harness.ts"></script>
+</head>
+<body data-tool="library">
+  <div class="app">
+    <iframe id="game" title="game"></iframe>
+    <div class="side">
+      <div class="top"><b>Library harness</b><button id="save" type="button" disabled>Save</button></div>
+      <div id="status" role="status"></div>
+      <div id="placement">
+        <h3>Placement (stub) — selected: <span id="sel"></span></h3>
+        <div id="files-of"></div>
+        <p><button id="back" type="button">Back to Library</button></p>
+      </div>
+      <div id="library"></div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,79 @@
+// Undo/redo history for placement: one entry per finished gesture or action.
+//
+// Entries hold absolute poses (from/to), not deltas, so undo is exact even
+// if the adapter rounds or clamps, and replaying never drifts.
+//
+// One entry can hold several changes (CONTRACT.md §1.8): moving a selection
+// of five objects, copying three, deleting two, or bringing a group to the
+// front is ONE press of Undo. Changes are applied in order on redo and in
+// reverse order on undo (a group's draw-order moves only undo exactly
+// backwards, each one being "take it out, put it at that place").
+import { LIMITS, type Pose } from '../contract.ts';
+
+export type Change =
+  | { kind: 'pose'; key: string; from: Pose; to: Pose }
+  /** A copy was made: undo deletes it again, redo brings it back at `pose`. */
+  | { kind: 'add'; key: string; from: string; pose: Pose }
+  /** An object was deleted: undo puts it back. */
+  | { kind: 'remove'; key: string };
+
+export interface UndoEntry {
+  changes: Change[];
+}
+
+/** The common case: one object moved. */
+export const poseChange = (key: string, from: Pose, to: Pose): UndoEntry => ({ changes: [{ kind: 'pose', key, from, to }] });
+
+export class UndoStack {
+  private done: UndoEntry[] = [];
+  private undone: UndoEntry[] = [];
+  private readonly limit: number;
+
+  constructor(limit: number = LIMITS.undoSteps) {
+    this.limit = limit;
+  }
+
+  /** Record a finished gesture. No-op when nothing changed. Clears redo. */
+  push(e: UndoEntry): boolean {
+    const changes = e.changes.filter((c) => c.kind !== 'pose' || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    if (!changes.length) return false;
+    this.done.push({ changes });
+    if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
+    this.undone.length = 0;
+    return true;
+  }
+
+  /** The entry to revert (apply its changes backwards), or null. */
+  undo(): UndoEntry | null {
+    const e = this.done.pop();
+    if (!e) return null;
+    this.undone.push(e);
+    return e;
+  }
+
+  /** The entry to re-apply (apply its changes in order), or null. */
+  redo(): UndoEntry | null {
+    const e = this.undone.pop();
+    if (!e) return null;
+    this.done.push(e);
+    return e;
+  }
+
+  /** What Undo / Redo would change next, without changing it (their tooltips name it). */
+  peekUndo(): UndoEntry | null {
+    return this.done[this.done.length - 1] ?? null;
+  }
+  peekRedo(): UndoEntry | null {
+    return this.undone[this.undone.length - 1] ?? null;
+  }
+
+  get canUndo(): boolean {
+    return this.done.length > 0;
+  }
+  get canRedo(): boolean {
+    return this.undone.length > 0;
+  }
+  get size(): number {
+    return this.done.length;
+  }
+}

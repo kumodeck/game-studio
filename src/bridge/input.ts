@@ -1,0 +1,939 @@
+// Pointer, wheel and key input in the game page while editing, plus the
+// handles drawn next to the selected object.
+//
+// Rules (CONTRACT.md §2), and why:
+// - Pressing an object only SELECTS it, on release, if the pointer did not
+//   travel. Dragging anywhere else — including over objects that are not
+//   picked — looks around (3D) or pans (2D). When ANY drag on an object moved
+//   it (before 2026-10-16), fingers meant to select or look around nudged
+//   things and a large ground mesh was easy to grab by accident.
+// - Dragging the object that is ALREADY picked moves it (rebrand 2026-10-16:
+//   the tool strip under it replaced the four round handles, and "drag the
+//   thing itself" is what every other editor does). It needs a pick first, so
+//   a stray drag never moves anything; very large objects (ground, sky: more
+//   than 40 % of the window) and locked ones still look around when dragged,
+//   which keeps the accident above impossible.
+// - Tool modes (play test 2026-10-16): a press on a strip button (or
+//   M / H / T / S) CHOOSES that tool and it stays pressed; then a drag
+//   ANYWHERE on the game does it to what is picked — move follows the drag,
+//   height goes with the vertical drag, turn with the horizontal drag (on the
+//   chosen axis), size grows dragging right / up and shrinks left / down.
+//   Before, only "drag the object" moved without holding a button; turn,
+//   height and size needed the mouse held ON the small button while moving,
+//   which felt unnatural in the play test. A drag started on a button still
+//   works the old way. With a tool chosen, looking around is Option-drag
+//   (orbit), right / middle drag (pan), Space held, two fingers on touch,
+//   the wheel / trackpad; with nothing picked a drag always looks around
+//   (there is nothing to act on). Escape: closes the choices, then drops the
+//   tool, then the pick. A tap still picks (the tool stays chosen).
+// - Pressing the same spot again picks the next object under it (the one
+//   behind), so small objects hidden by large ones stay reachable.
+// - One gesture = one undo step: every `moved` of a gesture is sent, the last
+//   one carries `end: true` and `from` (the pose before the gesture).
+// - Listeners sit on window in the capture phase and are installed before any
+//   game code, so they run first and can stop the game from also reacting.
+// - A blur (the shell taking focus after a selection) must NOT forget an
+//   active pointer: the next pointermove would otherwise be dropped and the
+//   drag would stop half-way. Stale pointers are cleaned up by reliable
+//   signals instead (a mouse move with no buttons pressed, a new press with
+//   the same id).
+// - Several objects (CONTRACT.md §1.8): Shift+click (or a press in "select
+//   several" mode) adds or removes one; Shift+drag from an empty spot (or a
+//   mouse drag from an empty spot in that mode) draws a box. The handles then
+//   sit under the whole group and move / turn / resize all of it (group.ts).
+//   WHY not a plain drag for the box: a plain drag has always looked around,
+//   on objects and next to them, and that must keep working the same.
+import { UI, type BridgeToShell, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
+import type { Core } from '../core/index.ts';
+import { keyStep } from '../core/keys.ts';
+import type { EditState } from './editor.ts';
+import type { ToolHost } from './game-tools.ts';
+import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
+import type { EditsAdapter } from '../core/edits.ts';
+import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
+
+export interface InputDeps {
+  adapter: StudioAdapter;
+  core: Core;
+  win: Window & typeof globalThis;
+  post: (msg: BridgeToShell) => void;
+  state: EditState;
+  select: (key: string | null, focus?: boolean) => void;
+  /** Replace the selection with several objects (`primary` = the one the card shows). */
+  selectMany: (keys: string[], primary: string | null) => void;
+  /** The copy/delete layer, for drawing stand-in copies. */
+  edits: EditsAdapter;
+  step: (m: Extract<ShellToBridge, { type: 'studio:placement/step' }>) => void;
+  /** Game tools (.studio/tools.js): get pointer presses first while one is on. */
+  tools: ToolHost;
+  markDirty: () => void;
+}
+
+export interface InputHandle {
+  frame(): void;
+  selectionChanged(): void;
+  setLang(lang: Lang): void;
+  setHandleSize(px: number): void;
+  /** Viewport px the shell covers with floating panels (the strip stays clear of them). */
+  setInset(inset: Inset): void;
+  /** 3D: the turn axis (the R key / the shell's 'next' cycles y → x → z). */
+  setAxis(axis: TurnAxis | 'next'): void;
+  /** Choose the strip's tool from the shell (its keys, ⌘K), or none. */
+  setTool(tool: HandleKind | null): void;
+  /** Space held in the shell: a drag looks around even with a tool chosen. */
+  setLook(on: boolean): void;
+  setTheme(theme: 'dark' | 'light'): void;
+  /** Outline what the AI's last change touched, in its colour, with one tag. */
+  setAiMarks(keys: string[], label: string | null): void;
+  detach(): void;
+}
+
+interface Ptr {
+  id: number;
+  type: string;
+  x: number;
+  y: number;
+  sx: number;
+  sy: number;
+  button: number;
+  shift: boolean;
+  /** Option / Alt at the press: look around instead of using the tool. */
+  alt: boolean;
+}
+
+/** What the current single-pointer gesture does. */
+type Mode =
+  | { kind: 'pending' } // pressed, not moved beyond the tap slop yet
+  | { kind: 'look'; pan: boolean }
+  // `anywhere`: the chosen tool, dragged from anywhere (measured from the drag's own travel, not round the object).
+  | { kind: 'handle'; handle: HandleKind; key: string; from: Pose; last: Pose; data: Record<string, number>; anywhere?: boolean }
+  | { kind: 'group'; handle: HandleKind; session: GroupSession; x0: number; y0: number; data: Record<string, number>; anywhere?: boolean }
+  | { kind: 'box' }
+  | { kind: 'pinch'; dist: number; cx: number; cy: number }
+  | { kind: 'tool' }
+  | { kind: 'none' };
+
+const SNAP = (15 * Math.PI) / 180;
+const SNAP_WINDOW = (3 * Math.PI) / 180;
+/** Tool dragged anywhere: radians of turn per px of horizontal drag (0.01 ≈ 0.57°/px: a full turn in ~630 px, 15° in ~26 px). */
+const TURN_PER_PX = 0.01;
+/** Size per px of drag (right / up = bigger): ×2 after ~140 px of travel, ×0.5 after the same the other way. */
+const SIZE_PER_PX = 0.005;
+/** localStorage flag: the "how to look around" line was seen (it shows once, on this computer). */
+const HINT_SEEN = 'gameStudio.toolHint.v1';
+
+function wrap(a: number): number {
+  while (a <= -Math.PI) a += 2 * Math.PI;
+  while (a > Math.PI) a -= 2 * Math.PI;
+  return a;
+}
+const samePose = (a: Pose, b: Pose) => JSON.stringify(a) === JSON.stringify(b);
+/** One number for a pose's size (the first of three when they differ), never 0. */
+const sizeOf = (p: Pose) => Math.abs((Array.isArray(p.s) ? p.s[0] : p.s) ?? 1) || 1;
+
+export function attachInput(deps: InputDeps): InputHandle {
+  const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits } = deps;
+  const toolEvent = (type: 'down' | 'move' | 'up', p: Ptr) => ({ type, x: p.x, y: p.y, pointerType: p.type, shift: p.shift });
+  const doc = win.document;
+  const ptrs = new Map<number, Ptr>();
+  let mode: Mode = { kind: 'none' };
+  let lastTap: { x: number; y: number; key: string | null } | null = null;
+  let lang: Lang = 'en';
+  const handles: Handles = createHandles(doc, adapter.dim === '3d' && !!adapter.nudgeY);
+  // A press on the picked object: a drag from it moves it (see the header).
+  let grabStart = false;
+  // The chosen strip tool (stays until another is chosen or Escape), and a press that will use it.
+  let tool: HandleKind | null = null;
+  let toolStart = false;
+  // Space held (in the game page, or in the shell via placement/look): drags look around.
+  let spaceHeld = false;
+  let hintShown = false;
+  let hintTimer = 0;
+  const hintSeen = () => {
+    try {
+      return win.localStorage.getItem(HINT_SEEN) === '1';
+    } catch {
+      return false;
+    }
+  };
+  const touchFirst = () => win.matchMedia?.('(pointer: coarse)').matches ?? false;
+  const showHint = () => {
+    if (!tool || hintShown || hintSeen()) return;
+    hintShown = true;
+    const words = TOOL_HINT[lang] || TOOL_HINT.en;
+    const name = (READOUT_WORDS[lang] || READOUT_WORDS.en)[tool];
+    const more = tool === 'rotate' && canTurn() ? (TILT_HINT[lang] || TILT_HINT.en) : '';
+    handles.hint((touchFirst() ? words.touch(name) : words.mouse(name)) + more);
+    // Gone after the first drag with the tool (it was read and used), or after 8 s.
+    win.clearTimeout(hintTimer);
+    hintTimer = win.setTimeout(() => handles.hint(null), 8000);
+  };
+  const hintUsed = () => {
+    if (!hintShown) return;
+    handles.hint(null);
+    try {
+      win.localStorage.setItem(HINT_SEEN, '1');
+    } catch {
+      /* private window: shows again next time, which is fine */
+    }
+  };
+  /** Can the chosen tool act on what is picked (its button is shown)? */
+  const toolApplies = (k: HandleKind) => {
+    const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
+    if (!picked.length) return false;
+    if (k === 'move') return picked.some((i) => i.movable !== false);
+    if (k === 'lift') return adapter.dim === '3d' && !!adapter.nudgeY && picked.some((i) => i.liftable !== false && i.movable !== false);
+    if (k === 'rotate') return picked.some((i) => i.rotatable);
+    return picked.some((i) => i.scalable);
+  };
+  const chooseTool = (k: HandleKind | null, from: 'strip' | 'key' | 'shell') => {
+    if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return;
+    const changed = k !== tool;
+    tool = k;
+    handles.setTool(k);
+    if (changed) post({ type: 'studio:placement/tool', tool: k });
+    // Several picked: the size button shows its two ways when chosen (they change what the drag does to the gaps).
+    // The turn button does NOT open its axis choices any more (polish pass 2026-10-16, play test stumble 7): a
+    // newcomer who only wants to turn something had to answer "Turn / Tip forward / Tip sideways" first. Chosen,
+    // it turns at once around the axis last used (upright at first); a second tap on it, or R, shows the choices
+    // (the first-time line says so).
+    if (k === 'scale' && from === 'strip' && state.group.length > 1) handles.menu('scale', state.scaleMode, lang);
+    else if (handles.menuOpen()) handles.menu(null, '', lang);
+    if (k) showHint();
+    else handles.hint(null);
+  };
+  /** The press looks around even with a tool chosen: Option, a right / middle button, or Space held. */
+  const looksAround = (p: Ptr) => p.type === 'mouse' && (p.button !== 0 || p.alt || spaceHeld);
+  // 3D turns around three axes (adapter.turn); groups still turn upright only.
+  const canTurn = () => adapter.dim === '3d' && !!adapter.turn && state.group.length <= 1;
+  let axisShown: TurnAxis | null = null;
+  const showAxis = () => {
+    const ax: TurnAxis = canTurn() ? state.axis : 'y';
+    if (ax === axisShown) return;
+    axisShown = ax;
+    handles.setAxis(ax, lang);
+  };
+  const setAxis = (ax: TurnAxis | 'next') => {
+    const order: TurnAxis[] = ['y', 'x', 'z'];
+    state.axis = ax === 'next' ? order[(order.indexOf(state.axis) + 1) % 3]! : ax;
+    showAxis();
+    if (handles.menuOpen() === 'axis') handles.menu('axis', state.axis, lang);
+  };
+  const toggleMenu = (kind: 'axis' | 'scale') => {
+    if (handles.menuOpen() === kind) handles.menu(null, '', lang);
+    else handles.menu(kind, kind === 'axis' ? state.axis : state.scaleMode, lang);
+  };
+
+  // Stop page scrolling/zooming by touch while editing; restored on detach.
+  const prevTouchAction = doc.documentElement.style.touchAction;
+  doc.documentElement.style.touchAction = 'none';
+
+  const opts = { capture: true, passive: false } as AddEventListenerOptions;
+  const block = (e: Event) => {
+    // Keep the game from seeing input while it is being edited. Our own
+    // handlers below run first because they were added before the game's.
+    e.stopImmediatePropagation();
+    if (e.cancelable && e.type !== 'keyup') e.preventDefault();
+  };
+  const blocked = ['mousedown', 'mouseup', 'mousemove', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'contextmenu', 'keyup', 'keypress', 'gesturestart', 'gesturechange'];
+
+  const emitMoved = (key: string, pose: Pose, extra: Partial<Extract<BridgeToShell, { type: 'studio:placement/moved' }>> = {}) => {
+    markDirty();
+    post({ type: 'studio:placement/moved', key, pose, ...extra });
+  };
+
+  const startGroup = (handle: HandleKind, p: Ptr, anywhere = false): Mode => {
+    const session = beginGroup(adapter, state.group, state.selected!);
+    if (!session) return { kind: 'none' };
+    const ga = groupAnchor(adapter, session.keys, session.primary);
+    const data: Record<string, number> = { d: 0, f: 1 };
+    if (ga) {
+      data.angle = Math.atan2(p.y - ga.center[1], p.x - ga.center[0]);
+      data.dist = Math.max(8, Math.hypot(p.x - ga.center[0], p.y - ga.center[1]));
+    }
+    if (handle === 'lift') {
+      // Same probe as one object, on the first member: world units per px.
+      const a = adapter.anchor(session.primary);
+      if (a && adapter.nudgeY) {
+        data.gap = p.y - a.center[1];
+        adapter.nudgeY(session.primary, 0.1);
+        const b = adapter.anchor(session.primary);
+        adapter.nudgeY(session.primary, -0.1);
+        const px = b ? a.center[1] - b.center[1] : 0;
+        data.k = Math.abs(px) > 0.5 ? 0.1 / px : 0.01;
+      }
+    }
+    if (!anywhere) handles.setActive(handle);
+    return { kind: 'group', handle, session, x0: p.x, y0: p.y, data, anywhere };
+  };
+
+  const moveGroup = (m: Extract<Mode, { kind: 'group' }>, p: Ptr) => {
+    const { session: s, data } = m;
+    const ga = groupAnchor(adapter, s.keys, s.primary);
+    if (m.anywhere && (m.handle === 'rotate' || m.handle === 'scale')) {
+      // The chosen tool dragged anywhere: the drag's own travel, from the press.
+      if (m.handle === 'rotate') {
+        let d = (p.x - m.x0) * TURN_PER_PX;
+        const t = Math.round(d / SNAP) * SNAP;
+        if (!p.shift && Math.abs(t - d) <= SNAP_WINDOW) d = t;
+        groupRotate(adapter, adapter.dim, s, d);
+      } else groupScale(adapter, adapter.dim, s, Math.exp((p.x - m.x0 - (p.y - m.y0)) * SIZE_PER_PX), state.scaleMode);
+    } else if (m.handle === 'move') groupMove(adapter, adapter.dim, s, p.x - m.x0, p.y - m.y0);
+    else if (m.handle === 'rotate' && ga) {
+      // The turn centre stays where the group started (s.center): measuring
+      // around the moving middle would wobble.
+      const ang = Math.atan2(p.y - s.center[1], p.x - s.center[0]);
+      data.d = data.d! + wrap(ang - data.angle!);
+      data.angle = ang;
+      let d = data.d!;
+      // 15° steps within ±3° unless Shift, like one object.
+      const t = Math.round(d / SNAP) * SNAP;
+      if (!p.shift && Math.abs(t - d) <= SNAP_WINDOW) d = t;
+      groupRotate(adapter, adapter.dim, s, d);
+    } else if (m.handle === 'scale') {
+      const dist = Math.max(8, Math.hypot(p.x - s.center[0], p.y - s.center[1]));
+      groupScale(adapter, adapter.dim, s, dist / data.dist!, state.scaleMode);
+    } else if (m.handle === 'lift') {
+      const a = adapter.anchor(s.primary);
+      if (!a) return;
+      const err = a.center[1] - (p.y - data.gap!);
+      const dy = Math.max(-5, Math.min(5, err * data.k!));
+      if (Math.abs(dy) > 1e-6) groupLift(adapter, s, dy);
+    }
+    markDirty();
+    post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle });
+    const from = s.from.get(s.primary), now = adapter.anchor(s.primary)?.pose;
+    if (from && now) handles.readout(readout(m.handle, from, now, 'y'));
+  };
+
+  const startHandle = (handle: HandleKind, p: Ptr, anywhere = false): Mode => {
+    if (state.group.length > 1) return startGroup(handle, p, anywhere);
+    const key = state.selected!;
+    const a = adapter.anchor(key);
+    if (!a) return { kind: 'none' };
+    const from = a.pose;
+    const data: Record<string, number> = {};
+    if (handle === 'move') {
+      if (!adapter.grab(key, p.x, p.y)) return { kind: 'none' };
+    } else if (handle === 'rotate') {
+      // 3D turns go around the middle of the object's box (adapter.turn): measure the finger around that.
+      const r = a.rect;
+      data.cx = canTurn() && r ? r.x + r.w / 2 : a.center[0];
+      data.cy = canTurn() && r ? r.y + r.h / 2 : a.center[1];
+      data.angle = Math.atan2(p.y - data.cy, p.x - data.cx);
+      data.sign = 0; // learnt from the first response: +1 if pose.r grows with d
+    } else if (handle === 'scale') {
+      data.dist = Math.max(8, Math.hypot(p.x - a.center[0], p.y - a.center[1]));
+    } else if (handle === 'lift') {
+      // Keep the vertical gap between finger and pivot constant. World units
+      // per screen px are measured once with a tiny probe move (undone at
+      // once), because they depend on distance and camera angle.
+      data.gap = p.y - a.center[1];
+      const h = 0.1;
+      adapter.nudgeY!(key, h);
+      const b = adapter.anchor(key);
+      adapter.nudgeY!(key, -h);
+      const px = b ? a.center[1] - b.center[1] : 0;
+      data.k = Math.abs(px) > 0.5 ? h / px : 0.01;
+    }
+    if (anywhere) {
+      data.x0 = p.x;
+      data.y0 = p.y;
+      data.applied = 0; // turn: the screen angle given so far (the drag sets the total; the adapter takes steps)
+    } else handles.setActive(handle);
+    return { kind: 'handle', handle, key, from, last: from, data, anywhere };
+  };
+
+  const moveHandle = (m: Extract<Mode, { kind: 'handle' }>, p: Ptr) => {
+    const { key, data } = m;
+    let pose: Pose = m.last;
+    if (m.anywhere && m.handle === 'rotate') {
+      // Turn by the horizontal travel; 15° steps within ±3° of the gesture's total unless Shift.
+      let want = (p.x - data.x0!) * TURN_PER_PX;
+      const t = Math.round(want / SNAP) * SNAP;
+      if (!p.shift && Math.abs(t - want) <= SNAP_WINDOW) want = t;
+      const dd = want - data.applied!;
+      if (Math.abs(dd) > 1e-6) {
+        pose = canTurn() ? adapter.turn!(key, dd, state.axis) : adapter.rotate(key, dd);
+        data.applied = want;
+      }
+    } else if (m.anywhere && m.handle === 'scale') {
+      // Size by the travel right / up (left / down = smaller), as one factor from the start.
+      const want = Math.exp((p.x - data.x0! - (p.y - data.y0!)) * SIZE_PER_PX);
+      const now = adapter.anchor(key)?.pose;
+      const f = now ? want / (sizeOf(now) / sizeOf(m.from)) : 1;
+      if (Math.abs(f - 1) > 1e-4) pose = adapter.scale(key, f);
+    } else if (m.handle === 'move') {
+      pose = adapter.drag(key, p.x, p.y);
+    } else if (m.handle === 'rotate') {
+      const a = adapter.anchor(key);
+      if (!a) return;
+      const cx = data.cx ?? a.center[0], cy = data.cy ?? a.center[1];
+      const ang = Math.atan2(p.y - cy, p.x - cx);
+      const d = wrap(ang - data.angle!);
+      data.angle = ang;
+      const before = adapter.anchor(key)!.pose.r ?? 0;
+      // 3D: around the chosen axis through the box middle; 2D (and adapters without turn): the old way.
+      const turnBy = (dd: number) => (canTurn() ? adapter.turn!(key, dd, state.axis) : adapter.rotate(key, dd));
+      pose = turnBy(d);
+      if (!data.sign && Math.abs(d) > 1e-4) data.sign = Math.sign(wrap((pose.r ?? 0) - before)) * Math.sign(d) || 1;
+      // Snap to 15° steps within ±3° unless Shift is held (the vertical turn only: a tip has no "straight"
+      // the editor knows of). The snap is applied to the object's own angle; `sign` maps it back to a screen delta.
+      if (!p.shift && data.sign && (!canTurn() || state.axis === 'y')) {
+        const r = pose.r ?? 0;
+        const target = Math.round(r / SNAP) * SNAP;
+        const off = target - r;
+        if (Math.abs(off) <= SNAP_WINDOW && Math.abs(off) > 1e-6) pose = turnBy(off * data.sign);
+      }
+    } else if (m.handle === 'scale') {
+      const a = adapter.anchor(key);
+      if (!a) return;
+      const dist = Math.max(8, Math.hypot(p.x - a.center[0], p.y - a.center[1]));
+      const f = dist / data.dist!;
+      data.dist = dist;
+      if (Math.abs(f - 1) > 1e-4) pose = adapter.scale(key, f);
+    } else if (m.handle === 'lift') {
+      const a = adapter.anchor(key);
+      if (!a) return;
+      const target = p.y - data.gap!;
+      const err = a.center[1] - target; // > 0: object is below where it should be
+      const dy = Math.max(-5, Math.min(5, err * data.k!));
+      if (Math.abs(dy) > 1e-6) pose = adapter.nudgeY!(key, dy);
+    }
+    m.last = pose;
+    emitMoved(key, pose, { press: m.handle });
+    handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y'));
+  };
+
+  /** The readout's text: what this drag changed, from the pose before it. */
+  const readout = (k: HandleKind, from: Pose, now: Pose, axis: TurnAxis): string => {
+    const w = READOUT_WORDS[lang] || READOUT_WORDS.en;
+    const sgn = (v: number, dp: number) => `${v < 0 ? '−' : '+'}${Math.abs(v).toFixed(dp)}`;
+    const p0 = from.p, p1 = now.p;
+    if (k === 'move') {
+      // 3D: on the ground (X, Z, metres); 2D: the game's own x / y.
+      const [a, b] = adapter.dim === '3d' ? [0, 2] : [0, 1];
+      const dp = adapter.dim === '3d' ? 2 : 0;
+      return `${w.move}  ${adapter.dim === '3d' ? 'X' : 'x'} ${sgn((p1[a] ?? 0) - (p0[a] ?? 0), dp)}  ${adapter.dim === '3d' ? 'Z' : 'y'} ${sgn((p1[b] ?? 0) - (p0[b] ?? 0), dp)}`;
+    }
+    if (k === 'lift') return `${w.lift}  ${sgn((p1[1] ?? 0) - (p0[1] ?? 0), 2)}`;
+    if (k === 'rotate') {
+      let d: number;
+      if (axis === 'y') d = wrap((now.r ?? 0) - (from.r ?? 0));
+      else {
+        const i = axis === 'x' ? 0 : 1;
+        d = wrap((now.t?.[i] ?? 0) - (from.t?.[i] ?? 0));
+      }
+      const deg = Math.round((d * 180) / Math.PI);
+      return `${axis === 'x' ? w.tipX : axis === 'z' ? w.tipZ : w.rotate}  ${deg < 0 ? '−' : ''}${Math.abs(deg)}°`;
+    }
+    return `${w.scale}  ×${(sizeOf(now) / sizeOf(from)).toFixed(2)}`;
+  };
+
+  const endGesture = () => {
+    if (mode.kind === 'handle' || mode.kind === 'group') {
+      handles.readout(null);
+      if (mode.anywhere) hintUsed();
+    }
+    if (mode.kind === 'group') {
+      handles.setActive(null);
+      const poses = groupPoses(adapter, mode.session, true);
+      if (poses.some((e) => !samePose(e.pose, e.from!))) {
+        markDirty();
+        post({ type: 'studio:placement/moved-group', poses, end: true, press: mode.handle });
+      }
+    }
+    if (mode.kind === 'handle') {
+      const m = mode;
+      const pose = adapter.anchor(m.key)?.pose ?? m.last;
+      handles.setActive(null);
+      if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle });
+    }
+    mode = { kind: 'none' };
+  };
+
+  const tap = (p: Ptr) => {
+    const radius = p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch;
+    let keys: string[] = [];
+    try {
+      keys = adapter.pickNear(p.x, p.y, radius);
+    } catch {
+      keys = [];
+    }
+    let key: string | null = keys[0] ?? null;
+    // Same spot again: walk to the next candidate (the object behind).
+    if (lastTap && Math.hypot(lastTap.x - p.x, lastTap.y - p.y) <= radius && state.selected && keys.includes(state.selected)) {
+      key = keys[(keys.indexOf(state.selected) + 1) % keys.length]!;
+    }
+    lastTap = { x: p.x, y: p.y, key };
+    // Shift, or "select several" mode: add or take out one object.
+    if (p.shift || state.multi) {
+      if (!key) return;
+      const has = state.group.includes(key);
+      const keys = has ? state.group.filter((k) => k !== key) : [...state.group, key];
+      selectMany(keys, has ? (keys[keys.length - 1] ?? null) : key);
+      return;
+    }
+    select(key);
+  };
+
+  /** Box selection: every listed object whose pivot is inside the band joins the selection. */
+  let band: { x: number; y: number; w: number; h: number } | null = null;
+  const finishBox = () => {
+    const r = band;
+    band = null;
+    handles.box(null);
+    if (!r) return;
+    const inBox: string[] = [];
+    for (const it of state.items) {
+      const a = adapter.anchor(it.key);
+      if (!a || !a.visible) continue;
+      const [x, y] = a.center;
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) inBox.push(it.key);
+    }
+    if (!inBox.length) return;
+    const keys = [...state.group, ...inBox.filter((k) => !state.group.includes(k))];
+    selectMany(keys, state.selected && keys.includes(state.selected) ? state.selected : inBox[0]!);
+  };
+  /** A mouse press that may become a box: Shift or "select several", and nothing under the pointer. */
+  const boxable = (p: Ptr) => {
+    if (p.type !== 'mouse' || p.button !== 0 || !(p.shift || state.multi)) return false;
+    try {
+      return adapter.pickNear(p.x, p.y, UI.pickRadiusMouse).length === 0;
+    } catch {
+      return false;
+    }
+  };
+  let boxStart = false;
+  /** Tool dragged anywhere: the offset from the pointer to the object's point at the start. */
+  let off = { x: 0, y: 0 };
+
+  /** A plain press (no Shift, not picking several) on the picked object, which can be moved and is not huge. */
+  const grabbable = (p: Ptr) => {
+    if (!state.selected || p.shift || state.multi || (p.type === 'mouse' && p.button !== 0)) return false;
+    const picked = state.group.length > 1 ? state.group : [state.selected];
+    let under: string[] = [];
+    try {
+      under = adapter.pickNear(p.x, p.y, p.type === 'mouse' ? 2 : 10);
+    } catch {
+      return false;
+    }
+    const k = under.find((u) => picked.includes(u));
+    if (!k) return false;
+    const it = state.items.find((i) => i.key === k);
+    if (!it || it.movable === false || it.backdrop) return false;
+    const r = adapter.anchor(k)?.rect;
+    return !r || r.w * r.h < 0.4 * win.innerWidth * win.innerHeight;
+  };
+
+  const twoFingers = () => {
+    const [a, b] = [...ptrs.values()];
+    return { dist: Math.hypot(a!.x - b!.x, a!.y - b!.y), cx: (a!.x + b!.x) / 2, cy: (a!.y + b!.y) / 2 };
+  };
+
+  const onDown = (e: PointerEvent) => {
+    const h = handleFromEvent(e);
+    block(e);
+    // A press with an id we still hold means we missed its release.
+    ptrs.delete(e.pointerId);
+    // A new touch while nothing is down: clear leftovers from lost releases.
+    if (e.pointerType !== 'mouse' && e.isPrimary) ptrs.clear();
+    const p: Ptr = { id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, shift: e.shiftKey, alt: e.altKey };
+    ptrs.set(e.pointerId, p);
+    try {
+      (e.target as Element).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* element may not accept capture (e.g. document) */
+    }
+    if (ptrs.size === 2) {
+      // Second finger: whatever the first was doing turns into pinch/pan.
+      if (mode.kind === 'handle' || mode.kind === 'group') endGesture();
+      mode = { kind: 'pinch', ...twoFingers() };
+      return;
+    }
+    if (ptrs.size > 2) return;
+    // A choice in the strip's menu (turn axis / resize mode).
+    const choice = choiceFromEvent(e);
+    if (choice) {
+      if (choice.kind === 'axis') setAxis(choice.id as TurnAxis);
+      else state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
+      handles.menu(null, '', lang);
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      return;
+    }
+    if (h && state.selected) {
+      mode = startHandle(h, p);
+      return;
+    }
+    if (handles.menuOpen()) handles.menu(null, '', lang);
+    if (tools.active() && tools.pointer(toolEvent('down', p))) {
+      mode = { kind: 'tool' };
+      markDirty();
+      return;
+    }
+    boxStart = boxable(p);
+    // A chosen tool that can act on the pick: a drag from here uses it (Shift at the press still draws a box from an empty spot).
+    toolStart = !boxStart && !!tool && !!state.selected && !looksAround(p) && toolApplies(tool);
+    grabStart = !boxStart && !toolStart && grabbable(p);
+    mode = { kind: 'pending' };
+  };
+
+  const onMove = (e: PointerEvent) => {
+    block(e);
+    const p = ptrs.get(e.pointerId);
+    if (!p) return;
+    // Mouse moving with no button pressed = we missed the release.
+    if (e.pointerType === 'mouse' && e.buttons === 0) {
+      onUp(e);
+      return;
+    }
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX;
+    p.y = e.clientY;
+    p.shift = e.shiftKey;
+    if (mode.kind === 'pinch' && ptrs.size >= 2) {
+      const t = twoFingers();
+      if (mode.dist > 0 && t.dist > 0) adapter.view.zoom(t.dist / mode.dist, t.cx, t.cy);
+      adapter.view.pan(t.cx - mode.cx, t.cy - mode.cy);
+      mode = { kind: 'pinch', ...t };
+      markDirty();
+      return;
+    }
+    // A tool dragged anywhere reads the pointer shifted onto the object's point (see the start above).
+    const v = mode.kind === 'handle' || mode.kind === 'group' ? (mode.anywhere ? { ...p, x: p.x + off.x, y: p.y + off.y } : p) : p;
+    if (mode.kind === 'handle') {
+      moveHandle(mode, v);
+      return;
+    }
+    if (mode.kind === 'group') {
+      moveGroup(mode, v);
+      return;
+    }
+    if (mode.kind === 'pending' && boxStart && Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) mode = { kind: 'box' };
+    if (mode.kind === 'box') {
+      band = { x: Math.min(p.sx, p.x), y: Math.min(p.sy, p.y), w: Math.abs(p.x - p.sx), h: Math.abs(p.y - p.sy) };
+      handles.box(band);
+      return;
+    }
+    if (mode.kind === 'tool') {
+      tools.pointer(toolEvent('move', p));
+      markDirty();
+      return;
+    }
+    if (mode.kind === 'pending' && toolStart && tool && Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) {
+      // The chosen tool, from anywhere: start it at the object's own point on screen so move / height follow
+      // the drag's travel (not the pointer's place: the press may be far from the object, even on the sky).
+      toolStart = false;
+      const k = state.selected!;
+      const ga = state.group.length > 1 ? groupAnchor(adapter, state.group, k) : adapter.anchor(k);
+      const c = ga ? { x: ga.center[0], y: ga.center[1] } : { x: p.sx, y: p.sy };
+      const at: Ptr = { ...p, x: c.x, y: c.y };
+      mode = startHandle(tool, at, true);
+      if (mode.kind === 'handle' || mode.kind === 'group') {
+        handles.setTool(tool);
+        // From now on the pointer is read relative to the press, offset onto the object's point.
+        off = { x: c.x - p.sx, y: c.y - p.sy };
+        if (mode.kind === 'handle') {
+          mode.data.x0 = c.x;
+          mode.data.y0 = c.y;
+        }
+        const v = { ...p, x: p.x + off.x, y: p.y + off.y };
+        if (mode.kind === 'handle') moveHandle(mode, v);
+        else moveGroup(mode, v);
+      }
+      return;
+    }
+    if (mode.kind === 'pending' && grabStart && Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) {
+      // Dragging the picked object: the move handle's gesture, started where the press was.
+      grabStart = false;
+      mode = startHandle('move', { ...p, x: p.sx, y: p.sy });
+      if (mode.kind === 'handle') moveHandle(mode, p);
+      else if (mode.kind === 'group') moveGroup(mode, p);
+      return;
+    }
+    if (mode.kind === 'pending' && Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) {
+      // Pan: middle or right button, Shift, or (2D) any drag. 3D left drag orbits.
+      // (3D right drag used to orbit too; it pans now, like most 3D editors,
+      // since Shift+drag from an empty spot became the box selection.)
+      const pan = adapter.dim === '2d' || p.button === 1 || p.button === 2 || p.shift || !adapter.view.orbit;
+      mode = { kind: 'look', pan };
+    }
+    if (mode.kind === 'look') {
+      if (mode.pan) adapter.view.pan(dx, dy);
+      else adapter.view.orbit!(dx, dy);
+      markDirty();
+    }
+  };
+
+  const onUp = (e: PointerEvent) => {
+    block(e);
+    const p = ptrs.get(e.pointerId);
+    if (!p) return;
+    ptrs.delete(e.pointerId);
+    if (mode.kind === 'pending' && e.type === 'pointerup') tap(p);
+    if (mode.kind === 'look' || mode.kind === 'pending') {
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      mode = { kind: 'none' };
+    } else if (mode.kind === 'pinch') {
+      // Lifting one of two fingers ends the pinch; the remaining finger
+      // must not turn into a tap or a look-around.
+      if (ptrs.size === 0) {
+        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+        mode = { kind: 'none' };
+      }
+    } else if (mode.kind === 'handle' || mode.kind === 'group') {
+      // A tap (no drag) on the turn button (3D, one object) or on the size
+      // button (several) opens its choices; a drag uses the chosen one.
+      // A tap (no drag) on a strip button CHOOSES its tool (tool modes, see the header). On the chosen one
+      // again: the turn button (3D, one object) and the size button (several) open / close their choices;
+      // the others put the tool down.
+      const tap = !mode.anywhere && Math.hypot(p.x - p.sx, p.y - p.sy) <= UI.tapSlopPx;
+      const which = mode.handle;
+      const single = mode.kind === 'handle';
+      endGesture();
+      if (tap) {
+        const hasChoices = (which === 'rotate' && single && canTurn()) || (which === 'scale' && !single);
+        if (which !== tool) chooseTool(which, 'strip');
+        else if (hasChoices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
+        else chooseTool(null, 'strip');
+      }
+    } else if (mode.kind === 'box') {
+      finishBox();
+      mode = { kind: 'none' };
+    } else if (mode.kind === 'tool') {
+      tools.pointer(toolEvent('up', p));
+      mode = { kind: 'none' };
+    }
+  };
+
+  const onWheel = (e: WheelEvent) => {
+    block(e);
+    const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
+    if (!e.ctrlKey && e.deltaMode === 0 && Math.abs(e.deltaX) > 0.5) {
+      // Two-finger trackpad scroll: pan.
+      adapter.view.pan(-e.deltaX, -e.deltaY);
+    } else {
+      // Mouse wheel, or trackpad pinch (reported as ctrl+wheel).
+      const k = e.ctrlKey ? 0.01 : 0.0015;
+      adapter.view.zoom(Math.exp(-e.deltaY * px * k), e.clientX, e.clientY);
+    }
+    markDirty();
+    post({ type: 'studio:core/view-state', state: adapter.view.state() });
+  };
+
+  const onKey = (e: KeyboardEvent) => {
+    block(e);
+    // Shortcuts that belong to the shell (undo, redo, save, escape...) are
+    // forwarded so they work wherever focus is.
+    post({ type: 'studio:core/key', key: e.key, code: e.code, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey });
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const key = state.selected;
+    if (e.key === ' ') {
+      spaceHeld = true;
+      return;
+    }
+    if (e.key === 'Escape') {
+      if (handles.menuOpen()) handles.menu(null, '', lang);
+      else if (tool) chooseTool(null, 'key');
+      else select(null);
+      return;
+    }
+    // M / H / T / S: choose the strip's tool (with something picked, as the R key).
+    const tk = e.shiftKey ? null : toolFromKey(e.key);
+    if (tk && key) {
+      chooseTool(tk, 'key');
+      return;
+    }
+    // R: the next turn axis (3D, one object picked), with the choices shown for a moment of feedback.
+    if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
+      setAxis('next');
+      if (!handles.menuOpen()) handles.menu('axis', state.axis, lang);
+      return;
+    }
+    if (!key) return;
+    const s = keyStep(e.key, e.shiftKey, adapter.dim);
+    if (s) step({ type: 'studio:placement/step', key, ...s, hold: e.repeat, keys: state.group.length > 1 ? state.group.slice() : undefined });
+  };
+
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (e.key === ' ') spaceHeld = false;
+  };
+
+  const onBlur = () => {
+    spaceHeld = false;
+    // Do NOT clear pointers here (see the header comment). Only stop showing
+    // a pressed handle; the gesture itself continues if the finger is down.
+    handles.setActive(mode.kind === 'handle' || mode.kind === 'group' ? mode.handle : null);
+  };
+
+  win.addEventListener('pointerdown', onDown, opts);
+  win.addEventListener('pointermove', onMove, opts);
+  win.addEventListener('pointerup', onUp, opts);
+  win.addEventListener('pointercancel', onUp, opts);
+  win.addEventListener('wheel', onWheel, opts);
+  win.addEventListener('keydown', onKey, opts);
+  win.addEventListener('blur', onBlur, opts);
+  // Before the blocking listener for keyup (it stops the others on window): Space let go ends "Space held".
+  win.addEventListener('keyup', onKeyUp, opts);
+  for (const t of blocked) win.addEventListener(t, block, opts);
+
+  // Pictures of the originals for stand-in copies, one capture per original.
+  const ghostPics = new Map<string, { src: string | null; w: number; h: number; r: number; s: number } | 'wait'>();
+  const drawGhosts = () => {
+    const list = edits.ghosts();
+    if (!list.length) {
+      handles.ghosts([]);
+      return;
+    }
+    const out: Parameters<Handles['ghosts']>[0] = [];
+    for (const g of list) {
+      let pic = ghostPics.get(g.src);
+      if (!pic) {
+        ghostPics.set(g.src, 'wait');
+        const a = adapter.anchor(g.src);
+        const r = a?.rect;
+        const s0 = Array.isArray(a?.pose.s) ? a!.pose.s[0] ?? 1 : (a?.pose.s as number | undefined) ?? 1;
+        void edits.capture(g.src, { size: 256 }).then((c) => {
+          ghostPics.set(g.src, { src: c.ok && c.dataUrl ? c.dataUrl : null, w: r?.w ?? 40, h: r?.h ?? 40, r: a?.pose.r ?? 0, s: s0 });
+          markDirty();
+        }, () => ghostPics.set(g.src, { src: null, w: r?.w ?? 40, h: r?.h ?? 40, r: 0, s: 1 }));
+        continue;
+      }
+      if (pic === 'wait') continue;
+      const a = adapter.anchor(g.key);
+      if (!a || !a.visible) continue;
+      const s1 = Array.isArray(g.pose.s) ? g.pose.s[0] ?? 1 : g.pose.s ?? 1;
+      const k = pic.s ? s1 / pic.s : 1;
+      if (adapter.dim === '2d') {
+        // The picture of the original, turned and sized by the copy's own change.
+        const cx = a.rect ? a.rect.x + a.rect.w / 2 : a.center[0];
+        const cy = a.rect ? a.rect.y + a.rect.h / 2 : a.center[1];
+        out.push({ key: g.key, cx, cy, w: pic.w * k, h: pic.h * k, rot: (g.pose.r ?? 0) - pic.r, src: pic.src });
+      } else if (a.rect) {
+        out.push({ key: g.key, cx: a.rect.x + a.rect.w / 2, cy: a.rect.y + a.rect.h / 2, w: a.rect.w, h: a.rect.h, rot: 0, src: pic.src });
+      }
+    }
+    handles.ghosts(out);
+  };
+
+  // The outlines: the shape from adapter.silhouette when it has one (three),
+  // drawn again only when something it depends on changed and at most every
+  // 40 ms (it costs extra renders); a rounded box per object otherwise.
+  const shapes = { you: { sig: '', at: 0, shape: null as Outline | null }, ai: { sig: '', at: 0, shape: null as Outline | null } };
+  let aiKeys: string[] = [];
+  let aiLabel: string | null = null;
+  const shapeOf = (which: 'you' | 'ai', keys: string[], rects: Array<{ x: number; y: number; w: number; h: number }>) => {
+    const c = shapes[which];
+    if (!adapter.silhouette || !keys.length) {
+      c.sig = '';
+      c.shape = null;
+      return null;
+    }
+    const sig = keys.join('\n') + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + JSON.stringify(adapter.view.state());
+    const now = win.performance.now();
+    if (sig !== c.sig && now - c.at > 40) {
+      try {
+        c.shape = adapter.silhouette(keys);
+      } catch {
+        c.shape = null;
+      }
+      c.sig = sig;
+      c.at = now;
+    } else if (sig !== c.sig) markDirty(); // come back next frame for the late update
+    return c.shape;
+  };
+  const rectsOf = (keys: string[]) => {
+    const out: Array<{ x: number; y: number; w: number; h: number }> = [];
+    for (const k of keys) {
+      const a = adapter.anchor(k);
+      if (a && a.visible && a.rect) out.push(a.rect);
+    }
+    return out;
+  };
+
+  const place = () => {
+    drawGhosts();
+    showAxis();
+    const key = state.selected;
+    // The AI's marks first (under your own): what is picked is drawn in your colour only.
+    const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
+    const aiRects = rectsOf(aiShown);
+    handles.ai(shapeOf('ai', aiShown, aiRects), aiRects, aiShown.length ? aiLabel : null);
+    if (key && state.group.length > 1) {
+      const items = state.items.filter((i) => state.group.includes(i.key));
+      const keys = items.map((i) => i.key);
+      const rects = rectsOf(keys);
+      handles.selection(shapeOf('you', keys, rects), rects, (MANY_LABEL[lang] || MANY_LABEL.en)(items.length));
+      const ga = groupAnchor(adapter, state.group, key);
+      handles.place(ga, items.length ? {
+        rotatable: items.some((i) => i.rotatable), scalable: items.some((i) => i.scalable),
+        movable: items.some((i) => i.movable !== false), liftable: items.some((i) => i.liftable !== false && i.movable !== false),
+      } : null, adapter.dim);
+      return;
+    }
+    const a = key ? adapter.anchor(key) : null;
+    const item = key ? state.items.find((i) => i.key === key) : undefined;
+    const rects = a && a.visible && a.rect ? [a.rect] : [];
+    handles.selection(item ? shapeOf('you', [key!], rects) : null, item ? rects : [], item && a?.visible ? item.label : null);
+    handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: item.liftable !== false } : null, adapter.dim);
+  };
+
+  return {
+    frame: place,
+    selectionChanged() {
+      if (handles.menuOpen()) handles.menu(null, '', lang);
+      place();
+    },
+    setAxis(ax) {
+      if (!state.selected || !canTurn()) return;
+      setAxis(ax);
+      // The R key from the editor page: show the choices too, as the R key in the game does.
+      if (!handles.menuOpen()) handles.menu('axis', state.axis, lang);
+    },
+    setTool(k) {
+      chooseTool(k, 'shell');
+    },
+    setLook(on) {
+      spaceHeld = !!on;
+    },
+    setHandleSize(px) {
+      handles.setSize(px);
+      place();
+    },
+    setTheme(theme) {
+      handles.setTheme(theme);
+    },
+    setInset(inset) {
+      handles.setInset(inset);
+      place();
+    },
+    setAiMarks(keys, label) {
+      aiKeys = keys.slice();
+      aiLabel = label;
+      shapes.ai.sig = '';
+      place();
+    },
+    setLang(l) {
+      lang = l;
+      handles.setLabels(HANDLE_LABELS[lang] || HANDLE_LABELS.en);
+      axisShown = null;
+      showAxis();
+    },
+    detach() {
+      endGesture();
+      win.removeEventListener('pointerdown', onDown, opts);
+      win.removeEventListener('pointermove', onMove, opts);
+      win.removeEventListener('pointerup', onUp, opts);
+      win.removeEventListener('pointercancel', onUp, opts);
+      win.removeEventListener('wheel', onWheel, opts);
+      win.removeEventListener('keydown', onKey, opts);
+      win.removeEventListener('blur', onBlur, opts);
+      win.removeEventListener('keyup', onKeyUp, opts);
+      win.clearTimeout(hintTimer);
+      for (const t of blocked) win.removeEventListener(t, block, opts);
+      handles.destroy();
+      doc.documentElement.style.touchAction = prevTouchAction;
+    },
+  };
+}

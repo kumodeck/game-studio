@@ -1,0 +1,14 @@
+{
+  "name": "game-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KUMODeck Game Studio: drag, rotate and scale objects in your three.js or 2D web game and see every asset it uses, next to your AI agent.",
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "test": "node --experimental-strip-types --no-warnings --test test/*.test.ts test/*.test.mjs"
+  }
+}

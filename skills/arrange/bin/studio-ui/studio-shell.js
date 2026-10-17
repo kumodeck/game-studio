@@ -1,0 +1,10587 @@
+/* KUMODeck Game Studio 0.1.0 — MIT License — built file, edit src/ instead */
+(() => {
+const __defs = [];
+const __cache = [];
+function __def(o, k, get) { Object.defineProperty(o, k, { get, enumerable: true }); }
+function __star(o, src) { for (const k of Object.keys(src)) if (!(k in o)) __def(o, k, () => src[k]); }
+function __require(id) {
+  if (__cache[id]) return __cache[id];
+  const __exports = (__cache[id] = {});
+  __defs[id](__exports);
+  return __exports;
+}
+__defs[0] = function (__exports) {
+'use strict';
+// ../contract.ts
+
+// KUMODeck Game Studio — the shared contract (types and constants).
+//
+// Every part of the studio (bridge, shell, adapters, tools, schema, loader,
+// local server) imports its shared shapes from this one file so the pieces can
+// be built in parallel and still fit together. CONTRACT.md is the prose version
+// of the same promises; when the two disagree, fix both in one commit.
+//
+// Rules for this file:
+// - Types and plain constants only. No runtime behaviour beyond tiny pure
+//   helpers, so it can be imported from the game iframe, the shell page and
+//   the Node server alike.
+// - Erasable TypeScript only (no enums, namespaces or parameter properties):
+//   the zero-dependency build strips types with Node's built-in stripper.
+// - Changing a shape here is a contract change: tell the integrator first and
+//   bump CONTRACT_VERSION when an existing field changes meaning.
+
+const CONTRACT_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Basic shapes
+// ---------------------------------------------------------------------------
+
+                              
+/**
+ * Which adapter is talking. 'three' is the built-in three.js adapter; every
+ * other value is free text chosen by whoever wrote the adapter (usually the
+ * user's AI agent: 'pixi', 'phaser', 'canvas', 'my-engine', ...).
+ */
+                                 
+                                             
+
+/**
+ * Pose of one movable object, in the object's PARENT space (what you would
+ * type into the game code). This is the same shape that is stored per object
+ * in placement.json, so undo/redo, messages and the saved file never need to
+ * convert between formats.
+ *
+ * - 3D: p = [x, y, z] in metres; r = rotation around the vertical axis
+ *   (three.js `rotation.y`, radians, normalised to (-PI, PI]).
+ * - 2D: p = [x, y] in pixels; r = angle in radians, clockwise positive (the
+ *   same sign as Pixi's `rotation`).
+ * - s = uniform scale as one number. Three numbers are accepted for objects
+ *   that were non-uniformly scaled by the game; the editor only ever multiplies
+ *   all components by the same factor.
+ */
+                       
+              
+             
+                        
+     
+                                                                              
+                                                                             
+                                                                       
+                                                                           
+                                                                           
+            
+     
+                       
+     
+                                                                             
+                                                                               
+                                                                           
+                                                                           
+                                                                             
+                                                               
+     
+             
+ 
+
+/** The world axis a 3D turn goes around: y = turn, x = tip forward / back, z = tip sideways. */
+                                       
+/**
+ * The tool strip's four tools (2026-10-16, play test). Pressing a
+ * strip button (or its key: M move, H height, T turn, S size) CHOOSES the
+ * tool; it stays pressed, and a drag anywhere on the game then does it to
+ * what is picked. Looking around while a tool is chosen: Option / right /
+ * middle drag, or Space held; one finger = the tool, two = looking on touch.
+ */
+                                                             
+/** Resizing several objects: `spread` = the gaps grow too, `inplace` = each grows on its own spot. */
+                                                  
+
+/** One movable object as listed by an adapter. */
+                       
+                                                                     
+              
+                                                                                         
+                
+                                                                                  
+                  
+     
+                                                                         
+                                                                                  
+     
+                 
+                                                                                        
+                     
+                     
+                    
+                                                                              
+                    
+                                                                                        
+                     
+                                                                                                              
+                        
+     
+                                                                          
+                                                                              
+                                                                           
+                                                                            
+     
+                 
+     
+                                                                       
+                                                                         
+                                                                            
+                                                                              
+                                                                           
+                                                                    
+     
+                     
+     
+                                                                             
+                                                                             
+     
+                  
+     
+                                                                      
+                                                                           
+                        
+     
+                  
+                                     
+             
+ 
+
+/**
+ * Where the bridge draws the handles for the selected object, in CSS pixels
+ * of the game iframe's viewport (the same space as PointerEvent.clientX/Y).
+ */
+                         
+                                               
+                           
+                                                                           
+                                                        
+                                                                                            
+                  
+                                                                              
+               
+                                                                                
+             
+                                                                                       
+                   
+ 
+
+/** One asset an object uses. */
+                           
+                                                                                      
+              
+                                                                  
+                                                                                             
+                
+ 
+
+/** One network/media load seen while the game was running (recorded by src/core). */
+                            
+              
+                                                                        
+                                                              
+            
+                                                    
+               
+ 
+
+// ---------------------------------------------------------------------------
+// Promise 1: the port between the editor and a game (lives in the game iframe)
+// ---------------------------------------------------------------------------
+//
+// The editor never depends on a game library. It talks to ONE fixed port:
+//
+// - Port2D (small, recommended for every 2D game): list objects, read/write a
+//   pose, report where an object is on screen. The user's AI agent writes it
+//   for the game at hand (PixiJS, Phaser, plain canvas, a home-made engine),
+//   starting from the example adapters shipped with the skill. The base turns
+//   a Port2D into a full StudioAdapter (picking, handles, drag maths, view).
+// - StudioAdapter (full): what the bridge actually drives. The built-in
+//   three.js adapter implements it directly, so three.js games need no
+//   adapter code at all. Other 3D engines may implement it too.
+//
+// Adapters are registered with window.studio.registerAdapter(probe) or
+// window.studio.register2D(port), from a file the AI writes at
+// `.studio/adapter.js` in the game folder. The host loads that file right
+// after the edit script and before any game code (CONTRACT.md §1.4).
+//
+// After an adapter is found the base runs a self-check (see SelfCheck) and
+// tells the shell and the AI what to fix when the adapter does not work.
+
+/**
+ * Screen coordinates passed to adapters are CSS pixels in the iframe viewport
+ * (PointerEvent.clientX/Y). The bridge never converts to NDC because only the
+ * adapter knows which canvas the game renders into and how it is letterboxed.
+ */
+                                
+                    
+           
+                                                                                                
+                   
+
+                      
+                                                                               
+                 
+     
+                                                                            
+                                                                      
+     
+                  
+                                                                
+              
+     
+                                                                       
+                                                            
+     
+                 
+     
+                                                                        
+                                                                             
+                                                                             
+     
+                                                             
+                                                                        
+                                     
+                                                                              
+                                                   
+     
+                                                                           
+                                                     
+     
+                                                
+     
+                                                                     
+                                                                       
+                                                                          
+                                                                             
+           
+     
+                                       
+     
+                                                                         
+                                                                              
+                                                                             
+                                                                         
+                                                                      
+     
+                                                      
+                                                                              
+                                           
+     
+                                                                       
+                                                                          
+                                                                  
+     
+                                      
+                                                            
+                                         
+                                                                                       
+                                                
+     
+                                                                           
+                                                                        
+     
+                                                                                           
+
+                                                                                   
+                    
+
+                    
+                                              
+                                    
+
+                                      
+     
+                                                                       
+                                                                            
+                                                                        
+     
+                                                                     
+                                                                                      
+                                                  
+
+                                             
+     
+                                                                           
+                                                                            
+                                                                              
+                                                                           
+                                                                            
+                                                                          
+                                                      
+     
+                                                                                                              
+
+                                                                            
+     
+                                                                         
+                                                                          
+                                                                     
+     
+                                               
+     
+                                                                         
+                                                                             
+                             
+     
+                                
+                                                                        
+                                 
+ 
+
+                              
+                                                
+                                       
+                                     
+                                    
+                                                                             
+                                                     
+                                         
+                   
+                                    
+                           
+                                                                                          
+                   
+                                                                     
+                                 
+     
+                                                                               
+                                                                              
+                                                                               
+                                                                          
+                                       
+     
+                                          
+     
+                                                                         
+                                                                            
+                                                                            
+                                                                  
+     
+                                                   
+ 
+
+/**
+ * How an adapter announces itself. install() runs as soon as the probe is
+ * registered — the built-in probes and `.studio/adapter.js` both load before
+ * any game code — so it can place engine hooks such as
+ * `window.__THREE_DEVTOOLS__` or `globalThis.__PIXI_APP_INIT__`. After the
+ * first frame (or studio.ready()) the bridge asks each probe for an adapter.
+ * Probes registered by the game folder are asked before the built-in ones, so
+ * an AI-written adapter can override the built-in three.js adapter.
+ */
+                               
+                    
+                                  
+                                
+ 
+
+// ---------------------------------------------------------------------------
+// src/core: shared services inside the game iframe
+// ---------------------------------------------------------------------------
+
+                              
+                                                             
+                           
+                 
+                                                                                     
+               
+                                                                      
+                                       
+                              
+                                                                                          
+                              
+ 
+
+                          
+                         
+                                                                   
+                                             
+ 
+
+                              
+                    
+                 
+ 
+
+/**
+ * The small global API (window.studio, plus window.__gameStudio which always
+ * exists even if the game already uses the name `studio`). Only present while
+ * the edit script is loaded, so game code must call it as `window.studio?.x()`.
+ */
+                               
+                  
+                                                                                  
+                
+                                                                                                   
+                                               
+                                                                                  
+                                             
+                                                                            
+                                                         
+                                                                              
+                    
+     
+                                                                              
+                                                             
+                                                          
+     
+                                   
+ 
+
+// ---------------------------------------------------------------------------
+// Fitting the editor to one game (CONTRACT.md §7)
+// ---------------------------------------------------------------------------
+
+/** A grid step: one number for every axis, or one per axis ([x, y] / [x, y, z]; 0 = free). */
+                                         
+
+/** One rule of `.studio/studio.json`. Matching rules are merged in order (later wins). */
+                           
+                                                                          
+                
+                                                     
+                   
+                                                            
+                   
+                                               
+                       
+                   
+                                                                     
+                                             
+ 
+
+/**
+ * `.studio/studio.json`: plain settings the AI writes for one game. Units are
+ * the game's own (metres in 3D, scene px in 2D); angles in degrees.
+ */
+                             
+             
+                                                                             
+                                             
+                                                                               
+                                            
+                     
+ 
+
+/** What `.studio/tools.js` passes to studio.extend(). */
+                                
+     
+                                                                            
+                                                                       
+     
+                                                        
+                     
+ 
+
+                                  
+                               
+            
+            
+                      
+                 
+ 
+
+/** Everything a game tool may use. Poses changed through it are undoable. */
+                                  
+           
+             
+                  
+                            
+                                   
+                                                                                                                   
+                                                                           
+                                           
+                                                                    
+                                                 
+                                                              
+                                    
+                                                                 
+                  
+ 
+
+/**
+ * A game-specific tool (draw the course, place along a path, paint tiles…).
+ * Its data is saved to `.studio/data/<id>.json` with the other results.
+ */
+                           
+                                                               
+             
+                                                
+                                               
+                
+                                               
+                                                
+                                        
+                                          
+                                                                                           
+                                                              
+                                                                                                
+                                    
+                                           
+                   
+                                                                    
+                                
+                                                                           
+                   
+                                                                
+                 
+ 
+
+/** Tools as the shell sees them. */
+                               
+             
+                
+                
+                
+ 
+
+/** Tool id pattern (also the file name under .studio/data/). */
+const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+
+// ---------------------------------------------------------------------------
+// UI preferences (.studio/ui.json): how the person likes the editor to look
+// ---------------------------------------------------------------------------
+
+                          
+             
+                                                                                      
+                                     
+                                
+                
+                                                
+                 
+                                   
+                              
+                   
+                               
+                     
+                                                
+         
+                    
+                     
+                  
+                     
+                  
+                   
+                  
+                  
+                   
+    
+                                                         
+              
+     
+                                                                               
+                                                                
+     
+                 
+ 
+
+/**
+ * The small 2D port. Everything is in the game's own terms; the base does the
+ * screen maths. Write it so each method is a few lines of engine calls.
+ *
+ * Coordinates:
+ * - Pose: parent space of the object (what the game code would assign).
+ * - Screen: CSS px in the game page's viewport (like PointerEvent.clientX).
+ */
+                         
+                                                                              
+               
+                   
+                                                                         
+                    
+                
+                   
+                     
+                   
+                       
+                       
+                        
+                       
+                       
+     
+                                                                                      
+                                
+                                                                               
+                                     
+     
+                                                               
+                                                                             
+                                                                            
+                                                                             
+                         
+     
+                                               
+                                                                               
+                                                                             
+                                                                        
+                 
+     
+                                                                         
+                                                                           
+                                                                            
+                                                                             
+     
+                                                            
+                                                                                          
+                 
+                  
+                                                                                               
+                                                              
+                                                                        
+                                                   
+                                                                                
+                                      
+     
+                                                                             
+                                                                            
+                                                                     
+     
+                                                                                                              
+     
+                                                                           
+                                                                            
+                                                                        
+                                                                              
+                                                             
+     
+                                                                
+     
+                                                                           
+                                                                           
+                                                                  
+     
+                                              
+     
+                                                                            
+                                                                          
+                                                        
+                                                                          
+                                                                           
+                                                                    
+     
+                                               
+                                
+                                 
+     
+                                                                           
+                                                                             
+                                                                               
+                                                  
+     
+                                    
+ 
+
+/**
+ * The self-check the base runs after an adapter is found, so a broken
+ * AI-written adapter is caught at once and the AI is told what to fix.
+ * The shell shows failures; the host writes them for the AI
+ * (local: one stdout line + .studio/check.md).
+ */
+                         
+                                                                                    
+                   
+                                             
+                 
+                                                
+                
+                                                                            
+                    
+                                                                               
+                    
+                                                                         
+                    
+                                                                                   
+               
+
+                                  
+              
+                           
+                                                           
+                  
+     
+                                                                                                 
+                                                                                                    
+                                                                                                            
+     
+                     
+                        
+                                                                                      
+ 
+
+// ---------------------------------------------------------------------------
+// Promise 2: messages between the bridge (game iframe) and the shell (parent)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every message is a plain object `{ type: 'studio:<tool>/<verb>', ... }`.
+ * `core/*` messages belong to the base (edit mode, view, keys); tool messages
+ * use the tool id. Receivers MUST check event.source and event.origin and drop
+ * anything else; senders MUST pass an explicit target origin (never '*').
+ */
+const MSG_PREFIX = 'studio:';
+
+                        
+                          
+                                                                                  
+                      
+                                    
+                                      
+                                               
+                                             
+                                          
+
+/**
+ * Viewport px the shell's floating panels cover on each side. `rightTo`: the
+ * right inset only reaches down to this y (the card is in the top right
+ * corner; below it the game is free to the edge).
+ */
+                                                                                                     
+
+/** shell -> bridge */
+                           
+                                                                  
+                                                  
+                                            
+                                     
+     
+                                                                              
+                                                                        
+                                                                       
+     
+                                                                                             
+                                                                                                              
+                                                   
+     
+                                                                            
+                                                                           
+                                                                          
+     
+                                                                                               
+                                                                   
+                                                       
+                                                        
+                                                              
+     
+                                                                               
+                                                                               
+                                                                              
+                                      
+     
+                                                                                                                                                                   
+                                                                     
+                                     
+                                                                      
+                                                                                     
+                                                             
+     
+                                                                      
+                                                                             
+                                                                           
+                                             
+     
+                                                                                         
+     
+                                                                            
+                                                                                
+     
+                                                                      
+                                                                                       
+                                                              
+                                                                                                   
+                                                             
+                                                                                             
+                                                  
+                                                       
+                                                              
+                                                                                
+                                   
+                                                 
+
+/** bridge -> shell */
+                           
+                                                                            
+                                                   
+                                                                                
+                                                                                   
+                                                                                                  
+                                                      
+                                                          
+                                                                                      
+                                                                                                                      
+                                                  
+                                                                                                               
+                                                                       
+                                                     
+                                                                                           
+     
+                                                                          
+                                                                             
+                                                                       
+                                                       
+     
+                                                                                                                                                         
+     
+                                                                              
+                                                                             
+                                                                         
+     
+                                                                                                                                                                                 
+                                                                                                            
+                                                                                                                                  
+                                                                       
+                                                                                     
+                                                             
+                                                                                           
+                                                                  
+                                                   
+                                                       
+                                                                             
+                                                                              
+
+                                                          
+
+function isStudioMessage(x         )                     {
+  return !!x && typeof x === 'object' && typeof (x                      ).type === 'string'
+    && (x                    ).type.startsWith(MSG_PREFIX);
+}
+
+// ---------------------------------------------------------------------------
+// Promise 3: the host (where the game lives: local folder now, cloud later)
+// ---------------------------------------------------------------------------
+
+                                                                                 
+
+                            
+                                                                           
+               
+               
+                  
+                                                                         
+                       
+ 
+
+/** Names of a referenced file that does not exist ("missing" badge). */
+                             
+               
+                       
+ 
+
+/**
+ * Hand-offs to the user's AI. The first four are the KUMODeck menu;
+ * 'delete-files' is the Library's "Delete" on unused files (the editor never
+ * deletes: the AI checks with the creator first, then deletes).
+ */
+                                                                                                
+/** "Things to ask your AI" that stay inside this game: fit the editor to it, change its look, add a tool. */
+                                               
+
+// ---------------------------------------------------------------------------
+// Hand-offs to the AI (CONTRACT.md §3.4). One-way from the editor: the person
+// talks to the AI in the AI's own window, never in the editor. Every request
+// is kept as a record first (local: .studio/requests/<id>.json); the agent
+// reads them all when the person says "look", and writes one status back
+// (local: .studio/status.json). Normalised by src/schema/handoff.mjs.
+// ---------------------------------------------------------------------------
+
+                                                                       
+
+                                
+              
+                 
+                                                                                  
+              
+                     
+ 
+
+/** What the shell hands to host.request(). */
+                                     
+                                                                                                                
+                                     
+                                                                       
+               
+                                                                                                                    
+                            
+                               
+             
+            
+                                                                                         
+                   
+     
+                                                                                               
+                                                                                                        
+     
+                   
+     
+                                                                                                                   
+                                                                                                         
+                                                                                                                 
+                                                                                                                 
+                                                                   
+     
+                                                                             
+ 
+
+/** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
+                                                                                  
+             
+                                                                                         
+             
+                          
+                                         
+             
+              
+                                                                                 
+                   
+ 
+
+                                                                 
+
+/** What the agent writes back (local: .studio/status.json). Only the latest status is kept. */
+                               
+             
+                 
+                                                     
+                   
+                     
+                                                                      
+                   
+                                                          
+                
+              
+ 
+
+/**
+ * What the host knows about the AI's watch when it keeps a request (AI feel,
+ * 2026-10-16). `watching`: an AI's watch is running right now (local:
+ * `studio.mjs --watch` keeps .studio/watch.json fresh), so the editor can say
+ * at once whether anyone will see the request. `undo`: the host kept the game
+ * files as they were, so "Undo AI change" can go back to this request.
+ * Left out = unknown (then the editor falls back to waiting for a status).
+ */
+                              
+                     
+                
+                 
+ 
+
+                             
+                                                                       
+                                                                       
+                                                           
+                                             
+     
+                                                                          
+                                                                         
+                                                                          
+                                                                           
+                                                                             
+                                                                            
+                   
+     
+                                                                                                                                                        
+                                                                       
+                                                                           
+                                 
+                                                                               
+                                                  
+     
+                                                                             
+                                                               
+                                                                
+     
+                                                                                                                
+     
+                                                                   
+                                                                             
+                                                                           
+                                                                        
+     
+                                                                                                                   
+     
+                                                                           
+                                                                            
+                                                                           
+                                                                            
+                                                       
+     
+                                                                                                                            
+     
+                                                                             
+                                                                         
+                                                                          
+                                                                             
+                                                                          
+                                                                    
+     
+                                                                                                                                                      
+     
+                                                                              
+                                                                       
+     
+                                                      
+                                                                      
+                             
+                                                                   
+                                                                                                        
+                                           
+                                               
+                                         
+                                                                                
+                                                                                          
+                                          
+     
+                                                                    
+                                                                            
+                                                                           
+                                                                             
+              
+     
+                             
+     
+                                                                              
+                                                                                
+                                                                       
+                                                                            
+                                                              
+     
+                           
+ 
+
+/** The person's KUMODeck sign-in as the editor sees it (never a key). */
+                             
+                    
+                                                          
+                       
+                                               
+                    
+                 
+                  
+                                  
+                        
+                    
+                                                                
+                           
+                                                                             
+                                                
+                                                             
+                       
+                                                                            
+                                                 
+                                       
+                   
+                                            
+ 
+
+                          
+             
+                 
+                 
+                                                  
+                      
+                               
+                                            
+ 
+
+/**
+ * A KUMODeck refusal, in a code the editor words itself: signed_out,
+ * needs_terms (agree once, then send again with acceptTerms), not_enough
+ * (balance), not_open / not_allowed (not available to this account yet),
+ * no_project, too_many, unreachable, failed …
+ */
+                              
+            
+               
+                  
+                        
+                     
+ 
+
+                                     
+                 
+                 
+                  
+                                
+                                                       
+                          
+                
+                                                                   
+                        
+ 
+
+                                   
+                 
+                    
+                        
+ 
+
+                           
+                                
+                                                             
+                                                                                                                                                   
+                                                                       
+                                                                                  
+                                                                   
+ 
+
+// ---------------------------------------------------------------------------
+// The editor's look, rewritten by the AI (CONTRACT.md §8)
+// ---------------------------------------------------------------------------
+
+/** Named regions of the shell (also `data-part` attributes in the page). */
+                       
+                                                                                    
+                                                
+                                                                                  
+                                                                              
+                               
+                                                        
+
+/** Things that can be hidden with studioShell.hide() (and UiPrefs.show). */
+                                                 
+
+/**
+ * `window.studioShell` in the shell page, for `.studio/ui/shell.js`.
+ * It can change how the editor looks and add buttons that call editor
+ * actions. It cannot reach the game page, the save format or the files: the
+ * protected part (bridge messages, handles, validation) stays as it is.
+ */
+                                 
+                  
+                                                           
+                                     
+                                                                            
+                                                                                                                                                          
+                                 
+                                 
+                   
+                                                                  
+                                          
+                                                                               
+                                                             
+                         
+               
+                  
+                            
+            
+                 
+                 
+                          
+                                     
+                                 
+                     
+                         
+                          
+                                          
+                                                          
+                 
+                   
+                                                                               
+                                                       
+    
+                                                                                    
+                                                                                                 
+ 
+
+// ---------------------------------------------------------------------------
+// Promise 4: result files (validated by src/schema, the single validator)
+// ---------------------------------------------------------------------------
+
+const RESULT_FILES                         = {
+  placement: 'placement.json',
+  library: 'library.json',
+};
+
+                                              
+                                                                                         
+             
+                 
+                     
+ 
+
+                                
+             
+                    
+           
+                 
+                                          
+     
+                                                                           
+                                                                            
+                                                                
+     
+                           
+                                                                                                
+                               
+     
+                                                                             
+                                                                            
+                                                                         
+                       
+     
+                           
+ 
+
+                                              
+                                                                           
+              
+                                                                                        
+               
+                 
+ 
+
+                                   
+              
+                 
+                                                                           
+             
+                     
+ 
+
+                                 
+             
+                 
+                 
+ 
+
+                              
+             
+                  
+                                                                  
+                                                                                               
+                   
+ 
+
+                                                                                         
+
+/**
+ * Signatures implemented by src/schema (one validator shared by the server,
+ * the shell and later the cloud). `value` is the normalised file: numbers
+ * rounded, keys sorted, unknown fields dropped.
+ */
+                               
+                                                                  
+                                                              
+                                                                         
+                                                             
+ 
+
+// ---------------------------------------------------------------------------
+// Shell tools (how a tool such as the library plugs into the shell)
+// ---------------------------------------------------------------------------
+
+/**
+ * A tool owns one panel of the shell (right column on PC, the sheet above the
+ * bottom bar on phones) and one result file. The shell owns everything shared:
+ * the game frame, selection, undo/redo for placement, save, language, the
+ * "next step" menu.
+ */
+                            
+             
+                              
+                                                                   
+                                                  
+                  
+                                                             
+                  
+                                                                        
+                          
+                                                            
+                
+                                                               
+                                      
+ 
+
+                               
+                   
+             
+                                                                               
+                         
+                                                                     
+                                 
+                                                                                
+                                                                                                                   
+                                                
+                  
+                                                                 
+                                  
+     
+                                                                          
+                                                                         
+                              
+     
+                                       
+                               
+                                                                          
+                  
+                                  
+                   
+     
+                                                                              
+                                                                                        
+                                                    
+     
+                                                             
+ 
+
+// ---------------------------------------------------------------------------
+// Limits and constants
+// ---------------------------------------------------------------------------
+
+const LIMITS = {
+  maxObjects: 500,
+  maxAbs3d: 10_000,
+  maxAbs2d: 100_000,
+  /** Rounding steps: 1 mm in 3D, 0.1 px in 2D, 1e-4 rad for angles. */
+  step3d: 0.001,
+  step2d: 0.1,
+  stepAngle: 0.0001,
+  maxScale: 1000,
+  minScale: 0.001,
+  maxResultBytes: 64 * 1024,
+  maxReplace: 500,
+  maxAdded: 200,
+  maxUnused: 2000,
+  maxAssetBytes: 100 * 1024 * 1024,
+  undoSteps: 200,
+}         ;
+
+/** Allowed characters of an object key. Names with other characters are mapped; the original stays in `label`. */
+const KEY_RE = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
+/** Keys starting with this prefix are tree paths and unstable. */
+const PATH_KEY_PREFIX = 'path:';
+/** Marker names games can set to control discovery. */
+const MARK = {
+  /** three: object.userData.studioKey / Pixi: obj.studioKey — the most stable key. */
+  key: 'studioKey',
+  /** three: object.userData.studioAsset / Pixi: obj.studioAsset — "this object uses that file". */
+  asset: 'studioAsset',
+  /** `studio: false` (three: userData.studio, Pixi: obj.studio) hides an object and its children. */
+  hide: 'studio',
+}         ;
+
+/** File extensions the library lists (and the only ones addAsset accepts). */
+const ASSET_EXT                                                         = {
+  image: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'avif'],
+  model: ['glb', 'gltf', 'fbx', 'obj'],
+  sound: ['mp3', 'ogg', 'wav', 'm4a'],
+  atlas: ['atlas', 'json'],
+  font: ['woff2', 'woff', 'ttf', 'otf'],
+};
+/** Folders never listed or served as assets. */
+/** Folder (inside the game folder) for studio files that are not results: adapter.js, check.md, next-step.md. */
+const STUDIO_DIR = '.studio';
+const IGNORED_DIRS = ['node_modules', '.git', 'dist', 'build', '.studio', '.next', '.vite', '.cache']         ;
+
+/** UI sizes shared by the bridge (handles) and shell. */
+const UI = {
+  /**
+   * Handle diameter in CSS px with a mouse (the person can change it on the
+   * View page). 48 until the visual pass (2026-10-16): a fingertip size on
+   * PC made the handles bigger than the objects (Ive-view review §1). A pro
+   * tool's on-canvas controls are 8–28 px; 32 keeps them easy to hit.
+   * 28 since the rebrand (2026-10-16): the handles are one tool strip of
+   * 28 px buttons under the object, the row height of every other control.
+   */
+  handlePx: 28,
+  /** The smallest strip button on phones: 44 px, the finger target (Apple's minimum). */
+  handlePxPhone: 44,
+  /** Radius for pickNear on touch vs mouse. A finger covers more than a cursor tip. */
+  pickRadiusTouch: 28,
+  pickRadiusMouse: 12,
+  /** Movement (px) before a press turns into a drag/look-around instead of a tap. */
+  tapSlopPx: 8,
+  /** Long-press on rotate/scale/lift handles repeats; the whole run is one undo step. */
+  holdDelayMs: 350,
+  holdRepeatMs: 60,
+  /** Narrower than this = phone layout (bottom bar instead of right column). */
+  phoneMaxWidth: 720,
+}         ;
+
+/** Localised UI languages. More later; English is the fallback. */
+                               
+
+/** Paths served by the local host (src/server) — see CONTRACT.md §3.2. */
+const LOCAL_PATHS = {
+  /** Shell page. The one-time token arrives as ?t=… on this URL. */
+  shell: '/__studio/',
+  /** Edit script injected as the first child of <head> in HTML responses (CONTRACT.md §3.2: the pass becomes a cookie). */
+  editScript: '/__studio/studio-edit.js',
+  api: '/__studio/api/',
+  /** AI-written adapter, served from <game>/.studio/adapter.js, injected right after the edit script. */
+  gameAdapter: '/__studio/game-adapter.js',
+  /** AI-written game tools and rules in code, from <game>/.studio/tools.js, injected after the adapter. */
+  gameTools: '/__studio/game-tools.js',
+  /** Query flag on the game URL that turns on edit mode. */
+  editFlag: 'studio=edit',
+  /**
+   * Query parameter on the game URL with the shell's origin. The bridge only
+   * posts to, and only accepts messages from, window.parent at this origin.
+   * Missing = the game's own origin (local host serves both from one origin).
+   */
+  parentParam: 'studioParent',
+}         ;
+
+__def(__exports, "CONTRACT_VERSION", () => CONTRACT_VERSION);
+__def(__exports, "TOOL_ID_RE", () => TOOL_ID_RE);
+__def(__exports, "MSG_PREFIX", () => MSG_PREFIX);
+__def(__exports, "isStudioMessage", () => isStudioMessage);
+__def(__exports, "RESULT_FILES", () => RESULT_FILES);
+__def(__exports, "LIMITS", () => LIMITS);
+__def(__exports, "KEY_RE", () => KEY_RE);
+__def(__exports, "PATH_KEY_PREFIX", () => PATH_KEY_PREFIX);
+__def(__exports, "MARK", () => MARK);
+__def(__exports, "ASSET_EXT", () => ASSET_EXT);
+__def(__exports, "STUDIO_DIR", () => STUDIO_DIR);
+__def(__exports, "IGNORED_DIRS", () => IGNORED_DIRS);
+__def(__exports, "UI", () => UI);
+__def(__exports, "LOCAL_PATHS", () => LOCAL_PATHS);
+};
+__defs[1] = function (__exports) {
+'use strict';
+// ../core/keys.ts
+
+// Keyboard steps shared by the bridge (keys pressed while the game frame has
+// focus) and the shell (keys pressed in the side panel), so both feel the same.
+                                                    
+
+                                                                                                              
+
+/**
+ * Keyboard steps on the selected object. Screen-relative so they feel the
+ * same in 2D and 3D: arrows move 10 px on screen (Shift: 1 px), Q/E rotate
+ * 15° (Shift: 1°), PageUp/PageDown raise/lower (3D), +/- scale by 10%.
+ */
+function keyStep(key        , shift         , dim             )                {
+  const px = shift ? 1 : 10;
+  const deg = ((shift ? 1 : 15) * Math.PI) / 180;
+  switch (key) {
+    case 'ArrowLeft':
+      return { op: 'move', dx: -px, dy: 0 };
+    case 'ArrowRight':
+      return { op: 'move', dx: px, dy: 0 };
+    case 'ArrowUp':
+      return { op: 'move', dx: 0, dy: -px };
+    case 'ArrowDown':
+      return { op: 'move', dx: 0, dy: px };
+    case 'q':
+    case 'Q':
+      return { op: 'rotate', d: -deg };
+    case 'e':
+    case 'E':
+      return { op: 'rotate', d: deg };
+    case 'PageUp':
+      return dim === '3d' ? { op: 'lift', d: shift ? 0.01 : 0.1 } : null;
+    case 'PageDown':
+      return dim === '3d' ? { op: 'lift', d: shift ? -0.01 : -0.1 } : null;
+    case '+':
+    case '=':
+      return { op: 'scale', d: shift ? 1.01 : 1.1 };
+    case '-':
+    case '_':
+      return { op: 'scale', d: shift ? 1 / 1.01 : 1 / 1.1 };
+    default:
+      return null;
+  }
+}
+
+__def(__exports, "keyStep", () => keyStep);
+};
+__defs[2] = function (__exports) {
+'use strict';
+// ../schema/studio-files.mjs
+
+// The one validator for the two result files (contract 4): placement.json and library.json.
+//
+// WHY one function in one place: the shell (before it sends), the local server (before it writes)
+// and a hosted server later (before it stores) must agree byte for byte on what a valid file is.
+// If each side had its own checks they would drift, and an AI agent reading the file would see
+// shapes nobody tested. So everything that accepts or writes these files imports this module.
+//
+// What "valid" means here, and why:
+// - Strict shape: unknown fields are rejected, not ignored. The files are a hand-off format for an
+//   AI agent; an unexpected field would be read as meaningful by the agent. (The *loader* inside
+//   the game is the lenient side: it warns and skips, so one bad entry never breaks a game.)
+// - Bounded: at most 500 objects, coordinates within +/-10000 m (3D) or +/-100000 px (2D).
+//   Real scenes are far smaller; the bounds stop a runaway drag (NaN, 1e308) from being saved.
+// - Rounded: 1 mm (3D) / 0.1 px (2D) / 1e-4 rad. Finer precision is noise from a pointer drag and
+//   makes diffs and code search ("was" values) harder for the agent.
+// - Canonical: the same content always serializes to the same bytes (keys sorted, order-free lists
+//   sorted and de-duplicated). Saving twice without changes produces no diff.
+// - Prototype-safe: "__proto__", "constructor" and "prototype" are refused as keys anywhere, so a
+//   crafted file cannot pollute objects in code that merges it.
+//
+// This file is plain JavaScript with no imports so it runs unchanged in Node, in the browser and in
+// a bundled single-file CLI.
+
+const LIMITS = Object.freeze({
+  maxBytes: 256 * 1024, // raw JSON text; 500 objects with labels and "was" stay well under this
+  maxObjects: 500,
+  maxReplace: 500,
+  maxAdded: 500,
+  maxUnused: 5000, // a big asset folder can have thousands of files nobody references
+  maxUsedBy: 500,
+  maxCoord3d: 10000, // metres
+  maxCoord2d: 100000, // pixels
+  step3d: 1000, // 1 / 1000 = 1 mm
+  step2d: 10, // 1 / 10 = 0.1 px
+  stepAngle: 10000, // 1 / 10000 rad
+  stepScale: 10000,
+  minScale: 0.0001,
+  maxScale: 10000,
+  maxLabel: 120,
+  maxPath: 300,
+  maxUrl: 2000,
+  maxDepth: 8,
+  maxOrders: 100, // sibling lists with a changed draw order (2D layers)
+});
+
+// Object keys (contract section "keys"): letters, digits and _ : # . - /, 1 to 80 chars.
+// "path:0/3/1" (position in the scene graph) and "tree#2" (second object named "tree") both fit.
+const KEY_RE = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
+
+const FORBIDDEN_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const MAX_ERRORS = 20;
+
+/**
+ * Validate and normalize a placement.json or library.json.
+ *
+ * @param {string | object} input  JSON text or an already parsed value.
+ * @param {{ tool?: 'placement' | 'library' }} [opts]  When set, the file must be this tool's file.
+ * @returns {{ ok: true, value: object, json: string } | { ok: false, errors: string[] }}
+ *   `value` is the normalized object; `json` is its canonical text (what should be written to disk).
+ */
+function validateStudioFile(input, opts = {}) {
+  const errors = [];
+  const fail = (where, msg) => {
+    if (errors.length < MAX_ERRORS) errors.push(where ? `${where}: ${msg}` : msg);
+  };
+
+  let data = input;
+  if (typeof input === 'string') {
+    // Length in UTF-16 units is a cheap upper bound check before parsing; the byte check follows.
+    if (input.length > LIMITS.maxBytes || utf8Length(input) > LIMITS.maxBytes) {
+      return { ok: false, errors: [`file is larger than ${LIMITS.maxBytes} bytes`] };
+    }
+    try {
+      data = JSON.parse(input);
+    } catch (e) {
+      return { ok: false, errors: [`not valid JSON (${e.message})`] };
+    }
+  }
+
+  // Structural pass first: plain data only, no forbidden keys, bounded depth. Everything after this
+  // can assume ordinary objects and arrays.
+  if (!checkPlain(data, '', 0, fail)) return { ok: false, errors };
+  if (!isObject(data)) return { ok: false, errors: ['the file must be a JSON object'] };
+
+  if (data.version !== 1) fail('version', 'must be 1');
+  if (data.tool !== 'placement' && data.tool !== 'library') {
+    fail('tool', 'must be "placement" or "library"');
+    return { ok: false, errors };
+  }
+  if (opts.tool && data.tool !== opts.tool) {
+    fail('tool', `expected "${opts.tool}"`);
+    return { ok: false, errors };
+  }
+
+  const value = data.tool === 'placement' ? placement(data, fail) : library(data, fail);
+  if (errors.length) return { ok: false, errors };
+  return { ok: true, value, json: canonicalJSON(value) };
+}
+
+/**
+ * Stable JSON text: object keys sorted at every level, 2-space indent, trailing newline.
+ * Arrays of numbers stay on one line ("p": [3.25, 0, -4.1]) so a person or an agent reads one
+ * object per few lines, and so the "was" values look like the numbers in the game's code
+ * (an agent searches the code for "3.25, 0, -4.1" to find the line to rewrite).
+ */
+function canonicalJSON(value) {
+  return stringify(sortKeys(value), '') + '\n';
+}
+
+function stringify(v, indent) {
+  if (Array.isArray(v)) {
+    if (v.length === 0) return '[]';
+    if (v.every((x) => typeof x === 'number')) return '[' + v.map((x) => JSON.stringify(x)).join(', ') + ']';
+    const inner = indent + '  ';
+    return '[\n' + v.map((x) => inner + stringify(x, inner)).join(',\n') + '\n' + indent + ']';
+  }
+  if (v && typeof v === 'object') {
+    const keys = Object.keys(v);
+    if (keys.length === 0) return '{}';
+    const inner = indent + '  ';
+    return '{\n' + keys.map((k) => inner + JSON.stringify(k) + ': ' + stringify(v[k], inner)).join(',\n') + '\n' + indent + '}';
+  }
+  return JSON.stringify(v);
+}
+
+// ---------------------------------------------------------------------------------------------
+// placement.json
+
+function placement(data, fail) {
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed'], '', fail);
+  const dim = data.dim;
+  if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
+  // "local" = positions are relative to the object's parent (what object.position means in both
+  // three.js and PixiJS). Missing means local; other spaces are reserved for later tools.
+  const space = data.space === undefined ? 'local' : data.space;
+  if (space !== 'local') fail('space', 'must be "local"');
+
+  const out = { version: 1, tool: 'placement', dim, space, objects: {} };
+  if (!isObject(data.objects)) {
+    fail('objects', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(data.objects);
+  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
+  if (dim !== '3d' && dim !== '2d') return out;
+
+  for (const key of keys.slice(0, LIMITS.maxObjects)) {
+    const where = `objects[${JSON.stringify(key)}]`;
+    if (!KEY_RE.test(key)) {
+      fail(where, 'key must match ' + KEY_RE);
+      continue;
+    }
+    const entry = data.objects[key];
+    if (!isObject(entry)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(entry, ['p', 'r', 's', 't', 'was', 'label', 'unstable'], where, fail);
+    const pose = readPose(entry, dim, where, fail);
+    if (pose.p === undefined && pose.r === undefined && pose.s === undefined && pose.t === undefined) {
+      fail(where, 'needs at least one of p, r, s, t');
+    }
+    const o = { ...pose };
+    if (entry.was !== undefined) {
+      if (!isObject(entry.was)) fail(`${where}.was`, 'must be an object');
+      else {
+        onlyFields(entry.was, ['p', 'r', 's', 't'], `${where}.was`, fail);
+        const was = readPose(entry.was, dim, `${where}.was`, fail);
+        if (Object.keys(was).length) o.was = was;
+      }
+    }
+    if (entry.label !== undefined) {
+      const label = readLabel(entry.label, `${where}.label`, fail);
+      if (label) o.label = label;
+    }
+    if (entry.unstable !== undefined && typeof entry.unstable !== 'boolean') {
+      fail(`${where}.unstable`, 'must be true or false');
+    }
+    // A scene-graph path key changes whenever the code adds or reorders objects, so it is always
+    // flagged, whatever the sender said. The agent uses the flag to suggest naming the object.
+    if (entry.unstable === true || key.startsWith('path:')) o.unstable = true;
+    out.objects[key] = o;
+  }
+  if (data.order !== undefined) {
+    const order = readOrder(data.order, dim, fail);
+    if (order.length) out.order = order;
+  }
+  if (data.added !== undefined) {
+    const added = readAdded(data.added, dim, fail);
+    if (added.length) out.added = added;
+  }
+  if (data.removed !== undefined) {
+    const removed = readRemoved(data.removed, dim, fail);
+    if (removed.length) out.removed = removed;
+  }
+  // One key, one meaning: a copy is never also a moved object or a deleted one.
+  const addedKeys = new Set((out.added || []).map((a) => a.key));
+  for (const k of addedKeys) if (Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
+  for (const r of out.removed || []) if (addedKeys.has(r.key)) fail(`removed`, `"${r.key}" is also in added`);
+  return out;
+}
+
+// Copies made in the editor: [{ key, from, p, r?, s?, label? }]. The order is kept (it is the order
+// they were made, so a copy of a copy comes after the copy it was made from), unlike most lists here.
+function readAdded(v, dim, fail) {
+  const list = optionalArray(v, 'added', LIMITS.maxObjects, fail);
+  const out = [];
+  const seen = new Set();
+  list.forEach((item, i) => {
+    const where = `added[${i}]`;
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['key', 'from', 'p', 'r', 's', 't', 'label'], where, fail);
+    if (typeof item.key !== 'string' || !KEY_RE.test(item.key)) return fail(`${where}.key`, 'must match ' + KEY_RE);
+    if (typeof item.from !== 'string' || !KEY_RE.test(item.from)) return fail(`${where}.from`, 'must match ' + KEY_RE);
+    if (item.key === item.from) return fail(where, '"key" and "from" are the same');
+    if (seen.has(item.key)) return fail(`${where}.key`, `"${item.key}" is listed twice`);
+    seen.add(item.key);
+    if (item.p === undefined) return fail(`${where}.p`, 'is required');
+    const pose = readPose(item, dim, where, fail);
+    if (!pose.p) return;
+    const o = { key: item.key, from: item.from, ...pose };
+    if (item.label !== undefined) {
+      const label = readLabel(item.label, `${where}.label`, fail);
+      if (label) o.label = label;
+    }
+    out.push(o);
+  });
+  return out;
+}
+
+// Objects deleted in the editor: [{ key, label?, was?, unstable? }], sorted by key.
+function readRemoved(v, dim, fail) {
+  const list = optionalArray(v, 'removed', LIMITS.maxObjects, fail);
+  const out = [];
+  const seen = new Set();
+  list.forEach((item, i) => {
+    const where = `removed[${i}]`;
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['key', 'label', 'was', 'unstable'], where, fail);
+    if (typeof item.key !== 'string' || !KEY_RE.test(item.key)) return fail(`${where}.key`, 'must match ' + KEY_RE);
+    if (seen.has(item.key)) return fail(`${where}.key`, `"${item.key}" is listed twice`);
+    seen.add(item.key);
+    const o = { key: item.key };
+    if (item.label !== undefined) {
+      const label = readLabel(item.label, `${where}.label`, fail);
+      if (label) o.label = label;
+    }
+    if (item.was !== undefined) {
+      if (!isObject(item.was)) fail(`${where}.was`, 'must be an object');
+      else {
+        onlyFields(item.was, ['p', 'r', 's', 't'], `${where}.was`, fail);
+        const was = readPose(item.was, dim, `${where}.was`, fail);
+        if (Object.keys(was).length) o.was = was;
+      }
+    }
+    if (item.unstable !== undefined && typeof item.unstable !== 'boolean') fail(`${where}.unstable`, 'must be true or false');
+    if (item.unstable === true || item.key.startsWith('path:')) o.unstable = true;
+    out.push(o);
+  });
+  return out.sort((a, b) => cmp(a.key, b.key));
+}
+
+// Draw orders (2D layers): [{ in, keys, was? }], keys back -> front. Unlike the other lists in these
+// files the key lists are NOT sorted: their order is the content. The entries themselves are sorted
+// by `in` so the same orders always give the same bytes.
+function readOrder(v, dim, fail) {
+  if (dim !== '2d') {
+    fail('order', 'only 2D games have a draw order');
+    return [];
+  }
+  const list = optionalArray(v, 'order', LIMITS.maxOrders, fail);
+  const out = [];
+  const seenIn = new Set();
+  list.forEach((item, i) => {
+    const where = `order[${i}]`;
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['in', 'keys', 'was'], where, fail);
+    if (typeof item.in !== 'string' || !KEY_RE.test(item.in)) return fail(`${where}.in`, 'must match ' + KEY_RE);
+    if (seenIn.has(item.in)) return fail(`${where}.in`, `"${item.in}" is listed twice`);
+    seenIn.add(item.in);
+    const keys = readOrderedKeys(item.keys, `${where}.keys`, fail);
+    if (!keys) return;
+    const o = { in: item.in, keys };
+    if (item.was !== undefined) {
+      const was = readOrderedKeys(item.was, `${where}.was`, fail);
+      if (was) o.was = was;
+    }
+    out.push(o);
+  });
+  return out.sort((a, b) => cmp(a.in, b.in));
+}
+
+// Like readKeyList (library usedBy) but the order is kept and duplicates are an error.
+function readOrderedKeys(v, where, fail) {
+  if (!Array.isArray(v) || v.length === 0) {
+    fail(where, 'must be a non-empty array of object keys');
+    return null;
+  }
+  if (v.length > LIMITS.maxObjects) {
+    fail(where, `at most ${LIMITS.maxObjects} keys`);
+    return null;
+  }
+  const seen = new Set();
+  for (const [i, k] of v.entries()) {
+    if (typeof k !== 'string' || !KEY_RE.test(k)) {
+      fail(`${where}[${i}]`, 'must match ' + KEY_RE);
+      return null;
+    }
+    if (seen.has(k)) {
+      fail(`${where}[${i}]`, `"${k}" is listed twice`);
+      return null;
+    }
+    seen.add(k);
+  }
+  return v.slice();
+}
+
+// p / r / s / t for one object. 3D: p = [x, y, z] metres, r = yaw (rotation.y) radians,
+// s = uniform number or [x, y, z], t = optional tilt [rotation.x, rotation.z] radians (only when the
+// object was tipped in the editor; absent = the game's own x / z rotation stays). 2D: p = [x, y] px,
+// r = angle radians (clockwise, as PixiJS), s = number or [x, y]; no t (2D turns on one axis).
+function readPose(src, dim, where, fail) {
+  const n = dim === '3d' ? 3 : 2;
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const pose = {};
+  if (src.p !== undefined) {
+    if (!Array.isArray(src.p) || src.p.length !== n) fail(`${where}.p`, `must be ${n} numbers`);
+    else {
+      const p = src.p.map((v, i) => readNumber(v, -bound, bound, `${where}.p[${i}]`, fail));
+      if (p.every((v) => v !== null)) pose.p = p.map((v) => round(v, step));
+    }
+  }
+  if (src.r !== undefined) {
+    const r = readNumber(src.r, -1e6, 1e6, `${where}.r`, fail);
+    if (r !== null) pose.r = normalizeAngle(r);
+  }
+  if (src.s !== undefined) {
+    const s = readScale(src.s, n, `${where}.s`, fail);
+    if (s !== null) pose.s = s;
+  }
+  if (src.t !== undefined) {
+    if (dim !== '3d') fail(`${where}.t`, 'is only for 3D (2D turns on one axis: use r)');
+    else if (!Array.isArray(src.t) || src.t.length !== 2) fail(`${where}.t`, 'must be 2 numbers: [rotation.x, rotation.z] in radians');
+    else {
+      const t = src.t.map((v, i) => readNumber(v, -1e6, 1e6, `${where}.t[${i}]`, fail));
+      if (t.every((v) => v !== null)) pose.t = t.map(normalizeAngle);
+    }
+  }
+  return pose;
+}
+
+function readScale(v, n, where, fail) {
+  const one = (x, w) => {
+    const s = readNumber(x, -LIMITS.maxScale, LIMITS.maxScale, w, fail);
+    if (s === null) return null;
+    const r = round(s, LIMITS.stepScale);
+    // Negative scale is allowed (mirroring a sprite is common in 2D); zero is not, because it
+    // makes the object invisible and un-pickable in the editor.
+    if (Math.abs(r) < LIMITS.minScale) {
+      fail(w, `must not be 0 (absolute value at least ${LIMITS.minScale})`);
+      return null;
+    }
+    return r;
+  };
+  if (typeof v === 'number') return one(v, where);
+  if (!Array.isArray(v) || v.length !== n) {
+    fail(where, `must be a number or ${n} numbers`);
+    return null;
+  }
+  const s = v.map((x, i) => one(x, `${where}[${i}]`));
+  if (s.some((x) => x === null)) return null;
+  // [2, 2, 2] and 2 mean the same thing; collapse so equal content gives equal bytes.
+  return s.every((x) => x === s[0]) ? s[0] : s;
+}
+
+// Into (-pi, pi], then rounded to 1e-4. After rounding, -pi lands on -3.1416, which is outside the
+// range by less than one step; it is folded to +3.1416 so the canonical range is [-3.1415, 3.1416].
+function normalizeAngle(r) {
+  const TAU = Math.PI * 2;
+  let a = r - TAU * Math.ceil((r - Math.PI) / TAU);
+  if (a <= -Math.PI) a += TAU;
+  let out = round(a, LIMITS.stepAngle);
+  if (out < -Math.PI) out = -out;
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// library.json
+
+function library(data, fail) {
+  onlyFields(data, ['version', 'tool', 'replace', 'added', 'unused'], '', fail);
+  const out = { version: 1, tool: 'library', replace: [], added: [], unused: [] };
+
+  const replace = optionalArray(data.replace, 'replace', LIMITS.maxReplace, fail);
+  const seenFrom = new Set();
+  replace.forEach((item, i) => {
+    const where = `replace[${i}]`;
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['from', 'to', 'usedBy'], where, fail);
+    // "from" may be a remote URL (a texture loaded from a CDN); "to" must be a file in the folder,
+    // because the agent rewrites the reference to point at something the user actually has.
+    const from = readPathOrUrl(item.from, `${where}.from`, fail);
+    const to = readPath(item.to, `${where}.to`, fail);
+    if (from === null || to === null) return;
+    if (from === to) return fail(where, '"from" and "to" are the same');
+    if (seenFrom.has(from)) return fail(`${where}.from`, 'is replaced more than once');
+    seenFrom.add(from);
+    const r = { from, to };
+    if (item.usedBy !== undefined) {
+      const used = readKeyList(item.usedBy, `${where}.usedBy`, fail);
+      if (used.length) r.usedBy = used;
+    }
+    out.replace.push(r);
+  });
+  out.replace.sort((a, b) => cmp(a.from, b.from));
+
+  const added = optionalArray(data.added, 'added', LIMITS.maxAdded, fail);
+  added.forEach((item, i) => {
+    const where = `added[${i}]`;
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['file', 'place'], where, fail);
+    const file = readPath(item.file, `${where}.file`, fail);
+    if (file === null) return;
+    const a = { file };
+    if (item.place !== undefined) {
+      const place = readPlace(item.place, `${where}.place`, fail);
+      if (place) a.place = place;
+    }
+    out.added.push(a);
+  });
+  // Order of "added" is kept: two drops of the same file are two objects, and the order is the
+  // order the user placed them, which the agent may mirror in code.
+
+  const unused = optionalArray(data.unused, 'unused', LIMITS.maxUnused, fail);
+  const set = new Set();
+  unused.forEach((p, i) => {
+    const path = readPath(p, `unused[${i}]`, fail);
+    if (path !== null) set.add(path);
+  });
+  out.unused = [...set].sort(cmp);
+  return out;
+}
+
+// Where a newly added asset was placed. No "dim" in library.json, so the dimension comes from the
+// length of p (3 = metres, 2 = pixels) and the same bounds and rounding as placement.json apply.
+function readPlace(v, where, fail) {
+  if (!isObject(v)) {
+    fail(where, 'must be an object');
+    return null;
+  }
+  onlyFields(v, ['key', 'p', 'r', 's'], where, fail);
+  if (typeof v.key !== 'string' || !KEY_RE.test(v.key)) {
+    fail(`${where}.key`, 'must match ' + KEY_RE);
+    return null;
+  }
+  if (!Array.isArray(v.p) || (v.p.length !== 2 && v.p.length !== 3)) {
+    fail(`${where}.p`, 'must be 2 or 3 numbers');
+    return null;
+  }
+  const pose = readPose(v, v.p.length === 3 ? '3d' : '2d', where, fail);
+  return { key: v.key, ...pose };
+}
+
+function readKeyList(v, where, fail) {
+  if (!Array.isArray(v)) {
+    fail(where, 'must be an array of keys');
+    return [];
+  }
+  if (v.length > LIMITS.maxUsedBy) fail(where, `at most ${LIMITS.maxUsedBy} keys`);
+  const set = new Set();
+  v.slice(0, LIMITS.maxUsedBy).forEach((k, i) => {
+    if (typeof k !== 'string' || !KEY_RE.test(k)) fail(`${where}[${i}]`, 'must match ' + KEY_RE);
+    else set.add(k);
+  });
+  return [...set].sort(cmp);
+}
+
+/**
+ * A file path relative to the game folder, POSIX style: "assets/tree.png".
+ * Refused: absolute paths, "." / ".." segments, backslashes, control characters, drive letters.
+ * Exported because the server uses the same rule for uploads and the library tool for display.
+ */
+function isSafeRelativePath(p) {
+  if (typeof p !== 'string' || p.length === 0 || p.length > LIMITS.maxPath) return false;
+  if (/[\u0000-\u001f\u007f\\]/.test(p)) return false;
+  if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) return false;
+  return p.split('/').every((seg) => seg !== '' && seg !== '.' && seg !== '..');
+}
+
+function readPath(v, where, fail) {
+  if (!isSafeRelativePath(v)) {
+    fail(where, 'must be a relative path inside the game folder (like "assets/tree.png")');
+    return null;
+  }
+  return v;
+}
+
+function readPathOrUrl(v, where, fail) {
+  if (typeof v === 'string' && /^https?:\/\//i.test(v)) {
+    if (v.length > LIMITS.maxUrl || /[\u0000- \u007f]/.test(v)) {
+      fail(where, 'is not a usable URL');
+      return null;
+    }
+    return v;
+  }
+  return readPath(v, where, fail);
+}
+
+// ---------------------------------------------------------------------------------------------
+// small helpers
+
+function checkPlain(v, where, depth, fail) {
+  if (depth > LIMITS.maxDepth) {
+    fail(where, 'nested too deeply');
+    return false;
+  }
+  if (v === null || typeof v === 'string' || typeof v === 'boolean') return true;
+  if (typeof v === 'number') {
+    if (Number.isFinite(v)) return true;
+    fail(where, 'numbers must be finite');
+    return false;
+  }
+  if (Array.isArray(v)) return v.every((x, i) => checkPlain(x, `${where}[${i}]`, depth + 1, fail));
+  if (isObject(v)) {
+    for (const k of Object.keys(v)) {
+      if (FORBIDDEN_KEYS.has(k)) {
+        fail(where, `the key "${k}" is not allowed`);
+        return false;
+      }
+      if (!checkPlain(v[k], where ? `${where}.${k}` : k, depth + 1, fail)) return false;
+    }
+    return true;
+  }
+  fail(where, 'only JSON values are allowed');
+  return false;
+}
+
+function isObject(v) {
+  if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+function onlyFields(obj, allowed, where, fail) {
+  for (const k of Object.keys(obj)) {
+    if (!allowed.includes(k)) fail(where ? `${where}.${k}` : k, 'unknown field');
+  }
+}
+
+function optionalArray(v, where, max, fail) {
+  if (v === undefined) return [];
+  if (!Array.isArray(v)) {
+    fail(where, 'must be an array');
+    return [];
+  }
+  if (v.length > max) {
+    fail(where, `at most ${max} entries`);
+    return [];
+  }
+  return v;
+}
+
+function readNumber(v, min, max, where, fail) {
+  if (typeof v !== 'number' || !Number.isFinite(v)) {
+    fail(where, 'must be a finite number');
+    return null;
+  }
+  if (v < min || v > max) {
+    fail(where, `must be between ${min} and ${max}`);
+    return null;
+  }
+  return v;
+}
+
+function readLabel(v, where, fail) {
+  if (typeof v !== 'string') {
+    fail(where, 'must be a string');
+    return null;
+  }
+  // Labels come from object names in someone's game: untrusted text. Control characters are
+  // dropped (they break terminals and diffs); HTML is not escaped here because every consumer must
+  // render labels as text, never as markup.
+  return v.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, LIMITS.maxLabel);
+}
+
+// Math.round(v * step) / step: dividing an integer by a power of ten yields the double closest to
+// the short decimal, so 3.25 serializes as "3.25", not "3.2500000000000004".
+function round(v, step) {
+  const r = Math.round(v * step) / step;
+  return r === 0 ? 0 : r; // fold -0 into 0
+}
+
+function cmp(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function sortKeys(v) {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === 'object') {
+    const out = {};
+    for (const k of Object.keys(v).sort(cmp)) out[k] = sortKeys(v[k]);
+    return out;
+  }
+  return v;
+}
+
+function utf8Length(s) {
+  let n = 0;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (c < 0x80) n += 1;
+    else if (c < 0x800) n += 2;
+    else if (c >= 0xd800 && c <= 0xdbff) {
+      n += 4;
+      i++;
+    } else n += 3;
+  }
+  return n;
+}
+
+__def(__exports, "LIMITS", () => LIMITS);
+__def(__exports, "KEY_RE", () => KEY_RE);
+__def(__exports, "validateStudioFile", () => validateStudioFile);
+__def(__exports, "canonicalJSON", () => canonicalJSON);
+__def(__exports, "isSafeRelativePath", () => isSafeRelativePath);
+};
+__defs[3] = function (__exports) {
+'use strict';
+// ../schema/index.ts
+
+// Typed entry to the one validator (studio-files.mjs) for the shell and the
+// edit script. The server imports studio-files.mjs directly.
+                                                                                 
+const { canonicalJSON, validateStudioFile } = __require(2);
+
+                                                                                       
+
+function validatePlacement(json         )                                {
+  const r = validateStudioFile(json          , { tool: 'placement' })       ;
+  return r.ok ? { ok: true, value: r.value                  } : { ok: false, errors: r.errors };
+}
+
+function validateLibrary(json         )                              {
+  const r = validateStudioFile(json          , { tool: 'library' })       ;
+  return r.ok ? { ok: true, value: r.value                } : { ok: false, errors: r.errors };
+}
+
+function stringifyResult(file                             )         {
+  return canonicalJSON(file)          ;
+}
+
+__def(__exports, "validatePlacement", () => validatePlacement);
+__def(__exports, "validateLibrary", () => validateLibrary);
+__def(__exports, "stringifyResult", () => stringifyResult);
+};
+__defs[4] = function (__exports) {
+'use strict';
+// ../tools/library/refs.ts
+
+// Library: find asset file names written in the game's code, and match them
+// against the files that exist in the folder.
+//
+// Why a text scan and not a real parser: games are hand-written or AI-written
+// HTML/JS/CSS with no build step, in any style. A parser would add a
+// dependency and still miss names built at runtime. What we need is only
+// "does the code mention this file?", which a careful string scan answers
+// well. Names assembled at runtime ('assets/' + name + '.png') are caught by
+// the load log instead (the "loaded while playing" source), so the two
+// sources together cover both styles.
+//
+// Pure functions only (no DOM, no fs): the local server, the shell and the
+// tests all call the same code. The caller reads the files.
+
+                                                                          
+const { ASSET_EXT, IGNORED_DIRS, RESULT_FILES } = __require(0);
+
+/** Code files whose text is scanned for names. */
+const CODE_EXT = ['html', 'htm', 'js', 'mjs', 'cjs', 'ts', 'jsx', 'tsx', 'css', 'json']         ;
+
+/** Every extension the library lists, lower case, without the dot. */
+const ALL_ASSET_EXT           = Object.values(ASSET_EXT).flat();
+
+function extOf(path        )         {
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  const dot = base.lastIndexOf('.');
+  return dot <= 0 ? '' : base.slice(dot + 1).toLowerCase();
+}
+
+/**
+ * Asset type from the file name alone. `.json` is ambiguous (config, level
+ * data, or a sprite atlas); callers that can read the file should use
+ * looksLikeAtlas() and fall back to 'other'.
+ */
+function typeOfPath(path        )            {
+  const ext = extOf(path);
+  for (const [type, exts] of Object.entries(ASSET_EXT)) {
+    if ((exts                     ).includes(ext)) return type             ;
+  }
+  return 'other';
+}
+
+/**
+ * A JSON file is a 2D atlas when it has the TexturePacker / Pixi spritesheet
+ * shape: `frames` plus `meta.image`. Plain level data or config is not listed
+ * as an asset (it would only add noise to the list).
+ */
+function looksLikeAtlas(text        )          {
+  try {
+    const j = JSON.parse(text);
+    return !!j && typeof j === 'object' && !!j.frames && typeof j.meta?.image === 'string';
+  } catch {
+    return false;
+  }
+}
+
+function isCodePath(path        )          {
+  return (CODE_EXT                     ).includes(extOf(path));
+}
+
+/** true when any folder in the path is one we never list (node_modules, .git, build output...). */
+function isIgnoredPath(path        )          {
+  const parts = path.split('/');
+  parts.pop();
+  return parts.some((p) => (IGNORED_DIRS                     ).includes(p));
+}
+
+// A quoted string (or CSS url(...)) that ends in a known asset extension,
+// optionally followed by ?query or #hash. Template literals with ${...} are
+// skipped on purpose: the part before ${ is not a file name we can check.
+const EXT_GROUP = ALL_ASSET_EXT.map((e) => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+const QUOTED_RE = new RegExp(`(["'\`])([^"'\`\\n\\r<>]{1,300}?\\.(?:${EXT_GROUP}))(?:[?#][^"'\`\\n\\r]*)?\\1`, 'gi');
+const CSS_URL_RE = new RegExp(`url\\(\\s*(?:["']?)([^"')\\s]{1,300}?\\.(?:${EXT_GROUP}))(?:[?#][^"')\\s]*)?(?:["']?)\\s*\\)`, 'gi');
+
+/**
+ * File names mentioned in one code file, as written but without ?query/#hash
+ * (not resolved yet).
+ * Remote URLs (http:, https:, protocol-relative //) and data: URIs are
+ * dropped: they are not files in the folder and the studio never fetches them.
+ */
+function extractRefs(text        )           {
+  const out = new Set        ();
+  const add = (raw        ) => {
+    const s = raw.trim();
+    if (!s || s.includes('${')) return;
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(s)) return; // http:, data:, blob:, //cdn...
+    out.add(s);
+  };
+  for (const m of text.matchAll(QUOTED_RE)) add(m[2]);
+  for (const m of text.matchAll(CSS_URL_RE)) add(m[1]);
+  return [...out];
+}
+
+/** Normalise a folder-relative path: forward slashes, no ./, .. resolved, no leading slash. */
+function normPath(p        )                {
+  const out           = [];
+  for (const part of p.replace(/\\/g, '/').split('/')) {
+    if (part === '' || part === '.') continue;
+    if (part === '..') {
+      if (!out.length) return null; // points outside the folder
+      out.pop();
+      continue;
+    }
+    out.push(part);
+  }
+  return out.length ? out.join('/') : null;
+}
+
+function dirOf(path        )         {
+  const i = path.lastIndexOf('/');
+  return i < 0 ? '' : path.slice(0, i);
+}
+
+function safeDecode(s        )         {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * Where a name written in `fromFile` points to, as candidates in order.
+ *
+ * Browsers resolve fetch/Image/Audio URLs against the PAGE, not the script
+ * file, while ES module imports and CSS url() resolve against the file. We
+ * cannot know which one the code meant, so we try the file's folder first and
+ * then the folder root ("/x.png" is always the root). The first candidate
+ * that exists wins; if none exists the first one is reported as missing.
+ */
+function candidatesFor(ref        , fromFile        )           {
+  const clean = safeDecode(ref.split(/[?#]/)[0]);
+  const out           = [];
+  const push = (p               ) => {
+    if (p && !out.includes(p)) out.push(p);
+  };
+  if (clean.startsWith('/')) {
+    push(normPath(clean));
+  } else {
+    push(normPath(`${dirOf(fromFile)}/${clean}`));
+    push(normPath(clean));
+  }
+  return out;
+}
+
+                           
+               
+               
+ 
+
+                            
+                                                           
+                                    
+                                                        
+                        
+ 
+
+/**
+ * Match the names found in code against the asset files that exist.
+ *
+ * A name that does not resolve to an existing path but whose file NAME is
+ * unique in the folder ('tree.png' while the file is assets/tree.png) counts
+ * as a reference too: code often keeps the folder in a constant
+ * (`const BASE = 'assets/'`). If two files share that name we do not guess.
+ */
+function matchCode(code            , assetPaths          , allPaths           = assetPaths)            {
+  // `allPaths` = every file in the folder. A name that points at an existing
+  // non-asset file (level.json, a script) is neither a reference nor missing.
+  const exists = new Set(allPaths);
+  const isAsset = new Set(assetPaths);
+  const byName = new Map                  ();
+  for (const p of assetPaths) {
+    const name = p.slice(p.lastIndexOf('/') + 1).toLowerCase();
+    byName.set(name, [...(byName.get(name) ?? []), p]);
+  }
+  const refs = new Map                     ();
+  const missing = new Map                     ();
+  const note = (m                          , key        , from        ) => {
+    if (!m.has(key)) m.set(key, new Set());
+    m.get(key) .add(from);
+  };
+
+  for (const file of code) {
+    for (const ref of extractRefs(file.text)) {
+      const cands = candidatesFor(ref, file.path);
+      if (!cands.length) continue; // "../../x.png" above the folder: not ours to judge
+      const hit = cands.find((c) => exists.has(c));
+      if (hit) {
+        if (hit !== file.path && isAsset.has(hit)) note(refs, hit, file.path);
+        continue;
+      }
+      const name = cands[0].slice(cands[0].lastIndexOf('/') + 1).toLowerCase();
+      const same = byName.get(name);
+      if (same && same.length === 1) {
+        note(refs, same[0], file.path);
+        continue;
+      }
+      note(missing, cands[0], file.path);
+    }
+  }
+  const sorted = (s             ) => [...s].sort();
+  return {
+    refsInCode: new Map([...refs].map(([k, v]) => [k, sorted(v)])),
+    missing: [...missing].map(([path, v]) => ({ path, refsInCode: sorted(v) })).sort((a, b) => (a.path < b.path ? -1 : 1)),
+  };
+}
+
+/**
+ * Build the host's listAssets() answer from a folder listing.
+ * `files` = every non-ignored file with its size; `read(path)` returns the
+ * text of code files (and .json candidates). Used by the fake host in tests
+ * and available to the local server so both agree on what "in code" means.
+ */
+async function buildAssetList(
+  files                                       ,
+  read                                   ,
+)                                                         {
+  // The studio's own result files name assets too (library.json lists
+  // replacements and unused files); reading them as "code" would mark every
+  // listed file as mentioned in code. Only the folder-root copies are results.
+  const results = new Set        (Object.values(RESULT_FILES));
+  const visible = files.filter((f) => !isIgnoredPath(f.path) && !results.has(f.path));
+  const code             = [];
+  const assets                                                         = [];
+  for (const f of visible) {
+    const ext = extOf(f.path);
+    if (isCodePath(f.path)) {
+      const text = await read(f.path).catch(() => '');
+      code.push({ path: f.path, text });
+      if (ext === 'json' && looksLikeAtlas(text)) assets.push({ ...f, type: 'atlas' });
+      continue;
+    }
+    const type = typeOfPath(f.path);
+    if (type !== 'other') assets.push({ ...f, type });
+  }
+  const m = matchCode(code, assets.map((a) => a.path), visible.map((f) => f.path));
+  return {
+    files: assets
+      .map((a) => ({ path: a.path, size: a.size, type: a.type, refsInCode: m.refsInCode.get(a.path) ?? [] }))
+      .sort((a, b) => (a.path < b.path ? -1 : 1)),
+    missing: m.missing,
+  };
+}
+
+__def(__exports, "CODE_EXT", () => CODE_EXT);
+__def(__exports, "extOf", () => extOf);
+__def(__exports, "typeOfPath", () => typeOfPath);
+__def(__exports, "looksLikeAtlas", () => looksLikeAtlas);
+__def(__exports, "isCodePath", () => isCodePath);
+__def(__exports, "isIgnoredPath", () => isIgnoredPath);
+__def(__exports, "extractRefs", () => extractRefs);
+__def(__exports, "normPath", () => normPath);
+__def(__exports, "candidatesFor", () => candidatesFor);
+__def(__exports, "matchCode", () => matchCode);
+__def(__exports, "buildAssetList", () => buildAssetList);
+};
+__defs[5] = function (__exports) {
+'use strict';
+// ../tools/library/marks.ts
+
+// Library: combine the three sources into one row per asset, with a badge.
+//
+//   folder files (host.listAssets)          -> what exists
+//   names in code (AssetFile.refsInCode)    -> what the code mentions
+//   load log + adapter assetsOf (bridge)    -> what the game actually used
+//
+// Badges (exactly one per row):
+//   used      loaded while playing, or an object uses it
+//   codeOnly  the code mentions it but it was not loaded this time
+//             (another level, a sound that plays on game over, ...)
+//   unused    in the folder, but neither in code nor loaded
+//   missing   the code mentions it, but there is no such file
+//             (also: the game tried to load it and the load failed)
+//
+// "unused" is a hint for the AI to ASK the creator, never a delete list: a
+// file can be used through a name built at runtime that we did not see load
+// because that part of the game did not run.
+//
+// Pure functions (no DOM): unit-tested without a browser.
+
+                                                                                               
+const { normPath, typeOfPath } = __require(4);
+
+/**
+ * Accept the host's listAssets() answer in the contract shape
+ * ({ files, missing: [{ path, refsInCode }] }) and also in the early local
+ * server shape ({ assets, missing: [{ ref, in }] }, type "audio"), so the
+ * two branches can be joined in either order. Anything else becomes empty.
+ */
+function normalizeList(raw         )                                                {
+  const r = (raw ?? {})                           ;
+  const list = Array.isArray(r.files) ? r.files : Array.isArray(r.assets) ? r.assets : [];
+  const files              = [];
+  for (const f of list                                  ) {
+    if (!f || typeof f.path !== 'string') continue;
+    const type = f.type === 'audio' ? 'sound' : (f.type             );
+    files.push({
+      path: f.path,
+      size: typeof f.size === 'number' ? f.size : 0,
+      type: ['image', 'model', 'sound', 'atlas', 'font', 'other'].includes(type) ? type : typeOfPath(f.path),
+      refsInCode: Array.isArray(f.refsInCode) ? f.refsInCode.filter((x)              => typeof x === 'string') : [],
+    });
+  }
+  const missing               = [];
+  for (const m of (Array.isArray(r.missing) ? r.missing : [])                                  ) {
+    const p = typeof m?.path === 'string' ? m.path : typeof m?.ref === 'string' ? normPath(m.ref.split(/[?#]/)[0]) : null;
+    const refs = Array.isArray(m?.refsInCode) ? m.refsInCode : Array.isArray(m?.in) ? m.in : [];
+    if (p) missing.push({ path: p, refsInCode: refs.filter((x)              => typeof x === 'string') });
+  }
+  return { files, missing };
+}
+
+/**
+ * The studio's own files (results, .studio/) are not game assets: a game that
+ * fetches placement.json before the first save gets a 404, which is normal.
+ */
+function isStudioFile(path        )          {
+  return path === 'placement.json' || path === 'library.json' || path.startsWith('.studio/');
+}
+
+                                                               
+
+                         
+              
+                       
+                                                                 
+                
+ 
+
+                             
+                              
+               
+                  
+                                   
+               
+                  
+                       
+                  
+                   
+               
+ 
+
+/**
+ * Map a URL the game loaded back to a folder-relative path, or null when it
+ * is not a file of this game (another origin, a CDN, data:/blob:).
+ *
+ * `base` is the folder root as a URL (for the local host, the server origin
+ * plus "/"). Query strings and hashes are dropped: cache-busting
+ * `tree.png?v=3` is still assets/tree.png.
+ */
+function urlToPath(url        , base        )                {
+  let u     ;
+  let b     ;
+  try {
+    b = new URL(base);
+    u = new URL(url, b);
+  } catch {
+    return null;
+  }
+  if (u.origin !== b.origin) return null;
+  let rootPath = b.pathname;
+  if (!rootPath.endsWith('/')) rootPath = rootPath.slice(0, rootPath.lastIndexOf('/') + 1);
+  if (!u.pathname.startsWith(rootPath)) return null;
+  let rel = u.pathname.slice(rootPath.length);
+  try {
+    rel = decodeURIComponent(rel);
+  } catch {
+    /* keep as is */
+  }
+  return normPath(rel);
+}
+
+                                 
+                     
+                        
+                     
+                                                                                       
+                                   
+                                               
+               
+ 
+
+function buildRows(input                )               {
+  const rows = new Map                    ();
+  for (const f of input.files) {
+    rows.set(f.path, {
+      path: f.path, type: f.type, size: f.size, exists: true,
+      refsInCode: [...f.refsInCode], loaded: false, usedBy: [], badge: 'unused',
+    });
+  }
+  const missingRow = (path        , refsInCode           = [])             => ({
+    path, type: typeOfPath(path), size: 0, exists: false, refsInCode, loaded: false, usedBy: [], badge: 'missing',
+  });
+  for (const m of input.missing) {
+    if (!rows.has(m.path)) rows.set(m.path, missingRow(m.path, [...m.refsInCode]));
+  }
+
+  for (const e of input.loads) {
+    const path = urlToPath(e.url, input.base);
+    if (!path) continue;
+    const row = rows.get(path);
+    if (row) {
+      // A failed load of an existing file is still "the game wants it"; a
+      // successful one proves it is used.
+      if (e.ok !== false) row.loaded = true;
+    } else if (e.ok === false && typeOfPath(path) !== 'other' && !isStudioFile(path)) {
+      // The game asked for a file that is not there (a 404): as useful as a
+      // missing name in code, and catches names built at runtime.
+      rows.set(path, missingRow(path));
+    }
+  }
+
+  for (const [key, refs] of Object.entries(input.uses)) {
+    for (const r of refs) {
+      const path = urlToPath(r.url, input.base);
+      if (!path) continue;
+      let row = rows.get(path);
+      if (!row) {
+        row = missingRow(path);
+        rows.set(path, row);
+      }
+      const prev = row.usedBy.find((u) => u.key === key);
+      if (prev) prev.sure = prev.sure || r.sure;
+      else row.usedBy.push({ key, how: r.how, sure: r.sure });
+    }
+  }
+
+  for (const row of rows.values()) {
+    row.usedBy.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    if (!row.exists) row.badge = 'missing';
+    else if (row.loaded || row.usedBy.length) row.badge = 'used';
+    else if (row.refsInCode.length) row.badge = 'codeOnly';
+    else row.badge = 'unused';
+  }
+  return [...rows.values()].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+/** Reverse lookup for the placement side: "the assets of this object". */
+function assetsOfKey(rows              , key        )               {
+  return rows.filter((r) => r.usedBy.some((u) => u.key === key));
+}
+
+                                           
+                                        
+
+/** Filter by type, badge and a case-insensitive name search (matches anywhere in the path). */
+function filterRows(rows              , f                                                        )               {
+  const q = (f.q ?? '').trim().toLowerCase();
+  return rows.filter((r) =>
+    (!f.type || f.type === 'all' || r.type === f.type)
+    && (!f.badge || f.badge === 'all' || r.badge === f.badge)
+    && (!q || r.path.toLowerCase().includes(q)));
+}
+
+function countBadges(rows              )                        {
+  const c                        = { used: 0, codeOnly: 0, unused: 0, missing: 0 };
+  for (const r of rows) c[r.badge]++;
+  return c;
+}
+
+__def(__exports, "normalizeList", () => normalizeList);
+__def(__exports, "isStudioFile", () => isStudioFile);
+__def(__exports, "urlToPath", () => urlToPath);
+__def(__exports, "buildRows", () => buildRows);
+__def(__exports, "assetsOfKey", () => assetsOfKey);
+__def(__exports, "filterRows", () => filterRows);
+__def(__exports, "countBadges", () => countBadges);
+};
+__defs[6] = function (__exports) {
+'use strict';
+// ../tools/library/result.ts
+
+// Library: the creator's decisions, and the library.json built from them.
+//
+// The studio never edits game code. A "replace" is only a note for the AI
+// ("make the code load B where it loads A"); "added" lists new files the
+// creator dropped in (the host already wrote them under assets/, add-only);
+// "unused" lists files to ASK the creator about. The AI reads library.json
+// and changes the code after asking.
+//
+// Validation is not done here: the shell passes the shared validator from
+// src/schema (one validator for the shell, the local server and the cloud),
+// so this module cannot drift from what the server accepts.
+
+                                                                     
+                                             
+
+                         
+              
+              
+             
+             
+ 
+
+                               
+                              
+                               
+                                                  
+                                                 
+ 
+
+function emptyState()               {
+  return { replace: new Map(), added: [] };
+}
+
+/** Restore the state from a previously saved library.json (unknown shapes are ignored). */
+function stateFromFile(json         )               {
+  const s = emptyState();
+  if (!json || typeof json !== 'object') return s;
+  const j = json                        ;
+  if (Array.isArray(j.replace)) {
+    for (const r of j.replace) {
+      if (r && typeof r.from === 'string' && typeof r.to === 'string' && r.from !== r.to) s.replace.set(r.from, r.to);
+    }
+  }
+  if (Array.isArray(j.added)) {
+    for (const a of j.added) {
+      if (a && typeof a.file === 'string' && !s.added.some((x) => x.file === a.file)) {
+        s.added.push(a.place ? { file: a.file, place: a.place } : { file: a.file });
+      }
+    }
+  }
+  return s;
+}
+
+/** Choose `to` as the replacement of `from`. Choosing the same file again (or null) clears it. */
+function setReplace(s              , from        , to               )       {
+  if (!to || to === from) s.replace.delete(from);
+  else s.replace.set(from, to);
+}
+
+function addFile(s              , file        , place         )       {
+  const prev = s.added.find((a) => a.file === file);
+  if (prev) {
+    if (place) prev.place = place;
+    return;
+  }
+  s.added.push(place ? { file, place } : { file });
+}
+
+/** Number of decisions not yet saved, shown next to the save button. */
+function pendingCount(s              , saved              )         {
+  let n = 0;
+  for (const [from, to] of s.replace) if (saved.replace.get(from) !== to) n++;
+  for (const from of saved.replace.keys()) if (!s.replace.has(from)) n++;
+  for (const a of s.added) if (!saved.added.some((b) => b.file === a.file)) n++;
+  return n;
+}
+
+/**
+ * The library.json object. Field order and sorting are fixed so the same
+ * decisions always give the same bytes (the AI can diff saves). The schema's
+ * stringifyResult() sorts again; doing it here too keeps the unvalidated
+ * preview identical to the saved file.
+ */
+function buildLibraryJson(s              , rows              )              {
+  const byPath = new Map(rows.map((r) => [r.path, r]));
+  const replace = [...s.replace]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([from, to]) => {
+      const usedBy = (byPath.get(from)?.usedBy ?? []).map((u) => u.key);
+      return usedBy.length ? { from, to, usedBy } : { from, to };
+    });
+  // A file that is about to be used (a replacement target or a new file) is
+  // not "unused", even though nothing loads it yet.
+  const willUse = new Set        ([...s.replace.values(), ...s.added.map((a) => a.file)]);
+  const unused = rows
+    .filter((r) => r.badge === 'unused' && !willUse.has(r.path))
+    .map((r) => r.path)
+    .sort();
+  return {
+    version: 1,
+    tool: 'library',
+    replace,
+    added: s.added.map((a) => (a.place ? { file: a.file, place: a.place } : { file: a.file })),
+    unused,
+  };
+}
+
+                                                                              
+
+__def(__exports, "emptyState", () => emptyState);
+__def(__exports, "stateFromFile", () => stateFromFile);
+__def(__exports, "setReplace", () => setReplace);
+__def(__exports, "addFile", () => addFile);
+__def(__exports, "pendingCount", () => pendingCount);
+__def(__exports, "buildLibraryJson", () => buildLibraryJson);
+};
+__defs[7] = function (__exports) {
+'use strict';
+// ../tools/library/strings.ts
+
+// Library UI text. English is the fallback for every key.
+// Keep strings short: the phone layout shows them in a narrow bottom sheet.
+
+                                              
+
+const en = {
+  title: 'Assets',
+  search: 'Search by name',
+  typeAll: 'All types',
+  type_image: 'Images',
+  type_model: '3D models',
+  type_sound: 'Sounds',
+  type_atlas: 'Sprite sheets',
+  type_font: 'Fonts',
+  type_other: 'Other',
+  badgeAll: 'Any status',
+  badge_used: 'Used',
+  badge_codeOnly: 'Only in code',
+  badge_unused: 'Unused',
+  badge_missing: 'Missing',
+  hint_used: 'The game loaded this file, or an object uses it.',
+  hint_codeOnly: 'The code mentions this file, but it wasn’t loaded this time.',
+  hint_unused: 'In the folder, but not in the code and not loaded. Your AI asks before removing anything.',
+  hint_missing: 'The code asks for this file, but it isn’t in the folder.',
+  count: '{n:1 file|# files}',
+  empty: 'No files match.',
+  loading: 'Reading the folder…',
+  usedBy: 'Used by',
+  usedByNone: 'No object uses this file.',
+  guessed: 'best guess',
+  inScene: 'In the scene: {n}',
+  inSceneTip: 'Select them in the scene',
+  inSceneNone: 'Not in the scene',
+  inCode: 'Mentioned in',
+  inCodeNone: 'Not mentioned in the code.',
+  replace: 'Replace…',
+  replacing: 'Replace with',
+  replacedWith: 'Will be replaced with',
+  undoReplace: 'Keep the original',
+  // "Delete" on unused files: the editor never deletes; it asks the AI, which checks with the creator.
+  del: 'Delete',
+  delIntro: 'Your AI deletes this file for you after checking with you. The editor itself never deletes anything.',
+  delAsk: 'Ask my AI to delete it',
+  delCancel: 'Not now',
+  delSent: 'Sent to your AI ({n:1 file|# files} so far). Go back to your AI; it checks with you before deleting.',
+  delAsked: 'delete requested',
+  delFailed: 'Couldn’t send it to your AI: {e}',
+  pickFile: 'Choose a file from the folder',
+  dropHere: 'Drop a new file here, or choose one',
+  chooseFile: 'Choose file',
+  addFiles: 'Add files',
+  added: 'New',
+  addedHint: 'Added to the folder. Your AI will hook it up in the game.',
+  addFailed: 'Couldn’t add the file: {e}',
+  play: 'Play',
+  stop: 'Stop',
+  preview: 'Previewing in the game (not saved yet)',
+  previewMiss: 'This image isn’t on screen right now.',
+  select: 'Select in the scene',
+  assetsOfObject: 'Files of this object',
+  noAssets: 'No files are linked to this object.',
+  pending: '{n} unsaved',
+  save: 'Save',
+  saved: 'Saved library.json',
+  saveFailed: 'Not saved: {e}',
+  close: 'Close',
+  // "Make with AI" (ai-make.ts): optional KUMODeck sign-in, paid from the KUMODeck balance (2026-10-16)
+  aiOpen: 'Make with AI',
+  aiTitle: 'Make with AI',
+  aiChecking: 'Checking your KUMODeck sign-in…',
+  aiSignInWhy: 'Sign in with KUMODeck to make images and 3D models with AI. They’re paid for with your KUMODeck credits.',
+  aiExpired: 'Your KUMODeck sign-in expired. Sign in again to make images and 3D models.',
+  aiSignInHow: 'Run this in a terminal, click Allow in the browser, then come back here.',
+  aiCopy: 'Copy',
+  aiCopied: 'Copied',
+  aiCheckAgain: 'I’ve signed in',
+  aiAccount: '{email} · {balance} in credits',
+  aiTopUp: 'Add credits',
+  aiPickProject: 'Which KUMODeck project should the new files go in?',
+  aiUseProject: 'Use this project',
+  aiNoProjects: 'This account doesn’t have any projects yet. Make one by running npx kumodeck init in the game folder.',
+  aiProject: 'Project: {name}',
+  aiPicture: 'Image',
+  aiModel: '3D model',
+  aiPromptLabel: 'What to make',
+  aiPicturePh: 'Try: mossy stone wall, flat front view, soft light',
+  aiModelPh: 'Try: a low wooden treasure chest with iron bands',
+  aiQuality: 'Quality',
+  aiFast: 'Fast',
+  aiFine: 'Fine detail',
+  aiSeamless: 'Seamless tile',
+  aiSize: 'Size',
+  aiTexture: 'With colors (off = shape only, costs less)',
+  aiPicturePrice: 'One image: {price}, paid with your credits. Takes a few seconds.',
+  aiModelPrice: 'One model: about {price}, paid with your credits. Takes a few minutes.',
+  aiShort: 'Not enough credits: this needs {need}, and you have {balance}.',
+  aiMake: 'Make · {price}',
+  aiMaking: 'Making…',
+  aiMakingPicture: 'Making the image…',
+  aiStartingModel: 'Starting the 3D model…',
+  aiModelStarted: 'Making the 3D model (a few minutes). Keep working; it shows up in assets/ when it’s ready.',
+  aiAdded: 'Added {path}. To use it, place it in the game or ask your AI.',
+  aiRecent: '3D models in this session',
+  aiJobRunning: 'being made',
+  aiJobFailed: 'not made (you pay only what the AI provider charged, usually nothing)',
+  aiTermsIntro: 'The first time, please agree to the AI section of the KUMODeck terms (“AI-generated content”):',
+  aiTerms1: 'You choose what to make. Results follow the AI providers’ terms.',
+  aiTerms2: 'Don’t present results as made by a person or as real photos.',
+  aiTerms3: 'The cost comes out of your credits at the AI provider’s price, with no markup.',
+  aiTermsAgree: 'I agree',
+  aiSignedOut: 'You’re signed out of KUMODeck.',
+  aiNotEnough: 'Not enough credits for this.',
+  aiNotOpen: 'Make with AI isn’t available for your account yet.',
+  aiNotAllowed: 'This account or project can’t use it yet.',
+  aiNoProject: 'Choose a KUMODeck project first.',
+  aiTooMany: 'Too many requests. Wait a minute and try again.',
+  aiUnreachable: 'Couldn’t reach KUMODeck.',
+  aiFailed: 'Couldn’t make it.',
+  bytes: '{n} B',
+  kb: '{n} KB',
+  mb: '{n} MB',
+};
+
+                                        
+
+const ja                                     = {
+  title: '素材',
+  search: '名前で探す',
+  typeAll: 'すべての種類',
+  type_image: '画像',
+  type_model: '3D モデル',
+  type_sound: '音',
+  type_atlas: 'スプライトシート',
+  type_font: 'フォント',
+  type_other: 'その他',
+  badgeAll: 'すべての印',
+  badge_used: '使っている',
+  badge_codeOnly: 'コードにだけある',
+  badge_unused: '使っていない',
+  badge_missing: '見つからない',
+  hint_used: 'ゲームが読み込んだか、物が使っている素材です。',
+  hint_codeOnly: 'コードに名前はありますが、今回は読み込まれていません。',
+  hint_unused: 'フォルダにありますが、コードにも読み込みにも出てきません。消す前に AI が聞きます。',
+  hint_missing: 'コードが読もうとしていますが、フォルダにありません。',
+  count: '{n} 件',
+  empty: '当てはまる素材がありません。',
+  loading: 'フォルダを読んでいます…',
+  usedBy: '使っている物',
+  usedByNone: 'この素材につながった物はありません。',
+  guessed: '推定',
+  inScene: 'シーンに {n} つ',
+  inSceneTip: 'シーンでまとめて選ぶ',
+  inSceneNone: 'シーンにはありません',
+  inCode: '名前があるファイル',
+  inCodeNone: 'コードに名前はありません。',
+  replace: '差し替え…',
+  replacing: '差し替える先',
+  replacedWith: '差し替え予定',
+  undoReplace: '元のままにする',
+  del: '削除',
+  delIntro: 'このファイルは AI が消します。消す前に AI があなたに確かめます。エディタ自身は何も消しません。',
+  delAsk: 'AI に消してもらう',
+  delCancel: 'やめる',
+  delSent: 'AI に送りました（これまでに {n} 個）。AI の画面に戻ってください。消す前に AI があなたに確かめます。',
+  delAsked: '削除を頼んだ',
+  delFailed: 'AI に送れませんでした: {e}',
+  pickFile: 'フォルダの素材から選ぶ',
+  dropHere: '新しいファイルをここに落とすか、選んでください',
+  chooseFile: 'ファイルを選ぶ',
+  addFiles: '素材を足す',
+  added: '新規',
+  addedHint: 'フォルダに足しました。ゲームへのつなぎは AI がします。',
+  addFailed: '足せませんでした: {e}',
+  play: '再生',
+  stop: '止める',
+  preview: 'ゲームの中で見せています（まだ保存していません）',
+  previewMiss: 'この画像は今の画面に出ていません。',
+  select: 'シーンで選ぶ',
+  assetsOfObject: 'この物の素材',
+  noAssets: 'この物につながった素材はありません。',
+  pending: '未保存 {n}',
+  save: '保存',
+  saved: 'library.json を保存しました',
+  saveFailed: '保存できませんでした: {e}',
+  close: '閉じる',
+  aiOpen: 'AI で作る',
+  aiTitle: 'AI で作る',
+  aiChecking: 'KUMODeck のログインを確かめています…',
+  aiSignInWhy: 'KUMODeck でログインすると、画像や 3D モデルを AI で作れます。料金は KUMODeck のクレジットから払います。',
+  aiExpired: 'KUMODeck のログインが切れました。もう一度ログインすると、画像や 3D モデルを作れます。',
+  aiSignInHow: 'ターミナルで実行し、ブラウザで「許可」を押してから、ここに戻ってください。',
+  aiCopy: 'コピー',
+  aiCopied: 'コピーしました',
+  aiCheckAgain: 'ログインした',
+  aiAccount: '{email} ・ クレジット {balance}',
+  aiTopUp: 'クレジットを足す',
+  aiPickProject: '新しい素材を、KUMODeck のどのプロジェクトのものにしますか？',
+  aiUseProject: 'このプロジェクトにする',
+  aiNoProjects: 'このアカウントにはまだプロジェクトがありません。ゲームのフォルダで npx kumodeck init を動かすと作れます。',
+  aiProject: 'プロジェクト: {name}',
+  aiPicture: '画像',
+  aiModel: '3D モデル',
+  aiPromptLabel: '作るもの',
+  aiPicturePh: '例: 苔むした石の壁、正面から、やわらかい光',
+  aiModelPh: '例: 鉄の帯がついた低い木の宝箱',
+  aiQuality: '質',
+  aiFast: '速い',
+  aiFine: '細かい',
+  aiSeamless: '継ぎ目なしのタイル',
+  aiSize: '大きさ',
+  aiTexture: '色をつける（外すと形だけ・安い）',
+  aiPicturePrice: '1 枚 {price}・クレジットから。数秒でできます。',
+  aiModelPrice: '1 体 約 {price}・クレジットから。数分かかります。',
+  aiShort: 'クレジットが足りません: {need} 要りますが、残りは {balance} です。',
+  aiMake: '作る ・ {price}',
+  aiMaking: '作っています…',
+  aiMakingPicture: '画像を作っています…',
+  aiStartingModel: '3D モデルを作り始めています…',
+  aiModelStarted: '3D モデルを作っています（数分）。作業を続けて大丈夫です。できたら assets/ に入ります。',
+  aiAdded: '{path} を足しました。ゲームで使うときは、置くか AI に頼んでください。',
+  aiRecent: 'この回に作った 3D モデル',
+  aiJobRunning: '作っています',
+  aiJobFailed: 'できませんでした（払うのは AI サービスが取った分だけ・ふつうは 0）',
+  aiTermsIntro: '初めてのときだけ、KUMODeck の利用規約の AI の項（AI-generated content）に同意してください:',
+  aiTerms1: '何を作るかはあなたが決めます。出来た物は AI サービスの規約に従います。',
+  aiTerms2: '出来た物を「人が作った物」や「本物の写真」として見せないでください。',
+  aiTerms3: '料金は AI サービスの値段のまま（上乗せなし）クレジットから引きます。',
+  aiTermsAgree: '同意する',
+  aiSignedOut: 'KUMODeck のログインが切れています。',
+  aiNotEnough: 'クレジットが足りません。',
+  aiNotOpen: '「AI で作る」は、あなたのアカウントではまだ使えません。',
+  aiNotAllowed: 'このアカウントかプロジェクトでは、まだ使えません。',
+  aiNoProject: '先に KUMODeck のプロジェクトを選んでください。',
+  aiTooMany: '短い間に頼みすぎです。1 分待ってからもう一度どうぞ。',
+  aiUnreachable: 'KUMODeck につながりませんでした。',
+  aiFailed: 'できませんでした。',
+};
+
+function t(lang      , key           , vars                                  )         {
+  let s = (lang === 'ja' ? ja[key] : undefined) ?? en[key];
+  if (!vars) return s;
+  // "{n:1 file|# files}": the first part when n is 1, else the second with # = n (same rule as
+  // the shell's plural() in shell/i18n.ts, copied so this tool stays free of shell imports).
+  s = s.replace(/\{(\w+):([^{}|]*)\|([^{}]*)\}/g, (m, k        , one        , other        ) =>
+    k in vars ? (Number(vars[k]) === 1 ? one : other).replace(/#/g, String(vars[k])) : m);
+  for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+  return s;
+}
+
+function formatSize(lang      , n        )         {
+  if (n < 1024) return t(lang, 'bytes', { n });
+  if (n < 1024 * 1024) return t(lang, 'kb', { n: Math.round(n / 102.4) / 10 });
+  return t(lang, 'mb', { n: Math.round(n / 104857.6) / 10 });
+}
+
+__def(__exports, "t", () => t);
+__def(__exports, "formatSize", () => formatSize);
+};
+__defs[8] = function (__exports) {
+'use strict';
+// ../tools/library/thumbs.ts
+
+// Library: thumbnails drawn by the SHELL page (not by the game).
+//
+// Images are shown as they are (<img>, also for SVG: an <img> never runs a
+// script inside the SVG, while inline SVG or <object> would). 3D models are
+// rendered once into a small picture with the shell's own copy of three.js,
+// loaded from a CDN on first use. It is a separate copy from the game's on
+// purpose: the game may pin any three version, may not use three at all
+// (PixiJS games still have .glb files), and must not be disturbed by the
+// studio's rendering.
+//
+// The `+esm` builds are used because GLTFLoader imports the bare name
+// 'three'; the CDN rewrites it to the matching core URL, so loader and core
+// are the same instance without an import map on the shell page.
+
+const THREE_VERSION = '0.186.1';
+const THREE_CORE = `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/+esm`;
+const THREE_GLTF = `https://cdn.jsdelivr.net/npm/three@${THREE_VERSION}/examples/jsm/loaders/GLTFLoader.js/+esm`;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the CDN copy of three is untyped here
+               
+
+let threeP                                                  = null;
+function loadThree() {
+  threeP ??= Promise.all([import(THREE_CORE), import(THREE_GLTF)]).then(([THREE, g]) => ({ THREE, GLTFLoader: g.GLTFLoader }));
+  // A failed load (offline, blocked by policy) should not be cached forever.
+  threeP.catch(() => { threeP = null; });
+  return threeP;
+}
+
+// One renderer for every thumbnail, and one model at a time: WebGL contexts
+// are limited (browsers drop the oldest after ~16) and a long list of models
+// would otherwise create one context each.
+let renderer      = null;
+let queue                   = Promise.resolve();
+const cache = new Map                                ();
+
+function disposeTree(root     ) {
+  root.traverse((o     ) => {
+    o.geometry?.dispose?.();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
+      for (const v of Object.values(m)         ) if (v?.isTexture) v.dispose();
+      m.dispose?.();
+    }
+  });
+}
+
+async function renderModel(url        , size        )                         {
+  const { THREE, GLTFLoader } = await loadThree();
+  if (!renderer) {
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+  }
+  renderer.setPixelRatio(1);
+  renderer.setSize(size, size, false);
+  const gltf = await new GLTFLoader().loadAsync(url);
+  const model = gltf.scene;
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 2.2));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+  sun.position.set(3, 5, 4);
+  scene.add(sun, model);
+
+  // Frame the model from a 3/4 view above, whatever its size or offset.
+  const box = new THREE.Box3().setFromObject(model);
+  const sphere = box.getBoundingSphere(new THREE.Sphere());
+  const r = sphere.radius > 0 && Number.isFinite(sphere.radius) ? sphere.radius : 1;
+  const camera = new THREE.PerspectiveCamera(35, 1, r / 100, r * 100);
+  const dist = r / Math.sin((35 / 2) * (Math.PI / 180));
+  camera.position.copy(sphere.center).add(new THREE.Vector3(0.6, 0.45, 0.65).normalize().multiplyScalar(dist * 1.05));
+  camera.lookAt(sphere.center);
+
+  renderer.setClearColor(0x000000, 0);
+  renderer.render(scene, camera);
+  const data = renderer.domElement.toDataURL('image/png');
+  disposeTree(model);
+  return data;
+}
+
+/**
+ * PNG data URL of a .glb/.gltf, or null when it cannot be drawn (no WebGL,
+ * CDN unreachable, broken file). The caller shows a type icon instead.
+ */
+function modelThumb(url        , size = 128)                         {
+  const id = `${size}|${url}`;
+  let p = cache.get(id);
+  if (!p) {
+    p = queue.then(() => renderModel(url, size)).catch(() => null);
+    queue = p;
+    cache.set(id, p);
+  }
+  return p;
+}
+
+/** Image an atlas json points to (meta.image, relative to the json), or null. */
+async function atlasImageUrl(jsonUrl        )                         {
+  try {
+    const j = await (await fetch(jsonUrl)).json();
+    const img = j?.meta?.image;
+    return typeof img === 'string' && !/^[a-z][a-z0-9+.-]*:|^\/\//i.test(img) ? new URL(img, jsonUrl).href : null;
+  } catch {
+    return null;
+  }
+}
+
+let fontN = 0;
+/**
+ * Load a font file under a generated family name and return that name.
+ * The family is never the file name (file names are untrusted text and
+ * would end up inside a CSS value).
+ */
+async function fontFamily(url        )                         {
+  try {
+    const family = `gsl-font-${++fontN}`;
+    const face = new FontFace(family, `url(${JSON.stringify(url)})`);
+    await face.load();
+    (document.fonts       ).add(face);
+    return family;
+  } catch {
+    return null;
+  }
+}
+
+/** Forget cached thumbnails of one file (after it was replaced on disk) or all. */
+function forgetThumbs(url         ) {
+  if (!url) return cache.clear();
+  for (const k of [...cache.keys()]) if (k.endsWith(`|${url}`)) cache.delete(k);
+}
+
+__def(__exports, "modelThumb", () => modelThumb);
+__def(__exports, "atlasImageUrl", () => atlasImageUrl);
+__def(__exports, "fontFamily", () => fontFamily);
+__def(__exports, "forgetThumbs", () => forgetThumbs);
+};
+__defs[9] = function (__exports) {
+'use strict';
+// ../tools/library/styles.ts
+
+// Library panel styles, injected once. Class names start with "gsl-" so they
+// never collide with the shell's or another tool's.
+//
+// Colours come from the shell's custom properties when it defines them
+// (--studio-*), with light/dark fallbacks so the panel also looks right in
+// the dev harness on its own. The panel adapts to its container width, not
+// the window: the shell puts it in a right column on PC and in a bottom sheet
+// on phones.
+
+const CSS = `
+.gsl{--gsl-bg:var(--studio-bg,#f7f8fa);--gsl-fg:var(--studio-fg,#17202a);--gsl-muted:var(--studio-muted,#5d6b7a);
+--gsl-line:var(--studio-line,#d9dee5);--gsl-card:var(--studio-card,#fff);--gsl-accent:var(--studio-accent,#2f6fed);
+--gsl-used:#1f9d55;--gsl-code:#b7791f;--gsl-unused:#718096;--gsl-missing:#d64545;
+container-type:inline-size;display:flex;flex-direction:column;gap:8px;height:100%;min-height:0;box-sizing:border-box;
+padding:10px;background:var(--gsl-bg);color:var(--gsl-fg);font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){.gsl{--gsl-bg:var(--studio-bg,#14181e);--gsl-fg:var(--studio-fg,#e6ebf1);--gsl-muted:var(--studio-muted,#9aa7b5);
+--gsl-line:var(--studio-line,#2c333d);--gsl-card:var(--studio-card,#1c222a);--gsl-accent:var(--studio-accent,#6b9bff)}}
+.gsl *{box-sizing:border-box}
+.gsl-bar{display:flex;gap:6px;flex-wrap:wrap}
+.gsl-search{flex:1 1 140px;min-width:0;padding:7px 9px;border:1px solid var(--gsl-line);border-radius:8px;background:var(--gsl-card);color:inherit;font:inherit}
+.gsl-type{padding:6px;border:1px solid var(--gsl-line);border-radius:8px;background:var(--gsl-card);color:inherit;font:inherit}
+.gsl-btn{padding:6px 10px;border:1px solid var(--gsl-line);border-radius:8px;background:var(--gsl-card);color:inherit;font:inherit;cursor:pointer;min-height:32px}
+.gsl-btn:disabled{opacity:.5;cursor:default}
+.gsl-primary{background:var(--gsl-accent);border-color:var(--gsl-accent);color:#fff}
+.gsl-chips{display:flex;gap:6px;flex-wrap:wrap}
+.gsl-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--gsl-line);border-radius:999px;background:var(--gsl-card);color:inherit;font:inherit;cursor:pointer}
+.gsl-chip[aria-pressed=true]{border-color:var(--gsl-accent);box-shadow:inset 0 0 0 1px var(--gsl-accent)}
+.gsl-chip b{font-variant-numeric:tabular-nums}
+.gsl-dot{width:8px;height:8px;border-radius:50%}
+.gsl-dot-used{background:var(--gsl-used)}.gsl-dot-codeOnly{background:var(--gsl-code)}.gsl-dot-unused{background:var(--gsl-unused)}.gsl-dot-missing{background:var(--gsl-missing)}
+.gsl-count{color:var(--gsl-muted);font-size:12px}
+.gsl-grid{flex:1 1 auto;min-height:80px;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px;align-content:start;border-radius:8px}
+.gsl-grid.gsl-dragover,.gsl-drop.gsl-dragover{outline:2px dashed var(--gsl-accent);outline-offset:-2px}
+.gsl-tile{display:flex;flex-direction:column;gap:4px;padding:6px;border:1px solid var(--gsl-line);border-radius:10px;background:var(--gsl-card);color:inherit;font:inherit;text-align:left;cursor:pointer;min-width:0}
+.gsl-tile:focus-visible{outline:2px solid var(--gsl-accent);outline-offset:1px}
+.gsl-tile.gsl-open{border-color:var(--gsl-accent);box-shadow:0 0 0 1px var(--gsl-accent)}
+.gsl-thumb{position:relative;aspect-ratio:1;border-radius:7px;overflow:hidden;display:grid;place-items:center;
+background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color:var(--gsl-muted)}
+.gsl-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.gsl-icon{font-size:26px}
+.gsl-font-sample{font-size:34px;color:var(--gsl-fg)}
+.gsl-play{position:absolute;right:6px;bottom:6px;width:36px;height:36px;border-radius:50%;border:0;background:var(--gsl-accent);color:#fff;font-size:14px;cursor:pointer}
+.gsl-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsl-meta{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
+.gsl-badge{font-size:11px;padding:1px 6px;border-radius:999px;color:#fff;white-space:nowrap}
+.gsl-badge-used{background:var(--gsl-used)}.gsl-badge-codeOnly{background:var(--gsl-code)}.gsl-badge-unused{background:var(--gsl-unused)}.gsl-badge-missing{background:var(--gsl-missing)}
+.gsl-tag{font-size:11px;padding:1px 6px;border-radius:999px;border:1px solid var(--gsl-line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.gsl-tag-new{border-color:var(--gsl-accent);color:var(--gsl-accent)}
+.gsl-tag-del{border-color:var(--gsl-missing);color:var(--gsl-missing)}
+.gsl-del{color:var(--gsl-missing)}
+.gsl-empty{grid-column:1/-1;color:var(--gsl-muted);padding:16px;text-align:center}
+.gsl-detail{border:1px solid var(--gsl-line);border-radius:10px;background:var(--gsl-card);padding:10px;max-height:55%;overflow:auto;flex:0 0 auto}
+.gsl-dhead{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:start}
+.gsl-dtitle{display:flex;flex-direction:column;min-width:0;gap:2px}
+.gsl-dtitle b{overflow-wrap:anywhere}
+.gsl-path{color:var(--gsl-muted);font-size:12px;overflow-wrap:anywhere}
+.gsl-close{width:32px;padding:0}
+.gsl-dinfo{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0}
+.gsl-hint{color:var(--gsl-muted)}
+.gsl-size{margin-left:auto;color:var(--gsl-muted);font-variant-numeric:tabular-nums}
+.gsl-section{margin-top:8px}
+.gsl-section h4{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--gsl-muted)}
+.gsl-muted{margin:0;color:var(--gsl-muted)}
+.gsl-keys{display:flex;flex-wrap:wrap;gap:6px}
+.gsl-key{padding:4px 9px;border-radius:7px;border:1px solid var(--gsl-accent);background:transparent;color:var(--gsl-accent);font:inherit;cursor:pointer;min-height:30px}
+.gsl-guess{font-style:normal;color:var(--gsl-muted)}
+.gsl-files{margin:0;padding-left:18px;overflow-wrap:anywhere}
+.gsl-replace{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.gsl-repline{display:flex;flex-wrap:wrap;gap:6px;overflow-wrap:anywhere}
+.gsl-picker{width:100%;border-top:1px solid var(--gsl-line);padding-top:8px}
+.gsl-pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:6px}
+.gsl-small{padding:4px;font-size:12px}
+.gsl-drop{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding:12px;border:1.5px dashed var(--gsl-line);border-radius:10px;color:var(--gsl-muted);cursor:pointer}
+.gsl-ai{display:flex;flex-direction:column;gap:8px;padding:10px;border:1px solid var(--gsl-line);border-radius:10px;background:var(--gsl-card);flex:0 0 auto;max-height:70%;overflow:auto}
+.gsl-ai p{margin:0}
+.gsl-ai-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.gsl-ai-acct{display:flex;flex-wrap:wrap;gap:8px;align-items:center;color:var(--gsl-muted);font-size:12px;font-variant-numeric:tabular-nums}
+.gsl-ai-link{color:var(--gsl-accent)}
+.gsl-ai-kinds,.gsl-ai-opts{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.gsl-ai-prompt{width:100%;resize:vertical;padding:7px 9px;border:1px solid var(--gsl-line);border-radius:8px;background:var(--gsl-bg);color:inherit;font:inherit}
+.gsl-ai-check{display:flex;gap:6px;align-items:center}
+.gsl-ai-terms{border-top:1px solid var(--gsl-line);padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.gsl-ai-cmd{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.gsl-ai-cmd code{padding:6px 9px;border-radius:7px;background:var(--gsl-bg);border:1px solid var(--gsl-line);font:12px ui-monospace,SFMono-Regular,Menlo,monospace;user-select:all}
+.gsl-ai-make,.gsl-ai-again{align-self:flex-start}
+.gsl-ai-bad{color:var(--gsl-missing)}
+.gsl-ai-note{color:var(--gsl-fg)}
+.gsl-ai-detail{font-size:12px;overflow-wrap:anywhere}
+.gsl-foot{display:flex;gap:8px;align-items:center;min-height:32px}
+.gsl-status{flex:1;color:var(--gsl-muted);overflow:hidden;text-overflow:ellipsis}
+.gsl-pending{color:var(--gsl-code);font-weight:600}
+@container (max-width:420px){.gsl-grid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr))}.gsl-dhead{grid-template-columns:64px 1fr auto}.gsl-detail{max-height:60%}}
+`;
+
+let done = false;
+function injectStyles(doc           = document)       {
+  if (done) return;
+  done = true;
+  const s = doc.createElement('style');
+  s.dataset.studio = 'library';
+  s.textContent = CSS;
+  doc.head.append(s);
+}
+
+__def(__exports, "injectStyles", () => injectStyles);
+};
+__defs[10] = function (__exports) {
+'use strict';
+// ../tools/library/ai-make.ts
+
+// "Make with AI" in the Assets page: pictures (fal) and 3D models (Tripo) through the person's
+// KUMODeck sign-in, paid from their KUMODeck prepaid balance (2026-10-16).
+//
+// The product decision (10/16): "a completely free AI game editor, even without KUMO; sign in to KUMO and picture
+// and 3D generation can be used from your credits". So:
+// - The editor never needs this. The entry is ONE quiet button next to "Add files"; nothing is
+//   fetched until it is opened, and the not-signed-in view is one sentence plus the command.
+// - Before Make: the price of this one job and the balance are on screen; a short balance stops
+//   here (the button says why) and the server stops again (402).
+// - The AI terms: asked once, the first time KUMODeck says so (needs_terms); the person ticks
+//   "I agree" and the same request goes again with acceptTerms. The server remembers it.
+// - The result is a new file in assets/ (add-only, like "Add files"); placing it in the scene is
+//   the person's or their AI's job.
+//
+// Talks only to host.kumo (src/server/kumo.mjs on the local server). The page never sees a key.
+// Untrusted text (prompts, project names, KUMODeck's sentences) only goes through textContent.
+
+                                                                                          
+const { t } = __require(7);
+                                              
+
+/** Prices before Make (USD, at cost). The same numbers as src/server/kumo.mjs kumoImagePrice / kumo3dPrice. */
+function picturePrice(o                                           )         {
+  const mp = Math.max(1, Math.ceil((o.side * o.side) / (1024 * 1024)));
+  if (o.quality === 'seamless') return 0.02 * mp;
+  if (o.quality === 'high') return 0.03 + 0.015 * (mp - 1);
+  return 0.003 * mp;
+}
+const modelPrice = (texture         ) => (texture ? 0.2 : 0.1);
+/** The server reserves whole cents, at least 1 (kumo.mjs kumoCents). */
+const centsOf = (usd        ) => Math.max(1, Math.ceil(Math.round(usd * 1e6) / 1e4));
+const usd = (n        ) => `$${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`;
+/** A balance (cents) in dollars: always 2 places ($0.05, not $0.050). */
+const dollars = (cents        ) => `$${(cents / 100).toFixed(2)}`;
+
+                                                       
+                                
+
+                             
+                 
+             
+                                                                        
+                              
+ 
+
+function h                                       (tag   , cls         , text         )                           {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+/** Words for a refusal code (the server's own sentence goes under it, smaller). */
+const REFUSAL                            = {
+  signed_out: 'aiSignedOut',
+  not_enough: 'aiNotEnough',
+  not_open: 'aiNotOpen',
+  not_allowed: 'aiNotAllowed',
+  no_project: 'aiNoProject',
+  too_many: 'aiTooMany',
+  unreachable: 'aiUnreachable',
+};
+
+function mountAiMake(root             , deps            )                                                     {
+  const L = (k           , v                                  ) => t(deps.lang, k, v);
+  const box = h('div', 'gsl-ai');
+  box.hidden = true;
+  box.setAttribute('data-studio-part', 'ai-make');
+  root.append(box);
+
+  let st                    = null;
+  let kind       = 'picture';
+  let quality                 = 'standard';
+  let side = 1024;
+  let texture = true;
+  let prompt = '';
+  let busy = false;
+  /** Set when KUMODeck asked for the terms: the next Make sends acceptTerms (after the tick). */
+  let askTerms = false;
+  let agreed = false;
+  let note                                                          = null;
+  const polling = new Set        ();
+
+  const price = () => (kind === 'picture' ? picturePrice({ side, quality }) : modelPrice(texture));
+
+  async function load() {
+    st = null;
+    render();
+    st = await deps.kumo.status();
+    render();
+    for (const j of st.jobs || []) if (!j.path && (j.status === 'queued' || j.status === 'running')) void follow(j.id);
+  }
+
+  function refusal(r             ) {
+    if (r.code === 'needs_terms') {
+      askTerms = true;
+      note = null;
+      return;
+    }
+    const key = REFUSAL[r.code];
+    note = { text: key ? L(key) : L('aiFailed'), detail: r.message, bad: true };
+    if (r.code === 'signed_out') void load();
+    if (typeof r.balanceCents === 'number' && st) st.balanceCents = r.balanceCents;
+  }
+
+  async function make() {
+    if (busy || !prompt.trim()) return;
+    if (askTerms && !agreed) return;
+    busy = true;
+    note = { text: kind === 'picture' ? L('aiMakingPicture') : L('aiStartingModel') };
+    render();
+    const acceptTerms = askTerms && agreed ? true : undefined;
+    try {
+      if (kind === 'picture') {
+        const r = await deps.kumo.makePicture({
+          prompt: prompt.trim(),
+          width: side,
+          height: side,
+          ...(quality === 'high' ? { quality: 'high'          } : {}),
+          ...(quality === 'seamless' ? { tiling: 'both'          } : {}),
+          ...(acceptTerms ? { acceptTerms } : {}),
+        });
+        if (!r.ok) refusal(r);
+        else {
+          askTerms = false;
+          note = { text: L('aiAdded', { path: r.path }) };
+          if (st && typeof r.balanceCents === 'number') st.balanceCents = r.balanceCents;
+          deps.onAdded(r.path);
+        }
+      } else {
+        const r = await deps.kumo.makeModel({ prompt: prompt.trim(), texture, ...(acceptTerms ? { acceptTerms } : {}) });
+        if (!r.ok) refusal(r);
+        else {
+          askTerms = false;
+          note = { text: L('aiModelStarted') };
+          upsertJob(r);
+          void follow(r.id);
+        }
+      }
+    } finally {
+      busy = false;
+      render();
+    }
+  }
+
+  function upsertJob(j         ) {
+    if (!st) return;
+    const list = (st.jobs ||= []);
+    const i = list.findIndex((x) => x.id === j.id);
+    if (i >= 0) list[i] = j;
+    else list.push(j);
+  }
+
+  /** Ask the local server about one 3D job until it is in assets/ or failed (each ask waits ~20 s there). */
+  async function follow(id        ) {
+    if (polling.has(id)) return;
+    polling.add(id);
+    try {
+      for (let i = 0; i < 60; i++) {
+        const r = await deps.kumo.job(id);
+        if (!r.ok) {
+          if (r.code !== 'unreachable') break;
+          await new Promise((res) => setTimeout(res, 5000));
+          continue;
+        }
+        upsertJob(r);
+        render();
+        if (r.path) {
+          deps.onAdded(r.path);
+          note = { text: L('aiAdded', { path: r.path }) };
+          render();
+          break;
+        }
+        if (r.status === 'failed' || r.status === 'canceled') break;
+      }
+    } finally {
+      polling.delete(id);
+    }
+  }
+
+  // ---------- render ----------
+  function render() {
+    box.replaceChildren();
+    const head = h('div', 'gsl-ai-head');
+    head.append(h('b', undefined, L('aiTitle')));
+    const close = h('button', 'gsl-btn gsl-close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', L('close'));
+    close.addEventListener('click', () => api.close());
+    head.append(close);
+    box.append(head);
+
+    if (!st) {
+      box.append(h('p', 'gsl-muted', L('aiChecking')));
+      return;
+    }
+    if (!st.signedIn) return renderSignIn(st);
+    const acct = h('div', 'gsl-ai-acct');
+    const bal = typeof st.balanceCents === 'number' ? dollars(st.balanceCents) : '—';
+    acct.append(h('span', undefined, L('aiAccount', { email: st.email || '', balance: bal })));
+    if (st.topUpUrl) {
+      const a = h('a', 'gsl-ai-link', L('aiTopUp'));
+      a.href = st.topUpUrl;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      acct.append(a);
+    }
+    box.append(acct);
+    if (st.error) box.append(h('p', 'gsl-ai-bad', st.error.message));
+    if (!st.project) return renderPickProject(st);
+    if (!st.fromFolder) box.append(h('p', 'gsl-muted', L('aiProject', { name: st.project.name })));
+
+    // kind
+    const kinds = h('div', 'gsl-ai-kinds');
+    kinds.setAttribute('role', 'group');
+    for (const k of ['picture', 'model']          ) {
+      const b = h('button', 'gsl-chip', k === 'picture' ? L('aiPicture') : L('aiModel'));
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(kind === k));
+      b.addEventListener('click', () => {
+        kind = k;
+        render();
+      });
+      kinds.append(b);
+    }
+    box.append(kinds);
+
+    const ta = h('textarea', 'gsl-ai-prompt');
+    ta.rows = 3;
+    ta.maxLength = kind === 'picture' ? 1000 : 1024;
+    ta.placeholder = kind === 'picture' ? L('aiPicturePh') : L('aiModelPh');
+    ta.setAttribute('aria-label', L('aiPromptLabel'));
+    ta.value = prompt;
+    ta.addEventListener('input', () => {
+      prompt = ta.value;
+      makeBtn.disabled = !canMake();
+    });
+    box.append(ta);
+
+    const opts = h('div', 'gsl-ai-opts');
+    if (kind === 'picture') {
+      const q = h('select', 'gsl-type');
+      q.setAttribute('aria-label', L('aiQuality'));
+      for (const [v, k] of [['standard', 'aiFast'], ['high', 'aiFine'], ['seamless', 'aiSeamless']]         ) {
+        const o = h('option', undefined, L(k));
+        o.value = v;
+        o.selected = quality === v;
+        q.append(o);
+      }
+      q.addEventListener('change', () => {
+        quality = q.value                  ;
+        render();
+      });
+      const s = h('select', 'gsl-type');
+      s.setAttribute('aria-label', L('aiSize'));
+      for (const n of [512, 1024, 2048]) {
+        const o = h('option', undefined, `${n} × ${n}`);
+        o.value = String(n);
+        o.selected = side === n;
+        s.append(o);
+      }
+      s.addEventListener('change', () => {
+        side = Number(s.value);
+        render();
+      });
+      opts.append(q, s);
+    } else {
+      const lab = h('label', 'gsl-ai-check');
+      const cb = h('input');
+      cb.type = 'checkbox';
+      cb.checked = texture;
+      cb.addEventListener('change', () => {
+        texture = cb.checked;
+        render();
+      });
+      lab.append(cb, document.createTextNode(L('aiTexture')));
+      opts.append(lab);
+    }
+    box.append(opts);
+
+    // the one-time AI terms (only after KUMODeck asked for them)
+    if (askTerms) {
+      const tb = h('div', 'gsl-ai-terms');
+      tb.append(h('p', undefined, L('aiTermsIntro')));
+      const ul = h('ul', 'gsl-files');
+      for (const k of ['aiTerms1', 'aiTerms2', 'aiTerms3']               ) ul.append(h('li', undefined, L(k)));
+      tb.append(ul);
+      const lab = h('label', 'gsl-ai-check');
+      const cb = h('input');
+      cb.type = 'checkbox';
+      cb.checked = agreed;
+      cb.addEventListener('change', () => {
+        agreed = cb.checked;
+        makeBtn.disabled = !canMake();
+      });
+      lab.append(cb, document.createTextNode(L('aiTermsAgree')));
+      tb.append(lab);
+      box.append(tb);
+    }
+
+    const cost = price();
+    const need = centsOf(cost);
+    const short = typeof st.balanceCents === 'number' && st.balanceCents < need;
+    const priceLine = h('p', short ? 'gsl-ai-bad' : 'gsl-muted', short
+      ? L('aiShort', { need: dollars(need), balance: dollars(st.balanceCents ?? 0) })
+      : kind === 'picture' ? L('aiPicturePrice', { price: usd(cost) }) : L('aiModelPrice', { price: usd(cost) }));
+    box.append(priceLine);
+
+    const canMake = () => !busy && !short && !!prompt.trim() && (!askTerms || agreed);
+    const makeBtn = h('button', 'gsl-btn gsl-primary gsl-ai-make', busy ? L('aiMaking') : L('aiMake', { price: usd(cost) }));
+    makeBtn.type = 'button';
+    makeBtn.disabled = !canMake();
+    makeBtn.addEventListener('click', () => void make());
+    box.append(makeBtn);
+
+    if (note) {
+      const p = h('p', note.bad ? 'gsl-ai-bad' : 'gsl-ai-note', note.text);
+      p.setAttribute('role', 'status');
+      box.append(p);
+      if (note.detail) box.append(h('p', 'gsl-muted gsl-ai-detail', note.detail));
+    }
+
+    const jobs = (st.jobs || []).slice(-5).reverse();
+    if (jobs.length) {
+      const sec = h('div', 'gsl-section');
+      sec.append(h('h4', undefined, L('aiRecent')));
+      const ul = h('ul', 'gsl-files');
+      for (const j of jobs) {
+        const where = j.path ? j.path : j.status === 'failed' || j.status === 'canceled' ? L('aiJobFailed') : L('aiJobRunning');
+        ul.append(h('li', undefined, `${j.prompt} — ${where}`));
+      }
+      sec.append(ul);
+      box.append(sec);
+    }
+  }
+
+  function renderSignIn(s            ) {
+    box.append(h('p', undefined, s.expired ? L('aiExpired') : L('aiSignInWhy')));
+    const row = h('div', 'gsl-ai-cmd');
+    const code = h('code', undefined, s.loginCommand);
+    const copy = h('button', 'gsl-btn', L('aiCopy'));
+    copy.type = 'button';
+    copy.addEventListener('click', () => {
+      void navigator.clipboard?.writeText(s.loginCommand).then(() => (copy.textContent = L('aiCopied'))).catch(() => undefined);
+    });
+    row.append(code, copy);
+    box.append(row, h('p', 'gsl-muted', L('aiSignInHow')));
+    const again = h('button', 'gsl-btn gsl-ai-again', L('aiCheckAgain'));
+    again.type = 'button';
+    again.addEventListener('click', () => void load());
+    box.append(again);
+  }
+
+  function renderPickProject(s            ) {
+    box.append(h('p', undefined, L('aiPickProject')));
+    const sel = h('select', 'gsl-type');
+    sel.setAttribute('aria-label', L('aiPickProject'));
+    for (const p of s.projects || []) {
+      const o = h('option', undefined, p.name);
+      o.value = p.id;
+      sel.append(o);
+    }
+    const use = h('button', 'gsl-btn gsl-primary', L('aiUseProject'));
+    use.type = 'button';
+    use.disabled = !(s.projects || []).length;
+    use.addEventListener('click', async () => {
+      const r = await deps.kumo.pickProject(sel.value);
+      if ('ok' in r && r.ok === false) note = { text: L('aiFailed'), detail: r.message, bad: true };
+      else st = r              ;
+      render();
+    });
+    const row = h('div', 'gsl-ai-opts');
+    row.append(sel, use);
+    box.append(row);
+    if (!(s.projects || []).length) box.append(h('p', 'gsl-muted', L('aiNoProjects')));
+  }
+
+  const api = {
+    open() {
+      box.hidden = false;
+      note = null;
+      void load();
+    },
+    close() {
+      box.hidden = true;
+    },
+    isOpen: () => !box.hidden,
+  };
+  return api;
+}
+
+__def(__exports, "picturePrice", () => picturePrice);
+__def(__exports, "modelPrice", () => modelPrice);
+__def(__exports, "centsOf", () => centsOf);
+__def(__exports, "usd", () => usd);
+__def(__exports, "mountAiMake", () => mountAiMake);
+};
+__defs[11] = function (__exports) {
+'use strict';
+// ../tools/library/panel.ts
+
+// Library: the panel in the shell ("which files does this game use?").
+//
+// The panel only talks through small injected functions (LibraryDeps), so the
+// same code runs in the real shell, in the cloud shell later, and in the dev
+// harness with a fake host. It never edits game code: it lists, previews,
+// adds new files (add-only, through the host) and builds library.json.
+//
+// Safety rules followed everywhere below:
+// - File names and object keys are untrusted text (they come from the folder
+//   and from the game): they are only ever set with textContent / value /
+//   title, never innerHTML.
+// - Pictures are shown with <img> only (SVG included), so an SVG file cannot
+//   run a script in the shell.
+
+                                                                               
+const { ASSET_EXT } = __require(0);
+const { assetsOfKey, buildRows, countBadges, filterRows, normalizeList } = __require(5);
+                                                                             
+const { addFile, buildLibraryJson, emptyState, pendingCount, setReplace, stateFromFile } = __require(6);
+                                                                  
+const { formatSize, t } = __require(7);
+                                              
+const { atlasImageUrl, fontFamily, modelThumb } = __require(8);
+const { injectStyles } = __require(9);
+const { mountAiMake } = __require(10);
+
+                              
+                   
+     
+                                                                             
+                                                                    
+                                            
+     
+                 
+             
+                                                                                     
+                                                                                     
+                                                                                   
+                                                            
+                                                             
+                                  
+     
+                                                                              
+                                                                               
+     
+                                       
+                                                                                         
+                              
+     
+                                                                             
+                                                               
+     
+                          
+                                                                                 
+                              
+                                                                                   
+                    
+     
+                                                                             
+                                                                                        
+                                            
+     
+                                             
+                                                                           
+                      
+ 
+
+                              
+                                                 
+                           
+                                                                                                  
+                                                   
+                                                                                
+                    
+                    
+                                     
+                           
+                                                                              
+                                      
+                                                                                     
+                                                       
+                       
+                                                         
+                   
+                  
+ 
+
+                      
+
+function h                                       (tag   , cls         , text         )                           {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function baseName(p        )         {
+  return p.slice(p.lastIndexOf('/') + 1);
+}
+
+const TYPE_ICON                         = { image: '▦', model: '◆', sound: '♪', atlas: '▤', font: 'Aa', other: '•' };
+const TYPES               = ['all', 'image', 'model', 'sound', 'atlas', 'font'];
+const BADGES          = ['used', 'codeOnly', 'unused', 'missing'];
+const ACCEPT = Object.values(ASSET_EXT).flat().filter((e) => e !== 'json').map((e) => `.${e}`).join(',');
+
+function mountLibrary(root    , deps             )              {
+  injectStyles();
+  const L = (k           , v                                  ) => t(deps.lang, k, v);
+  const gameUrl = (path        ) => new URL(path.split('/').map(encodeURIComponent).join('/'), deps.base()).href;
+
+  let rows               = [];
+  let state               = emptyState();
+  let saved               = emptyState();
+  let filter                                                      = { type: 'all', badge: 'all', q: '' };
+  let openPath                = null;
+  let picking = false;
+  let deleting = false;
+  const asked = deps.asked || new Set        ();
+  let status = '';
+  const newFiles = new Set        ();
+  const audio = new Audio();
+  let playing                = null;
+
+  // ---------- skeleton (built once; lists are re-rendered) ----------
+  const wrap = h('div', 'gsl');
+  wrap.setAttribute('data-studio-tool', 'library');
+  const bar = h('div', 'gsl-bar');
+  const search = h('input', 'gsl-search');
+  search.type = 'search';
+  search.placeholder = L('search');
+  search.setAttribute('aria-label', L('search'));
+  const typeSel = h('select', 'gsl-type');
+  typeSel.setAttribute('aria-label', L('typeAll'));
+  for (const ty of TYPES) {
+    const o = h('option', undefined, ty === 'all' ? L('typeAll') : L(`type_${ty}`             ));
+    o.value = ty;
+    typeSel.append(o);
+  }
+  const addBtn = h('button', 'gsl-btn gsl-add', L('addFiles'));
+  addBtn.type = 'button';
+  const addInput = h('input');
+  addInput.type = 'file';
+  addInput.multiple = true;
+  addInput.accept = ACCEPT;
+  addInput.hidden = true;
+  bar.append(search, typeSel, addBtn, addInput);
+  // "Make with AI" (ai-make.ts): only when the host has the optional KUMODeck sign-in (the local
+  // server). One quiet button; nothing is asked of KUMODeck until it is pressed.
+  const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open', L('aiOpen')) : null;
+  if (aiBtn) {
+    aiBtn.type = 'button';
+    aiBtn.setAttribute('aria-expanded', 'false');
+    bar.append(aiBtn);
+  }
+
+  const chips = h('div', 'gsl-chips');
+  const count = h('div', 'gsl-count');
+  const grid = h('div', 'gsl-grid');
+  const detail = h('div', 'gsl-detail');
+  detail.hidden = true;
+  const foot = h('div', 'gsl-foot');
+  const statusEl = h('span', 'gsl-status');
+  statusEl.setAttribute('role', 'status');
+  const pendingEl = h('span', 'gsl-pending');
+  const saveBtn = h('button', 'gsl-btn gsl-save', L('save'));
+  saveBtn.type = 'button';
+  foot.append(statusEl, pendingEl);
+  if (deps.ownSave) foot.append(saveBtn);
+  wrap.append(bar);
+  const ai = deps.host.kumo
+    ? mountAiMake(wrap, {
+        kumo: deps.host.kumo,
+        lang: deps.lang,
+        // Same as a file added by hand: New in the grid, counted in library.json's "added".
+        onAdded: (p) => {
+          newFiles.add(p);
+          addFile(state, p);
+          void refresh();
+        },
+      })
+    : null;
+  wrap.append(chips, count, grid, detail, foot);
+  root.append(wrap);
+  if (aiBtn && ai) {
+    aiBtn.addEventListener('click', () => {
+      if (ai.isOpen()) ai.close();
+      else ai.open();
+      aiBtn.setAttribute('aria-expanded', String(ai.isOpen()));
+    });
+  }
+
+  // ---------- helpers ----------
+  const setStatus = (s        ) => {
+    status = s;
+    statusEl.textContent = s;
+  };
+  const notifyPending = () => {
+    const n = pendingCount(state, saved);
+    pendingEl.textContent = n ? L('pending', { n }) : '';
+    saveBtn.disabled = n === 0;
+    deps.onPending?.(n);
+  };
+
+  function thumbFor(row            , size        , withPlay = true)     {
+    const box = h('div', `gsl-thumb gsl-thumb-${row.type}`);
+    const icon = h('span', 'gsl-icon', TYPE_ICON[row.type] ?? '•');
+    box.append(icon);
+    if (!row.exists) return box;
+    const url = deps.host.assetUrl(row.path);
+    const showImg = (src        ) => {
+      const img = h('img');
+      img.alt = '';
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.draggable = false;
+      img.onload = () => icon.remove();
+      img.onerror = () => img.remove();
+      img.src = src;
+      box.append(img);
+    };
+    if (row.type === 'image') showImg(url);
+    else if (row.type === 'model' && /\.(glb|gltf)$/i.test(row.path)) {
+      modelThumb(url, size).then((d) => { if (d && d.startsWith('data:image/png;base64,')) showImg(d); });
+    } else if (row.type === 'atlas') {
+      atlasImageUrl(new URL(url, location.href).href).then((u) => { if (u) showImg(u); });
+    } else if (row.type === 'font') {
+      fontFamily(new URL(url, location.href).href).then((fam) => {
+        if (fam) {
+          icon.style.fontFamily = `"${fam}", sans-serif`;
+          icon.classList.add('gsl-font-sample');
+        }
+      });
+    } else if (row.type === 'sound' && withPlay) {
+      const play = h('button', 'gsl-play', playing === row.path ? '■' : '▶');
+      play.type = 'button';
+      play.setAttribute('aria-label', playing === row.path ? L('stop') : L('play'));
+      play.addEventListener('click', (e) => {
+        e.stopPropagation();
+        toggleSound(row.path);
+      });
+      box.append(play);
+    }
+    return box;
+  }
+
+  function toggleSound(path        ) {
+    if (playing === path) {
+      audio.pause();
+      playing = null;
+    } else {
+      audio.src = deps.host.assetUrl(path);
+      audio.currentTime = 0;
+      void audio.play().catch(() => { playing = null; render(); });
+      playing = path;
+    }
+    render();
+  }
+  audio.addEventListener('ended', () => {
+    playing = null;
+    render();
+  });
+
+  function badgeEl(b       )     {
+    const e = h('span', `gsl-badge gsl-badge-${b}`, L(`badge_${b}`             ));
+    e.title = L(`hint_${b}`             );
+    return e;
+  }
+
+  // ---------- list ----------
+  function renderChips() {
+    chips.replaceChildren();
+    const c = countBadges(rows);
+    for (const b of BADGES) {
+      // A mark with nothing behind it ("missing 0") is only noise, and four
+      // chips took half the phone sheet (UI/UX 2026-10-16). Kept while it is the
+      // active filter, so the person can still turn the filter off.
+      if (c[b] === 0 && filter.badge !== b) continue;
+      const chip = h('button', `gsl-chip gsl-chip-${b}`);
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', String(filter.badge === b));
+      chip.title = L(`hint_${b}`             );
+      chip.append(h('span', `gsl-dot gsl-dot-${b}`), h('span', undefined, L(`badge_${b}`             )), h('b', undefined, String(c[b])));
+      chip.addEventListener('click', () => {
+        filter.badge = filter.badge === b ? 'all' : b;
+        render();
+      });
+      chips.append(chip);
+    }
+  }
+
+  function renderGrid() {
+    const list = filterRows(rows, filter);
+    count.textContent = L('count', { n: list.length });
+    grid.replaceChildren();
+    if (!list.length) {
+      grid.append(h('div', 'gsl-empty', rows.length || status ? L('empty') : L('loading')));
+      return;
+    }
+    for (const row of list) {
+      // A div, not a <button>: sound tiles hold their own play button, and
+      // buttons cannot be nested.
+      const tile = h('div', 'gsl-tile');
+      tile.tabIndex = 0;
+      tile.setAttribute('role', 'button');
+      tile.dataset.path = row.path; // dataset is an attribute value, not HTML
+      tile.title = row.path;
+      if (row.path === openPath) tile.classList.add('gsl-open');
+      const name = h('span', 'gsl-name', baseName(row.path));
+      const meta = h('span', 'gsl-meta');
+      meta.append(badgeEl(row.badge));
+      const to = state.replace.get(row.path);
+      if (to) meta.append(h('span', 'gsl-tag gsl-tag-replace', `→ ${baseName(to)}`));
+      if (newFiles.has(row.path) || state.added.some((a) => a.file === row.path)) meta.append(h('span', 'gsl-tag gsl-tag-new', L('added')));
+      if (asked.has(row.path)) meta.append(h('span', 'gsl-tag gsl-tag-del', L('delAsked')));
+      tile.append(thumbFor(row, 128), name, meta);
+      tile.addEventListener('click', () => open(row.path));
+      tile.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open(row.path);
+        }
+      });
+      grid.append(tile);
+    }
+  }
+
+  // ---------- detail ----------
+  function renderDetail() {
+    const row = rows.find((r) => r.path === openPath);
+    detail.hidden = !row;
+    wrap.classList.toggle('gsl-has-detail', !!row);
+    detail.replaceChildren();
+    if (!row) return;
+
+    const head = h('div', 'gsl-dhead');
+    const close = h('button', 'gsl-btn gsl-close', '×');
+    close.type = 'button';
+    close.setAttribute('aria-label', L('close'));
+    close.addEventListener('click', () => {
+      openPath = null;
+      picking = false;
+      render();
+    });
+    const title = h('div', 'gsl-dtitle');
+    title.append(h('b', undefined, baseName(row.path)), h('span', 'gsl-path', row.path));
+    head.append(thumbFor(row, 256), title, close);
+    detail.append(head);
+
+    const info = h('div', 'gsl-dinfo');
+    info.append(badgeEl(row.badge), h('span', 'gsl-hint', L(`hint_${row.badge}`             )));
+    if (row.exists) info.append(h('span', 'gsl-size', formatSize(deps.lang, row.size)));
+    detail.append(info);
+
+    // Where this file is in the scene. The file and the objects that show it
+    // are one thing seen from two sides, so the detail opens with a way back:
+    // "In the scene: 2" selects them all in the scene (handles and outlines
+    // on the game), and each name below selects one. The scene side has the
+    // mirror of it ("Assets: tree.png" on the selected object's card).
+    const used = h('div', 'gsl-section gsl-in-scene');
+    if (!row.usedBy.length) used.append(h('p', 'gsl-muted', L('inSceneNone')));
+    else {
+      const all = h('button', 'gsl-btn gsl-scene-all', L('inScene', { n: row.usedBy.length }));
+      all.type = 'button';
+      all.title = L('inSceneTip');
+      all.dataset.action = 'asset-select-users';
+      const keysOf = row.usedBy.map((u) => u.key);
+      all.addEventListener('click', () => (deps.selectObjects ? deps.selectObjects(keysOf) : deps.selectObject(keysOf[0] )));
+      used.append(all);
+    }
+    const keys = h('div', 'gsl-keys');
+    for (const u of row.usedBy) {
+      const k = h('button', 'gsl-key', u.key);
+      k.type = 'button';
+      k.title = L('select');
+      if (!u.sure) k.append(h('i', 'gsl-guess', ` (${L('guessed')})`));
+      k.addEventListener('click', () => deps.selectObject(u.key));
+      keys.append(k);
+    }
+    used.append(keys);
+    detail.append(used);
+
+    const code = h('div', 'gsl-section');
+    code.append(h('h4', undefined, L('inCode')));
+    if (!row.refsInCode.length) code.append(h('p', 'gsl-muted', L('inCodeNone')));
+    else {
+      const ul = h('ul', 'gsl-files');
+      for (const f of row.refsInCode) ul.append(h('li', undefined, f));
+      code.append(ul);
+    }
+    detail.append(code);
+
+    // Replace
+    const rep = h('div', 'gsl-section gsl-replace');
+    const to = state.replace.get(row.path);
+    if (to) {
+      const line = h('div', 'gsl-repline');
+      line.append(h('span', undefined, L('replacedWith')), h('b', undefined, to));
+      const undo = h('button', 'gsl-btn', L('undoReplace'));
+      undo.type = 'button';
+      undo.addEventListener('click', () => void choose(row, null));
+      rep.append(line, undo);
+    }
+    const repBtn = h('button', 'gsl-btn gsl-primary', L('replace'));
+    repBtn.type = 'button';
+    repBtn.setAttribute('aria-expanded', String(picking));
+    repBtn.addEventListener('click', () => {
+      picking = !picking;
+      render();
+    });
+    rep.append(repBtn);
+    if (picking) rep.append(picker(row));
+    detail.append(rep);
+
+    // Delete: only files marked unused, and only as a request to the AI.
+    if (row.badge === 'unused' && row.exists && deps.askDelete) {
+      const del = h('div', 'gsl-section gsl-delete');
+      if (asked.has(row.path)) del.append(h('p', 'gsl-muted', L('delSent', { n: asked.size })));
+      else if (!deleting) {
+        const b = h('button', 'gsl-btn gsl-del', L('del'));
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          deleting = true;
+          render();
+        });
+        del.append(b);
+      } else {
+        del.append(h('p', undefined, L('delIntro')));
+        const yes = h('button', 'gsl-btn gsl-primary gsl-del-ask', L('delAsk'));
+        yes.type = 'button';
+        yes.addEventListener('click', async () => {
+          asked.add(row.path);
+          try {
+            await deps.askDelete ([...asked].sort());
+            setStatus(L('delSent', { n: asked.size }));
+          } catch (e) {
+            asked.delete(row.path);
+            setStatus(L('delFailed', { e: e instanceof Error ? e.message : String(e) }));
+          }
+          deleting = false;
+          render();
+        });
+        const no = h('button', 'gsl-btn', L('delCancel'));
+        no.type = 'button';
+        no.addEventListener('click', () => {
+          deleting = false;
+          render();
+        });
+        const line = h('div', 'gsl-repline');
+        line.append(yes, no);
+        del.append(line);
+      }
+      detail.append(del);
+    }
+  }
+
+  function picker(row            )     {
+    const box = h('div', 'gsl-picker');
+    box.append(h('h4', undefined, L('pickFile')));
+    const opts = h('div', 'gsl-pgrid');
+    for (const r of rows) {
+      if (r.path === row.path || !r.exists || r.type !== row.type) continue;
+      const b = h('button', 'gsl-tile gsl-small');
+      b.type = 'button';
+      b.dataset.path = r.path;
+      b.title = r.path;
+      b.append(thumbFor(r, 96, false), h('span', 'gsl-name', baseName(r.path)));
+      b.addEventListener('click', () => void choose(row, r.path));
+      opts.append(b);
+    }
+    box.append(opts);
+    const drop = h('label', 'gsl-drop');
+    drop.append(h('span', undefined, L('dropHere')));
+    const inp = h('input');
+    inp.type = 'file';
+    inp.accept = (ASSET_EXT                                     )[row.type]?.map((e) => `.${e}`).join(',') || ACCEPT;
+    inp.className = 'gsl-file';
+    inp.setAttribute('aria-label', L('chooseFile'));
+    inp.addEventListener('change', async () => {
+      const f = inp.files?.[0];
+      if (!f) return;
+      const p = await addOne(f);
+      if (p) await choose(row, p);
+    });
+    drop.append(inp);
+    onDrop(drop, async (files) => {
+      const p = await addOne(files[0]);
+      if (p) await choose(row, p);
+    });
+    box.append(drop);
+    return box;
+  }
+
+  async function choose(row            , to               ) {
+    setReplace(state, row.path, to);
+    picking = false;
+    if (row.type === 'image' || row.type === 'atlas') {
+      const fromUrl = row.type === 'atlas' ? await atlasImageUrl(gameUrl(row.path)) : gameUrl(row.path);
+      const toUrl = !to ? null : row.type === 'atlas' ? await atlasImageUrl(gameUrl(to)) : gameUrl(to);
+      if (fromUrl) {
+        const shown = await deps.preview(fromUrl, toUrl).catch(() => false);
+        setStatus(to ? (shown ? L('preview') : L('previewMiss')) : '');
+      }
+    }
+    notifyPending();
+    render();
+  }
+
+  // ---------- add (add-only through the host) ----------
+  async function addOne(f      )                         {
+    try {
+      const { path } = await deps.host.addAsset(f);
+      newFiles.add(path);
+      await refresh();
+      return path;
+    } catch (e) {
+      setStatus(L('addFailed', { e: e instanceof Error ? e.message : String(e) }));
+      return null;
+    }
+  }
+  async function addMany(files                   ) {
+    for (const f of Array.from(files)) {
+      const p = await addOne(f);
+      if (p) {
+        addFile(state, p);
+        setStatus(L('addedHint'));
+      }
+    }
+    notifyPending();
+    render();
+  }
+  addBtn.addEventListener('click', () => addInput.click());
+  addInput.addEventListener('change', () => {
+    if (addInput.files?.length) void addMany(addInput.files);
+    addInput.value = '';
+  });
+  function onDrop(el    , cb                         ) {
+    el.addEventListener('dragover', (e) => {
+      if (e.dataTransfer?.types.includes('Files')) {
+        e.preventDefault();
+        el.classList.add('gsl-dragover');
+      }
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('gsl-dragover'));
+    el.addEventListener('drop', (e) => {
+      el.classList.remove('gsl-dragover');
+      const files = e.dataTransfer?.files;
+      if (!files?.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cb(Array.from(files));
+    });
+  }
+  onDrop(grid, (files) => void addMany(files));
+
+  // ---------- filters ----------
+  search.addEventListener('input', () => {
+    filter.q = search.value;
+    renderGrid();
+  });
+  typeSel.addEventListener('change', () => {
+    filter.type = typeSel.value              ;
+    renderGrid();
+  });
+  saveBtn.addEventListener('click', () => void save());
+
+  function render() {
+    renderChips();
+    renderGrid();
+    renderDetail();
+    notifyPending();
+  }
+
+  // ---------- public ----------
+  async function refresh() {
+    const [list, game] = await Promise.all([
+      deps.host.listAssets(),
+      deps.requestAssets().catch(() => ({ loads: []               , uses: {}                               })),
+    ]);
+    rows = buildRows({ ...normalizeList(list), ...game, base: deps.base() });
+    render();
+  }
+
+  function markSaved() {
+    saved = stateFromFile(JSON.parse(JSON.stringify(buildLibraryJson(state, rows))));
+    notifyPending();
+  }
+
+  async function save() {
+    if (!deps.validate) return { ok: false, error: 'no validator' };
+    const v = deps.validate(buildLibraryJson(state, rows));
+    if (!v.ok) {
+      const error = v.errors.join('; ');
+      setStatus(L('saveFailed', { e: error }));
+      return { ok: false, error };
+    }
+    const r = await deps.host.save('library', v.value);
+    if (r.ok) {
+      saved = stateFromFile(JSON.parse(JSON.stringify(v.value)));
+      setStatus(L('saved'));
+    } else setStatus(L('saveFailed', { e: r.error ?? '' }));
+    notifyPending();
+    return r;
+  }
+
+  function open(path        ) {
+    openPath = path;
+    picking = false;
+    deleting = false;
+    render();
+    detail.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  function renderAssetsOf(into    , key        ) {
+    into.replaceChildren();
+    into.append(h('h4', undefined, L('assetsOfObject')));
+    const list = assetsOfKey(rows, key);
+    if (!list.length) {
+      into.append(h('p', 'gsl-muted', L('noAssets')));
+      return;
+    }
+    const g = h('div', 'gsl-pgrid');
+    for (const r of list) {
+      const b = h('button', 'gsl-tile gsl-small');
+      b.type = 'button';
+      b.dataset.path = r.path;
+      b.title = r.path;
+      b.append(thumbFor(r, 96, false), h('span', 'gsl-name', baseName(r.path)));
+      b.addEventListener('click', () => open(r.path));
+      g.append(b);
+    }
+    into.append(g);
+  }
+
+  // The last saved decisions: from the shell (restore) or read here.
+  const restore = (j         ) => {
+    state = stateFromFile(j);
+    saved = stateFromFile(j);
+    render();
+  };
+  if (deps.initial !== undefined) restore(deps.initial);
+  else {
+    render();
+    void deps.host.load('library').then(restore).catch(() => undefined);
+  }
+
+  return {
+    refresh,
+    save,
+    markSaved,
+    pending: () => pendingCount(state, saved),
+    open,
+    assetsOf: (key) => assetsOfKey(rows, key),
+    renderAssetsOf,
+    rows: () => rows,
+    result: () => buildLibraryJson(state, rows),
+    destroy() {
+      audio.pause();
+      wrap.remove();
+    },
+  };
+}
+
+__def(__exports, "mountLibrary", () => mountLibrary);
+};
+__defs[12] = function (__exports) {
+'use strict';
+// ../tools/library/index.ts
+
+// The Library tool as the shell sees it (ShellTool, CONTRACT.md §5).
+//
+// "Library" = the files THIS game uses, listed from three sources (folder,
+// names in code, loads while playing), with badges, object <-> file links,
+// replace (a note for the AI, plus an image preview in the game) and add
+// (new files under assets/, never overwriting). The result is library.json;
+// the user's AI reads it and changes the code.
+//
+// This module only adapts the ShellContext to the panel's small LibraryDeps
+// (panel.ts), so the panel can also run in the dev harness and later in the
+// cloud shell without changes.
+
+                                                                                      
+const { mountLibrary } = __require(11);
+                                              
+const { assetsOfKey, buildRows, normalizeList } = __require(5);
+                                             
+const { t } = __require(7);
+                                              
+
+let panel                     = null;
+let restored                           ;
+let offs                    = [];
+/** A file to open once the library panel is mounted (pressed from the placement side). */
+let pendingOpen                = null;
+/** Files the person asked the AI to delete in this session (the whole list goes with every request). */
+const askedDelete = new Set        ();
+
+/** One request/answer over the bridge, matched by the answer's type (and url for previews). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- the message union is narrowed by `type`
+function ask   (ctx              , send            , type                                                      , match                     , ms        )             {
+  return new Promise((resolve, reject) => {
+    let off = () => {};
+    const timer = setTimeout(() => {
+      off();
+      reject(new Error('the game did not answer'));
+    }, ms);
+    off = ctx.on(type, (m) => {
+      if (!match(m)) return;
+      clearTimeout(timer);
+      off();
+      resolve(m     );
+    });
+    offs.push(off);
+    send();
+  });
+}
+
+/** Folder root of the game URL: "http://127.0.0.1:5173/game/index.html?studio=edit" -> ".../game/". */
+function baseOf(gameUrl        )         {
+  // The local host answers with a path ("/game/index.html"): resolve it
+  // against the shell page, or `new URL` throws and every object looked
+  // like it used no file (the card's "Assets:" line stayed empty).
+  const u = new URL(gameUrl, typeof location !== 'undefined' ? location.href : undefined);
+  u.search = '';
+  u.hash = '';
+  u.pathname = u.pathname.slice(0, u.pathname.lastIndexOf('/') + 1);
+  return u.href;
+}
+
+const libraryTool            = {
+  id: 'library',
+  label: { en: 'Assets', ja: '素材' },
+
+  restore(json) {
+    restored = json;
+  },
+
+  mount(el, ctx) {
+    let base = new URL('/', location.href).href;
+    panel = mountLibrary(el, {
+      host: ctx.host,
+      base: () => base,
+      lang: ctx.lang,
+      initial: restored === undefined ? undefined : restored,
+      requestAssets: () => ask                                                          (
+        ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
+      preview: async (url, to) => {
+        const r = await ask                 (ctx, () => ctx.send({ type: 'studio:library/preview', url, to }),
+          'studio:library/previewed', (m) => m.url === url, 4000);
+        return r.ok;
+      },
+      selectObject: (key) => ctx.selectObject(key),
+      selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects (keys) : undefined,
+      onPending: () => ctx.changed(),
+      // Same hand-off as "Ideas for your AI" and the card's ask box: host.request (kept as
+      // .studio/requests/<id>.json, plus .studio/next-step.md and the `studio: next-step
+      // delete-files` line), so the AI line under the bar follows it and a cloud host passes it on
+      // the same way. Was host.nextStep before the AI-partner merge (2026-10-16).
+      askDelete: async (paths) => {
+        const ok = await ctx.ask({ kind: 'next-step', step: 'delete-files', text: '', files: paths });
+        if (!ok) throw new Error('request');
+      },
+      asked: askedDelete,
+    });
+    // Re-list whenever the game (re)starts in edit mode: a reload after a
+    // save loads files again, and an asset added here may now be in use.
+    offs.push(ctx.on('studio:core/ready', () => void panel?.refresh()));
+    void ctx.host.open().then((o) => {
+      base = baseOf(o.gameUrl);
+      return panel?.refresh();
+    }).catch(() => panel?.refresh()).then(() => {
+      if (pendingOpen && panel) panel.open(pendingOpen);
+      pendingOpen = null;
+    });
+  },
+
+  unmount() {
+    for (const off of offs) off();
+    offs = [];
+    panel?.destroy();
+    panel = null;
+  },
+
+  dirty() {
+    return panel?.pending() ?? 0;
+  },
+
+  result() {
+    return panel ? panel.result() : null;
+  },
+
+  saved() {
+    panel?.markSaved();
+  },
+};
+
+/** One file an object uses, for the scene card's "Assets: tree.png" line. */
+                             
+               
+                                          
+               
+                                                                                  
+               
+ 
+
+/**
+ * The files one object uses (the reverse of the detail's "In the scene: 2"),
+ * from the mounted panel's rows when it has them, else listed here once.
+ * Never throws: no answer from the game = no files.
+ */
+async function filesOfObject(key        , ctx              )                        {
+  let list              ;
+  try {
+    if (panel && panel.rows().length) list = panel.assetsOf(key);
+    else {
+      const [files, game, open] = await Promise.all([
+        ctx.host.listAssets(),
+        ask                                                          (ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
+        ctx.host.open(),
+      ]);
+      list = assetsOfKey(buildRows({ ...normalizeList(files), ...game, base: baseOf(open.gameUrl) }), key);
+    }
+  } catch {
+    return [];
+  }
+  return list.map((r) => ({ path: r.path, name: r.path.slice(r.path.lastIndexOf('/') + 1), src: r.type === 'image' && r.exists ? ctx.host.assetUrl(r.path) : undefined }));
+}
+
+/** Switch to Assets with one file's detail open (from the scene card). */
+function openAsset(path        , ctx              )       {
+  pendingOpen = path;
+  ctx.switchTool('library');
+  if (panel) {
+    panel.open(path);
+    pendingOpen = null;
+  }
+}
+
+/**
+ * For the placement panel: "files of this object" for the selected key (the
+ * reverse of the library's "used by"). Works while the library panel is not
+ * mounted: it lists the files itself the first time. Pressing a file opens it
+ * in the library tool.
+ *
+ * Names are untrusted (folder and game): textContent only; pictures through
+ * <img> only.
+ */
+async function renderFilesOfObject(el             , key        , ctx              )                {
+  const L = (k           ) => t(ctx.lang, k);
+  let list              ;
+  try {
+    if (panel && panel.rows().length) list = panel.assetsOf(key);
+    else {
+      const [files, game, open] = await Promise.all([
+        ctx.host.listAssets(),
+        ask                                                          (ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
+        ctx.host.open(),
+      ]);
+      list = assetsOfKey(buildRows({ ...normalizeList(files), ...game, base: baseOf(open.gameUrl) }), key);
+    }
+  } catch {
+    list = [];
+  }
+  const head = document.createElement('h4');
+  head.textContent = L('assetsOfObject');
+  el.replaceChildren(head);
+  if (!list.length) {
+    const p = document.createElement('p');
+    p.textContent = L('noAssets');
+    el.append(p);
+    return;
+  }
+  const ul = document.createElement('div');
+  ul.className = 'gsl-objfiles';
+  for (const r of list) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.title = r.path;
+    if (r.type === 'image' && r.exists) {
+      const img = document.createElement('img');
+      img.alt = '';
+      img.width = 32;
+      img.height = 32;
+      img.src = ctx.host.assetUrl(r.path);
+      b.append(img);
+    }
+    const name = document.createElement('span');
+    name.textContent = r.path.slice(r.path.lastIndexOf('/') + 1);
+    b.append(name);
+    b.addEventListener('click', () => {
+      pendingOpen = r.path;
+      ctx.switchTool('library');
+      if (panel) {
+        panel.open(r.path);
+        pendingOpen = null;
+      }
+    });
+    ul.append(b);
+  }
+  el.append(ul);
+}
+
+__def(__exports, "baseOf", () => baseOf);
+__def(__exports, "libraryTool", () => libraryTool);
+__def(__exports, "filesOfObject", () => filesOfObject);
+__def(__exports, "openAsset", () => openAsset);
+__def(__exports, "renderFilesOfObject", () => renderFilesOfObject);
+};
+__defs[13] = function (__exports) {
+'use strict';
+// ../core/rules.ts
+
+// Game rules: fit the editor to one game without touching the editor or the
+// adapter (CONTRACT.md §7).
+//
+// `.studio/studio.json` (plain settings the AI writes) and the optional
+// `constrain()` from `.studio/tools.js` sit between the bridge and the
+// adapter, as one more StudioAdapter. So snapping, bounds and per-kind rules
+// work the same for three.js, PixiJS, Phaser, a hand-written canvas game or
+// anything else, and the adapters stay unaware of them.
+//
+// What is constrained: edits made with handles, keys and game tools (drag,
+// rotate, scale, nudgeY). What is not: setPose() — undo/redo and loading a
+// saved file must restore poses exactly, even if the rules changed since.
+                                                                                                               
+
+const DEG = Math.PI / 180;
+
+                              
+                            
+                       
+ 
+
+/** "crate*" → /^crate.*$/ (only * and ? are special). */
+function globToRe(glob        )         {
+  const esc = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  return new RegExp(`^${esc}$`, 'i');
+}
+
+                             
+                  
+                  
+                      
+                  
+                 
+                        
+                    
+                    
+                  
+                 
+ 
+
+/** All rules whose glob matches the key, label or group, merged in order (later wins). */
+function rulesFor(item                                       , config                   )             {
+  const out             = { hidden: false, locked: false, lockHeight: false, rotate: true, scale: true, grid: config?.snap?.grid, angle: config?.snap?.angle };
+  for (const r of (config?.rules || [])              ) {
+    if (!r || typeof r.match !== 'string') continue;
+    const re = globToRe(r.match);
+    if (!re.test(item.key) && !re.test(item.label || '') && !(item.group && re.test(item.group))) continue;
+    if (typeof r.hidden === 'boolean') out.hidden = r.hidden;
+    if (typeof r.locked === 'boolean') out.locked = r.locked;
+    if (typeof r.lockHeight === 'boolean') out.lockHeight = r.lockHeight;
+    if (typeof r.rotate === 'boolean') out.rotate = r.rotate;
+    if (typeof r.scale === 'boolean') out.scale = r.scale;
+    else if (r.scale && typeof r.scale === 'object') {
+      out.scale = true;
+      if (typeof r.scale.default === 'number' && r.scale.default > 0) out.scaleDefault = r.scale.default;
+      if (typeof r.scale.min === 'number' && r.scale.min > 0) out.scaleMin = r.scale.min;
+      if (typeof r.scale.max === 'number' && r.scale.max > 0) out.scaleMax = r.scale.max;
+    }
+    if (r.snap && typeof r.snap === 'object') {
+      if (r.snap.grid !== undefined) out.grid = r.snap.grid;
+      if (r.snap.angle !== undefined) out.angle = r.snap.angle;
+    }
+  }
+  return out;
+}
+
+const roundTo = (v        , step        ) => (step > 0 ? Number((Math.round(v / step) * step).toFixed(6)) : v);
+const wrap = (a        ) => {
+  let r = a % (2 * Math.PI);
+  if (r <= -Math.PI) r += 2 * Math.PI;
+  if (r > Math.PI) r -= 2 * Math.PI;
+  return r;
+};
+
+/**
+ * Snap a position to the grid and clamp it to the bounds.
+ * 3D: a single grid number applies to x and z (heights stay free); [x, y, z]
+ * sets each axis. 2D: a single number applies to x and y.
+ */
+function placeOnGrid(p          , grid                      , bounds                                  , dim             )           {
+  const out = p.slice();
+  if (grid !== undefined) {
+    const steps = Array.isArray(grid) ? grid : dim === '3d' ? [grid, 0, grid] : [grid, grid];
+    for (let i = 0; i < out.length; i++) {
+      const st = Number(steps[i]);
+      if (Number.isFinite(st) && st > 0) out[i] = roundTo(out[i] , st);
+    }
+  }
+  if (bounds && Array.isArray(bounds.min) && Array.isArray(bounds.max)) {
+    for (let i = 0; i < out.length; i++) {
+      const lo = bounds.min[i], hi = bounds.max[i];
+      if (typeof lo === 'number' && out[i]  < lo) out[i] = lo;
+      if (typeof hi === 'number' && out[i]  > hi) out[i] = hi;
+    }
+  }
+  return out;
+}
+
+const samePose = (a      , b      ) => JSON.stringify(a) === JSON.stringify(b);
+
+function withRules(inner               , holder             )                {
+  // Raw (unsnapped) angle per object while it is being turned, so small
+  // finger moves add up instead of being swallowed by the angle snap.
+  const rawR = new Map                ();
+  let cache = new Map              ();
+
+  const refresh = () => {
+    cache = new Map(inner.list().map((i) => [i.key, i]));
+    return cache;
+  };
+  const itemOf = (key        ) => cache.get(key) || refresh().get(key);
+  const ruleOf = (key        ) => {
+    const it = itemOf(key);
+    return it ? rulesFor(it, holder.config) : null;
+  };
+  const decorate = (list        )         => {
+    cache = new Map(list.map((i) => [i.key, i]));
+    const out         = [];
+    for (const it of list) {
+      const r = rulesFor(it, holder.config);
+      if (r.hidden) continue;
+      out.push({
+        ...it,
+        rotatable: it.rotatable && r.rotate && !r.locked,
+        scalable: it.scalable && r.scale && !r.locked,
+        movable: it.movable !== false && !r.locked,
+        liftable: it.liftable !== false && !r.lockHeight && !r.locked,
+        defaultScale: r.scaleDefault ?? it.defaultScale,
+      });
+    }
+    return out;
+  };
+  const current = (key        )              => inner.anchor(key)?.pose ?? itemOf(key)?.pose ?? null;
+
+  /** Grid, bounds, then the game's own constrain(); writes back only when something changed. */
+  const fix = (key        , pose      , moved         )       => {
+    const r = ruleOf(key);
+    let next       = { ...pose, p: pose.p.slice() };
+    if (moved) next.p = placeOnGrid(next.p, r?.grid, holder.config?.bounds, inner.dim);
+    else next.p = placeOnGrid(next.p, undefined, holder.config?.bounds, inner.dim);
+    const item = itemOf(key);
+    for (const e of holder.ext) {
+      if (e.constrain && item) {
+        try {
+          const c = e.constrain(key, next, item);
+          if (c && Array.isArray(c.p)) next = c;
+        } catch (err) {
+          console.warn('[studio] constrain() failed:', err);
+        }
+      }
+    }
+    if (samePose(next, pose)) return pose;
+    return inner.setPose(key, next) || pose;
+  };
+
+  const ruled                = {
+    ...inner,
+    list: () => decorate(inner.list()),
+    begin: () => decorate(inner.begin()),
+    pickNear(x, y, radius) {
+      return inner.pickNear(x, y, radius).filter((k) => !ruleOf(k)?.hidden);
+    },
+    grab(key, x, y) {
+      const r = ruleOf(key);
+      if (!r || r.locked || r.hidden) return false;
+      rawR.delete(key);
+      return inner.grab(key, x, y);
+    },
+    drag(key, x, y) {
+      const r = ruleOf(key);
+      if (!r || r.locked) return current(key) ;
+      return fix(key, inner.drag(key, x, y), true);
+    },
+    rotate(key, d) {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || !r.rotate) return before ;
+      const b = before.r ?? 0;
+      const after = inner.rotate(key, d);
+      const step = (r.angle ?? 0) * DEG;
+      if (!(step > 0)) return fix(key, after, false);
+      // Keep accumulating the unsnapped angle; restart from the object's
+      // angle when it no longer matches (undo, another gesture).
+      let raw = rawR.get(key);
+      if (raw === undefined || Math.abs(wrap(roundTo(raw, step) - b)) > 1e-6) raw = b;
+      raw += wrap((after.r ?? 0) - b);
+      rawR.set(key, raw);
+      const target = wrap(roundTo(raw, step));
+      const snapped = Math.abs(wrap(target - (after.r ?? 0))) > 1e-9 ? inner.setPose(key, { ...after, r: target }) || after : after;
+      return fix(key, snapped, false);
+    },
+    // Turning around another axis, or around the box middle (3D): blocked where
+    // turning is (locked, rotate: false). A game with an angle step keeps the
+    // snapped vertical turn of rotate() for the y axis.
+    turn: inner.turn ? (key, d, axis) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || !r.rotate) return before ;
+      if (axis === 'y' && (r.angle ?? 0) > 0) return ruled.rotate(key, d);
+      return fix(key, inner.turn (key, d, axis), false);
+    } : undefined,
+    scale(key, f) {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || !r.scale) return before ;
+      const after = inner.scale(key, f);
+      const s0 = Array.isArray(after.s) ? after.s[0] ?? 1 : after.s ?? 1;
+      let s1 = s0;
+      if (r.scaleMin !== undefined && s1 < r.scaleMin) s1 = r.scaleMin;
+      if (r.scaleMax !== undefined && s1 > r.scaleMax) s1 = r.scaleMax;
+      if (s1 === s0) return fix(key, after, false);
+      const k = s1 / (s0 || 1);
+      const s = Array.isArray(after.s) ? after.s.map((v) => v * k) : s1;
+      return fix(key, inner.setPose(key, { ...after, s }) || after, false);
+    },
+    setPose(key, pose) {
+      rawR.delete(key);
+      return inner.setPose(key, pose);
+    },
+    view: inner.view,
+  };
+  if (inner.nudgeY) {
+    ruled.nudgeY = (key, dy) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || r.lockHeight) return before ;
+      return fix(key, inner.nudgeY (key, dy), true);
+    };
+  }
+  return ruled;
+}
+
+__def(__exports, "globToRe", () => globToRe);
+__def(__exports, "rulesFor", () => rulesFor);
+__def(__exports, "placeOnGrid", () => placeOnGrid);
+__def(__exports, "withRules", () => withRules);
+};
+__defs[14] = function (__exports) {
+'use strict';
+// layers.ts
+
+// Draw order (2D layers) in the shell: which object is in front of which.
+// Pure functions over the item list (no DOM), so they are unit-tested.
+//
+// The adapter reports, per object, `layer` (the sibling list it is drawn in,
+// usually its parent) and `pose.z` (its place among the LISTED objects of that
+// list, 0 = back). Changing the order is one setPose with a new z, so undo,
+// redo and the Save count reuse the pose machinery.
+//
+// WHY every target is "the z of another listed sibling" and never z ± 1: the
+// adapter's ranks can have gaps (objects hidden by the game's rules are still
+// counted), and moving to a sibling's z puts the object just past that
+// sibling in the direction of travel. So "forward" always passes exactly one
+// thing the person can see.
+//
+// Ground / background (Item.backdrop, play test 2026-10-16): "to back"
+// once put a rock behind the ground, where it vanished. The backdrops at the
+// back of a list stay there: they have no targets of their own, and nothing
+// else goes behind them ("to back" = just in front of the ground).
+                                           
+
+                                                                    
+
+/** True when the adapter can change the draw order of this object. */
+const hasLayer = (it                  )                                 =>
+  !!it && typeof it.layer === 'string' && typeof it.pose.z === 'number';
+
+/** Listed objects drawn in the same list as `key`, back → front. */
+function siblingsOf(items        , key        )         {
+  const it = items.find((i) => i.key === key);
+  if (!hasLayer(it)) return [];
+  return items.filter((i) => hasLayer(i) && i.layer === it.layer).sort((a, b) => a.pose.z  - b.pose.z );
+}
+
+/**
+ * How many siblings (back → front list) are ground / background kept at the
+ * back: the lowest place anything else may take.
+ */
+function floorOf(sib        )         {
+  let n = 0;
+  while (n < sib.length && sib[n] .backdrop) n++;
+  return n;
+}
+
+/** The z to send for a button/shortcut, or null when the object is already there (or is the ground). */
+function layerTarget(items        , key        , op         )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib.length < 2 || sib[i] .backdrop) return null;
+  const floor = floorOf(sib);
+  const to = op === 'toFront' ? sib.length - 1 : op === 'toBack' ? floor : op === 'forward' ? i + 1 : i - 1;
+  if (to < floor || to >= sib.length || to === i) return null;
+  return sib[to] .pose.z ;
+}
+
+/**
+ * The z to send after a drag in the list. `frontIndex` = where the object was
+ * dropped among its siblings as the list shows them (front first, 0 = top),
+ * counted with the dragged object taken out.
+ */
+function dropTarget(items        , key        , frontIndex        )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib[i] .backdrop) return null;
+  const n = sib.length;
+  // Front-first position k ↔ back-first rank n-1-k; dropped below the ground = just in front of it.
+  const rank = Math.max(floorOf(sib), n - 1 - Math.max(0, Math.min(n - 1, Math.round(frontIndex))));
+  return rank === i ? null : sib[rank] .pose.z ;
+}
+
+/** Keys of one list, back → front (what placement.json `order[].keys` holds). */
+function orderOfLayer(items        , layer        )           {
+  return items.filter((i) => hasLayer(i) && i.layer === layer).sort((a, b) => a.pose.z  - b.pose.z ).map((i) => i.key);
+}
+
+                           
+             
+                                                                                                 
+                
+ 
+                             
+                                                                                         
+                
+                   
+ 
+
+/**
+ * The object list in draw order, front on top. Lists drawn inside a listed
+ * object (Pixi: sprites in a container) are shown right under that object,
+ * indented. Objects without a layer are not included (the caller shows them
+ * after, as before).
+ */
+function layerBlocks(items        )               {
+  const layered = items.filter(hasLayer);
+  const keys = new Set(items.map((i) => i.key));
+  const byLayer = new Map                ();
+  for (const it of layered) {
+    const arr = byLayer.get(it.layer ) || [];
+    arr.push(it);
+    byLayer.set(it.layer , arr);
+  }
+  for (const arr of byLayer.values()) arr.sort((a, b) => b.pose.z  - a.pose.z );
+  const done = new Set        ();
+  const walk = (layer        , depth        , rows            ) => {
+    if (done.has(layer)) return; // a malformed adapter could report a cycle
+    done.add(layer);
+    for (const it of byLayer.get(layer) || []) {
+      rows.push({ item: it, depth });
+      if (byLayer.has(it.key)) walk(it.key, depth + 1, rows);
+    }
+  };
+  const blocks               = [];
+  for (const layer of byLayer.keys()) {
+    if (keys.has(layer)) continue; // drawn inside a listed object: shown under it
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  // Lists whose parent object is listed but never reached (cycles): still show them.
+  for (const layer of byLayer.keys()) {
+    if (done.has(layer)) continue;
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  return blocks;
+}
+
+__def(__exports, "hasLayer", () => hasLayer);
+__def(__exports, "siblingsOf", () => siblingsOf);
+__def(__exports, "floorOf", () => floorOf);
+__def(__exports, "layerTarget", () => layerTarget);
+__def(__exports, "dropTarget", () => dropTarget);
+__def(__exports, "orderOfLayer", () => orderOfLayer);
+__def(__exports, "layerBlocks", () => layerBlocks);
+};
+__defs[15] = function (__exports) {
+'use strict';
+// placement-model.ts
+
+// What the placement tool remembers: each object's original pose (`was`),
+// current pose, and last saved pose. Pure logic, no DOM, so it is unit-tested.
+//
+// Opening the studio again after a save continues from the saved file: the
+// saved poses are re-applied to the game (whose code may not read
+// placement.json yet), and `was` stays the pose the game code itself
+// produces, which is what the AI searches for in the code.
+//
+// Draw order (2D layers) is tracked per sibling list, not per object: moving
+// one object to the front shifts the z of the others, but it is ONE change
+// (one Save count, one `order` entry in placement.json listing the whole
+// list back → front, which is what the AI needs to rewrite the code).
+//
+// Copies and deletions (CONTRACT.md §1.8) are kept apart from moves: a copy
+// is written once to `added` (with its own pose, never to `objects`), a
+// deleted game object once to `removed` (with the pose the game gives it, so
+// the AI finds it in the code). Each is one Save count. Reopening before the
+// AI has changed the code makes the same copies and deletions again; after
+// the AI has done it, the copy is simply a game object under the same key.
+const { LIMITS } = __require(0);
+const { hasLayer, orderOfLayer } = __require(14);
+
+function roundTo(v        , step        )         {
+  return Math.round(v / step) * step;
+}
+
+/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
+function roundPose(p      , dim     )       {
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
+  const out       = { p: p.p.map((v) => fix(v, step)) };
+  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
+  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
+  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
+  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
+  return out;
+}
+
+function samePose(a                  , b                  , dim     )          {
+  if (!a || !b) return a === b;
+  return JSON.stringify(roundPose(a, dim)) === JSON.stringify(roundPose(b, dim));
+}
+
+/** Keys of `now` outside a longest common subsequence with `was` (the moved ones). n ≤ 500, O(n²). */
+function outOfOrder(was          , now          )           {
+  const n = was.length, m = now.length;
+  const L             = Array.from({ length: n + 1 }, () => new Array        (m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i] [j] = was[i] === now[j] ? L[i + 1] [j + 1]  + 1 : Math.max(L[i + 1] [j] , L[i] [j + 1] );
+  const keep = new Set        ();
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (was[i] === now[j]) {
+      keep.add(now[j] );
+      i++;
+      j++;
+    } else if (L[i + 1] [j]  >= L[i] [j + 1] ) i++;
+    else j++;
+  }
+  return now.filter((k) => !keep.has(k));
+}
+
+class PlacementModel {
+  dim      = '3d';
+          was = new Map              ();
+          current = new Map              ();
+          saved = new Map              ();
+          meta = new Map                                               ();
+  /** Entries of the loaded file whose key the game does not have (kept on save). */
+          orphans = new Map                        ();
+          fileEntries = new Map                        ();
+  // Draw order: the game's own order (`was`), the last saved one, and the
+  // file's orders (re-applied once when the game first lists that layer).
+          items         = [];
+          wasOrder = new Map                  ();
+          savedOrder = new Map                  ();
+          fileOrders = new Map                        ();
+          orderApplied = new Set        ();
+  // Copies: every copy made (key → what it is a copy of, kept after it is
+  // deleted so undo can bring it back), the ones that exist now, in the order
+  // they were made, and what the last save held.
+          copyFrom = new Map                ();
+          copyOrder           = [];
+          live = new Set        ();
+          savedCopies = new Map                ();
+  // Game objects the person deleted (copies are not counted here).
+          removed = new Set        ();
+          savedRemoved = new Set        ();
+          removedMeta = new Map                          ();
+  // The file's copies and deletions, worked out once when the game first lists its objects.
+          fileAdded                   = [];
+          fileRemoved                     = [];
+          fileEditsDone = false;
+          fileEdits                                                                                  = { copies: [], removes: [] };
+  /** File copies that could not be made (their original is gone): kept on save, like orphans. */
+          orphanAdded                   = [];
+
+  /** Load the saved file (before the game reports its items). */
+  restore(file                      )       {
+    this.fileEntries.clear();
+    this.fileOrders.clear();
+    this.fileAdded = [];
+    this.fileRemoved = [];
+    if (!file || !file.objects) return;
+    if (file.dim) this.dim = file.dim;
+    for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
+    for (const o of file.order || []) this.fileOrders.set(o.in, o);
+    this.fileAdded = (file.added || []).map((a) => structuredClone(a));
+    this.fileRemoved = (file.removed || []).map((r) => structuredClone(r));
+  }
+
+  /**
+   * Copies and deletions of the saved file that the game does not show yet
+   * (the AI has not put them in the code): the shell asks the bridge to make
+   * them again, once, after the first setItems().
+   */
+  takeFileEdits()                                                                                  {
+    const e = this.fileEdits;
+    this.fileEdits = { copies: [], removes: [] };
+    return e;
+  }
+
+          applyFileEdits(items        )       {
+    if (this.fileEditsDone || !items.length) return;
+    this.fileEditsDone = true;
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    const exists = new Set(byKey.keys());
+    for (const a of this.fileAdded) {
+      // Already in the game (the AI added it under this key): an ordinary object now.
+      if (exists.has(a.key) && !byKey.get(a.key)?.copyOf) continue;
+      if (!exists.has(a.from)) {
+        this.orphanAdded.push(a);
+        continue;
+      }
+      const pose       = { p: a.p.slice() };
+      if (a.r !== undefined) pose.r = a.r;
+      if (a.s !== undefined) pose.s = a.s;
+      this.addCopy(a.key, a.from, pose, a.label);
+      this.savedCopies.set(a.key, JSON.stringify(roundPose(pose, this.dim)));
+      this.fileEdits.copies.push({ key: a.key, from: a.from, pose });
+      exists.add(a.key);
+    }
+    for (const r of this.fileRemoved) {
+      const it = byKey.get(r.key);
+      // Gone from the game: the AI took it out. Still there, looking as the
+      // game draws it: delete it again. (A different object that now has
+      // this key — a tree path that shifted — does not match `was`: kept.)
+      if (!it || it.copyOf) continue;
+      if (r.label && r.label !== it.label) continue;
+      if (r.was && !samePose(r.was, { ...it.pose, z: undefined }, this.dim)) continue;
+      this.remove(r.key);
+      this.removedMeta.set(r.key, structuredClone(r));
+      this.savedRemoved.add(r.key);
+      this.fileEdits.removes.push(r.key);
+    }
+  }
+
+  // ----- copies and deletions -----
+
+  /** A copy now exists (made by the bridge, redo, or the saved file). */
+  addCopy(key        , from        , pose      , label         )       {
+    this.copyFrom.set(key, from);
+    if (!this.copyOrder.includes(key)) this.copyOrder.push(key);
+    this.live.add(key);
+    this.current.set(key, structuredClone(pose));
+    if (!this.meta.has(key)) this.meta.set(key, { label: label || key });
+  }
+
+  /** Keys that are not in the list but must not be reused: every copy made (deleted ones too) and deleted objects. */
+  copiesEver()           {
+    return [...this.copyFrom.keys(), ...this.removed, ...this.fileAdded.map((a) => a.key)];
+  }
+
+  isCopy(key        )          {
+    return this.copyFrom.has(key);
+  }
+  copyOf(key        )                     {
+    return this.copyFrom.get(key);
+  }
+  isRemoved(key        )          {
+    return this.removed.has(key) || (this.copyFrom.has(key) && !this.live.has(key));
+  }
+
+  /** Deleted (a copy: it no longer exists; a game object: listed in `removed`). */
+  remove(key        )       {
+    if (this.copyFrom.has(key)) {
+      this.live.delete(key);
+      return;
+    }
+    if (!this.removed.has(key)) {
+      this.removed.add(key);
+      const m = this.meta.get(key);
+      const was = this.was.get(key);
+      const e                   = { key };
+      if (m?.label && m.label !== key) e.label = m.label;
+      if (was) e.was = roundPose(was, this.dim);
+      if (m?.unstable || key.startsWith('path:')) e.unstable = true;
+      if (!this.removedMeta.has(key)) this.removedMeta.set(key, e);
+    }
+  }
+
+  /** Undo of remove(). */
+  unremove(key        )       {
+    if (this.copyFrom.has(key)) this.live.add(key);
+    else this.removed.delete(key);
+  }
+
+  /** What a copy is written as a copy of: skips copies that were deleted since (A → A2 → A3, A2 deleted: A3 is a copy of A). */
+          liveFrom(key        )         {
+    let f = this.copyFrom.get(key) ;
+    for (let i = 0; i < 50 && this.copyFrom.has(f) && !this.live.has(f); i++) f = this.copyFrom.get(f) ;
+    return f;
+  }
+
+  /**
+   * The game reported its objects. Returns poses the shell must push back to
+   * the game so it shows the last saved arrangement.
+   */
+  setItems(items        , dim     )                                     {
+    this.dim = dim;
+    const apply                                     = [];
+    const seen = new Set        ();
+    for (const it of items) {
+      seen.add(it.key);
+      // Copies keep the label the shell gave them; the game's label for the
+      // others (the AI reads it to find the object).
+      if (!this.copyFrom.has(it.key) || !this.meta.has(it.key)) this.meta.set(it.key, { label: it.label, unstable: it.unstable });
+      if (!this.was.has(it.key)) {
+        const fromFile = this.fileEntries.get(it.key);
+        // `was` from the file wins: the game may already apply placement.json,
+        // in which case its current pose is the saved one, not the original.
+        this.was.set(it.key, fromFile?.was ? { ...fromFile.was } : { ...it.pose });
+        if (fromFile) {
+          const savedPose       = { p: fromFile.p.slice(), r: fromFile.r ?? it.pose.r, s: fromFile.s ?? it.pose.s };
+          // Tilt: the file's, else the game's own (an older file never says "flat").
+          const tilt = fromFile.t ?? it.pose.t;
+          if (tilt) savedPose.t = [tilt[0], tilt[1]];
+          this.saved.set(it.key, savedPose);
+          this.current.set(it.key, savedPose);
+          if (!samePose(savedPose, it.pose, dim)) apply.push({ key: it.key, pose: savedPose });
+          continue;
+        }
+        this.saved.set(it.key, { ...it.pose });
+      }
+      if (!this.current.has(it.key)) this.current.set(it.key, { ...it.pose });
+    }
+    // z of every object can change when ANOTHER object is reordered: always
+    // take the adapter's latest.
+    for (const it of items) {
+      const cur = this.current.get(it.key);
+      if (cur && typeof it.pose.z === 'number') this.current.set(it.key, { ...cur, z: it.pose.z });
+    }
+    this.applyFileEdits(items);
+    this.orphans.clear();
+    for (const [k, e] of this.fileEntries) if (!seen.has(k) && !this.removed.has(k)) this.orphans.set(k, e);
+    this.items = items.map((it) => ({ ...it, pose: this.current.get(it.key) || it.pose }));
+    for (const layer of this.layers()) {
+      if (this.wasOrder.has(layer)) continue;
+      const now = orderOfLayer(this.items, layer);
+      const f = this.fileOrders.get(layer);
+      // Same rule as `was` above: the file's `was` wins (the game may already
+      // apply the saved order).
+      this.wasOrder.set(layer, f?.was ? f.was.filter((k) => now.includes(k)) : now);
+      this.savedOrder.set(layer, f ? f.keys.filter((k) => now.includes(k)) : now);
+      if (f && !this.orderApplied.has(layer)) {
+        this.orderApplied.add(layer);
+        apply.push(...this.orderMoves(layer, f.keys));
+      }
+    }
+    return apply;
+  }
+
+  /**
+   * Poses (z only changes) that turn the current order of `layer` into
+   * `want` (back → front). Applied one after another: putting the i-th key at
+   * the i-th lowest place, from the back, leaves the earlier ones in place.
+   */
+          orderMoves(layer        , want          )                                     {
+    const now = this.items.filter((i) => hasLayer(i) && i.layer === layer);
+    const keys = want.filter((k) => now.some((i) => i.key === k));
+    if (keys.join('\n') === orderOfLayer(now, layer).filter((k) => keys.includes(k)).join('\n')) return [];
+    const slots = now.filter((i) => keys.includes(i.key)).map((i) => i.pose.z ).sort((a, b) => a - b);
+    return keys.map((k, i) => ({ key: k, pose: { ...this.current.get(k) , z: slots[i]  } }));
+  }
+
+  moved(key        , pose      )       {
+    // Moves from handles carry no z (the order did not change): keep it.
+    const old = this.current.get(key);
+    this.current.set(key, pose.z === undefined && old?.z !== undefined ? { ...pose, z: old.z } : pose);
+    const it = this.items.find((i) => i.key === key);
+    if (it) it.pose = this.current.get(key) ;
+  }
+
+  /** Sibling lists the game reported (2D adapters with draw order only). */
+  layers()           {
+    return [...new Set(this.items.filter(hasLayer).map((i) => i.layer ))];
+  }
+
+  /** Current order of one list, back → front. */
+  order(layer        )           {
+    return orderOfLayer(this.items, layer);
+  }
+
+  /**
+   * Lists whose order changed since the save. Only the objects that are in
+   * both are compared: a copy or a deletion changes the list too, but it is
+   * already counted once as itself.
+   */
+          orderDirty()           {
+    return this.layers().filter((l) => {
+      const now = this.order(l);
+      const saved = this.savedOrder.get(l) || [];
+      const a = now.filter((k) => saved.includes(k));
+      const b = saved.filter((k) => now.includes(k));
+      return a.join('\n') !== b.join('\n');
+    });
+  }
+
+  /**
+   * The order a list would have if the person had only copied and deleted:
+   * the game's own order, deleted objects left out, each copy right after
+   * what it was copied from (that is where adapters put copies, and how the
+   * skill tells the AI to add them). Only a list that differs from this was
+   * really reordered and goes to `order`.
+   */
+          expectedOrder(layer        )           {
+    const keys = (this.wasOrder.get(layer) || []).filter((k) => !this.removed.has(k));
+    const inLayer = new Set(this.items.filter((i) => i.layer === layer).map((i) => i.key));
+    for (const c of this.copyOrder) {
+      if (!this.live.has(c) || !inLayer.has(c) || keys.includes(c)) continue;
+      const f = this.liveFrom(c);
+      // After the original and after any copies already placed after it.
+      let at = keys.indexOf(f);
+      if (at < 0) {
+        keys.push(c);
+        continue;
+      }
+      while (at + 1 < keys.length && this.copyFrom.has(keys[at + 1] ) && this.liveFrom(keys[at + 1] ) === f) at++;
+      keys.splice(at + 1, 0, c);
+    }
+    return keys;
+  }
+
+  pose(key        )                   {
+    return this.current.get(key);
+  }
+
+  /** Unsaved changes: moved objects, copies, deletions and reordered lists, one each. */
+  dirty()         {
+    let n = 0;
+    for (const [k, p] of this.current) {
+      if (this.copyFrom.has(k) || this.removed.has(k)) continue;
+      if (!samePose(p, this.saved.get(k), this.dim)) n++;
+    }
+    for (const k of this.live) {
+      const saved = this.savedCopies.get(k);
+      if (saved === undefined || saved !== JSON.stringify(roundPose(this.current.get(k) , this.dim))) n++;
+    }
+    for (const k of this.savedCopies.keys()) if (!this.live.has(k)) n++;
+    for (const k of this.removed) if (!this.savedRemoved.has(k)) n++;
+    for (const k of this.savedRemoved) if (!this.removed.has(k)) n++;
+    return n + this.orderDirty().length;
+  }
+
+  /**
+   * The objects behind dirty(), by key: moved since the last save, copies
+   * new or moved since then (deletions have no row to mark; a reordered list counts for
+   * each object whose place changed). The list draws a dot on these rows.
+   */
+  changedKeys()              {
+    const out = new Set        ();
+    for (const [k, p] of this.current) {
+      if (this.copyFrom.has(k) || this.removed.has(k)) continue;
+      if (!samePose(p, this.saved.get(k), this.dim)) out.add(k);
+    }
+    for (const k of this.live) {
+      const saved = this.savedCopies.get(k);
+      if (saved === undefined || saved !== JSON.stringify(roundPose(this.current.get(k) , this.dim))) out.add(k);
+    }
+    for (const layer of this.layers()) {
+      // Same comparison as orderDirty(): only objects in both lists.
+      const saved = this.savedOrder.get(layer) || [];
+      const now = this.order(layer).filter((k) => saved.includes(k));
+      const was = saved.filter((k) => now.includes(k));
+      // Bringing one object to the front shifts every other one by a place;
+      // only the one that was moved should get the dot. The objects that kept
+      // their order relative to each other are the longest common run of the
+      // two lists; the rest are the moved ones.
+      if (now.join('\n') !== was.join('\n')) for (const k of outOfOrder(was, now)) out.add(k);
+    }
+    return out;
+  }
+
+  /** placement.json content: every object that differs from its original, plus orphans. */
+  result()                {
+    const objects                                 = {};
+    for (const [k, e] of this.orphans) objects[k] = e;
+    for (const [k, p] of this.current) {
+      if (this.copyFrom.has(k) || this.removed.has(k)) continue;
+      const was = this.was.get(k);
+      if (samePose(p, was, this.dim)) continue;
+      const m = this.meta.get(k);
+      const e                 = { ...roundPose(p, this.dim) };
+      if (was) e.was = roundPose(was, this.dim);
+      if (m?.label && m.label !== k) e.label = m.label;
+      if (m?.unstable) e.unstable = true;
+      objects[k] = e;
+    }
+    const file                = { version: 1, tool: 'placement', dim: this.dim, space: 'local', objects };
+    const order                   = [];
+    // Lists of the file the game does not show now: kept, like orphans.
+    for (const [layer, o] of this.fileOrders) if (!this.layers().includes(layer)) order.push(o);
+    for (const layer of this.layers()) {
+      const keys = this.order(layer);
+      const was = this.wasOrder.get(layer) || [];
+      if (keys.length && keys.join('\n') !== was.join('\n') && keys.join('\n') !== this.expectedOrder(layer).join('\n')) order.push({ in: layer, keys, was });
+    }
+    if (order.length) file.order = order;
+    const added                   = [...this.orphanAdded];
+    for (const k of this.copyOrder) {
+      if (!this.live.has(k)) continue;
+      const a                 = { key: k, from: this.liveFrom(k), ...roundPose(this.current.get(k) , this.dim) };
+      const label = this.meta.get(k)?.label;
+      if (label && label !== k) a.label = label;
+      added.push(a);
+    }
+    if (added.length) file.added = added;
+    const removed = [...this.removed].sort().map((k) => this.removedMeta.get(k) || { key: k });
+    if (removed.length) file.removed = removed;
+    return file;
+  }
+
+  markSaved()       {
+    for (const [k, p] of this.current) this.saved.set(k, { ...p });
+    this.savedCopies.clear();
+    for (const k of this.live) this.savedCopies.set(k, JSON.stringify(roundPose(this.current.get(k) , this.dim)));
+    this.savedRemoved = new Set(this.removed);
+    for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
+  }
+}
+
+__def(__exports, "roundPose", () => roundPose);
+__def(__exports, "samePose", () => samePose);
+__def(__exports, "PlacementModel", () => PlacementModel);
+};
+__defs[16] = function (__exports) {
+'use strict';
+// dom.ts
+
+// Tiny DOM helper. Text always goes through textContent: object names and
+// file names come from the game and the folder and are untrusted.
+                                                             
+
+function h                                       (
+  tag   ,
+  props                          = {},
+  ...children         
+)                           {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') el.className = String(v);
+    else if (k === 'text') el.textContent = String(v);
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v                 );
+    else if (k === 'dataset') Object.assign(el.dataset, v);
+    else if (k in el && typeof v !== 'string') (el                                      )[k] = v;
+    else el.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const c of children) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return el;
+}
+
+/** Only PNG/JPEG/WebP data URLs are shown as images (never SVG from the game). */
+function safeImageSrc(src                           )                {
+  return src && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src) ? src : null;
+}
+
+__def(__exports, "h", () => h);
+__def(__exports, "safeImageSrc", () => safeImageSrc);
+};
+__defs[17] = function (__exports) {
+'use strict';
+// i18n.ts
+
+// Shell strings in English and Japanese. English is the fallback for any
+// missing key, so a new string only needs English to ship.
+// How to word them (select not pick, Duplicate, “curly quotes”, contractions,
+// US spelling): docs/VOICE.md. Plurals: {n:one|other}, see plural() below.
+                                           
+
+const en = {
+  'app.title': 'Game Studio',
+  'tool.placement': 'Scene',
+  'placement.scrub': 'Drag left or right to change it (hold Shift for finer steps). Click to type a number.',
+  'placement.unsaved': 'Not saved yet',
+  'card.assets': 'Assets',
+  'card.assetOpen': 'Open in Assets',
+  'ai.mark': 'AI',
+  'ai.markMoved': 'Moved by your AI’s last change (things that move on their own, like a drifting cloud, can show this too)',
+  'ai.markAdded': 'Added by your AI’s last change',
+  'ai.show': 'Show the {n} it changed',
+  'ai.gone': '{n:1 object was removed from the game|# objects were removed from the game}',
+  'ai.samePlaces': 'Nothing moved. The change is in how things look or behave.',
+  'rule.grid': 'Grid {g}',
+  'rule.angle': '{a}° steps',
+  'rule.height': 'Height locked',
+  'rule.noTurn': 'Turning locked',
+  'rule.noSize': 'Size locked',
+  'rule.size': 'Size {min}–{max}',
+  'undo.move': 'move {name}',
+  'undo.copy': 'duplicate {name}',
+  'undo.remove': 'delete {name}',
+  'undo.edit': 'change {name}',
+  'undo.n': '{n} objects',
+  'tool.library': 'Assets',
+  'btn.undo': 'Undo',
+  'btn.redo': 'Redo',
+  'btn.save': 'Save',
+  'btn.saved': 'Saved',
+  'btn.play': 'Play',
+  'btn.edit': 'Edit',
+  'btn.next': 'Ideas',
+  'btn.list': 'Objects',
+  'btn.back': 'Back',
+  'btn.close': 'Close',
+  'play.confirm': '{n:You have 1 unsaved change|You have # unsaved changes}. Play without saving?',
+  'btn.frame': 'Show all',
+  'btn.lang': '日本語',
+  'save.unsaved': '{n} unsaved',
+  'save.ok': 'Saved. Type “look” in your AI’s window to update the game.',
+  'save.fail': 'Couldn’t save: {error}',
+  'status.loading': 'Opening your game…',
+  'status.waiting': 'Waiting for the game to start…',
+  'status.noAdapter': 'This game isn’t connected to Game Studio yet.',
+  'status.noAdapterHint': 'three.js games connect on their own. For other engines, ask your AI to “write the Game Studio adapter for this game.”',
+  'status.checkFail': 'This game’s adapter needs a fix. Your AI has the details.',
+  // Never stuck (polish pass 2026-10-16): what broke, then what to do, in one line.
+  'status.gameError': 'The game stopped on an error:',
+  'status.gameErrorHint': 'Ask your AI to fix it, then reload. The editor still works.',
+  'status.gameErrorToast': 'The game stopped on an error ({msg}). Ask your AI to fix it.',
+  'status.adapterError': 'The editor couldn’t read this game ({msg}). Ask your AI to “fix the Game Studio adapter,” then reload.',
+  'btn.reloadGame': 'Reload',
+  'status.playing': 'Playing the game as the code is now. Your moves show up here once your AI adds them to the code. Switch to Edit to keep arranging.',
+  'status.playingShort': 'Playing',
+  'status.items': 'Finding objects you can move…',
+  'placement.empty': 'No movable objects found.',
+  'placement.select': 'Select an object in the game, or choose one here.',
+  'placement.askAi': 'Want rules for this game, like a grid, 90° turns, or things that can’t move? Just ask your AI: “snap to a 1 m grid.”',
+  'placement.unstable': 'This object has no name. Name it so your layout still finds it after the code changes.',
+  'placement.fine': 'Exact values',
+  'ask.none': 'Select an object, then ask your AI…',
+  'noname.tag': 'Unnamed',
+  // An object without a name in the list, called by its kind (names.ts; polish pass 2026-10-16).
+  'noname.kind.picture': 'Unnamed image',
+  'noname.kind.text': 'Unnamed text',
+  'noname.kind.shape': 'Unnamed shape',
+  'noname.kind.group': 'Unnamed group',
+  'noname.kind.model': 'Unnamed model',
+  'noname.kind.object': 'Unnamed object',
+  'ops.multiDone': 'Done',
+  'layer.posTip': 'Layer {i} of {n} (from front)',
+  // The ask box at the top of the card (UI/UX 2026-10-16, "AI partner").
+  'ask.one': 'Ask your AI about “{name}”…',
+  'ask.hint': 'Try “add 3 more in a row” or “make it glow”',
+  'ask.many': 'Ask your AI about the {n} selected',
+  'ask.send': 'Send',
+  'ask.sent': 'Sent. You can keep editing.',
+  'ask.game': 'Ask your AI to change the game…',
+  'ai.waitingSaved': 'Saved and sent to your AI. Waiting for a reply…',
+  'ai.waitingAsk': '“{text}” sent to your AI. Waiting for a reply…',
+  'ai.asked': '“{text}” →',
+  'ask.fail': 'Couldn’t send it to your AI. Try again, or tell your AI in its own window.',
+  'ask.name': 'Ask your AI to name it',
+  'ask.nameSent': 'Asked your AI to name them.',
+  'noname.count': '{n} unnamed',
+  // One line about the hand-off to the AI (requests and the AI's status).
+  'ai.waiting': 'Sent your {what} to your AI. Waiting for a reply…',
+  'ai.nudge': 'Your AI hasn’t seen this yet. Type “look” in your AI’s window.',
+  'ai.received': 'Your AI has it',
+  'ai.working': 'Your AI is working on it…',
+  'ai.done': 'Done.',
+  'ai.done1': '1 thing changed',
+  'ai.doneN': '{n} things changed',
+  'ai.failed': 'Your AI stopped before finishing.',
+  'ai.reload': 'Reload the game',
+  // AI feel (2026-10-16): the line above the input, from Enter to the change on screen.
+  'ai.sent': 'Sent to your AI',
+  'ai.seen': 'Your AI has it',
+  'ai.savedSub': 'Your layout is saved',
+  'ai.away': 'Your AI isn’t watching this editor',
+  'ai.awaySub': 'Type “look” in Claude Code or Codex, or run /arrange in this folder. Your request is saved, and you can keep moving things and saving without your AI.',
+  'ai.updating': 'Updating the game…',
+  'ai.undo': 'Undo AI change',
+  'ai.redo': 'Redo',
+  'ai.undone': 'Back to before your AI’s change',
+  'ai.undoneSub': 'Your AI gets a note about it.',
+  'ai.redone': 'Your AI’s change is back',
+  'ai.undoFail': 'Couldn’t undo it here. Ask your AI to undo its last change.',
+  'ai.reloadConfirm': '{n:You have 1 unsaved change|You have # unsaved changes}. Reload the game anyway?',
+  'ai.what.ask': 'request',
+  'ai.what.name': 'naming request',
+  'ai.what.saved': 'saved layout',
+  'ai.what.next-step': 'request',
+  'placement.pos': 'Position',
+  'placement.rot': 'Angle',
+  'placement.scale': 'Size',
+  'placement.tilt': 'Tilt',
+  'placement.help': 'Select an object, then drag its handles. Drag anywhere else to look around; scroll or pinch to zoom.',
+  'library.missing': 'The Assets tool isn’t in this build.',
+  'next.title': 'Ideas for your AI',
+  'next.intro': 'Choose one to send it to your AI. It checks with you before starting.',
+  'next.group.game': 'In this game',
+  'next.group.kumodeck': 'With KUMODeck (optional)',
+  'next.kumodeckIntro': 'Game Studio never uploads anything on its own. Your AI does these with your KUMODeck account, after checking with you.',
+  'next.fit': 'Fit the editor to this game',
+  'next.fit.desc': 'A grid, 90° turns, things that can’t move, keeping objects inside the play area.',
+  'next.look': 'Change how the editor looks',
+  'next.look.desc': 'Where the list goes, colors, bigger buttons, fewer buttons.',
+  'next.tool': 'Add a tool for this game',
+  'next.tool.desc': 'A tool just for this game, like drawing a race track or painting tiles.',
+  'next.prompt.fit': 'Fit the Game Studio editor to this game, for example: snap to a 1 m grid and turn in 90° steps.',
+  'next.prompt.look': 'Change how the Game Studio editor looks, for example: list on the left, light colors, bigger buttons.',
+  'next.prompt.tool': 'Add a Game Studio tool for this game, for example: draw the course with the mouse.',
+  'next.publish': 'Publish to KUMODeck',
+  'next.publish.desc': 'Put this game online as a private test version with its own link, then publish it when you’re ready.',
+  'next.multiplayer': 'Add online multiplayer',
+  'next.multiplayer.desc': 'Rooms, quick match, and invite links or QR codes so friends can play together.',
+  'next.save-data': 'Add saves and a leaderboard',
+  'next.save-data.desc': 'Save players’ progress and build a leaderboard with your own server functions and database.',
+  'next.ai-assets': 'Make 3D models and images with AI',
+  'next.ai-assets.desc': 'Generate models and images and drop them into this folder. They show up in Assets.',
+  'next.cost': 'Needs a KUMODeck account. Prepaid credits: you pay only what it costs to run, with no platform fee.',
+  'next.pricing': 'See pricing',
+  'next.ask': 'Ask my AI',
+  'next.copy': 'Copy request',
+  'next.edit': 'What to ask (you can edit this)',
+  'next.copied': 'Copied. Paste it into your AI.',
+  'next.sent': 'Sent to your AI (the line under the game shows how it’s going). It checks with you before starting.',
+  'next.prompt.publish': 'Publish this game to KUMODeck as a test version. Check with me before signing in or uploading anything.',
+  'next.prompt.multiplayer': 'Add online multiplayer to this game with KUMODeck. Explain the plan and check with me before changing code.',
+  'next.prompt.save-data': 'Add save data and a leaderboard to this game with KUMODeck. Explain the plan and check with me before changing code.',
+  'next.prompt.ai-assets': 'Help me make 3D models or images for this game with KUMODeck’s AI tools. Check with me before generating anything.',
+  'btn.settings': 'View',
+  'ui.title': 'Editor view',
+  'ui.aiLook': 'Your AI changed how this editor looks for this game.',
+  'ui.aiLookOff': 'Open without it',
+  'ui.intro': 'Changes apply right away and stay with this game.',
+  'ui.lang': 'Language',
+  // Each language in its own name, the same in both tables, so it can be found
+  // whatever the editor is showing now.
+  'ui.lang.ja': '日本語',
+  'ui.lang.en': 'English',
+  'ui.panel': 'Panel',
+  'ui.panel.right': 'Right',
+  'ui.panel.left': 'Left',
+  'ui.panel.bottom': 'Bottom',
+  'ui.width': 'Panel width',
+  'ui.height': 'Panel height',
+  'ui.theme': 'Colors',
+  'ui.theme.dark': 'Dark',
+  'ui.theme.light': 'Light',
+  'ui.theme.auto': 'Match system',
+  'ui.fontSize': 'Text size',
+  'ui.handleSize': 'Handle size',
+  'ui.show': 'Show',
+  'ui.show.thumbs': 'Thumbnails in the list',
+  'ui.show.numbers': 'Position numbers',
+  'ui.show.help': 'Tips line',
+  'ui.show.adapter': 'Engine name',
+  'ui.show.play': 'Play button',
+  'ui.show.frame': 'Show all button',
+  'ui.show.lang': 'Language button in the top bar',
+  'ui.show.next': 'Ideas for your AI',
+  'ui.show.tools': 'Game tools',
+  'ui.reset': 'Reset to default',
+  'tools.title': 'Game tools',
+  'tools.off': 'No tool',
+  'placement.resetSize': 'Reset size',
+  'placement.locked': 'Locked by this game’s settings',
+  'layer.title': 'Layer',
+  'layer.toBack': 'Send to back',
+  'layer.backward': 'Send backward',
+  'layer.forward': 'Bring forward',
+  'layer.toFront': 'Bring to front',
+  'layer.drag': 'Drag to change the layer order',
+  'layer.backdrop': 'Ground or background. It stays at the back so nothing hides behind it.',
+  'layer.front': 'Front',
+  'layer.back': 'Back',
+  // Copy, delete, several at once (CONTRACT.md §1.8)
+  'ops.copy': 'Duplicate',
+  'ops.copyHint': 'Duplicate it next to the original. Press again for another at the same spacing',
+  'ops.remove': 'Delete',
+  'ops.removeHint': 'Remove it from the game (Undo brings it back)',
+  'ops.selectKind': 'Select all {n} like this',
+  'ops.selectKindShort': 'All {n}',
+  'ops.many': '{n} selected',
+  'ops.groupHint': 'The handles move, turn (around the center), and resize them all together.',
+  'ops.lockedSkipped': 'Some are locked by this game’s settings, so they stay put.',
+  'ops.selectNone': 'Deselect',
+  'ops.copyNote': 'Duplicate of {from}. It shows up in Play right away; save, and your AI adds it to the code.',
+  'ops.ghostNote': 'Duplicate of {from}, shown see-through because this game’s adapter can’t duplicate objects itself. It becomes real once your AI adds it to the code.',
+  'ops.copyTag': 'duplicate',
+  'ops.ghostTag': 'placeholder',
+  'ops.selectAllOf': 'Select everything in this list',
+  'ops.multi': 'Multi-select',
+  'ops.multiHint': 'Add or remove objects from the selection instead of replacing it. With a mouse, you can also drag a box from an empty spot.',
+  'ops.multiOn': 'Click objects to add or remove them, or drag a box from an empty spot.',
+  'ops.multiOff': 'Or Shift-click, Shift-drag a box, or press {all} for all.',
+  'ops.multiOnPhone': 'Tap objects to add them. Tap one again to remove it.',
+  'ops.multiOffPhone': 'To select several, turn this on, then tap them one by one.',
+  'ops.expand': 'Expand',
+  'ops.collapse': 'Collapse',
+  'ops.selectGroup': 'Select all {n}',
+  'copy.ghost': 'Duplicates show see-through here because this game’s adapter can’t duplicate objects itself. Save, and your AI adds them to the code.',
+  'copy.failed': '{n:1 object couldn’t be duplicated.|# objects couldn’t be duplicated.}',
+  'check.adapter-found': 'No adapter found',
+  'check.has-objects': 'The adapter lists no objects',
+  'check.keys-valid': 'Some keys are invalid or duplicated',
+  'check.pose-roundtrip': 'A moved object doesn’t report its new position',
+  'check.screen-changes': 'Moving an object doesn’t change what’s on screen',
+  'check.anchor-follows': 'The handles don’t follow the object',
+  'check.restored': 'The test move wasn’t undone exactly',
+  // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
+  'app.brand': 'Studio',
+  'list.title': 'Objects',
+  'foot.palette': 'All actions',
+  'save.unsavedTip': '{n:1 unsaved change|# unsaved changes}. Save writes placement.json and sends it to your AI, which updates the game’s code',
+  'save.savedTip': 'Saved and sent to your AI',
+  'peer.label': 'AI',
+  'peer.idle': 'No reply from your AI yet',
+  'peer.live': 'Your AI has replied since you opened the editor',
+  'peer.busy': 'Your AI is working on your request',
+  'peer.watching': 'Your AI is watching this editor',
+  'peer.away': 'Your AI isn’t watching. Type “look” in its window, or run /arrange in this folder.',
+  'ask.chipOne': 'Ask your AI…',
+  'ask.chipMany': 'Ask your AI about these…',
+  'ops.manyShort': '{n} selected',
+  'pal.title': 'Ask your AI or search actions',
+  'pal.ask': 'Ask your AI',
+  'pal.actions': 'Actions',
+  'pal.kumodeck': 'With KUMODeck (optional)',
+  'pal.objects': 'In the scene',
+  'pal.askThis': 'Ask your AI: “{text}”',
+  'pal.ex.row': 'Add 3 more of {name} in a row',
+  'pal.ex.glow': 'Make {name} glow',
+  'pal.ex.night': 'Make it nighttime',
+  'pal.ex.name': 'Name the unnamed objects',
+  'pal.play': 'Play the game',
+  'pal.assets': 'Open Assets',
+  'pal.scene': 'Back to the scene',
+  'pal.selectAll': 'Select all',
+  'pal.home': 'Back to the opening view',
+  'pal.home.words': 'start camera reset view home game camera',
+  'pal.multi': 'Multi-select',
+  'pal.look': 'Editor view…',
+  'pal.lang': '日本語で表示',
+  'pal.ideas': 'Ideas for your AI…',
+  'pal.count': '{n}',
+  'pal.tool.move': 'Move tool — drag anywhere',
+  'pal.tool.lift': 'Height tool — drag up or down',
+  'pal.tool.rotate': 'Turn tool — drag sideways',
+  'pal.tool.scale': 'Size tool — drag right to grow',
+  'pal.tool.words': 'tool strip move height turn rotate tilt size scale 道具',
+  // The first-run intro (intro.ts): one line per step, the next thing only.
+  'intro.pick': 'Click an object to select it · {k} for all actions',
+  'intro.pickPhone': 'Tap an object to select it',
+  'intro.move': 'Now drag it to move it',
+  'intro.ask': 'Ask your AI in the box below — try “add 3 more like this”',
+  'intro.save': 'Click Save ({k}) and your AI updates the game',
+  'intro.savePhone': 'Tap Save and your AI updates the game',
+  'intro.close': 'Hide tips',
+  'ai.tagAdded': 'AI added {n}',
+  'ai.tagMoved': 'AI moved {n}',
+  'ai.tagChanged': 'AI changed {n}',
+};
+
+                           
+
+const ja                               = {
+  'app.title': 'ゲームスタジオ',
+  'tool.placement': 'シーン',
+  'placement.scrub': '左右に引くと変わります（Shift で細かく）。クリックで数字を打てます。',
+  'placement.unsaved': 'まだ保存していません',
+  'card.assets': '素材',
+  'card.assetOpen': '素材で開く',
+  'ai.mark': 'AI',
+  'ai.markMoved': 'AI の直しで場所が変わった物です（漂う雲のように自分で動く物にも付くことがあります）',
+  'ai.markAdded': 'AI の直しで増えた物です',
+  'ai.show': '変わった {n} 個を見る',
+  'ai.gone': 'ゲームからなくなった物が {n} 個あります',
+  'ai.samePlaces': '置き場所は変わっていません。見た目か動きの直しです。',
+  'rule.grid': 'マス目 {g}',
+  'rule.angle': '{a}° ずつ',
+  'rule.height': '高さは固定',
+  'rule.noTurn': '回転は固定',
+  'rule.noSize': '大きさは固定',
+  'rule.size': '大きさ {min}〜{max}',
+  'undo.move': '{name} を移動',
+  'undo.copy': '{name} を複製',
+  'undo.remove': '{name} を削除',
+  'undo.edit': '{name} を変更',
+  'undo.n': '{n} 個',
+  'tool.library': '素材',
+  'btn.undo': '戻す',
+  'btn.redo': '進む',
+  'btn.save': '保存',
+  'btn.saved': '保存済み',
+  'btn.play': '遊ぶ',
+  'btn.edit': '編集',
+  'btn.next': '頼めること',
+  'btn.list': '一覧',
+  // Not the usual word for "back": it sat next to the Undo button and the two
+  // words differ by one character, so people pressed the wrong one.
+  'btn.back': '前へ',
+  'btn.close': '閉じる',
+  'play.confirm': 'まだ保存していない変更が {n} 個あります。保存せずに遊びますか？',
+  'btn.frame': '全体を見る',
+  'btn.lang': 'English',
+  'save.unsaved': '未保存 {n}',
+  'save.ok': '保存しました。AI の画面で「見て」と打つと、ゲームに反映されます。',
+  'save.fail': '保存できませんでした: {error}',
+  'status.loading': 'ゲームを開いています…',
+  'status.waiting': 'ゲームの起動を待っています…',
+  'status.noAdapter': 'このゲームはまだ Game Studio につながっていません。',
+  'status.noAdapterHint': 'three.js のゲームは自動でつながります。ほかのエンジンは AI に「このゲームの Game Studio のつなぎを書いて」と頼んでください。',
+  'status.checkFail': 'このゲームのつなぎ（アダプター）に直す所があります。詳しくは AI に送りました。',
+  'status.gameError': 'ゲームがエラーで止まりました:',
+  'status.gameErrorHint': 'AI に直してもらってから、読み込み直してください。エディタはそのまま使えます。',
+  'status.gameErrorToast': 'ゲームがエラーで止まりました（{msg}）。AI に直すよう頼んでください。',
+  'status.adapterError': 'エディタがこのゲームを読めませんでした（{msg}）。AI に「Game Studio のつなぎを直して」と頼んで、読み込み直してください。',
+  'btn.reloadGame': '読み込み直す',
+  'status.playing': '今のコードのまま遊んでいます。動かした配置は、AI がコードに入れるとここに出ます。「編集」で続けて並べられます。',
+  'status.playingShort': '遊んでいます',
+  'status.items': '動かせる物を探しています…',
+  'placement.empty': '動かせる物が見つかりません。',
+  'placement.select': 'ゲームの中の物をクリックするか、ここから選んでください。',
+  'placement.askAi': 'マス目・90° ずつの回転・動かさない物など、このゲームの決まりは AI に頼めます。例:「1 m のマス目に合わせて」',
+  'placement.unstable': '名前のない物です。名前を付けると、コードが変わっても配置がずれません。',
+  'placement.fine': '数値で合わせる',
+  'ask.none': '物を選んで、AI に頼む…',
+  'noname.tag': '名前なし',
+  'noname.kind.picture': '名前のない絵',
+  'noname.kind.text': '名前のない文字',
+  'noname.kind.shape': '名前のない形',
+  'noname.kind.group': '名前のないまとまり',
+  'noname.kind.model': '名前のないモデル',
+  'noname.kind.object': '名前のない物',
+  'ops.multiDone': '完了',
+  'layer.posTip': '重なり {i} / {n}（手前から）',
+  'ask.one': '「{name}」について AI に頼む…',
+  'ask.hint': '例:「あと 3 つ並べて」「光らせて」',
+  'ask.many': '選んだ {n} 個について AI に頼む',
+  'ask.send': '送る',
+  'ask.sent': '送りました。編集はそのまま続けられます。',
+  'ai.waitingSaved': '保存して AI に送りました。返事を待っています…',
+  'ai.waitingAsk': '「{text}」を AI に送りました。返事を待っています…',
+  'ai.asked': '「{text}」→',
+  'ask.fail': 'AI に送れませんでした。もう一度送るか、AI の画面で直接頼んでください。',
+  'ask.name': 'AI に名前を付けてもらう',
+  'ask.nameSent': 'AI に名前付けを頼みました。',
+  'noname.count': '名前なし {n} 個',
+  'ai.waiting': '{what}を AI に送りました。返事を待っています…',
+  'ai.nudge': 'AI はまだ見ていません。AI の画面で「見て」と打ってください。',
+  'ai.received': 'AI が受け取りました',
+  'ai.working': 'AI が作業中です…',
+  'ai.done': '直しました。',
+  'ai.done1': '1 個変わりました',
+  'ai.doneN': '{n} 個変わりました',
+  'ai.failed': 'AI が途中で止まりました。',
+  'ai.reload': 'ゲームを開き直す',
+  'ai.sent': 'AI に送りました',
+  'ai.seen': 'AI が受け取りました',
+  'ai.savedSub': '配置は保存しました',
+  'ai.away': 'AI はこのエディタを見ていません',
+  'ai.awaySub': 'Claude Code か Codex で「見て」と打つか、このフォルダで /arrange を実行してください。頼みは残っています。動かす・保存は AI なしでもできます。',
+  'ai.updating': 'ゲームを新しくしています…',
+  'ai.undo': 'AI の直しを戻す',
+  'ai.redo': 'やり直す',
+  'ai.undone': 'AI が直す前に戻しました',
+  'ai.undoneSub': 'AI にも知らせました。',
+  'ai.redone': 'AI の直しをもう一度入れました',
+  'ai.undoFail': 'ここでは戻せませんでした。AI に「さっきの直しを戻して」と頼んでください。',
+  'ai.reloadConfirm': 'まだ保存していない変更が {n} 個あります。それでもゲームを開き直しますか？',
+  'ai.what.ask': '頼み',
+  'ai.what.name': '名前の頼み',
+  'ai.what.saved': '保存した配置',
+  'ai.what.next-step': '頼み',
+  'placement.pos': '位置',
+  'placement.rot': '向き',
+  'placement.scale': '大きさ',
+  'placement.tilt': '傾き',
+  'placement.help': '物を選んで、つまみを引きます。ほかの所を引くと見回せます。ホイールかピンチで寄れます。',
+  'library.missing': 'この版には素材の道具が入っていません。',
+  'next.title': 'AI に頼めること',
+  'next.intro': '選ぶと AI に送ります。AI は始める前にあなたに確認します。',
+  'next.group.game': 'このゲームで',
+  'next.group.kumodeck': 'KUMODeck で（使わなくても大丈夫）',
+  'next.kumodeckIntro': 'Game Studio が勝手にアップロードすることはありません。あなたの KUMODeck アカウントで、AI が確認してから進めます。',
+  'next.fit': 'このゲームに合わせる',
+  'next.fit.desc': 'マス目・90° ずつの回転・動かさない物・枠からはみ出さない、など。',
+  'next.look': '見た目を変える',
+  'next.look.desc': '一覧の場所・色・大きなボタン・ボタンを減らす、など。',
+  'next.tool': '道具を足す',
+  'next.tool.desc': 'コースを引く・タイルを塗る、などこのゲーム専用の道具。',
+  'next.prompt.fit': 'Game Studio のエディタをこのゲームに合わせて。例: 1 マス 1 m に合わせる・90° ずつ回す。',
+  'next.prompt.look': 'Game Studio のエディタの見た目を変えて。例: 一覧を左に・明るい色・ボタンを大きく。',
+  'next.prompt.tool': 'このゲーム専用の Game Studio の道具を足して。例: マウスでコースを引く道具。',
+  'next.publish': 'KUMODeck に公開',
+  'next.publish.desc': '自分だけの URL のテスト版としてオンラインに出し、準備ができたら公開します。',
+  'next.multiplayer': 'オンライン対戦を足す',
+  'next.multiplayer.desc': '部屋・クイックマッチ・招待リンクや QR で、友だちと一緒に遊べます。',
+  'next.save-data': 'セーブとランキングを足す',
+  'next.save-data.desc': 'プレイヤーの進み具合を保存し、自分のサーバー関数とデータベースでランキングを作ります。',
+  'next.ai-assets': 'AI で 3D モデル・画像を作る',
+  'next.ai-assets.desc': 'モデルや画像を作ってこのフォルダに置くと、素材に出ます。',
+  'next.cost': 'KUMODeck のアカウントが要ります。前払いのクレジットで、払うのは動かした分の実費だけです（手数料なし）。',
+  'next.pricing': '料金を見る',
+  'next.ask': 'AI に頼む',
+  'next.copy': '頼む文をコピー',
+  'next.edit': '頼む文（直せます）',
+  'next.copied': 'コピーしました。AI に貼り付けてください。',
+  'next.sent': 'AI に送りました（様子はゲームの下の行に出ます）。始める前に AI があなたに確認します。',
+  'next.prompt.publish': 'このゲームを KUMODeck にテスト版として公開して。ログインやアップロードの前に私に確認して。',
+  'next.prompt.multiplayer': 'KUMODeck でこのゲームにオンライン対戦を足して。コードを変える前に計画を説明して確認して。',
+  'next.prompt.save-data': 'KUMODeck でこのゲームにセーブとランキングを足して。コードを変える前に計画を説明して確認して。',
+  'next.prompt.ai-assets': 'KUMODeck の AI の道具で、このゲームの 3D モデルや画像を作るのを手伝って。作る前に私に確認して。',
+  'btn.settings': '見た目',
+  'ui.title': 'エディタの見た目',
+  'ui.aiLook': 'このゲームでは、AI が変えた見た目を使っています。',
+  'ui.aiLookOff': '外して開く',
+  'ui.intro': '変えるとすぐ反映され、このゲームに残ります。',
+  'ui.lang': '言語',
+  'ui.panel': '一覧の場所',
+  'ui.panel.right': '右',
+  'ui.panel.left': '左',
+  'ui.panel.bottom': '下',
+  'ui.width': '一覧の幅',
+  'ui.height': '一覧の高さ',
+  'ui.theme': '色',
+  'ui.theme.dark': '暗い',
+  'ui.theme.light': '明るい',
+  'ui.theme.auto': '端末に合わせる',
+  'ui.fontSize': '文字の大きさ',
+  'ui.handleSize': 'つまみの大きさ',
+  'ui.show': '出すもの',
+  'ui.show.thumbs': '一覧のサムネイル',
+  'ui.show.numbers': '位置の数字',
+  'ui.show.help': '案内の行',
+  'ui.show.adapter': 'エンジンの名前',
+  'ui.show.play': '「遊ぶ」ボタン',
+  'ui.show.frame': '「全体を見る」ボタン',
+  'ui.show.lang': '上のバーの言語ボタン',
+  'ui.show.next': '次に頼めること',
+  'ui.show.tools': 'ゲーム専用の道具',
+  'ui.reset': '最初の見た目に戻す',
+  'tools.title': 'ゲーム専用の道具',
+  'tools.off': '道具なし',
+  'placement.resetSize': '大きさを戻す',
+  'placement.locked': 'このゲームの設定で固定されています',
+  'layer.title': '重なり',
+  'layer.toBack': 'いちばん奥へ',
+  'layer.backward': '奥へ',
+  'layer.forward': '手前へ',
+  'layer.toFront': 'いちばん手前へ',
+  'layer.drag': '引いて重なり順を変える',
+  'layer.backdrop': '地面・背景です。物が後ろに隠れないよう、いちばん奥に置いたままにします。',
+  'layer.front': '手前',
+  'layer.back': '奥',
+  'ops.copy': '複製',
+  'ops.copyHint': '隣に複製します。続けて押すと同じ間隔で並びます',
+  'ops.remove': '削除',
+  'ops.removeHint': 'ゲームから外します（「戻す」で元に戻ります）',
+  'ops.selectKind': '同じ種類を全部選ぶ（{n}）',
+  'ops.selectKindShort': '全部 {n}',
+  'ops.many': '{n} 個を選択',
+  'ops.groupHint': 'つまみで、まとめて動かす・回す（真ん中を軸に）・大きさを変えられます。',
+  'ops.lockedSkipped': 'このゲームの設定で固定されている物は、そのまま動きません。',
+  'ops.selectNone': '選択を外す',
+  'ops.copyNote': '{from} の複製です。▶ 遊ぶですぐ出ます。保存すると、AI がコードに足します。',
+  'ops.ghostNote': '{from} の複製です。このゲームのつなぎは物を複製できないので、半透明の仮の姿で出しています。AI がコードに足すと本物になります。',
+  'ops.copyTag': '複製',
+  'ops.ghostTag': '仮',
+  'ops.selectAllOf': 'この一覧の物を全部選ぶ',
+  'ops.multi': '複数選択',
+  'ops.multiHint': '押した物を選択に足したり外したりします（入れ替えません）。マウスなら、何も無い所から引いて枠で囲めます。',
+  'ops.multiOn': '物を押すと足す・もう一度押すと外す。何も無い所から引くと枠で囲めます。',
+  'ops.multiOff': 'Shift を押しながらクリック・枠で囲む・{all} で全部、でも選べます。',
+  'ops.multiOnPhone': '物をタップすると足せます。もう一度タップすると外れます。',
+  'ops.multiOffPhone': 'いくつか選ぶときは、ここをオンにしてから 1 つずつタップします。',
+  'ops.expand': '広げる',
+  'ops.collapse': 'たたむ',
+  'ops.selectGroup': '{n} 個を全部選ぶ',
+  'copy.ghost': 'このゲームのつなぎは物を複製できないので、複製は半透明の仮の姿で出しています。保存すると、AI がコードに足します。',
+  'copy.failed': '{n} 個は複製できませんでした。',
+  'check.adapter-found': 'つなぎが見つかりません',
+  'check.has-objects': 'つなぎが物を 1 つも返しません',
+  'check.keys-valid': 'key の形が違うか、重なっています',
+  'check.pose-roundtrip': '動かした位置を読み戻せません',
+  'check.screen-changes': '動かしても画面の絵が変わりません',
+  'check.anchor-follows': 'つまみが物に付いてきません',
+  'check.restored': '試しに動かした物が元に戻りません',
+  'app.brand': 'Studio',
+  'list.title': '物',
+  'foot.palette': 'すべての操作',
+  'save.unsavedTip': 'まだ保存していない変更が {n} 個あります。保存すると placement.json に書いて AI に送り、AI がゲームのコードに反映します',
+  'save.savedTip': '保存して AI に送りました',
+  'peer.label': 'AI',
+  'peer.idle': 'AI からの返事はまだありません',
+  'peer.live': 'このエディタを開いてから、AI が返事をしました',
+  'peer.busy': 'AI が頼みに取りかかっています',
+  'peer.watching': 'AI がこのエディタを見ています',
+  'peer.away': 'AI は見ていません。AI の画面で「見て」と打つか、このフォルダで /arrange を実行してください。',
+  'ask.chipOne': 'AI に頼む…',
+  'ask.chipMany': 'これらについて AI に頼む…',
+  'ops.manyShort': '{n} 個を選択',
+  'pal.title': 'AI に頼むか、操作を探す',
+  'pal.ask': 'AI に頼む',
+  'pal.actions': '操作',
+  'pal.kumodeck': 'KUMODeck で（使わなくても大丈夫）',
+  'pal.objects': 'シーンの物',
+  'pal.askThis': '「{text}」を AI に頼む',
+  'pal.ex.row': '{name} をあと 3 つ並べて',
+  'pal.ex.glow': '{name} を光らせて',
+  'pal.ex.night': '夜にして',
+  'pal.ex.name': '名前のない物に名前を付けて',
+  'pal.play': '遊んでみる',
+  'pal.assets': '素材を開く',
+  'pal.scene': 'シーンに戻る',
+  'pal.selectAll': '全部選ぶ',
+  'pal.home': '開いた時の眺めに戻る',
+  'pal.home.words': '最初 視点 カメラ 戻す ホーム',
+  'pal.multi': '複数選択',
+  'pal.look': 'エディタの見た目…',
+  'pal.lang': 'Show in English',
+  'pal.ideas': 'AI に頼めること…',
+  'pal.count': '{n} 個',
+  'pal.tool.move': '移動の道具 — どこでも引く',
+  'pal.tool.lift': '高さの道具 — 上下に引く',
+  'pal.tool.rotate': '回す道具 — 横に引く',
+  'pal.tool.scale': '大きさの道具 — 右に引くと大きく',
+  'pal.tool.words': '道具 移動 高さ 回す 大きさ tool move height turn size',
+  'intro.pick': '物をクリックして選ぶ · {k} ですべての操作',
+  'intro.pickPhone': '物をタップして選ぶ',
+  'intro.move': 'そのまま引くと動きます',
+  'intro.ask': '下の欄で AI に頼めます。「これをあと 3 つ」など',
+  'intro.save': '保存（{k}）を押すと、AI がゲームを直します',
+  'intro.savePhone': '保存を押すと、AI がゲームを直します',
+  'intro.close': '案内を隠す',
+  'ai.tagAdded': 'AI が足した {n} 個',
+  'ai.tagMoved': 'AI が動かした {n} 個',
+  'ai.tagChanged': 'AI が変えた {n} 個',
+  'ask.game': 'AI にゲームの直しを頼む…',
+};
+
+const TABLES                                             = { en, ja };
+/** Strings added or replaced by .studio/ui/shell.js (studioShell.setText). */
+const EXTRA                                       = { en: {}, ja: {} };
+
+function setExtraText(lang      , strings                        )       {
+  for (const [k, v] of Object.entries(strings || {})) if (typeof v === 'string') EXTRA[lang][k] = v;
+}
+
+function detectLang(search        , navLang        )       {
+  const q = new URLSearchParams(search).get('lang');
+  if (q === 'en' || q === 'ja') return q;
+  return navLang.toLowerCase().startsWith('ja') ? 'ja' : 'en';
+}
+
+function translate(lang      , key        , vars                                  = {})         {
+  const s = EXTRA[lang][key] ?? (TABLES[lang]                          )[key] ?? EXTRA.en[key] ?? (en                          )[key] ?? key;
+  return plural(s, vars).replace(/\{(\w+)\}/g, (_m, k) => (k in vars ? String(vars[k]) : `{${k}}`));
+}
+
+/**
+ * "{n:1 unsaved change|# unsaved changes}" → the first part when n is 1, else the second with # = n.
+ * WHY (words pass 2026-10-17): "1 change(s)" read as machine output to North American players
+ * (play test 2026-10-16). Japanese has no plural, so the ja table just uses {n}. Also used by
+ * the Assets strings (tools/library/strings.ts).
+ */
+function plural(s        , vars                                  = {})         {
+  return s.replace(/\{(\w+):([^{}|]*)\|([^{}]*)\}/g, (m, k        , one        , other        ) =>
+    k in vars ? (Number(vars[k]) === 1 ? one : other).replace(/#/g, String(vars[k])) : m);
+}
+
+__def(__exports, "setExtraText", () => setExtraText);
+__def(__exports, "detectLang", () => detectLang);
+__def(__exports, "translate", () => translate);
+__def(__exports, "plural", () => plural);
+};
+__defs[18] = function (__exports) {
+'use strict';
+// icons.ts
+
+// Line icons for the shell, drawn here (no icon font, no images from a
+// third party). One grid for all of them: 20×20 view box, 1.5 px stroke, round
+// ends, `currentColor`, so every icon takes the button's text colour and
+// weight and they read as one family next to the system font.
+//
+// WHY drawn icons instead of the Unicode signs used before (↶ ↷ ⚙ ⋯ ⧉): the
+// signs came from whatever font the system picked, at different sizes and
+// weights per OS, and sat off the text baseline. A tool that should disappear
+// behind the game cannot have its few marks look accidental (design pass
+// 2026-10-16, "apple").
+//
+// Visual pass 2026-10-16 ("visual"): the first set mixed stroke weights
+// (1.6 lines, 2.6 dots, 1.0 on the filled ones), square and round corners,
+// and marks of different optical size, so a row of them looked drawn by
+// three hands. One rule now, the way a Mac pro app's symbol set is built:
+//   - 20×20 grid, artwork inside a 14 px live area (3..17), centred;
+//   - every line is 1.5 px ON SCREEN (vector-effect: non-scaling-stroke, the
+//     width comes from CSS --studio-icon-stroke), whatever size the icon is
+//     drawn at, so an 18 px toolbar icon and a 14 px chevron weigh the same
+//     as the regular weight of the system font beside them;
+//   - round caps and joins; boxes have 1.5 corners, never sharp;
+//   - dots are real filled circles (r 1.3), not zero-length strokes (those
+//     changed size with the stroke and looked blotchy at 2.6);
+//   - filled shapes (play, stop, spark) are filled AND stroked, so their
+//     corners round off the same way the lines do.
+const NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Artwork per icon, parts joined with "|". A part is SVG path data, or
+ * "o cx cy" for a dot (filled circle, r 1.3), or "O cx cy r" for a ring.
+ */
+const PATHS                         = {
+  undo: 'M7 4.5 3.5 8 7 11.5|M3.5 8h8.25a4.25 4.25 0 0 1 0 8.5H9',
+  redo: 'M13 4.5 16.5 8 13 11.5|M16.5 8H8.25a4.25 4.25 0 0 0 0 8.5H11',
+  // Four rounded corners: "show the whole scene".
+  frame: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5',
+  // The same four corners around a dot: "the picture the game opens on" (back to the opening view, speed pass).
+  opening: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5|o 10 10',
+  // Two sliders with their knobs: "how the editor looks".
+  look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
+  play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
+  stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+  // The AI: a four-point spark.
+  spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
+  more: 'o 5 10|o 10 10|o 15 10',
+  list: 'M7.5 5.5h9|M7.5 10h9|M7.5 14.5h9|o 4 5.5|o 4 10|o 4 14.5',
+  // Two rounded sheets, the front one whole.
+  copy: 'M9 7.5h6A1.5 1.5 0 0 1 16.5 9v6a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 15V9A1.5 1.5 0 0 1 9 7.5z|M12.5 5A1.5 1.5 0 0 0 11 3.5H5A1.5 1.5 0 0 0 3.5 5v6A1.5 1.5 0 0 0 5 12.5',
+  trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
+  chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
+  chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  chevronLeft: 'M12 5l-5 5 5 5',
+  chevronRight: 'M8 5l5 5-5 5',
+  check: 'M4.5 10.5l3.5 3.5 7.5-8',
+  arrowUp: 'M10 15.5v-11|M5.5 9 10 4.5 14.5 9',
+  // Layers (2D draw order): a bar = the end of the stack.
+  toFront: 'M4.5 3.5h11|M10 16.5v-9|M6 11.5l4-4 4 4',
+  forward: 'M10 16v-11|M6 9l4-4 4 4',
+  backward: 'M10 4v11|M6 11l4 4 4-4',
+  toBack: 'M4.5 16.5h11|M10 3.5v9|M6 8.5l4 4 4-4',
+  send: 'M10 16V4.5|M5 9.5 10 4.5l5 5',
+  // Rebrand 2026-10-16: the left column's two places and the ⌘K actions.
+  // A box seen from a corner: "the scene".
+  cube: 'M10 3.5 16 6.75v6.5L10 16.5 4 13.25v-6.5L10 3.5z|M4 6.75 10 10l6-3.25|M10 10v6.5',
+  // Four tiles: "the files".
+  grid: 'M4.5 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M12 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M4.5 11H8a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z|M12 11h3.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z',
+  eye: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25',
+  plus: 'M10 4.5v11|M4.5 10h11',
+  // The plus turned 45°: close a note (the first-run intro).
+  close: 'M6 6l8 8|M14 6l-8 8',
+  swap: 'M4 7h11.5|M12.5 4l3 3-3 3|M16 13H4.5|M7.5 10l-3 3 3 3',
+  globe: 'O 10 10 6.5|M3.5 10h13|M10 3.5c-2.2 2.4-2.2 10.6 0 13|M10 3.5c2.2 2.4 2.2 10.6 0 13',
+  hand: 'M7 10V5.25a1.25 1.25 0 0 1 2.5 0V9|M9.5 8.5V4.25a1.25 1.25 0 0 1 2.5 0V9|M12 8.75V5.5a1.25 1.25 0 0 1 2.5 0V11a5.5 5.5 0 0 1-5.5 5.5h-.3a4.5 4.5 0 0 1-3.6-1.8L3.3 12.2a1.3 1.3 0 0 1 2-1.6L7 12',
+  layers: 'M10 3.5 16.5 7 10 10.5 3.5 7 10 3.5z|M3.5 10.25 10 13.75l6.5-3.5|M3.5 13.5 10 17l6.5-3.5',
+  // The studio's mark: two cards (the KUMODeck "deck"), a little apart. The
+  // front one filled = the scene you have open; the one behind, a line = the
+  // code under it. Simple enough to hold at 16 px.
+  mark: 'M8.5 3.5h6A2 2 0 0 1 16.5 5.5v6|M5.5 6.5h6A2 2 0 0 1 13.5 8.5v6a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z',
+  // Six dots: "drag me" (list grips).
+  grip: 'o 7.5 5.5|o 12.5 5.5|o 7.5 10|o 12.5 10|o 7.5 14.5|o 12.5 14.5',
+  // The tool strip's four tools (the same pictures as the strip in the game, on this 20 grid): ⌘K rows.
+  toolMove: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
+  toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
+  toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
+  toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
+};
+
+/** Icons drawn filled as well as stroked (they read too thin as outlines). */
+const FILLED = new Set(['play', 'stop', 'spark']);
+/** Icons whose LAST part is filled (the mark's front card). */
+const LAST_FILLED = new Set(['mark']);
+
+function part(d        , filled         )             {
+  if (d[0] === 'o' || d[0] === 'O') {
+    const [, cx, cy, r] = d.split(' ');
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', cx);
+    c.setAttribute('cy', cy);
+    if (d[0] === 'o') {
+      // A dot: fill only, so its size does not depend on the stroke width.
+      c.setAttribute('r', '1.3');
+      c.setAttribute('fill', 'currentColor');
+      c.setAttribute('stroke', 'none');
+    } else {
+      c.setAttribute('r', r);
+      c.setAttribute('fill', 'none');
+    }
+    return c;
+  }
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('fill', filled ? 'currentColor' : 'none');
+  return p;
+}
+
+function icon(name                             )                {
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', `icon icon-${name}`);
+  // Stroke colour, caps and joins on the <svg> (inherited by every part); the
+  // width comes from CSS (svg.icon { stroke-width: var(--studio-icon-stroke) })
+  // so a .studio/ui/studio.css can make every icon bolder in one place.
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const filled = FILLED.has(name);
+  const parts = (PATHS[name] || '').split('|');
+  for (const [i, d] of parts.entries()) {
+    const el = part(d, filled || (LAST_FILLED.has(name) && i === parts.length - 1));
+    // The same on-screen line width at every icon size (see the rule above).
+    el.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.append(el);
+  }
+  return svg;
+}
+
+/**
+ * Put an icon and a label into a button. `showLabel: false` keeps the label
+ * for screen readers and the tooltip only (icon-only toolbar buttons).
+ * Re-rendering a button goes through here, so textContent never wipes the icon.
+ */
+function setButton(b                   , name               , label        , showLabel = true, tip         )       {
+  b.replaceChildren();
+  if (name) b.append(icon(name));
+  if (showLabel) {
+    const s = document.createElement('span');
+    s.className = 'label';
+    s.textContent = label;
+    b.append(s);
+  }
+  b.setAttribute('aria-label', label);
+  if (tip !== undefined) b.title = tip;
+  else if (!showLabel) b.title = label;
+}
+
+__def(__exports, "icon", () => icon);
+__def(__exports, "setButton", () => setButton);
+};
+__defs[19] = function (__exports) {
+'use strict';
+// next-steps.ts
+
+// "Ideas for your AI" page (was "Next steps with KUMODeck"): things the
+// person can hand to their AI from the editor.
+//
+// Order (UI/UX 2026-10-16, verganti C): first what the AI can do inside this
+// game (fit the editor to it, change the editor's look, add a tool), then the
+// KUMODeck steps (publish, multiplayer, ...). KUMODeck reads as one of the
+// things your AI can do, not as a shop shelf in an OSS tool.
+//
+// Rules this page keeps:
+// - Nothing happens until a button is pressed. The page never contacts any
+//   service; "Ask my AI" only calls host.request(), which keeps the request
+//   for the agent (locally .studio/requests/<id>.json, plus
+//   .studio/next-step.md for KUMODeck steps).
+// - The agent checks with the user before signing in, uploading or changing code.
+// - No prices in the UI (they change); a link to the pricing page instead.
+                                                                             
+const { h } = __require(16);
+const { icon } = __require(18);
+
+/** The only place the KUMODeck site address appears in the shell. */
+const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
+
+                                           
+const AI_STEPS             = ['fit', 'look', 'tool'];
+const NEXT_STEPS               = ['publish', 'multiplayer', 'save-data', 'ai-assets'];
+
+                                
+                   
+                   
+                         
+               
+                                                                                               
+                                                     
+ 
+
+function renderNextSteps(el             , d               , open               , onOpen                             )       {
+  el.replaceChildren();
+  const top = h('div', { class: 'page-head' },
+    // "‹ Close" / "‹ Back" left, the title centred: a page you step into and out of.
+    h('button', { type: 'button', class: 'link', onclick: () => (open ? onOpen(null) : d.back()) }, icon('chevronLeft'), d.t(open ? 'btn.back' : 'btn.close')),
+    h('h2', { text: d.t('next.title') }));
+  el.append(top);
+  if (!open) {
+    el.append(h('p', { class: 'page-intro', text: d.t('next.intro') }));
+    const group = (title        , ids          , intro         ) => {
+      const ul = h('ul', { class: 'steps' });
+      for (const id of ids) {
+        ul.append(h('li', {},
+          h('button', { type: 'button', class: 'step', dataset: { step: id }, onclick: () => onOpen(id) },
+            h('strong', { text: d.t(`next.${id}`) }),
+            h('span', { text: d.t(`next.${id}.desc`) }))));
+      }
+      el.append(h('h3', { class: 'steps-title', text: title }));
+      if (intro) el.append(h('p', { class: 'muted small-text', text: intro }));
+      el.append(ul);
+    };
+    group(d.t('next.group.game'), AI_STEPS);
+    group(d.t('next.group.kumodeck'), NEXT_STEPS, d.t('next.kumodeckIntro'));
+    return;
+  }
+  const kumodeck = (NEXT_STEPS            ).includes(open);
+  const note = h('p', { class: 'note', role: 'status' });
+  // Editable: "snap to a 1 m grid" is an example; the person says what they want.
+  const promptBox = h('textarea', { class: 'prompt', rows: 3, maxlength: 500, 'aria-label': d.t('next.edit') });
+  promptBox.value = d.t(`next.prompt.${open}`);
+  const detail = h('div', { class: 'step-detail' });
+  el.append(detail);
+  el = detail;
+  el.append(h('h3', { text: d.t(`next.${open}`) }), h('p', { text: d.t(`next.${open}.desc`) }));
+  if (kumodeck) {
+    el.append(
+      h('p', { class: 'muted', text: d.t('next.cost') }),
+      h('p', {}, h('a', { href: KUMODECK_PRICING_URL, target: '_blank', rel: 'noopener noreferrer', text: d.t('next.pricing') })));
+  }
+  el.append(
+    h('label', { class: 'set-label', text: d.t('next.edit') }),
+    promptBox,
+    h('div', { class: 'step-actions' },
+      h('button', { type: 'button', class: 'primary', dataset: { action: 'ask' }, text: d.t('next.ask'), onclick: async () => {
+        const ok = await d.send(open, promptBox.value.trim() || d.t(`next.prompt.${open}`)).catch(() => false);
+        note.textContent = ok ? d.t('next.sent') : d.t('ask.fail');
+      } }),
+      h('button', { type: 'button', dataset: { action: 'copy' }, text: d.t('next.copy'), onclick: async () => {
+        try {
+          await navigator.clipboard.writeText(promptBox.value);
+        } catch {
+          promptBox.select(); // clipboard blocked: leave it selected for Ctrl+C
+        }
+        note.textContent = d.t('next.copied');
+      } })),
+    note,
+  );
+}
+
+__def(__exports, "KUMODECK_PRICING_URL", () => KUMODECK_PRICING_URL);
+__def(__exports, "AI_STEPS", () => AI_STEPS);
+__def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
+__def(__exports, "renderNextSteps", () => renderNextSteps);
+};
+__defs[20] = function (__exports) {
+'use strict';
+// ../schema/handoff.mjs
+
+// Hand-offs between the editor and the user's AI agent (contract 3.4): "requests" the person
+// sends from the editor (ask about these objects, name this object, a next step, a save) and the
+// one "status" the agent writes back (received / working / done, how many things it changed).
+//
+// WHY files with a fixed shape, and why here: the person talks to the AI in the AI's own window
+// (Claude Code, a terminal, a cloud session), never in the editor. The editor's side of the
+// conversation is one-way and has to survive the AI not watching at that moment, so every request
+// is kept as a small JSON record first (locally .studio/requests/<id>.json) and the agent reads
+// all of them when the person says "look". The same shapes will be read and written through the
+// KUMODeck API / MCP tools by a hosted editor, so the shell, the local server and a hosted server
+// all normalise with this one module, like studio-files.mjs does for the result files.
+//
+// Plain JavaScript, no imports: runs in Node, in the browser and inside the bundled CLI.
+
+const HANDOFF_LIMITS = Object.freeze({
+  maxText: 500, // the person's words; a request is one sentence or two, not a document
+  maxObjects: 50, // a multi-selection larger than this is described by its first 50 objects
+  maxLabel: 120,
+  maxNote: 300,
+  maxBytes: 64 * 1024,
+  maxFiles: 200, // delete-files: the same limit as POST /next-step
+});
+
+// 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
+// Save, 'undone' when the person pressed "Undo AI change" and the host put the game's files back
+// (AI feel, 2026-10-16), so the agent does not build on code that is gone.
+const REQUEST_KINDS = Object.freeze(['ask', 'name', 'next-step', 'saved', 'undone']);
+/** Next steps that stay inside this game (no service involved), shown first on the next-steps page. */
+const AI_STEP_IDS = Object.freeze(['fit', 'look', 'tool']);
+/** Next steps that use KUMODeck (the server also writes .studio/next-step.md for these). */
+const KUMODECK_STEP_IDS = Object.freeze(['publish', 'multiplayer', 'save-data', 'ai-assets']);
+/**
+ * Next steps that carry a list of files: the Library's "Ask my AI to delete it" on unused files.
+ * Sent through the same request as every other step (merge of edit-ops + AI partner, 2026-10-16),
+ * so the AI line in the editor follows it too. The host checks each file exists before keeping it.
+ */
+const FILE_STEP_IDS = Object.freeze(['delete-files']);
+const AI_STATES = Object.freeze(['received', 'working', 'done', 'failed']);
+
+const KEY_OK = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
+const ID_OK = /^[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}$/;
+
+/** One line of text: control characters and line breaks become spaces, trimmed and cut to max. */
+function oneLine(v, max) {
+  if (typeof v !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  return v.replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+const isFin = (x) => typeof x === 'number' && Number.isFinite(x);
+const roundTo = (x, step) => Math.round(x * step) / step;
+
+/** A pose as the editor has it right now (may be unsaved); dropped when it is not a sane pose. */
+function cleanPose(p) {
+  if (!p || typeof p !== 'object' || !Array.isArray(p.p) || (p.p.length !== 2 && p.p.length !== 3) || !p.p.every(isFin)) return undefined;
+  const out = { p: p.p.map((v) => roundTo(v, 1000)) };
+  if (isFin(p.r)) out.r = roundTo(p.r, 10000);
+  if (Array.isArray(p.t) && p.t.length === 2 && p.t.every(isFin)) out.t = [roundTo(p.t[0], 10000), roundTo(p.t[1], 10000)];
+  if (isFin(p.s) && p.s > 0) out.s = roundTo(p.s, 10000);
+  else if (Array.isArray(p.s) && p.s.length === 3 && p.s.every((v) => isFin(v) && v > 0)) out.s = p.s.map((v) => roundTo(v, 10000));
+  if (isFin(p.z)) out.z = Math.round(p.z);
+  return out;
+}
+
+/**
+ * Check what the shell sends (StudioRequestInput) and return the record to store, or errors.
+ * The host adds `id` and `at`; nothing from the browser decides file names or times.
+ *
+ * @param {unknown} input
+ * @returns {{ ok: true, value: object } | { ok: false, errors: string[] }}
+ */
+function normalizeRequestInput(input) {
+  const errors = [];
+  const r = input && typeof input === 'object' && !Array.isArray(input) ? input : null;
+  if (!r) return { ok: false, errors: ['request must be a JSON object'] };
+  const kind = r.kind;
+  // 'saved' records are written by the host itself when a result file is saved, never sent.
+  if (kind !== 'ask' && kind !== 'name' && kind !== 'next-step') errors.push('kind must be "ask", "name" or "next-step"');
+  const text = oneLine(r.text, HANDOFF_LIMITS.maxText);
+  if (kind === 'ask' && !text) errors.push('an "ask" request needs the person\'s words in "text"');
+  const out = { kind, text };
+  if (kind === 'next-step') {
+    const known = [...AI_STEP_IDS, ...KUMODECK_STEP_IDS, ...FILE_STEP_IDS];
+    if (!known.includes(r.step)) errors.push(`unknown step (known: ${known.join(', ')})`);
+    else out.step = r.step;
+    if (FILE_STEP_IDS.includes(r.step)) {
+      // Only the shape here (strings, no "..", no hidden parts); whether each one is a real file
+      // in the game folder is the host's check (it has the folder).
+      const files = Array.isArray(r.files) ? r.files : [];
+      if (!files.length || files.length > HANDOFF_LIMITS.maxFiles) errors.push(`"files" must list 1 to ${HANDOFF_LIMITS.maxFiles} files`);
+      else if (!files.every((f) => typeof f === 'string' && f.length <= 512 && !f.startsWith('/') && !f.includes('\\') && f.split('/').every((seg) => seg && seg !== '..' && !seg.startsWith('.')))) errors.push('"files" must be paths inside the game folder');
+      else out.files = [...new Set(files)].sort();
+    }
+  }
+  if (r.objects !== undefined) {
+    if (!Array.isArray(r.objects)) errors.push('objects must be a list');
+    else {
+      out.objects = [];
+      for (const o of r.objects.slice(0, HANDOFF_LIMITS.maxObjects)) {
+        if (!o || typeof o !== 'object' || typeof o.key !== 'string' || !KEY_OK.test(o.key)) {
+          errors.push('every object needs a valid "key"');
+          break;
+        }
+        const e = { key: o.key };
+        const label = oneLine(o.label, HANDOFF_LIMITS.maxLabel);
+        if (label && label !== o.key) e.label = label;
+        const pose = cleanPose(o.pose);
+        if (pose) e.pose = pose;
+        if (o.unstable === true) e.unstable = true;
+        out.objects.push(e);
+      }
+      if (r.objects.length > HANDOFF_LIMITS.maxObjects) out.moreObjects = r.objects.length - HANDOFF_LIMITS.maxObjects;
+    }
+  }
+  // "name" is always about objects. "ask" with no objects is about the whole
+  // game (the ask strip with nothing picked: "make it night", "add enemies";
+  // design-pass reviews 2026-10-16); it still needs words.
+  if (kind === 'name' && !(out.objects && out.objects.length)) errors.push('a "name" request names at least one object');
+  if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
+  if (Number.isInteger(r.unsaved) && r.unsaved > 0) out.unsaved = Math.min(r.unsaved, 100000);
+  if (r.dim === '2d' || r.dim === '3d') out.dim = r.dim;
+  // "ask" only: the camera when they asked (contract StudioRequestInput.view). Dropped, never an error, when it is
+  // not two points: it is a hint for placing new things, the request works without it.
+  const pt = (a) => Array.isArray(a) && a.length === 3 && a.every((x) => isFin(x) && Math.abs(x) < 1e7);
+  if (kind === 'ask' && r.view && pt(r.view.eye) && pt(r.view.target)) {
+    out.view = { eye: r.view.eye.map((x) => roundTo(x, 1000)), target: r.view.target.map((x) => roundTo(x, 1000)) };
+  }
+  return errors.length ? { ok: false, errors } : { ok: true, value: out };
+}
+
+/**
+ * Request id = file name stem: sortable by time, says what it is, never repeats in practice.
+ * "20261016-153012-482-ask-9f3c" (UTC).
+ */
+function requestId(kind, now = new Date(), rand = Math.random) {
+  const d = now.toISOString(); // 2026-10-16T15:30:12.482Z
+  const stamp = `${d.slice(0, 4)}${d.slice(5, 7)}${d.slice(8, 10)}-${d.slice(11, 13)}${d.slice(14, 16)}${d.slice(17, 19)}-${d.slice(20, 23)}`;
+  const tail = Math.floor(rand() * 0x10000).toString(16).padStart(4, '0');
+  return `${stamp}-${kind}-${tail}`;
+}
+
+function isRequestId(id) {
+  return typeof id === 'string' && ID_OK.test(id);
+}
+
+/**
+ * Read what the agent wrote to the status (locally .studio/status.json). Hand-written by an AI, so
+ * lenient: anything unknown is dropped and a broken file reads as "no status" instead of an error.
+ *
+ * @returns {{ state: string, request?: string, changed?: number, note?: string, at?: string } | null}
+ */
+function normalizeStatus(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  if (!AI_STATES.includes(raw.state)) return null;
+  const out = { version: 1, state: raw.state };
+  if (isRequestId(raw.request)) out.request = raw.request;
+  if (Array.isArray(raw.handled)) {
+    const ids = raw.handled.filter(isRequestId).slice(0, 200);
+    if (ids.length) out.handled = ids;
+  }
+  if (Number.isInteger(raw.changed) && raw.changed >= 0) out.changed = Math.min(raw.changed, 100000);
+  const note = oneLine(raw.note, HANDOFF_LIMITS.maxNote);
+  if (note) out.note = note;
+  if (typeof raw.at === 'string' && !Number.isNaN(Date.parse(raw.at))) out.at = new Date(Date.parse(raw.at)).toISOString();
+  return out;
+}
+
+/**
+ * Did the agent see this request? Yes when the status names it (request / handled), or when the
+ * status was written at or after the request (the agent read the whole folder after "look").
+ *
+ * @param {{ id: string, at: number }} req  `at` in ms
+ * @param {object | null} status  normalised status
+ * @param {number | null} statusTime  when the status was last written (ms), from the host
+ */
+function statusCovers(req, status, statusTime) {
+  if (!req || !status) return false;
+  if (status.request === req.id || (status.handled && status.handled.includes(req.id))) return true;
+  // Ids sort by time, so a later id in "request" also means the agent read past this one.
+  if (status.request && isRequestId(req.id) && status.request > req.id) return true;
+  const t = typeof statusTime === 'number' ? statusTime : status.at ? Date.parse(status.at) : NaN;
+  return typeof t === 'number' && Number.isFinite(t) && t >= req.at;
+}
+
+__def(__exports, "HANDOFF_LIMITS", () => HANDOFF_LIMITS);
+__def(__exports, "REQUEST_KINDS", () => REQUEST_KINDS);
+__def(__exports, "AI_STEP_IDS", () => AI_STEP_IDS);
+__def(__exports, "KUMODECK_STEP_IDS", () => KUMODECK_STEP_IDS);
+__def(__exports, "FILE_STEP_IDS", () => FILE_STEP_IDS);
+__def(__exports, "AI_STATES", () => AI_STATES);
+__def(__exports, "normalizeRequestInput", () => normalizeRequestInput);
+__def(__exports, "requestId", () => requestId);
+__def(__exports, "isRequestId", () => isRequestId);
+__def(__exports, "normalizeStatus", () => normalizeStatus);
+__def(__exports, "statusCovers", () => statusCovers);
+};
+__defs[21] = function (__exports) {
+'use strict';
+// ai-flow.ts
+
+// What the AI line says, and when the game reloads by itself (AI feel, 2026-10-16).
+//
+// The flow the person should feel (the product plan for asking the AI): type "Add three lighthouses around
+// the island", press Enter → at once "sent, your AI has it" → a violet light runs round the input
+// while the AI works → when it is done the game is new WITHOUT pressing Reload, and only what
+// changed glows violet → one press undoes it. No waiting without knowing why, no dead end.
+//
+// Kept as two pure functions so the rules can be tested without a browser (test/ai-flow.test.ts)
+// and main.ts only draws what they decide.
+//
+// Phases, in the order the person sees them:
+//   waiting / nudge  the host cannot tell whether an AI watches (older hosts): the old line,
+//                    and "type look" after 20 s
+//   sent             an AI's watch is running; the request is on its way to it
+//   seen             the watch printed it to the AI (it will wake within seconds)
+//   away             nobody watches: say so AT ONCE, with the one thing to do and what still
+//                    works (play test 10/16: 21 s of "waiting" and then a dead end)
+//   received/working the AI wrote its status (its note, if any, is the line)
+//   updating         the AI is done and the game is reloading behind the old picture
+//   done / failed    the AI's one-line reply; done also has "Undo AI change"
+//   undone / redone  after the person pressed Undo / Redo
+                                                   
+const { statusCovers } = __require(20);
+
+                                                                                                                                                              
+
+                            
+               
+              
+                                       
+             
+                                    
+               
+                
+ 
+
+                              
+              
+                                                     
+                   
+                            
+                              
+                                                    
+                            
+                                                            
+                   
+                                                                     
+                                
+                                                         
+                
+                                                     
+                     
+                                                               
+                                    
+ 
+
+/** Seconds without a pick-up before "type look" when the host cannot tell whether an AI watches. */
+const NUDGE_MS = 20_000;
+
+function aiPhase(s             )          {
+  if (s.after) return s.after;
+  const p = s.pending;
+  const covered = p ? statusCovers({ id: p.id ?? '', at: p.at }, s.status, s.statusTime) : false;
+  if (p && !covered) {
+    if (s.offline) return 'waiting';
+    if (s.watching === undefined) return s.now - p.sent < NUDGE_MS ? 'waiting' : 'nudge';
+    // Ids sort by time: a watch that printed this one or a later one has shown it to the AI.
+    if (p.id && s.seen && s.seen >= p.id) return 'seen';
+    return s.watching ? 'sent' : 'away';
+  }
+  // An old status from an earlier session ("done" yesterday) is not news: only once it answers this
+  // page's request or was written while the page is open.
+  const fresh = !!s.status && ((p && covered) || (s.statusTime ?? 0) >= s.openedAt);
+  if (!fresh || !s.status) return 'none';
+  if (s.status.state === 'done') return s.reloading ? 'updating' : 'done';
+  return s.status.state;
+}
+
+/** The violet light runs round the input in these phases: the AI has it and is on it. */
+function aiBusy(phase         )          {
+  return phase === 'sent' || phase === 'seen' || phase === 'received' || phase === 'working' || phase === 'updating';
+}
+
+                              
+                                                                            
+                           
+                                 
+                                                  
+                   
+                 
+                   
+                                       
+                     
+ 
+
+/**
+ * An AI that has the request (or said "working") but never writes "done" still gets its change shown once its files
+ * have been quiet this long.
+ *
+ * WHY so long (agent-solid pass 2026-10-17): it was 8 s. A real Claude Code run (report realagent-20261017-0029)
+ * writes the lighthouses, then spends 20-40 s shooting the game (§3.3 `--shot`) and moving them again: every pause
+ * passed 8 s, so the game reloaded 3 times in 50 s while the AI was still "working", and the violet marks blinked
+ * 3 → 0 → 3. Worse, the last reload compared against the half-done game, so three NEW lighthouses were called
+ * "AI moved 3". An AI that said it is working will say "done"; the long fallback is only for one that forgot.
+ */
+const QUIET_MS = 180_000;
+
+/**
+ * Reload the game now, later, or not at all.
+ * - The files did not change since the game was opened: no.
+ * - Playing: no (the person is playing; Edit reloads anyway).
+ * - The AI says it is done (or failed): now, the moment its files changed (no half-written game: it writes
+ *   "done" after the files).
+ * - The AI has it or is working: wait for "done", however many files it writes and however long it looks at the
+ *   game in between; only files quiet for QUIET_MS (an AI that forgot the status) reload without it.
+ * - Nobody is working (the person edited the code in their own editor, an AI without the skill):
+ *   as soon as the files stopped changing for one poll.
+ */
+function reloadDecision(r             )                        {
+  if (!r.code || !r.loadedCode || r.code === r.loadedCode || r.playing || r.reloading) return 'no';
+  if (r.phase === 'done' || r.phase === 'failed') return 'now';
+  if (aiBusy(r.phase)) return r.stableMs >= QUIET_MS ? 'now' : 'wait';
+  return r.stableMs > 0 ? 'now' : 'wait';
+}
+
+__def(__exports, "NUDGE_MS", () => NUDGE_MS);
+__def(__exports, "aiPhase", () => aiPhase);
+__def(__exports, "aiBusy", () => aiBusy);
+__def(__exports, "QUIET_MS", () => QUIET_MS);
+__def(__exports, "reloadDecision", () => reloadDecision);
+};
+__defs[22] = function (__exports) {
+'use strict';
+// ui-prefs.ts
+
+// UI preferences (.studio/ui.json): where the panel sits, how wide, which
+// colours, text and handle sizes, and which parts are shown.
+//
+// WHY in the game folder (not the browser's storage): the person sets the
+// editor up once per project and it stays the same whichever browser or
+// port the studio opens on next time; the file is also readable by the AI
+// ("make the handles bigger" can be done by editing it).
+//
+// The file is hand-editable, so everything read from it goes through
+// normalizeUi(): unknown fields are dropped and numbers clamped, and a broken
+// file falls back to the defaults (which are the original look).
+                                              
+
+const DEFAULT_UI          = {
+  version: 1,
+  // Rebrand 2026-10-16: the list is a 248 px column on the left (the reading
+  // order of a scene tool: where you are → what is in it → the thing itself).
+  // A prefs.json saved earlier keeps what it says ("right", 340).
+  panel: 'left',
+  width: 248,
+  height: 42,
+  // 'auto' (was 'dark' until the ive finish, 2026-10-16): light or dark is the
+  // device's setting, like every Mac and iPhone app; the editor makes no choice
+  // of its own. The View page still offers dark / light for whoever wants one.
+  theme: 'auto',
+  // 13 (was 14): the PC text sizes are 13 / 11 since the ive finish (12 / 13 / 15 before).
+  fontSize: 13,
+  // 28 (was 48 until the visual pass, then 32): the tool strip's buttons, see
+  // UI.handlePx. Phones never go below UI.handlePxPhone (main.ts handlePx()).
+  handleSize: 28,
+  // lang: false (2026-10-16 UI/UX review): the language is set once, so it
+  // lives on the View page instead of taking a button in the top row. With it
+  // gone the PC top row fits on one line. `show.lang: true` brings it back.
+  // adapter: false (2026-10-16, AI partner): the top line is the game's name;
+  // the engine name and version ("three 186") are for whoever wants them,
+  // under View → Show. A prefs.json saved earlier keeps what it says.
+  show: { thumbs: true, numbers: true, help: true, adapter: false, play: true, frame: true, lang: false, next: true, tools: true },
+};
+
+const UI_LIMITS = {
+  width: [240, 640],
+  height: [25, 75],
+  fontSize: [12, 20],
+  handleSize: [24, 72],
+}         ;
+
+const clamp = (v         , [lo, hi]                           , dflt        ) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(hi, Math.max(lo, v))) : dflt;
+
+function normalizeUi(raw         )          {
+  const r = (raw && typeof raw === 'object' ? raw : {})                           ;
+  const show = (r.show && typeof r.show === 'object' ? r.show : {})                           ;
+  const out          = {
+    version: 1,
+    panel: r.panel === 'left' || r.panel === 'bottom' || r.panel === 'right' ? r.panel : DEFAULT_UI.panel,
+    width: clamp(r.width, UI_LIMITS.width, DEFAULT_UI.width),
+    height: clamp(r.height, UI_LIMITS.height, DEFAULT_UI.height),
+    theme: r.theme === 'light' || r.theme === 'dark' || r.theme === 'auto' ? r.theme : DEFAULT_UI.theme,
+    fontSize: clamp(r.fontSize, UI_LIMITS.fontSize, DEFAULT_UI.fontSize),
+    handleSize: clamp(r.handleSize, UI_LIMITS.handleSize, DEFAULT_UI.handleSize),
+    show: { ...DEFAULT_UI.show },
+  };
+  for (const k of Object.keys(out.show)                                ) if (typeof show[k] === 'boolean') out.show[k] = show[k]           ;
+  if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
+  // The first-run intro's step (intro.ts). Kept only as a whole number 0–4.
+  if (typeof r.intro === 'number' && Number.isInteger(r.intro) && r.intro >= 0 && r.intro <= 4) out.intro = r.intro;
+  return out;
+}
+
+/** Resolve 'auto' against the system setting. */
+function effectiveTheme(p         , prefersDark         )                   {
+  return p.theme === 'auto' ? (prefersDark ? 'dark' : 'light') : p.theme;
+}
+
+__def(__exports, "DEFAULT_UI", () => DEFAULT_UI);
+__def(__exports, "UI_LIMITS", () => UI_LIMITS);
+__def(__exports, "normalizeUi", () => normalizeUi);
+__def(__exports, "effectiveTheme", () => effectiveTheme);
+};
+__defs[23] = function (__exports) {
+'use strict';
+// settings-page.ts
+
+// "View" settings page: the person adjusts the editor to their liking.
+// Every change applies at once and is saved to .studio/ui.json (debounced by
+// the caller), so there is no separate Apply/Save step to forget.
+                                                    
+const { h } = __require(16);
+const { icon } = __require(18);
+const { DEFAULT_UI, UI_LIMITS } = __require(22);
+
+                               
+                         
+                   
+                              
+               
+                                                                  
+                   
+               
+                            
+                                                                                                    
+                            
+ 
+
+function renderSettings(el             , d              )       {
+  el.replaceChildren();
+  const p = d.prefs();
+  const set = (patch                  ) => d.change({ ...d.prefs(), ...patch, show: { ...d.prefs().show, ...(patch.show || {}) } });
+
+  const choice =                              (key   , values                   ) => {
+    const row = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': d.t(`ui.${key}`) });
+    for (const v of values) {
+      row.append(h('button', {
+        type: 'button', role: 'radio', 'aria-checked': String(p[key] === v), dataset: { ui: `${key}-${v}` },
+        text: d.t(`ui.${key}.${v}`), onclick: () => set({ [key]: v }                    ),
+      }));
+    }
+    return h('div', { class: 'set-row' }, h('span', { class: 'set-label', text: d.t(`ui.${key}`) }), row);
+  };
+  const slider = (key                                                , unit        ) => {
+    const [lo, hi] = UI_LIMITS[key];
+    const out = h('output', { text: `${p[key]}${unit}` });
+    const input = h('input', { type: 'range', min: lo, max: hi, step: 1, value: String(p[key]), dataset: { ui: key }, 'aria-label': d.t(`ui.${key}`) });
+    input.addEventListener('input', () => {
+      out.textContent = `${input.value}${unit}`;
+      set({ [key]: Number(input.value) }                    );
+    });
+    return h('label', { class: 'set-row' }, h('span', { class: 'set-label', text: d.t(`ui.${key}`) }), input, out);
+  };
+  const toggles = h('div', { class: 'set-toggles' });
+  for (const k of Object.keys(p.show)                                ) {
+    const box = h('input', { type: 'checkbox', checked: p.show[k], dataset: { ui: `show-${k}` } });
+    box.addEventListener('change', () => set({ show: { [k]: box.checked }                    }));
+    // Name left, switch right (as in system settings).
+    toggles.append(h('label', { class: 'set-toggle' }, h('span', { text: d.t(`ui.show.${k}`) }), box));
+  }
+
+  // Language: each one in its own name (ui.lang.ja / ui.lang.en) so it can be
+  // found whichever language the editor is in now.
+  const langRow = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': d.t('ui.lang') });
+  for (const v of ['ja', 'en']          ) {
+    const label = d.t(`ui.lang.${v}`);
+    langRow.append(h('button', {
+      type: 'button', role: 'radio', 'aria-checked': String(d.lang() === v), dataset: { ui: `lang-${v}` },
+      text: label, onclick: () => d.setLang(v),
+    }));
+  }
+  const phone = d.phone();
+
+  el.append(
+    h('div', { class: 'page-head' },
+      h('button', { type: 'button', class: 'link', dataset: { action: 'settings-back' }, onclick: () => d.back() }, icon('chevronLeft'), d.t('btn.close')),
+      h('h2', { text: d.t('ui.title') })),
+    h('p', { class: 'page-intro', text: d.t('ui.intro') }),
+    // (el.append writes null as text: an empty fragment when there is no AI look.)
+    d.aiLookOff ? h('p', { class: 'page-intro ai-look', dataset: { part: 'ai-look' } }, d.t('ui.aiLook') + ' ',
+      h('a', { href: d.aiLookOff, text: d.t('ui.aiLookOff') })) : document.createDocumentFragment(),
+    h('div', { class: 'set-row' }, h('span', { class: 'set-label', text: d.t('ui.lang') }), langRow),
+    // On a phone the panel is always the sheet under the game, so "where" and
+    // "width" do nothing there: show only the sheet height.
+    ...(phone ? [] : [choice('panel', ['right', 'left', 'bottom'])]),
+    phone || p.panel === 'bottom' ? slider('height', '%') : slider('width', 'px'),
+    choice('theme', ['dark', 'light', 'auto']),
+    slider('fontSize', 'px'),
+    slider('handleSize', 'px'),
+    h('div', { class: 'set-row set-col' }, h('span', { class: 'set-label', text: d.t('ui.show') }), toggles),
+    h('button', { type: 'button', dataset: { action: 'ui-reset' }, text: d.t('ui.reset'), onclick: () => d.change({ ...DEFAULT_UI, show: { ...DEFAULT_UI.show } }) }),
+  );
+}
+
+__def(__exports, "renderSettings", () => renderSettings);
+};
+__defs[24] = function (__exports) {
+'use strict';
+// edit-ops.ts
+
+// Copy, delete and several-at-once in the shell: pure helpers over the item
+// list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
+                                           
+const { hasLayer } = __require(14);
+
+/**
+ * Key for a new copy of `from`: a readable name the AI can put in the code
+ * as the object's name / studioKey. "crate-1" with crate-1…4 in the game →
+ * "crate-5"; "tree" → "tree-2"; an unnamed object (path:…) → its kind
+ * ("rock-2"). `taken` = every key in the game and every copy made so far
+ * (also deleted ones, so redo never reuses a key).
+ */
+function copyKey(from        , taken             , kind         )         {
+  const clean = (s        ) => s.replace(/[^A-Za-z0-9_:#.\-/]/g, '_');
+  let base = from.startsWith('path:') ? clean(kind || 'copy') : from.replace(/#\d+$/, '').replace(/[-_ .]?\d+$/, '');
+  base = (base || 'copy').replace(/^path:/, '').slice(0, 70);
+  for (let n = 2; n < 100000; n++) {
+    const k = `${base}-${n}`;
+    if (!taken.has(k)) return k;
+  }
+  return `${base}-${Date.now()}`;
+}
+
+/**
+ * Draw-order moves for a whole selection (2D layers): the `z` to send for
+ * each selected object, one after another, so that the selection moves as
+ * one block and keeps its own inner order. Every z is the place among the
+ * listed siblings at the moment it is applied (the adapter takes the object
+ * out and puts it there), exactly like one object's layer buttons, so undo is
+ * the same moves backwards.
+ */
+function groupLayerMoves(items        , keys          , op         )                                    {
+  const out                                    = [];
+  const chosen = new Set(keys);
+  const layers = new Set(items.filter((i) => chosen.has(i.key) && hasLayer(i) && i.movable !== false).map((i) => i.layer ));
+  for (const layer of layers) {
+    const sib = items.filter((i) => hasLayer(i) && i.layer === layer);
+    // Places can have gaps (objects the game rules hide still count): keep them as empty slots.
+    const size = Math.max(...sib.map((i) => i.pose.z )) + 1;
+    const arr                       = new Array(size).fill(null);
+    for (const i of sib) arr[i.pose.z ] = i.key;
+    const mine = (k               )              => !!k && chosen.has(k) && sib.some((i) => i.key === k && i.movable !== false && !i.backdrop);
+    // Ground / background at the back stays there (layers.ts floorOf): nothing goes below `floor`.
+    let floor = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const it = arr[i] ? sib.find((s) => s.key === arr[i]) : null;
+      if (it && !it.backdrop) break;
+      if (it) floor = i + 1;
+    }
+    const move = (k        , to        ) => {
+      const at = arr.indexOf(k);
+      if (at < 0 || at === to) return;
+      arr.splice(at, 1);
+      arr.splice(to, 0, k);
+      out.push({ key: k, z: to });
+    };
+    const start = arr.join('\n');
+    const mark = out.length;
+    const backFirst = arr.filter(mine);
+    if (op === 'toFront') for (const k of backFirst) move(k, arr.length - 1);
+    else if (op === 'toBack') for (const k of backFirst.slice().reverse()) move(k, floor);
+    else if (op === 'forward') {
+      // Front-most first: each passes the next object in front of it that is not selected.
+      for (const k of backFirst.slice().reverse()) {
+        const at = arr.indexOf(k);
+        let to = -1;
+        for (let i = at + 1; i < arr.length; i++) if (arr[i] && !chosen.has(arr[i] )) { to = i; break; }
+        if (to >= 0) move(k, to);
+      }
+    } else {
+      for (const k of backFirst) {
+        const at = arr.indexOf(k);
+        let to = -1;
+        for (let i = at - 1; i >= floor; i--) if (arr[i] && !chosen.has(arr[i] )) { to = i; break; }
+        if (to >= 0) move(k, to);
+      }
+    }
+    // Already there (the block was at the front and is sent to the front): no moves at all.
+    if (arr.join('\n') === start) out.length = mark;
+  }
+  return out;
+}
+
+/** Can the selection still move in this direction? (for enabling the layer buttons) */
+function groupLayerPossible(items        , keys          , op         )          {
+  return groupLayerMoves(items, keys, op).length > 0;
+}
+
+/** Keys of the objects shown together as "name ×N" (same group) as `key`, in list order. */
+function sameKind(items        , key        )           {
+  const it = items.find((i) => i.key === key);
+  if (!it || !it.group) return it ? [it.key] : [];
+  return items.filter((i) => i.group === it.group).map((i) => i.key);
+}
+
+__def(__exports, "copyKey", () => copyKey);
+__def(__exports, "groupLayerMoves", () => groupLayerMoves);
+__def(__exports, "groupLayerPossible", () => groupLayerPossible);
+__def(__exports, "sameKind", () => sameKind);
+};
+__defs[25] = function (__exports) {
+'use strict';
+// names.ts
+
+// The name a person reads for an object in the list and on the card (polish pass 2026-10-16, play test
+// stumble 8: the list showed "No name" with `path:8` next to it, and two rows both called "tree").
+//
+// WHY here and not in the adapters: the key (`path:6`, `tree#2`) is the editor's and the AI's handle and must not
+// change; only what is SHOWN changes. A tree path means nothing to a newcomer, so an object without a name is
+// called by what it looks like: the picture file it draws ("rock" for rock.svg) or its kind ("Unnamed shape").
+// The key stays in the row's tooltip and in everything sent to the AI.
+                                           
+
+/** Kind tags (adapters' Item.kinds) → the i18n word for "an unnamed one of these". */
+const KIND_WORD                         = {
+  sprite: 'picture', text: 'text', graphics: 'shape', container: 'group', group: 'group', model: 'model',
+  box: 'shape', sphere: 'shape', plane: 'shape', cylinder: 'shape', cone: 'shape', mesh: 'shape',
+};
+
+/** The file name without folder and extension, when `group` is a picture / model URL or path. */
+function fileStem(group                    )                {
+  if (!group || !/\.(png|jpe?g|webp|gif|svg|avif|glb|gltf)(\?|#|$)/i.test(group)) return null;
+  const last = group.split(/[?#]/)[0] .split('/').pop() || '';
+  const stem = decodeURIComponentSafe(last).replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim();
+  return stem || null;
+}
+function decodeURIComponentSafe(s        )         {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * The shown name.
+ * - Named: its label; a second, third… object with the same name (key `tree#2`) reads "tree 2".
+ * - Unnamed (`unstable`): the stem of its picture or model file, else "Unnamed <kind>" (`t('noname.kind.<w>')`).
+ */
+function displayName(it                                                              , t                       )         {
+  if (it.unstable) {
+    const stem = fileStem(it.group);
+    if (stem) return stem;
+    const w = KIND_WORD[(it.kinds || []).find((k) => KIND_WORD[k]) || ''] || 'object';
+    return t(`noname.kind.${w}`);
+  }
+  const m = /^(.*)#(\d+)$/.exec(it.key);
+  if (m && m[2] !== '1' && it.label === m[1]) return `${it.label} ${m[2]}`;
+  return it.label;
+}
+
+__def(__exports, "fileStem", () => fileStem);
+__def(__exports, "displayName", () => displayName);
+};
+__defs[26] = function (__exports) {
+'use strict';
+// thumb-tone.ts
+
+// "Is this list picture almost white?" (polish pass 2026-10-16, play test stumble 9: a white cloud's picture
+// vanished on the light picture tile). The pictures are the objects alone on a see-through background; a light
+// one gets a mid-grey tile (shell.css `.thumb[data-tone=light]`) instead of the usual pale one.
+//
+// WHY measured here and not a fixed darker tile for all: most objects are coloured and read best on the pale tile
+// the rest of the editor uses; only the few near-white ones need help.
+
+/** Average lightness (0..1) of the opaque pixels → light above this. 0.8 = white / pale cream / light grey. */
+const LIGHT_AT = 0.8;
+const cache = new Map                          ();
+
+/** true when the opaque part of the picture is light. Never rejects (false when it cannot tell). */
+function isLightPicture(src        )                   {
+  let p = cache.get(src);
+  if (!p) {
+    p = new Promise         ((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const n = 24;
+          const c = document.createElement('canvas');
+          c.width = c.height = n;
+          const g = c.getContext('2d', { willReadFrequently: true });
+          if (!g) return resolve(false);
+          g.drawImage(img, 0, 0, n, n);
+          const d = g.getImageData(0, 0, n, n).data;
+          let sum = 0;
+          let count = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3]  < 128) continue;
+            sum += (0.2126 * d[i]  + 0.7152 * d[i + 1]  + 0.0722 * d[i + 2] ) / 255;
+            count++;
+          }
+          resolve(count > 8 && sum / count > LIGHT_AT);
+        } catch {
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+    if (cache.size > 600) cache.clear();
+    cache.set(src, p);
+  }
+  return p;
+}
+
+/** Mark an <img class="thumb"> light or not once its picture is measured. */
+function toneThumb(img                  , src        )       {
+  void isLightPicture(src).then((light) => {
+    if (img.getAttribute('src') !== src) return; // a newer picture came meanwhile
+    if (light) img.dataset.tone = 'light';
+    else delete img.dataset.tone;
+  });
+}
+
+__def(__exports, "LIGHT_AT", () => LIGHT_AT);
+__def(__exports, "isLightPicture", () => isLightPicture);
+__def(__exports, "toneThumb", () => toneThumb);
+};
+__defs[27] = function (__exports) {
+'use strict';
+// placement-panel.ts
+
+// The placement tool's panel: the selected object (with editable numbers)
+// and the object list (thumbnail and name; objects of the same group shown
+// once as "name ×N", expandable).
+//
+// 2D adapters that report a draw order (Item.layer) get a "Layer" row on the
+// card (to back / backward / forward / to front) and the list switches to draw
+// order, front on top, one row per object (no "×N" groups: each object has its
+// own place), reorderable by dragging the grip with a mouse or a finger.
+//
+// Rebrand 2026-10-16 ("one list, one card, one input"): the panel is split in
+// two places. The LIST (`el`) is the left column, 28 px rows with a 16 px
+// picture. The CARD (`cardEl`) floats over the game's top right corner on PC
+// (272 px) and sits right above the ask bar on a phone (56 px: picture, name,
+// the numbers in one mono line, copy, delete, "…" for the fields), only while
+// something is picked. The card, top to bottom: picture · name · copy ·
+// delete, then the numbers — no longer folded under "Exact values" on PC
+// (hidden one level down, nobody used them) —, the 2D layer row, the game's
+// rules, the files it uses, notes. The ask box ("… ask your AI") is built
+// here too but lives in the bar at the bottom of the game (main.ts), where it
+// is also the ⌘K list (palette.ts).
+//
+// Several selected (CONTRACT.md §1.8): the card says how many and keeps the
+// ask box, the actions and the layer row (they work on all of them); the
+// numbers are for one object only. Above the list, "Select several" switches
+// presses (in the game and in the list) to add / take out instead of
+// replacing; the heading of a "name ×N" group selects the whole group.
+                                                      
+const { h, safeImageSrc } = __require(16);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(14);
+const { groupLayerPossible, sameKind } = __require(24);
+const { icon, setButton } = __require(18);
+const { displayName } = __require(25);
+const { toneThumb } = __require(26);
+
+                                     
+                                                                 
+                  
+                            
+                                      
+             
+                                    
+                                                                                                       
+                                           
+                                                    
+                                                                
+                    
+                   
+                              
+               
+                 
+                                                               
+                   
+                                 
+                                                      
+                                                    
+                                         
+                                                                                                                
+                                                   
+                                                                              
+                                
+     
+                                                                           
+                                                              
+     
+                           
+                                                                                                       
+                                                      
+                                                                  
+                                            
+     
+                                                                    
+                                                                   
+     
+                                                                                    
+                                          
+                                
+                                                                                                               
+                                                                          
+                                                                           
+                                 
+                                                                                     
+                                                 
+     
+                                                                            
+                                                    
+     
+                                                                  
+ 
+
+                                 
+                                                     
+                  
+                                                           
+                      
+                                                                             
+                        
+                                                                           
+                     
+                                                                                                     
+                         
+                                                                            
+                    
+                 
+                                                   
+                        
+                                                                                
+                   
+                                 
+ 
+
+const DEG = 180 / Math.PI;
+
+function createPlacementPanel(d                    )                 {
+  const el = h('div', { class: 'placement' });
+  const card = h('section', { class: 'card', 'aria-live': 'polite', dataset: { part: 'card' } });
+  // "N objects have no name → ask your AI to name them": 2D games often list
+  // "graphics (no name)" rows with a ⚠ that read as broken. One quiet line at
+  // the foot of the list (design pass "apple"): it is about the list, and a
+  // missing name is a thing to improve, not an alarm at the top of the panel.
+  const noName = h('div', { class: 'noname', dataset: { part: 'noname' }, hidden: true });
+  const list = h('ul', { class: 'objects', role: 'listbox', 'aria-label': d.t('btn.list'), 'aria-multiselectable': 'true' });
+  // The list's head: its name and count on the left, "Select" on the right
+  // (the way lists on phones and Macs enter picking several: a word at the
+  // top right that turns into "Done"). Phones have no Shift key; on PC the
+  // mode also lets a mouse drag from an empty spot draw a box.
+  const listTools = h('div', { class: 'list-tools', dataset: { part: 'list-tools' } });
+  // The how-to paragraph and the colour key under the list went (rebrand):
+  // a one-line first hint over the ask bar says it once (main.ts), and the
+  // editor's colours have one meaning each (orange = you, violet = the AI).
+  const listScroll = h('div', { class: 'list-scroll' }, list);
+  el.append(listTools, listScroll);
+  let noNameSent = false;
+  const renderNoName = () => {
+    const keys = d.items().filter((i) => i.unstable).map((i) => i.key);
+    noName.replaceChildren();
+    noName.hidden = !keys.length;
+    if (!keys.length) return;
+    // One quiet row at the column's foot: ✦ the request · how many.
+    if (noNameSent) {
+      noName.append(h('span', { class: 'foot-row muted', text: d.t('ask.nameSent') }));
+      return;
+    }
+    noName.append(h('button', { type: 'button', class: 'foot-row', dataset: { action: 'ask-name-all' }, title: d.t('noname.count', { n: keys.length }), onclick: async () => {
+      noNameSent = await d.askName(keys);
+      renderNoName();
+    } }, icon('spark'), h('span', { class: 'label', text: d.t('ask.name') }), h('span', { class: 'n', text: String(keys.length) })));
+  };
+  const expanded = new Set        ();
+  const thumbs = new Map                            ();
+  let inputs                                                                                             = [];
+
+  const thumbImg = (key        ) => {
+    const img = h('img', { class: 'thumb', alt: '', width: 32, height: 32 });
+    const src = safeImageSrc(d.thumb(key));
+    if (src) (img.src = src), toneThumb(img, src);
+    else img.classList.add('empty');
+    const arr = thumbs.get(key) || [];
+    arr.push(img);
+    thumbs.set(key, arr);
+    return img;
+  };
+
+  // The ask box is built once and lives in the strip under the game (design
+  // pass "apple"). Before, it was rebuilt inside the card on every pick, which
+  // needed a saved draft and caret; one lasting element keeps both by itself.
+  // With nothing picked it asks about the whole game ("make it night"): the
+  // AI is there to talk to from the first screen, not only after a pick
+  // (verganti review, 2026-10-16; the request carries no objects).
+  let askNote = '';
+  let fineOpen = false;
+  let cardKey                = null;
+  let askKey                = null;
+  let lastCard                = null;
+  const askInput = h('input', { type: 'text', class: 'ask-input', enterkeyhint: 'send', autocomplete: 'off', maxlength: 500 });
+  const askSend = h('button', { type: 'submit', class: 'primary ask-send', dataset: { action: 'ask-ai' } });
+  // Examples until something was sent, then "handed to your AI".
+  const askNoteEl = h('p', { class: 'ask-note hint', role: 'status' });
+  // No ✦ inside the field (mari review): the placeholder already says "ask
+  // your AI", and ✦ now means one thing only, "Ideas" next to the field.
+  // ✦ [chip: what it is about] [field] [send]. The chip (orange: your pick)
+  // says what the words will be about before a word is typed.
+  const askChip = h('span', { class: 'ask-chip', hidden: true });
+  const askEl = h('form', { class: 'ask-box', dataset: { part: 'ask' } }, h('span', { class: 'ask-spark', 'aria-hidden': 'true' }, icon('spark')), askChip, askInput,
+    h('kbd', { class: 'ask-kbd', 'aria-hidden': 'true', text: /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K' }), askSend);
+  askEl.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const keys = d.selectedKeys();
+    const text = askInput.value.trim();
+    if (!text) {
+      askInput.focus();
+      return;
+    }
+    askSend.disabled = true;
+    const ok = await d.ask(keys, text);
+    askSend.disabled = false;
+    if (ok) {
+      askInput.value = '';
+      askNote = d.t('ask.sent');
+    } else askNote = d.t('ask.fail');
+    renderAsk();
+  });
+  askInput.addEventListener('input', () => {
+    askSend.disabled = !askInput.value.trim();
+  });
+  // Enter sends from the field; with Escape the field lets go (so arrow keys
+  // move the object again) without clearing what was typed.
+  askInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') askInput.blur();
+  });
+
+  const renderAsk = () => {
+    const keys = d.selectedKeys();
+    const items = d.items();
+    const first = items.find((i) => i.key === keys[0]);
+    const k = keys.length ? [...keys].sort().join(',') : null;
+    // "Sent to your AI" belongs to what it was sent about.
+    if (k !== askKey) askNote = '';
+    askKey = k;
+    const whole = !keys.length || !first;
+    const ph = whole ? d.t('ask.game') : keys.length > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    askChip.hidden = whole;
+    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : first.label;
+    askInput.placeholder = ph;
+    // Read aloud as one sentence ("Ask your AI about “crate-4”…").
+    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: first.label }));
+    askEl.classList.toggle('whole', whole);
+    // A round arrow, as in message apps: grey until there is something to send.
+    setButton(askSend, 'send', d.t('ask.send'), false);
+    askSend.disabled = !askInput.value.trim();
+    // The examples stay even with nothing picked: they say what kind of thing
+    // can be asked before the box can be used.
+    // Only news ("handed to your AI") is shown: the examples are in the ⌘K list now.
+    askNoteEl.textContent = askNote;
+    askNoteEl.classList.toggle('hint', !askNote);
+    askNoteEl.hidden = !askNote;
+  };
+
+  /** Copy / Delete: two 28 px icon buttons at the card head's right end (the words are the tooltip and the label read aloud). */
+  const actionRow = () => {
+    // .card-actions (the place the AI-partner card keeps for these buttons) holding the edit-ops row.
+    const row = h('div', { class: 'card-actions edit-ops', dataset: { part: 'edit-ops' } });
+    const copy = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'copy' }, onclick: () => d.copy() });
+    setButton(copy, 'copy', d.t('ops.copy'), false, `${d.t('ops.copy')} — ${d.t('ops.copyHint')} (${d.shortcutOf('copy')})`);
+    const del = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'remove' }, onclick: () => d.remove() });
+    setButton(del, 'trash', d.t('ops.remove'), false, `${d.t('ops.remove')} — ${d.t('ops.removeHint')} (${d.shortcutOf('remove')})`);
+    row.append(copy, del);
+    return row;
+  };
+  /** "All 4 of this kind": a quiet line under the fields, only when there are more of the same kind. */
+  const kindLink = (key        ) => {
+    const kind = sameKind(d.items(), key);
+    if (kind.length < 2) return null;
+    return h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-kind' }, title: d.t('ops.selectKind', { n: kind.length }),
+      text: d.t('ops.selectKind', { n: kind.length }), onclick: () => d.selectMany(kind, key) });
+  };
+
+  /**
+   * The layer row (2D): "Layer" and one segmented control of four arrows
+   * (to back, backward, forward, to front), then where it is ("3 / 8" from
+   * the front). The words are in the tooltip with the shortcut.
+   */
+  const layerRow = (disabled                          , act                       , pos         , posTip         ) => {
+    const seg = h('div', { class: 'seg layer-seg', role: 'group', 'aria-label': d.t('layer.title') });
+    for (const op of ['toBack', 'backward', 'forward', 'toFront']             ) {
+      const b = h('button', { type: 'button', class: 'layer-btn', dataset: { action: `layer-${op}` }, disabled: disabled(op), onclick: () => act(op) });
+      setButton(b, op, d.t(`layer.${op}`), false, `${d.t(`layer.${op}`)} (${d.shortcut(op)})`);
+      seg.append(b);
+    }
+    return h('div', { class: 'f-row layer-row', dataset: { part: 'layer' } },
+      h('span', { class: 'f-l', text: d.t('layer.title') }), seg,
+      pos ? h('span', { class: 'layer-pos mono', title: posTip, text: pos }) : null);
+  };
+
+  /** Layer buttons for a whole selection (2D): the block moves together. */
+  const groupLayerRow = (keys          ) => {
+    const items = d.items();
+    if (!keys.some((k) => hasLayer(items.find((i) => i.key === k)))) return null;
+    return layerRow((op) => !groupLayerPossible(items, keys, op), (op) => d.reorder(keys[0] , op));
+  };
+
+  /** The card's head: picture(s) · name over a grey second line · copy · delete. */
+  const head = (pics             , name        , sub               , cls = '') =>
+    h('div', { class: `card-head ${cls}`.trim() }, pics,
+      h('div', { class: 'head-text' }, h('strong', { text: name }), h('div', { class: 'key', text: sub || '' })),
+      actionRow());
+
+  const renderGroupCard = (keys          ) => {
+    const items = d.items();
+    const members = keys.map((k) => items.find((i) => i.key === k)).filter((i)            => !!i);
+    const names = members.slice(0, 6).map((m) => displayName(m, d.t)).join(', ') + (members.length > 6 ? ' …' : '');
+    cardKey = 'group:' + [...keys].sort().join(',');
+    // What the strip does with several is told once, on the heading's tooltip.
+    const h0 = head(h('div', { class: 'stack' }, ...members.slice(0, 3).map((m) => thumbImg(m.key))), d.t('ops.many', { n: members.length }), names, 'group-head');
+    h0.title = d.t('ops.groupHint');
+    card.append(h0);
+    const body = h('div', { class: 'card-body' });
+    if (members.some((m) => m.movable === false)) body.append(h('p', { class: 'muted note-line', text: d.t('ops.lockedSkipped') }));
+    const lr = groupLayerRow(keys);
+    if (lr) body.append(lr);
+    // While "Select" is on, its "Done" is the way out.
+    if (!d.multi()) body.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-none' }, text: d.t('ops.selectNone'), onclick: () => d.selectMany([], '') }));
+    card.append(body);
+  };
+
+  const renderCard = () => {
+    card.replaceChildren();
+    inputs = [];
+    summaryLine = null;
+    const key = d.selected();
+    const sel = d.group();
+    // The card appears with a short rise when the selection changes (not on
+    // every re-render): the one motion that says "this is what you picked".
+    const animate = () => {
+      if (cardKey !== lastCard) {
+        lastCard = cardKey;
+        card.classList.remove('enter');
+        void card.offsetWidth;
+        card.classList.add('enter');
+      }
+    };
+    card.classList.toggle('many', !!key && sel.length > 1);
+    if (key && sel.length > 1) {
+      card.hidden = false;
+      renderGroupCard(sel);
+      animate();
+      return;
+    }
+    const it = key ? d.items().find((i) => i.key === key) : undefined;
+    if (!key || !it) {
+      cardKey = null;
+      lastCard = null;
+      // Nothing picked: no card at all (the game is the whole picture).
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    cardKey = key;
+    // 1. Head: the second line is the key when the name differs, else the file it is drawn with (filled in below).
+    // Never a tree path (`path:6`) or `tree#2` there: internal words (polish pass, play test stumble 8). The key a
+    // person may need (to tell the AI) is a real name, so it shows only when the label differs from a named key.
+    const shown = displayName(it, d.t);
+    const h0 = head(thumbImg(key), shown, !it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null);
+    const sub = h0.querySelector('.key')               ;
+    card.append(h0);
+    const body = h('div', { class: 'card-body' });
+    // Phone: the head shows the numbers in one mono line; "…" opens the fields.
+    if (d.phone()) {
+      summaryLine = sub;
+      sub.classList.add('mono');
+    }
+    animate();
+    // Game rules (.studio/studio.json): a locked object has no strip and no
+    // number fields; a kind with a default size gets a one-click reset.
+    if (it.movable === false) {
+      (h0.querySelector('.card-actions')               ).hidden = true;
+      card.append(body);
+      body.append(h('p', { class: 'muted note-line', text: d.t('placement.locked') }));
+      return;
+    }
+    // 2. Numbers, always open on PC (the phone folds them under "…").
+    const fine = h('details', { class: 'fine', dataset: { part: 'fine' } }, h('summary', { 'aria-label': d.t('placement.fine'), title: d.t('placement.fine') }, icon('more')));
+    fine.open = !d.phone() || fineOpen;
+    fine.addEventListener('toggle', () => {
+      if (d.phone()) fineOpen = fine.open;
+    });
+    const dim = d.dim();
+    const axes = dim === '3d' ? ['x', 'y', 'z'] : ['x', 'y'];
+    // Values read the same way everywhere: "2.00" (3D metres), "120" (2D px), "52°", "1.00".
+    // A text field (not type=number) so the angle can carry its "°"; what is typed is read with parseFloat.
+    const num = (label        , read                     , write                              , step        , axis         , show                        = (v) => String(Math.round(v * 1000) / 1000)) => {
+      const input = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', spellcheck: false, 'aria-label': label, dataset: { inc: step } }); // not data-step: the Ideas rows carry data-step
+      input.addEventListener('focus', () => input.select());
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') input.blur();
+      });
+      input.addEventListener('change', () => {
+        const v = parseFloat(input.value.replace(',', '.'));
+        const cur = d.pose(key);
+        if (!cur || !Number.isFinite(v)) return;
+        d.setPose(key, write(structuredClone(cur), v));
+      });
+      inputs.push({ input, read, show });
+      // The letter is a handle for the number: drag it left / right and the
+      // object moves in the game while the finger is down (one undo step when
+      // it lets go). Typing stays for an exact value. `per` = units per pixel
+      // (Shift = ten times finer). The whole field shows the ↔ cursor.
+      const grab = h('span', { class: d.scrub ? 'scrub' : '', text: axis ? axis.toUpperCase() : '', title: d.scrub ? d.t('placement.scrub') : undefined, dataset: axis ? { axis } : {} });
+      if (d.scrub) {
+        const per = step === '1' ? 1 : step === '0.1' ? 0.01 : 0.005;
+        let drag                                                              = null;
+        grab.addEventListener('pointerdown', (e) => {
+          const cur = d.pose(key);
+          if (!cur || (e.pointerType === 'mouse' && e.button !== 0)) return;
+          e.preventDefault();
+          grab.setPointerCapture(e.pointerId);
+          drag = { x: e.clientX, v: read(cur), from: structuredClone(cur), moved: false };
+          grab.classList.add('on');
+        });
+        const valueAt = (dr                          , e              ) => {
+          const v = dr.v + (e.clientX - dr.x) * per * (e.shiftKey ? 0.1 : 1);
+          return Math.round(v / (per / 10)) * (per / 10);
+        };
+        grab.addEventListener('pointermove', (e) => {
+          if (!drag) return;
+          if (!drag.moved && Math.abs(e.clientX - drag.x) < 3) return;
+          drag.moved = true;
+          d.scrub (key, write(structuredClone(drag.from), valueAt(drag, e)), false, drag.from);
+        });
+        const finish = (e              , keep         ) => {
+          if (!drag) return;
+          const dr = drag;
+          drag = null;
+          grab.classList.remove('on');
+          if (!dr.moved) {
+            if (keep) input.focus();
+            return;
+          }
+          d.scrub (key, keep ? write(structuredClone(dr.from), valueAt(dr, e)) : dr.from, true, dr.from);
+        };
+        grab.addEventListener('pointerup', (e) => finish(e, true));
+        grab.addEventListener('pointercancel', (e) => finish(e, false));
+      }
+      return h('label', { class: `num${axis ? '' : ' wide'}` }, grab, input);
+    };
+    const fields = h('div', { class: 'fields' });
+    fields.append(h('span', { class: 'f-l', text: d.t('placement.pos') }));
+    const posCells = h('div', { class: `f-cells n${axes.length}` });
+    const metres = (v        ) => v.toFixed(2);
+    const px = (v        ) => String(Math.round(v * 10) / 10);
+    axes.forEach((a, i) => posCells.append(num(a, (p) => p.p[i] ?? 0, (p, v) => ((p.p[i] = v), p), dim === '3d' ? '0.1' : '1', a, dim === '3d' ? metres : px)));
+    fields.append(posCells);
+    if (it.rotatable) {
+      fields.append(h('span', { class: 'f-l', text: d.t('placement.rot') }),
+        h('div', { class: 'f-cells' }, num('°', (p) => (p.r ?? 0) * DEG, (p, v) => ((p.r = v / DEG), p), '1', undefined, (v) => `${Math.round(v * 10) / 10}°`)));
+    }
+    // 3D tilt (tipped forward / sideways with the strip's turn button): shown once the object has one.
+    const p0 = d.pose(key);
+    if (dim === '3d' && it.rotatable && p0?.t) {
+      const tilt = (i       ) => (p      , v        ) => {
+        const t                   = p.t ? [p.t[0], p.t[1]] : [0, 0];
+        t[i] = v / DEG;
+        p.t = t;
+        return p;
+      };
+      const deg = (v        ) => `${Math.round(v * 10) / 10}°`;
+      fields.append(h('span', { class: 'f-l', text: d.t('placement.tilt') }),
+        h('div', { class: 'f-cells n2' }, num('x°', (p) => (p.t?.[0] ?? 0) * DEG, tilt(0), '1', 'x', deg), num('z°', (p) => (p.t?.[1] ?? 0) * DEG, tilt(1), '1', 'z', deg)));
+    }
+    if (it.scalable) {
+      fields.append(h('span', { class: 'f-l', text: d.t('placement.scale') }),
+        h('div', { class: 'f-cells' }, num('×', (p) => (Array.isArray(p.s) ? p.s[0] ?? 1 : p.s ?? 1), (p, v) => {
+          if (!(v > 0)) return p;
+          if (Array.isArray(p.s)) {
+            const k = v / (p.s[0] || 1);
+            p.s = p.s.map((c) => c * k);
+          } else p.s = v;
+          return p;
+        }, '0.1', undefined, (v) => v.toFixed(2))));
+    }
+    fine.append(fields);
+    if (it.scalable && typeof it.defaultScale === 'number') {
+      const target = it.defaultScale;
+      fine.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'reset-size' }, text: `${d.t('placement.resetSize')} ×${target}`, onclick: () => {
+        const cur = d.pose(key);
+        if (cur) d.setPose(key, { ...structuredClone(cur), s: target });
+      } }));
+    }
+    body.append(fine);
+    // 3. Layer (2D).
+    if (hasLayer(it) && it.backdrop) {
+      // Ground / background: stays at the back (play test 2026-10-16), said in one line.
+      body.append(h('p', { class: 'muted layer-fixed note-line', dataset: { part: 'layer' }, text: d.t('layer.backdrop') }));
+    } else if (hasLayer(it)) {
+      const items = d.items();
+      const sib = siblingsOf(items, key);
+      const pos = sib.findIndex((s) => s.key === key);
+      // "3 / 8" from the front, so the person sees where it is at a glance.
+      const at = sib.length > 1 ? `${sib.length - pos} / ${sib.length}` : undefined;
+      body.append(layerRow((op) => layerTarget(items, key, op) === null, (op) => d.reorder(key, op), at, at && d.t('layer.posTip', { i: sib.length - pos, n: sib.length })));
+    }
+    // 4. The game's rules for this object, said where the hand is: "Grid 1 · 45° steps".
+    const rules = d.rules?.(key) || [];
+    if (rules.length) body.append(h('div', { class: 'rules-row', dataset: { part: 'rules' } }, ...rules.map((r) => h('span', { class: 'pill rule', text: r.text, dataset: { k: r.k } }))));
+    // 5. The files this object is drawn with (Scene → Assets): pressing one opens it in Assets.
+    if (d.files) {
+      const filesRow = h('div', { class: 'f-row assets-row', dataset: { part: 'assets' }, hidden: true });
+      body.append(filesRow);
+      const forKey = key;
+      void d.files(key).then((files) => {
+        if (cardKey !== forKey || !files.length) return;
+        if (!d.phone() && !sub.textContent) sub.textContent = files[0] .name;
+        filesRow.append(h('span', { class: 'f-l', text: d.t('card.assets') }));
+        const cells = h('div', { class: 'f-files' });
+        for (const f of files.slice(0, 2)) {
+          const b = h('button', { type: 'button', class: 'asset-link', dataset: { action: 'open-asset', path: f.path }, title: `${d.t('card.assetOpen')}: ${f.path}`, onclick: () => d.openFile?.(f.path) });
+          if (f.src) {
+            const img = h('img', { class: 'thumb', alt: '', width: 16, height: 16 });
+            img.src = f.src;
+            b.append(img);
+          }
+          b.append(h('span', { class: 'label', text: f.name }), icon('chevronRight'));
+          cells.append(b);
+        }
+        if (files.length > 2) cells.append(h('span', { class: 'muted more-files', title: files.slice(2).map((f) => f.path).join('\n'), text: `+${files.length - 2}` }));
+        filesRow.append(cells);
+        filesRow.hidden = false;
+      });
+    }
+    // 6. Notes: no name, a copy, "all of this kind".
+    if (it.unstable) {
+      // A name is something the AI gives in code. Grey, not yellow: a missing
+      // name is a thing to improve, not a fault.
+      body.append(h('p', { class: 'warn note-line' },
+        h('span', { class: 'pill', title: d.t('placement.unstable'), text: d.t('noname.tag') }), ' ',
+        h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e       ) => {
+          const b = e.currentTarget                     ;
+          b.disabled = true;
+          const ok = await d.askName(d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable));
+          askNote = ok ? d.t('ask.nameSent') : d.t('ask.fail');
+          renderAsk();
+          renderCard();
+        } })));
+    }
+    if (it.copyOf) body.append(h('p', { class: 'muted copy-note note-line', text: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf }) }));
+    const kl = kindLink(key);
+    if (kl) body.append(kl);
+    card.append(body);
+    updateNumbers();
+  };
+
+  // Phone: the head's second line, "2.00, 0.00, 2.00 · 52°" (kept current while dragging).
+  let summaryLine                     = null;
+  const fmt = (v        , dim     ) => (dim === '3d' ? v.toFixed(2) : String(Math.round(v)));
+  const updateNumbers = () => {
+    const key = d.selected();
+    const p = key ? d.pose(key) : undefined;
+    if (!p) return;
+    for (const { input, read, show } of inputs) {
+      if (document.activeElement === input) continue; // do not fight the user's typing
+      input.value = show(read(p));
+    }
+    if (summaryLine && d.group().length <= 1) {
+      const dim = d.dim();
+      const it = d.items().find((i) => i.key === key);
+      summaryLine.textContent = p.p.slice(0, dim === '3d' ? 3 : 2).map((v) => fmt(v, dim)).join(', ') + (it?.rotatable ? ` · ${Math.round((p.r ?? 0) * DEG)}°` : '');
+    }
+  };
+
+  // ----- draw-order list (2D layers) -----
+  // Drag by the grip only: dragging a row itself would fight scrolling the
+  // list with a finger. The grip has touch-action: none, so a finger on it
+  // drags instead of scrolling.
+  let dragging                                                                                                         = null;
+  const dropIndex = (y        ) => {
+    // Front-first index among the dragged object's siblings, the dragged row left out.
+    const rows = Array.from(list.querySelectorAll             (`li.obj[data-layer]`)).filter((r) => r.dataset.layer === dragging .layer && r.dataset.key !== dragging .key);
+    let i = 0;
+    for (const r of rows) {
+      const b = r.getBoundingClientRect();
+      if (y > b.top + b.height / 2) i++;
+    }
+    return { i, rows };
+  };
+  const showMark = (y        ) => {
+    const { i, rows } = dropIndex(y);
+    const lr = list.getBoundingClientRect();
+    let top        ;
+    if (!rows.length) top = dragging .row.getBoundingClientRect().top;
+    else if (i < rows.length) top = rows[i] .getBoundingClientRect().top - 1;
+    else top = rows[rows.length - 1] .getBoundingClientRect().bottom + 1;
+    dragging .mark.style.top = `${top - lr.top + list.scrollTop}px`;
+    dragging .mark.hidden = false;
+  };
+  const grip = (it      ) => {
+    const g = h('span', { class: 'grip', role: 'button', 'aria-label': d.t('layer.drag'), title: d.t('layer.drag'), dataset: { grip: it.key } }, icon('grip'));
+    g.addEventListener('click', (e) => e.stopPropagation());
+    g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      e.preventDefault();
+      e.stopPropagation();
+      g.setPointerCapture(e.pointerId);
+      const row = g.closest('li')               ;
+      const mark = h('div', { class: 'drop-mark', hidden: true });
+      list.append(mark);
+      dragging = { key: it.key, layer: it.layer , row, mark, y0: e.clientY, moved: false };
+      row.classList.add('dragging');
+    });
+    g.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      if (Math.abs(e.clientY - dragging.y0) > 4) dragging.moved = true;
+      if (dragging.moved) showMark(e.clientY);
+    });
+    const finish = (e              , drop         ) => {
+      if (!dragging) return;
+      const dr = dragging;
+      dragging = null;
+      dr.row.classList.remove('dragging');
+      dr.mark.remove();
+      if (!drop || !dr.moved) return;
+      dragging = dr; // dropIndex reads it
+      const { i } = dropIndex(e.clientY);
+      dragging = null;
+      d.reorder(dr.key, i);
+    };
+    g.addEventListener('pointerup', (e) => finish(e, true));
+    g.addEventListener('pointercancel', (e) => finish(e, false));
+    return g;
+  };
+
+  const renderLayerList = (blocks                                , rest        ) => {
+    const sel = d.selected();
+    const many = blocks.length > 1;
+    for (const b of blocks) {
+      // The heading of a list selects everything in it.
+      if (many) {
+        const keys = b.rows.map((r) => r.item.key);
+        list.append(h('li', { class: 'layer-head', role: 'presentation', title: d.t('ops.selectAllOf'), dataset: { layerHead: b.layer }, text: b.layer, onclick: () => keys.length && d.selectMany(keys, keys[0] ) }));
+      }
+      b.rows.forEach(({ item: it, depth }) => {
+        const sib = siblingsOf(d.items(), it.key).length;
+        const row = h('li', { role: 'option', class: 'obj', 'aria-selected': String(it.key === sel), dataset: { key: it.key, layer: it.layer  } },
+          // Locked by the game's rules (.studio/studio.json): listed, but its order stays.
+          // Ground / background (Item.backdrop) stays at the back: no grip either.
+          sib > 1 && it.movable !== false && !it.backdrop ? grip(it) : h('span', { class: 'grip off', 'aria-hidden': 'true' }),
+          thumbImg(it.key),
+          nameOf(it),
+          it.unstable ? noNamePill(it) : null,
+        );
+        // 22 px per level: a sub row's picture starts under the name above (24 px picture − 2).
+        if (depth) row.style.paddingLeft = `${8 + depth * 22}px`;
+        if (inGroup(it.key)) row.setAttribute('aria-selected', 'true');
+        if (it.copyOf) row.append(copyTag(it));
+        row.addEventListener('click', (e) => d.select(it.key, e.shiftKey));
+        list.append(row);
+      });
+    }
+    for (const it of rest) {
+      const row = h('li', { role: 'option', class: 'obj', 'aria-selected': String(it.key === sel || inGroup(it.key)), dataset: { key: it.key } },
+        thumbImg(it.key), nameOf(it), it.unstable ? noNamePill(it) : null, it.copyOf ? copyTag(it) : null);
+      row.addEventListener('click', (e) => d.select(it.key, e.shiftKey));
+      list.append(row);
+    }
+    markRows();
+    revealSelected();
+  };
+
+  // "no name" in the list (rebrand): the row's name is a grey italic "No
+  // name" and the key it goes by sits at the right end, in mono; one way to
+  // say it (before: the key as the name AND a "No name" pill). The class
+  // stays badge-warn for .studio/ui/ CSS written against it.
+  // Polish pass (2026-10-16, play test stumble 8): the key at the right end (`path:6`) was an internal word in
+  // plain sight. The name now says what the object is (names.ts); the key moved to the tooltip. Kept as a
+  // function (and the class) for .studio/ui/ CSS written against it, but it draws nothing.
+  const noNamePill = (_it       )                     => null;
+  // The shared start of the members' names ("crate-1", "crate-2" → "crate"), else the first one's.
+  const kindName = (members        ) => {
+    const names = members.map((m) => displayName(m, d.t));
+    let pre = names[0] || '';
+    for (const n of names) while (pre && !n.startsWith(pre)) pre = pre.slice(0, -1);
+    pre = pre.replace(/[\s#:_.-]+$/, '');
+    return pre.length >= 2 ? pre : names[0] || '';
+  };
+  const nameOf = (it      ) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? `${d.t('placement.unstable')} (${it.key})` : undefined, text: displayName(it, d.t) });
+  // Keep the picked row in view inside the list (PC and phone). Before the
+  // tool-modes pass (10/16) a phone scrolled the sheet to its top on a new
+  // pick, because the card was then inside the sheet; the card now stands on
+  // the ask bar, outside it, so the top of the sheet is only the tabs — and
+  // the picked row (e.g. crate-4, 4th in its kind) stayed below the fold.
+  const revealSelected = () => {
+    list.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  };
+  const inGroup = (k        ) => d.group().length > 1 && d.group().includes(k);
+  // State that used to be invisible, drawn on the rows: what the AI's last
+  // change touched ("AI", seen after the game is reloaded), and what was
+  // changed here but not saved yet (a small dot at the row's end). The Save
+  // button's count said "2", but not which two.
+  const rowMarks = (keys          ) => {
+    const out                = [];
+    const ai = keys.map((k) => d.aiMark?.(k)).find(Boolean);
+    // Violet = the AI's hand, a dot like your own (orange) pick's.
+    if (ai) out.push(h('span', { class: 'tag ai', title: d.t(ai === 'added' ? 'ai.markAdded' : 'ai.markMoved'), 'aria-label': d.t('ai.mark') }));
+    if (keys.some((k) => d.unsaved?.(k))) out.push(h('span', { class: 'unsaved-dot', title: d.t('placement.unsaved'), 'aria-label': d.t('placement.unsaved') }));
+    return out;
+  };
+  /** (Re)draw the marks on every row; cheap, so it runs after each change, not only on a full render. */
+  const markRows = () => {
+    const items = d.items();
+    for (const row of list.querySelectorAll             ('li.obj')) {
+      for (const old of row.querySelectorAll(':scope > .tag.ai, :scope > .unsaved-dot')) old.remove();
+      const g = row.dataset.group;
+      const keys = g ? items.filter((i) => (i.group || `key:${i.key}`) === g).map((i) => i.key) : [row.dataset.key ];
+      // Before the grip (2D lists keep it last, at the right end).
+      const grip = row.querySelector(':scope > .grip');
+      for (const m of rowMarks(keys)) row.insertBefore(m, grip && grip === row.lastElementChild ? grip : null);
+    }
+  };
+  const copyTag = (it      ) => h('span', { class: `tag${it.ghost ? ' ghost' : ''}`, title: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf || '' }), text: d.t(it.ghost ? 'ops.ghostTag' : 'ops.copyTag') });
+
+  const renderListTools = () => {
+    listTools.replaceChildren();
+    const n = d.items().length;
+    if (!n) return;
+    const on = d.multi();
+    // Head: "Objects  13" ··· "Select" / "Done". The long how-to sentences
+    // that sat here (Shift+click, box, ⌘A) are the button's tooltip; with
+    // the mode on, one short line says what a press does now.
+    // PC: while picking, "press to add, again to remove" is the Done button's
+    // tooltip (the round marks already show it; Ive-view review, "still to
+    // cut"). Phones have no hover, so they keep the one line.
+    const b = h('button', { type: 'button', class: 'small toggle', dataset: { action: 'multi' }, 'aria-pressed': String(on),
+      text: on ? d.t('ops.multiDone') : d.t('ops.multi'),
+      title: on ? (d.phone() ? '' : d.t('ops.multiOn')) : `${d.t('ops.multiHint')} ${d.phone() ? '' : d.t('ops.multiOff', { all: d.shortcutOf('all') })}`.trim(),
+      onclick: () => d.setMulti(!on) });
+    listTools.append(h('span', { class: 'list-title', text: d.t('list.title') }), b);
+    if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
+    el.classList.toggle('picking', on);
+  };
+
+  const renderList = () => {
+    renderListTools();
+    list.replaceChildren();
+    // Keep the card's picture registered (it is drawn before the list): before,
+    // clearing everything here left the card's thumbnail empty when the
+    // picture arrived after the card (new copies, first selection).
+    for (const [k, arr] of thumbs) thumbs.set(k, arr.filter((img) => img.isConnected && !list.contains(img)));
+    dragging = null;
+    if (d.items().some(hasLayer)) {
+      list.classList.add('by-layer');
+      list.dataset.order = 'front-first';
+      renderLayerList(layerBlocks(d.items()), d.items().filter((i) => !hasLayer(i)));
+      return;
+    }
+    list.classList.remove('by-layer');
+    delete list.dataset.order;
+    const groups = new Map                ();
+    for (const it of d.items()) {
+      const g = it.group || `key:${it.key}`;
+      const arr = groups.get(g) || [];
+      arr.push(it);
+      groups.set(g, arr);
+    }
+    const sel = d.selected();
+    for (const [g, members] of groups) {
+      const first = members[0] ;
+      const many = members.length > 1;
+      const open = expanded.has(g) || (many && members.some((m) => m.key === sel || inGroup(m.key)));
+      const allIn = many && members.every((m) => d.group().includes(m.key));
+      // A "name ×N" heading: pressing it selects the whole group (move, turn,
+      // copy or delete all of them); the ▸ / ▾ button only opens or closes it.
+      const toggle = many ? h('button', {
+        type: 'button', class: 'expand', 'aria-expanded': String(open), 'aria-label': d.t(open ? 'ops.collapse' : 'ops.expand'),
+        dataset: { expand: g },
+        onclick: (e       ) => {
+          e.stopPropagation();
+          if (open) expanded.delete(g);
+          else expanded.add(g);
+          renderList();
+        },
+      }, icon('chevronRight')) : null;
+      const row = h('li', { role: 'option', class: `obj${many ? ' group-row' : ''}`, 'aria-selected': String(many ? allIn : first.key === sel || inGroup(first.key)), dataset: { key: first.key, ...(many ? { group: g } : {}) }, title: many ? d.t('ops.selectGroup', { n: members.length }) : undefined },
+        toggle,
+        thumbImg(first.key),
+        // `group` is an id (often a texture URL), not a name: show the first object's label.
+        // A group is named by its kind ("crate ×4" → "crate"), not by its first member.
+        many ? h('span', { class: 'name', text: kindName(members) }) : nameOf(first),
+        many ? h('span', { class: 'count n mono', text: String(members.length) }) : null,
+        !many && first.unstable ? noNamePill(first) : null,
+        !many && first.copyOf ? copyTag(first) : null,
+      );
+      row.addEventListener('click', (e) => {
+        if (many) {
+          expanded.add(g);
+          const keys = members.map((m) => m.key);
+          if (e.shiftKey || d.multi()) d.selectMany([...new Set([...d.group(), ...keys])], keys[0] );
+          else d.selectMany(keys, keys[0] );
+        } else d.select(first.key, e.shiftKey);
+      });
+      list.append(row);
+      if (many && open) {
+        for (const m of members) {
+          const sub = h('li', { role: 'option', class: 'obj sub', 'aria-selected': String(m.key === sel || inGroup(m.key)), dataset: { key: m.key } },
+            nameOf(m), m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null);
+          sub.addEventListener('click', (e) => {
+            e.stopPropagation();
+            d.select(m.key, e.shiftKey);
+          });
+          list.append(sub);
+        }
+      }
+    }
+    markRows();
+    revealSelected();
+  };
+
+  return {
+    el,
+    cardEl: card,
+    noNameEl: noName,
+    askEl,
+    askNoteEl,
+    renderAsk,
+    render() {
+      renderCard();
+      renderNoName();
+      renderList();
+      renderAsk();
+    },
+    updateNumbers,
+    markRows,
+    updateThumb(key) {
+      const src = safeImageSrc(d.thumb(key));
+      for (const img of thumbs.get(key) || []) {
+        if (src) {
+          img.src = src;
+          toneThumb(img, src);
+          img.classList.remove('empty');
+        }
+      }
+    },
+  };
+}
+
+__def(__exports, "createPlacementPanel", () => createPlacementPanel);
+};
+__defs[28] = function (__exports) {
+'use strict';
+// palette.ts
+
+// The ⌘K list: ask the AI, find an action, find an object — one field.
+//
+// Rebrand 2026-10-16 ("one list, one card, one input"). Before, the editor
+// had a row of buttons for things used once in a while (Show all, View,
+// Ideas for your AI, Undo, Redo, the language) and a separate "Ideas" page.
+// Now the ask bar at the bottom of the game is also the way to reach every
+// action: press it (or ⌘K / Ctrl+K anywhere) and it grows a list upward —
+// "Ask your AI" (examples for what is picked, the AI's own steps), "Actions"
+// (with their keys), "With KUMODeck", "In the scene" — that narrows as you
+// type. The order of what Enter does is the rule that makes one field work
+// for both:
+//   1. a typed word that names an action or an object → that row is first;
+//   2. otherwise the first row is "Ask your AI: “what you typed”", so a
+//      sentence is never swallowed by an action that happens to share a word.
+// The arrow keys move the highlight; Escape closes the list (a second Escape
+// lets go of the field). Every row is a real button (data-action / data-step),
+// so it can be reached without the keyboard too.
+//
+// AI feel (2026-10-16, play test stumble 6): the field is first a place to
+// write to the AI. Pressing it no longer opens the list (it covered half the
+// game before a word was typed). The list opens on ⌘K / Ctrl+K (or the ⌘K
+// row, the phone's list button, ↑ / ↓ in the field), and while typing only
+// when the typed word names an action or an object (`suggests`): then just
+// those rows show, so "undo" still finds Undo and a sentence never opens it.
+const { h } = __require(16);
+const { icon } = __require(18);
+
+                                                                        
+
+                             
+             
+                          
+                
+                                                      
+                
+                        
+                                                          
+                
+                                                                                   
+                 
+                                                                                
+                                
+              
+ 
+
+                              
+                                                                 
+                                                       
+                          
+                                                                          
+                       
+                                                                             
+              
+                                                                                                      
+                                                
+ 
+
+                          
+                  
+               
+                
+                    
+                 
+ 
+
+const fold = (s        ) => s.toLowerCase().normalize('NFKC');
+
+/**
+ * How well a row matches the typed text: 2 = a word of the row starts with
+ * it, 1 = it appears inside, 0 = no. Only short queries match actions and
+ * objects (up to 3 words, 24 characters): a sentence is a request to the AI.
+ */
+function matchScore(query        , row                                   )         {
+  const q = fold(query.trim());
+  if (!q) return 0;
+  if (q.length > 24 || q.split(/\s+/).length > 3) return 0;
+  const hay = fold(`${row.label} ${row.words || ''}`);
+  if (hay.split(/[\s/:·()「」“”,、.-]+/).some((w) => w && w.startsWith(q))) return 2;
+  return hay.includes(q) ? 1 : 0;
+}
+
+/** What typing may suggest: the editor's own actions and the objects (KUMODeck steps and the AI's examples wait for ⌘K). */
+const SUGGEST_SECTIONS                   = ['actions', 'objects'];
+
+/** Shortest typed word that may open the list by itself ("Ma" would match half the actions). */
+const SUGGEST_MIN = 3;
+
+/**
+ * Should typing open the list? Only when the text is a short query (matchScore's rule) that starts
+ * a word of an action or an object: the AI's own examples ("Make it night") and the KUMODeck steps
+ * do not count (the examples are sentences the person is about to write themselves).
+ */
+function suggests(query        , rows                                                                   )          {
+  // Japanese (and other non-Latin) words are short: the Japanese word for "Assets" is two characters.
+  const q = query.trim();
+  if (q.length < (/[^\u0000-\u007f]/.test(q) ? 2 : SUGGEST_MIN)) return false;
+  return rows.some((r) => SUGGEST_SECTIONS.includes(r.section) && matchScore(query, r) === 2);
+}
+
+function createPalette(d             )          {
+  const el = h('div', { class: 'palette', role: 'listbox', id: 'studio-palette', hidden: true, 'aria-label': d.t('pal.title') });
+  let open = false;
+  // Opened by typing (suggestions only) or on purpose (⌘K: everything).
+  let typed = false;
+  let rows               = [];
+  let at = 0;
+
+  const SECTIONS                   = ['ask', 'actions', 'kumodeck', 'objects'];
+
+  const build = ()               => {
+    const q = d.input.value.trim();
+    const all = d.rows();
+    if (!q) {
+      // Nothing typed: the ask examples and the actions; objects only when searched.
+      return all.filter((r) => r.section !== 'objects');
+    }
+    const scored = all.map((r) => ({ r, s: matchScore(q, r) })).filter((x) => x.s > 0);
+    scored.sort((a, b) => b.s - a.s || SECTIONS.indexOf(a.r.section) - SECTIONS.indexOf(b.r.section));
+    const askRow             = {
+      id: 'ask-text', section: 'ask', label: d.t('pal.askThis', { text: q.length > 60 ? q.slice(0, 59) + '…' : q }), icon: 'spark', hint: '↵',
+      data: { action: 'ask-ai' }, run: () => d.ask(),
+    };
+    const found = scored.map((x) => x.r);
+    // Opened by typing: only what the word named, then "Ask your AI: …" (Enter on a sentence is never taken).
+    if (typed) return [...found.filter((r) => SUGGEST_SECTIONS.includes(r.section)), askRow];
+    // Rule 2 above: the typed sentence comes first unless a word named something.
+    return scored.length && scored[0] .s === 2 ? [...found, askRow] : [askRow, ...found];
+  };
+
+  const render = () => {
+    el.replaceChildren();
+    if (!open) return;
+    rows = build();
+    at = Math.max(0, Math.min(at, rows.length - 1));
+    let last                        = null;
+    rows.forEach((r, i) => {
+      if (r.section !== last && !(i === 0 && r.id === 'ask-text')) {
+        el.append(h('div', { class: 'p-sec', role: 'presentation', text: d.t(`pal.${r.section}`) }));
+      }
+      last = r.section;
+      const pic = r.thumb ? h('img', { class: 'thumb', alt: '', width: 16, height: 16, src: r.thumb }) : r.icon ? icon(r.icon) : h('span', { class: 'p-blank' });
+      const b = h('button', { type: 'button', class: `p-row${i === at ? ' on' : ''}${r.section === 'ask' ? ' ai' : ''}`, role: 'option', 'aria-selected': String(i === at),
+        id: `studio-pal-${i}`, dataset: { ...(r.data || {}), row: r.id },
+        // mousedown, not click: the field must keep focus (a blur would close the list first).
+        onmousedown: (e       ) => e.preventDefault(),
+        onclick: () => runAt(i) },
+      pic, h('span', { class: 'p-label', text: r.label }), r.hint ? h('span', { class: 'p-k', text: r.hint }) : null);
+      el.append(b);
+    });
+    d.input.setAttribute('aria-activedescendant', rows.length ? `studio-pal-${at}` : '');
+    el.querySelector('.p-row.on')?.scrollIntoView({ block: 'nearest' });
+  };
+
+  const runAt = (i        ) => {
+    const r = rows[i];
+    if (!r) return;
+    if (r.id !== 'ask-text') {
+      d.input.value = '';
+      // Let go of the field: arrow keys move the picked object again, and the next press reopens the list.
+      d.input.blur();
+    }
+    close();
+    r.run();
+  };
+
+  const setOpen = (on         , byTyping = false) => {
+    if (on && open && typed && !byTyping) {
+      // ⌘K while suggestions show: the whole list.
+      typed = false;
+      render();
+      d.changed(true, false);
+      return;
+    }
+    if (open === on) return;
+    open = on;
+    typed = on && byTyping;
+    el.hidden = !on;
+    d.input.setAttribute('aria-expanded', String(on));
+    if (on) at = 0;
+    render();
+    d.changed(on, typed);
+  };
+  function close() {
+    setOpen(false);
+  }
+
+  d.input.setAttribute('role', 'combobox');
+  d.input.setAttribute('aria-controls', el.id);
+  d.input.setAttribute('aria-expanded', 'false');
+  d.input.setAttribute('aria-autocomplete', 'list');
+  // No open on focus or click (see the top): the field is for writing to the AI.
+  // A press on the page outside the bar closes it (the rows keep focus in the field, see mousedown above).
+  d.input.addEventListener('blur', () => setOpen(false));
+  d.input.addEventListener('input', () => {
+    at = 0;
+    const q = d.input.value;
+    if (open && !typed) {
+      render();
+      return;
+    }
+    // Suggestions come and go with the word: open while it names something, closed for a sentence.
+    if (suggests(q, d.rows())) {
+      if (!open) setOpen(true, true);
+      else render();
+    } else if (open) setOpen(false);
+  });
+  // Capture phase: runs before the ask box's own Enter / Escape handling.
+  d.input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && open) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      close();
+      return;
+    }
+    if (!open) {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!rows.length) return;
+      at = (at + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
+      render();
+    } else if (e.key === 'Enter' && !e.isComposing) {
+      const r = rows[at];
+      // The typed request goes through the form (its own checks, its note).
+      if (!r || r.id === 'ask-text') {
+        close();
+        return;
+      }
+      e.preventDefault();
+      runAt(at);
+    }
+  }, true);
+
+  return {
+    el,
+    open: () => {
+      if (document.activeElement !== d.input) d.input.focus();
+      setOpen(true);
+    },
+    close,
+    isOpen: () => open,
+    render,
+  };
+}
+
+__def(__exports, "matchScore", () => matchScore);
+__def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
+__def(__exports, "suggests", () => suggests);
+__def(__exports, "createPalette", () => createPalette);
+};
+__defs[29] = function (__exports) {
+'use strict';
+// undo.ts
+
+// Undo/redo history for placement: one entry per finished gesture or action.
+//
+// Entries hold absolute poses (from/to), not deltas, so undo is exact even
+// if the adapter rounds or clamps, and replaying never drifts.
+//
+// One entry can hold several changes (CONTRACT.md §1.8): moving a selection
+// of five objects, copying three, deleting two, or bringing a group to the
+// front is ONE press of Undo. Changes are applied in order on redo and in
+// reverse order on undo (a group's draw-order moves only undo exactly
+// backwards, each one being "take it out, put it at that place").
+const { LIMITS } = __require(0);
+
+                    
+                                                       
+                                                                               
+                                                          
+                                                  
+                                    
+
+                            
+                    
+ 
+
+/** The common case: one object moved. */
+const poseChange = (key        , from      , to      )            => ({ changes: [{ kind: 'pose', key, from, to }] });
+
+class UndoStack {
+          done              = [];
+          undone              = [];
+                   limit        ;
+
+  constructor(limit         = LIMITS.undoSteps) {
+    this.limit = limit;
+  }
+
+  /** Record a finished gesture. No-op when nothing changed. Clears redo. */
+  push(e           )          {
+    const changes = e.changes.filter((c) => c.kind !== 'pose' || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    if (!changes.length) return false;
+    this.done.push({ changes });
+    if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
+    this.undone.length = 0;
+    return true;
+  }
+
+  /** The entry to revert (apply its changes backwards), or null. */
+  undo()                   {
+    const e = this.done.pop();
+    if (!e) return null;
+    this.undone.push(e);
+    return e;
+  }
+
+  /** The entry to re-apply (apply its changes in order), or null. */
+  redo()                   {
+    const e = this.undone.pop();
+    if (!e) return null;
+    this.done.push(e);
+    return e;
+  }
+
+  /** What Undo / Redo would change next, without changing it (their tooltips name it). */
+  peekUndo()                   {
+    return this.done[this.done.length - 1] ?? null;
+  }
+  peekRedo()                   {
+    return this.undone[this.undone.length - 1] ?? null;
+  }
+
+  get canUndo()          {
+    return this.done.length > 0;
+  }
+  get canRedo()          {
+    return this.undone.length > 0;
+  }
+  get size()         {
+    return this.done.length;
+  }
+}
+
+__def(__exports, "poseChange", () => poseChange);
+__def(__exports, "UndoStack", () => UndoStack);
+};
+__defs[30] = function (__exports) {
+'use strict';
+// intro.ts
+
+// The first-run intro: one line over the ask bar that says what to do next,
+// four steps, then gone for good (2026-10-16, "first 5 minutes").
+//
+// WHY it grew out of the old one-line hint ("Click an object to pick it ·
+// ⌘K for everything") instead of being a tour with arrows and a dimmed page:
+// the person came to move things in their game, not to read about the editor.
+// One quiet line in the place the news card already uses keeps the game in
+// full view, never blocks a click, and has a close button. It only ever says
+// the next thing, and it moves on the moment the person has done it (doing a
+// later step first skips the earlier ones: it never asks you to go back).
+//
+// Where "seen" is kept: .studio/ui/prefs.json in the game folder (UiPrefs.intro),
+// not the browser's storage. The server picks a free port every run, so the
+// page's origin (and its localStorage) changes each time; and the editor's
+// promise is that it only writes inside the game folder, so no file in the home
+// folder either. The cost: a second game folder shows the intro once more —
+// but only when that folder has never been edited (no placement.json, no
+// prefs.json), see introStart().
+
+const INTRO_STEPS = ['pick', 'move', 'ask', 'save']         ;
+                                                     
+/** The step value that means "finished or closed": nothing is shown. */
+const INTRO_DONE = INTRO_STEPS.length;
+
+/**
+ * Where to start when the editor opens.
+ * - `saved`: UiPrefs.intro from prefs.json (a step number; undefined = never seen).
+ * - `usedBefore`: the folder already has placement.json or prefs.json, so the
+ *   person has used the editor here before the intro existed: do not teach them.
+ */
+function introStart(saved                    , usedBefore         )         {
+  if (typeof saved === 'number' && Number.isInteger(saved)) return Math.min(INTRO_DONE, Math.max(0, saved));
+  return usedBefore ? INTRO_DONE : 0;
+}
+
+/** The person did `did`: the step after it, unless they are already further on. */
+function introAdvance(at        , did           )         {
+  const i = INTRO_STEPS.indexOf(did);
+  return i >= at ? i + 1 : at;
+}
+
+/** The step to show now (null = nothing to show). */
+function introStep(at        )                   {
+  return at >= 0 && at < INTRO_DONE ? INTRO_STEPS[at]  : null;
+}
+
+__def(__exports, "INTRO_STEPS", () => INTRO_STEPS);
+__def(__exports, "INTRO_DONE", () => INTRO_DONE);
+__def(__exports, "introStart", () => introStart);
+__def(__exports, "introAdvance", () => introAdvance);
+__def(__exports, "introStep", () => introStep);
+};
+__defs[31] = function (__exports) {
+'use strict';
+// main.ts
+
+// The shell page. Entries: shell/local.ts (studio-shell.js, the local server)
+// and hosts/browser/main.ts (the browser-only web demo); each passes its own
+// StudioHost to start().
+//
+// The shell owns everything shared between tools: the game frame, the
+// connection to the bridge, selection, undo/redo for placement, keeping the
+// results as you go and handing them to the AI, the language, the Scene /
+// Assets switch, the ⌘K list and the Ideas / Look pages. Layout (rebrand
+// 2026-10-16, see the DOM section): the game edge to edge; the list on the
+// left (a sheet on a phone); the picked object's card and the ask bar float
+// over the game and tell the bridge what they cover (core/ui inset). The tool
+// strip and the outlines are drawn inside the game page by the bridge.
+const { LOCAL_PATHS, UI, isStudioMessage } = __require(0);
+const { keyStep } = __require(1);
+const { validateLibrary, validatePlacement } = __require(3);
+const { filesOfObject, libraryTool, openAsset } = __require(12);
+const { rulesFor } = __require(13);
+const { samePose } = __require(15);
+const { h, safeImageSrc } = __require(16);
+const { detectLang, setExtraText, translate } = __require(17);
+const { AI_STEPS, NEXT_STEPS, renderNextSteps } = __require(19);
+const { statusCovers } = __require(20);
+const { aiBusy, aiPhase, reloadDecision } = __require(21);
+const { renderSettings } = __require(23);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(22);
+const { dropTarget, hasLayer, layerTarget } = __require(14);
+const { createPlacementPanel } = __require(27);
+const { icon, setButton } = __require(18);
+const { createPalette } = __require(28);
+const { PlacementModel } = __require(15);
+const { UndoStack, poseChange } = __require(29);
+const { copyKey, groupLayerMoves, sameKind } = __require(24);
+const { INTRO_DONE, introAdvance, introStart, introStep } = __require(30);
+
+                                                                        
+
+const VIEW_KEY = 'game-studio:view';
+const store = {
+  get(k        )                {
+    try {
+      return sessionStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  },
+  set(k        , v        ) {
+    try {
+      sessionStorage.setItem(k, v);
+    } catch {
+      /* private mode: the view just resets on reload */
+    }
+  },
+};
+
+// ⌘ on Apple keyboards, Ctrl elsewhere (both work on every system).
+/** The strip's tool keys (lower case, as shortcut() reads them) — the same as the game page's (bridge/handles.ts TOOL_KEYS). */
+const STRIP_KEYS                            = { m: 'move', h: 'lift', t: 'rotate', s: 'scale' };
+const STRIP_ICONS                            = { move: 'toolMove', lift: 'toolLift', rotate: 'toolRotate', scale: 'toolScale' };
+const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+function start(host            ) {
+  let lang       = detectLang(location.search, navigator.language || 'en');
+  const t = (key        , vars                                  ) => translate(lang, key, vars);
+
+  // ----- state -----
+  let phase        = 'loading';
+  let gameUrl = '';
+  let gameOrigin = location.origin;
+  let bridgeAlive = false;
+  let editing = false;
+  let dim      = '3d';
+  let adapterInfo = '';
+  let items         = [];
+  let selected                = null;
+  // Several objects at once (CONTRACT.md §1.8): the whole selection, `selected`
+  // included. `multi` = "Select several" mode (a press adds / takes out).
+  let group           = [];
+  let multi = false;
+  // The tool strip's chosen tool in the game (placement/tool from the bridge): Escape drops it first, ⌘K shows it.
+  let stripTool                   = null;
+  // Stand-in copies were explained once this session (adapters without clone()).
+  let ghostTold = false;
+  // Copies asked for with ⌘D / Copy whose answer (placement/added) has not come yet: those make a new undo step.
+  const pendingCopies = new Set        ();
+  let check                         = null;
+  // ?tool=library opens on the Library (studio.mjs --tool library).
+  let tool         = new URLSearchParams(location.search).get('tool') === 'library' ? 'library' : 'placement';
+  let page                               = 'tool';
+  // How the person likes the editor (.studio/ui.json) and what the AI set up
+  // for this game (.studio/studio.json, .studio/tools.js).
+  let uiPrefs          = { ...DEFAULT_UI, show: { ...DEFAULT_UI.show } };
+  let uiSaveTimer = 0;
+  // ?ui=off: the original look — no saved prefs, no .studio/ui/ css/js, and
+  // nothing written back. The way back when a rewrite went wrong.
+  const safeUi = new URLSearchParams(location.search).get('ui') === 'off';
+  let gameConfig                    = null;
+  let gameTools                 = [];
+  let activeTool                = null;
+  const toolDirty = new Map                ();
+  let toolDataWaiter                                                                 = null;
+  let nextOpen                = null;
+  let sheetOpen = false;
+  let toast = '';
+  let toastTimer = 0;
+  const thumbs = new Map                ();
+  const model = new PlacementModel();
+  const undo = new UndoStack();
+  const listeners = new Map                                         ();
+  let placementRestored = false;
+  // itemsSeen: the game has answered with its object list at least once. Before
+  // that the card said "No movable objects found", which read as "broken"
+  // while the game was still starting (UI/UX review 2026-10-16, journey view).
+  let itemsSeen = false;
+  // The game's name for the title (host.open: the page <title> or the folder name).
+  let gameName = '';
+  // Hand-offs to the AI (CONTRACT.md §3.4). `pending` = the latest request
+  // this page handed over; `aiStatus` = what the agent last wrote back. The
+  // line under the status says which: waiting → "say 'look'" → got it → done.
+  // `text`: the person's own words, shown back in the line ('"make it glow"
+  // handed to your AI…', then '"make it glow" → done'): what was asked and what
+  // the AI did read side by side (verganti review 2026-10-16).
+  let pending                                                                                                              = null;
+  let aiStatus                      = null;
+  // The "done" status the person reloaded for: its line then shows what changed instead of "Reload".
+  let aiReloadFor                = null;
+  let aiTime                = null;
+  const openedAt = Date.now();
+  // AI feel (2026-10-16, ai-flow.ts). `aiWatching`: is an AI's watch running
+  // right now (`studio.mjs --watch`; undefined = this host cannot tell, then
+  // the old "say look after 20 s" line); `aiSeen`: the last request the watch
+  // showed the AI. `code`: the game files' signature from the host, `codeSince`
+  // since when it is unchanged, `loadedCode` what it was when the game in the
+  // frame was opened: when they differ the game reloads by itself (no "Reload"
+  // button to find). The reload happens in a second frame BEHIND the one on
+  // screen (`swapping` = the old frame), which goes only once the new game has
+  // drawn its objects: no flash of black or of an empty list.
+  let aiWatching                     ;
+  let aiSeen                    ;
+  let code                    ;
+  let codeSince = 0;
+  let loadedCode                    ;
+  let swapping                           = null;
+  let swapTimer = 0;
+  // The selection to give back to the new game after a reload.
+  let keepSel                                                      = null;
+  // "Undo AI change": `changeFrom` = the first request since the last change
+  // shown that the host kept a snapshot for; when the change is shown it
+  // becomes `lastChange.from` (Undo puts the files back to it; `redo` = the
+  // snapshot of the AI's version, made by the host when undoing). `aiAfter`:
+  // the line says "back to before" / "your AI's change is back".
+  let changeFrom                = null;
+  let lastChange                                               = null;
+  let aiAfter                             = null;
+  let undoBusy = false;
+  // What the AI's last change did, made visible (the AI line said "made 3
+  // changes", but not where). When the person presses "Reload the game"
+  // after the AI is done, the poses on screen are kept; the first object
+  // list of the new game is compared with them, and the objects that moved
+  // or are new get an "AI" mark in the list and a "Show the N it changed"
+  // button that selects them (outlined in the game).
+  let aiBefore                           = null;
+  // The poses from before the FIRST reload of an AI change that was still under way (agent-solid pass 2026-10-17):
+  // a later reload of the same change compares with these, not with the half-done game, so three new lighthouses
+  // stay "AI added 3" (a real run said "AI moved 3": the AI had moved its own new lighthouses after the first
+  // reload). Cleared by a new request and by any reload once the AI is no longer working.
+  let aiBase                           = null;
+  let aiMarks = new Map                           ();
+  // The marks as sent to the game (again on every edit start: a reload makes a new game page).
+  let aiMarksMsg                                     = { keys: [] };
+  let aiGone = 0;
+  // Files per object for the card's "Assets: …" line, asked once per game load.
+  const filesCache = new Map                                                                      ();
+
+  // ----- DOM -----
+  // Rebrand 2026-10-16 ("one list, one card, one input"; the design is in the
+  // README's "Look" section). The game is the subject: it runs edge to edge
+  // and the tools are three things only.
+  //
+  //   ┌ top bar 44: ▣ Studio / Crate Yard / Scene ······ ✓ Saved · ● AI · [▶ Play P] ┐
+  //   │ left column 248   │ game, edge to edge                  ┌ card 272 ┐       │
+  //   │  ▢ Scene       8  │                                     │ crate-4  │       │
+  //   │  ▦ Assets      4  │        (crate-4)                    │ X Y Z    │       │
+  //   │  ─────────────    │         [▣]   ← orange outline      └──────────┘       │
+  //   │  ground           │        [✥ ↕ ⟳ ⤢] ← the tool strip (in the game)        │
+  //   │  crate        4   │                                                        │
+  //   │  ✦ name them  1   │      ┌ ✦ [crate-4] ask your AI…            ↑ ┐         │
+  //   │  ⌘K all actions   │      └ the ask bar = the ⌘K list ────────────┘         │
+  //
+  // Colour carries two meanings only: orange = your hand (what you picked),
+  // violet = the AI's hand (what it changed, the ask bar's spark). The rest is
+  // four steps of grey, so nothing competes with the game's own colours.
+  // What went, and why, is in the README ("What was taken out"): the always-on
+  // Save button (now "Save · 3" only while something is not saved), Show all / View / Ideas / Undo / Redo buttons
+  // (⌘K, and the phone keeps Undo in its top bar), the Scene | Assets tabs
+  // (two rows of the left column), the four round handles (one strip), the
+  // folded numbers (always shown) and the how-to paragraph (one first hint).
+  // `let`: a reload after the AI's change swaps in a new frame (softReload).
+  const makeFrame = () => h('iframe', { class: 'game', title: 'Game', allow: 'autoplay; fullscreen; gamepad; accelerometer; gyroscope' })                     ;
+  let iframe = makeFrame();
+  // The ⌘K list dims the game behind it: one thing to look at.
+  const scrim = h('div', { class: 'scrim', hidden: true, onpointerdown: () => palette.close() });
+  // Assets take the game's place (PC) or rise as a sheet (phone): the same
+  // left column, the other of its two places.
+  const assetsPage = h('section', { class: 'assets-page', hidden: true, dataset: { part: 'assets-page' } });
+  // The picked object's card floats over the game's top right corner (PC).
+  const inspector = h('div', { class: 'inspector', dataset: { part: 'inspector' } });
+  const status = h('div', { class: 'status', role: 'status', dataset: { part: 'status' } });
+  const panel = h('div', { class: 'panel', dataset: { part: 'panel' } });
+  const toolEl = h('div', { class: 'tool-body' });
+  const toastEl = h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' });
+  const aiLine = h('div', { class: 'ai-line', role: 'status', 'aria-live': 'polite', dataset: { part: 'ai' }, hidden: true });
+
+  const btn = (key        , onclick            , extra                          = {}) =>
+    h('button', { type: 'button', dataset: { action: key }, onclick, ...extra });
+  // Scene | Assets: two rows at the top of the left column (were tabs: tabs
+  // read as two separate screens; rows read as two views of one place, and
+  // switching works with the same hand as picking from the list).
+  const tabs = h('nav', { class: 'tabs', role: 'tablist', dataset: { part: 'tabs' } });
+  const undoBtns                      = [];
+  const redoBtns                      = [];
+  const saveBtns                      = [];
+  const playBtns                      = [];
+  const mk = (arr                     , key        , fn            , extra                          = {}) => {
+    const b = btn(key, fn, extra);
+    arr.push(b);
+    return b;
+  };
+  function setLang(next      ) {
+    lang = next;
+    send({ type: 'studio:core/lang', lang });
+    changeUi({ ...uiPrefs, lang });
+    renderAll(true);
+  }
+  // Hidden by default (show.lang); the Look page and ⌘K have the language.
+  const langBtn = btn('lang', () => setLang(lang === 'en' ? 'ja' : 'en'));
+  langBtn.classList.add('link', 'lang');
+  const toolsRow = h('div', { class: 'game-tools', role: 'toolbar', dataset: { part: 'tools' } });
+  // Buttons added by .studio/ui/shell.js (studioShell.addButton), kept across re-renders.
+  const customTools                      = [];
+  // Where you are, always in one line: ▣ Studio / <the game> / Scene.
+  const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
+    h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
+  // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
+  // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
+  // writes placement.json and hands it to the AI, as Save always did. Then
+  // "✓ Saved" in the same place until the next change. The quiet writes in
+  // between are a draft only (so closing the tab loses nothing) and are never
+  // shown: two different "saved" on one screen read as a contradiction.
+  const saveState = h('span', { class: 'save-state', dataset: { part: 'save-state' } });
+  // Undo / redo: phones show Undo here once there is something to undo (no
+  // keyboard there); on PC they are ⌘Z / ⇧⌘Z and rows of the ⌘K list.
+  // "✓ Saved" sits right after Save, in the slot Save leaves, and keeps Save's
+  // width (renderButtons): nothing next to it moves when Save goes away.
+  // WHY (web demo bug, 2026-10-16): it used to sit left of Undo, so on phones
+  // Save vanished and Undo slid right into the spot under the finger. A second
+  // tap on "Save" (people tap again when the first one seems to do little)
+  // pressed Undo: the object jumped back, "Save · 1" came back, and the next
+  // draft write kept the undone place — "saving does not work".
+  const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
+    mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }), mk(saveBtns, 'save', () => void handOff()), saveState);
+  // Is the AI there? Grey until it writes back in this session, green after,
+  // violet while it works. (The editor cannot see the AI's window; this is
+  // only what the AI told it, so it never claims more.)
+  const peer = h('span', { class: 'peer', dataset: { part: 'peer' } }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // Play is the only white button on screen, so it is never looked for.
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, peer, topActions));
+  // The column's foot: "✦ Ask your AI to name them  1" and "⌘K All actions".
+  const noNameSlot = h('div', { class: 'noname-slot' });
+  // Phone: the row sits in the list sheet; the sheet closes so the list rises from the ask bar alone.
+  const paletteFoot = h('button', { type: 'button', class: 'foot-row', dataset: { action: 'palette' }, onclick: () => {
+    if (phone() && sheetOpen) {
+      sheetOpen = false;
+      renderAll(true);
+    }
+    palette.open();
+  } },
+    h('kbd', { text: isMac() ? '⌘K' : 'Ctrl K' }), h('span', { class: 'label' }));
+  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, tabs, status, panel,
+    h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
+  // Phone: the list opens from the ask bar's left end, as a sheet from the bottom.
+  const sheetBtn = btn('sheet', () => {
+    sheetOpen = !sheetOpen;
+    page = 'tool';
+    if (sheetOpen && tool === 'library') tool = 'placement';
+    renderAll(true);
+  }, { class: 'icon-btn' });
+  // News over the ask bar, one card, one place: a toast (copy failed…), the
+  // AI line (handed over → picked up → done, with "Show" / "Reload"), the ask
+  // box's own note, "playing" and, the first time only, what to do next
+  // (intro.ts: pick → move → ask → Save, "2/4", a close button).
+  const playNote = h('p', { class: 'play-note', hidden: true });
+  const introText = h('span', { class: 'intro-text' });
+  const introCount = h('span', { class: 'intro-n' });
+  const introClose = h('button', { type: 'button', class: 'intro-x', dataset: { action: 'intro-close' }, onclick: () => setIntro(INTRO_DONE) }, icon('close'));
+  const firstHint = h('p', { class: 'first-hint', hidden: true, dataset: { part: 'intro' } }, introCount, introText, introClose);
+  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote, firstHint);
+  const askSlot = h('div', { class: 'ask-slot' });
+  const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
+  // Phone: the picked object's card sits right above the ask bar (thumb's reach).
+  const cardSlot = h('div', { class: 'card-slot' });
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock);
+  const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
+  document.getElementById('app') .replaceWith(app);
+  panel.append(toolEl);
+  // The news card shows when one of its lines has something to say.
+  const updateCaption = () => {
+    const any = [...caption.children].some((c) => !(c               ).hidden && (!(c               ).classList.contains('toast') || (c               ).classList.contains('on')));
+    if (caption.hidden === any) caption.hidden = !any;
+  };
+  new MutationObserver(updateCaption).observe(caption, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+
+  const phone = () => window.innerWidth <= UI.phoneMaxWidth;
+  // Strip button size sent to the game: the person's choice, but never below
+  // 44 px on a phone (a 28 px button is right for a mouse, small for a finger).
+  const handlePx = () => (phone() ? Math.max(UI.handlePxPhone, uiPrefs.handleSize) : uiPrefs.handleSize);
+  // What the floating panels cover, so the tool strip and "bring into view" stay clear of them.
+  let insetSent = '';
+  const sendInset = () => {
+    const sr = stage.getBoundingClientRect();
+    const inset        = { top: 0, right: 0, bottom: 0, left: 0 };
+    // The bar and, on a phone, the card above it (the news card comes and goes: not counted).
+    const top = phone() && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
+    if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
+    // A phone's list sheet, and its Assets sheet, cover the lower part of the game.
+    // (Its final height, not its rect: it may still be sliding up.)
+    if (phone() && (sheetOpen || page !== 'tool') && !playing) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - (window.innerHeight - side.offsetHeight) + 8));
+    if (phone() && tool === 'library' && !assetsPage.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - assetsPage.getBoundingClientRect().top));
+    const card = placementPanel.cardEl;
+    if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
+      const cr = card.getBoundingClientRect();
+      inset.right = Math.max(0, Math.round(sr.right - cr.left + 8));
+      inset.rightTo = Math.round(cr.bottom - sr.top + 8);
+    }
+    const theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+    const k = JSON.stringify([inset, theme, handlePx()]);
+    if (k === insetSent) return;
+    insetSent = k;
+    send({ type: 'studio:core/ui', handlePx: handlePx(), inset, theme });
+  };
+  new ResizeObserver(() => sendInset()).observe(dock);
+
+  // ----- tools -----
+  const placementPanel = createPlacementPanel({
+    t,
+    items: () => items,
+    selected: () => selected,
+    pose: (k) => model.pose(k),
+    dim: () => dim,
+    thumb: (k) => thumbs.get(k) || null,
+    select: (k, add) => (add || multi ? toggleSelect(k) : selectObject(k, true)),
+    selectMany: (keys, primary) => selectMany(keys, primary),
+    group: () => group,
+    multi: () => multi,
+    setMulti: (on) => setMulti(on),
+    copy: () => copySelection(),
+    remove: () => removeSelection(),
+    shortcutOf: (what) => shortcutText(what),
+    phone: () => phone(),
+    setPose: (k, pose) => {
+      const from = model.pose(k);
+      if (!from) return;
+      if (undo.push(poseChange(k, from, pose))) applyPose(k, pose);
+    },
+    reorder: (k, to) => (group.length > 1 && typeof to === 'string' ? reorderGroup(to) : reorder(k, to)),
+    // Every picked key (edit-ops multi-select): the ask box then says "the 4 you picked".
+    selectedKeys: () => (group.length > 1 ? group.slice() : selected ? [selected] : []),
+    files: libraryTool ? (k) => {
+      if (!filesCache.has(k)) filesCache.set(k, filesOfObject(k, ctx));
+      return filesCache.get(k) ;
+    } : undefined,
+    openFile: (path) => openAsset(path, ctx),
+    rules: (k) => ruleWords(k),
+    unsaved: (k) => unsavedKeys.has(k),
+    aiMark: (k) => aiMarks.get(k) ?? null,
+    // Dragging a number's label: live moves go straight to the game (no undo
+    // step), the end of the drag is one undo step, like a handle drag.
+    scrub: (k, pose, end, from) => {
+      if (!end) {
+        model.moved(k, pose);
+        send({ type: 'studio:placement/pose', key: k, pose });
+        placementPanel.updateNumbers();
+        return;
+      }
+      if (!undo.push(poseChange(k, from, pose))) model.moved(k, from);
+      applyPose(k, pose);
+    },
+    ask: (keys, text) => askAi({ kind: 'ask', text, objects: requestObjects(keys) }),
+    askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    shortcut: (op) => {
+      // ⌘ on Apple keyboards, Ctrl elsewhere (both work on every system).
+      const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+      const key = op === 'toFront' || op === 'forward' ? ']' : '[';
+      const shift = op === 'toFront' || op === 'toBack';
+      return mac ? `${shift ? '⇧' : ''}⌘${key}` : `Ctrl+${shift ? 'Shift+' : ''}${key}`;
+    },
+  });
+
+  /**
+   * Change the draw order of one object (2D layers): one setPose with a new
+   * z, recorded as ONE undo step like any other change. The bridge answers
+   * with the whole list (the siblings' z shift too).
+   */
+  function reorder(key        , to                  )          {
+    const it = items.find((i) => i.key === key);
+    const from = model.pose(key);
+    if (!hasLayer(it) || it.movable === false || !from || from.z === undefined) return false;
+    const z = typeof to === 'number' ? dropTarget(items, key, to) : layerTarget(items, key, to);
+    if (z === null) return false;
+    const next = { ...structuredClone(from), z };
+    if (undo.push(poseChange(key, from, next))) applyPose(key, next);
+    return true;
+  }
+
+  /** Layer buttons / shortcuts with several selected: the whole selection moves as one block (one undo step). */
+  function reorderGroup(op         )          {
+    const moves = groupLayerMoves(items, group, op);
+    if (!moves.length) return false;
+    const changes           = [];
+    // Each move's "from" is the z right before it (the simulation's order), so undo replays them backwards.
+    const sim = items.map((i) => ({ ...i, pose: { ...i.pose } }));
+    for (const m of moves) {
+      const from = model.pose(m.key);
+      if (!from) continue;
+      const it = sim.find((i) => i.key === m.key) ;
+      const z0 = it.pose.z ;
+      // Shift the simulated siblings the way the adapter will.
+      for (const o of sim) {
+        if (o.layer !== it.layer || o === it || o.pose.z === undefined) continue;
+        if (z0 < m.z && o.pose.z > z0 && o.pose.z <= m.z) o.pose.z--;
+        else if (z0 > m.z && o.pose.z >= m.z && o.pose.z < z0) o.pose.z++;
+      }
+      it.pose.z = m.z;
+      changes.push({ kind: 'pose', key: m.key, from: { ...structuredClone(from), z: z0 }, to: { ...structuredClone(from), z: m.z } });
+    }
+    if (!undo.push({ changes })) return false;
+    for (const c of changes) if (c.kind === 'pose') applyPose(c.key, c.to);
+    return true;
+  }
+
+  caption.insertBefore(placementPanel.askNoteEl, playNote);
+  noNameSlot.append(placementPanel.noNameEl);
+  // The card grows when its file row arrives: what it covers is sent again.
+  new ResizeObserver(() => sendInset()).observe(placementPanel.cardEl);
+  // The card: over the game's top right corner on PC, above the ask bar on a phone.
+  const placeCard = () => {
+    const want = phone() ? cardSlot : inspector;
+    if (placementPanel.cardEl.parentElement !== want) want.append(placementPanel.cardEl);
+  };
+
+  // ----- the ⌘K list (palette.ts) -----
+  const askInput = placementPanel.askEl.querySelector('input')                    ;
+  const palette = createPalette({
+    t,
+    input: askInput,
+    rows: () => paletteRows(),
+    ask: () => (placementPanel.askEl                   ).requestSubmit(),
+    changed: (on, typed) => {
+      // Suggestions while typing leave the game in view (only ⌘K dims it).
+      scrim.hidden = !on || !!typed;
+      app.dataset.palette = on ? (typed ? 'suggest' : 'open') : 'closed';
+      renderFirstHint();
+    },
+  });
+  (dock.querySelector('.palette-slot')               ).append(palette.el);
+
+  /** Every row the ⌘K list can show right now. */
+  function paletteRows()               {
+    const rows               = [];
+    const keys = group.length > 1 ? group.slice() : selected ? [selected] : [];
+    const first = items.find((i) => i.key === keys[0]);
+    const about = keys.length > 1 ? t('ops.manyShort', { n: keys.length }) : first?.label;
+    // Ask your AI: examples for what is picked, then the AI's own steps.
+    const ask = (text        ) => () => void askAi({ kind: 'ask', text, objects: requestObjects(keys) }).then((ok) => ok && placementPanel.renderAsk());
+    if (about) {
+      for (const ex of ['pal.ex.row', 'pal.ex.glow']) {
+        const text = t(ex, { name: about });
+        rows.push({ id: ex, section: 'ask', label: text, icon: 'spark', run: ask(text) });
+      }
+    } else {
+      const text = t('pal.ex.night');
+      rows.push({ id: 'pal.ex.night', section: 'ask', label: text, icon: 'spark', run: ask(text) });
+    }
+    const unnamed = items.filter((i) => i.unstable).map((i) => i.key);
+    if (unnamed.length) {
+      rows.push({ id: 'name', section: 'ask', label: t('pal.ex.name'), icon: 'spark', hint: String(unnamed.length), data: { action: 'pal-name' },
+        run: () => void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) });
+    }
+    if (uiPrefs.show.next) for (const id of AI_STEPS) rows.push({ id: `step-${id}`, section: 'ask', label: t(`next.${id}`), icon: 'spark', words: t(`next.${id}.desc`), data: { step: id }, run: () => openNext(id) });
+    // Actions, with their keys.
+    const mod = isMac() ? '⌘' : 'Ctrl+';
+    const act = (id        , label        , ic        , run            , hint         , words         ) =>
+      rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
+    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), `${mod}S`, 'save 保存');
+    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', togglePlay, 'P', t('btn.play'));
+    if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
+    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, t('tool.library'));
+    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, `${mod}Z`, describe(undo.peekUndo()));
+    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, isMac() ? '⇧⌘Z' : 'Ctrl+Y', describe(undo.peekRedo()));
+    if (keys.length && editing) {
+      act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'));
+      act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'));
+    }
+    // The strip's tools (with something picked): the chosen one is marked with a check, its key on the right.
+    if (keys.length && editing) {
+      for (const k of (dim === '3d' ? ['move', 'lift', 'rotate', 'scale'] : ['move', 'rotate', 'scale'])               ) {
+        const key = Object.keys(STRIP_KEYS).find((c) => STRIP_KEYS[c] === k) .toUpperCase();
+        act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, t('pal.tool.words'));
+      }
+    }
+    if (uiPrefs.show.frame) act('frame', t('btn.frame'), 'frame', () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }), 'F');
+    // Back to the picture the editor opened on (3D: the game's own camera, polish pass) after looking around or
+    // after the first pick's glide; one press, any time (speed pass, 2026-10-17). Always listed: 2D opens on "all".
+    if (editing) act('home', t('pal.home'), 'opening', () => goHome(), isMac() ? '⇧F' : 'Shift+F', t('pal.home.words'));
+    if (items.length) act('select-all', t('pal.selectAll'), 'hand', () => selectMany(items.map((i) => i.key), selected ?? items[0] .key), shortcutText('all'));
+    act('multi', multi ? t('ops.multiDone') : t('pal.multi'), 'hand', () => setMulti(!multi), undefined, t('ops.multi'));
+    act('settings', t('pal.look'), 'look', () => openSettings(), undefined, `${t('btn.settings')} ${t('ui.theme')} ${t('ui.lang')}`);
+    act('lang', t('pal.lang'), 'globe', () => setLang(lang === 'en' ? 'ja' : 'en'), undefined, 'language 言葉 English 日本語');
+    if (uiPrefs.show.next) act('next', t('pal.ideas'), 'spark', () => openNext(), undefined, t('btn.next'));
+    // With KUMODeck (optional): the same steps as the Ideas page.
+    if (uiPrefs.show.next) for (const id of NEXT_STEPS) rows.push({ id: `step-${id}`, section: 'kumodeck', label: t(`next.${id}`), icon: 'arrowUp', words: t(`next.${id}.desc`), data: { step: id }, run: () => openNext(id) });
+    // In the scene: found by name (only when typing).
+    const seen = new Set        ();
+    for (const it of items) {
+      const g = it.group || `key:${it.key}`;
+      if (seen.has(g)) continue;
+      seen.add(g);
+      const members = items.filter((i) => (i.group || `key:${i.key}`) === g);
+      rows.push({ id: `obj-${it.key}`, section: 'objects', label: it.label, thumb: safeImageSrc(thumbs.get(it.key)), hint: members.length > 1 ? t('pal.count', { n: members.length }) : undefined,
+        words: members.map((m) => `${m.label} ${m.key}`).join(' '), data: { key: it.key },
+        run: () => {
+          switchTool('placement');
+          if (members.length > 1) selectMany(members.map((m) => m.key), it.key);
+          else selectObject(it.key, true);
+        } });
+    }
+    return rows;
+  }
+
+  /**
+   * The first-run intro (intro.ts): one line, the next thing to do, "1/4" and
+   * a close button. It grew out of the old "Click an object to pick it · ⌘K
+   * for everything" hint, in the same place and the same quiet plate.
+   * introAt is INTRO_DONE until the start code has read prefs.json, so
+   * nothing flashes for someone who has seen it.
+   */
+  let introAt = INTRO_DONE;
+  function introDid(did           ) {
+    const next = introAdvance(introAt, did);
+    if (next !== introAt) setIntro(next);
+  }
+  /** Move the intro on and keep the step in .studio/ui/prefs.json (not with ?ui=off: that writes nothing). */
+  function setIntro(next        ) {
+    introAt = next;
+    uiPrefs = { ...uiPrefs, intro: next };
+    if (!safeUi) void host.saveUi(uiPrefs);
+    renderFirstHint();
+  }
+  // The AI reply the intro last waited under, and the unsaved count then (renderFirstHint).
+  let introReplyKey = '';
+  let introReplyDirty = 0;
+  function renderFirstHint() {
+    if (selected) introDid('pick');
+    const step = introStep(introAt);
+    if (step) {
+      const k = step === 'pick' ? (isMac() ? '⌘K' : 'Ctrl+K') : isMac() ? '⌘S' : 'Ctrl+S';
+      const phoneText = phone() && (step === 'pick' || step === 'save');
+      introText.textContent = t(`intro.${step}${phoneText ? 'Phone' : ''}`, { k });
+      introCount.textContent = `${introAt + 1}/${INTRO_DONE}`;
+      introClose.title = introClose.ariaLabel = t('intro.close');
+      firstHint.dataset.intro = step; // not data-step: the Ideas page uses that for its steps
+    }
+    // Unlike the old hint it may sit under the AI line: after "ask" comes
+    // "Press Save", while the line still says "Handed to your AI".
+    // One line at a time (polish pass 2026-10-16, play test stumble 5): while a strip tool is chosen, the game
+    // page shows that tool's own line ("Drag anywhere: Turn · …") in this same place, and the two sat on top of
+    // each other. The tool's line says what a drag does now, so it wins; the intro comes back when the tool is put down.
+    // The AI's reply wins too (agent-solid pass 2026-10-17): a real run showed "Added 3 lighthouses around the
+    // cove" and "4/4 Press Save (⌘S) and your AI updates the game" in one card — two voices at once, and the tip
+    // read like part of the AI's answer. While the reply is up the tip waits; it comes back once the person moves
+    // something again (then "Press Save" is the next thing for them, not news about the AI).
+    const ph = currentPhase();
+    const replyKey = !aiLine.hidden && (ph === 'done' || ph === 'failed' || ph === 'updating' || ph === 'undone' || ph === 'redone') ? `${aiStatus?.at ?? ''}:${aiAfter ?? ''}` : '';
+    if (replyKey !== introReplyKey) {
+      introReplyKey = replyKey;
+      introReplyDirty = model.dirty();
+    }
+    const replyUp = !!replyKey && model.dirty() <= introReplyDirty;
+    firstHint.hidden = !step || !itemsSeen || playing || !!stripTool || palette.isOpen() || toastEl.classList.contains('on') || replyUp;
+  }
+
+  /**
+   * The game's rules for one object (.studio/studio.json), in short words for
+   * the card: "Grid 1", "45° steps", "Height fixed". Nothing without a config.
+   */
+  function ruleWords(key        )                                                     {
+    const it = items.find((i) => i.key === key);
+    if (!it || !gameConfig) return [];
+    const r = rulesFor(it, gameConfig);
+    const out                                                     = [];
+    if (r.locked) return out; // the card already says "Locked by this game's settings"
+    // `k` = which knob the rule binds (its colour on the pill; shell.css "Feel pass").
+    if (r.grid !== undefined) out.push({ k: 'pos', text: t('rule.grid', { g: Array.isArray(r.grid) ? r.grid.join(' × ') : r.grid }) });
+    if (typeof r.angle === 'number' && r.angle > 0 && it.rotatable) out.push({ k: 'rot', text: t('rule.angle', { a: r.angle }) });
+    if (r.lockHeight && dim === '3d') out.push({ k: 'pos', text: t('rule.height') });
+    if (!r.rotate) out.push({ k: 'rot', text: t('rule.noTurn') });
+    if (!r.scale) out.push({ k: 'size', text: t('rule.noSize') });
+    else if (r.scaleMin || r.scaleMax) out.push({ k: 'size', text: t('rule.size', { min: r.scaleMin ?? '–', max: r.scaleMax ?? '–' }) });
+    return out;
+  }
+  let unsavedKeys = new Set        ();
+  // Files in Assets, for the left column's count (filled once the folder is listed).
+  let libraryCount = 0;
+
+  /** Undo / Redo tooltips name what they would change: "Undo: move house". */
+  function describe(e                  )         {
+    if (!e) return '';
+    const name = (k        ) => items.find((i) => i.key === k)?.label || k;
+    const kinds = new Set(e.changes.map((c) => c.kind));
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : 'move';
+    const keys = [...new Set(e.changes.map((c) => c.key))];
+    return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0] ) : t('undo.n', { n: keys.length }) });
+  }
+
+  // ----- several at once, copy, delete (CONTRACT.md §1.8) -----
+  function shortcutText(what                           )         {
+    if (what === 'remove') return isMac() ? '⌫' : 'Delete';
+    const k = what === 'copy' ? 'D' : 'A';
+    return isMac() ? `⌘${k}` : `Ctrl+${k}`;
+  }
+  /** What the actions work on: the selection (locked objects left out). */
+  const targets = () => (group.length ? group : selected ? [selected] : [])
+    .filter((k) => items.find((i) => i.key === k)?.movable !== false);
+
+  function sendSelection(focus = false) {
+    send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
+    if (tool === 'placement' && page === 'tool') placementPanel.render();
+    else placementPanel.renderAsk();
+    renderFirstHint();
+    sendInset();
+    emit('selected', selected);
+  }
+  function selectMany(keys          , primary               ) {
+    const known = new Set(items.map((i) => i.key));
+    group = [...new Set(keys)].filter((k) => known.has(k));
+    selected = primary && group.includes(primary) ? primary : (group[group.length - 1] ?? null);
+    if (group.length === 1) {
+      selectObject(group[0] , true);
+      return;
+    }
+    sendSelection();
+  }
+  function toggleSelect(key        ) {
+    const base = group.length ? group : selected ? [selected] : [];
+    if (base.includes(key)) selectMany(base.filter((k) => k !== key), base.filter((k) => k !== key).pop() ?? null);
+    else selectMany([...base, key], key);
+  }
+  function setMulti(on         ) {
+    multi = on;
+    send({ type: 'studio:placement/multi', on });
+    if (tool === 'placement' && page === 'tool') placementPanel.render();
+  }
+
+  /** Every key in use, so a new copy never takes one (deleted copies included: redo brings them back). */
+  const takenKeys = () => new Set([...items.map((i) => i.key), ...model.copiesEver()]);
+
+  function copySelection() {
+    const keys = targets();
+    if (!keys.length || !editing) return;
+    const taken = takenKeys();
+    const reqs = keys.map((from) => {
+      const it = items.find((i) => i.key === from);
+      const key = copyKey(from, taken, it?.kinds?.[0]);
+      taken.add(key);
+      pendingCopies.add(key);
+      return { key, from };
+    });
+    send({ type: 'studio:placement/copy', items: reqs });
+  }
+
+  function removeSelection() {
+    const keys = targets();
+    if (!keys.length || !editing) return;
+    for (const k of keys) model.remove(k);
+    undo.push({ changes: keys.map((k) => ({ kind: 'remove', key: k })) });
+    group = [];
+    selected = null;
+    send({ type: 'studio:placement/remove', keys });
+    sendSelection();
+    renderButtons();
+  }
+
+  /** Apply one undo entry backwards (undo) or forwards (redo). */
+  function applyEntry(e           , dir                 ) {
+    const list = dir === 'undo' ? e.changes.slice().reverse() : e.changes;
+    const copies                                                   = [];
+    const removes           = [];
+    const restores           = [];
+    const flush = () => {
+      if (copies.length) send({ type: 'studio:placement/copy', items: copies.splice(0) });
+      if (removes.length) send({ type: 'studio:placement/remove', keys: removes.splice(0) });
+      if (restores.length) send({ type: 'studio:placement/restore', keys: restores.splice(0) });
+    };
+    for (const c of list) {
+      if (c.kind === 'pose') {
+        flush();
+        applyPose(c.key, dir === 'undo' ? c.from : c.to);
+      } else if ((c.kind === 'add') === (dir === 'redo')) {
+        // redo of a copy, undo of a deletion: the object comes back
+        if (c.kind === 'add') {
+          model.addCopy(c.key, c.from, c.pose);
+          copies.push({ key: c.key, from: c.from, pose: c.pose });
+        } else {
+          model.unremove(c.key);
+          restores.push(c.key);
+        }
+      } else {
+        // undo of a copy, redo of a deletion: the object goes away
+        model.remove(c.key);
+        removes.push(c.key);
+      }
+    }
+    flush();
+    // What came back is selected; what went away is not.
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose').map((c) => c.key));
+    if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
+      group = group.filter((k) => !gone.has(k));
+      selected = group.length ? group[group.length - 1]  : null;
+      sendSelection();
+    }
+  }
+
+  const ctx               = {
+    host,
+    get lang() {
+      return lang;
+    },
+    t,
+    send: (m) => send(m),
+    on(type, cb) {
+      const set = listeners.get(type) || new Set();
+      set.add(cb                              );
+      listeners.set(type, set);
+      return () => set.delete(cb                              );
+    },
+    items: () => items,
+    selectObject: (k) => {
+      switchTool('placement');
+      selectObject(k, true);
+    },
+    // Assets → Scene: "In the scene: 2" selects every object that uses the file.
+    selectObjects: (keys) => {
+      switchTool('placement');
+      const known = keys.filter((k) => items.some((i) => i.key === k));
+      if (known.length === 1) selectObject(known[0] , true);
+      else if (known.length) selectMany(known, known[0] );
+    },
+    switchTool: (id) => switchTool(id),
+    changed: () => renderButtons(),
+    phone,
+    ask: (r) => askAi(r),
+  };
+  const tools                                     = {};
+  if (libraryTool) tools.library = libraryTool;
+  let mounted                   = null;
+
+  /**
+   * The left column always lists the scene (or shows the Look / Ideas page);
+   * Assets is a page over the game (PC) or a sheet (phone), mounted while the
+   * Assets row is the chosen one.
+   */
+  function mountTool() {
+    if (tool !== 'library' || page !== 'tool' && !phone()) {
+      if (mounted && tool !== 'library') {
+        mounted.unmount();
+        mounted = null;
+      }
+    }
+    if (tool === 'library' && !mounted) {
+      const tl = tools.library;
+      assetsPage.replaceChildren();
+      if (!tl) {
+        assetsPage.append(h('p', { class: 'muted', text: t('library.missing') }));
+        return;
+      }
+      const mount = h('div', { class: 'tool-mount' });
+      assetsPage.append(mount);
+      tl.mount(mount, ctx);
+      mounted = tl;
+    }
+  }
+
+  function switchTool(id        ) {
+    page = 'tool';
+    if (id === tool && (mounted || id === 'placement')) {
+      renderAll();
+      return;
+    }
+    tool = id;
+    // Phone: Assets is its own sheet; the scene list closes behind it.
+    if (phone()) sheetOpen = id === 'placement' ? sheetOpen : false;
+    renderAll(true);
+  }
+
+  function openSettings() {
+    page = 'settings';
+    if (phone()) sheetOpen = true;
+    renderAll();
+    panel.scrollTop = 0;
+  }
+
+  /** Apply UI preferences to the page (and the handle size to the game). */
+  function applyUi() {
+    const root = document.documentElement;
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    root.dataset.theme = effectiveTheme(uiPrefs, !!mq?.matches);
+    root.style.setProperty('--studio-font', `${uiPrefs.fontSize}px`);
+    root.style.setProperty('--studio-panel-w', `${uiPrefs.width}px`);
+    root.style.setProperty('--studio-panel-h', `${uiPrefs.height}dvh`);
+    app.dataset.panel = uiPrefs.panel;
+    app.dataset.thumbs = uiPrefs.show.thumbs ? 'on' : 'off';
+    app.dataset.numbers = uiPrefs.show.numbers ? 'on' : 'off';
+    app.dataset.help = uiPrefs.show.help ? 'on' : 'off';
+    (header.querySelector('.adapter')               ).hidden = !uiPrefs.show.adapter;
+    for (const b of playBtns) b.hidden = !uiPrefs.show.play;
+    langBtn.hidden = !uiPrefs.show.lang;
+    // show.frame / show.next now decide whether ⌘K lists Show all / the Ideas (paletteRows).
+    insetSent = '';
+    sendInset();
+  }
+
+  /** A preference changed: apply now, save to .studio/ui.json shortly after (sliders send many). */
+  function changeUi(next         ) {
+    // The intro's step rides along: the View page's "reset" must not bring it back.
+    uiPrefs = { ...normalizeUi(next), intro: introAt };
+    applyUi();
+    renderToolsRow();
+    if (page === 'settings' && (document.activeElement                           )?.type !== 'range') renderAll();
+    clearTimeout(uiSaveTimer);
+    if (safeUi) return;
+    uiSaveTimer = window.setTimeout(() => {
+      void host.saveUi(uiPrefs).then((r) => {
+        if (!r.ok) showToast(t('save.fail', { error: r.error || 'ui.json' }));
+      });
+    }, 300);
+  }
+
+  /** Buttons for the game's own tools (.studio/tools.js). */
+  function renderToolsRow() {
+    toolsRow.replaceChildren();
+    toolsRow.hidden = (!gameTools.length || !uiPrefs.show.tools) && !customTools.length;
+    if (toolsRow.hidden) return;
+    if (!gameTools.length || !uiPrefs.show.tools) {
+      toolsRow.append(...customTools);
+      return;
+    }
+    toolsRow.append(h('span', { class: 'label', text: t('tools.title') }));
+    for (const g of gameTools) {
+      const n = toolDirty.get(g.id) || 0;
+      toolsRow.append(h('button', {
+        type: 'button', 'aria-pressed': String(activeTool === g.id), dataset: { gameTool: g.id },
+        text: `${g.icon ? g.icon + ' ' : ''}${g.label}${n ? ` (${n})` : ''}`,
+        onclick: () => send({ type: 'studio:tool/activate', id: activeTool === g.id ? null : g.id }),
+      }));
+    }
+    toolsRow.append(...customTools);
+    const on = gameTools.find((g) => g.id === activeTool);
+    if (on?.hint) toolsRow.append(h('span', { class: 'tool-hint', text: on.hint }));
+  }
+
+  function openNext(step                = null) {
+    page = 'next';
+    nextOpen = step;
+    if (phone()) sheetOpen = true;
+    renderAll();
+    // The sheet keeps the list's scroll; start the page at its title and
+    // "← Close" (on the phone they were scrolled out of sight).
+    panel.scrollTop = 0;
+  }
+
+  // ----- hand-offs to the AI (CONTRACT.md §3.4) -----
+  /** Objects for a request: key, name, and the pose the editor shows now (may be unsaved). */
+  function requestObjects(keys          ) {
+    return keys.map((k) => {
+      const it = items.find((i) => i.key === k);
+      return { key: k, label: it?.label, pose: model.pose(k), unstable: it?.unstable || undefined };
+    });
+  }
+
+  /**
+   * Where the edit camera stands and looks, for an "ask" (contract StudioRequestInput.view): the AI puts new things
+   * in sight. 3D only (the three adapter's orbit state, camera.js: eye = target + distance along yaw/pitch); a 2D
+   * view is the whole screen already, and an unknown state sends nothing.
+   */
+  function askView()                             {
+    if (dim !== '3d') return undefined;
+    let st                                                                                  = null;
+    try {
+      st = JSON.parse(store.get(VIEW_KEY) || 'null');
+    } catch {
+      return undefined;
+    }
+    const tg = st?.target;
+    const { distance: d, yaw, pitch } = st || {};
+    if (!Array.isArray(tg) || tg.length !== 3 || !tg.every(Number.isFinite) || typeof d !== 'number' || typeof yaw !== 'number' || typeof pitch !== 'number') return undefined;
+    const [x, y, z] = tg                            ;
+    const cp = Math.cos(pitch);
+    return { eye: [x + d * cp * Math.sin(yaw), y + d * Math.sin(pitch), z + d * cp * Math.cos(yaw)], target: [x, y, z] };
+  }
+
+  /** Hand a request to the AI through the host. Never assumes local files: the host decides where it goes. */
+  async function askAi(r                                  )                   {
+    const view = r.kind === 'ask' ? askView() : undefined;
+    const res = await host.request({ ...r, lang, dim, unsaved: dirtyCount() || undefined, ...(view ? { view } : {}) }).catch((e) => ({ ok: false, error: (e         ).message, id: undefined, at: undefined }                                                                                                                ));
+    if (!res.ok) {
+      showToast(t('ask.fail'));
+      return false;
+    }
+    if (r.kind === 'ask') introDid('ask');
+    handedOver(r.kind, res.id, res.at, r.kind === 'ask' ? r.text : undefined, res);
+    return true;
+  }
+
+  function handedOver(kind                                     , id         , at         , text         , info                                                        ) {
+    // A new request: the marks of the AI's previous change are history now.
+    aiReloadFor = null;
+    aiBase = null;
+    aiAfter = null;
+    lastChange = null;
+    // The host's answer says at once whether an AI watches (no 20 s of not knowing).
+    if (info?.watching !== undefined) aiWatching = info.watching;
+    if (info?.seen) aiSeen = info.seen;
+    if (id && info?.undo && !changeFrom) changeFrom = id;
+    if (aiMarks.size) {
+      aiMarks = new Map();
+      placementPanel.markRows();
+      aiMarksMsg = { keys: [] };
+      send({ type: 'studio:placement/marks', keys: [] });
+    }
+    // Offline host (browser-only demo): nobody picks the request up, so the line
+    // keeps the person's whole request (cut by CSS, full text on hover) instead of 40 characters.
+    pending = { kind, id, at: at ?? Date.now(), sent: Date.now(), text: text ? (!host.offline && text.length > 40 ? text.slice(0, 39) + '…' : text) : undefined };
+    renderAiLine();
+    pollSoon();
+  }
+
+  /** Where the AI is, as ai-flow.ts reads it. */
+  function currentPhase()          {
+    return aiPhase({ now: Date.now(), offline: !!host.offline, pending, status: aiStatus, statusTime: aiTime, openedAt,
+      watching: aiWatching, seen: aiSeen, reloading: !!swapping, after: aiAfter });
+  }
+
+  function renderAiLine() {
+    aiLine.replaceChildren();
+    aiLine.className = 'ai-line';
+    const ph = currentPhase();
+    const busy = aiBusy(ph);
+    // The violet light round the input (shell.css) follows this, and so does the AI dot.
+    app.dataset.ai = busy ? 'busy' : ph;
+    aiLine.classList.add(ph);
+    const covered = pending ? statusCovers({ id: pending.id ?? '', at: pending.at }, aiStatus, aiTime) : false;
+    const two = (head        , sub         ) => {
+      const say = h('span', { class: 'ai-text two' }, h('span', { class: 'ai-head', text: head }));
+      if (sub) say.append(h('span', { class: 'ai-sub', text: sub }));
+      aiLine.append(say);
+    };
+    // What was asked, small and grey under what is happening (verganti review): one glance says what and why.
+    const asked = pending?.text ? t('ai.asked', { text: pending.text }).replace(/\s*→\s*$/, '') : '';
+    const note = aiStatus?.note;
+    const link = (action        , ic        , label        , run            , title         ) =>
+      aiLine.append(h('button', { type: 'button', class: 'link', dataset: { action }, title: title || label, disabled: undoBusy, onclick: run }, icon(ic), h('span', { text: label })));
+    if (ph === 'waiting' && pending) {
+      // Hosts that cannot tell whether an AI watches (and the offline demo): the old line.
+      aiLine.append(h('span', { class: 'ai-text', text: pending.text ? t('ai.waitingAsk', { text: pending.text }) : pending.kind === 'saved' ? t('ai.waitingSaved') : t('ai.waiting', { what: t(`ai.what.${pending.kind}`) }) }));
+    } else if (ph === 'nudge') {
+      aiLine.append(h('span', { class: 'ai-text', text: t('ai.nudge') }));
+    } else if (ph === 'sent' || ph === 'seen') {
+      two(t(ph === 'seen' ? 'ai.seen' : 'ai.sent'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
+    } else if (ph === 'away') {
+      // Nobody watches: say so at once, the one thing to do, and that nothing is lost (play test: 21 s, then a dead end).
+      two(t('ai.away'), t('ai.awaySub'));
+    } else if (ph === 'received' || ph === 'working') {
+      two(note ? `${note.replace(/[.…]+$/, '')}…` : t(`ai.${ph}`), covered ? asked : '');
+    } else if (ph === 'updating') {
+      two(note || t('ai.updating'), t('ai.updating'));
+    } else if (ph === 'done' || ph === 'failed') {
+      const s = aiStatus ;
+      const n = typeof s.changed === 'number' ? s.changed : 0;
+      const count = ph === 'failed' ? t('ai.failed') : n === 1 ? t('ai.done1') : n > 1 ? t('ai.doneN', { n }) : t('ai.done');
+      // The AI's one-line reply first (its note), then what you asked and the count.
+      two(s.note || count, [covered ? asked : '', s.note ? count : ''].filter(Boolean).join(' · '));
+      const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
+      if (ph === 'done' && !playing && aiReloaded) {
+        const keys = [...aiMarks.keys()].filter((k) => items.some((i) => i.key === k));
+        // "Show the 3 it changed": selects them (they already glow violet in the game).
+        if (keys.length) {
+          aiLine.append(h('button', { type: 'button', class: 'link icon-only', dataset: { action: 'ai-show' }, title: t('ai.show', { n: keys.length }), 'aria-label': t('ai.show', { n: keys.length }),
+            onclick: () => {
+              switchTool('placement');
+              if (keys.length === 1) selectObject(keys[0] , true);
+              else selectMany(keys, keys[0] );
+            } }, icon('eye')));
+        } else if (itemsSeen && !lastChange) aiLine.append(h('span', { class: 'ai-same', text: aiGone ? t('ai.gone', { n: aiGone }) : t('ai.samePlaces') }));
+      }
+      if (lastChange && host.undoAi && !playing) link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
+      // A host that cannot tell when the game's files changed: the old button.
+      else if (ph === 'done' && !playing && code === undefined && !aiReloaded) {
+        link('ai-reload', 'undo', t('ai.reload'), () => {
+          aiReloadFor = aiStatus?.at ?? null;
+          void softReload('ai');
+        });
+      }
+    } else if (ph === 'undone' || ph === 'redone') {
+      two(t(ph === 'undone' ? 'ai.undone' : 'ai.redone'), ph === 'undone' ? t('ai.undoneSub') : '');
+      if (lastChange && host.undoAi && !playing) {
+        if (ph === 'undone' && lastChange.redo) link('ai-redo', 'redo', t('ai.redo'), () => void undoAiChange(true));
+        else if (ph === 'redone') link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
+      }
+    }
+    aiLine.hidden = !aiLine.childNodes.length;
+    renderFirstHint();
+    renderPeer();
+    // The whole line on hover (it is cut to one line).
+    aiLine.title = aiLine.hidden ? '' : aiLine.textContent || '';
+  }
+
+  /**
+   * "Undo AI change" / "Redo": the host puts the game's files back (one
+   * press, at once, whether or not the AI still watches) and tells the AI.
+   * Then the game reloads behind the old picture like after any change.
+   */
+  async function undoAiChange(redo         ) {
+    const to = redo ? lastChange?.redo : lastChange?.from;
+    if (!host.undoAi || !lastChange || !to || undoBusy) return;
+    undoBusy = true;
+    renderAiLine();
+    const res = await host.undoAi(to, { redo }).catch((e) => ({ ok: false, error: (e         ).message, redo: null }));
+    undoBusy = false;
+    if (!res.ok) {
+      showToast(t('ai.undoFail'));
+      renderAiLine();
+      return;
+    }
+    if (!redo) lastChange.redo = res.redo ?? null;
+    aiAfter = redo ? 'redone' : 'undone';
+    // The files' new signature first, so the reload below does not trigger a second one.
+    const st = await host.status().catch(() => null);
+    if (st?.code) {
+      code = st.code;
+      codeSince = Date.now();
+    }
+    // Redo shows the AI's change glowing again; Undo clears the glow.
+    void softReload(redo ? 'redo' : 'undo');
+  }
+
+  // Status polling: often while the AI has a request or is working (the line
+  // and the light follow within a second), every 3 s otherwise (the game's
+  // files are compared too: a change made in the person's own code editor
+  // also shows by itself); paused while the tab is hidden. Plain polling
+  // works the same against the local server and a hosted one.
+  let pollTimer = 0;
+  async function pollStatus() {
+    clearTimeout(pollTimer);
+    if (document.visibilityState !== 'hidden') {
+      const r = await host.status().catch(() => null);
+      if (r) {
+        aiStatus = r.status;
+        aiTime = r.time;
+        if (r.watching !== undefined) aiWatching = r.watching;
+        if (r.seen) aiSeen = r.seen;
+        if (r.code !== code) {
+          code = r.code;
+          codeSince = Date.now();
+        }
+        // The first answer after the game was opened is what the game in the frame was built from.
+        if (loadedCode === undefined) loadedCode = code;
+      }
+      const go = reloadDecision({ code, loadedCode, stableMs: Date.now() - codeSince, phase: currentPhase(), playing, reloading: !!swapping });
+      if (go === 'now') {
+        if (aiStatus?.state === 'done' || aiStatus?.state === 'failed') aiReloadFor = aiStatus.at ?? null;
+        void softReload('ai');
+      }
+      renderAiLine();
+    }
+    const ph = currentPhase();
+    const wait = aiBusy(ph) ? 700 : ph === 'away' || ph === 'waiting' || ph === 'nudge' ? 1500 : 3000;
+    pollTimer = window.setTimeout(() => void pollStatus(), wait);
+  }
+  function pollSoon() {
+    clearTimeout(pollTimer);
+    // Soon: a watching AI's "got it" shows within a second of Enter.
+    pollTimer = window.setTimeout(() => void pollStatus(), 400);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') void pollStatus();
+  });
+
+  // ----- bridge messaging -----
+  function send(m               ) {
+    if (!bridgeAlive || !iframe.contentWindow) return;
+    iframe.contentWindow.postMessage(m, gameOrigin);
+  }
+
+  function applyPose(key        , pose      ) {
+    model.moved(key, pose);
+    send({ type: 'studio:placement/pose', key, pose });
+    placementPanel.updateNumbers();
+    renderButtons();
+  }
+
+  function selectObject(key               , focus = false) {
+    selected = key;
+    group = key ? [key] : [];
+    // The card first, then the selection: "bring into view" must already know what the card covers.
+    if (tool === 'placement' && page === 'tool') placementPanel.render();
+    else placementPanel.renderAsk();
+    sendInset();
+    send({ type: 'studio:placement/select', key, focus });
+    renderFirstHint();
+  }
+
+  // Thumbnails asked for (answered or not), so a scroll never asks twice. Cleared with `thumbs` on reload.
+  const thumbsAsked = new Set        ();
+  /**
+   * The list's pictures. Everything is asked once, in the background (one per
+   * kind first: that is what a closed list shows), and then — on every render
+   * and scroll of the list — the rows in view are asked for again, which the
+   * bridge puts at the FRONT of its queue (tool-modes pass, 10/16). Before:
+   * the first 200 in list order only, so with hundreds of objects the rows
+   * further down never got a picture (ive-finish.md §7).
+   */
+  function requestThumbs() {
+    const seen = new Set        ();
+    const first           = [];
+    const rest           = [];
+    for (const it of items) {
+      if (thumbs.has(it.key) || thumbsAsked.has(it.key)) continue;
+      const g = it.group || it.key;
+      (seen.has(g) ? rest : first).push(it.key);
+      seen.add(g);
+    }
+    const keys = [...first, ...rest];
+    for (const k of keys) thumbsAsked.add(k);
+    // In parts of 500 (the bridge's cap per message), the first part last so it ends up first in the queue.
+    for (let i = Math.floor((keys.length - 1) / 500) * 500; i >= 0 && keys.length; i -= 500) send({ type: 'studio:placement/thumbs', keys: keys.slice(i, i + 500), size: 96 });
+    requestVisibleThumbs();
+  }
+  const visibleShown = new Set        ();
+  function requestVisibleThumbs() {
+    if (!uiPrefs.show.thumbs || playing) return;
+    const box = (placementPanel.el.closest('.panel')                      )?.getBoundingClientRect();
+    if (!box || !box.height) return;
+    const keys           = [];
+    for (const row of placementPanel.el.querySelectorAll             ('.obj[data-key]')) {
+      const r = row.getBoundingClientRect();
+      if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
+      const k = row.dataset.key ;
+      // Not drawn yet and not already moved to the front for this view.
+      if (!thumbs.has(k) && !visibleShown.has(k)) keys.push(k);
+    }
+    if (!keys.length) return;
+    for (const k of keys) visibleShown.add(k);
+    send({ type: 'studio:placement/thumbs', keys, size: 96 });
+  }
+  // Scrolling the list (the PC column or the phone sheet) asks for the rows that came into view, once a frame.
+  let thumbFrame = 0;
+  let thumbsScrolled = false;
+  const thumbsSoon = (scrolled         ) => {
+    thumbsScrolled ||= scrolled;
+    if (thumbFrame) return;
+    thumbFrame = requestAnimationFrame(() => {
+      thumbFrame = 0;
+      // After a scroll, a row scrolled past and back is moved to the front again if it still has no picture.
+      if (thumbsScrolled) visibleShown.clear();
+      thumbsScrolled = false;
+      requestVisibleThumbs();
+    });
+  };
+  document.addEventListener('scroll', (e) => {
+    if (e.target instanceof Element && e.target.contains(placementPanel.el)) thumbsSoon(true);
+  }, { capture: true, passive: true });
+  // Opening a kind (▸) shows its rows without a scroll; so does a pick that re-renders the list.
+  placementPanel.el.addEventListener('click', () => thumbsSoon(false));
+
+  window.addEventListener('message', (ev              ) => {
+    if (ev.source !== iframe.contentWindow || ev.origin !== gameOrigin) return;
+    if (!isStudioMessage(ev.data)) return;
+    const m = ev.data                 ;
+    onBridge(m);
+    for (const cb of listeners.get(m.type) || []) {
+      try {
+        cb(m);
+      } catch (e) {
+        console.error('[studio] tool listener failed', e);
+      }
+    }
+  });
+
+  // Events for .studio/ui/shell.js (studioShell.on).
+  const shellEvents = new Map                                   ();
+  const emit = (ev        , detail         ) => {
+    for (const cb of shellEvents.get(ev) || []) {
+      try {
+        cb(detail);
+      } catch (e) {
+        console.warn('[studio] .studio/ui/shell.js listener failed:', e);
+      }
+    }
+  };
+
+  function onBridge(m               ) {
+    if (m.type === 'studio:placement/selected') emit('selected', m.key);
+    else if (m.type === 'studio:placement/items') emit('items', m.items);
+    else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
+    switch (m.type) {
+      case 'studio:core/hello':
+        bridgeAlive = true;
+        if (phase === 'loading') phase = 'waiting';
+        renderStatus();
+        break;
+      case 'studio:core/wait':
+        if (m.reason === 'no-adapter' && check && !check.ok) phase = 'no-adapter';
+        renderStatus();
+        break;
+      case 'studio:core/check':
+        check = m.result;
+        if (!m.result.checks.find((c) => c.id === 'adapter-found')?.ok) phase = 'no-adapter';
+        // Report both outcomes: "check ok" tells the agent its adapter works.
+        void host.reportCheck(m.result);
+        // A change that broke the game: show what is there now instead of the old picture.
+        if (swapping && !m.result.ok) finishSwap();
+        renderStatus();
+        break;
+      case 'studio:core/ready':
+        dim = m.dim;
+        adapterInfo = `${m.kind}${m.version ? ' ' + m.version : ''}`;
+        editing = m.editing;
+        phase = 'ready';
+        if (!m.editing && !playing) {
+          send({ type: 'studio:core/lang', lang });
+          if (multi) send({ type: 'studio:placement/multi', on: true });
+          send({ type: 'studio:core/ui', handlePx: handlePx(), theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark' });
+          send({ type: 'studio:core/config', config: gameConfig });
+          const vs = store.get(VIEW_KEY);
+          let viewState         ;
+          try {
+            viewState = vs ? JSON.parse(vs) : undefined;
+          } catch {
+            viewState = undefined;
+          }
+          send({ type: 'studio:core/edit', on: true, viewState });
+          insetSent = '';
+          sendInset();
+        }
+        renderAll();
+        break;
+      case 'studio:tool/list':
+        gameTools = m.tools;
+        for (const g of gameTools) {
+          void host.loadData(g.id).then((data) => send({ type: 'studio:tool/restore', id: g.id, data }));
+        }
+        renderToolsRow();
+        break;
+      case 'studio:tool/state':
+        toolDirty.set(m.id, m.dirty);
+        if (m.active) activeTool = m.id;
+        else if (activeTool === m.id) activeTool = null;
+        renderToolsRow();
+        renderButtons();
+        break;
+      case 'studio:tool/data':
+        toolDataWaiter?.(m.items);
+        toolDataWaiter = null;
+        break;
+      case 'studio:core/view-state':
+        store.set(VIEW_KEY, JSON.stringify(m.state));
+        break;
+      case 'studio:core/key':
+        shortcut({ key: m.key, ctrl: m.ctrl, meta: m.meta, shift: m.shift, fromGame: true });
+        break;
+      case 'studio:core/error':
+        // Say what to do, not only what broke (polish pass 2026-10-16). Long enough to read.
+        showToast(t('status.adapterError', { msg: m.message }), 8000);
+        break;
+      case 'studio:core/game-error':
+        if (!gameError) gameError = { message: m.message, where: m.where };
+        if (playing) showToast(t('status.gameErrorToast', { msg: m.message }), 8000);
+        renderStatus();
+        break;
+      case 'studio:placement/items': {
+        // First list after "Reload the game" (AI done): what moved or is new
+        // compared with what was on screen before the reload. Raw adapter
+        // poses (the game's code as the AI left it), before the model's.
+        if (aiBefore) {
+          const before = aiBefore;
+          aiBefore = null;
+          aiMarks = new Map();
+          const now0 = new Set(m.items.map((i) => i.key));
+          // An object without a name gets a new path key when the AI adds things before it in the
+          // tree (path:8 → path:11): same place as one that is gone = the same object, not a new one.
+          const goneAt = [...before.entries()].filter(([k]) => !now0.has(k)).map(([, p]) => p);
+          let renamed = 0;
+          for (const it of m.items) {
+            const was = before.get(it.key);
+            if (!was && it.unstable && goneAt.some((p) => samePose({ ...it.pose, z: undefined }, { ...p, z: undefined }, dim))) {
+              renamed++;
+              continue;
+            }
+            if (!was) aiMarks.set(it.key, 'added');
+            else if (!samePose({ ...it.pose, z: undefined }, { ...was, z: undefined }, dim)) aiMarks.set(it.key, 'moved');
+          }
+          const now = new Set(m.items.map((i) => i.key));
+          aiGone = Math.max(0, [...before.keys()].filter((k) => !now.has(k)).length - renamed);
+          // The same marks in the game: violet outlines and one tag ("AI added 3"). Sent below, with the poses.
+          const marks = [...aiMarks.entries()];
+          const added = marks.filter(([, v]) => v === 'added').length;
+          const label = !marks.length ? undefined : added === marks.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: marks.length }) : t('ai.tagChanged', { n: marks.length });
+          aiMarksMsg = { keys: marks.map(([k]) => k), label };
+          placementPanel.markRows();
+          renderAiLine();
+        }
+        items = m.items;
+        itemsSeen = true;
+        if (aiMarksMsg.keys.length) send({ type: 'studio:placement/marks', ...aiMarksMsg });
+        const apply = model.setItems(items, dim);
+        // Continue from the last save: push saved poses the game does not show.
+        if (!placementRestored || apply.length) {
+          placementRestored = true;
+          for (const a of apply) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose });
+        }
+        // ... and the saved copies and deletions the AI has not put in the code yet.
+        const fe = model.takeFileEdits();
+        if (fe.copies.length) send({ type: 'studio:placement/copy', items: fe.copies });
+        if (fe.removes.length) send({ type: 'studio:placement/remove', keys: fe.removes });
+        if (selected && !items.some((i) => i.key === selected)) selected = null;
+        group = group.filter((k) => items.some((i) => i.key === k));
+        // A changed object's old picture is stale: ask again.
+        for (const k of aiMarks.keys()) thumbs.delete(k);
+        requestThumbs();
+        renderAll();
+        if (swapping) {
+          // The selection the person had, in the new game (focus: false = the camera stays put).
+          const ks = keepSel;
+          keepSel = null;
+          const g = (ks?.group || []).filter((k) => items.some((i) => i.key === k));
+          if (g.length > 1) selectMany(g, ks?.selected && g.includes(ks.selected) ? ks.selected : g[0] );
+          else if (ks?.selected && items.some((i) => i.key === ks.selected)) send({ type: 'studio:placement/select', key: ks.selected, focus: false });
+          // Two frames for the new game to draw with the kept poses and marks, then the old picture goes.
+          requestAnimationFrame(() => requestAnimationFrame(() => window.setTimeout(finishSwap, 120)));
+        }
+        break;
+      }
+      case 'studio:placement/selected':
+        selected = m.key;
+        group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
+        if (tool !== 'placement') switchTool('placement');
+        else if (page === 'tool') placementPanel.render();
+        else placementPanel.renderAsk();
+        // A pick in the game moves the intro on ("1/4 Click an object" → "2/4 drag it").
+        renderFirstHint();
+        break;
+      case 'studio:placement/moved':
+        model.moved(m.key, m.pose);
+        if (m.end && m.from) undo.push(poseChange(m.key, m.from, m.pose));
+        // A tip forward / sideways adds the card's Tilt row: draw the card again when that changes.
+        if (m.key === selected && m.end && !!m.pose.t !== !!m.from?.t && tool === 'placement' && page === 'tool') placementPanel.render();
+        else if (m.key === selected) placementPanel.updateNumbers();
+        renderButtons();
+        break;
+      case 'studio:placement/moved-group':
+        for (const e of m.poses) model.moved(e.key, e.pose);
+        if (m.end) {
+          undo.push({ changes: m.poses.filter((e) => e.from).map((e) => ({ kind: 'pose', key: e.key, from: e.from , to: e.pose })) });
+          emit('moved', { keys: m.poses.map((e) => e.key) });
+        }
+        renderButtons();
+        break;
+      case 'studio:placement/added': {
+        // New copies (from ⌘D / the Copy button): one undo step for all.
+        // Copies the shell asked for again (redo, reopening) are already in the model.
+        const fresh = m.items.filter((a) => pendingCopies.has(a.key));
+        for (const a of m.items) {
+          pendingCopies.delete(a.key);
+          if (!model.isCopy(a.key)) model.addCopy(a.key, a.from, a.pose, a.key);
+          else model.moved(a.key, a.pose);
+        }
+        for (const k of m.failed) pendingCopies.delete(k);
+        if (fresh.length) undo.push({ changes: fresh.map((a) => ({ kind: 'add', key: a.key, from: a.from, pose: a.pose })) });
+        if (m.items.some((a) => a.ghost) && !ghostTold) {
+          ghostTold = true;
+          showToast(t('copy.ghost'), 6000);
+        }
+        if (m.failed.length) showToast(t('copy.failed', { n: m.failed.length }));
+        renderButtons();
+        break;
+      }
+      case 'studio:placement/tool':
+        stripTool = m.tool;
+        renderFirstHint();
+        break;
+      case 'studio:placement/thumb':
+        if (m.src) {
+          thumbs.set(m.key, m.src);
+          placementPanel.updateThumb(m.key);
+        }
+        break;
+    }
+  }
+
+  // ----- actions -----
+  function doUndo() {
+    const e = undo.undo();
+    if (e) applyEntry(e, 'undo');
+    renderButtons();
+  }
+  function doRedo() {
+    const e = undo.redo();
+    if (e) applyEntry(e, 'redo');
+    renderButtons();
+  }
+  const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
+  const dirtyCount = () => model.dirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
+
+  // ----- the draft and Save (rebrand 2026-10-16, play test the same day) -----
+  // Every change is written to placement.json (and library.json) as a DRAFT,
+  // ~0.7 s after the last one, WITHOUT telling the AI (host.save with
+  // handoff: false: no request record, no stdout line, so a watching AI is
+  // not woken by every drag). The draft is never shown: it is there so that
+  // closing the tab loses nothing. SAVE ("Save · 3" in the top bar, ⌘S)
+  // writes the same file with a `saved` request (§3.4), exactly as Save
+  // always did, and only then does "✓ Saved" appear. WHY two writes: an AI
+  // that starts rewriting code halfway through an arrangement is worse than
+  // one that waits for Save. WHY the draft is hidden: the first build showed
+  // "Saved" for the draft and a "Hand to AI" button next to it; the play test
+  // found "Hand to AI" meaningless and two kinds of saved confusing.
+  // `dirtyCount()` = changes not saved yet; `written` = what the draft holds.
+  const written                         = {};
+  // True after a Save that went through, until the next change: "✓ Saved" shows.
+  let savedOnce = false;
+  let keepTimer = 0;
+  let keeping                       = null;
+  const sigOf = (v         ) => JSON.stringify(v);
+  const unwritten = () => {
+    // The same test as keepNow(): nothing changed since the page opened = nothing to write.
+    if ((model.dirty() > 0 || written.placement !== undefined) && sigOf(model.result()) !== written.placement) return true;
+    return Object.values(tools).some((tl) => tl && tl.dirty() > 0 && sigOf(tl.result()) !== written[tl.id]);
+  };
+  function keepSoon() {
+    clearTimeout(keepTimer);
+    if (!unwritten()) return;
+    keepTimer = window.setTimeout(() => void keepNow(), 700);
+  }
+  /** Write what changed, quietly. */
+  async function keepNow()                {
+    clearTimeout(keepTimer);
+    if (keeping) await keeping;
+    keeping = (async () => {
+      const jobs                                = [];
+      const file = model.result();
+      if ((model.dirty() > 0 || written.placement !== undefined) && sigOf(file) !== written.placement) {
+        const v = validatePlacement(file);
+        if (!v.ok) {
+          showToast(t('save.fail', { error: v.errors.join('; ') }));
+          return;
+        }
+        const sig = sigOf(file);
+        jobs.push(host.save('placement', v.value, { handoff: false }).then((r) => {
+          if (!r.ok) return r.error || 'placement';
+          written.placement = sig;
+          return null;
+        }));
+      }
+      for (const tl of Object.values(tools)) {
+        if (!tl || tl.dirty() === 0) continue;
+        const res = tl.result();
+        if (!res || sigOf(res) === written[tl.id]) continue;
+        const v = validateLibrary(res);
+        if (!v.ok) continue;
+        const sig = sigOf(res);
+        jobs.push(host.save(tl.id, v.value, { handoff: false }).then((r) => {
+          if (!r.ok) return r.error || tl.id;
+          written[tl.id] = sig;
+          return null;
+        }));
+      }
+      const errors = (await Promise.all(jobs)).filter(Boolean);
+      if (errors.length) showToast(t('save.fail', { error: errors.join('; ') }), 3500);
+    })();
+    try {
+      await keeping;
+    } finally {
+      keeping = null;
+      renderButtons();
+    }
+  }
+  // Leaving the page: what is left goes out at once.
+  window.addEventListener('pagehide', () => {
+    if (unwritten()) void keepNow();
+  });
+
+  /** Save (⌘S): the files with a `saved` request, handed to the AI. */
+  async function handOff() {
+    clearTimeout(keepTimer);
+    if (keeping) await keeping;
+    const jobs                                = [];
+    let placementHanded = false;
+    if (model.dirty() > 0 || placementRestored) {
+      const file = model.result();
+      const v = validatePlacement(file);
+      if (!v.ok) {
+        showToast(t('save.fail', { error: v.errors.join('; ') }));
+        return;
+      }
+      if (model.dirty() > 0) {
+        const sig = sigOf(file);
+        jobs.push(host.save('placement', v.value).then((r) => {
+          if (!r.ok) return r.error || 'placement';
+          model.markSaved();
+          written.placement = sig;
+          // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
+          handedOver('saved', r.request, r.at, undefined, r);
+          placementHanded = true;
+          return null;
+        }));
+      }
+    }
+    for (const tl of Object.values(tools)) {
+      if (!tl || tl.dirty() === 0) continue;
+      const res = tl.result();
+      if (!res) continue;
+      const v = validateLibrary(res);
+      if (!v.ok) {
+        showToast(t('save.fail', { error: v.errors.join('; ') }));
+        return;
+      }
+      const sig = sigOf(res);
+      jobs.push(host.save(tl.id, v.value).then((r) => {
+        if (!r.ok) return r.error || tl.id;
+        written[tl.id] = sig;
+        tl.saved();
+        return null;
+      }));
+    }
+    // Game tools' data (.studio/data/<id>.json): ask the game page for it.
+    if (toolsDirty() > 0) {
+      const got = await new Promise                                      ((resolve) => {
+        toolDataWaiter = resolve;
+        send({ type: 'studio:tool/collect' });
+        window.setTimeout(() => resolve([]), 3000);
+      });
+      const done           = [];
+      for (const it of got) {
+        jobs.push(host.saveData(it.id, it.data).then((r) => {
+          if (!r.ok) return r.error || it.id;
+          done.push(it.id);
+          return null;
+        }));
+      }
+      await Promise.all(jobs);
+      if (done.length) send({ type: 'studio:tool/saved', ids: done });
+    }
+    const errors = (await Promise.all(jobs)).filter(Boolean);
+    // A handed layout is followed by the AI line ("Handed to your AI…" →
+    // after 20 s "say 'look'"); only a hand-off the AI line does not cover
+    // (the Library, a game tool's data) gets the toast, in the same words.
+    if (errors.length) showToast(t('save.fail', { error: errors.join('; ') }), 3500);
+    else if (!placementHanded && jobs.length) showToast(t('save.ok', { file: 'placement.json' }), 6000);
+    if (!errors.length && jobs.length) {
+      savedOnce = true;
+      introDid('save');
+    }
+    if (!errors.length) emit('saved', null);
+    renderButtons();
+  }
+
+  function goHome() {
+    send({ type: 'studio:core/view', view: { action: 'home' } });
+  }
+
+  let playing = false;
+  // The first error the game's page threw since it was (re)loaded (studio:core/game-error), shown in the status line.
+  let gameError                                             = null;
+  // Play: the game as its code is now. Nothing to confirm (every change is
+  // already kept); what was written waits first, so a game that reads
+  // placement.json at start (studio-placement.js) gets the latest one.
+  async function togglePlay() {
+    if (!playing) await keepNow();
+    if (swapping) finishSwap();
+    playing = !playing;
+    palette.close();
+    loadGame();
+  }
+
+  /**
+   * Reload the game without a flash (AI feel, 2026-10-16): the new game opens
+   * in a second frame under the one on screen; the old frame (a still
+   * picture: the editor pauses the game) stays on top until the new game has
+   * listed its objects and drawn them with the kept poses, then fades out.
+   * The camera (view state) and the selection carry over. `why`: 'ai' and
+   * 'redo' compare what changed and mark it violet; 'undo' clears the marks.
+   */
+  async function softReload(why                        ) {
+    if (swapping || playing) return;
+    await keepNow();
+    if (why === 'undo') {
+      aiBefore = null;
+      aiBase = null;
+      setAiMarks(new Map());
+    } else {
+      aiBefore = why === 'ai' && aiBase ? aiBase : new Map(items.map((i) => [i.key, structuredClone(model.pose(i.key) || i.pose)]));
+      aiBase = why === 'ai' && aiBusy(currentPhase()) ? aiBefore : null;
+    }
+    if (why === 'ai' && changeFrom) {
+      lastChange = { from: changeFrom, redo: null };
+      changeFrom = null;
+    }
+    keepSel = { selected, group: group.slice() };
+    const old = iframe;
+    const next = makeFrame();
+    old.classList.add('leaving');
+    old.parentElement?.insertBefore(next, old);
+    iframe = next;
+    swapping = old;
+    // A game that never answers (broken by the change) still replaces the old picture.
+    swapTimer = window.setTimeout(finishSwap, 10_000);
+    loadGame(true);
+    renderAiLine();
+  }
+  function finishSwap() {
+    clearTimeout(swapTimer);
+    const old = swapping;
+    swapping = null;
+    if (old) {
+      old.classList.add('gone');
+      window.setTimeout(() => old.remove(), 240);
+    }
+    renderAiLine();
+  }
+  function setAiMarks(marks                                ) {
+    aiMarks = marks;
+    placementPanel.markRows();
+    const list = [...marks.entries()];
+    const added = list.filter(([, v]) => v === 'added').length;
+    const label = !list.length ? undefined : added === list.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: list.length }) : t('ai.tagChanged', { n: list.length });
+    aiMarksMsg = { keys: list.map(([k]) => k), label };
+    send({ type: 'studio:placement/marks', ...aiMarksMsg });
+  }
+
+  function loadGame(soft = false) {
+    bridgeAlive = false;
+    gameError = null;
+    filesCache.clear();
+    editing = false;
+    // A soft reload keeps the list, the selection and the pictures on screen
+    // until the new game answers (no flash of an empty list).
+    if (!soft) {
+      items = [];
+      itemsSeen = false;
+      selected = null;
+      group = [];
+      thumbs.clear();
+    }
+    check = null;
+    thumbsAsked.clear();
+    visibleShown.clear();
+    placementRestored = false;
+    // What the game in the frame is built from (the host's signature of the files).
+    loadedCode = code;
+    gameTools = [];
+    activeTool = null;
+    toolDirty.clear();
+    renderToolsRow();
+    if (!soft) phase = playing ? 'playing' : 'loading';
+    const u = new URL(gameUrl, location.href);
+    const [k, v] = LOCAL_PATHS.editFlag.split('=')                    ;
+    if (playing) u.searchParams.delete(k);
+    else u.searchParams.set(k, v);
+    if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
+    iframe.src = u.href;
+    renderAll();
+  }
+
+  function shortcut(e                                                                                   )          {
+    const mod = e.ctrl || e.meta;
+    const k = e.key.toLowerCase();
+    if (mod && k === 'z') {
+      if (e.shift) doRedo();
+      else doUndo();
+      return true;
+    }
+    if (mod && k === 'y') {
+      doRedo();
+      return true;
+    }
+    if (mod && k === 's') {
+      void handOff();
+      return true;
+    }
+    // ⌘K / Ctrl+K: the one list of everything (from the game frame too).
+    if (mod && k === 'k') {
+      palette.open();
+      return true;
+    }
+    // ⌘D copy (also stops the browser's "bookmark this page"), ⌘A select all.
+    if (mod && k === 'd' && !e.shift) {
+      if (editing) copySelection();
+      return true;
+    }
+    if (mod && k === 'a' && editing && tool === 'placement') {
+      const keys = items.map((i) => i.key);
+      if (keys.length) selectMany(keys, selected && keys.includes(selected) ? selected : keys[0] );
+      return true;
+    }
+    if (!mod && (k === 'delete' || k === 'backspace') && editing && (selected || group.length)) {
+      removeSelection();
+      return true;
+    }
+    // Layers (2D): ⌘] forward, ⌘[ backward, ⇧⌘] to front, ⇧⌘[ to back (Ctrl
+    // elsewhere), like drawing apps. With Shift the key reads '}' / '{' on
+    // most layouts. Always swallowed while editing so ⌘[ never navigates back.
+    if (mod && (k === ']' || k === '[' || k === '}' || k === '{')) {
+      const front = k === ']' || k === '}';
+      const all = e.shift || k === '}' || k === '{';
+      if (selected && editing) reorder(selected, front ? (all ? 'toFront' : 'forward') : all ? 'toBack' : 'backward');
+      return true;
+    }
+    // P plays / goes back to editing, F shows the whole scene (single keys,
+    // never while typing: the keydown handler below lets fields keep them).
+    if (!mod && k === 'p' && !e.shift) {
+      void togglePlay();
+      return true;
+    }
+    if (!mod && k === 'f' && !e.shift && editing) {
+      send({ type: 'studio:core/view', view: { action: 'frameAll' } });
+      return true;
+    }
+    // ⇧F: back to the opening view (the ⌘K row "Back to the opening view").
+    if (!mod && k === 'f' && e.shift && editing) {
+      goHome();
+      return true;
+    }
+    if (e.fromGame || mod) return false; // the bridge already handled steps/escape
+    // R: the next turn axis (3D; the game frame handles it itself when it has focus).
+    if (k === 'r' && !e.shift && selected && editing && dim === '3d') {
+      send({ type: 'studio:placement/axis', axis: 'next' });
+      return true;
+    }
+    // M / H / T / S: the strip's tools (the game frame handles them itself when it has focus).
+    const strip = !e.shift && selected && editing ? STRIP_KEYS[k] : undefined;
+    if (strip && !(strip === 'lift' && dim !== '3d')) {
+      setStripTool(strip);
+      return true;
+    }
+    if (k === 'escape') {
+      // First the chosen tool, then the pick (the same order as in the game).
+      if (stripTool) setStripTool(null);
+      else selectObject(null);
+      return true;
+    }
+    if (!selected || !editing) return false;
+    const s = keyStep(e.key, e.shift, dim);
+    if (!s) return false;
+    send({ type: 'studio:placement/step', key: selected, ...s, hold: false, keys: group.length > 1 ? group.slice() : undefined });
+    return true;
+  }
+
+  function setStripTool(k                  ) {
+    stripTool = k;
+    send({ type: 'studio:placement/tool', tool: k });
+  }
+  // Space held with the shell focused: a drag in the game looks around even with a tool chosen.
+  let spaceDown = false;
+  const spaceLook = (on         ) => {
+    if (on === spaceDown) return;
+    spaceDown = on;
+    send({ type: 'studio:placement/look', on });
+  };
+  window.addEventListener('keyup', (e) => {
+    if (e.key === ' ') spaceLook(false);
+  });
+  window.addEventListener('blur', () => spaceLook(false));
+
+  window.addEventListener('keydown', (e) => {
+    const tag = (e.target                      )?.tagName;
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    if (typing && !(e.ctrlKey || e.metaKey)) return;
+    // Space on a focused button presses it; only take Space when nothing that types or presses has focus.
+    if (e.key === ' ' && editing && !e.ctrlKey && !e.metaKey && !(e.target                      )?.closest?.('button, a, [role=option], [role=button]')) {
+      spaceLook(true);
+      e.preventDefault();
+      return;
+    }
+    if (typing && e.key.toLowerCase() === 'z') return; // native undo inside the field
+    if (e.repeat && selected) {
+      const s = keyStep(e.key, e.shiftKey, dim);
+      if (s && !e.ctrlKey && !e.metaKey) {
+        send({ type: 'studio:placement/step', key: selected, ...s, hold: true, keys: group.length > 1 ? group.slice() : undefined });
+        e.preventDefault();
+        return;
+      }
+    }
+    if (shortcut({ key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey })) e.preventDefault();
+  });
+
+  // Save gets 6 s: its message says what to do next (go back to the AI), which
+  // takes longer to read than a plain "done".
+  function showToast(text        , ms = 3500) {
+    toast = text;
+    toastEl.textContent = toast;
+    toastEl.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.classList.remove('on'), ms);
+  }
+
+  // ----- render -----
+  function renderStatus() {
+    status.replaceChildren();
+    status.className = 'status';
+    const line = (cls        , ...kids                   ) => {
+      status.className = `status ${cls}`;
+      status.append(...kids);
+    };
+    playNote.hidden = phase !== 'playing';
+    // One word in the caption; the whole sentence is its tooltip (Ive-view review §3).
+    playNote.textContent = t('status.playingShort');
+    playNote.title = t('status.playing');
+    // The game's own error first: it is why nothing else happens (a "Waiting for the game to draw…" that never ends).
+    if (gameError && !playing) {
+      line('warn', h('strong', { text: t('status.gameError') }), h('span', { class: 'mono', text: ` ${gameError.message}${gameError.where ? ` (${gameError.where})` : ''}` }),
+        h('span', { text: ' ' + t('status.gameErrorHint') + ' ' }),
+        h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => loadGame() }));
+    } else if (phase === 'loading') line('info', t('status.loading'));
+    else if (phase === 'waiting') line('info', t('status.waiting'));
+    else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
+    else if (phase === 'no-adapter') line('warn', h('strong', { text: t('status.noAdapter') }), h('span', { text: ' ' + t('status.noAdapterHint') }));
+    else if (check && !check.ok) {
+      const ul = h('ul', {});
+      for (const c of check.checks) if (!c.ok && !c.skipped) ul.append(h('li', { text: `${t('check.' + c.id)}${c.detail ? ` — ${c.detail}` : ''}` }));
+      line('warn', h('strong', { text: t('status.checkFail') }), ul);
+    }
+    status.hidden = !status.childNodes.length;
+    app.dataset.items = itemsSeen ? 'seen' : 'waiting';
+    // While playing, the side panel steps away (shell.css): play = the game only.
+    app.dataset.playing = playing ? 'on' : 'off';
+  }
+
+  let saveSlotW = 0;
+  function renderButtons() {
+    const n = dirtyCount();
+    // Undo / redo say what they would change ("Undo: move house (⌘Z)").
+    const mod = isMac() ? '⌘' : 'Ctrl+';
+    const nextUndo = describe(undo.peekUndo());
+    const nextRedo = describe(undo.peekRedo());
+    unsavedKeys = model.changedKeys();
+    placementPanel.markRows();
+    for (const b of undoBtns) {
+      setButton(b, 'undo', t('btn.undo'), false, `${t('btn.undo')}${nextUndo ? ': ' + nextUndo : ''} (${mod}Z)`);
+      // While playing, undo/redo would change a game the person cannot see as edited.
+      b.disabled = playing || !undo.canUndo;
+    }
+    for (const b of redoBtns) {
+      setButton(b, 'redo', t('btn.redo'), false, `${t('btn.redo')}${nextRedo ? ': ' + nextRedo : ''} (${isMac() ? '⇧⌘Z' : 'Ctrl+Y'})`);
+      b.disabled = playing || !undo.canRedo;
+    }
+    // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
+    if (n > 0) savedOnce = false;
+    // The intro's "move" step: anything in the scene changed by hand (drag, turn, size, copy).
+    if (model.dirty() > 0) introDid('move');
+    renderFirstHint();
+    // Save's width while it is still on screen: "✓ Saved" takes the same room (see the footer).
+    const shownSave = saveBtns.find((b) => !b.hidden && b.offsetWidth > 0);
+    if (shownSave) saveSlotW = shownSave.offsetWidth;
+    saveState.replaceChildren(icon('check'), h('span', { text: t('btn.saved') }));
+    saveState.title = t('save.savedTip');
+    saveState.hidden = !savedOnce || n > 0 || playing;
+    saveState.style.minWidth = saveSlotW ? `${saveSlotW}px` : '';
+    for (const b of saveBtns) {
+      // "Save · 3": only while there is something not saved.
+      setButton(b, null, t('btn.save'), true, `${t('save.unsavedTip', { n })} (${mod}S)`);
+      if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
+      b.hidden = n === 0 || playing;
+      b.dataset.unsaved = String(n);
+    }
+    for (const b of playBtns) {
+      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, `${playing ? t('btn.edit') : t('btn.play')} (P)`);
+      if (!phone()) b.append(h('kbd', { text: 'P' }));
+    }
+    keepSoon();
+  }
+
+  /** The AI's dot: what it last told the editor (never more). */
+  function renderPeer() {
+    const st = aiStatus && (aiTime ?? 0) >= openedAt ? aiStatus.state : null;
+    // Busy = the AI has a request of yours (ai-flow.ts): the dot pulses and the light runs round the input.
+    const busy = aiBusy(currentPhase());
+    // With a watch (`studio.mjs --watch`) the dot says whether the AI is watching right now.
+    const live = aiWatching !== undefined ? aiWatching : !!st;
+    peer.dataset.state = busy ? 'busy' : live ? 'live' : 'idle';
+    peer.title = busy ? t('peer.busy') : aiWatching === true ? t('peer.watching') : aiWatching === false ? t('peer.away') : st ? t('peer.live') : t('peer.idle');
+    (peer.querySelector('.label')               ).textContent = t('peer.label');
+  }
+
+  let lastPage = '';
+  function renderAll(remount = false) {
+    document.documentElement.lang = lang;
+    app.dataset.layout = phone() ? 'phone' : 'pc';
+    app.dataset.sheet = sheetOpen ? 'open' : 'closed';
+    app.dataset.view = tool; // not data-tool: the Scene / Assets rows carry data-tool
+    app.dataset.page = page;
+    // ▣ Studio / <the game> / <where you are>.
+    (header.querySelector('.title')               ).textContent = gameName || t('app.title');
+    (header.querySelector('.app')               ).textContent = t('app.brand');
+    (header.querySelector('.here')               ).textContent = page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : t('tool.' + tool);
+    (header.querySelector('.adapter')               ).textContent = adapterInfo;
+    langBtn.textContent = t('btn.lang');
+    // Scene / Assets: two rows, a 16 px icon, the name, the count.
+    tabs.replaceChildren();
+    for (const id of ['placement', 'library']            ) {
+      const n = id === 'placement' ? items.length : libraryCount;
+      tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
+        icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), n ? h('span', { class: 'n', text: String(n) }) : null));
+    }
+    (paletteFoot.querySelector('.label')               ).textContent = t('foot.palette');
+    // The phone's list button: a list icon that turns into a chevron when the sheet is open.
+    setButton(sheetBtn, sheetOpen ? 'chevronDown' : 'list', sheetOpen ? t('btn.close') : t('btn.list'), false);
+    sheetBtn.setAttribute('aria-expanded', String(sheetOpen));
+    renderStatus();
+    renderButtons();
+    renderPeer();
+    // The ask box lives in the bar at the bottom of the game whatever the tool or page.
+    if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    placeCard();
+    placementPanel.renderAsk();
+    renderAiLine();
+    renderFirstHint();
+    // A new page starts at its top.
+    const pageKey = page === 'tool' ? `tool:${tool}` : page;
+    if (pageKey !== lastPage) {
+      lastPage = pageKey;
+      panel.scrollTop = 0;
+    }
+    // Assets (over the game / a phone sheet).
+    if (tool !== 'library' && mounted) {
+      mounted.unmount();
+      mounted = null;
+    }
+    if (remount && mounted && tool === 'library') {
+      mounted.unmount();
+      mounted = null;
+    }
+    mountTool();
+    assetsPage.hidden = tool !== 'library' || playing;
+    // The left column: the Look page, the Ideas page, or the scene list.
+    if (page === 'settings') {
+      renderSettings(toolEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
+        aiLookOff: aiLook && !safeUi ? (() => { const u = new URL(location.href); u.searchParams.set('ui', 'off'); return u.href; })() : null });
+    } else if (page === 'next') {
+      renderNextSteps(toolEl, {
+        host, lang: () => lang, t, back: () => switchTool(tool),
+        send: (step, text) => askAi({ kind: 'next-step', step, text }),
+      }, nextOpen, (id) => {
+        nextOpen = id;
+        renderAll();
+      });
+    } else {
+      if (toolEl.firstChild !== placementPanel.el || toolEl.childNodes.length !== 1) toolEl.replaceChildren(placementPanel.el);
+      placementPanel.render();
+    }
+    // Rows may have come into view without a scroll (a kind opened, the sheet opened).
+    thumbsSoon(false);
+    sendInset();
+  }
+
+  let lastLayout = phone();
+  window.addEventListener('resize', () => {
+    if (phone() !== lastLayout) {
+      lastLayout = phone();
+      renderAll(true);
+    }
+  });
+
+  // ----- the AI's rewrite of the editor look (.studio/ui/, CONTRACT.md §8) -----
+  const parts                                 = {
+    app, stage, side, header, brand, tabs, tools: toolsRow, 'top-actions': topActions, status, ai: aiLine, panel, footer, bar,
+    card: placementPanel.cardEl, ask: placementPanel.askEl, dock, palette: palette.el, 'assets-page': assetsPage,
+  };
+  // The Look page says when the AI's look (.studio/ui/) is in use and how to
+  // open without it (mari review, earlier point G): before, "why did that
+  // button go away?" had no answer on screen.
+  let aiLook = false;
+  const markAiLook = () => {
+    if (aiLook) return;
+    aiLook = true;
+    if (page === 'settings') renderAll();
+  };
+  const api                 = {
+    version: 1,
+    part: (name) => parts[name],
+    addButton(b) {
+      markAiLook();
+      const el = h('button', { type: 'button', dataset: { action: `custom-${String(b.id).slice(0, 40)}` }, text: b.label, title: b.title });
+      el.addEventListener('click', () => {
+        try {
+          b.onClick();
+        } catch (e) {
+          console.warn('[studio] custom button failed:', e);
+        }
+      });
+      const where = b.where || 'top-actions';
+      if (where === 'tools') {
+        customTools.push(el);
+        renderToolsRow();
+      } else (where === 'footer' ? footer : where === 'bar' ? bar : topActions).append(el);
+      return el;
+    },
+    hide: (what) => {
+      markAiLook();
+      changeUi({ ...uiPrefs, show: { ...uiPrefs.show, [what]: false } });
+    },
+    show: (what) => {
+      markAiLook();
+      changeUi({ ...uiPrefs, show: { ...uiPrefs.show, [what]: true } });
+    },
+    prefs: () => structuredClone(uiPrefs),
+    setPrefs: (patch) => {
+      markAiLook();
+      changeUi({ ...uiPrefs, ...patch, show: { ...uiPrefs.show, ...(patch.show || {}) } });
+    },
+    setText(l, strings) {
+      markAiLook();
+      setExtraText(l, strings);
+      renderAll();
+    },
+    t: (key) => t(key),
+    lang: () => lang,
+    items: () => items,
+    selected: () => selected,
+    actions: {
+      undo: () => doUndo(),
+      redo: () => doRedo(),
+      save: () => handOff(),
+      select: (k) => selectObject(k, true),
+      switchTool: (id) => switchTool(id),
+      frameAll: () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }),
+      openSettings: () => openSettings(),
+      openNextSteps: () => openNext(),
+      activateTool: (id) => send({ type: 'studio:tool/activate', id }),
+      copy: () => copySelection(),
+      remove: () => removeSelection(),
+      selectMany: (keys, primary) => selectMany(keys, primary ?? keys[0] ?? null),
+    },
+    on(ev, cb) {
+      const set = shellEvents.get(ev) || new Set();
+      set.add(cb);
+      shellEvents.set(ev, set);
+      return () => set.delete(cb);
+    },
+  };
+  (window                                              ).studioShell = api;
+
+  /**
+   * Load .studio/ui/studio.css and shell.js unless the URL has ?ui=off (the
+   * way back when a rewrite went wrong; deleting .studio/ui/ also works).
+   */
+  function loadCustomUi() {
+    if (safeUi) return;
+    const urls = host.customUi();
+    if (urls.css) {
+      const link = h('link', { rel: 'stylesheet', href: urls.css, dataset: { studioCustom: 'css' } });
+      // The server answers with a comment when there is no studio.css: rules = the AI's look is in use.
+      link.addEventListener('load', () => {
+        try {
+          if (link.sheet && link.sheet.cssRules.length) markAiLook();
+        } catch {
+          markAiLook();
+        }
+      });
+      document.head.append(link);
+    }
+    if (urls.js) {
+      const sc = h('script', { src: urls.js, dataset: { studioCustom: 'js' } });
+      sc.addEventListener('error', () => console.warn('[studio] .studio/ui/shell.js failed to load'));
+      document.body.append(sc);
+    }
+  }
+
+  // ----- start -----
+  applyUi();
+  renderAll(true);
+  void (async () => {
+    try {
+      const [opened, placement, ui, config] = await Promise.all([
+        host.open(),
+        host.load('placement').catch(() => null),
+        host.loadUi().catch(() => null),
+        host.loadConfig().catch(() => null),
+      ]);
+      uiPrefs = normalizeUi(safeUi ? null : ui);
+      // First time in this folder (no prefs.json, no placement.json): the intro, from step 1.
+      introAt = introStart(uiPrefs.intro, ui != null || placement != null);
+      if (uiPrefs.lang && !new URLSearchParams(location.search).get('lang')) lang = uiPrefs.lang;
+      gameConfig = config;
+      applyUi();
+      renderAll(true);
+      // After the person's prefs, so the AI's CSS and script have the last word.
+      loadCustomUi();
+      gameUrl = opened.gameUrl;
+      gameOrigin = new URL(opened.origin || opened.gameUrl, location.href).origin;
+      if (opened.title) {
+        gameName = opened.title;
+        document.title = `${opened.title} — ${t('app.title')}`;
+        renderAll();
+      }
+      const v = placement ? validatePlacement(placement) : null;
+      model.restore(v && v.ok ? v.value : null);
+      if (tools.library?.restore) tools.library.restore(await host.load('library').catch(() => null));
+      // The left column's "Assets  4".
+      void host.listAssets().then((r) => {
+        libraryCount = r.files.length;
+        renderAll();
+      }, () => undefined);
+      loadGame();
+      void pollStatus();
+    } catch (e) {
+      showToast((e         ).message);
+    }
+  })();
+}
+
+__def(__exports, "start", () => start);
+};
+__defs[32] = function (__exports) {
+'use strict';
+// host-local.ts
+
+// StudioHost for the local server (src/server, CONTRACT.md §3.2).
+//
+// Authentication: the server trades the one-time pass in the printed link
+// (?t=…) for an HttpOnly, SameSite=Strict cookie and redirects to a clean URL
+// before this page loads, so the shell never sees or stores the secret. Every
+// call is same-origin with credentials; writes are also checked by Origin.
+const { LOCAL_PATHS } = __require(0);
+
+const TYPES              = ['image', 'model', 'sound', 'atlas', 'font', 'other'];
+
+/**
+ * The optional KUMODeck sign-in (src/server/kumo.mjs). A refusal (422 { error, code }) comes back
+ * as { ok: false, code, message } for the editor to word; other failures as code 'failed'.
+ */
+function createKumoHost(base        )           {
+  const kumo = async    (method        , path        , body          )                                            => {
+    try {
+      const r = await fetch(base + 'kumo/' + path, {
+        method,
+        headers: body === undefined ? {} : { 'content-type': 'application/json' },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        cache: 'no-store',
+        credentials: 'same-origin',
+      });
+      const data = (await r.json().catch(() => null))                                  ;
+      if (r.ok && data) return { ok: true, ...(data     ) };
+      return {
+        ok: false,
+        code: typeof data?.code === 'string' ? data.code : 'failed',
+        message: typeof data?.error === 'string' ? data.error : `HTTP ${r.status}`,
+        ...(typeof data?.balanceCents === 'number' ? { balanceCents: data.balanceCents } : {}),
+        ...(typeof data?.needCents === 'number' ? { needCents: data.needCents } : {}),
+      };
+    } catch (e) {
+      return { ok: false, code: 'unreachable', message: (e         ).message };
+    }
+  };
+  return {
+    async status() {
+      const r = await kumo            ('GET', 'status');
+      return r.ok ? r : { signedIn: false, loginCommand: 'npx kumodeck login', error: { code: r.code, message: r.message } };
+    },
+    pickProject: (id) => kumo('POST', 'project', { projectId: id }),
+    makePicture: (req) => kumo('POST', 'image', req),
+    makeModel: (req) => kumo('POST', 'model3d', req),
+    job: (id) => kumo('GET', `model3d/${encodeURIComponent(id)}`),
+  };
+}
+
+function createLocalHost(base         = LOCAL_PATHS.api)             {
+  const call = async    (method        , path        , body           , type         )             => {
+    const headers                         = {};
+    if (type) headers['content-type'] = type;
+    const r = await fetch(base + path, { method, headers, body, cache: 'no-store', credentials: 'same-origin' });
+    const data = (await r.json().catch(() => null))                                                       ;
+    if (!r.ok) {
+      const details = data && Array.isArray(data.details) ? `: ${data.details.join('; ')}` : '';
+      throw new Error(((data && data.error) || `HTTP ${r.status}`) + details);
+    }
+    return data     ;
+  };
+
+  return {
+    kumo: createKumoHost(base),
+    async open() {
+      const r = await call                                                     ('GET', 'open');
+      return { gameUrl: r.gameUrl, origin: r.origin, title: r.title };
+    },
+    async load(tool        ) {
+      const r = await call                          ('GET', `files/${tool}`);
+      return r.value ?? null;
+    },
+    async save(tool        , data        , opts                        ) {
+      try {
+        const q = opts?.handoff === false ? '?handoff=0' : '';
+        const r = await call                                                                                      ('PUT', `files/${tool}${q}`, JSON.stringify(data), 'application/json');
+        return { ok: true, request: r.request, at: r.at, watching: r.watching, seen: r.seen, undo: r.undo };
+      } catch (e) {
+        return { ok: false, error: (e         ).message };
+      }
+    },
+    async listAssets() {
+      const r = await call                                                                        ('GET', 'assets');
+      const files = (r.assets || []).map((a) => ({ ...a, type: TYPES.includes(a.type) ? a.type : 'other' })             );
+      const missing               = (r.missing || []).map((m) => ({ path: m.ref, refsInCode: m.in || [] }));
+      return { files, missing };
+    },
+    assetUrl(path        ) {
+      return '/' + path.split('/').map(encodeURIComponent).join('/');
+    },
+    async addAsset(file      ) {
+      const r = await call                  ('POST', `assets?name=${encodeURIComponent(file.name)}`, file, 'application/octet-stream');
+      return { path: r.path };
+    },
+    async nextStep(id            , _lang      , detail                       ) {
+      // The server writes the steps in English for the agent; the shell shows
+      // the user's language and keeps its own copyable request text.
+      const body = detail?.files ? { id, files: detail.files } : { id };
+      await call('POST', 'next-step', JSON.stringify(body), 'application/json');
+      return { ok: true, prompt: '' };
+    },
+    async request(r                    ) {
+      try {
+        const v = await call                                                                               ('POST', 'request', JSON.stringify(r), 'application/json');
+        return { ok: true, id: v.id, at: v.at, watching: v.watching, seen: v.seen, undo: v.undo };
+      } catch (e) {
+        return { ok: false, error: (e         ).message };
+      }
+    },
+    async status() {
+      const r = await call                                                                                                        ('GET', 'status')
+        .catch(() => ({ status: null, time: null }                                                                                  ));
+      return { status: r.status ?? null, time: typeof r.time === 'number' ? r.time : null, watching: r.watching, seen: r.seen, code: r.code };
+    },
+    async undoAi(to        , opts                     ) {
+      try {
+        const v = await call                                                            ('POST', 'undo', JSON.stringify({ to, redo: opts?.redo === true }), 'application/json');
+        return { ok: true, restored: v.restored, removed: v.removed, redo: v.redo };
+      } catch (e) {
+        return { ok: false, error: (e         ).message };
+      }
+    },
+    async loadUi() {
+      return (await call                    ('GET', 'ui').catch(() => ({ value: null }))).value ?? null;
+    },
+    async saveUi(prefs         ) {
+      try {
+        await call('PUT', 'ui', JSON.stringify(prefs), 'application/json');
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e         ).message };
+      }
+    },
+    async loadConfig() {
+      const r = await call                                              ('GET', 'config').catch(() => ({ value: null, error: undefined }));
+      if (r.error) console.warn('[studio]', r.error);
+      return r.value ?? null;
+    },
+    async loadData(id        ) {
+      return (await call                    ('GET', `data/${encodeURIComponent(id)}`).catch(() => ({ value: null }))).value ?? null;
+    },
+    async saveData(id        , data         ) {
+      try {
+        await call('PUT', `data/${encodeURIComponent(id)}`, JSON.stringify(data), 'application/json');
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e         ).message };
+      }
+    },
+    customUi() {
+      return { css: '/__studio/game-ui.css', js: '/__studio/game-ui.js' };
+    },
+    async reportCheck(result                 ) {
+      await fetch(base + 'check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(result), credentials: 'same-origin' }).catch(() => undefined);
+    },
+  };
+}
+
+__def(__exports, "createLocalHost", () => createLocalHost);
+};
+__defs[33] = function (__exports) {
+'use strict';
+// local.ts
+
+// Entry of studio-shell.js: the shell page served by the local server
+// (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
+// The browser-only web demo has its own entry (src/hosts/browser/main.ts).
+const { start } = __require(31);
+const { createLocalHost } = __require(32);
+
+start(createLocalHost());
+
+
+};
+__require(33);
+})();

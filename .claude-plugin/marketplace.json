@@ -1,0 +1,15 @@
+{
+  "name": "game-studio",
+  "description": "KUMODeck Game Studio: turn your Claude or Codex into a game studio. A free, local editor for your web game.",
+  "owner": {
+    "name": "KUMODeck",
+    "email": "support@kumodeck.com"
+  },
+  "plugins": [
+    {
+      "name": "game-studio",
+      "source": ".",
+      "description": "Drag, turn and resize the objects in your web game, see every asset it uses, and ask your AI for changes. Free, runs on your computer."
+    }
+  ]
+}

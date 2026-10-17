@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Garden Board — plain DOM example</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #f4ecd8; overflow: hidden; touch-action: none; }
+    /* #view: a wrapper the game never transforms (the studio's edit camera uses it). */
+    #view { position: fixed; inset: 0; display: grid; place-items: center; }
+    #board { position: relative; width: 400px; height: 400px; background: #cfeec0; border-radius: 16px; transform-origin: 50% 50%; }
+    #board img { position: absolute; left: 0; top: 0; user-select: none; -webkit-user-drag: none; }
+  </style>
+</head>
+<body>
+  <div id="view"><div id="board"></div></div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

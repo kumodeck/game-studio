@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#6fb6ff" />
+  <title>Sky Duel 3D — three.js example</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>html, body { background: #6fb6ff; }</style>
+  <!-- three.js r170 (0.170.0) on purpose: the samples cover both r170 and r186. -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <div class="pill">You <b id="me">0</b> · <b id="them">0</b> Rival</div>
+  </div>
+  <section id="panel" class="panel">
+    <h1>Sky Duel 3D</h1>
+    <p>Fly through the rings before the rival does. First to 5.</p>
+    <p class="muted">A / D or ← → to turn · or hold left / right half of the screen</p>
+    <button id="start" class="cta">Fly</button>
+  </section>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

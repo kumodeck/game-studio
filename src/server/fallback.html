@@ -1,0 +1,151 @@
+<!doctype html>
+<!--
+  Fallback page of the local studio server.
+
+  Shown only when the built editor UI is not next to studio.mjs (while developing, or if the build
+  is missing). It is not the editor: it shows the game and lets a person or a test save the two
+  result files by hand, through the same host interface the real editor uses. That keeps the
+  server testable end to end on its own.
+
+  Every name shown here comes from the user's folder and is untrusted: it is only ever set with
+  textContent, never as HTML.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Game Studio (files server)</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --line: #d9d9d4; --accent: #2f6fde; --ok: #1d7d3a; --bad: #b3261e; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ececea; --muted: #a0a09a; --line: #34342f; --accent: #6e9cff; --ok: #5cc27a; --bad: #ff8a80; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; height: 100vh; display: grid; grid-template-columns: 1fr 360px; }
+    main { min-width: 0; display: flex; flex-direction: column; }
+    header { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+    header b { font-size: 15px; }
+    header span { color: var(--muted); font-size: 12px; }
+    iframe { flex: 1; width: 100%; border: 0; background: #000; }
+    aside { border-left: 1px solid var(--line); overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+    h2 { font-size: 13px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+    textarea { width: 100%; min-height: 130px; font: 12px/1.4 ui-monospace, monospace; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+    button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+    .msg { font-size: 12px; min-height: 1.4em; overflow-wrap: anywhere; }
+    .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }
+    ul { margin: 0; padding-left: 18px; font-size: 12px; } li { overflow-wrap: anywhere; }
+    li small { color: var(--muted); }
+    img.qr { width: 160px; height: 160px; background: #fff; }
+    @media (max-width: 720px) {
+      body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }
+      main { height: 55vh; }
+      aside { border-left: 0; border-top: 1px solid var(--line); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header><b>Game Studio</b><span>files server · the editor UI is not built, this page saves the files by hand</span></header>
+    <iframe id="game" title="Game"></iframe>
+  </main>
+  <aside>
+    <section>
+      <h2>placement.json</h2>
+      <textarea id="placement" spellcheck="false" aria-label="placement.json"></textarea>
+      <div class="row"><button class="primary" id="save-placement">Save placement</button><button id="reload">Reload game</button></div>
+      <div class="msg" id="msg-placement" role="status"></div>
+    </section>
+    <section>
+      <h2>library.json</h2>
+      <textarea id="library" spellcheck="false" aria-label="library.json"></textarea>
+      <div class="row"><button class="primary" id="save-library">Save library</button></div>
+      <div class="msg" id="msg-library" role="status"></div>
+    </section>
+    <section>
+      <h2>Assets</h2>
+      <ul id="assets"></ul>
+      <div class="row"><input type="file" id="file" aria-label="Add an asset" /></div>
+      <div class="msg" id="msg-assets" role="status"></div>
+    </section>
+    <section>
+      <h2>Next step</h2>
+      <div class="row" id="steps"></div>
+      <div class="msg" id="msg-steps" role="status"></div>
+    </section>
+    <section id="lan" hidden>
+      <h2>Open on your phone</h2>
+      <img class="qr" id="qr" alt="QR code with the link to this editor" />
+    </section>
+  </aside>
+  <script type="module">
+    import { createLocalHost } from './host.js';
+    const host = createLocalHost();
+    const $ = (id) => document.getElementById(id);
+    const say = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'bad'); };
+
+    const opened = await host.open();
+    $('game').src = opened.gameUrl;
+    $('reload').onclick = () => { $('game').src = opened.gameUrl; };
+    const qr = host.lanQrUrl();
+    if (qr) { $('qr').src = qr; $('lan').hidden = false; }
+
+    const empty = {
+      placement: { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {} },
+      library: { version: 1, tool: 'library', replace: [], added: [], unused: [] },
+    };
+    for (const tool of ['placement', 'library']) {
+      const value = await host.load(tool);
+      $(tool).value = JSON.stringify(value || empty[tool], null, 2);
+      $('save-' + tool).onclick = async () => {
+        let json;
+        try { json = JSON.parse($(tool).value); } catch (e) { return say('msg-' + tool, 'Not valid JSON: ' + e.message, false); }
+        const r = await host.save(tool, json);
+        if (!r.ok) return say('msg-' + tool, r.error, false);
+        say('msg-' + tool, 'Saved ' + r.path, true);
+        $(tool).value = JSON.stringify(await host.load(tool), null, 2);
+        if (tool === 'placement') $('game').src = opened.gameUrl; // play with the new positions
+      };
+    }
+
+    async function showAssets() {
+      const list = $('assets');
+      list.textContent = '';
+      for (const a of await host.listAssets()) {
+        const li = document.createElement('li');
+        li.textContent = a.path + ' ';
+        const small = document.createElement('small');
+        small.textContent = `${a.type} · ${a.refsInCode.length ? 'used in ' + a.refsInCode.join(', ') : 'not in code'}`;
+        li.append(small);
+        list.append(li);
+      }
+      for (const m of await host.listMissing()) {
+        const li = document.createElement('li');
+        li.textContent = m.ref + ' ';
+        const small = document.createElement('small');
+        small.textContent = 'missing · named in ' + m.in.join(', ');
+        li.append(small);
+        list.append(li);
+      }
+    }
+    await showAssets();
+    $('file').onchange = async (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try { const r = await host.addAsset(f); say('msg-assets', 'Added ' + r.path, true); await showAssets(); }
+      catch (err) { say('msg-assets', err.message, false); }
+      e.target.value = '';
+    };
+
+    const steps = { publish: 'Publish to KUMODeck', multiplayer: 'Add online multiplayer', 'save-data': 'Add save data', 'ai-assets': 'Make 3D / images with AI' };
+    for (const [id, label] of Object.entries(steps)) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.onclick = async () => {
+        try { await host.nextStep(id); say('msg-steps', 'Your AI has the instructions (.studio/next-step.md). Go back to it to continue.', true); }
+        catch (err) { say('msg-steps', err.message, false); }
+      };
+      $('steps').append(b);
+    }
+  </script>
+</body>
+</html>

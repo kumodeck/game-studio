@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#a8d8a0" />
+  <title>Crate Yard — three.js example</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>html, body { background: #cfe8ff; }</style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <div class="pill">Tap a crate to make it hop · <b id="hops">0</b> hops</div>
+  </div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>
