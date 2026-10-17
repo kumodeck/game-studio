@@ -443,16 +443,6 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .ai-same { color: var(--text-2); font-size: var(--fs-s); }
 .ask-note { color: var(--text-2); font-size: var(--fs-s); }
 .play-note { color: var(--text-2); }
-/* The first hint: a small plate of its own, centred (on grass a bare line could not be read). */
-.ai-caption:has(> .first-hint:not([hidden])):not(:has(> .ai-line:not([hidden]), > .toast.on, > .ask-note:not([hidden]), > .play-note:not([hidden]))) {
-  justify-self: center; padding: 0 12px; height: var(--h); align-content: center; border-radius: 999px; }
-.first-hint { color: var(--text-2); font-size: var(--fs-s); display: flex; align-items: center; gap: 8px; }
-/* The intro's "2/4": mono and quiet, the same voice as the key hints. */
-.intro-n { flex: none; font-family: var(--mono); color: var(--text-3); font-variant-numeric: tabular-nums; }
-.intro-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.intro-x { flex: none; width: 20px; height: 20px; min-height: 20px; padding: 0; margin-right: -6px; border-radius: 50%; color: var(--text-3); background: none; }
-.intro-x:hover { color: var(--text); background: var(--raise-2); }
-.intro-x .icon { width: 12px; height: 12px; }
 .palette { max-height: min(400px, 52dvh); overflow: auto; overscroll-behavior: contain; padding: var(--gap); border-radius: var(--R); animation: studio-rise var(--dur-in) var(--ease); transform-origin: 50% 100%; }
 .p-sec { padding: 8px 10px 4px; color: var(--text-3); font-size: var(--fs-s); font-weight: 600; }
 .p-row { width: 100%; height: 32px; justify-content: flex-start; gap: 10px; padding: 0 10px; color: var(--text); border-radius: var(--r); }
@@ -485,6 +475,8 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .assets-page .gsl-ai .gsl-close { width: var(--h); padding: 0; }
 .assets-page .gsl-ai-terms { border-top-color: var(--line-2); }
 .assets-page .gsl-count { grid-area: count; color: var(--text-3); font-size: var(--fs-s); }
+/* "Couldn't read the folder (…)." + Try again shares the count's cell: the count is empty while it shows. */
+.assets-page .gsl-readfail { grid-area: count; justify-self: start; max-width: 560px; border: 0; border-radius: var(--R); background: var(--raise); box-shadow: inset 3px 0 0 var(--gsl-missing); padding: 10px 10px 10px 14px; }
 .assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
 .assets-page .gsl-detail { grid-area: detail; align-self: start; max-height: 100%; border: 0; border-radius: var(--R); padding: 12px; }
 .assets-page .gsl-foot { grid-area: foot; min-height: 0; }
@@ -655,7 +647,6 @@ textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
 .shell[data-layout="phone"] .f-row { grid-template-columns: 56px minmax(0, 1fr) auto; }
 .shell[data-layout="phone"] .card-body > .link-btn, .shell[data-layout="phone"] .note-line .link-btn { min-height: 44px; }
 .shell[data-layout="phone"] .ai-caption { padding: 6px 4px 6px 14px; }
-.shell[data-layout="phone"] .ai-caption:has(> .first-hint:not([hidden])):not(:has(> .ai-line:not([hidden]), > .toast.on, > .ask-note:not([hidden]), > .play-note:not([hidden]))) { height: 32px; padding: 0 14px; }
 .shell[data-layout="phone"] .ai-line { flex-wrap: wrap; gap: 4px 8px; }
 .shell[data-layout="phone"] .ai-text { flex-basis: calc(100% - 24px); white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .shell[data-layout="phone"] .ai-text.two { display: grid; }

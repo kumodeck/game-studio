@@ -200,7 +200,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
 | `studio: request next-step fit` / `look` / `tool` | An in-game idea, with the user's words | §3.1, then §8 (fit, tool) or §9 (look) |
 | `studio: saved .studio/data/<tool>.json` | A game tool you wrote (§8) saved its data | Read that file and apply it like placement.json (ask once how) |
 | `studio: undone` | The person pressed **Undo AI change**: the editor already put the game's files back as they were before your last change | §3.1 (`undone`): do not redo it |
-| `studio: watching <n> waiting` | Your watch (`--watch`, below) started; the waiting requests follow, one line each | Handle them in order |
+| `studio: watching <n> waiting` | Your watch (`--watch`, below) started; the waiting requests follow, one line each | Handle them in order. `0 waiting`: say nothing |
 
 - How to wait depends on your environment. The main path works everywhere; the watch is what makes it feel
   instant, so use it whenever your environment can wake you on a new output line:

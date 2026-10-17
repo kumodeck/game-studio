@@ -62,8 +62,8 @@ export function normalizeUi(raw: unknown): UiPrefs {
   };
   for (const k of Object.keys(out.show) as Array<keyof UiPrefs['show']>) if (typeof show[k] === 'boolean') out.show[k] = show[k] as boolean;
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
-  // The first-run intro's step (intro.ts). Kept only as a whole number 0–4.
-  if (typeof r.intro === 'number' && Number.isInteger(r.intro) && r.intro >= 0 && r.intro <= 4) out.intro = r.intro;
+  // `intro` (the first-run tips' step, removed 2026-10-17) is dropped here: an
+  // older prefs.json that still has it loads fine and loses it on the next save.
   return out;
 }
 

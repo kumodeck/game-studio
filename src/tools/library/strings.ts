@@ -28,6 +28,11 @@ const en = {
   // The folder was read and has no assets at all (was stuck on "Reading the folder…", 2026-10-17).
   noFilesYet: 'No assets yet. Drop files here or click Add files.',
   noFilesYetAi: 'No assets yet. Drop files here, click Add files, or Make with AI.',
+  // Reading the folder failed or got no answer: say so and offer to read again, instead of
+  // "Reading the folder…" forever (play test 2026-10-17: "the assets don't show up").
+  readFailed: 'Couldn’t read the folder ({e}).',
+  readSlow: 'no answer after {s} seconds',
+  readRetry: 'Try again',
   thumbWait: 'Drawing preview…',
   makingTile: 'Making · {time}',
   heavyModel: '{size} is heavy for a web game: it loads slowly, most of all on phones.',
@@ -163,6 +168,9 @@ const ja: Partial<Record<StringKey, string>> = {
   loading: 'フォルダを読んでいます…',
   noFilesYet: 'まだ素材がありません。ここにファイルを落とすか、「素材を足す」を押してください。',
   noFilesYetAi: 'まだ素材がありません。ここにファイルを落とすか、「素材を足す」か「AI で作る」を押してください。',
+  readFailed: 'フォルダを読めませんでした（{e}）。',
+  readSlow: '{s} 秒待っても返事がありません',
+  readRetry: 'もう一度読む',
   thumbWait: '小さい絵を描いています…',
   makingTile: '作っています ・ {time}',
   heavyModel: '{size} は Web ゲームには重いです。読み込みが遅く、スマホでは特に遅くなります。',

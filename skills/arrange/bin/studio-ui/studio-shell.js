@@ -573,11 +573,6 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
     
                                                          
               
-     
-                                                                               
-                                                                
-     
-                 
  
 
 /**
@@ -2552,7 +2547,11 @@ function buildRows(input                )               {
     if (!rows.has(m.path)) rows.set(m.path, missingRow(m.path, [...m.refsInCode]));
   }
 
-  for (const e of input.loads) {
+  // The load log and `uses` come from the game page (the bridge, and the game's own adapter
+  // through assetsOf): untrusted shapes. Skip what is not a list / not a URL instead of throwing:
+  // one throw here left the Assets panel on "Reading the folder…" (2026-10-17).
+  for (const e of Array.isArray(input.loads) ? input.loads : []) {
+    if (!e || typeof e.url !== 'string') continue;
     const path = urlToPath(e.url, input.base);
     if (!path) continue;
     const row = rows.get(path);
@@ -2567,8 +2566,10 @@ function buildRows(input                )               {
     }
   }
 
-  for (const [key, refs] of Object.entries(input.uses)) {
+  for (const [key, refs] of Object.entries(input.uses && typeof input.uses === 'object' ? input.uses : {})) {
+    if (!Array.isArray(refs)) continue;
     for (const r of refs) {
+      if (!r || typeof r.url !== 'string') continue;
       const path = urlToPath(r.url, input.base);
       if (!path) continue;
       let row = rows.get(path);
@@ -2777,6 +2778,11 @@ const en = {
   // The folder was read and has no assets at all (was stuck on "Reading the folder…", 2026-10-17).
   noFilesYet: 'No assets yet. Drop files here or click Add files.',
   noFilesYetAi: 'No assets yet. Drop files here, click Add files, or Make with AI.',
+  // Reading the folder failed or got no answer: say so and offer to read again, instead of
+  // "Reading the folder…" forever (play test 2026-10-17: "the assets don't show up").
+  readFailed: 'Couldn’t read the folder ({e}).',
+  readSlow: 'no answer after {s} seconds',
+  readRetry: 'Try again',
   thumbWait: 'Drawing preview…',
   makingTile: 'Making · {time}',
   heavyModel: '{size} is heavy for a web game: it loads slowly, most of all on phones.',
@@ -2912,6 +2918,9 @@ const ja                                     = {
   loading: 'フォルダを読んでいます…',
   noFilesYet: 'まだ素材がありません。ここにファイルを落とすか、「素材を足す」を押してください。',
   noFilesYetAi: 'まだ素材がありません。ここにファイルを落とすか、「素材を足す」か「AI で作る」を押してください。',
+  readFailed: 'フォルダを読めませんでした（{e}）。',
+  readSlow: '{s} 秒待っても返事がありません',
+  readRetry: 'もう一度読む',
   thumbWait: '小さい絵を描いています…',
   makingTile: '作っています ・ {time}',
   heavyModel: '{size} は Web ゲームには重いです。読み込みが遅く、スマホでは特に遅くなります。',
@@ -3229,6 +3238,9 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 .gsl-tag-del{border-color:var(--gsl-missing);color:var(--gsl-missing)}
 .gsl-del{color:var(--gsl-missing)}
 .gsl-empty{grid-column:1/-1;color:var(--gsl-muted);padding:16px;text-align:center}
+.gsl-readfail{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--gsl-missing);border-radius:10px;background:var(--gsl-card)}
+.gsl-readfail[hidden]{display:none}
+.gsl-readfail>span{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
 .gsl-detail{border:1px solid var(--gsl-line);border-radius:10px;background:var(--gsl-card);padding:10px;max-height:55%;overflow:auto;flex:0 0 auto}
 .gsl-dhead{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:start}
 .gsl-dtitle{display:flex;flex-direction:column;min-width:0;gap:2px}
@@ -4017,6 +4029,13 @@ const TYPE_ICON                         = { image: '▦', model: '◆', sound: '
 const TYPES               = ['all', 'image', 'model', 'sound', 'atlas', 'font'];
 const BADGES          = ['used', 'codeOnly', 'unused', 'missing'];
 const ACCEPT = Object.values(ASSET_EXT).flat().filter((e) => e !== 'json').map((e) => `.${e}`).join(',');
+/**
+ * How long one read of the folder may take before the panel says it got no answer (seconds).
+ * 15 = far above a real read (the local server lists a starter in < 50 ms, a big project in
+ * < 2 s), short enough that nobody stares at "Reading the folder…" wondering. Was: no limit,
+ * so a request that never came back left that line on screen forever.
+ */
+const READ_SECONDS = 15;
 
 function mountLibrary(root    , deps             )              {
   injectStyles();
@@ -4034,6 +4053,13 @@ function mountLibrary(root    , deps             )              {
   let status = '';
   /** The folder has been read at least once (before: an empty folder said "Reading the folder…" forever). */
   let loaded = false;
+  /**
+   * Why the last read of the folder failed, or null. Shown above the grid with "Try again".
+   * WHY (play test 2026-10-17, "the assets don't show up"): a read that threw or never answered left
+   * "0 files" + "Reading the folder…" on screen for good, with nothing in the console, so
+   * nobody could tell a slow read from a dead one.
+   */
+  let readError                = null;
   /** What Make with AI is making now: shown as "Making…" tiles at the top of the grid. */
   let aiWork           = [];
   let workTick = 0;
@@ -4078,6 +4104,19 @@ function mountLibrary(root    , deps             )              {
   const chips = h('div', 'gsl-chips');
   const count = h('div', 'gsl-count');
   const grid = h('div', 'gsl-grid');
+  // "Couldn't read the folder (…)." + Try again: only after a failed read (renderReadFail).
+  const readFail = h('div', 'gsl-readfail');
+  readFail.setAttribute('role', 'alert');
+  readFail.hidden = true;
+  const readFailText = h('span');
+  const retryBtn = h('button', 'gsl-btn gsl-retry', L('readRetry'));
+  retryBtn.type = 'button';
+  retryBtn.dataset.action = 'library-retry';
+  retryBtn.addEventListener('click', () => {
+    retryBtn.disabled = true;
+    void refresh().finally(() => { retryBtn.disabled = false; });
+  });
+  readFail.append(readFailText, retryBtn);
   const detail = h('div', 'gsl-detail');
   detail.hidden = true;
   const foot = h('div', 'gsl-foot');
@@ -4119,7 +4158,7 @@ function mountLibrary(root    , deps             )              {
         formatSize: (n) => formatSize(deps.lang, n),
       })
     : null;
-  wrap.append(chips, count, grid, detail, foot);
+  wrap.append(chips, count, readFail, grid, detail, foot);
   root.append(wrap);
   if (aiBtn && ai) {
     aiBtn.addEventListener('click', () => {
@@ -4248,8 +4287,10 @@ function mountLibrary(root    , deps             )              {
 
   function renderGrid() {
     const list = filterRows(rows, filter);
-    // "0 files" above "No assets yet" says the same thing twice.
-    count.textContent = loaded && !rows.length ? '' : L('count', { n: list.length });
+    // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
+    // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
+    // While "Couldn't read the folder" shows, it takes the count's place (same cell in shell.css).
+    count.textContent = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
     grid.replaceChildren();
     // What Make with AI is making: a tile first, so the wait has a place even with the panel closed.
     for (const w of aiWork) {
@@ -4267,6 +4308,8 @@ function mountLibrary(root    , deps             )              {
     }
     if (!list.length) {
       if (aiWork.length) return;
+      // Not read yet and the read failed: the line above the grid says so (and has Try again).
+      if (!loaded && readError) return;
       const empty = !loaded ? L('loading') : rows.length || status ? L('empty') : deps.host.kumo ? L('noFilesYetAi') : L('noFilesYet');
       grid.append(h('div', 'gsl-empty', empty));
       return;
@@ -4558,21 +4601,50 @@ function mountLibrary(root    , deps             )              {
   });
   saveBtn.addEventListener('click', () => void save());
 
+  function renderReadFail() {
+    readFail.hidden = !readError;
+    readFailText.textContent = readError ? L('readFailed', { e: readError }) : '';
+  }
+
   function render() {
     renderChips();
+    renderReadFail();
     renderGrid();
     renderDetail();
     notifyPending();
   }
 
   // ---------- public ----------
+  /**
+   * Read the folder (host) and what the game loaded (bridge), then redraw. Never throws and never
+   * waits forever: a failure or no answer within READ_SECONDS shows "Couldn't read the folder (…)."
+   * with Try again, and the rows from an earlier good read stay. (Before 2026-10-17 a throw here
+   * went to the caller's .catch, which only called refresh() again, and a request that never came
+   * back had no limit: either way "Reading the folder…" stayed on screen.)
+   * The game's half already has its own 4 s limit (requestAssets) and is optional: without it the
+   * folder's files are still listed, only without "Used".
+   */
   async function refresh() {
-    const [list, game] = await Promise.all([
-      deps.host.listAssets(),
-      deps.requestAssets().catch(() => ({ loads: []               , uses: {}                               })),
-    ]);
-    rows = buildRows({ ...normalizeList(list), ...game, base: deps.base() });
-    loaded = true;
+    let timer = 0;
+    try {
+      const slow = new Promise       ((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(L('readSlow', { s: READ_SECONDS }))), READ_SECONDS * 1000);
+      });
+      const [list, game] = await Promise.race([
+        Promise.all([
+          deps.host.listAssets(),
+          deps.requestAssets().catch(() => ({ loads: []               , uses: {}                               })),
+        ]),
+        slow,
+      ]);
+      rows = buildRows({ ...normalizeList(list), loads: game?.loads ?? [], uses: game?.uses ?? {}, base: deps.base() });
+      loaded = true;
+      readError = null;
+    } catch (e) {
+      readError = (e instanceof Error ? e.message : String(e)) || '?';
+    } finally {
+      window.clearTimeout(timer);
+    }
     render();
   }
 
@@ -4711,6 +4783,9 @@ function ask   (ctx              , send            , type                       
   });
 }
 
+/** How long the first read of the folder waits for host.open() (ms); see mount(). */
+const OPEN_WAIT_MS = 4000;
+
 /** Folder root of the game URL: "http://127.0.0.1:5173/game/index.html?studio=edit" -> ".../game/". */
 function baseOf(gameUrl        )         {
   // The local host answers with a path ("/game/index.html"): resolve it
@@ -4762,15 +4837,30 @@ const libraryTool            = {
       // skill's "Heavy 3D files" steps.
       askAi: (text) => ctx.ask({ kind: 'ask', text }),
     });
+    // This mount's own panel: a re-mount (language, layout) makes a new one, and the read below
+    // must not land in the next panel with this mount's `base`.
+    const me = panel;
     // Re-list whenever the game (re)starts in edit mode: a reload after a
     // save loads files again, and an asset added here may now be in use.
-    offs.push(ctx.on('studio:core/ready', () => void panel?.refresh()));
-    void ctx.host.open().then((o) => {
-      base = baseOf(o.gameUrl);
-      return panel?.refresh();
-    }).catch(() => panel?.refresh()).then(() => {
-      if (pendingOpen && panel) panel.open(pendingOpen);
+    offs.push(ctx.on('studio:core/ready', () => void me.refresh()));
+    // First read: once host.open() has told us where the game lives (so loads map to files), but
+    // never later than OPEN_WAIT_MS — the folder list does not need it, and waiting on an open()
+    // that never answered left "Reading the folder…" on screen for good (2026-10-17). An open()
+    // that answers after that only re-reads, so "Used" marks come right.
+    // refresh() itself never throws (it shows "Couldn't read the folder" + Try again).
+    let first = true;
+    const read = () => me.refresh().then(() => {
+      if (!first) return;
+      first = false;
+      if (pendingOpen && panel === me) me.open(pendingOpen);
       pendingOpen = null;
+    });
+    let opened = false;
+    const wait = window.setTimeout(() => { if (!opened && panel === me) void read(); }, OPEN_WAIT_MS);
+    void ctx.host.open().then((o) => { base = baseOf(o.gameUrl); }, () => undefined).then(() => {
+      opened = true;
+      window.clearTimeout(wait);
+      if (panel === me) void read();
     });
   },
 
@@ -6074,14 +6164,6 @@ const en = {
   'pal.tool.rotate': 'Turn tool — drag sideways',
   'pal.tool.scale': 'Size tool — drag right to grow',
   'pal.tool.words': 'tool strip move height turn rotate tilt size scale 道具',
-  // The first-run intro (intro.ts): one line per step, the next thing only.
-  'intro.pick': 'Click an object to select it · {k} for all actions',
-  'intro.pickPhone': 'Tap an object to select it',
-  'intro.move': 'Now drag it to move it',
-  'intro.ask': 'Ask your AI in the box below — try “add 3 more like this”',
-  'intro.save': 'Click Save ({k}) and your AI updates the game',
-  'intro.savePhone': 'Tap Save and your AI updates the game',
-  'intro.close': 'Hide tips',
   'ai.tagAdded': 'AI added {n}',
   'ai.tagMoved': 'AI moved {n}',
   'ai.tagChanged': 'AI changed {n}',
@@ -6352,13 +6434,6 @@ const ja                               = {
   'pal.tool.rotate': '回す道具 — 横に引く',
   'pal.tool.scale': '大きさの道具 — 右に引くと大きく',
   'pal.tool.words': '道具 移動 高さ 回す 大きさ tool move height turn size',
-  'intro.pick': '物をクリックして選ぶ · {k} ですべての操作',
-  'intro.pickPhone': '物をタップして選ぶ',
-  'intro.move': 'そのまま引くと動きます',
-  'intro.ask': '下の欄で AI に頼めます。「これをあと 3 つ」など',
-  'intro.save': '保存（{k}）を押すと、AI がゲームを直します',
-  'intro.savePhone': '保存を押すと、AI がゲームを直します',
-  'intro.close': '案内を隠す',
   'ai.tagAdded': 'AI が足した {n} 個',
   'ai.tagMoved': 'AI が動かした {n} 個',
   'ai.tagChanged': 'AI が変えた {n} 個',
@@ -6472,7 +6547,7 @@ const PATHS                         = {
   grid: 'M4.5 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M12 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M4.5 11H8a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z|M12 11h3.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z',
   eye: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25',
   plus: 'M10 4.5v11|M4.5 10h11',
-  // The plus turned 45°: close a note (the first-run intro).
+  // The plus turned 45°: close a note.
   close: 'M6 6l8 8|M14 6l-8 8',
   swap: 'M4 7h11.5|M12.5 4l3 3-3 3|M16 13H4.5|M7.5 10l-3 3 3 3',
   globe: 'O 10 10 6.5|M3.5 10h13|M10 3.5c-2.2 2.4-2.2 10.6 0 13|M10 3.5c2.2 2.4 2.2 10.6 0 13',
@@ -7069,8 +7144,8 @@ function normalizeUi(raw         )          {
   };
   for (const k of Object.keys(out.show)                                ) if (typeof show[k] === 'boolean') out.show[k] = show[k]           ;
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
-  // The first-run intro's step (intro.ts). Kept only as a whole number 0–4.
-  if (typeof r.intro === 'number' && Number.isInteger(r.intro) && r.intro >= 0 && r.intro <= 4) out.intro = r.intro;
+  // `intro` (the first-run tips' step, removed 2026-10-17) is dropped here: an
+  // older prefs.json that still has it loads fine and loses it on the next save.
   return out;
 }
 
@@ -8575,62 +8650,6 @@ __def(__exports, "UndoStack", () => UndoStack);
 };
 __defs[30] = function (__exports) {
 'use strict';
-// intro.ts
-
-// The first-run intro: one line over the ask bar that says what to do next,
-// four steps, then gone for good (2026-10-16, "first 5 minutes").
-//
-// WHY it grew out of the old one-line hint ("Click an object to pick it ·
-// ⌘K for everything") instead of being a tour with arrows and a dimmed page:
-// the person came to move things in their game, not to read about the editor.
-// One quiet line in the place the news card already uses keeps the game in
-// full view, never blocks a click, and has a close button. It only ever says
-// the next thing, and it moves on the moment the person has done it (doing a
-// later step first skips the earlier ones: it never asks you to go back).
-//
-// Where "seen" is kept: .studio/ui/prefs.json in the game folder (UiPrefs.intro),
-// not the browser's storage. The server picks a free port every run, so the
-// page's origin (and its localStorage) changes each time; and the editor's
-// promise is that it only writes inside the game folder, so no file in the home
-// folder either. The cost: a second game folder shows the intro once more —
-// but only when that folder has never been edited (no placement.json, no
-// prefs.json), see introStart().
-
-const INTRO_STEPS = ['pick', 'move', 'ask', 'save']         ;
-                                                     
-/** The step value that means "finished or closed": nothing is shown. */
-const INTRO_DONE = INTRO_STEPS.length;
-
-/**
- * Where to start when the editor opens.
- * - `saved`: UiPrefs.intro from prefs.json (a step number; undefined = never seen).
- * - `usedBefore`: the folder already has placement.json or prefs.json, so the
- *   person has used the editor here before the intro existed: do not teach them.
- */
-function introStart(saved                    , usedBefore         )         {
-  if (typeof saved === 'number' && Number.isInteger(saved)) return Math.min(INTRO_DONE, Math.max(0, saved));
-  return usedBefore ? INTRO_DONE : 0;
-}
-
-/** The person did `did`: the step after it, unless they are already further on. */
-function introAdvance(at        , did           )         {
-  const i = INTRO_STEPS.indexOf(did);
-  return i >= at ? i + 1 : at;
-}
-
-/** The step to show now (null = nothing to show). */
-function introStep(at        )                   {
-  return at >= 0 && at < INTRO_DONE ? INTRO_STEPS[at]  : null;
-}
-
-__def(__exports, "INTRO_STEPS", () => INTRO_STEPS);
-__def(__exports, "INTRO_DONE", () => INTRO_DONE);
-__def(__exports, "introStart", () => introStart);
-__def(__exports, "introAdvance", () => introAdvance);
-__def(__exports, "introStep", () => introStep);
-};
-__defs[31] = function (__exports) {
-'use strict';
 // main.ts
 
 // The shell page. Entries: shell/local.ts (studio-shell.js, the local server)
@@ -8665,7 +8684,6 @@ const { createPalette } = __require(28);
 const { PlacementModel } = __require(15);
 const { UndoStack, poseChange } = __require(29);
 const { copyKey, groupLayerMoves, sameKind } = __require(24);
-const { INTRO_DONE, introAdvance, introStart, introStep } = __require(30);
 
                                                                         
 
@@ -8923,14 +8941,13 @@ function start(host            ) {
   }, { class: 'icon-btn' });
   // News over the ask bar, one card, one place: a toast (copy failed…), the
   // AI line (handed over → picked up → done, with "Show" / "Reload"), the ask
-  // box's own note, "playing" and, the first time only, what to do next
-  // (intro.ts: pick → move → ask → Save, "2/4", a close button).
+  // box's own note and "playing".
+  // The first-run tips that sat here ("1/4 Click an object…" → "2/4 drag it" → …,
+  // intro.ts) were removed on 2026-10-17 after a try of the web demo: "I don't
+  // need this". The editor should open on the game alone. Don't bring back a
+  // step-by-step tour here without asking.
   const playNote = h('p', { class: 'play-note', hidden: true });
-  const introText = h('span', { class: 'intro-text' });
-  const introCount = h('span', { class: 'intro-n' });
-  const introClose = h('button', { type: 'button', class: 'intro-x', dataset: { action: 'intro-close' }, onclick: () => setIntro(INTRO_DONE) }, icon('close'));
-  const firstHint = h('p', { class: 'first-hint', hidden: true, dataset: { part: 'intro' } }, introCount, introText, introClose);
-  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote, firstHint);
+  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
   const askSlot = h('div', { class: 'ask-slot' });
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
@@ -9096,7 +9113,6 @@ function start(host            ) {
       // Suggestions while typing leave the game in view (only ⌘K dims it).
       scrim.hidden = !on || !!typed;
       app.dataset.palette = on ? (typed ? 'suggest' : 'open') : 'closed';
-      renderFirstHint();
     },
   });
   (dock.querySelector('.palette-slot')               ).append(palette.el);
@@ -9175,58 +9191,6 @@ function start(host            ) {
   }
 
   /**
-   * The first-run intro (intro.ts): one line, the next thing to do, "1/4" and
-   * a close button. It grew out of the old "Click an object to pick it · ⌘K
-   * for everything" hint, in the same place and the same quiet plate.
-   * introAt is INTRO_DONE until the start code has read prefs.json, so
-   * nothing flashes for someone who has seen it.
-   */
-  let introAt = INTRO_DONE;
-  function introDid(did           ) {
-    const next = introAdvance(introAt, did);
-    if (next !== introAt) setIntro(next);
-  }
-  /** Move the intro on and keep the step in .studio/ui/prefs.json (not with ?ui=off: that writes nothing). */
-  function setIntro(next        ) {
-    introAt = next;
-    uiPrefs = { ...uiPrefs, intro: next };
-    if (!safeUi) void host.saveUi(uiPrefs);
-    renderFirstHint();
-  }
-  // The AI reply the intro last waited under, and the unsaved count then (renderFirstHint).
-  let introReplyKey = '';
-  let introReplyDirty = 0;
-  function renderFirstHint() {
-    if (selected) introDid('pick');
-    const step = introStep(introAt);
-    if (step) {
-      const k = step === 'pick' ? (isMac() ? '⌘K' : 'Ctrl+K') : isMac() ? '⌘S' : 'Ctrl+S';
-      const phoneText = phone() && (step === 'pick' || step === 'save');
-      introText.textContent = t(`intro.${step}${phoneText ? 'Phone' : ''}`, { k });
-      introCount.textContent = `${introAt + 1}/${INTRO_DONE}`;
-      introClose.title = introClose.ariaLabel = t('intro.close');
-      firstHint.dataset.intro = step; // not data-step: the Ideas page uses that for its steps
-    }
-    // Unlike the old hint it may sit under the AI line: after "ask" comes
-    // "Press Save", while the line still says "Handed to your AI".
-    // One line at a time (polish pass 2026-10-16, play test stumble 5): while a strip tool is chosen, the game
-    // page shows that tool's own line ("Drag anywhere: Turn · …") in this same place, and the two sat on top of
-    // each other. The tool's line says what a drag does now, so it wins; the intro comes back when the tool is put down.
-    // The AI's reply wins too (agent-solid pass 2026-10-17): a real run showed "Added 3 lighthouses around the
-    // cove" and "4/4 Press Save (⌘S) and your AI updates the game" in one card — two voices at once, and the tip
-    // read like part of the AI's answer. While the reply is up the tip waits; it comes back once the person moves
-    // something again (then "Press Save" is the next thing for them, not news about the AI).
-    const ph = currentPhase();
-    const replyKey = !aiLine.hidden && (ph === 'done' || ph === 'failed' || ph === 'updating' || ph === 'undone' || ph === 'redone') ? `${aiStatus?.at ?? ''}:${aiAfter ?? ''}` : '';
-    if (replyKey !== introReplyKey) {
-      introReplyKey = replyKey;
-      introReplyDirty = model.dirty();
-    }
-    const replyUp = !!replyKey && model.dirty() <= introReplyDirty;
-    firstHint.hidden = !step || !itemsSeen || playing || !!stripTool || palette.isOpen() || toastEl.classList.contains('on') || replyUp;
-  }
-
-  /**
    * The game's rules for one object (.studio/studio.json), in short words for
    * the card: "Grid 1", "45° steps", "Height fixed". Nothing without a config.
    */
@@ -9273,7 +9237,6 @@ function start(host            ) {
     send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
-    renderFirstHint();
     sendInset();
     emit('selected', selected);
   }
@@ -9468,8 +9431,7 @@ function start(host            ) {
 
   /** A preference changed: apply now, save to .studio/ui.json shortly after (sliders send many). */
   function changeUi(next         ) {
-    // The intro's step rides along: the View page's "reset" must not bring it back.
-    uiPrefs = { ...normalizeUi(next), intro: introAt };
+    uiPrefs = normalizeUi(next);
     applyUi();
     renderToolsRow();
     if (page === 'settings' && (document.activeElement                           )?.type !== 'range') renderAll();
@@ -9553,7 +9515,6 @@ function start(host            ) {
       showToast(t('ask.fail'));
       return false;
     }
-    if (r.kind === 'ask') introDid('ask');
     handedOver(r.kind, res.id, res.at, r.kind === 'ask' ? r.text : undefined, res);
     return true;
   }
@@ -9655,7 +9616,6 @@ function start(host            ) {
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
-    renderFirstHint();
     renderPeer();
     // The whole line on hover (it is cut to one line).
     aiLine.title = aiLine.hidden ? '' : aiLine.textContent || '';
@@ -9753,7 +9713,6 @@ function start(host            ) {
     else placementPanel.renderAsk();
     sendInset();
     send({ type: 'studio:placement/select', key, focus });
-    renderFirstHint();
   }
 
   // Thumbnails asked for (answered or not), so a scroll never asks twice. Cleared with `thumbs` on reload.
@@ -9993,8 +9952,6 @@ function start(host            ) {
         if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
-        // A pick in the game moves the intro on ("1/4 Click an object" → "2/4 drag it").
-        renderFirstHint();
         break;
       case 'studio:placement/moved':
         model.moved(m.key, m.pose);
@@ -10033,7 +9990,6 @@ function start(host            ) {
       }
       case 'studio:placement/tool':
         stripTool = m.tool;
-        renderFirstHint();
         break;
       case 'studio:placement/thumb':
         if (m.src) {
@@ -10202,10 +10158,7 @@ function start(host            ) {
     // (the Library, a game tool's data) gets the toast, in the same words.
     if (errors.length) showToast(t('save.fail', { error: errors.join('; ') }), 3500);
     else if (!placementHanded && jobs.length) showToast(t('save.ok', { file: 'placement.json' }), 6000);
-    if (!errors.length && jobs.length) {
-      savedOnce = true;
-      introDid('save');
-    }
+    if (!errors.length && jobs.length) savedOnce = true;
     if (!errors.length) emit('saved', null);
     renderButtons();
   }
@@ -10501,9 +10454,6 @@ function start(host            ) {
     }
     // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
     if (n > 0) savedOnce = false;
-    // The intro's "move" step: anything in the scene changed by hand (drag, turn, size, copy).
-    if (model.dirty() > 0) introDid('move');
-    renderFirstHint();
     // Save's width while it is still on screen: "✓ Saved" takes the same room (see the footer).
     const shownSave = saveBtns.find((b) => !b.hidden && b.offsetWidth > 0);
     if (shownSave) saveSlotW = shownSave.offsetWidth;
@@ -10569,7 +10519,6 @@ function start(host            ) {
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();
-    renderFirstHint();
     // A new page starts at its top.
     const pageKey = page === 'tool' ? `tool:${tool}` : page;
     if (pageKey !== lastPage) {
@@ -10733,8 +10682,6 @@ function start(host            ) {
         host.loadConfig().catch(() => null),
       ]);
       uiPrefs = normalizeUi(safeUi ? null : ui);
-      // First time in this folder (no prefs.json, no placement.json): the intro, from step 1.
-      introAt = introStart(uiPrefs.intro, ui != null || placement != null);
       if (uiPrefs.lang && !new URLSearchParams(location.search).get('lang')) lang = uiPrefs.lang;
       gameConfig = config;
       applyUi();
@@ -10766,7 +10713,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[32] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -10930,19 +10877,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[33] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(31);
-const { createLocalHost } = __require(32);
+const { start } = __require(30);
+const { createLocalHost } = __require(31);
 
 start(createLocalHost());
 
 
 };
-__require(33);
+__require(32);
 })();

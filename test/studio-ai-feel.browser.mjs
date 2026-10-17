@@ -79,11 +79,7 @@ function gameCopy(id) {
   for (const f of ['placement.json', '.studio/requests', '.studio/status.json', '.studio/watch.json', '.studio/undo']) rmSync(join(root, f), { recursive: true, force: true });
   if (LANG) {
     mkdirSync(join(root, '.studio/ui'), { recursive: true });
-    writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, intro: 4 }));
-  } else {
-    // The first-run intro (pick → move → ask → Save) is its own test (studio-first5); here it would cover the line.
-    mkdirSync(join(root, '.studio/ui'), { recursive: true });
-    writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, intro: 4 }));
+    writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG }));
   }
   return root;
 }

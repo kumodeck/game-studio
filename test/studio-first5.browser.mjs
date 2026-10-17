@@ -4,11 +4,10 @@
 //
 // 1. An empty folder: the real CLI (skills/arrange/bin/studio.mjs) says "no-game" (exit 4) and
 //    what to ask; run again with --starter 3d it copies the sample in and prints "ready".
-// 2. The editor opens on the sample; the intro shows "1/4 Click an object to select it".
-// 3. Pick → "2/4 drag", drag → "3/4 ask your AI", ask → "4/4 Save", Save → the intro is gone,
-//    and prefs.json says so (intro: 4). Reload: it does not come back.
-// 4. Another empty folder: the intro's close button hides it for good. Phone (390): the first
-//    step says "Tap".
+// 2. The editor opens on the sample, with no first-run tips (the four-step intro, "1/4 Click an
+//    object…", was removed on 2026-10-17: the editor opens on the game alone).
+// 3. Pick → drag → ask → Save, with no tips at any step; placement.json is written.
+// 4. Phone (390): no tips either.
 //
 // Fake starters (test/first-run/starters) by default; --real uses the plugin's own starters/
 // (or the three-crates / pixi-garden fallback while there are none). --video records the PC run
@@ -47,8 +46,8 @@ const IN = {
   anchor: (key) => `(() => { const f = document.querySelector('iframe'); const r = f.getBoundingClientRect();
     const a = f.contentWindow.__gameStudio._debug.anchor(${JSON.stringify(key)}); if (!a) return null;
     return JSON.stringify({ x: r.left + a.center[0], y: r.top + a.center[1], size: a.size }); })()`,
-  intro: `(() => { const p = document.querySelector('[data-part=intro]'); if (!p || p.hidden || !p.offsetParent) return null;
-    return JSON.stringify({ n: p.querySelector('.intro-n').textContent, text: p.querySelector('.intro-text').textContent, step: p.dataset.intro }); })()`,
+  // The removed first-run tips: their plate must not be on screen.
+  tips: `[...document.querySelectorAll('.first-hint, [data-part=intro]')].some((e) => !e.hidden && !!e.offsetParent)`,
   rect: (sel) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(sel)})].find(e => e.offsetParent); if (!el) return null;
     const q = el.getBoundingClientRect(); return JSON.stringify({ x: q.left + q.width / 2, y: q.top + q.height / 2 }); })()`,
 };
@@ -223,17 +222,14 @@ async function run() {
       await shot('0-terminal');
     }
 
-    // ---------- 2. the editor on the sample, the intro's first line ----------
+    // ---------- 2. the editor on the sample, no tips ----------
     await page.goto(cli.url);
     await page.waitFor(IN.ready, 40000);
-    await page.waitFor(IN.intro, 8000);
-    let intro = await j(page, IN.intro);
-    assert.equal(intro.n, '1/4');
-    assert.equal(intro.step, 'pick');
-    if (LANG === 'en') assert.match(intro.text, /^Click an object to select it/);
-    step(`editor open, intro ${intro.n} "${intro.text}"`);
+    await sleep(1500);
+    assert.equal(await page.eval(IN.tips), false, 'first-run tips on open');
+    step('editor open, no first-run tips');
     if (VIDEO) await sleep(1500);
-    await shot('1-open-intro-pick');
+    await shot('1-open');
 
     // ---------- 3. pick → drag → ask → Save ----------
     const items = JSON.parse(await page.eval(IN.list));
@@ -249,20 +245,17 @@ async function run() {
     assert.ok(target, `no object to pick in ${items.map((i) => i.label).join(', ')}`);
     await click(target.a.x, target.a.y);
     await page.waitFor(`document.querySelector('.card strong')?.textContent`, 5000);
-    await page.waitFor(`(${IN.intro}) && JSON.parse(${IN.intro}).step === 'move'`, 5000);
-    intro = await j(page, IN.intro);
-    assert.equal(intro.n, '2/4');
-    step(`picked "${await page.eval(`document.querySelector('.card strong').textContent`)}" → ${intro.n} "${intro.text}"`);
-    await shot('2-picked-intro-move');
+    assert.equal(await page.eval(IN.tips), false, 'first-run tips after the pick');
+    step(`picked "${await page.eval(`document.querySelector('.card strong').textContent`)}"`);
+    await shot('2-picked');
 
     const a = await j(page, IN.anchor(target.key));
     await drag(a.x, a.y, a.x + 140, a.y + 40);
-    await page.waitFor(`(${IN.intro}) && JSON.parse(${IN.intro}).step === 'ask'`, 5000);
-    intro = await j(page, IN.intro);
-    assert.equal(intro.n, '3/4');
-    step(`dragged → ${intro.n} "${intro.text}"`);
+    await page.waitFor(`/\\d/.test([...document.querySelectorAll('[data-action=save]')].find(b => b.offsetParent)?.textContent || '')`, 5000);
+    assert.equal(await page.eval(IN.tips), false, 'first-run tips after the drag');
+    step('dragged → Save shows 1 unsaved');
     if (VIDEO) await sleep(900);
-    await shot('3-moved-intro-ask');
+    await shot('3-moved');
 
     const input = await j(page, IN.rect('.ask-input'));
     await click(input.x, input.y);
@@ -280,71 +273,40 @@ async function run() {
     // The send button (the ⌘K list may be open while typing; the button asks the AI either way).
     const send = await j(page, IN.rect('[data-action=ask-ai]'));
     await click(send.x, send.y);
-    await page.waitFor(`(${IN.intro}) && JSON.parse(${IN.intro}).step === 'save'`, 5000);
-    intro = await j(page, IN.intro);
-    assert.equal(intro.n, '4/4');
+    for (let i = 0; i < 50 && !(existsSync(join(folder, '.studio/requests')) && readdirSync(join(folder, '.studio/requests')).some((f) => f.endsWith('.json'))); i++) await sleep(100);
     const reqs = readdirSync(join(folder, '.studio/requests')).filter((f) => f.endsWith('.json'));
     assert.equal(reqs.length, 1);
-    step(`asked "${words}" → request kept, ${intro.n} "${intro.text}"`);
+    assert.equal(await page.eval(IN.tips), false, 'first-run tips after the ask');
+    step(`asked "${words}" → request kept`);
     if (VIDEO) await sleep(1200);
-    await shot('4-asked-intro-save');
+    await shot('4-asked');
 
     const save = await j(page, IN.rect('[data-action=save]'));
     await click(save.x, save.y);
-    await page.waitFor(`!(${IN.intro})`, 5000);
     for (let i = 0; i < 30 && !existsSync(join(folder, 'placement.json')); i++) await sleep(100);
     assert.ok(existsSync(join(folder, 'placement.json')), 'placement.json written');
-    let prefs = {};
-    for (let i = 0; i < 30; i++) {
-      prefs = JSON.parse(readFileSync(join(folder, '.studio/ui/prefs.json'), 'utf8'));
-      if (prefs.intro === 4) break;
-      await sleep(100);
-    }
-    assert.equal(prefs.intro, 4, 'prefs.json keeps the intro as done');
-    step('Save → intro gone, placement.json written, prefs.json intro: 4');
+    assert.equal(await page.eval(IN.tips), false, 'first-run tips after Save');
+    step('Save → placement.json written');
     if (VIDEO) await sleep(1500);
     await shot('5-saved');
     if (rec) {
       writeVideo(await rec.stop(), VIDEO);
       step(`video ${VIDEO}`);
     }
-
-    // ---------- the second time: not again ----------
-    await page.goto(cli.url.replace(/\?.*$/, '') + `?lang=${LANG}`);
-    await page.waitFor(IN.ready, 40000);
-    await sleep(1500);
-    assert.equal(await page.eval(IN.intro), null, 'the intro came back on the second open');
     await cli.stop();
-    const again = await startCli([folder]);
-    await page.goto(again.url);
-    await page.waitFor(IN.ready, 40000);
-    await sleep(1500);
-    assert.equal(await page.eval(IN.intro), null, 'the intro came back after a restart');
-    await again.stop();
-    step('reload and restart → no intro');
     await page.close();
 
-    // ---------- 4. close button, and the phone's first line ----------
-    const folder2 = mkdtempSync(join(tmpdir(), 'studio-first5-close-'));
+    // ---------- 4. the phone: no tips either ----------
+    const folder2 = mkdtempSync(join(tmpdir(), 'studio-first5-phone-'));
     results.folders.push(folder2);
     const cli2 = await startCli([folder2, '--starter', '3d', ...STARTERS]);
     const p2 = await newPage(browser, { width: 390, height: 844, mobile: true });
     await p2.goto(cli2.url);
     await p2.waitFor(IN.ready, 40000);
-    await p2.waitFor(IN.intro, 8000);
-    const phoneIntro = await j(p2, IN.intro);
-    if (LANG === 'en') assert.equal(phoneIntro.text, 'Tap an object to select it');
-    step(`phone: ${phoneIntro.n} "${phoneIntro.text}"`);
-    if (SHOTS) writeFileSync(join(SHOTS, '6-phone-intro.png'), await p2.screenshot());
-    await p2.eval(`document.querySelector('[data-action=intro-close]').click()`);
-    await p2.waitFor(`!(${IN.intro})`, 3000);
-    for (let i = 0; i < 30 && !existsSync(join(folder2, '.studio/ui/prefs.json')); i++) await sleep(100);
-    assert.equal(JSON.parse(readFileSync(join(folder2, '.studio/ui/prefs.json'), 'utf8')).intro, 4);
-    await p2.goto(cli2.url.replace(/\?.*$/, '') + `?lang=${LANG}`);
-    await p2.waitFor(IN.ready, 40000);
     await sleep(1500);
-    assert.equal(await p2.eval(IN.intro), null);
-    step('close button → gone, and not back after a reload');
+    assert.equal(await p2.eval(IN.tips), false, 'first-run tips on the phone');
+    step('phone: no first-run tips');
+    if (SHOTS) writeFileSync(join(SHOTS, '6-phone-open.png'), await p2.screenshot());
     await cli2.stop();
   } finally {
     await browser.close();

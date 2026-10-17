@@ -1,5 +1,5 @@
 // The first 5 minutes, without a browser: a folder with no game → a starter is copied in; no
-// starters → the examples; the intro's steps; a too-old Node stops with one line.
+// starters → the examples; a too-old Node stops with one line.
 //
 //   node --experimental-strip-types --no-warnings --test test/first-run.test.mjs
 //
@@ -14,7 +14,6 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readStarters, findStarters, pickStarter, starterFiles, copyStarter, noGameLine } from '../src/server/starters.mjs';
 import { nodeTooOld } from '../src/server/node-check.mjs';
-import { INTRO_DONE, introAdvance, introStart, introStep } from '../src/shell/intro.ts';
 import { normalizeUi } from '../src/shell/ui-prefs.ts';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -140,27 +139,10 @@ test('CLI: no starters → --starter 2d falls back to pixi-garden (with its adap
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('intro: pick → move → ask → save, a later step skips ahead, never back', () => {
-  assert.equal(introStart(undefined, false), 0, 'a new folder: from the first step');
-  assert.equal(introStart(undefined, true), INTRO_DONE, 'used before (placement.json / prefs.json): never');
-  assert.equal(introStart(2, true), 2, 'half way: carry on');
-  assert.equal(introStart(99, false), INTRO_DONE);
-  let at = 0;
-  const seen = [];
-  for (const did of ['pick', 'pick', 'move', 'ask', 'save']) {
-    seen.push(introStep(at));
-    at = introAdvance(at, did);
-  }
-  assert.deepEqual(seen, ['pick', 'move', 'move', 'ask', 'save']);
-  assert.equal(at, INTRO_DONE);
-  assert.equal(introStep(at), null);
-  assert.equal(introAdvance(0, 'save'), INTRO_DONE, 'saving first ends it');
-  assert.equal(introAdvance(3, 'pick'), 3, 'an earlier step does not go back');
-  // Kept in prefs.json: whole numbers 0–4 only.
-  assert.equal(normalizeUi({ intro: 2 }).intro, 2);
-  assert.equal(normalizeUi({ intro: 9 }).intro, undefined);
-  assert.equal(normalizeUi({ intro: '2' }).intro, undefined);
-  assert.equal(normalizeUi({}).intro, undefined);
+test('no first-run tips: an old intro step in prefs.json is dropped', () => {
+  // The four-step intro was removed (2026-10-17); prefs.json files written before still load.
+  assert.equal(normalizeUi({ intro: 2 }).intro, undefined);
+  assert.equal(normalizeUi({ intro: 2, lang: 'ja' }).lang, 'ja');
 });
 
 test('Node check: the one line, and the real CLI on an old Node', () => {

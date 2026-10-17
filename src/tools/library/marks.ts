@@ -135,7 +135,11 @@ export function buildRows(input: BuildRowsInput): LibraryRow[] {
     if (!rows.has(m.path)) rows.set(m.path, missingRow(m.path, [...m.refsInCode]));
   }
 
-  for (const e of input.loads) {
+  // The load log and `uses` come from the game page (the bridge, and the game's own adapter
+  // through assetsOf): untrusted shapes. Skip what is not a list / not a URL instead of throwing:
+  // one throw here left the Assets panel on "Reading the folder…" (2026-10-17).
+  for (const e of Array.isArray(input.loads) ? input.loads : []) {
+    if (!e || typeof e.url !== 'string') continue;
     const path = urlToPath(e.url, input.base);
     if (!path) continue;
     const row = rows.get(path);
@@ -150,8 +154,10 @@ export function buildRows(input: BuildRowsInput): LibraryRow[] {
     }
   }
 
-  for (const [key, refs] of Object.entries(input.uses)) {
+  for (const [key, refs] of Object.entries(input.uses && typeof input.uses === 'object' ? input.uses : {})) {
+    if (!Array.isArray(refs)) continue;
     for (const r of refs) {
+      if (!r || typeof r.url !== 'string') continue;
       const path = urlToPath(r.url, input.base);
       if (!path) continue;
       let row = rows.get(path);

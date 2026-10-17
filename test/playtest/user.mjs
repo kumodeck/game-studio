@@ -209,12 +209,8 @@ export async function playRun({ studioBin, folder, home, layout, outDir, tag, cd
       const it = (await list()).find((i) => i.label === name) || t;
       target = { key: it.key, label: it.label };
       edited = target;
-      const shotFile = await S.shot('picked', `Pressed "${name}"`);
-      // The first-time line must not still say "Click an object to pick it" once something is picked (the intro
-      // moving on to its next step — "2/4 Now drag it to move it" — is fine).
-      if (await page.eval(`(() => { const h = document.querySelector('.first-hint'); return !!h && !h.hidden && !!h.offsetParent && (!h.dataset.intro || h.dataset.intro === 'pick'); })()`).catch(() => false)) {
-        stumble(2, 'After picking, "pick an object" is still on screen (it later sits on top of the tool line)', shotFile);
-      }
+      await S.shot('picked', `Pressed "${name}"`);
+      // (Stumble 2, "pick an object" still on screen after a pick, is gone with the first-run tips: removed 2026-10-17.)
       return `picked "${name}"`;
     });
 

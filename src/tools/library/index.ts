@@ -46,6 +46,9 @@ function ask<T>(ctx: ShellContext, send: () => void, type: 'studio:library/asset
   });
 }
 
+/** How long the first read of the folder waits for host.open() (ms); see mount(). */
+const OPEN_WAIT_MS = 4000;
+
 /** Folder root of the game URL: "http://127.0.0.1:5173/game/index.html?studio=edit" -> ".../game/". */
 export function baseOf(gameUrl: string): string {
   // The local host answers with a path ("/game/index.html"): resolve it
@@ -97,15 +100,30 @@ export const libraryTool: ShellTool = {
       // skill's "Heavy 3D files" steps.
       askAi: (text) => ctx.ask({ kind: 'ask', text }),
     });
+    // This mount's own panel: a re-mount (language, layout) makes a new one, and the read below
+    // must not land in the next panel with this mount's `base`.
+    const me = panel;
     // Re-list whenever the game (re)starts in edit mode: a reload after a
     // save loads files again, and an asset added here may now be in use.
-    offs.push(ctx.on('studio:core/ready', () => void panel?.refresh()));
-    void ctx.host.open().then((o) => {
-      base = baseOf(o.gameUrl);
-      return panel?.refresh();
-    }).catch(() => panel?.refresh()).then(() => {
-      if (pendingOpen && panel) panel.open(pendingOpen);
+    offs.push(ctx.on('studio:core/ready', () => void me.refresh()));
+    // First read: once host.open() has told us where the game lives (so loads map to files), but
+    // never later than OPEN_WAIT_MS — the folder list does not need it, and waiting on an open()
+    // that never answered left "Reading the folder…" on screen for good (2026-10-17). An open()
+    // that answers after that only re-reads, so "Used" marks come right.
+    // refresh() itself never throws (it shows "Couldn't read the folder" + Try again).
+    let first = true;
+    const read = () => me.refresh().then(() => {
+      if (!first) return;
+      first = false;
+      if (pendingOpen && panel === me) me.open(pendingOpen);
       pendingOpen = null;
+    });
+    let opened = false;
+    const wait = window.setTimeout(() => { if (!opened && panel === me) void read(); }, OPEN_WAIT_MS);
+    void ctx.host.open().then((o) => { base = baseOf(o.gameUrl); }, () => undefined).then(() => {
+      opened = true;
+      window.clearTimeout(wait);
+      if (panel === me) void read();
     });
   },
 

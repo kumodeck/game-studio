@@ -108,6 +108,13 @@ const TYPE_ICON: Record<string, string> = { image: '▦', model: '◆', sound: '
 const TYPES: TypeFilter[] = ['all', 'image', 'model', 'sound', 'atlas', 'font'];
 const BADGES: Badge[] = ['used', 'codeOnly', 'unused', 'missing'];
 const ACCEPT = Object.values(ASSET_EXT).flat().filter((e) => e !== 'json').map((e) => `.${e}`).join(',');
+/**
+ * How long one read of the folder may take before the panel says it got no answer (seconds).
+ * 15 = far above a real read (the local server lists a starter in < 50 ms, a big project in
+ * < 2 s), short enough that nobody stares at "Reading the folder…" wondering. Was: no limit,
+ * so a request that never came back left that line on screen forever.
+ */
+const READ_SECONDS = 15;
 
 export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   injectStyles();
@@ -125,6 +132,13 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   let status = '';
   /** The folder has been read at least once (before: an empty folder said "Reading the folder…" forever). */
   let loaded = false;
+  /**
+   * Why the last read of the folder failed, or null. Shown above the grid with "Try again".
+   * WHY (play test 2026-10-17, "the assets don't show up"): a read that threw or never answered left
+   * "0 files" + "Reading the folder…" on screen for good, with nothing in the console, so
+   * nobody could tell a slow read from a dead one.
+   */
+  let readError: string | null = null;
   /** What Make with AI is making now: shown as "Making…" tiles at the top of the grid. */
   let aiWork: AiWork[] = [];
   let workTick = 0;
@@ -169,6 +183,19 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   const chips = h('div', 'gsl-chips');
   const count = h('div', 'gsl-count');
   const grid = h('div', 'gsl-grid');
+  // "Couldn't read the folder (…)." + Try again: only after a failed read (renderReadFail).
+  const readFail = h('div', 'gsl-readfail');
+  readFail.setAttribute('role', 'alert');
+  readFail.hidden = true;
+  const readFailText = h('span');
+  const retryBtn = h('button', 'gsl-btn gsl-retry', L('readRetry'));
+  retryBtn.type = 'button';
+  retryBtn.dataset.action = 'library-retry';
+  retryBtn.addEventListener('click', () => {
+    retryBtn.disabled = true;
+    void refresh().finally(() => { retryBtn.disabled = false; });
+  });
+  readFail.append(readFailText, retryBtn);
   const detail = h('div', 'gsl-detail');
   detail.hidden = true;
   const foot = h('div', 'gsl-foot');
@@ -210,7 +237,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
         formatSize: (n) => formatSize(deps.lang, n),
       })
     : null;
-  wrap.append(chips, count, grid, detail, foot);
+  wrap.append(chips, count, readFail, grid, detail, foot);
   root.append(wrap);
   if (aiBtn && ai) {
     aiBtn.addEventListener('click', () => {
@@ -339,8 +366,10 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
 
   function renderGrid() {
     const list = filterRows(rows, filter);
-    // "0 files" above "No assets yet" says the same thing twice.
-    count.textContent = loaded && !rows.length ? '' : L('count', { n: list.length });
+    // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
+    // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
+    // While "Couldn't read the folder" shows, it takes the count's place (same cell in shell.css).
+    count.textContent = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
     grid.replaceChildren();
     // What Make with AI is making: a tile first, so the wait has a place even with the panel closed.
     for (const w of aiWork) {
@@ -358,6 +387,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     }
     if (!list.length) {
       if (aiWork.length) return;
+      // Not read yet and the read failed: the line above the grid says so (and has Try again).
+      if (!loaded && readError) return;
       const empty = !loaded ? L('loading') : rows.length || status ? L('empty') : deps.host.kumo ? L('noFilesYetAi') : L('noFilesYet');
       grid.append(h('div', 'gsl-empty', empty));
       return;
@@ -649,21 +680,50 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   });
   saveBtn.addEventListener('click', () => void save());
 
+  function renderReadFail() {
+    readFail.hidden = !readError;
+    readFailText.textContent = readError ? L('readFailed', { e: readError }) : '';
+  }
+
   function render() {
     renderChips();
+    renderReadFail();
     renderGrid();
     renderDetail();
     notifyPending();
   }
 
   // ---------- public ----------
+  /**
+   * Read the folder (host) and what the game loaded (bridge), then redraw. Never throws and never
+   * waits forever: a failure or no answer within READ_SECONDS shows "Couldn't read the folder (…)."
+   * with Try again, and the rows from an earlier good read stay. (Before 2026-10-17 a throw here
+   * went to the caller's .catch, which only called refresh() again, and a request that never came
+   * back had no limit: either way "Reading the folder…" stayed on screen.)
+   * The game's half already has its own 4 s limit (requestAssets) and is optional: without it the
+   * folder's files are still listed, only without "Used".
+   */
   async function refresh() {
-    const [list, game] = await Promise.all([
-      deps.host.listAssets(),
-      deps.requestAssets().catch(() => ({ loads: [] as LoadEntry[], uses: {} as Record<string, AssetRef[]> })),
-    ]);
-    rows = buildRows({ ...normalizeList(list), ...game, base: deps.base() });
-    loaded = true;
+    let timer = 0;
+    try {
+      const slow = new Promise<never>((_, reject) => {
+        timer = window.setTimeout(() => reject(new Error(L('readSlow', { s: READ_SECONDS }))), READ_SECONDS * 1000);
+      });
+      const [list, game] = await Promise.race([
+        Promise.all([
+          deps.host.listAssets(),
+          deps.requestAssets().catch(() => ({ loads: [] as LoadEntry[], uses: {} as Record<string, AssetRef[]> })),
+        ]),
+        slow,
+      ]);
+      rows = buildRows({ ...normalizeList(list), loads: game?.loads ?? [], uses: game?.uses ?? {}, base: deps.base() });
+      loaded = true;
+      readError = null;
+    } catch (e) {
+      readError = (e instanceof Error ? e.message : String(e)) || '?';
+    } finally {
+      window.clearTimeout(timer);
+    }
     render();
   }
 

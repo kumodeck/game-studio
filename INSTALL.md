@@ -137,7 +137,9 @@ The plugin's skill only loads in a new session, so this time you start the edito
    > Click anything and drag it to move it, type a change in the box at the bottom, and click Save when you like it.
    > Next time, start a new session and type `/arrange`. *(Codex: `$arrange`)*
 
-   If you changed the settings file (§3, no `claude` command), put its one line first.
+   If you used `--starter 3d`, start the second line with "Here's a sample game in your folder." If you changed the
+   settings file (§3, no `claude` command), put its one line first. Say nothing else: not the watch (§4 step 5), the
+   log, the self-check, the plugin's version or the folder's path.
 
 5. **After that message, for the rest of this session**, read `PLUGIN/skills/arrange/SKILL.md` and follow it from §3: it is what
    `/arrange` does (their saves and requests arrive in `.studio/requests/`; when they type "look", read them). When

@@ -557,11 +557,6 @@ export interface UiPrefs {
   };
   /** Saved UI language (absent = follow the browser). */
   lang?: Lang;
-  /**
-   * The first-run intro's step (shell/intro.ts): 0–3 = the next thing to show,
-   * 4 = finished or closed. Absent = never seen in this folder.
-   */
-  intro?: number;
 }
 
 /**

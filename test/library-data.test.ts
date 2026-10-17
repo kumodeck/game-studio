@@ -137,6 +137,23 @@ test('buildRows gives each asset exactly one badge from the three sources', () =
   assert.deepEqual(assetsOfKey(rows, 'rock').map((r) => r.path), ['assets/rock.glb']);
 });
 
+test('buildRows lists the folder even when the game answers with odd shapes (never throws)', () => {
+  // The load log and `uses` come from the game page; a throw here once left Assets on
+  // "Reading the folder…" (2026-10-17).
+  const files = [{ path: 'assets/a.png', size: 1, type: 'image' as const, refsInCode: [] }];
+  const base = 'http://127.0.0.1:5173/';
+  const odd = [
+    { loads: undefined, uses: undefined },
+    { loads: null, uses: null },
+    { loads: [null, { url: 42 }, { url: 'http://127.0.0.1:5173/assets/a.png' }], uses: { k: null, j: 'x', i: [null, { url: {} }] } },
+  ];
+  for (const g of odd) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately wrong shapes
+    const rows = buildRows({ files, missing: [], base, ...(g as any) });
+    assert.deepEqual(rows.map((r) => r.path), ['assets/a.png']);
+  }
+});
+
 test('filterRows by type, badge and name', () => {
   const rows = sampleRows();
   assert.deepEqual(filterRows(rows, { type: 'image' }).map((r) => r.path), ['assets/dyn.png', 'assets/gone.png', 'assets/old.png', 'assets/tree.png']);

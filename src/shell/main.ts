@@ -54,7 +54,6 @@ import { createPalette, type PaletteRow } from './palette.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, type Change, type UndoEntry } from './undo.ts';
 import { copyKey, groupLayerMoves, sameKind } from './edit-ops.ts';
-import { INTRO_DONE, introAdvance, introStart, introStep, type IntroStep } from './intro.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
 
@@ -312,14 +311,13 @@ export function start(host: StudioHost) {
   }, { class: 'icon-btn' });
   // News over the ask bar, one card, one place: a toast (copy failed…), the
   // AI line (handed over → picked up → done, with "Show" / "Reload"), the ask
-  // box's own note, "playing" and, the first time only, what to do next
-  // (intro.ts: pick → move → ask → Save, "2/4", a close button).
+  // box's own note and "playing".
+  // The first-run tips that sat here ("1/4 Click an object…" → "2/4 drag it" → …,
+  // intro.ts) were removed on 2026-10-17 after a try of the web demo: "I don't
+  // need this". The editor should open on the game alone. Don't bring back a
+  // step-by-step tour here without asking.
   const playNote = h('p', { class: 'play-note', hidden: true });
-  const introText = h('span', { class: 'intro-text' });
-  const introCount = h('span', { class: 'intro-n' });
-  const introClose = h('button', { type: 'button', class: 'intro-x', dataset: { action: 'intro-close' }, onclick: () => setIntro(INTRO_DONE) }, icon('close'));
-  const firstHint = h('p', { class: 'first-hint', hidden: true, dataset: { part: 'intro' } }, introCount, introText, introClose);
-  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote, firstHint);
+  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
   const askSlot = h('div', { class: 'ask-slot' });
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
@@ -485,7 +483,6 @@ export function start(host: StudioHost) {
       // Suggestions while typing leave the game in view (only ⌘K dims it).
       scrim.hidden = !on || !!typed;
       app.dataset.palette = on ? (typed ? 'suggest' : 'open') : 'closed';
-      renderFirstHint();
     },
   });
   (dock.querySelector('.palette-slot') as HTMLElement).append(palette.el);
@@ -564,58 +561,6 @@ export function start(host: StudioHost) {
   }
 
   /**
-   * The first-run intro (intro.ts): one line, the next thing to do, "1/4" and
-   * a close button. It grew out of the old "Click an object to pick it · ⌘K
-   * for everything" hint, in the same place and the same quiet plate.
-   * introAt is INTRO_DONE until the start code has read prefs.json, so
-   * nothing flashes for someone who has seen it.
-   */
-  let introAt = INTRO_DONE;
-  function introDid(did: IntroStep) {
-    const next = introAdvance(introAt, did);
-    if (next !== introAt) setIntro(next);
-  }
-  /** Move the intro on and keep the step in .studio/ui/prefs.json (not with ?ui=off: that writes nothing). */
-  function setIntro(next: number) {
-    introAt = next;
-    uiPrefs = { ...uiPrefs, intro: next };
-    if (!safeUi) void host.saveUi(uiPrefs);
-    renderFirstHint();
-  }
-  // The AI reply the intro last waited under, and the unsaved count then (renderFirstHint).
-  let introReplyKey = '';
-  let introReplyDirty = 0;
-  function renderFirstHint() {
-    if (selected) introDid('pick');
-    const step = introStep(introAt);
-    if (step) {
-      const k = step === 'pick' ? (isMac() ? '⌘K' : 'Ctrl+K') : isMac() ? '⌘S' : 'Ctrl+S';
-      const phoneText = phone() && (step === 'pick' || step === 'save');
-      introText.textContent = t(`intro.${step}${phoneText ? 'Phone' : ''}`, { k });
-      introCount.textContent = `${introAt + 1}/${INTRO_DONE}`;
-      introClose.title = introClose.ariaLabel = t('intro.close');
-      firstHint.dataset.intro = step; // not data-step: the Ideas page uses that for its steps
-    }
-    // Unlike the old hint it may sit under the AI line: after "ask" comes
-    // "Press Save", while the line still says "Handed to your AI".
-    // One line at a time (polish pass 2026-10-16, play test stumble 5): while a strip tool is chosen, the game
-    // page shows that tool's own line ("Drag anywhere: Turn · …") in this same place, and the two sat on top of
-    // each other. The tool's line says what a drag does now, so it wins; the intro comes back when the tool is put down.
-    // The AI's reply wins too (agent-solid pass 2026-10-17): a real run showed "Added 3 lighthouses around the
-    // cove" and "4/4 Press Save (⌘S) and your AI updates the game" in one card — two voices at once, and the tip
-    // read like part of the AI's answer. While the reply is up the tip waits; it comes back once the person moves
-    // something again (then "Press Save" is the next thing for them, not news about the AI).
-    const ph = currentPhase();
-    const replyKey = !aiLine.hidden && (ph === 'done' || ph === 'failed' || ph === 'updating' || ph === 'undone' || ph === 'redone') ? `${aiStatus?.at ?? ''}:${aiAfter ?? ''}` : '';
-    if (replyKey !== introReplyKey) {
-      introReplyKey = replyKey;
-      introReplyDirty = model.dirty();
-    }
-    const replyUp = !!replyKey && model.dirty() <= introReplyDirty;
-    firstHint.hidden = !step || !itemsSeen || playing || !!stripTool || palette.isOpen() || toastEl.classList.contains('on') || replyUp;
-  }
-
-  /**
    * The game's rules for one object (.studio/studio.json), in short words for
    * the card: "Grid 1", "45° steps", "Height fixed". Nothing without a config.
    */
@@ -662,7 +607,6 @@ export function start(host: StudioHost) {
     send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
-    renderFirstHint();
     sendInset();
     emit('selected', selected);
   }
@@ -857,8 +801,7 @@ export function start(host: StudioHost) {
 
   /** A preference changed: apply now, save to .studio/ui.json shortly after (sliders send many). */
   function changeUi(next: UiPrefs) {
-    // The intro's step rides along: the View page's "reset" must not bring it back.
-    uiPrefs = { ...normalizeUi(next), intro: introAt };
+    uiPrefs = normalizeUi(next);
     applyUi();
     renderToolsRow();
     if (page === 'settings' && (document.activeElement as HTMLInputElement | null)?.type !== 'range') renderAll();
@@ -942,7 +885,6 @@ export function start(host: StudioHost) {
       showToast(t('ask.fail'));
       return false;
     }
-    if (r.kind === 'ask') introDid('ask');
     handedOver(r.kind, res.id, res.at, r.kind === 'ask' ? r.text : undefined, res);
     return true;
   }
@@ -1044,7 +986,6 @@ export function start(host: StudioHost) {
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
-    renderFirstHint();
     renderPeer();
     // The whole line on hover (it is cut to one line).
     aiLine.title = aiLine.hidden ? '' : aiLine.textContent || '';
@@ -1142,7 +1083,6 @@ export function start(host: StudioHost) {
     else placementPanel.renderAsk();
     sendInset();
     send({ type: 'studio:placement/select', key, focus });
-    renderFirstHint();
   }
 
   // Thumbnails asked for (answered or not), so a scroll never asks twice. Cleared with `thumbs` on reload.
@@ -1382,8 +1322,6 @@ export function start(host: StudioHost) {
         if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
-        // A pick in the game moves the intro on ("1/4 Click an object" → "2/4 drag it").
-        renderFirstHint();
         break;
       case 'studio:placement/moved':
         model.moved(m.key, m.pose);
@@ -1422,7 +1360,6 @@ export function start(host: StudioHost) {
       }
       case 'studio:placement/tool':
         stripTool = m.tool;
-        renderFirstHint();
         break;
       case 'studio:placement/thumb':
         if (m.src) {
@@ -1591,10 +1528,7 @@ export function start(host: StudioHost) {
     // (the Library, a game tool's data) gets the toast, in the same words.
     if (errors.length) showToast(t('save.fail', { error: errors.join('; ') }), 3500);
     else if (!placementHanded && jobs.length) showToast(t('save.ok', { file: 'placement.json' }), 6000);
-    if (!errors.length && jobs.length) {
-      savedOnce = true;
-      introDid('save');
-    }
+    if (!errors.length && jobs.length) savedOnce = true;
     if (!errors.length) emit('saved', null);
     renderButtons();
   }
@@ -1890,9 +1824,6 @@ export function start(host: StudioHost) {
     }
     // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
     if (n > 0) savedOnce = false;
-    // The intro's "move" step: anything in the scene changed by hand (drag, turn, size, copy).
-    if (model.dirty() > 0) introDid('move');
-    renderFirstHint();
     // Save's width while it is still on screen: "✓ Saved" takes the same room (see the footer).
     const shownSave = saveBtns.find((b) => !b.hidden && b.offsetWidth > 0);
     if (shownSave) saveSlotW = shownSave.offsetWidth;
@@ -1958,7 +1889,6 @@ export function start(host: StudioHost) {
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();
-    renderFirstHint();
     // A new page starts at its top.
     const pageKey = page === 'tool' ? `tool:${tool}` : page;
     if (pageKey !== lastPage) {
@@ -2122,8 +2052,6 @@ export function start(host: StudioHost) {
         host.loadConfig().catch(() => null),
       ]);
       uiPrefs = normalizeUi(safeUi ? null : ui);
-      // First time in this folder (no prefs.json, no placement.json): the intro, from step 1.
-      introAt = introStart(uiPrefs.intro, ui != null || placement != null);
       if (uiPrefs.lang && !new URLSearchParams(location.search).get('lang')) lang = uiPrefs.lang;
       gameConfig = config;
       applyUi();

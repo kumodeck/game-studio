@@ -18,7 +18,8 @@
 // Firefly Ruins (2D, PixiJS). Each at 1280×800 with a mouse, and with touch at the two
 // phones of the brief (390×844, 430×932) and at 280×640 (the phone the "save does not
 // stick" report used, 2026-10-16):
-//   1. the sample list (pictures) → the editor opens the sample; the demo line is on top
+//   1. the sample list (pictures) → the editor opens the sample; the demo line is on top;
+//      (PC) Assets answers: the files, or "No assets yet…" — never "Reading the folder…" for good
 //   2. tap an object in the game, drag it → it moves
 //   3. the strip's turn tool, then a drag from anywhere → it turns; the size tool → it grows
 //   4. Save, pressed with real input → "saved in this browser"; the same spot
@@ -115,8 +116,8 @@ const turn = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 // The heading of a pose. Past ±90° the 3D editor may keep a turn as r with t = [π, π] (x and z flipped):
 // Rx(π)·Ry(r)·Rz(π) = Ry(π − r), the same heading written another way (seen on a second visit, 2026-10-17).
 const yawOf = (pose) => (Array.isArray(pose.t) && Math.abs(Math.abs(pose.t[0]) - Math.PI) < 1e-3 && Math.abs(Math.abs(pose.t[1]) - Math.PI) < 1e-3 ? Math.PI - (pose.r ?? 0) : pose.r ?? 0);
-const WORDS = { ja: { banner: '試し版・保存はこのブラウザの中だけ', saved: 'ブラウザの中に保存', noAi: 'AI にはつながっていません', ask: 'もっと左に寄せて' },
-  en: { banner: 'Saves stay in this browser', saved: 'Saved in this browser', noAi: 'isn’t connected to an AI', ask: 'move it further left' } }[LANG];
+const WORDS = { ja: { banner: '試し版・保存はこのブラウザの中だけ', saved: 'ブラウザの中に保存', noAi: 'AI にはつながっていません', ask: 'もっと左に寄せて', reading: 'フォルダを読んでいます…' },
+  en: { banner: 'Saves stay in this browser', saved: 'Saved in this browser', noAi: 'isn’t connected to an AI', ask: 'move it further left', reading: 'Reading the folder…' } }[LANG];
 
 let server;
 let base;
@@ -223,6 +224,23 @@ async function run(browser, game, size, tag) {
     if (game === 'firefly-ruins') await fitted('open');
     step(`the list (with pictures) opens the sample in ${(openMs / 1000).toFixed(1)} s; the demo line is on top`);
     await shot('1-open');
+
+    // --- 1b. Assets ends in an answer (PC; the phone's sheet is covered by studio-e2e) ---
+    // Play test 2026-10-17, "the assets don't show up": the hosted demo said "0 files" + "Reading the
+    // folder…" for good, because both samples draw everything in code (no asset files) and that
+    // build only left "Reading…" after a read that found something. Now: "No assets yet…", no "0 files".
+    if (!mobile) {
+      await page.eval(`document.querySelector('[data-tool=library]').click()`);
+      await page.waitFor(`(() => { const e = document.querySelector('.gsl-empty'); return document.querySelector('.gsl-tile .gsl-name') || document.querySelector('.gsl-readfail:not([hidden])') || (e && e.textContent !== ${JSON.stringify(WORDS.reading)}); })()`, 10000);
+      const lib = await j(`JSON.stringify({ empty: document.querySelector('.gsl-empty')?.textContent ?? null, count: document.querySelector('.gsl-count')?.textContent ?? '', fail: document.querySelector('.gsl-readfail:not([hidden])')?.textContent ?? null, files: document.querySelectorAll('.gsl-tile .gsl-name').length })`);
+      assert.equal(lib.fail, null, `Assets: ${lib.fail}`);
+      assert.ok(lib.files > 0 || (lib.empty && lib.count === ''), `Assets: ${JSON.stringify(lib)}`);
+      step(`Assets → ${lib.files ? `${lib.files} files` : `"${lib.empty}"`}`);
+      await shot('1b-assets');
+      await page.eval(`document.querySelector('[data-tool=placement]').click()`);
+      await page.waitFor(`document.querySelector('[data-tool=placement]')?.getAttribute('aria-selected') === 'true'`);
+      await sleep(300);
+    }
 
     // --- 2. pick and move ---
     const items = await j(IN.list);

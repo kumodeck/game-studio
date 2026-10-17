@@ -40,13 +40,10 @@ action row, "Select" (picking several) and group headings in `placement-panel.ts
 compound undo entries in `undo.ts` and `main.ts`; `added` / `removed` of
 placement.json in `placement-model.ts`.
 
-First-run intro (`intro.ts`, 2026-10-16 "first 5 minutes"): the old one-line
-first hint grown into four steps — pick → move → ask your AI → Save — one line
-at a time with "2/4" and a close button, in the news plate over the ask bar.
-Doing a later step skips the earlier ones. The step is kept in
-`.studio/ui/prefs.json` (`intro`, 4 = done), not in the browser (the port and
-so the origin change every run); a folder that already has placement.json or
-prefs.json never shows it.
+No first-run tips: the four-step intro over the ask bar (`intro.ts`, "1/4
+Click an object…") was removed on 2026-10-17 after a try of the web demo — the
+editor opens on the game alone. An old `intro` in `.studio/ui/prefs.json` is
+ignored.
 
 Entries: `local.ts` (studio-shell.js, the local server with `host-local.ts`)
 and `src/hosts/browser/main.ts` (the browser-only web demo). Both call

@@ -49,6 +49,9 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 .gsl-tag-del{border-color:var(--gsl-missing);color:var(--gsl-missing)}
 .gsl-del{color:var(--gsl-missing)}
 .gsl-empty{grid-column:1/-1;color:var(--gsl-muted);padding:16px;text-align:center}
+.gsl-readfail{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--gsl-missing);border-radius:10px;background:var(--gsl-card)}
+.gsl-readfail[hidden]{display:none}
+.gsl-readfail>span{flex:1 1 180px;min-width:0;overflow-wrap:anywhere}
 .gsl-detail{border:1px solid var(--gsl-line);border-radius:10px;background:var(--gsl-card);padding:10px;max-height:55%;overflow:auto;flex:0 0 auto}
 .gsl-dhead{display:grid;grid-template-columns:96px 1fr auto;gap:10px;align-items:start}
 .gsl-dtitle{display:flex;flex-direction:column;min-width:0;gap:2px}
