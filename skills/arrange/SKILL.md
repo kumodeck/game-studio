@@ -545,6 +545,12 @@ library marked unused. The editor deleted nothing; `.studio/next-step.md` lists 
 Show the list and ask the user to confirm, search the code once more for each name (also without folder and
 extension), delete only the confirmed files that nothing uses, and say which ones are gone.
 
+**Heavy 3D files:** before you load a `.glb` / `.gltf` over 10 MB in the game, or when the user asks you to make one
+lighter (the Assets page has an "Ask my AI to make it lighter" button that sends that request), follow
+[`references/heavy-models.md`](references/heavy-models.md): see what is heavy, ask, write a lighter copy next to it,
+check. Files made with "Make with AI" in the Assets page are already in `assets/` and are not listed in
+`library.json` until the user places them; AI-made 3D models are often 20–50 MB.
+
 When an asset the user wants does not exist yet, they can drop a file into `assets/` (it shows up in the library on
 the next open). Connecting KUMODeck (§7) adds AI-made 3D models; mention it once if it fits, never push it.
 

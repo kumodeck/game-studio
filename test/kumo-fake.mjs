@@ -9,8 +9,12 @@ export const FAKE_KUMO_PROJECT = '11111111-1111-4111-8111-111111111111';
 const TOKEN = FAKE_KUMO_TOKEN;
 const PROJECT = FAKE_KUMO_PROJECT;
 
-/** A small fake KUMODeck (the routes kumo.mjs calls). The 3D job is done on the second look. */
-export async function fakeKumoServer({ delayMs = 0 } = {}) {
+/**
+ * A small fake KUMODeck (the routes kumo.mjs calls). The 3D job is done on the second look.
+ * delayMs: each look at a 3D job waits this long (the "Making…" tile and clock get time to show).
+ * modelBytes: size of the 3D file (over 10 MB = the "heavy" line; the real AI model was 45.7 MB).
+ */
+export async function fakeKumoServer({ delayMs = 0, modelBytes = 0 } = {}) {
   const st = { balance: 500, terms: false, n: 0, jobs: new Map(), posts: 0 };
   const srv = http.createServer(async (req, res) => {
     const chunks = [];
@@ -51,7 +55,7 @@ export async function fakeKumoServer({ delayMs = 0 } = {}) {
       // a real 1×1 PNG for the picture (so the grid can show it), bytes for the model
       const bytes = p.endsWith('.png')
         ? Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
-        : Buffer.from('glTF-BINARY-FAKE');
+        : modelBytes ? Buffer.concat([Buffer.from('glTF-BINARY-FAKE'), Buffer.alloc(modelBytes - 16)]) : Buffer.from('glTF-BINARY-FAKE');
       res.writeHead(200, { 'content-length': String(bytes.length) });
       return res.end(bytes);
     }

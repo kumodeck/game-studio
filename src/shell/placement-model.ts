@@ -36,9 +36,29 @@ export function roundPose(p: Pose, dim: Dim): Pose {
   return out;
 }
 
+/**
+ * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
+ *
+ * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
+ * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
+ * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
+ * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
+ */
+function sameAngle(a: number | undefined, b: number | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  const TAU = Math.PI * 2;
+  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
+  // Half a rounding step: values one step apart (a real nudge) still differ.
+  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
+}
+
 export function samePose(a: Pose | undefined, b: Pose | undefined, dim: Dim): boolean {
   if (!a || !b) return a === b;
-  return JSON.stringify(roundPose(a, dim)) === JSON.stringify(roundPose(b, dim));
+  const x = roundPose(a, dim), y = roundPose(b, dim);
+  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
+  if (!sameAngle(x.r, y.r)) return false;
+  if (!x.t || !y.t) return !x.t === !y.t;
+  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
 }
 
 /** Keys of `now` outside a longest common subsequence with `was` (the moved ones). n ≤ 500, O(n²). */
@@ -80,7 +100,7 @@ export class PlacementModel {
   private copyFrom = new Map<string, string>();
   private copyOrder: string[] = [];
   private live = new Set<string>();
-  private savedCopies = new Map<string, string>();
+  private savedCopies = new Map<string, Pose>();
   // Game objects the person deleted (copies are not counted here).
   private removed = new Set<string>();
   private savedRemoved = new Set<string>();
@@ -134,7 +154,7 @@ export class PlacementModel {
       if (a.r !== undefined) pose.r = a.r;
       if (a.s !== undefined) pose.s = a.s;
       this.addCopy(a.key, a.from, pose, a.label);
-      this.savedCopies.set(a.key, JSON.stringify(roundPose(pose, this.dim)));
+      this.savedCopies.set(a.key, roundPose(pose, this.dim));
       this.fileEdits.copies.push({ key: a.key, from: a.from, pose });
       exists.add(a.key);
     }
@@ -352,7 +372,7 @@ export class PlacementModel {
     }
     for (const k of this.live) {
       const saved = this.savedCopies.get(k);
-      if (saved === undefined || saved !== JSON.stringify(roundPose(this.current.get(k)!, this.dim))) n++;
+      if (saved === undefined || !samePose(saved, this.current.get(k), this.dim)) n++;
     }
     for (const k of this.savedCopies.keys()) if (!this.live.has(k)) n++;
     for (const k of this.removed) if (!this.savedRemoved.has(k)) n++;
@@ -373,7 +393,7 @@ export class PlacementModel {
     }
     for (const k of this.live) {
       const saved = this.savedCopies.get(k);
-      if (saved === undefined || saved !== JSON.stringify(roundPose(this.current.get(k)!, this.dim))) out.add(k);
+      if (saved === undefined || !samePose(saved, this.current.get(k), this.dim)) out.add(k);
     }
     for (const layer of this.layers()) {
       // Same comparison as orderDirty(): only objects in both lists.
@@ -431,7 +451,7 @@ export class PlacementModel {
   markSaved(): void {
     for (const [k, p] of this.current) this.saved.set(k, { ...p });
     this.savedCopies.clear();
-    for (const k of this.live) this.savedCopies.set(k, JSON.stringify(roundPose(this.current.get(k)!, this.dim)));
+    for (const k of this.live) this.savedCopies.set(k, roundPose(this.current.get(k)!, this.dim));
     this.savedRemoved = new Set(this.removed);
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
   }

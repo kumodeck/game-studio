@@ -2774,6 +2774,16 @@ const en = {
   count: '{n:1 file|# files}',
   empty: 'No files match.',
   loading: 'Reading the folder…',
+  // The folder was read and has no assets at all (was stuck on "Reading the folder…", 2026-10-17).
+  noFilesYet: 'No assets yet. Drop files here or click Add files.',
+  noFilesYetAi: 'No assets yet. Drop files here, click Add files, or Make with AI.',
+  thumbWait: 'Drawing preview…',
+  makingTile: 'Making · {time}',
+  heavyModel: '{size} is heavy for a web game: it loads slowly, most of all on phones.',
+  askLighter: 'Ask my AI to make it lighter',
+  askLighterText: 'Make {path} lighter for the game (it’s {size} now), and keep how it looks.',
+  askLighterSent: 'Sent to your AI',
+  askLighterFailed: 'Couldn’t send it to your AI. Try again.',
   usedBy: 'Used by',
   usedByNone: 'No object uses this file.',
   guessed: 'best guess',
@@ -2840,15 +2850,21 @@ const en = {
   aiSeamless: 'Seamless tile',
   aiSize: 'Size',
   aiTexture: 'With colors (off = shape only, costs less)',
-  aiPicturePrice: 'One image: {price}, paid with your credits. Takes a few seconds.',
-  aiModelPrice: 'One model: about {price}, paid with your credits. Takes a few minutes.',
+  aiPicturePrice: 'One image: {price}, paid with your credits. Takes about 20 seconds.',
+  aiModelPrice: 'One model: about {price}, paid with your credits. Takes about 3 minutes.',
   aiShort: 'Not enough credits: this needs {need}, and you have {balance}.',
   aiMake: 'Make · {price}',
   aiMaking: 'Making…',
   aiMakingPicture: 'Making the image…',
   aiStartingModel: 'Starting the 3D model…',
-  aiModelStarted: 'Making the 3D model (a few minutes). Keep working; it shows up in assets/ when it’s ready.',
+  aiModelStarted: 'Making the 3D model. Keep working; it shows up in assets/ when it’s ready.',
+  aiStepQueued: 'Waiting for the AI provider',
+  aiStepCopying: 'Copying it into assets/',
+  aiUsualPicture: 'usually about 20 seconds',
+  aiUsualModel: 'usually about 3 minutes',
+  aiLate: 'Taking longer than usual; it still shows up when it’s ready.',
   aiAdded: 'Added {path}. To use it, place it in the game or ask your AI.',
+  aiAddedSize: 'Added {path} ({size}). To use it, place it in the game or ask your AI.',
   aiRecent: '3D models in this session',
   aiJobRunning: 'being made',
   aiJobFailed: 'not made (you pay only what the AI provider charged, usually nothing)',
@@ -2894,6 +2910,15 @@ const ja                                     = {
   count: '{n} 件',
   empty: '当てはまる素材がありません。',
   loading: 'フォルダを読んでいます…',
+  noFilesYet: 'まだ素材がありません。ここにファイルを落とすか、「素材を足す」を押してください。',
+  noFilesYetAi: 'まだ素材がありません。ここにファイルを落とすか、「素材を足す」か「AI で作る」を押してください。',
+  thumbWait: '小さい絵を描いています…',
+  makingTile: '作っています ・ {time}',
+  heavyModel: '{size} は Web ゲームには重いです。読み込みが遅く、スマホでは特に遅くなります。',
+  askLighter: 'AI に軽くしてもらう',
+  askLighterText: '{path} をゲーム用に軽くしてください（今 {size}）。見た目はそのままで。',
+  askLighterSent: 'AI に送りました',
+  askLighterFailed: 'AI に送れませんでした。もう一度押してください。',
   usedBy: '使っている物',
   usedByNone: 'この素材につながった物はありません。',
   guessed: '推定',
@@ -2958,15 +2983,21 @@ const ja                                     = {
   aiSeamless: '継ぎ目なしのタイル',
   aiSize: '大きさ',
   aiTexture: '色をつける（外すと形だけ・安い）',
-  aiPicturePrice: '1 枚 {price}・クレジットから。数秒でできます。',
-  aiModelPrice: '1 体 約 {price}・クレジットから。数分かかります。',
+  aiPicturePrice: '1 枚 {price}・クレジットから。20 秒ほどでできます。',
+  aiModelPrice: '1 体 約 {price}・クレジットから。3 分ほどかかります。',
   aiShort: 'クレジットが足りません: {need} 要りますが、残りは {balance} です。',
   aiMake: '作る ・ {price}',
   aiMaking: '作っています…',
   aiMakingPicture: '画像を作っています…',
   aiStartingModel: '3D モデルを作り始めています…',
-  aiModelStarted: '3D モデルを作っています（数分）。作業を続けて大丈夫です。できたら assets/ に入ります。',
+  aiModelStarted: '3D モデルを作っています。作業を続けて大丈夫です。できたら assets/ に入ります。',
+  aiStepQueued: 'AI サービスの順番を待っています',
+  aiStepCopying: 'assets/ に写しています',
+  aiUsualPicture: 'ふつうは 20 秒ほど',
+  aiUsualModel: 'ふつうは 3 分ほど',
+  aiLate: 'いつもより時間がかかっています。できたら入ります。',
   aiAdded: '{path} を足しました。ゲームで使うときは、置くか AI に頼んでください。',
+  aiAddedSize: '{path}（{size}）を足しました。ゲームで使うときは、置くか AI に頼んでください。',
   aiRecent: 'この回に作った 3D モデル',
   aiJobRunning: '作っています',
   aiJobFailed: 'できませんでした（払うのは AI サービスが取った分だけ・ふつうは 0）',
@@ -3235,6 +3266,18 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 .gsl-ai-bad{color:var(--gsl-missing)}
 .gsl-ai-note{color:var(--gsl-fg)}
 .gsl-ai-detail{font-size:12px;overflow-wrap:anywhere}
+.gsl-ai-wait{font-size:12px;font-variant-numeric:tabular-nums}
+.gsl-ai-late{color:var(--gsl-code)}
+.gsl-heavy{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.gsl-heavy p{margin:0;color:var(--gsl-code)}
+.gsl-thumb-wait .gsl-icon{animation:gsl-wait 1.6s ease-in-out infinite}
+.gsl-thumb-wait::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.14) 50%,transparent 70%);background-size:220% 100%;animation:gsl-sweep 1.8s linear infinite;pointer-events:none}
+.gsl-wait-label{position:absolute;left:4px;right:4px;bottom:6px;text-align:center;font-size:11px;line-height:1.2;color:var(--gsl-muted)}
+.gsl-thumb-wait:has(.gsl-wait-label) .gsl-icon{margin-bottom:22px}
+.gsl-tag-making{font-variant-numeric:tabular-nums}
+@keyframes gsl-wait{50%{opacity:.35}}
+@keyframes gsl-sweep{from{background-position:120% 0}to{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){.gsl-thumb-wait .gsl-icon,.gsl-thumb-wait::after{animation:none}}
 .gsl-foot{display:flex;gap:8px;align-items:center;min-height:32px}
 .gsl-status{flex:1;color:var(--gsl-muted);overflow:hidden;text-overflow:ellipsis}
 .gsl-pending{color:var(--gsl-code);font-weight:600}
@@ -3271,6 +3314,20 @@ __defs[10] = function (__exports) {
 // - The result is a new file in assets/ (add-only, like "Add files"); placing it in the scene is
 //   the person's or their AI's job.
 //
+// - Waiting is honest (polish pass 2026-10-17): the first real production run took 18.8 s for one
+//   image and 182 s for one 3D model, while the panel said "a few seconds". The panel now says
+//   "about 20 seconds" / "about 3 minutes" up front and, while it waits, shows the time so far
+//   next to that estimate and what is happening (waiting for the AI provider, making it, copying
+//   it into assets/). The Assets grid shows the same work as a "Making…" tile (onWork), so the
+//   panel can be closed. No progress bar: the provider reports no progress, and a bar driven by
+//   the clock would be a guess dressed up as a measurement.
+// - Credits are read again after each job (the real run kept showing $4.13 after a $0.20 model
+//   until the panel was reopened).
+// - A heavy 3D model (the real one was 45.7 MB) says so when it lands, with one button that asks
+//   the person's AI to make it lighter (askLighter). The editor never rewrites the file itself:
+//   it only adds files, and how light is light enough depends on how the game uses the model,
+//   which the AI can see and the editor can't.
+//
 // Talks only to host.kumo (src/server/kumo.mjs on the local server). The page never sees a key.
 // Untrusted text (prompts, project names, KUMODeck's sentences) only goes through textContent.
 
@@ -3295,11 +3352,62 @@ const dollars = (cents        ) => `$${(cents / 100).toFixed(2)}`;
                                                        
                                 
 
+/**
+ * How long one job usually takes, in seconds: the first real production run (2026-10-17) took
+ * 18.8 s for a 1024 image and 182 s for a textured 3D model. Used for the words ("about 20
+ * seconds") and to say "taking longer than usual" after twice as long. Change both together.
+ */
+const USUAL_SEC                       = { picture: 20, model: 180 };
+
+/**
+ * A 3D file heavier than this gets the "heavy for a web game" line and the "make it lighter"
+ * button. 10 MB: most web game models are a few MB; the real AI model was 45.7 MB and took
+ * 10–30 s just to draw its thumbnail.
+ */
+const HEAVY_MODEL_BYTES = 10 * 1024 * 1024;
+
+/** One thing being made right now (the Assets grid shows it as a "Making…" tile). */
+                         
+             
+             
+                 
+                                                                                                     
+                
+ 
+
+/** "0:07", "3:02": time so far, for the waiting lines. */
+const elapsed = (since        , now = Date.now()) => {
+  const s = Math.max(0, Math.floor((now - since) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
                              
                  
              
-                                                                        
-                              
+     
+                                                                                                
+                                                   
+     
+                                                                  
+                                                                     
+                                
+                                                                                                                        
+                                                            
+                                                    
+                                 
+ 
+
+/** The line under Make: what happened, plus what is being waited for or what to do next. */
+                
+               
+                  
+                
+                                                            
+                                    
+                                     
+                                         
+                                              
+                 
  
 
 function h                                       (tag   , cls         , text         )                           {
@@ -3337,10 +3445,69 @@ function mountAiMake(root             , deps            )                       
   /** Set when KUMODeck asked for the terms: the next Make sends acceptTerms (after the tick). */
   let askTerms = false;
   let agreed = false;
-  let note                                                          = null;
+  let note              = null;
   const polling = new Set        ();
+  /** When each piece of work started (picture: 'picture'; 3D: the job id). */
+  const since = new Map                ();
+  let tick = 0;
 
   const price = () => (kind === 'picture' ? picturePrice({ side, quality }) : modelPrice(texture));
+  const fmtSize = (n        ) => (deps.formatSize ? deps.formatSize(n) : `${Math.round(n / 104857.6) / 10} MB`);
+
+  /** Everything being made now, oldest first. */
+  function work()           {
+    const out           = [];
+    const pic = since.get('picture');
+    if (pic !== undefined) out.push({ id: 'picture', kind: 'picture', prompt: pictureFor, since: pic });
+    for (const j of st?.jobs || []) {
+      const t0 = since.get(j.id);
+      if (t0 !== undefined && !j.path && j.status !== 'failed' && j.status !== 'canceled') out.push({ id: j.id, kind: 'model', prompt: j.prompt, since: t0 });
+    }
+    return out;
+  }
+  let pictureFor = '';
+  function workChanged() {
+    const w = work();
+    deps.onWork?.(w);
+    // One clock for the waiting lines; only text changes each second (a full render would take
+    // the focus out of the prompt box while the person types the next one).
+    if (w.length && !tick) tick = window.setInterval(updateClocks, 1000);
+    if (!w.length && tick) {
+      window.clearInterval(tick);
+      tick = 0;
+    }
+  }
+  function updateClocks() {
+    for (const el of box.querySelectorAll             ('[data-since]')) {
+      const t0 = Number(el.dataset.since);
+      el.textContent = elapsed(t0);
+      const slow = el.closest             ('[data-usual]');
+      const late = slow?.querySelector             ('.gsl-ai-late');
+      if (slow && late) late.hidden = Date.now() - t0 < 2 * Number(slow.dataset.usual) * 1000;
+    }
+  }
+
+  /** Read the credits again (after a job: what the panel shows must be what is left). */
+  async function refreshBalance() {
+    const s = await deps.kumo.status().catch(() => null);
+    if (s && st && typeof s.balanceCents === 'number') {
+      st.balanceCents = s.balanceCents;
+      render();
+    }
+  }
+
+  /** The file is in assets/: say so, with its size, and the heavy line for a big 3D file. */
+  async function added(path        , k      ) {
+    note = { text: L('aiAdded', { path }) };
+    render();
+    const info = await deps.onAdded(path);
+    const size = info && typeof info.size === 'number' ? info.size : undefined;
+    if (note && note.text === L('aiAdded', { path }) && size) {
+      note = { text: L('aiAddedSize', { path, size: fmtSize(size) }) };
+      if (k === 'model' && size > HEAVY_MODEL_BYTES) note.heavy = { path, size };
+      render();
+    }
+  }
 
   async function load() {
     st = null;
@@ -3366,11 +3533,17 @@ function mountAiMake(root             , deps            )                       
     if (busy || !prompt.trim()) return;
     if (askTerms && !agreed) return;
     busy = true;
-    note = { text: kind === 'picture' ? L('aiMakingPicture') : L('aiStartingModel') };
+    const k = kind;
+    note = k === 'picture' ? { text: L('aiMakingPicture'), wait: { id: 'picture', kind: 'picture' } } : { text: L('aiStartingModel') };
+    if (k === 'picture') {
+      since.set('picture', Date.now());
+      pictureFor = prompt.trim();
+      workChanged();
+    }
     render();
     const acceptTerms = askTerms && agreed ? true : undefined;
     try {
-      if (kind === 'picture') {
+      if (k === 'picture') {
         const r = await deps.kumo.makePicture({
           prompt: prompt.trim(),
           width: side,
@@ -3379,24 +3552,29 @@ function mountAiMake(root             , deps            )                       
           ...(quality === 'seamless' ? { tiling: 'both'          } : {}),
           ...(acceptTerms ? { acceptTerms } : {}),
         });
+        since.delete('picture');
+        workChanged();
         if (!r.ok) refusal(r);
         else {
           askTerms = false;
-          note = { text: L('aiAdded', { path: r.path }) };
           if (st && typeof r.balanceCents === 'number') st.balanceCents = r.balanceCents;
-          deps.onAdded(r.path);
+          else void refreshBalance();
+          void added(r.path, 'picture');
         }
       } else {
         const r = await deps.kumo.makeModel({ prompt: prompt.trim(), texture, ...(acceptTerms ? { acceptTerms } : {}) });
         if (!r.ok) refusal(r);
         else {
           askTerms = false;
-          note = { text: L('aiModelStarted') };
+          since.set(r.id, Date.now());
+          note = { text: L('aiModelStarted'), wait: { id: r.id, kind: 'model' } };
           upsertJob(r);
+          workChanged();
           void follow(r.id);
         }
       }
     } finally {
+      if (since.delete('picture')) workChanged();
       busy = false;
       render();
     }
@@ -3414,6 +3592,9 @@ function mountAiMake(root             , deps            )                       
   async function follow(id        ) {
     if (polling.has(id)) return;
     polling.add(id);
+    // A job from before a reload: its clock starts now (KumoJob has no start time).
+    if (!since.has(id)) since.set(id, Date.now());
+    workChanged();
     try {
       for (let i = 0; i < 60; i++) {
         const r = await deps.kumo.job(id);
@@ -3423,22 +3604,84 @@ function mountAiMake(root             , deps            )                       
           continue;
         }
         upsertJob(r);
+        workChanged();
         render();
         if (r.path) {
-          deps.onAdded(r.path);
-          note = { text: L('aiAdded', { path: r.path }) };
+          void added(r.path, 'model');
+          break;
+        }
+        if (r.status === 'failed' || r.status === 'canceled') {
+          // Before, the note kept saying "Making the 3D model…" after a failure; the list said "not made".
+          if (note?.wait?.id === id) note = { text: L('aiFailed'), detail: r.error?.message || L('aiJobFailed'), bad: true };
           render();
           break;
         }
-        if (r.status === 'failed' || r.status === 'canceled') break;
       }
     } finally {
       polling.delete(id);
+      since.delete(id);
+      workChanged();
+      // The job is over either way: what it cost is out of the credits now.
+      void refreshBalance();
     }
+  }
+
+  /** The waiting line under the note: what is happening, the time so far, and the usual time. */
+  function waitLine(w                            )                     {
+    const t0 = since.get(w.id);
+    if (t0 === undefined) return null;
+    const usual = USUAL_SEC[w.kind];
+    const line = h('p', 'gsl-muted gsl-ai-wait');
+    line.dataset.usual = String(usual);
+    const job = w.kind === 'model' ? (st?.jobs || []).find((j) => j.id === w.id) : undefined;
+    // Only the steps that differ from "making it" (the note above already says that): waiting in the
+    // provider's queue, and the local server copying the finished file into assets/.
+    const step = !job ? '' : job.status === 'queued' ? L('aiStepQueued') : job.status === 'succeeded' ? L('aiStepCopying') : '';
+    if (step) line.append(document.createTextNode(`${step} · `));
+    const clock = h('span', 'gsl-ai-clock', elapsed(t0));
+    clock.dataset.since = String(t0);
+    line.append(clock, document.createTextNode(` · ${w.kind === 'picture' ? L('aiUsualPicture') : L('aiUsualModel')}`));
+    const late = h('span', 'gsl-ai-late', ` ${L('aiLate')}`);
+    late.hidden = Date.now() - t0 < 2 * usual * 1000;
+    line.append(late);
+    return line;
+  }
+
+  /** "45.7 MB is heavy for a web game" + one button that asks the AI to make it lighter. */
+  function heavyBlock(hv                                )              {
+    const b = h('div', 'gsl-heavy');
+    b.append(h('p', undefined, L('heavyModel', { size: fmtSize(hv.size) })));
+    if (deps.askLighter) {
+      const btn = h('button', 'gsl-btn gsl-ask-lighter', note?.sent ? L('askLighterSent') : L('askLighter'));
+      btn.type = 'button';
+      btn.disabled = !!note?.sent;
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        const ok = await deps.askLighter (hv.path, hv.size).catch(() => false);
+        if (note) note.sent = ok;
+        if (!ok && note) note.detail = L('askLighterFailed');
+        render();
+      });
+      b.append(btn);
+    }
+    return b;
   }
 
   // ---------- render ----------
   function render() {
+    // Keep the person typing: a job finishing while the prompt box has the focus re-renders.
+    const typing = document.activeElement instanceof HTMLTextAreaElement && box.contains(document.activeElement)
+      ? { a: document.activeElement.selectionStart, b: document.activeElement.selectionEnd } : null;
+    renderBox();
+    if (typing) {
+      const ta = box.querySelector                     ('.gsl-ai-prompt');
+      if (ta) {
+        ta.focus();
+        ta.setSelectionRange(typing.a, typing.b);
+      }
+    }
+  }
+  function renderBox() {
     box.replaceChildren();
     const head = h('div', 'gsl-ai-head');
     head.append(h('b', undefined, L('aiTitle')));
@@ -3576,6 +3819,9 @@ function mountAiMake(root             , deps            )                       
       const p = h('p', note.bad ? 'gsl-ai-bad' : 'gsl-ai-note', note.text);
       p.setAttribute('role', 'status');
       box.append(p);
+      const wl = note.wait ? waitLine(note.wait) : null;
+      if (wl) box.append(wl);
+      if (note.heavy) box.append(heavyBlock(note.heavy));
       if (note.detail) box.append(h('p', 'gsl-muted gsl-ai-detail', note.detail));
     }
 
@@ -3652,6 +3898,9 @@ __def(__exports, "picturePrice", () => picturePrice);
 __def(__exports, "modelPrice", () => modelPrice);
 __def(__exports, "centsOf", () => centsOf);
 __def(__exports, "usd", () => usd);
+__def(__exports, "USUAL_SEC", () => USUAL_SEC);
+__def(__exports, "HEAVY_MODEL_BYTES", () => HEAVY_MODEL_BYTES);
+__def(__exports, "elapsed", () => elapsed);
 __def(__exports, "mountAiMake", () => mountAiMake);
 };
 __defs[11] = function (__exports) {
@@ -3682,7 +3931,8 @@ const { formatSize, t } = __require(7);
                                               
 const { atlasImageUrl, fontFamily, modelThumb } = __require(8);
 const { injectStyles } = __require(9);
-const { mountAiMake } = __require(10);
+const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
+                                           
 
                               
                    
@@ -3723,6 +3973,11 @@ const { mountAiMake } = __require(10);
                                              
                                                                            
                       
+     
+                                                                                                  
+                                                                                                           
+     
+                                         
  
 
                               
@@ -3777,6 +4032,13 @@ function mountLibrary(root    , deps             )              {
   let deleting = false;
   const asked = deps.asked || new Set        ();
   let status = '';
+  /** The folder has been read at least once (before: an empty folder said "Reading the folder…" forever). */
+  let loaded = false;
+  /** What Make with AI is making now: shown as "Making…" tiles at the top of the grid. */
+  let aiWork           = [];
+  let workTick = 0;
+  /** Heavy files already sent to the AI with "make it lighter" in this session. */
+  const askedLighter = new Set        ();
   const newFiles = new Set        ();
   const audio = new Audio();
   let playing                = null;
@@ -3831,12 +4093,30 @@ function mountLibrary(root    , deps             )              {
     ? mountAiMake(wrap, {
         kumo: deps.host.kumo,
         lang: deps.lang,
-        // Same as a file added by hand: New in the grid, counted in library.json's "added".
-        onAdded: (p) => {
+        // New in the grid, but NOT a change to save (polish pass 2026-10-17): the file is already in
+        // assets/ and nothing in the game changed, yet it used to count as "Save · 1" / "1 unsaved",
+        // and the person could not tell what Save would do. It becomes a change when they place it
+        // in the scene (in-game.ts adds it to library.json's "added" with a place) or ask their AI.
+        // A file added by hand still counts: "Add files" promises that the AI hooks it up on Save.
+        onAdded: async (p) => {
           newFiles.add(p);
-          addFile(state, p);
-          void refresh();
+          await refresh();
+          return { size: rows.find((r) => r.path === p)?.size };
         },
+        onWork: (w) => {
+          aiWork = w;
+          // Only the clocks change each second; the grid itself redraws when the list changes.
+          if (w.length && !workTick) workTick = window.setInterval(() => {
+            for (const el of grid.querySelectorAll             ('[data-since]')) el.textContent = L('makingTile', { time: elapsed(Number(el.dataset.since)) });
+          }, 1000);
+          if (!w.length && workTick) {
+            window.clearInterval(workTick);
+            workTick = 0;
+          }
+          renderGrid();
+        },
+        askLighter: deps.askAi ? (p, size) => askLighter(p, size) : undefined,
+        formatSize: (n) => formatSize(deps.lang, n),
       })
     : null;
   wrap.append(chips, count, grid, detail, foot);
@@ -3861,6 +4141,14 @@ function mountLibrary(root    , deps             )              {
     deps.onPending?.(n);
   };
 
+  /** "Make assets/x.glb lighter for the game (it's 45.7 MB now)…" to the person's AI. */
+  async function askLighter(path        , size        )                   {
+    if (!deps.askAi) return false;
+    const ok = await deps.askAi(L('askLighterText', { path, size: formatSize(deps.lang, size) })).catch(() => false);
+    if (ok) askedLighter.add(path);
+    return ok;
+  }
+
   function thumbFor(row            , size        , withPlay = true)     {
     const box = h('div', `gsl-thumb gsl-thumb-${row.type}`);
     const icon = h('span', 'gsl-icon', TYPE_ICON[row.type] ?? '•');
@@ -3880,7 +4168,17 @@ function mountLibrary(root    , deps             )              {
     };
     if (row.type === 'image') showImg(url);
     else if (row.type === 'model' && /\.(glb|gltf)$/i.test(row.path)) {
-      modelThumb(url, size).then((d) => { if (d && d.startsWith('data:image/png;base64,')) showImg(d); });
+      // Until the picture is drawn, say so: a 45.7 MB AI model took 10–30 s, and a plain ◆ looked
+      // like "no preview" (2026-10-17). The label shows only where there is room (the detail).
+      box.classList.add('gsl-thumb-wait');
+      box.title = L('thumbWait');
+      if (size >= 200) box.append(h('span', 'gsl-wait-label', L('thumbWait')));
+      modelThumb(url, size).then((d) => {
+        box.classList.remove('gsl-thumb-wait');
+        box.removeAttribute('title');
+        box.querySelector('.gsl-wait-label')?.remove();
+        if (d && d.startsWith('data:image/png;base64,')) showImg(d);
+      });
     } else if (row.type === 'atlas') {
       atlasImageUrl(new URL(url, location.href).href).then((u) => { if (u) showImg(u); });
     } else if (row.type === 'font') {
@@ -3950,10 +4248,27 @@ function mountLibrary(root    , deps             )              {
 
   function renderGrid() {
     const list = filterRows(rows, filter);
-    count.textContent = L('count', { n: list.length });
+    // "0 files" above "No assets yet" says the same thing twice.
+    count.textContent = loaded && !rows.length ? '' : L('count', { n: list.length });
     grid.replaceChildren();
+    // What Make with AI is making: a tile first, so the wait has a place even with the panel closed.
+    for (const w of aiWork) {
+      const tile = h('div', 'gsl-tile gsl-tile-making');
+      tile.dataset.making = w.kind;
+      const thumb = h('div', `gsl-thumb gsl-thumb-${w.kind === 'model' ? 'model' : 'image'} gsl-thumb-wait`);
+      thumb.append(h('span', 'gsl-icon', TYPE_ICON[w.kind === 'model' ? 'model' : 'image'] ));
+      const meta = h('span', 'gsl-meta');
+      const clock = h('span', 'gsl-tag gsl-tag-making', L('makingTile', { time: elapsed(w.since) }));
+      clock.dataset.since = String(w.since);
+      meta.append(clock);
+      tile.title = w.prompt;
+      tile.append(thumb, h('span', 'gsl-name', w.prompt), meta);
+      grid.append(tile);
+    }
     if (!list.length) {
-      grid.append(h('div', 'gsl-empty', rows.length || status ? L('empty') : L('loading')));
+      if (aiWork.length) return;
+      const empty = !loaded ? L('loading') : rows.length || status ? L('empty') : deps.host.kumo ? L('noFilesYetAi') : L('noFilesYet');
+      grid.append(h('div', 'gsl-empty', empty));
       return;
     }
     for (const row of list) {
@@ -4010,6 +4325,26 @@ function mountLibrary(root    , deps             )              {
     info.append(badgeEl(row.badge), h('span', 'gsl-hint', L(`hint_${row.badge}`             )));
     if (row.exists) info.append(h('span', 'gsl-size', formatSize(deps.lang, row.size)));
     detail.append(info);
+
+    // A heavy 3D file: say what it costs the game, and hand the fix to the AI (the editor only adds files).
+    if (row.exists && row.type === 'model' && row.size > HEAVY_MODEL_BYTES) {
+      const hv = h('div', 'gsl-section gsl-heavy');
+      hv.append(h('p', undefined, L('heavyModel', { size: formatSize(deps.lang, row.size) })));
+      if (deps.askAi) {
+        const sent = askedLighter.has(row.path);
+        const b = h('button', 'gsl-btn gsl-ask-lighter', sent ? L('askLighterSent') : L('askLighter'));
+        b.type = 'button';
+        b.disabled = sent;
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          const ok = await askLighter(row.path, row.size);
+          if (!ok) setStatus(L('askLighterFailed'));
+          render();
+        });
+        hv.append(b);
+      }
+      detail.append(hv);
+    }
 
     // Where this file is in the scene. The file and the objects that show it
     // are one thing seen from two sides, so the detail opens with a way back:
@@ -4237,6 +4572,7 @@ function mountLibrary(root    , deps             )              {
       deps.requestAssets().catch(() => ({ loads: []               , uses: {}                               })),
     ]);
     rows = buildRows({ ...normalizeList(list), ...game, base: deps.base() });
+    loaded = true;
     render();
   }
 
@@ -4315,6 +4651,7 @@ function mountLibrary(root    , deps             )              {
     result: () => buildLibraryJson(state, rows),
     destroy() {
       audio.pause();
+      if (workTick) window.clearInterval(workTick);
       wrap.remove();
     },
   };
@@ -4420,6 +4757,10 @@ const libraryTool            = {
         if (!ok) throw new Error('request');
       },
       asked: askedDelete,
+      // "Ask my AI to make it lighter" on a heavy 3D file: one line to the AI like the ask box (about
+      // the whole game, no objects), so it shows in the AI line under the bar and the AI follows the
+      // skill's "Heavy 3D files" steps.
+      askAi: (text) => ctx.ask({ kind: 'ask', text }),
     });
     // Re-list whenever the game (re)starts in edit mode: a reload after a
     // save loads files again, and an asset added here may now be in use.
@@ -4987,9 +5328,29 @@ function roundPose(p      , dim     )       {
   return out;
 }
 
+/**
+ * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
+ *
+ * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
+ * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
+ * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
+ * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
+ */
+function sameAngle(a                    , b                    )          {
+  if (a === undefined || b === undefined) return a === b;
+  const TAU = Math.PI * 2;
+  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
+  // Half a rounding step: values one step apart (a real nudge) still differ.
+  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
+}
+
 function samePose(a                  , b                  , dim     )          {
   if (!a || !b) return a === b;
-  return JSON.stringify(roundPose(a, dim)) === JSON.stringify(roundPose(b, dim));
+  const x = roundPose(a, dim), y = roundPose(b, dim);
+  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
+  if (!sameAngle(x.r, y.r)) return false;
+  if (!x.t || !y.t) return !x.t === !y.t;
+  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
 }
 
 /** Keys of `now` outside a longest common subsequence with `was` (the moved ones). n ≤ 500, O(n²). */
@@ -5031,7 +5392,7 @@ class PlacementModel {
           copyFrom = new Map                ();
           copyOrder           = [];
           live = new Set        ();
-          savedCopies = new Map                ();
+          savedCopies = new Map              ();
   // Game objects the person deleted (copies are not counted here).
           removed = new Set        ();
           savedRemoved = new Set        ();
@@ -5085,7 +5446,7 @@ class PlacementModel {
       if (a.r !== undefined) pose.r = a.r;
       if (a.s !== undefined) pose.s = a.s;
       this.addCopy(a.key, a.from, pose, a.label);
-      this.savedCopies.set(a.key, JSON.stringify(roundPose(pose, this.dim)));
+      this.savedCopies.set(a.key, roundPose(pose, this.dim));
       this.fileEdits.copies.push({ key: a.key, from: a.from, pose });
       exists.add(a.key);
     }
@@ -5303,7 +5664,7 @@ class PlacementModel {
     }
     for (const k of this.live) {
       const saved = this.savedCopies.get(k);
-      if (saved === undefined || saved !== JSON.stringify(roundPose(this.current.get(k) , this.dim))) n++;
+      if (saved === undefined || !samePose(saved, this.current.get(k), this.dim)) n++;
     }
     for (const k of this.savedCopies.keys()) if (!this.live.has(k)) n++;
     for (const k of this.removed) if (!this.savedRemoved.has(k)) n++;
@@ -5324,7 +5685,7 @@ class PlacementModel {
     }
     for (const k of this.live) {
       const saved = this.savedCopies.get(k);
-      if (saved === undefined || saved !== JSON.stringify(roundPose(this.current.get(k) , this.dim))) out.add(k);
+      if (saved === undefined || !samePose(saved, this.current.get(k), this.dim)) out.add(k);
     }
     for (const layer of this.layers()) {
       // Same comparison as orderDirty(): only objects in both lists.
@@ -5382,7 +5743,7 @@ class PlacementModel {
   markSaved()       {
     for (const [k, p] of this.current) this.saved.set(k, { ...p });
     this.savedCopies.clear();
-    for (const k of this.live) this.savedCopies.set(k, JSON.stringify(roundPose(this.current.get(k) , this.dim)));
+    for (const k of this.live) this.savedCopies.set(k, roundPose(this.current.get(k) , this.dim));
     this.savedRemoved = new Set(this.removed);
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
   }

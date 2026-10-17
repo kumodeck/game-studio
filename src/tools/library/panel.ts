@@ -22,7 +22,8 @@ import { formatSize, t } from './strings.ts';
 import type { StringKey } from './strings.ts';
 import { atlasImageUrl, fontFamily, modelThumb } from './thumbs.ts';
 import { injectStyles } from './styles.ts';
-import { mountAiMake } from './ai-make.ts';
+import { HEAVY_MODEL_BYTES, elapsed, mountAiMake } from './ai-make.ts';
+import type { AiWork } from './ai-make.ts';
 
 export interface LibraryDeps {
   host: StudioHost;
@@ -63,6 +64,11 @@ export interface LibraryDeps {
   askDelete?(paths: string[]): Promise<void>;
   /** Files already handed over in this session (kept across re-mounts). */
   asked?: Set<string>;
+  /**
+   * Send one line to the person's AI (ctx.ask, kind 'ask', about the whole game). Used by "Ask my
+   * AI to make it lighter" on heavy 3D files. Resolves false when it couldn't be sent. Absent = no button.
+   */
+  askAi?(text: string): Promise<boolean>;
 }
 
 export interface LibraryTool {
@@ -117,6 +123,13 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   let deleting = false;
   const asked = deps.asked || new Set<string>();
   let status = '';
+  /** The folder has been read at least once (before: an empty folder said "Reading the folder…" forever). */
+  let loaded = false;
+  /** What Make with AI is making now: shown as "Making…" tiles at the top of the grid. */
+  let aiWork: AiWork[] = [];
+  let workTick = 0;
+  /** Heavy files already sent to the AI with "make it lighter" in this session. */
+  const askedLighter = new Set<string>();
   const newFiles = new Set<string>();
   const audio = new Audio();
   let playing: string | null = null;
@@ -171,12 +184,30 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     ? mountAiMake(wrap, {
         kumo: deps.host.kumo,
         lang: deps.lang,
-        // Same as a file added by hand: New in the grid, counted in library.json's "added".
-        onAdded: (p) => {
+        // New in the grid, but NOT a change to save (polish pass 2026-10-17): the file is already in
+        // assets/ and nothing in the game changed, yet it used to count as "Save · 1" / "1 unsaved",
+        // and the person could not tell what Save would do. It becomes a change when they place it
+        // in the scene (in-game.ts adds it to library.json's "added" with a place) or ask their AI.
+        // A file added by hand still counts: "Add files" promises that the AI hooks it up on Save.
+        onAdded: async (p) => {
           newFiles.add(p);
-          addFile(state, p);
-          void refresh();
+          await refresh();
+          return { size: rows.find((r) => r.path === p)?.size };
         },
+        onWork: (w) => {
+          aiWork = w;
+          // Only the clocks change each second; the grid itself redraws when the list changes.
+          if (w.length && !workTick) workTick = window.setInterval(() => {
+            for (const el of grid.querySelectorAll<HTMLElement>('[data-since]')) el.textContent = L('makingTile', { time: elapsed(Number(el.dataset.since)) });
+          }, 1000);
+          if (!w.length && workTick) {
+            window.clearInterval(workTick);
+            workTick = 0;
+          }
+          renderGrid();
+        },
+        askLighter: deps.askAi ? (p, size) => askLighter(p, size) : undefined,
+        formatSize: (n) => formatSize(deps.lang, n),
       })
     : null;
   wrap.append(chips, count, grid, detail, foot);
@@ -201,6 +232,14 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     deps.onPending?.(n);
   };
 
+  /** "Make assets/x.glb lighter for the game (it's 45.7 MB now)…" to the person's AI. */
+  async function askLighter(path: string, size: number): Promise<boolean> {
+    if (!deps.askAi) return false;
+    const ok = await deps.askAi(L('askLighterText', { path, size: formatSize(deps.lang, size) })).catch(() => false);
+    if (ok) askedLighter.add(path);
+    return ok;
+  }
+
   function thumbFor(row: LibraryRow, size: number, withPlay = true): El {
     const box = h('div', `gsl-thumb gsl-thumb-${row.type}`);
     const icon = h('span', 'gsl-icon', TYPE_ICON[row.type] ?? '•');
@@ -220,7 +259,17 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     };
     if (row.type === 'image') showImg(url);
     else if (row.type === 'model' && /\.(glb|gltf)$/i.test(row.path)) {
-      modelThumb(url, size).then((d) => { if (d && d.startsWith('data:image/png;base64,')) showImg(d); });
+      // Until the picture is drawn, say so: a 45.7 MB AI model took 10–30 s, and a plain ◆ looked
+      // like "no preview" (2026-10-17). The label shows only where there is room (the detail).
+      box.classList.add('gsl-thumb-wait');
+      box.title = L('thumbWait');
+      if (size >= 200) box.append(h('span', 'gsl-wait-label', L('thumbWait')));
+      modelThumb(url, size).then((d) => {
+        box.classList.remove('gsl-thumb-wait');
+        box.removeAttribute('title');
+        box.querySelector('.gsl-wait-label')?.remove();
+        if (d && d.startsWith('data:image/png;base64,')) showImg(d);
+      });
     } else if (row.type === 'atlas') {
       atlasImageUrl(new URL(url, location.href).href).then((u) => { if (u) showImg(u); });
     } else if (row.type === 'font') {
@@ -290,10 +339,27 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
 
   function renderGrid() {
     const list = filterRows(rows, filter);
-    count.textContent = L('count', { n: list.length });
+    // "0 files" above "No assets yet" says the same thing twice.
+    count.textContent = loaded && !rows.length ? '' : L('count', { n: list.length });
     grid.replaceChildren();
+    // What Make with AI is making: a tile first, so the wait has a place even with the panel closed.
+    for (const w of aiWork) {
+      const tile = h('div', 'gsl-tile gsl-tile-making');
+      tile.dataset.making = w.kind;
+      const thumb = h('div', `gsl-thumb gsl-thumb-${w.kind === 'model' ? 'model' : 'image'} gsl-thumb-wait`);
+      thumb.append(h('span', 'gsl-icon', TYPE_ICON[w.kind === 'model' ? 'model' : 'image']!));
+      const meta = h('span', 'gsl-meta');
+      const clock = h('span', 'gsl-tag gsl-tag-making', L('makingTile', { time: elapsed(w.since) }));
+      clock.dataset.since = String(w.since);
+      meta.append(clock);
+      tile.title = w.prompt;
+      tile.append(thumb, h('span', 'gsl-name', w.prompt), meta);
+      grid.append(tile);
+    }
     if (!list.length) {
-      grid.append(h('div', 'gsl-empty', rows.length || status ? L('empty') : L('loading')));
+      if (aiWork.length) return;
+      const empty = !loaded ? L('loading') : rows.length || status ? L('empty') : deps.host.kumo ? L('noFilesYetAi') : L('noFilesYet');
+      grid.append(h('div', 'gsl-empty', empty));
       return;
     }
     for (const row of list) {
@@ -350,6 +416,26 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     info.append(badgeEl(row.badge), h('span', 'gsl-hint', L(`hint_${row.badge}` as StringKey)));
     if (row.exists) info.append(h('span', 'gsl-size', formatSize(deps.lang, row.size)));
     detail.append(info);
+
+    // A heavy 3D file: say what it costs the game, and hand the fix to the AI (the editor only adds files).
+    if (row.exists && row.type === 'model' && row.size > HEAVY_MODEL_BYTES) {
+      const hv = h('div', 'gsl-section gsl-heavy');
+      hv.append(h('p', undefined, L('heavyModel', { size: formatSize(deps.lang, row.size) })));
+      if (deps.askAi) {
+        const sent = askedLighter.has(row.path);
+        const b = h('button', 'gsl-btn gsl-ask-lighter', sent ? L('askLighterSent') : L('askLighter'));
+        b.type = 'button';
+        b.disabled = sent;
+        b.addEventListener('click', async () => {
+          b.disabled = true;
+          const ok = await askLighter(row.path, row.size);
+          if (!ok) setStatus(L('askLighterFailed'));
+          render();
+        });
+        hv.append(b);
+      }
+      detail.append(hv);
+    }
 
     // Where this file is in the scene. The file and the objects that show it
     // are one thing seen from two sides, so the detail opens with a way back:
@@ -577,6 +663,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       deps.requestAssets().catch(() => ({ loads: [] as LoadEntry[], uses: {} as Record<string, AssetRef[]> })),
     ]);
     rows = buildRows({ ...normalizeList(list), ...game, base: deps.base() });
+    loaded = true;
     render();
   }
 
@@ -655,6 +742,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     result: () => buildLibraryJson(state, rows),
     destroy() {
       audio.pause();
+      if (workTick) window.clearInterval(workTick);
       wrap.remove();
     },
   };

@@ -86,6 +86,18 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 .gsl-ai-bad{color:var(--gsl-missing)}
 .gsl-ai-note{color:var(--gsl-fg)}
 .gsl-ai-detail{font-size:12px;overflow-wrap:anywhere}
+.gsl-ai-wait{font-size:12px;font-variant-numeric:tabular-nums}
+.gsl-ai-late{color:var(--gsl-code)}
+.gsl-heavy{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.gsl-heavy p{margin:0;color:var(--gsl-code)}
+.gsl-thumb-wait .gsl-icon{animation:gsl-wait 1.6s ease-in-out infinite}
+.gsl-thumb-wait::after{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.14) 50%,transparent 70%);background-size:220% 100%;animation:gsl-sweep 1.8s linear infinite;pointer-events:none}
+.gsl-wait-label{position:absolute;left:4px;right:4px;bottom:6px;text-align:center;font-size:11px;line-height:1.2;color:var(--gsl-muted)}
+.gsl-thumb-wait:has(.gsl-wait-label) .gsl-icon{margin-bottom:22px}
+.gsl-tag-making{font-variant-numeric:tabular-nums}
+@keyframes gsl-wait{50%{opacity:.35}}
+@keyframes gsl-sweep{from{background-position:120% 0}to{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){.gsl-thumb-wait .gsl-icon,.gsl-thumb-wait::after{animation:none}}
 .gsl-foot{display:flex;gap:8px;align-items:center;min-height:32px}
 .gsl-status{flex:1;color:var(--gsl-muted);overflow:hidden;text-overflow:ellipsis}
 .gsl-pending{color:var(--gsl-code);font-weight:600}

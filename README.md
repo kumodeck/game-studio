@@ -4,7 +4,8 @@
 
 **Turn your Claude or Codex into a game studio.** Game Studio is a free editor for web games that runs on your
 computer, right next to your AI: drag things around in your game, ask your AI for changes, and click **Save**.
-Install it with one command (below), then type `/arrange` in Claude Code or `$arrange` in Codex.
+Install it by pasting one line into your AI (below), then type `/arrange` in Claude Code or `$arrange` in
+Codex.
 
 Drag, turn and resize the objects in your web game, and see every asset it uses. When you click **Save**, the editor
 writes `placement.json` / `library.json`; your AI reads them and updates your code. No more "move the tree a bit to
@@ -26,7 +27,16 @@ the right… no, less."
 
 You need [Node.js](https://nodejs.org) 22.13 or newer (`node --version`). Nothing else is installed.
 
-**Claude Code**, in your terminal:
+**Paste this into Claude Code or Codex** (in the Claude app or a terminal):
+
+```
+Install KUMODeck Game Studio for me by following https://github.com/kumodeck/game-studio/blob/main/INSTALL.md
+```
+
+Your AI installs Game Studio and opens the editor, with a sample game if your folder is empty
+([what it does](INSTALL.md)). Next time, start a new session and type `/arrange` (Codex: `$arrange`).
+
+Or install it yourself. **Claude Code**, in your terminal:
 
 ```
 claude plugin install game-studio --marketplace kumodeck/game-studio

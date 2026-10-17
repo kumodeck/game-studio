@@ -92,6 +92,10 @@ export const libraryTool: ShellTool = {
         if (!ok) throw new Error('request');
       },
       asked: askedDelete,
+      // "Ask my AI to make it lighter" on a heavy 3D file: one line to the AI like the ask box (about
+      // the whole game, no objects), so it shows in the AI line under the bar and the AI follows the
+      // skill's "Heavy 3D files" steps.
+      askAi: (text) => ctx.ask({ kind: 'ask', text }),
     });
     // Re-list whenever the game (re)starts in edit mode: a reload after a
     // save loads files again, and an asset added here may now be in use.

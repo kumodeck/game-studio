@@ -91,6 +91,9 @@ backdrop.step(0, 0);
 life.step(0, 1 / 60);
 pond.step(0, 0);
 reflect();
+// Tell the editor the stage is fitted and posed, so it reads the objects now instead of waiting for a frame
+// (Lantern Cove does the same). `?.` keeps the game running unchanged without the editor.
+window.studio?.ready?.();
 
 // ------------------------------------------------------------------ loop
 let t = 0, frames = 0, firstFrameAt = 0;

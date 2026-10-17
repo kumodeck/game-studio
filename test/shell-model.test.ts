@@ -51,6 +51,33 @@ test('game already applying placement.json: no push back, was from file', () => 
   assert.deepEqual(m.result().objects.tree?.was, { p: [2, 0, 0] });
 });
 
+test('3D turned past 90°: reopening the save is not "Save · 1" (x / z = ±π read back as −3.14159)', () => {
+  // three.js writes a turn past 90° about the up axis as x = π, y = π − θ, z = π.
+  const turned = { p: [1, 0, 2], r: Math.PI - 2.2, s: 1, t: [Math.PI, Math.PI] as [number, number] };
+  const m = new PlacementModel();
+  m.setItems([item('boat', [1, 0, 2])], '3d');
+  m.moved('boat', turned);
+  const f = m.result();
+  assert.deepEqual(f.objects.boat?.t, [3.1416, 3.1416]);
+  // Reopen: the saved file is pushed to the game, which reads 3.1416 back wrapped into (−π, π].
+  const r = new PlacementModel();
+  r.restore(f);
+  const apply = r.setItems([item('boat', [1, 0, 2])], '3d');
+  assert.equal(apply.length, 1);
+  const wrap = (a: number) => (a > Math.PI ? a - Math.PI * 2 : a);
+  r.moved('boat', { ...apply[0]!.pose, t: [wrap(3.1416), wrap(3.1416)] });
+  assert.equal(r.dirty(), 0);
+  assert.equal(r.changedKeys().size, 0);
+  // A game that already applies placement.json reports the wrapped numbers from the start: nothing to push back.
+  const g = new PlacementModel();
+  g.restore(f);
+  assert.deepEqual(g.setItems([item('boat', [1, 0, 2], { pose: { p: [1, 0, 2], r: f.objects.boat!.r, s: 1, t: [wrap(3.1416), -3.14159] } })], '3d'), []);
+  assert.equal(g.dirty(), 0);
+  // A real nudge of one step still counts.
+  r.moved('boat', { ...apply[0]!.pose, r: (apply[0]!.pose.r ?? 0) + 0.0002 });
+  assert.equal(r.dirty(), 1);
+});
+
 test('roundPose: 1 mm / 0.1 px / 1e-4 rad', () => {
   assert.deepEqual(roundPose({ p: [1.23456, 0.0004, -2], r: 0.123456, s: 1.00004 }, '3d'), { p: [1.235, 0, -2], r: 0.1235, s: 1 });
   assert.deepEqual(roundPose({ p: [10.04, 3.06] }, '2d'), { p: [10, 3.1] });
