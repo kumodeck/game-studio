@@ -16,6 +16,7 @@ import type { LibraryTool } from './panel.ts';
 import { assetsOfKey, buildRows, normalizeList } from './marks.ts';
 import type { LibraryRow } from './marks.ts';
 import { t } from './strings.ts';
+import { displayName } from '../../shell/names.ts';
 import type { StringKey } from './strings.ts';
 
 let panel: LibraryTool | null = null;
@@ -85,6 +86,10 @@ export const libraryTool: ShellTool = {
       },
       selectObject: (key) => ctx.selectObject(key),
       selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects!(keys) : undefined,
+      nameOf: (key) => {
+        const it = ctx.items().find((i) => i.key === key);
+        return it ? displayName(it, (k) => ctx.t(k)) : key;
+      },
       onPending: () => ctx.changed(),
       // Same hand-off as "Ideas for your AI" and the card's ask box: host.request (kept as
       // .studio/requests/<id>.json, plus .studio/next-step.md and the `studio: next-step

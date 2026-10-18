@@ -7,8 +7,10 @@ tree.png", the file detail's "In the scene: 2" —, the object list, "name
 them" and "⌘K all actions" at its foot), the game edge to edge, the picked
 object's card floating over the game's top right corner, and the bar at the
 bottom of the game: news (the AI line, toasts, the first hint), the ⌘K list
-(`palette.ts`: ask the AI, actions, ideas, objects; opens on ⌘K, and while
-typing only for a word that names an action or object) and the ask field.
+(`palette.ts`: ask the AI, actions, ideas, objects; opens on ⌘K with a search
+field of its own — what is typed there never touches the ask field (design review wave 1,
+W1-4) — and while typing in the ask field only for a word that names an action
+or object) and the ask field.
 `ai-flow.ts` decides what the AI line says (sent → has it → working → done,
 or "isn't watching" at once) and when the game reloads by itself after the
 AI's change (in a second frame behind the old one, view and selection kept);
@@ -29,6 +31,13 @@ a plate on the desk, and one motion curve. The kind headings of the list
 stay at the top while their rows scroll; the phone sheet grows by what the
 picked object's card covers.
 
+Narrow screens (a phone, or the side window next to a chat; narrow pass
+2026-10-17): the list sheet's head is one row — a Scene | Assets switch with
+their counts, "Multi-select", and "…" for All actions (the ⌘K list) — so the
+sheet is the list. Its foot padding is what the bar and the card really cover
+(`--studio-cover`, measured in `sendInset`; a 2D card keeps its Layer row:
+draw order is a main 2D move). PC is unchanged. `test/studio-narrow.browser.mjs` counts the readable rows.
+
 2D draw order (layers): `layers.ts` (pure helpers: button/drag targets, the
 front-first list) — the card's Layer row and the list's grips in
 `placement-panel.ts`, one undo step per change in `main.ts`, the `order`
@@ -48,8 +57,13 @@ ignored.
 Entries: `local.ts` (studio-shell.js, the local server with `host-local.ts`)
 and `src/hosts/browser/main.ts` (the browser-only web demo). Both call
 `start(host)` from `main.ts`; a host with `offline: true` (no AI behind it)
-gets no "say 'look'" nudge and keeps the whole request text in the AI line.
+gets no "say 'look'" nudge and keeps the whole request text in the AI line; since
+design review wave 1 (W1-6) it shows no ask field and no "● AI" at all, but one grey line in
+the ask field's place with a link to `host.getUrl`.
 
 Names in the list and on the card (`names.ts`, polish pass 2026-10-16): an object without a name is called
 by its picture / model file or its kind ("Unnamed shape"), never by its tree path; the second "tree" reads
 "tree 2". The keys themselves do not change. `thumb-tone.ts` gives near-white list pictures a mid-grey tile.
+`thumb-fit.ts` crops every picture the game sends to the object itself with a 4 px margin at 32 px (W1-11:
+the lighthouse was an "i"). Ideas and Editor view flow down inside the list's own column (W1-3; they used to
+widen it to ~950 px) and close with Esc.

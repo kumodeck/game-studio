@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.0 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.3 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -444,7 +444,9 @@ __defs[2] = function (__exports) {
  *       · a descendant with an explicit `userData.studioKey` is also listed (the author asked for it)
  *       · `userData.studio = 'children'` on a node means "list my children, not me" (a level group, a glTF scene root)
  *   - an unnamed, mesh-less group directly under the scene that holds 2+ mesh-bearing children is treated as a
- *     plain container and its children are listed instead (the common `const world = new Group()` pattern)
+ *     plain container and its children are listed instead (the common `const world = new Group()` pattern),
+ *     unless the code placed the group itself (a barn built from walls, roof and door: one object; see
+ *     isPlainContainer)
  *
  * Keys, first that applies (see the placement plan §4-2):
  *   1. `userData.studioKey` — the author's explicit mark; the most stable (names get reused, e.g. every tree "tree")
@@ -491,13 +493,45 @@ function meshChildCount(o) {
   return n;
 }
 
+/** Has the code placed this node itself (moved, turned or sized it)? Missing fields count as untouched. */
+function isPlaced(o) {
+  const p = o.position, r = o.rotation, s = o.scale;
+  if (p && (p.x || p.y || p.z)) return true;
+  if (r && (r.x || r.y || r.z)) return true;
+  if (s && ((s.x ?? 1) !== 1 || (s.y ?? 1) !== 1 || (s.z ?? 1) !== 1)) return true;
+  return false;
+}
+
+/** A child that is itself made of 2+ mesh-bearing parts (a tree group inside a forest, a house inside a town). */
+function hasCompositeChild(o) {
+  for (const c of o.children || []) if (!c.isMesh && !c.isSkinnedMesh && meshChildCount(c) >= 2) return true;
+  return false;
+}
+
+/** More mesh-bearing children than one built thing has (a barn is 3-10 parts; a level is dozens). */
+const MAX_PARTS = 32;
+
+/**
+ * An unnamed group directly under the scene: a plain container (list its children) or one object made of parts?
+ *
+ * WHY the extra tests (dogfood 2026-10-17, "U4"): an AI-written three.js farm builds its barn as
+ * `const barn = new Group(); barn.position.set(-6, 0, -5); barn.add(walls, roof, door)`, with no names. The old rule
+ * ("unnamed, 2+ mesh children = a container like `const world = new Group()`") listed walls, roof and door as three
+ * rows, and clicking the barn selected only its door: the person could not move the barn. A group the code placed
+ * itself (moved, turned, sized) is a thing, not a folder; `world` groups sit at the origin. Still a container even
+ * when placed: one that holds composite things (a forest of tree groups) or more parts than a thing has.
+ * A thing built at the origin out of parts with absolute positions still lists its parts (as before): the person
+ * can name it, or the AI can mark it (`userData.studioKey`).
+ */
 function isPlainContainer(o, parentIsScene) {
   const ud = o.userData || {};
   if (ud.studio === 'children') return true;
   if (ud.studioKey != null) return false;
   if (!parentIsScene || o.name) return false;
   if (o.isMesh || o.isSkinnedMesh) return false;
-  return meshChildCount(o) >= 2;
+  const parts = meshChildCount(o);
+  if (parts < 2) return false;
+  return !isPlaced(o) || hasCompositeChild(o) || parts > MAX_PARTS;
 }
 
 /**
@@ -782,8 +816,11 @@ __defs[4] = function (__exports) {
  * Bounds, ray casts and "pick near a point" for three.js objects, without three's Raycaster (see math.js for why).
  *
  * pickNear rules (learned the hard way on real games — keep them unless a test shows a better order):
- *   candidates = objects the ray hits + objects whose on-screen box (8 projected corners of their world box) is
- *                within `radiusPx` of the pressed point
+ *   candidates = objects the ray hits + objects one of whose shapes is within `radiusPx` of the pressed point (a
+ *                ring of rays around the press hits it; only tried when the on-screen box — 8 projected corners of
+ *                the world box — is that near). A box alone is not enough (a web demo try 2026-10-18, "clicking an empty
+ *                spot doesn't deselect"): Lantern Cove's lighthouse has a long light beam, so its box covered half
+ *                the sky, and a click on the empty sky picked the lighthouse again instead of dropping it.
  *   order      = 1. visible before hidden. "Visible" = a ray through a point of the object's screen box (the point
  *                   nearest the press, pulled 1/4 toward the box centre) hits this object first. We do NOT compare
  *                   depths at the pressed point: tapping slightly beside a coin on a hill hits the hill in front of
@@ -792,6 +829,8 @@ __defs[4] = function (__exports) {
  *                   Size matters because big things (ground, hills, buildings) contain the press point (distance 0)
  *                   and would always beat the small thing next to it. Big things are easy to pick elsewhere; small
  *                   things are not. e.g. a 30 px coin missed by 10 px (10 + 7.5) beats a 600×400 px hill (0 + 122).
+ *                   For an object the ray hits, the box is that of the mesh under the finger (a lighthouse's tower,
+ *                   not the tower + its wide light beam), so a finger ON a thin tall thing keeps it.
  *                3. nearer to the camera first. At most 8 results.
  */
 
@@ -856,6 +895,43 @@ function screenRect(object, viewProj) {
   return r;
 }
 
+/** w (distance in front of the camera) where screenShare() cuts box edges that run behind the camera. */
+const NEAR_W = 1e-3;
+
+/**
+ * Share (0–1) of the canvas covered by the object's on-screen box, for "is this the ground?" (bridge/input.ts:
+ * a tap on a huge object is a tap on nothing, a drag on it looks around). Box edges that run behind the camera are
+ * cut just in front of it, and the box is clipped to the canvas. WHY not screenRect (2026-10-18): it skips corners
+ * behind the camera, so a ground plane that runs on under the camera came out as its far strip only (a farm's
+ * 60 m field seen from 9 m up: ~25 % of the screen instead of ~90 %), and a tap on the grass picked the ground.
+ * Every pair of corners is cut, not only the 12 edges: the box is convex, so each crossing point is inside it.
+ */
+function screenShare(object, viewProj) {
+  let r = null;
+  const add = (q) => {
+    const x = Math.min(1, Math.max(-1, q[0])), y = Math.min(1, Math.max(-1, q[1]));
+    if (!r) r = [x, y, x, y];
+    else (r[0] = Math.min(r[0], x)), (r[1] = Math.min(r[1], y)), (r[2] = Math.max(r[2], x)), (r[3] = Math.max(r[3], y));
+  };
+  for (const m of meshesOf(object)) {
+    const b = localBox(m);
+    if (!b) continue;
+    const ps = boxCorners(b[0], b[1]).map((c) => applyM4(m.matrixWorld.elements, c));
+    const qs = ps.map((p) => project(viewProj, p));
+    for (const q of qs) if (q[3] > NEAR_W) add(q);
+    for (let i = 0; i < ps.length; i++) {
+      for (let j = i + 1; j < ps.length; j++) {
+        const wi = qs[i][3], wj = qs[j][3];
+        if ((wi > NEAR_W) === (wj > NEAR_W)) continue;
+        // w is linear along the segment in world space: cut where it equals NEAR_W.
+        const t = (wi - NEAR_W) / (wi - wj);
+        add(project(viewProj, v.add(ps[i], v.scale(v.sub(ps[j], ps[i]), t))));
+      }
+    }
+  }
+  return r ? ((r[2] - r[0]) * (r[3] - r[1])) / 4 : 0;
+}
+
 /** Nearest hit distance of a world ray against one mesh (triangles; box only for skinned / huge meshes). */
 function rayMesh(ray, mesh) {
   const b = localBox(mesh);
@@ -888,12 +964,54 @@ function rayMesh(ray, mesh) {
 
 /** Nearest hit of a ray against a whole subtree. */
 function rayObject(ray, object) {
+  return rayObjectHit(ray, object)?.t ?? null;
+}
+
+/** Nearest hit of a ray against a whole subtree, with the mesh it hit: { t, mesh } or null. */
+function rayObjectHit(ray, object) {
   let best = null;
   for (const m of meshesOf(object)) {
     const t = rayMesh(ray, m);
-    if (t !== null && (best === null || t < best)) best = t;
+    if (t !== null && (best === null || t < best.t)) best = { t, mesh: m };
   }
   return best;
+}
+
+/** Screen box of ONE mesh's own geometry box (not its children), in ndc like screenRect, or null. */
+function meshScreenRect(mesh, viewProj) {
+  const b = localBox(mesh);
+  if (!b) return null;
+  let r = null;
+  for (const c of boxCorners(b[0], b[1])) {
+    const q = project(viewProj, applyM4(mesh.matrixWorld.elements, c));
+    if (q[3] <= 0) continue;
+    if (!r) r = [q[0], q[1], q[0], q[1]];
+    else (r[0] = Math.min(r[0], q[0])), (r[1] = Math.min(r[1], q[1])), (r[2] = Math.max(r[2], q[0])), (r[3] = Math.max(r[3], q[1]));
+  }
+  return r;
+}
+
+/** Ring fractions of the radius and rays per ring for nearMiss(): 3 × 12 = 36 rays at most, only for an object
+ *  whose box is near the press but which the press itself missed. 12 directions = 30° apart, so a 3 px lamp post
+ *  12 px away is still crossed by the outer ring's horizontal ray. */
+const RINGS = [1 / 3, 2 / 3, 1];
+const RAYS_PER_RING = 12;
+
+/** Distance in px (the smallest ring) at which a ray around (px, py) hits `object`, or null when none within radiusPx. */
+function nearMiss(camera, object, px, py, radiusPx, W, H) {
+  if (!(radiusPx > 0)) return null;
+  for (const f of RINGS) {
+    const r = radiusPx * f;
+    // Each ring turned by half a step against the one before, so the rays do not line up.
+    const turn = (RINGS.indexOf(f) % 2) * (Math.PI / RAYS_PER_RING);
+    for (let i = 0; i < RAYS_PER_RING; i++) {
+      const a = turn + (i * 2 * Math.PI) / RAYS_PER_RING;
+      const x = px + Math.cos(a) * r;
+      const y = py + Math.sin(a) * r;
+      if (rayObject(rayFromCamera(camera, (x / W) * 2 - 1, 1 - (y / H) * 2), object) !== null) return r;
+    }
+  }
+  return null;
 }
 
 /**
@@ -906,9 +1024,10 @@ function pickNear(cands, camera, viewProj, ndcX, ndcY, radiusPx, size) {
   const [px, py] = toPx(ndcX, ndcY);
   const ray = rayFromCamera(camera, ndcX, ndcY);
   const hits = new Map();
+  const hitMesh = new Map();
   for (const c of cands) {
-    const t = rayObject(ray, c.object);
-    if (t !== null) hits.set(c, t);
+    const h = rayObjectHit(ray, c.object);
+    if (h) hits.set(c, h.t), hitMesh.set(c, h.mesh);
   }
   const rows = [];
   for (const c of cands) {
@@ -918,9 +1037,23 @@ function pickNear(cands, camera, viewProj, ndcX, ndcY, radiusPx, size) {
     const [x1, y0] = toPx(r[2], r[3]);
     const dx = px < x0 ? x0 - px : px > x1 ? px - x1 : 0;
     const dy = py < y0 ? y0 - py : py > y1 ? py - y1 : 0;
-    const dist = hits.has(c) ? 0 : Math.hypot(dx, dy);
-    if (!hits.has(c) && dist > radiusPx) continue;
-    const area = Math.max(1, (x1 - x0) * (y1 - y0));
+    let dist = hits.has(c) ? 0 : Math.hypot(dx, dy);
+    if (!hits.has(c)) {
+      if (dist > radiusPx) continue;
+      // Near the box is not near the object (see the rules at the top): one of its shapes must be within the radius.
+      const near = nearMiss(camera, c.object, px, py, radiusPx, W, H);
+      if (near === null) continue;
+      dist = Math.max(dist, near);
+    }
+    // Under the finger, the size is the PART the ray hit, not the whole object (W1 merge, 2026-10-17): Lantern Cove's
+    // lighthouse has a light beam, so its whole box is 200×420 px on a phone (score 73) while the tower under the
+    // finger is ~45×170; a pine mostly off the screen's edge 20 px away (87×111, score 44) took the tap. A hill's part
+    // under the finger is still the hill (big), so the coin beside it still wins (rule 2).
+    const hm = hitMesh.get(c);
+    const mr = hm ? meshScreenRect(hm, viewProj) : null;
+    const [mx0, my1] = mr ? toPx(mr[0], mr[1]) : [x0, y1];
+    const [mx1, my0] = mr ? toPx(mr[2], mr[3]) : [x1, y0];
+    const area = Math.max(1, (mx1 - mx0) * (my1 - my0));
     rows.push({ c, rect: [x0, y0, x1, y1], score: dist + 0.25 * Math.sqrt(area), depth: hits.get(c) ?? Infinity });
   }
   if (!rows.length) return [];
@@ -956,8 +1089,10 @@ __def(__exports, "meshesOf", () => meshesOf);
 __def(__exports, "worldCorners", () => worldCorners);
 __def(__exports, "worldBox", () => worldBox);
 __def(__exports, "screenRect", () => screenRect);
+__def(__exports, "screenShare", () => screenShare);
 __def(__exports, "rayMesh", () => rayMesh);
 __def(__exports, "rayObject", () => rayObject);
+__def(__exports, "rayObjectHit", () => rayObjectHit);
 __def(__exports, "pickNear", () => pickNear);
 };
 __defs[5] = function (__exports) {
@@ -1486,7 +1621,7 @@ __defs[9] = function (__exports) {
 
 const { collectCandidates } = __require(2);
 const { project, rayFromCamera, rayPlaneY, viewProjOf, wrapAngle } = __require(3);
-const { pickNear: pickNearImpl, screenRect, worldBox } = __require(4);
+const { pickNear: pickNearImpl, screenRect, screenShare, worldBox } = __require(4);
 const { createEditView, yawOfCamera } = __require(5);
 const { captureObject } = __require(6);
 const { assetsOf: assetsOfImpl } = __require(7);
@@ -1833,6 +1968,14 @@ function createThreeAdapter({ scene, renderer, camera }) {
       syncView();
       refresh();
       return pickNearImpl(cands, view.camera, viewProjOf(view.camera), ndcX, ndcY, radiusPx, cssSize());
+    },
+
+    /** Share (0–1) of the canvas the object's on-screen box covers, edges behind the camera included (pick.js screenShare). */
+    coverage(key) {
+      const o = objectOf(key);
+      if (!o || !view) return null;
+      syncView();
+      return screenShare(o, viewProjOf(view.camera));
     },
 
     anchor(key) {
@@ -2381,6 +2524,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
     // The axis and sign are worked out in adapter.js from the edit camera (d stays screen clockwise).
     turn: (key, d, axis) => pose(key, raw.turn(key, d, axis)),
     foot: (key) => raw.foot(key),
+    coverage: (key) => raw.coverage(key),
     scale: (key, f) => pose(key, raw.scale(key, f)),
     nudgeY: (key, dy) => pose(key, raw.nudgeY(key, dy)),
     setPose: (key, p) => raw.setPose(key, p),
@@ -2727,6 +2871,15 @@ const CONTRACT_VERSION = 1;
                                                                   
      
                                       
+     
+                                                                            
+                                                                           
+                                                                             
+                                                                             
+                                                                               
+                                         
+     
+                                        
                                                             
                                          
                                                                                        
@@ -3242,6 +3395,11 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                              
                                                   
+     
+                                                                                                             
+                                                                                                                   
+     
+                                                  
                                                        
                                                               
                                                                                 
@@ -3282,6 +3440,8 @@ const MSG_PREFIX = 'studio:';
                                                                        
                                                                                      
                                                              
+                                                                                                                       
+                                                    
                                                                                            
                                                                   
                                                    
@@ -3385,7 +3545,11 @@ function isStudioMessage(x         )                     {
                    
  
 
-                                                                 
+/**
+ * `asking` (dogfood 2026-10-17, U2): the agent asked the person something in its own window and waits for the
+ * answer; `note` is the question. Without it the editor kept saying "Your AI has it" for minutes while the AI waited.
+ */
+                                                                            
 
 /** What the agent writes back (local: .studio/status.json). Only the latest status is kept. */
                                
@@ -3488,6 +3652,12 @@ function isStudioMessage(x         )                     {
               
      
                              
+     
+                                                                                                                               
+                                                                                                                   
+                                                                            
+     
+                           
      
                                                                               
                                                                                 
@@ -4715,34 +4885,80 @@ function mainCanvas(doc          )                           {
   return best;
 }
 
+                                                          
+
 /**
- * Tiny fingerprint of what the canvas shows. Copying into a 32×32 2D canvas
- * right after render() works for WebGL too: the drawing buffer is still
- * readable within the same task even without preserveDrawingBuffer.
+ * What the canvas shows inside `box` (CSS px of the game's page; null = the whole canvas), as RGBA pixels at the
+ * canvas's own resolution, scaled down only when the box is larger than SNAP px a side.
+ *
+ * WHY a box and not the whole picture (Ive review N1 / W1-5, 2026-10-17): this used to shrink the whole canvas to
+ * 32×32 and compare hashes. In the editor's camera on a phone (390–400 px wide, the world zoomed out) a 40 px test
+ * move of a small object is ~10 screen px, about a third of one of those 32 cells, and the shrink (bilinear, no
+ * mipmaps) samples only a few source pixels per cell, so the move vanished. Our own Firefly Ruins then showed
+ * "This game's adapter needs a fix" on phones and in the 400 px side window. Cropping around the object keeps
+ * its pixels, so any real change shows.
+ *
+ * Read right after render() in the same task: WebGL without preserveDrawingBuffer is still readable then.
  */
-function fingerprint(win        , canvas                          )                {
+const SNAP = 96;
+function snapshot(win        , canvas                          , box            )                           {
   if (!canvas || !canvas.width || !canvas.height) return null;
   try {
+    const cr = canvas.getBoundingClientRect();
+    if (!(cr.width > 0 && cr.height > 0)) return null;
+    const kx = canvas.width / cr.width, ky = canvas.height / cr.height;
+    let sx = 0, sy = 0, sw = canvas.width, sh = canvas.height;
+    if (box) {
+      const x0 = Math.max(cr.left, box.x), y0 = Math.max(cr.top, box.y);
+      const x1 = Math.min(cr.right, box.x + box.w), y1 = Math.min(cr.bottom, box.y + box.h);
+      // The object is off the canvas: fall back to the whole picture rather than read nothing.
+      if (x1 - x0 >= 2 && y1 - y0 >= 2) {
+        sx = Math.floor((x0 - cr.left) * kx);
+        sy = Math.floor((y0 - cr.top) * ky);
+        sw = Math.max(1, Math.ceil((x1 - x0) * kx));
+        sh = Math.max(1, Math.ceil((y1 - y0) * ky));
+      }
+    }
+    const f = Math.min(1, SNAP / Math.max(sw, sh));
+    const w = Math.max(1, Math.round(sw * f)), h = Math.max(1, Math.round(sh * f));
     const c = win.document.createElement('canvas');
-    c.width = 32;
-    c.height = 32;
+    c.width = w;
+    c.height = h;
     const g = c.getContext('2d', { willReadFrequently: true });
     if (!g) return null;
-    g.drawImage(canvas, 0, 0, 32, 32);
-    const d = g.getImageData(0, 0, 32, 32).data;
-    // A perfectly uniform picture means we could not read what was drawn
-    // (WebGL without preserveDrawingBuffer is cleared once presented), not
-    // that the game shows a blank screen: report "unreadable" instead.
-    let uniform = true;
-    for (let i = 4; i < d.length && uniform; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2] || d[i + 3] !== d[3]) uniform = false;
-    if (uniform) return null;
-    let h = 0;
-    for (let i = 0; i < d.length; i += 4) h = (Math.imul(h, 31) + d[i]  + d[i + 1]  * 3 + d[i + 2]  * 7) | 0;
-    return String(h);
+    g.drawImage(canvas, sx, sy, sw, sh, 0, 0, w, h);
+    return g.getImageData(0, 0, w, h).data;
   } catch {
     return null; // tainted canvas (cross-origin image without CORS): cannot read
   }
 }
+
+/** One colour everywhere: we could not read what was drawn (WebGL cleared once presented), not a real picture. */
+function uniform(d                   )          {
+  for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2] || d[i + 3] !== d[3]) return false;
+  return true;
+}
+
+/**
+ * Did the picture change? Pixels whose colour moved by more than 4 (of 255) in any channel. One is enough: the
+ * game is frozen while editing, so two draws of the same scene are the same pixels; 4 only absorbs GPU dithering.
+ */
+function changed(a                   , b                   )          {
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i]  - b[i] ) > 4) return true;
+  return false;
+}
+
+/** The two boxes together, a few px larger (an outline or soft edge drawn just outside the box counts too). */
+function union(a                 , b                 )             {
+  if (!a || !b) return a || b ? pad(a || b ) : null;
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return pad({ x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y });
+}
+const pad = (r     )      => ({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 });
+/** Without a box from the adapter: a square of its size around the pivot. */
+const boxOf = (a                                     )                  =>
+  !a ? undefined : a.rect || { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
 
 /** Wait for two real frames: adapters that repaint from their own loop draw by then. */
 const frames = (core      ) => new Promise      ((r) => core.time.raf(() => core.time.raf(() => r())));
@@ -4797,19 +5013,41 @@ async function runSelfCheck(adapter                      , core      , win      
   const canvas = mainCanvas(win.document);
   const before = clonePose(sample.pose);
   const a0 = adapter.anchor(sample.key);
-  try {
+  // Draw, let loop-driven adapters draw too, then draw once more and read in the same task (see snapshot()).
+  const drawn = async () => {
     adapter.render();
     await frames(core);
-    const fp0 = fingerprint(win, canvas);
+    adapter.render();
+  };
+  try {
     // Move by a visible amount: 2D 40 px; 3D a fifth of the object's size on screen
     // is not known in world units, so use 0.5 units plus 10% of |p|.
-    const moved = clonePose(before);
     const delta = adapter.dim === '2d' ? 40 : 0.5 + Math.abs(before.p[0] || 0) * 0.1;
-    moved.p[0] = (moved.p[0] || 0) + delta;
-    const after = adapter.setPose(sample.key, moved);
-    adapter.render();
-    await frames(core);
-    const fp1 = fingerprint(win, canvas);
+    const moveBy = (d        ) => {
+      const moved = clonePose(before);
+      moved.p[0] = (moved.p[0] || 0) + d;
+      return { moved, after: adapter.setPose(sample.key, moved) };
+    };
+    let { moved, after } = moveBy(delta);
+    let a1 = adapter.anchor(sample.key);
+    // Both pictures are read around where the object was and where it went, after the move (the box is known then).
+    const box = () => union(boxOf(a0), boxOf(a1));
+    const pictures = async () => {
+      adapter.setPose(sample.key, before);
+      await drawn();
+      const p0 = snapshot(win, canvas, box());
+      adapter.setPose(sample.key, moved);
+      await drawn();
+      return [p0, snapshot(win, canvas, box())]         ;
+    };
+    let [fp0, fp1] = await pictures();
+    // Moved behind something (Firefly Ruins' bell slides behind the giant head when moved right), the picture can
+    // barely change. Try the other way before saying "nothing changed on screen".
+    if (fp0 && fp1 && !changed(fp0, fp1)) {
+      ({ moved, after } = moveBy(-delta));
+      a1 = adapter.anchor(sample.key);
+      [fp0, fp1] = await pictures();
+    }
     const back = adapter.list().find((i) => i.key === sample.key)?.pose;
     const eps = adapter.dim === '2d' ? 0.11 : 0.0011;
     checks.push({
@@ -4817,9 +5055,8 @@ async function runSelfCheck(adapter                      , core      , win      
       ok: !!after && near(back?.p, moved.p, eps),
       detail: after ? `asked ${fmt(moved.p)}, read back ${fmt(back?.p)}` : 'setPose returned null for a listed key',
     });
-    if (fp0 == null || fp1 == null) checks.push({ id: 'screen-changes', ok: true, skipped: true, detail: 'canvas pixels not readable here (no canvas, a cross-origin image, or WebGL cleared after drawing)' });
-    else checks.push({ id: 'screen-changes', ok: fp0 !== fp1, detail: fp0 === fp1 ? 'render() after setPose drew the same picture: set() may write a copy, or render() does not draw' : undefined });
-    const a1 = adapter.anchor(sample.key);
+    if (!fp0 || !fp1 || (uniform(fp0) && uniform(fp1))) checks.push({ id: 'screen-changes', ok: true, skipped: true, detail: 'canvas pixels not readable here (no canvas, a cross-origin image, or WebGL cleared after drawing)' });
+    else checks.push({ id: 'screen-changes', ok: changed(fp0, fp1), detail: changed(fp0, fp1) ? undefined : 'render() after setPose drew the same picture around the object: set() may write a copy, or render() does not draw' });
     const followed = !!a0 && !!a1 && Math.hypot(a1.center[0] - a0.center[0], a1.center[1] - a0.center[1]) > 0.5;
     checks.push({ id: 'anchor-follows', ok: followed, detail: followed ? undefined : 'anchor()/bounds() did not move with the object (handles would be left behind)' });
   } catch (e) {
@@ -5273,6 +5510,7 @@ function withEdits(inner               )               {
       return g ? onGhost(g, () => inner.turn (g.src, d, axis)) : inner.turn (key, d, axis);
     } : undefined,
     foot: inner.foot ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.foot (key)) : undefined,
+    coverage: inner.coverage ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.coverage (key)) : undefined,
     scale(key, f) {
       const g = ghostOf(key);
       return g ? onGhost(g, () => inner.scale(g.src, f)) : inner.scale(key, f);
@@ -6034,16 +6272,30 @@ const TOOL_HINT                                                                 
   en: { mouse: (t) => `Drag anywhere: ${t} · Look around: ⌥-drag, right-drag, or hold Space · Esc: no tool`, touch: (t) => `One finger: ${t} · Two fingers: look around` },
   ja: { mouse: (t) => `どこでも引く: ${t} ・ 見回す: ⌥ か右ボタンで引く、Space を押しながら ・ Esc: 道具をやめる`, touch: (t) => `1 本指: ${t} ・ 2 本指: 見回す` },
 };
-/** Added to the turn tool's first-time line in 3D: the tilts are one more tap away (polish pass 2026-10-16). */
+/**
+ * Added to the turn tool's first-time line in 3D: where the tilts are. Was "Press Turn again to tilt" (polish pass
+ * 2026-10-16); play test 2026-10-18: "nobody presses a button twice" — the tilts are behind the ▾ on the button now.
+ */
 const TILT_HINT                       = {
-  en: ' · Press Turn again to tilt',
-  ja: ' ・ もう一度押すと倒せます',
+  en: ' · Tilt: ▾ on Turn',
+  ja: ' ・ 倒すのは「回す」の ▾ から',
+};
+/** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
+const MORE_LABELS                                                 = {
+  en: { axis: 'Ways to turn', scale: 'Ways to resize' },
+  ja: { axis: '回し方を選ぶ', scale: '大きさの変え方を選ぶ' },
 };
 /**
- * The two choices behind strip buttons (2026-10-16): a tap (no drag) on the
- * turn button (3D, one object) opens "Turn / Tip forward / Tip sideways"; on
- * the size button with several picked, "Together / Each in place". Big
- * buttons with a picture and a short word, the long words as the tooltip.
+ * The choices behind strip buttons (2026-10-16): the turn button (3D, one
+ * object) has "Turn / Tilt forward / Tilt sideways"; the size button with
+ * several picked, "Together / Each in place". They open from the small ▾ in
+ * the button's bottom-right corner, or a long press on the button (tool
+ * options, play test 2026-10-18; before, a SECOND tap on the chosen button
+ * opened them, which nobody finds — kept only as an unadvertised shortcut).
+ * Big buttons with a picture and a short word, the long words as the tooltip.
+ * The first of each is the default and wears the tool's own picture, so the
+ * strip looks the same until another way is chosen; then the button wears
+ * that way's picture (the menu's and the button's pictures always match).
  */
 const AXIS_WORDS                                                   = {
   // Turn / Tilt, not Rotate / Tip (words pass 2026-10-17): the tool is Turn (key T), and "tip" and
@@ -6064,16 +6316,18 @@ const MANY_LABEL                                      = {
 };
 
 // Line icons (24×24 grid, stroke = currentColor), same rule as the shell's icons.
-// The three turns, as the motion looks from in front: a flat ellipse = turning
-// on the spot (y), an upright ellipse = tipping forward / back (x), a circle
-// facing you = tipping sideways (z).
+// The three turns, as the motion looks from in front: the turn tool's own
+// arrow = turning on the spot (y, the default), an upright ellipse = tipping
+// forward / back (x), a circle facing you = tipping sideways (z).
 const AXIS_ICONS                           = {
-  y: '<ellipse cx="12" cy="12" rx="8" ry="3.5"/><path d="M16.5 6.2 20 8.6l-3.6 1.9"/><path d="M12 4v16" stroke-dasharray="2 2.5"/>',
+  // y = the turn tool's own picture (the default way; see AXIS_WORDS). Was a flat ellipse until 2026-10-18.
+  y: '<path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M17.5 3.5v4h-4"/>',
   x: '<ellipse cx="12" cy="12" rx="3.5" ry="8"/><path d="M6.2 7.5 8.6 4l1.9 3.6"/><path d="M4 12h16" stroke-dasharray="2 2.5"/>',
   z: '<circle cx="12" cy="12" r="7.5"/><path d="M15.5 2.8 19 5.2l-3.6 1.9"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
 };
 const SCALE_ICONS                                 = {
-  spread: '<rect x="3" y="13" width="5" height="5" rx="1"/><rect x="16" y="13" width="5" height="5" rx="1"/><path d="M3 21h18"/><path d="M9.5 9.5H3.5M5.5 7.5l-2 2 2 2M14.5 9.5h6M18.5 7.5l2 2-2 2"/>',
+  // spread = the size tool's own picture (the default way). Was two boxes with arrows apart until 2026-10-18.
+  spread: '<path d="M5 19 19 5M13.5 5H19v5.5M5 13.5V19h5.5"/>',
   inplace: '<rect x="4" y="12" width="5" height="6" rx="1"/><rect x="13" y="8" width="7" height="10" rx="1"/><path d="M3 21h18"/><path d="M16.5 2.5v3.5M14.8 4.2l1.7-1.7 1.7 1.7"/>',
 };
 
@@ -6130,6 +6384,10 @@ const ICONS                             = {
                             
                                                 
                                             
+                                                                                                            
+                                           
+                                                                                                      
+                                                                        
      
                                                                             
                                                    
@@ -6142,8 +6400,8 @@ const ICONS                             = {
 /** Your hand and the AI's hand. Kept in step with --you / --ai in shell.css (fixed: they sit on the game, not on the shell's theme). */
 const YOU = '#ff6b1a';
 const AI = '#8b7cff';
-/** Gap between the object and the strip (px). */
-const GAP = 10;
+/** Gap between the object and the strip (px): 12 = the review's number (wave 1, W1-2 / M4, 2026-10-17); was 10. */
+const GAP = 12;
 const CSS = `
 :host { all: initial; }
 .root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;
@@ -6189,6 +6447,20 @@ svg * { vector-effect: non-scaling-stroke; }
 /* The chosen way: ink, not orange (orange is the picked object, on the game). */
 .menu button.chosen { color: #1c1c1e; background: #f5f5f7; box-shadow: none; }
 @media (pointer: coarse) { .menu button { min-width: 88px; min-height: 64px; } }
+/* The ▾ (tool options, play test 2026-10-18): "this button has choices", in the button's bottom-right corner, inside
+   it — so the strip is not one px taller or wider and does not move when it appears (W1-2). The mark is 7×4 in the
+   button's own colour, faint at rest, full on hover (PC: the hover says "there is more here"); its press area is the
+   corner, 12 px on the mouse strip and 20 px on the finger strip (a quarter of a 44 button; the rest of the button
+   still chooses the tool). A long press anywhere on the button opens the same choices. */
+/* z-index 1: over the button's touch ::after (inset −2 px, drawn after the ▾), which otherwise took the press on a
+   phone and the ▾ chose the tool instead of opening the choices (studio-transform, 2026-10-18). */
+.more { position: absolute; z-index: 1; right: 0; bottom: 0; width: 12px; height: 12px; display: none; place-items: end; padding: 0 2px 2px 0;
+  box-sizing: border-box; pointer-events: auto; cursor: pointer; border-radius: 0 0 8px 0; opacity: .6; transition: opacity .16s cubic-bezier(.2,.8,.2,1); }
+.more svg { width: 7px; height: 4px; stroke-width: 1.5px; }
+button.opts .more { display: grid; }
+button:hover .more, button.on .more, .more.open { opacity: 1; }
+.row.big .more { width: 20px; height: 20px; padding: 0 5px 5px 0; border-radius: 0 0 12px 0; }
+.row.big .more svg { width: 8px; height: 5px; }
 /* Light editor: the light glass, the same two colours. */
 .root.light .menu, .root.light .row { backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
 .root.light .menu button { color: #6e6e73; }
@@ -6206,7 +6478,20 @@ svg * { vector-effect: non-scaling-stroke; }
 .hint { height: 32px; padding: 0 14px; font-weight: 400; transform: translateX(-50%); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 .root.light .chip, .root.light .hint { color: #1d1d1f; backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
 @media (pointer: coarse) { .hint { height: 36px; font-size: 13px; } }
-@media (prefers-reduced-motion: reduce) { button { transition: none; } .menu, .hint { animation: none; } }
+@media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
+/* The finger-sized strip (buttons 44 px: phones and the side window; .big = 40 px and up), design review wave 1 (W1-2 / N4,
+   2026-10-17): 48 high (44 + 2 in), no gaps between buttons, 14 corners, a light plate — white 92 % with a 12 px blur
+   and a 1 px line (dark: #2a2a2e 92 %). WHY: the dark, thick plate with the chosen tool as a second plate on it weighed
+   ten times the small object it served (review photo 12 / 15 / 18). The chosen tool (and Move at rest) is told by its
+   ground alone, black 8 % (dark: white 10 %), never a filled square on top. */
+.row.big { gap: 0; padding: 2px; border-radius: 14px; background: rgba(42, 42, 46, .92); box-shadow: 0 0 0 1px rgba(255,255,255,.08);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.row.big button { border-radius: 12px; }
+.row.big button:hover { background: transparent; }
+.row.big button.rest, .row.big button.on, .row.big button:active { color: #f5f5f7; background: rgba(255,255,255,.10); }
+.root.light .row.big { background: rgba(255,255,255,.92); box-shadow: 0 0 0 1px rgba(0,0,0,.08); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.root.light .row.big button { color: #6e6e73; }
+.root.light .row.big button.rest, .root.light .row.big button.on, .root.light .row.big button:active { color: #1d1d1f; background: rgba(0,0,0,.08); }
 `;
 
 let scratch                           = null;
@@ -6282,6 +6567,15 @@ function createHandles(doc          , hasLift         )          {
     b.setAttribute('aria-label', HANDLE_LABELS.en[k]);
     b.title = HANDLE_LABELS.en[k];
     b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`; // static markup only
+    if (k === 'rotate' || k === 'scale') {
+      // The ▾ (shown only while the button has choices: setOptions). A span, not a button: a button in a button is not
+      // allowed; keyboards reach the same choices with R (turn) and the menu's own buttons.
+      const more = doc.createElement('span');
+      more.className = 'more';
+      more.dataset.studioMore = k === 'rotate' ? 'axis' : 'scale';
+      more.innerHTML = '<svg viewBox="0 0 7 4" aria-hidden="true"><path d="M.75.75 3.5 3.25 6.25.75"/></svg>'; // static markup only
+      b.append(more);
+    }
     buttons[k] = b;
     row.appendChild(b);
   }
@@ -6306,6 +6600,15 @@ function createHandles(doc          , hasLift         )          {
   const hintEl = doc.createElement('div');
   hintEl.className = 'hint';
   hintEl.setAttribute('role', 'status');
+  /** Swap a strip button's picture, keeping its ▾. */
+  const paintIcon = (b                   , inner        ) => {
+    const tmp = doc.createElement('div');
+    tmp.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`; // static markup only
+    b.querySelector(':scope > svg')?.replaceWith(tmp.firstElementChild );
+  };
+  let scaleMode                 = 'spread';
+  let scaleOpts = false;
+  const paintScale = () => paintIcon(buttons.scale, scaleOpts ? SCALE_ICONS[scaleMode] : ICONS.scale);
   let held                    = null;
   let chosen                    = null;
   const paintButtons = () => {
@@ -6469,8 +6772,10 @@ function createHandles(doc          , hasLift         )          {
       }
       const n = kinds.filter((k) => !buttons[k].hidden).length;
       if (n === 0) row.style.display = 'none';
-      const rowW = n * size + (n - 1) * 2 + 4;
-      const rowH = size + 4;
+      // .big (finger size): no gaps, 2 px in (W1-2); else 2 px gaps, 4 px in.
+      const big = size >= 40;
+      const rowW = big ? n * size + 4 : n * size + (n - 1) * 2 + 4;
+      const rowH = big ? size + 4 : size + 8;
       const lo = 8 + inset.top, hi = vh - 8 - inset.bottom - rowH;
       // Under the object; above it when there is no room below (over the ask bar on a phone).
       let y = bottom + GAP;
@@ -6490,13 +6795,43 @@ function createHandles(doc          , hasLift         )          {
     setAxis(axis, lang) {
       const b = buttons.rotate;
       b.dataset.axis = axis;
-      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${axis === 'y' ? ICONS.rotate : AXIS_ICONS[axis]}</svg>`; // static markup only
+      paintIcon(b, AXIS_ICONS[axis]);
       const w = (AXIS_WORDS[lang] || AXIS_WORDS.en)[axis];
       b.title = `${w[0]} (${TOOL_KEYS.rotate}) — ${w[1]}`;
       b.setAttribute('aria-label', `${w[0]} (${TOOL_KEYS.rotate})`);
     },
+    setScaleMode(mode) {
+      if (mode === scaleMode) return;
+      scaleMode = mode;
+      buttons.scale.dataset.mode = mode;
+      paintScale();
+    },
+    setOptions(opts, lang) {
+      // Called every frame (place): touch the DOM only when something changed.
+      const words = MORE_LABELS[lang] || MORE_LABELS.en;
+      for (const [k, on, kind] of [['rotate', opts.axis, 'axis'], ['scale', opts.scale, 'scale']]         ) {
+        const b = buttons[k];
+        if (b.classList.contains('opts') === on && b.dataset.optsLang === lang) continue;
+        b.classList.toggle('opts', on);
+        b.dataset.optsLang = lang;
+        if (on) b.setAttribute('aria-haspopup', 'menu');
+        else b.removeAttribute('aria-haspopup');
+        const m = b.querySelector             ('.more');
+        if (m) m.title = words[kind];
+      }
+      if (opts.scale !== scaleOpts) {
+        scaleOpts = opts.scale;
+        paintScale();
+      }
+    },
     menu(kind, current, lang) {
       menuKind = kind;
+      // The open one's ▾ stays lit, and the button says its choices are showing.
+      for (const [k, mk] of [['rotate', 'axis'], ['scale', 'scale']]         ) {
+        const open = kind === mk && row.style.display !== 'none';
+        buttons[k].querySelector('.more')?.classList.toggle('open', open);
+        if (buttons[k].hasAttribute('aria-haspopup')) buttons[k].setAttribute('aria-expanded', String(open));
+      }
       menuEl.replaceChildren();
       if (!kind || row.style.display === 'none') {
         menuKind = null;
@@ -6600,6 +6935,15 @@ function createHandles(doc          , hasLift         )          {
   };
 }
 
+/** The ▾ under a pointer event (which choices it opens), or null. Checked before handleFromEvent: it sits in a button. */
+function moreFromEvent(e       )                          {
+  for (const el of e.composedPath()) {
+    const m = (el               ).dataset?.studioMore;
+    if (m === 'axis' || m === 'scale') return m;
+  }
+  return null;
+}
+
 /** The choice under a pointer event (the strip's menu), or null. */
 function choiceFromEvent(e       )                {
   for (const el of e.composedPath()) {
@@ -6627,10 +6971,12 @@ __def(__exports, "HANDLE_LABELS", () => HANDLE_LABELS);
 __def(__exports, "READOUT_WORDS", () => READOUT_WORDS);
 __def(__exports, "TOOL_HINT", () => TOOL_HINT);
 __def(__exports, "TILT_HINT", () => TILT_HINT);
+__def(__exports, "MORE_LABELS", () => MORE_LABELS);
 __def(__exports, "AXIS_WORDS", () => AXIS_WORDS);
 __def(__exports, "SCALE_WORDS", () => SCALE_WORDS);
 __def(__exports, "MANY_LABEL", () => MANY_LABEL);
 __def(__exports, "createHandles", () => createHandles);
+__def(__exports, "moreFromEvent", () => moreFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
@@ -6650,9 +6996,9 @@ __defs[23] = function (__exports) {
 // - Dragging the object that is ALREADY picked moves it (rebrand 2026-10-16:
 //   the tool strip under it replaced the four round handles, and "drag the
 //   thing itself" is what every other editor does). It needs a pick first, so
-//   a stray drag never moves anything; very large objects (ground, sky: more
-//   than 40 % of the window) and locked ones still look around when dragged,
-//   which keeps the accident above impossible.
+//   a stray drag never moves anything; very large objects (ground, sky: their
+//   on-screen part 60 % of the window or more) and locked ones still look
+//   around when dragged, which keeps the accident above impossible.
 // - Tool modes (play test 2026-10-16): a press on a strip button (or
 //   M / H / T / S) CHOOSES that tool and it stays pressed; then a drag
 //   ANYWHERE on the game does it to what is picked — move follows the drag,
@@ -6668,6 +7014,18 @@ __defs[23] = function (__exports) {
 //   tool, then the pick. A tap still picks (the tool stays chosen).
 // - Pressing the same spot again picks the next object under it (the one
 //   behind), so small objects hidden by large ones stay reachable.
+// - A tap on "nothing" drops the pick (a web demo try 2026-10-18: "I want to click
+//   an empty spot to deselect, and I can't"). Nothing = no object there, OR
+//   only the background: a ground / background (Item.backdrop) or an object
+//   whose on-screen part covers 60 % of the window or more (HUGE_ON_SCREEN,
+//   the same rule that makes a drag on it look around). People call the sky,
+//   the sea and the grass "nothing"; a tap there used to pick the ground. Such
+//   objects are picked from the list. A press that travels past the tap slop
+//   is a look-around and keeps the pick (as in other 3D editors: turning the
+//   view never changes what is picked). The 3D side of "no object there" is in
+//   adapters/three/pick.js (a box near the press is not enough: the lighthouse's
+//   light beam made its box cover half the sky).
+
 // - One gesture = one undo step: every `moved` of a gesture is sent, the last
 //   one carries `end: true` and `from` (the pose before the gesture).
 // - Listeners sit on window in the capture phase and are installed before any
@@ -6688,7 +7046,7 @@ const { UI } = __require(11);
 const { keyStep } = __require(21);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, toolFromKey } = __require(22);
+const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(22);
                                                      
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(19);
 
@@ -6720,6 +7078,8 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                          
                                                                         
                                          
+                                                                          
+                    
                                                                               
                              
                                           
@@ -6761,6 +7121,13 @@ const TURN_PER_PX = 0.01;
 const SIZE_PER_PX = 0.005;
 /** localStorage flag: the "how to look around" line was seen (it shows once, on this computer). */
 const HINT_SEEN = 'gameStudio.toolHint.v1';
+/** An object whose on-screen part covers this share of the window or more is "huge" (a ground): a drag on it looks around, and a tap on it is a tap on nothing (deselect, 2026-10-18). 0.6 (W1 merge); 0.4 of the whole projected box before. */
+const HUGE_ON_SCREEN = 0.6;
+/**
+ * A press held this long on the turn / size button (without moving) opens its choices, like the ▾ (tool options,
+ * play test 2026-10-18). 450 ms: past a tap (~100-200 ms) and a hesitant press-then-drag, short of iOS's 500 ms callout.
+ */
+const LONG_PRESS_MS = 450;
 
 function wrap(a        )         {
   while (a <= -Math.PI) a += 2 * Math.PI;
@@ -6826,19 +7193,31 @@ function attachInput(deps           )              {
     if (k === 'rotate') return picked.some((i) => i.rotatable);
     return picked.some((i) => i.scalable);
   };
-  const chooseTool = (k                   , from                           ) => {
+  /**
+   * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D, one object (canTurn). Size: several
+   * picked. 2D has no turn choices, so its turn button has no ▾ (tool options, 2026-10-18).
+   */
+  const hasChoices = (kind                  ) =>
+    kind === 'axis' ? canTurn() && toolApplies('rotate') : state.group.length > 1 && toolApplies('scale');
+  /** Open (`kind`) or close (null) the strip's choices, and tell the editor page so a press or Escape there closes them. */
+  const menu = (kind                         ) => {
+    const was = handles.menuOpen();
+    handles.menu(kind, kind === 'axis' ? state.axis : kind === 'scale' ? state.scaleMode : '', lang);
+    const now = handles.menuOpen();
+    if (!!was !== !!now) post({ type: 'studio:placement/menu', open: !!now });
+  };
+  const chooseTool = (k                   , from                                    ) => {
     if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return;
     const changed = k !== tool;
     tool = k;
     handles.setTool(k);
     if (changed) post({ type: 'studio:placement/tool', tool: k });
-    // Several picked: the size button shows its two ways when chosen (they change what the drag does to the gaps).
-    // The turn button does NOT open its axis choices any more (polish pass 2026-10-16, play test stumble 7): a
-    // newcomer who only wants to turn something had to answer "Turn / Tip forward / Tip sideways" first. Chosen,
-    // it turns at once around the axis last used (upright at first); a second tap on it, or R, shows the choices
-    // (the first-time line says so).
-    if (k === 'scale' && from === 'strip' && state.group.length > 1) handles.menu('scale', state.scaleMode, lang);
-    else if (handles.menuOpen()) handles.menu(null, '', lang);
+    // A tap on a button only chooses its tool, with the way last used (turn: upright at first; size: together).
+    // The choices open from the ▾ in the button's corner or a long press (tool options, play test 2026-10-18: "nobody
+    // presses a button twice"). History: the turn choices opened on the first tap until the polish pass 2026-10-16
+    // (a newcomer had to answer "Turn / Tilt forward / Tilt sideways" first), then on a second tap, which nobody
+    // found; the size choices (several picked) opened on the first tap until 2026-10-18.
+    if (handles.menuOpen()) menu(null);
     if (k) showHint();
     else handles.hint(null);
   };
@@ -6857,11 +7236,23 @@ function attachInput(deps           )              {
     const order             = ['y', 'x', 'z'];
     state.axis = ax === 'next' ? order[(order.indexOf(state.axis) + 1) % 3]  : ax;
     showAxis();
-    if (handles.menuOpen() === 'axis') handles.menu('axis', state.axis, lang);
+    if (handles.menuOpen() === 'axis') menu('axis');
   };
-  const toggleMenu = (kind                  ) => {
-    if (handles.menuOpen() === kind) handles.menu(null, '', lang);
-    else handles.menu(kind, kind === 'axis' ? state.axis : state.scaleMode, lang);
+  const toggleMenu = (kind                  ) => menu(handles.menuOpen() === kind ? null : kind);
+  // The long press on the turn / size button (LONG_PRESS_MS): armed at the press, checked when it fires.
+  let pressTimer = 0;
+  const armLongPress = (id        , kind                  ) => {
+    win.clearTimeout(pressTimer);
+    pressTimer = win.setTimeout(() => {
+      const p = ptrs.get(id);
+      if (!p || ptrs.size !== 1 || (mode.kind !== 'handle' && mode.kind !== 'group') || mode.anywhere) return;
+      if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
+      // Held still: nothing changed yet, so ending the gesture records no undo step. Forget the pointer so its
+      // release is not read as a tap (which would choose the tool, or close the choices again).
+      endGesture();
+      ptrs.delete(id);
+      menu(kind);
+    }, LONG_PRESS_MS);
   };
 
   // Stop page scrolling/zooming by touch while editing; restored on detach.
@@ -7092,14 +7483,37 @@ function attachInput(deps           )              {
     mode = { kind: 'none' };
   };
 
+  /** Share of the window (0–1) covered by the object's on-screen part (its box, clipped to the window). */
+  const screenShare = (k        ) => {
+    // 3D: the adapter's own measure (a ground running on under the camera; see StudioAdapter.coverage).
+    try {
+      const c = adapter.coverage?.(k);
+      if (typeof c === 'number' && Number.isFinite(c)) return c;
+    } catch {
+      /* fall back to the box */
+    }
+    const r = adapter.anchor(k)?.rect;
+    if (!r) return 0;
+    // Clipped: the rect is the projected box, so it runs past the window's edges (see grabbable below).
+    const vw = win.innerWidth, vh = win.innerHeight;
+    const cw = Math.max(0, Math.min(vw, r.x + r.w) - Math.max(0, r.x));
+    const ch = Math.max(0, Math.min(vh, r.y + r.h) - Math.max(0, r.y));
+    return vw * vh > 0 ? (cw * ch) / (vw * vh) : 0;
+  };
+  /** The ground / background (or a huge object): what a person calls "nothing" when tapping (see the header). */
+  const background = (k        ) => !!state.items.find((i) => i.key === k)?.backdrop || screenShare(k) >= HUGE_ON_SCREEN;
+  /** What a tap at the point may pick, best first: pickNear without the background. */
+  const tappable = (p     , radius        ) => {
+    try {
+      return adapter.pickNear(p.x, p.y, radius).filter((k) => !background(k));
+    } catch {
+      return [];
+    }
+  };
+
   const tap = (p     ) => {
     const radius = p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch;
-    let keys           = [];
-    try {
-      keys = adapter.pickNear(p.x, p.y, radius);
-    } catch {
-      keys = [];
-    }
+    const keys = tappable(p, radius);
     let key                = keys[0] ?? null;
     // Same spot again: walk to the next candidate (the object behind).
     if (lastTap && Math.hypot(lastTap.x - p.x, lastTap.y - p.y) <= radius && state.selected && keys.includes(state.selected)) {
@@ -7135,14 +7549,10 @@ function attachInput(deps           )              {
     const keys = [...state.group, ...inBox.filter((k) => !state.group.includes(k))];
     selectMany(keys, state.selected && keys.includes(state.selected) ? state.selected : inBox[0] );
   };
-  /** A mouse press that may become a box: Shift or "select several", and nothing under the pointer. */
+  /** A mouse press that may become a box: Shift or "select several", and nothing (or only the ground) under the pointer. */
   const boxable = (p     ) => {
     if (p.type !== 'mouse' || p.button !== 0 || !(p.shift || state.multi)) return false;
-    try {
-      return adapter.pickNear(p.x, p.y, UI.pickRadiusMouse).length === 0;
-    } catch {
-      return false;
-    }
+    return tappable(p, UI.pickRadiusMouse).length === 0;
   };
   let boxStart = false;
   /** Tool dragged anywhere: the offset from the pointer to the object's point at the start. */
@@ -7162,8 +7572,12 @@ function attachInput(deps           )              {
     if (!k) return false;
     const it = state.items.find((i) => i.key === k);
     if (!it || it.movable === false || it.backdrop) return false;
-    const r = adapter.anchor(k)?.rect;
-    return !r || r.w * r.h < 0.4 * win.innerWidth * win.innerHeight;
+    // "Huge" = the part ON SCREEN covers 60 % or more of the window (a ground seen from above the horizon).
+    // WHY clipped, and 60 not 40 (W1 merge, 2026-10-17): the rect is the projected box, so it runs past the
+    // window's edges. Until W1-1 a pick glided the camera back and the barn of test/studio-unnamed shrank; with the
+    // camera kept still, on a phone 390×844 its box is 483 px wide (x −77) = 56 % of the window, 45 % on screen,
+    // and a drag on the barn turned the view instead of moving it. A ground plane covers ~75 %+ on screen.
+    return screenShare(k) < HUGE_ON_SCREEN;
   };
 
   const twoFingers = () => {
@@ -7192,21 +7606,45 @@ function attachInput(deps           )              {
       return;
     }
     if (ptrs.size > 2) return;
-    // A choice in the strip's menu (turn axis / resize mode).
+    // The ▾ in the turn / size button's corner: open (or close) its choices; the tool stays as it was.
+    const more = moreFromEvent(e);
+    if (more && state.selected && hasChoices(more)) {
+      toggleMenu(more);
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      return;
+    }
+    // A choice in the strip's menu (turn axis / resize mode): it is used at once — its tool is chosen and the
+    // button wears the choice's picture, so the strip says which way a drag works now.
     const choice = choiceFromEvent(e);
     if (choice) {
       if (choice.kind === 'axis') setAxis(choice.id            );
-      else state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
-      handles.menu(null, '', lang);
+      else {
+        state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
+        handles.setScaleMode(state.scaleMode);
+      }
+      menu(null);
+      const k             = choice.kind === 'axis' ? 'rotate' : 'scale';
+      if (tool !== k) chooseTool(k, 'menu');
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
       return;
     }
     if (h && state.selected) {
       mode = startHandle(h, p);
+      if (mode.kind === 'none') {
+        // The gesture could not start (Move: adapter.grab found no ground under the BUTTON — on Lantern Cove the
+        // strip under the lighthouse is over the sea's far edge). The press still chooses the tool, as a tap would;
+        // the drag-anywhere start (toolStart) grabs at the object's own point, which works (tool options, 2026-10-18).
+        ptrs.delete(e.pointerId);
+        chooseTool(h === tool ? null : h, 'strip');
+        return;
+      }
+      const kind = h === 'rotate' ? 'axis' : h === 'scale' ? 'scale' : null;
+      if (kind && hasChoices(kind)) armLongPress(e.pointerId, kind);
       return;
     }
-    if (handles.menuOpen()) handles.menu(null, '', lang);
+    if (handles.menuOpen()) menu(null);
     if (tools.active() && tools.pointer(toolEvent('down', p))) {
       mode = { kind: 'tool' };
       markDirty();
@@ -7308,6 +7746,7 @@ function attachInput(deps           )              {
 
   const onUp = (e              ) => {
     block(e);
+    win.clearTimeout(pressTimer);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
     ptrs.delete(e.pointerId);
@@ -7323,19 +7762,18 @@ function attachInput(deps           )              {
         mode = { kind: 'none' };
       }
     } else if (mode.kind === 'handle' || mode.kind === 'group') {
-      // A tap (no drag) on the turn button (3D, one object) or on the size
-      // button (several) opens its choices; a drag uses the chosen one.
       // A tap (no drag) on a strip button CHOOSES its tool (tool modes, see the header). On the chosen one
-      // again: the turn button (3D, one object) and the size button (several) open / close their choices;
-      // the others put the tool down.
+      // again: the others put the tool down; the turn button (3D, one object) and the size button (several)
+      // open / close their choices — an unadvertised shortcut only since 2026-10-18 (the ▾ and the long press
+      // are the way in; a second press is not something people try, play test 2026-10-18).
       const tap = !mode.anywhere && Math.hypot(p.x - p.sx, p.y - p.sy) <= UI.tapSlopPx;
       const which = mode.handle;
       const single = mode.kind === 'handle';
       endGesture();
       if (tap) {
-        const hasChoices = (which === 'rotate' && single && canTurn()) || (which === 'scale' && !single);
+        const choices = (which === 'rotate' && single && hasChoices('axis')) || (which === 'scale' && !single && hasChoices('scale'));
         if (which !== tool) chooseTool(which, 'strip');
-        else if (hasChoices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
+        else if (choices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
         else chooseTool(null, 'strip');
       }
     } else if (mode.kind === 'box') {
@@ -7374,7 +7812,7 @@ function attachInput(deps           )              {
       return;
     }
     if (e.key === 'Escape') {
-      if (handles.menuOpen()) handles.menu(null, '', lang);
+      if (handles.menuOpen()) menu(null);
       else if (tool) chooseTool(null, 'key');
       else select(null);
       return;
@@ -7388,7 +7826,7 @@ function attachInput(deps           )              {
     // R: the next turn axis (3D, one object picked), with the choices shown for a moment of feedback.
     if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
       setAxis('next');
-      if (!handles.menuOpen()) handles.menu('axis', state.axis, lang);
+      if (!handles.menuOpen()) menu('axis');
       return;
     }
     if (!key) return;
@@ -7407,8 +7845,43 @@ function attachInput(deps           )              {
     handles.setActive(mode.kind === 'handle' || mode.kind === 'group' ? mode.handle : null);
   };
 
+  // The name tag over the picked object shows only while the mouse is over it (design review wave 1, W1-2 / N3, 2026-10-17).
+  // WHY: picking put the same name on screen four times (the tag on the object, the list row, the card, the ask box's
+  // chip); the card is what names it. On touch there is no hover, so no tag at all. `hover` = the mouse over the game
+  // with no button down (null = gone / touch).
+  // `armed`: the mouse has been off the picked object since it was picked. The click that picks leaves the mouse on
+  // the object; without this the tag came back the same instant, which is "a tag when picked" again.
+  let hover                                  = null;
+  let hoverIn = false;
+  let armed = false;
+  const inRects = (rs                                                       ) =>
+    armed && !!hover && rs.some((r) => hover .x >= r.x && hover .x <= r.x + r.w && hover .y >= r.y && hover .y <= r.y + r.h);
+  const selectionRects = () => rectsOf(state.group.length > 1 ? state.group : state.selected ? [state.selected] : []);
+  const onHover = (e              ) => {
+    hover = e.pointerType === 'mouse' && e.buttons === 0 ? { x: e.clientX, y: e.clientY } : null;
+    if (hover && !armed) {
+      armed = true;
+      if (inRects(selectionRects())) armed = false; // still on it: wait until it leaves
+    }
+    const now = inRects(selectionRects());
+    if (now !== hoverIn) {
+      hoverIn = now;
+      markDirty();
+    }
+  };
+  const onLeave = (e              ) => {
+    if (e.relatedTarget) return;
+    hover = null;
+    if (hoverIn) {
+      hoverIn = false;
+      markDirty();
+    }
+  };
   win.addEventListener('pointerdown', onDown, opts);
+  // Before onMove: its block() stops the other listeners on window.
+  win.addEventListener('pointermove', onHover, opts);
   win.addEventListener('pointermove', onMove, opts);
+  win.addEventListener('pointerout', onLeave, opts);
   win.addEventListener('pointerup', onUp, opts);
   win.addEventListener('pointercancel', onUp, opts);
   win.addEventListener('wheel', onWheel, opts);
@@ -7495,6 +7968,8 @@ function attachInput(deps           )              {
   const place = () => {
     drawGhosts();
     showAxis();
+    // The ▾ on the turn / size buttons: only while they have choices (it sits inside the button: the strip never moves).
+    handles.setOptions({ axis: hasChoices('axis'), scale: hasChoices('scale') }, lang);
     const key = state.selected;
     // The AI's marks first (under your own): what is picked is drawn in your colour only.
     const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
@@ -7504,7 +7979,7 @@ function attachInput(deps           )              {
       const items = state.items.filter((i) => state.group.includes(i.key));
       const keys = items.map((i) => i.key);
       const rects = rectsOf(keys);
-      handles.selection(shapeOf('you', keys, rects), rects, (MANY_LABEL[lang] || MANY_LABEL.en)(items.length));
+      handles.selection(shapeOf('you', keys, rects), rects, inRects(rects) ? (MANY_LABEL[lang] || MANY_LABEL.en)(items.length) : null);
       const ga = groupAnchor(adapter, state.group, key);
       handles.place(ga, items.length ? {
         rotatable: items.some((i) => i.rotatable), scalable: items.some((i) => i.scalable),
@@ -7515,24 +7990,31 @@ function attachInput(deps           )              {
     const a = key ? adapter.anchor(key) : null;
     const item = key ? state.items.find((i) => i.key === key) : undefined;
     const rects = a && a.visible && a.rect ? [a.rect] : [];
-    handles.selection(item ? shapeOf('you', [key ], rects) : null, item ? rects : [], item && a?.visible ? item.label : null);
+    // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
+    // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
+    handles.selection(item ? shapeOf('you', [key ], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
     handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: item.liftable !== false } : null, adapter.dim);
   };
 
   return {
     frame: place,
     selectionChanged() {
-      if (handles.menuOpen()) handles.menu(null, '', lang);
+      if (handles.menuOpen()) menu(null);
+      armed = false;
+      hoverIn = false;
       place();
     },
     setAxis(ax) {
       if (!state.selected || !canTurn()) return;
       setAxis(ax);
       // The R key from the editor page: show the choices too, as the R key in the game does.
-      if (!handles.menuOpen()) handles.menu('axis', state.axis, lang);
+      if (!handles.menuOpen()) menu('axis');
     },
     setTool(k) {
       chooseTool(k, 'shell');
+    },
+    closeMenu() {
+      if (handles.menuOpen()) menu(null);
     },
     setLook(on) {
       spaceHeld = !!on;
@@ -7562,8 +8044,11 @@ function attachInput(deps           )              {
     },
     detach() {
       endGesture();
+      win.clearTimeout(pressTimer);
       win.removeEventListener('pointerdown', onDown, opts);
       win.removeEventListener('pointermove', onMove, opts);
+      win.removeEventListener('pointermove', onHover, opts);
+      win.removeEventListener('pointerout', onLeave, opts);
       win.removeEventListener('pointerup', onUp, opts);
       win.removeEventListener('pointercancel', onUp, opts);
       win.removeEventListener('wheel', onWheel, opts);
@@ -7754,18 +8239,116 @@ function createEditor(deps            )         {
     }
     return inView(key);
   };
+  /**
+   * Picking never moves the camera (design review wave 1, W1-1 / M3 / U5, 2026-10-17): "the view belongs to whoever made the
+   * game; the tool doesn't move it by itself". Before, the first pick glided the 3D camera up to a 30° editing angle
+   * (the lighthouse became a 30 px dot under the sky), the phone's sheet and ⌘K list slid or pulled the view each time
+   * they opened, and a list pick re-framed with a zoom. Now the ONE case that moves it: a pick from the list (`focus`)
+   * of an object that is not in the seen part of the frame — then, in 0.35 s, the least sideways slide (pan only: no
+   * turn, no zoom) that puts it (and its strip) inside the middle 60 % of that part.
+   */
+  const CENTRE = 0.6; // 0.6 = the middle 60 % of the seen part (the review's number); 1.0 = just inside the edges
+  const GLIDE_MS = 350;
+  let panGlide = 0;
+  // The last pick from the list and when (see core/ui below): the card that the pick brings can make a phone's sheet
+  // taller a moment later and cover the object the person just asked to see.
+  let listPick                                     = null; // the running slide's generation (0 = none); a new pick stops the old one where it is
+  /**
+   * The least pan that brings `key` into the middle part, measured step by step: sideways first, then up / down.
+   * WHY measured, one axis at a time (found while writing W1-1, Lantern Cove's opening view, 2° down): pan() moves the
+   * ground at the point the camera turns round, so an object nearer than that point moves more (a pine moved ~1.8 px
+   * per px and overshot to the far side), and "up the screen" from a near-level view carries the ground tens of metres
+   * while things near the horizon hardly rise — and slide sideways as they come closer. So each axis takes steps of
+   * (what is still needed ÷ how far the last step moved it per px); an up / down step that does not help, or that pushes
+   * the object back out sideways, is taken back and the slide stops there (sideways is the part that always works).
+   */
+  const panIntoMiddle = (key        )                          => {
+    const need = () => {
+      const a = adapter.anchor(key);
+      if (!a || !a.visible) return null;
+      const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+      const f = freeArea(r.y);
+      const mx = ((f.x1 - f.x0) * (1 - CENTRE)) / 2, my = ((f.y1 - f.y0) * (1 - CENTRE)) / 2;
+      const strip = Math.min(HANDLE_ROW, (f.y1 - f.y0) / 4);
+      const fit = (lo        , hi        , a0        , a1        ) => {
+        if (a1 - a0 > hi - lo) return (lo + hi) / 2 - (a0 + a1) / 2;
+        if (a0 < lo) return lo - a0;
+        if (a1 > hi) return hi - a1;
+        return 0;
+      };
+      return [fit(f.x0 + mx, f.x1 - mx, r.x, r.x + r.w), fit(f.y0 + my, f.y1 - my, r.y, r.y + r.h + strip)]                    ;
+    };
+    if (!need()) return null;
+    const total                   = [0, 0];
+    for (const ax of [0, 1, 0]         ) {
+      let gain = 1; // screen px the object moved per px of pan, measured (may be negative, see below)
+      let scale = 0.5; // the share of the measured need a step asks for: half at first (gain unknown), then all
+      for (let i = 0; i < 8; i++) {
+        const d = need();
+        if (!d || Math.abs(d[ax]) < 1) break;
+        const step = (d[ax] / gain) * scale;
+        const before = adapter.anchor(key)?.center;
+        adapter.view.pan(ax ? 0 : step, ax ? step : 0);
+        const after = need();
+        const now = adapter.anchor(key)?.center;
+        const g = before && now ? (now[ax] - before[ax]) / step : NaN;
+        const usable = Math.abs(g) > 0.05 && Math.abs(g) < 5;
+        // Up / down may push it a little sideways (it comes nearer off the middle): up to 15 % of the width, put right by
+        // the last sideways pass below.
+        const worse = !after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95 || (ax === 1 && Math.abs(after[0]) > Math.abs(d[0]) + win.innerWidth * 0.15);
+        if (worse) {
+          adapter.view.pan(ax ? 0 : -step, ax ? -step : 0); // linear in both adapters: exactly back
+          // It went the other way (3D, up / down: an object between the camera and the point it turns round moves
+          // against the ground, Lantern Cove's lighthouse on a phone): the measured sign, half steps. Too far (out of
+          // sight, or past the place): a smaller step. Neither helps after a few tries: stop where it is.
+          if (usable && g * gain < 0) gain = g;
+          scale /= 2;
+          if (scale < 0.05) break;
+          continue;
+        }
+        total[ax] += step;
+        if (usable) gain = g;
+        scale = Math.min(1, scale * 2);
+      }
+    }
+    return total;
+  };
   const focusIfHidden = (key        ) => {
     if (state.multi || inView(key)) return;
-    // On screen but under a panel: slide it out. Off screen (or behind the camera): the adapter's focus first.
-    if (!slideIntoFree(key)) {
+    const gen = ++panGlide;
+    const from = adapter.view.state();
+    const total = panIntoMiddle(key);
+    if (!total) {
+      // Not drawn at all from here (behind the camera, hidden): the adapter's focus is the only way to show it.
+      // Rare (a list pick of something behind you); it frames the object like before.
       adapter.view.focus(key);
       slideIntoFree(key);
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      return;
     }
-    post({ type: 'studio:core/view-state', state: adapter.view.state() });
+    if (!adapter.view.restore) {
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      return; // no way back to the start: the slide happens at once
+    }
+    // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
+    adapter.view.restore(from);
+    const t0 = win.performance.now();
+    let done = 0;
+    const tick = () => {
+      if (gen !== panGlide || !state.editing) return;
+      const t = Math.min(1, (win.performance.now() - t0) / GLIDE_MS);
+      const e = 1 - (1 - t) ** 3;
+      adapter.view.pan(total[0] * (e - done), total[1] * (e - done));
+      done = e;
+      dirtyFrame = true;
+      if (t < 1) core.time.raf(tick);
+      else {
+        panGlide = 0;
+        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      }
+    };
+    core.time.raf(tick);
   };
-  // The frame changes size without the object moving (the phone sheet opens,
-  // the caption line under the game appears): keep the picked object in view.
-  let resizeTimer = 0;
   // List thumbnails waiting to be drawn (placement/thumbs), newest request first.
   let thumbQueue                                       = [];
   let thumbRunning = false;
@@ -7794,47 +8377,21 @@ function createEditor(deps            )         {
       thumbRunning = false;
     }
   };
-  let insetTimer = 0;
-  // The view before / after the last "slide the pick clear of a sheet that rose" (core/ui inset), to undo it.
-  let insetSlide                                            = null;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => {
-      if (state.editing && state.selected && state.group.length <= 1 && !gliding) {
-        focusIfHidden(state.selected);
-        dirtyFrame = true;
-      }
-    }, 120);
-  });
-  /**
-   * The first pick from the opening view (3D: the game's own camera, often
-   * almost level with the ground) glides to an editing angle around it
-   * (adapter view.settle, polish pass 2026-10-16), then slides it clear of
-   * the panels like any focus. Returns false when the adapter has no opening
-   * view or the person already moved the view.
-   */
-  // While it glides, the "keep the pick clear of the panels" slides (a phone's card / sheet appearing, the frame
-  // resizing) wait for its end: a pan in the middle stopped the glide after 50 ms (phone, polish pass).
-  let gliding = false;
-  const settleOn = (key        ) => {
-    if (state.multi || !adapter.view.settle) return false;
-    const sel = key;
-    gliding = true;
-    const started = adapter.view.settle(key, () => {
-      gliding = false;
-      if (state.selected === sel) slideIntoFree(sel);
-      dirtyFrame = true;
-      post({ type: 'studio:core/view-state', state: adapter.view.state() });
-    });
-    if (!started) gliding = false;
-    return started;
-  };
+  // (W1-1: the frame changing size — the phone's sheet, the caption line — no longer slides the view to keep the pick
+  // in sight. It did, and every sheet / ⌘K list opening moved the camera; the person's view stays theirs.)
+  // (W1-1: the first pick's glide from the opening view up to a 30° editing angle — adapter view.settle, polish pass
+  // 2026-10-16 — is gone. It was the "camera flies into the sky" of review photo 02 / 12. The adapters keep settle();
+  // the editor no longer calls it. ⌘K "Back to the opening view" still glides home.)
   const select = (key               , focus = false) => {
     state.selected = key && state.items.some((i) => i.key === key) ? key : null;
     state.group = state.selected ? [state.selected] : [];
-    if (state.selected && settleOn(state.selected)) {
-      /* gliding; slid into the free part when it ends */
-    } else if (state.selected && focus) focusIfHidden(state.selected);
+    if (state.selected && focus) {
+      focusIfHidden(state.selected);
+      listPick = { key: state.selected, at: win.performance.now() };
+    } else {
+      panGlide = 0;
+      listPick = null;
+    }
     input?.selectionChanged();
     postSelected();
   };
@@ -8063,38 +8620,19 @@ function createEditor(deps            )         {
             input?.setTheme(theme);
           }
           if (msg.inset) {
-            // Only a sheet rising from the bottom (a phone's list / Assets: tens of px at once). Not the PC card's
-            // width or height, which change with the numbers on it — also in the middle of a drag, where sliding
-            // the view turned a strip drag into nothing (e2e three-orb-garden, 10/16).
+            // What the panels cover (the strip and "is it in view" read it). W1-1: a sheet rising or going away no
+            // longer slides the view to keep the pick clear of it (it moved the camera every time); see focusIfHidden.
             const grew = msg.inset.bottom > inset.bottom + 40;
-            const shrank = msg.inset.bottom < inset.bottom - 40;
             inset = { ...msg.inset };
             input?.setInset(inset);
-            // A panel now covers more (a phone's list sheet opened over the game): keep the picked object
-            // in the part that is still seen. After the sheet's slide, measured on its final height.
-            if (grew && state.editing && state.selected && state.group.length <= 1 && !gliding) {
-              clearTimeout(insetTimer);
-              const before = adapter.view.state();
-              insetTimer = window.setTimeout(() => {
-                if (state.selected) focusIfHidden(state.selected);
-                const after = JSON.stringify(adapter.view.state());
-                if (after !== JSON.stringify(before)) insetSlide = { before, after };
-                dirtyFrame = true;
+            // The one exception: a list pick's own card made the sheet rise within 1 s of the pick. That is still
+            // "show me what I picked from the list" (the same slide-if-hidden), not the sheet moving the camera.
+            const lp = listPick;
+            if (grew && lp && lp.key === state.selected && win.performance.now() - lp.at < 1000) {
+              listPick = null;
+              win.setTimeout(() => {
+                if (state.selected === lp.key) focusIfHidden(lp.key);
               }, 60);
-            }
-            // ...and when that panel goes away again, the view goes back where it was (polish pass 2026-10-16,
-            // play test stumble 4: on a phone the ask box's list covered half the game, the picked crate slid up
-            // to the top edge, and stayed there, half cut, after the list closed). Only if nobody moved the
-            // view meanwhile: a look-around in between is the person's own, and stays.
-            if (shrank && insetSlide) {
-              clearTimeout(insetTimer);
-              const s = insetSlide;
-              insetSlide = null;
-              if (JSON.stringify(adapter.view.state()) === s.after && adapter.view.restore) {
-                adapter.view.restore(s.before);
-                post({ type: 'studio:core/view-state', state: adapter.view.state() });
-                dirtyFrame = true;
-              }
             }
           }
           break;
@@ -8107,6 +8645,9 @@ function createEditor(deps            )         {
           break;
         case 'studio:placement/look':
           input?.setLook(!!msg.on);
+          break;
+        case 'studio:placement/menu':
+          input?.closeMenu();
           break;
         case 'studio:placement/marks':
           aiMarks = { keys: Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : [], label: typeof msg.label === 'string' ? msg.label.slice(0, 80) : null };
@@ -8567,9 +9108,13 @@ function startBridge(opts               )       {
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.
     // Through the editor's layers, so copies, deletions and rules show as the shell sees them.
+    // under(x, y): the object right under a point of the game (radius 0: no finger slack), or null. Tests use it to
+    // choose something to tap that nothing stands in front of (W1 merge 2026-10-17: in test/web-demo the earlier
+    // visits' saves had moved a sailboat in front of the small sea stack, and the tap rightly picked the boat).
     const found = editor.driven;
     Object.defineProperty(api, '_debug', {
-      value: Object.freeze({ anchor: (k        ) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k        ) => found.foot?.(k) ?? null }),
+      value: Object.freeze({ anchor: (k        ) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k        ) => found.foot?.(k) ?? null,
+        under: (x        , y        ) => { try { return found.pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
       enumerable: false,
     });
     post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false });

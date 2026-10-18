@@ -89,17 +89,13 @@ async function run(example, layout) {
     }
     await sleep(300);
   };
-  /** Pick from the strip's menu: a tap on `button` opens it, then a tap on the choice. */
+  /** Pick from the strip's menu: a tap on the ▾ in `button`'s corner opens it (tool options, 2026-10-18), then a tap on the choice. */
   const choose = async (button, choice) => {
-    await tap(await inStrip(`[data-studio-handle=${button}]`));
+    const more = await inStrip(`[data-studio-handle=${button}] .more`);
+    assert.ok(more, `the ${button} button has no ▾`);
+    await tap(more);
     await sleep(250);
-    let c = await inStrip(`[data-studio-choice="${choice}"]`);
-    // The turn button turns at once when first chosen; its choices are the second tap (polish pass 2026-10-16).
-    if (!c) {
-      await tap(await inStrip(`[data-studio-handle=${button}]`));
-      await sleep(250);
-      c = await inStrip(`[data-studio-choice="${choice}"]`);
-    }
+    const c = await inStrip(`[data-studio-choice="${choice}"]`);
     assert.ok(c, `the ${button} button's menu has no "${choice}"`);
     return c;
   };
@@ -194,7 +190,7 @@ async function run(example, layout) {
       await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'r', code: 'KeyR', windowsVirtualKeyCode: 82 });
       await sleep(300);
       // R shows the choices with the next axis (z) chosen; a tap on it closes them. (A phone with no
-      // keyboard opens the same choices with a tap on the turn button.)
+      // keyboard opens the same choices with the ▾ on the turn button.)
       const zc = await inStrip('[data-studio-choice="axis:z"]');
       assert.ok(zc, 'R did not show the axis choices');
       await tap(zc);

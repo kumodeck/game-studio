@@ -1,7 +1,8 @@
 // Firefly Ruins — an old stone gate by a still pond at sunset. Fireflies come out; tap to send a breeze.
 //
-// A 2D starter for KUMODeck Game Studio (PixiJS v8). Every picture is painted at load (paint.js), so there are no
-// image files and it opens fast. The 14 things you can arrange are containers with a `studioKey` (objects.js);
+// A 2D starter for KUMODeck Game Studio (PixiJS v8). Most pictures are painted at load (paint.js), so it opens fast;
+// the bell, the lantern, the boat, the banner's cloth and the bell's sound are files in assets/ (objects.js), so the
+// editor's Assets panel has real files to show and swap. The 14 things you can arrange are containers with a `studioKey` (objects.js);
 // everything else (sky, hills, mist, light, pond, fireflies) is marked `studio = false`.
 //
 // Draw order, back to front:
@@ -13,19 +14,20 @@ import { Application, Container, Rectangle, Sprite } from 'pixi.js';
 import { applyPlacement } from '../studio-placement.js';
 import { paint } from './paint.js';
 import { makeBackdrop, W, H, WATER } from './backdrop.js';
-import { makeObjects } from './objects.js';
+import { makeObjects, loadPictures } from './objects.js';
 import { makePond } from './pond.js';
 import { makeLife } from './life.js';
 
 const params = new URLSearchParams(location.search);
 const FIXED = Number(params.get('fixed')) || 0;
 
+const pictures = loadPictures(); // started first: downloaded while Pixi starts
 const app = new Application();
 await app.init({ resizeTo: window, background: 0x16263d, antialias: true, resolution: Math.min(devicePixelRatio || 1, 2), autoDensity: true, preserveDrawingBuffer: FIXED > 0 });
 document.body.prepend(app.canvas);
 
 const backdrop = makeBackdrop();
-const objects = makeObjects();
+const objects = makeObjects(await pictures);
 const pond = makePond(app.renderer);
 const life = makeLife(objects);
 const vignette = new Sprite(paint(256, 160, (ctx, w, h) => {

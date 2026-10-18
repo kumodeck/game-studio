@@ -48,6 +48,24 @@ test('an unnamed mesh-less container under the scene lists its children; studio:
   assert.deepEqual(collectCandidates(scene([world, level])).map((x) => x.key), ['a', 'b', 'c', 'path:1/1']);
 });
 
+// Dogfood 2026-10-17 (U4): an AI-written farm builds `const barn = new Group(); barn.position.set(-6, 0, -5)` from three
+// unnamed meshes. Listed as three parts, a click on the barn picked only its door. A group the code placed is a thing.
+test('an unnamed group the code placed is one object (the barn), not a container of parts', () => {
+  const v = (x, y, z) => ({ x, y, z });
+  const barn = node({ position: v(-6, 0, -5), rotation: v(0, 0, 0), scale: v(1, 1, 1) }, [mesh(), mesh(), mesh()]);
+  const turned = node({ position: v(0, 0, 0), rotation: v(0, 0.5, 0), scale: v(1, 1, 1) }, [mesh(), mesh()]);
+  const world = node({ position: v(0, 0, 0), rotation: v(0, 0, 0), scale: v(1, 1, 1) }, [mesh(), mesh()]);
+  const c = collectCandidates(scene([mesh(), barn, turned, world]));
+  assert.deepEqual(c.map((x) => x.key), ['path:0', 'path:1', 'path:2', 'path:3/0', 'path:3/1']);
+  // A placed group of composite things (a forest of tree groups) or of very many parts stays a container.
+  const tree = () => node({ position: v(1, 0, 1) }, [mesh(), mesh()]);
+  const forest = node({ position: v(10, 0, 0) }, [tree(), tree()]);
+  const fence = node({ position: v(0, 0, -9) }, Array.from({ length: 40 }, () => mesh()));
+  const keys = collectCandidates(scene([forest, fence])).map((x) => x.key);
+  assert.deepEqual(keys.slice(0, 2), ['path:0/0', 'path:0/1']);
+  assert.equal(keys.length, 42);
+});
+
 test('excluded: studio:false, InstancedMesh, Points, helpers, cameras', () => {
   const s = scene([
     mesh({ userData: { studio: false } }),

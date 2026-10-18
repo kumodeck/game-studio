@@ -70,6 +70,7 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     // The axis and sign are worked out in adapter.js from the edit camera (d stays screen clockwise).
     turn: (key, d, axis) => pose(key, raw.turn(key, d, axis)),
     foot: (key) => raw.foot(key),
+    coverage: (key) => raw.coverage(key),
     scale: (key, f) => pose(key, raw.scale(key, f)),
     nudgeY: (key, dy) => pose(key, raw.nudgeY(key, dy)),
     setPose: (key, p) => raw.setPose(key, p),

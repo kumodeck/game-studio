@@ -51,9 +51,11 @@ import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
 import { icon, setButton } from './icons.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
+import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, type Change, type UndoEntry } from './undo.ts';
 import { copyKey, groupLayerMoves, sameKind } from './edit-ops.ts';
+import { displayName } from './names.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
 
@@ -101,6 +103,9 @@ export function start(host: StudioHost) {
   let multi = false;
   // The tool strip's chosen tool in the game (placement/tool from the bridge): Escape drops it first, ⌘K shows it.
   let stripTool: StripTool | null = null;
+  // The strip's choices (the ▾ on turn / size) are open in the game (placement/menu): a press in this page or Escape
+  // closes them first (tool options, 2026-10-18). The game frame closes them itself for presses and keys inside it.
+  let stripMenu = false;
   // Stand-in copies were explained once this session (adapters without clone()).
   let ghostTold = false;
   // Copies asked for with ⌘D / Copy whose answer (placement/added) has not come yet: those make a new undo step.
@@ -126,6 +131,8 @@ export function start(host: StudioHost) {
   let toast = '';
   let toastTimer = 0;
   const thumbs = new Map<string, string>();
+  // The last raw picture the game sent per object (before cropping, thumb-fit.ts).
+  const thumbAsked = new Map<string, string>();
   const model = new PlacementModel();
   const undo = new UndoStack();
   const listeners = new Map<string, Set<(m: BridgeToShell) => void>>();
@@ -288,19 +295,32 @@ export function start(host: StudioHost) {
   const peer = h('span', { class: 'peer', dataset: { part: 'peer' } }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
   // Play is the only white button on screen, so it is never looked for.
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, mk(playBtns, 'play', togglePlay, { class: 'play' }));
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, peer, topActions));
+  // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, host.offline ? null : peer, topActions));
   // The column's foot: "✦ Ask your AI to name them  1" and "⌘K All actions".
   const noNameSlot = h('div', { class: 'noname-slot' });
-  // Phone: the row sits in the list sheet; the sheet closes so the list rises from the ask bar alone.
-  const paletteFoot = h('button', { type: 'button', class: 'foot-row', dataset: { action: 'palette' }, onclick: () => {
+  // Phone: the sheet closes so the ⌘K list rises from the ask bar alone.
+  const openPalette = () => {
     if (phone() && sheetOpen) {
       sheetOpen = false;
       renderAll(true);
     }
     palette.open();
-  } },
+  };
+  const paletteFoot = h('button', { type: 'button', class: 'foot-row', dataset: { action: 'palette' }, onclick: openPalette },
     h('kbd', { text: isMac() ? '⌘K' : 'Ctrl K' }), h('span', { class: 'label' }));
-  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, tabs, status, panel,
+  // Narrow screens (a phone, the side window next to a chat): the sheet's head is ONE row —
+  // [Scene 15 | Assets 1] ··· Multi-select  … — and everything under it is the list.
+  // WHY (a try in the side window next to a chat, ~400×590, 2026-10-17): with an object picked, the sheet stacked
+  // Scene and Assets as two 44 px rows, "Objects ··· Multi-select", "All actions" at its foot,
+  // then the picked object's card and the ask bar over the foot; the list was left ONE row
+  // (sea-arch) — "the object list becomes impossible to follow". Now the two rows are one
+  // segmented switch, the list's own head moves up beside it (renderAll moves listToolsEl here
+  // and back), and "All actions" becomes this "…" (the same ⌘K list, same press). PC keeps its
+  // column as it was: .side-head is `display: contents` there and these tools are hidden.
+  const sheetMore = h('button', { type: 'button', class: 'icon-btn sheet-more', dataset: { action: 'palette' }, onclick: openPalette }, icon('more'));
+  const headTools = h('div', { class: 'side-head-tools' }, sheetMore);
+  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, h('div', { class: 'side-head' }, tabs, headTools), status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
   // Phone: the list opens from the ask bar's left end, as a sheet from the bottom.
   const sheetBtn = btn('sheet', () => {
@@ -319,6 +339,9 @@ export function start(host: StudioHost) {
   const playNote = h('p', { class: 'play-note', hidden: true });
   const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
   const askSlot = h('div', { class: 'ask-slot' });
+  // The web demo's line in the ask box's place (W1-6); its words are set in renderAll (language).
+  const offlineLine = h('p', { class: 'offline-line', dataset: { part: 'offline-line' } }, h('span', { class: 'label' }),
+    host.getUrl ? h('a', { href: host.getUrl, target: '_blank', rel: 'noopener noreferrer' }) : document.createDocumentFragment());
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
@@ -327,6 +350,18 @@ export function start(host: StudioHost) {
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
+  // A click on the bare desk drops the pick, the same as a tap on nothing in the game (bridge/input.ts; a web demo try
+  // 2026-10-18: "I want to click an empty spot to deselect, and I can't"). Bare = the surface itself, not a row, a
+  // button, the card or a field on it: the 8 px margin round the game plate, the empty part of the list column under
+  // the rows, the top bar's empty middle, and the see-through gap between the card and the ask bar (phone; a finger
+  // there is mostly moved onto the ask field by the browser, a mouse is not). `click`, not pointerdown: a press that ends somewhere else (a drag out
+  // of the list) is not a click on nothing.
+  const BARE = '.shell, .top, .top-right, .side, .side-head, .side-foot, .panel, .placement, .tool-body, .list-scroll, .objects, .stage, .dock, .card-slot';
+  app.addEventListener('click', (e) => {
+    const t = e.target as Element | null;
+    if (!t || !t.matches(BARE) || !editing || playing || !(selected || group.length)) return;
+    selectObject(null);
+  });
   // The news card shows when one of its lines has something to say.
   const updateCaption = () => {
     const any = [...caption.children].some((c) => !(c as HTMLElement).hidden && (!(c as HTMLElement).classList.contains('toast') || (c as HTMLElement).classList.contains('on')));
@@ -346,6 +381,12 @@ export function start(host: StudioHost) {
     // The bar and, on a phone, the card above it (the news card comes and goes: not counted).
     const top = phone() && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
     if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
+    // The phone's list sheet pads its foot by what the bar and the card cover (shell.css --studio-cover):
+    // the card's height differs (2D Layer row, the open numbers), so it is measured, not guessed.
+    if (phone() && !dock.hidden && dock.offsetParent) {
+      const cover = `${Math.max(0, Math.round(window.innerHeight - top))}px`;
+      if (app.style.getPropertyValue('--studio-cover') !== cover) app.style.setProperty('--studio-cover', cover);
+    }
     // A phone's list sheet, and its Assets sheet, cover the lower part of the game.
     // (Its final height, not its rect: it may still be sliding up.)
     if (phone() && (sheetOpen || page !== 'tool') && !playing) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - (window.innerHeight - side.offsetHeight) + 8));
@@ -463,7 +504,7 @@ export function start(host: StudioHost) {
   }
 
   caption.insertBefore(placementPanel.askNoteEl, playNote);
-  noNameSlot.append(placementPanel.noNameEl);
+  // The "no name" row now lives at the top of the list (placement-panel.ts); the slot stays for .studio/ui/ looks.
   // The card grows when its file row arrives: what it covers is sent again.
   new ResizeObserver(() => sendInset()).observe(placementPanel.cardEl);
   // The card: over the game's top right corner on PC, above the ask bar on a phone.
@@ -492,7 +533,7 @@ export function start(host: StudioHost) {
     const rows: PaletteRow[] = [];
     const keys = group.length > 1 ? group.slice() : selected ? [selected] : [];
     const first = items.find((i) => i.key === keys[0]);
-    const about = keys.length > 1 ? t('ops.manyShort', { n: keys.length }) : first?.label;
+    const about = keys.length > 1 ? t('ops.manyShort', { n: keys.length }) : first && displayName(first, t);
     // Ask your AI: examples for what is picked, then the AI's own steps.
     const ask = (text: string) => () => void askAi({ kind: 'ask', text, objects: requestObjects(keys) }).then((ok) => ok && placementPanel.renderAsk());
     if (about) {
@@ -549,7 +590,7 @@ export function start(host: StudioHost) {
       if (seen.has(g)) continue;
       seen.add(g);
       const members = items.filter((i) => (i.group || `key:${i.key}`) === g);
-      rows.push({ id: `obj-${it.key}`, section: 'objects', label: it.label, thumb: safeImageSrc(thumbs.get(it.key)), hint: members.length > 1 ? t('pal.count', { n: members.length }) : undefined,
+      rows.push({ id: `obj-${it.key}`, section: 'objects', label: displayName(it, t), thumb: safeImageSrc(thumbs.get(it.key)), hint: members.length > 1 ? t('pal.count', { n: members.length }) : undefined,
         words: members.map((m) => `${m.label} ${m.key}`).join(' '), data: { key: it.key },
         run: () => {
           switchTool('placement');
@@ -586,7 +627,10 @@ export function start(host: StudioHost) {
   /** Undo / Redo tooltips name what they would change: "Undo: move house". */
   function describe(e: UndoEntry | null): string {
     if (!e) return '';
-    const name = (k: string) => items.find((i) => i.key === k)?.label || k;
+    const name = (k: string) => {
+      const it = items.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    };
     const kinds = new Set(e.changes.map((c) => c.kind));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
@@ -949,6 +993,9 @@ export function start(host: StudioHost) {
       two(t('ai.away'), t('ai.awaySub'));
     } else if (ph === 'received' || ph === 'working') {
       two(note ? `${note.replace(/[.…]+$/, '')}…` : t(`ai.${ph}`), covered ? asked : '');
+    } else if (ph === 'asking') {
+      // The AI waits for an answer in its own window (dogfood U2): say so, and its question (two lines at most).
+      two(t('ai.asking'), note || '');
     } else if (ph === 'updating') {
       two(note || t('ai.updating'), t('ai.updating'));
     } else if (ph === 'done' || ph === 'failed') {
@@ -1050,7 +1097,7 @@ export function start(host: StudioHost) {
       renderAiLine();
     }
     const ph = currentPhase();
-    const wait = aiBusy(ph) ? 700 : ph === 'away' || ph === 'waiting' || ph === 'nudge' ? 1500 : 3000;
+    const wait = aiBusy(ph) ? 700 : ph === 'away' || ph === 'waiting' || ph === 'nudge' || ph === 'asking' ? 1500 : 3000;
     pollTimer = window.setTimeout(() => void pollStatus(), wait);
   }
   function pollSoon() {
@@ -1361,10 +1408,20 @@ export function start(host: StudioHost) {
       case 'studio:placement/tool':
         stripTool = m.tool;
         break;
+      case 'studio:placement/menu':
+        stripMenu = !!m.open;
+        break;
       case 'studio:placement/thumb':
         if (m.src) {
-          thumbs.set(m.key, m.src);
-          placementPanel.updateThumb(m.key);
+          // Cropped to the object first (thumb-fit.ts, W1-11): the lighthouse filled its tile instead of being an "i".
+          // `thumbAsked` keeps the newest: a picture that arrives while an older one is still being cropped wins.
+          const key = m.key, raw = m.src;
+          thumbAsked.set(key, raw);
+          void fitPicture(raw).then((src) => {
+            if (thumbAsked.get(key) !== raw) return;
+            thumbs.set(key, src);
+            placementPanel.updateThumb(key);
+          });
         }
         break;
     }
@@ -1699,6 +1756,14 @@ export function start(host: StudioHost) {
       goHome();
       return true;
     }
+    // Esc closes the open page (Ideas, Editor view) before anything else (design review wave 1, W1-3 / N7, 2026-10-17): it used
+    // to do nothing there, so people reached for ⌘K instead. In Ideas with one idea open, Esc goes back to the ideas.
+    // Also from the game frame (the bridge may have dropped a tool as well; the page still closes).
+    if (!mod && k === 'escape' && page !== 'tool') {
+      if (page === 'next' && nextOpen) openNext(null);
+      else switchTool(tool);
+      return true;
+    }
     if (e.fromGame || mod) return false; // the bridge already handled steps/escape
     // R: the next turn axis (3D; the game frame handles it itself when it has focus).
     if (k === 'r' && !e.shift && selected && editing && dim === '3d') {
@@ -1712,8 +1777,9 @@ export function start(host: StudioHost) {
       return true;
     }
     if (k === 'escape') {
-      // First the chosen tool, then the pick (the same order as in the game).
-      if (stripTool) setStripTool(null);
+      // First the strip's open choices, then the chosen tool, then the pick (the same order as in the game).
+      if (stripMenu) closeStripMenu();
+      else if (stripTool) setStripTool(null);
       else selectObject(null);
       return true;
     }
@@ -1724,6 +1790,15 @@ export function start(host: StudioHost) {
     return true;
   }
 
+  function closeStripMenu() {
+    stripMenu = false;
+    send({ type: 'studio:placement/menu', open: false });
+  }
+  // A press anywhere in the editor page (the list, the card, the ask box) is "outside" the strip's choices.
+  // Capture, so a control that stops the press still closes them; presses inside the game frame never reach here.
+  document.addEventListener('pointerdown', () => {
+    if (stripMenu) closeStripMenu();
+  }, true);
   function setStripTool(k: StripTool | null) {
     stripTool = k;
     send({ type: 'studio:placement/tool', tool: k });
@@ -1794,9 +1869,12 @@ export function start(host: StudioHost) {
     else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
     else if (phase === 'no-adapter') line('warn', h('strong', { text: t('status.noAdapter') }), h('span', { text: ' ' + t('status.noAdapterHint') }));
     else if (check && !check.ok) {
-      const ul = h('ul', {});
-      for (const c of check.checks) if (!c.ok && !c.skipped) ul.append(h('li', { text: `${t('check.' + c.id)}${c.detail ? ` — ${c.detail}` : ''}` }));
-      line('warn', h('strong', { text: t('status.checkFail') }), ul);
+      // One plain grey line at the top of the list, not a yellow box (Ive review N1, 2026-10-17). The editor still
+      // works; only one promise of the adapter is off, so it is a note, not an alarm. The check's own details
+      // (`render()`, `setPose`, `set()`…) are words for the AI: they go to it through host.reportCheck (local:
+      // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
+      const first = check.checks.find((c) => !c.ok && !c.skipped);
+      if (first) line('note', `${t('check.' + first.id)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
@@ -1878,6 +1956,15 @@ export function start(host: StudioHost) {
         icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label') as HTMLElement).textContent = t('foot.palette');
+    sheetMore.setAttribute('aria-label', t('foot.palette'));
+    sheetMore.title = t('foot.palette');
+    // The list's head: up in the sheet's head row on a phone, back over the list on PC (see sheetMore).
+    const listTools = placementPanel.listToolsEl;
+    if (phone()) {
+      if (listTools.parentElement !== headTools) headTools.prepend(listTools);
+    } else if (listTools.parentElement === headTools) {
+      placementPanel.el.prepend(listTools);
+    }
     // The phone's list button: a list icon that turns into a chevron when the sheet is open.
     setButton(sheetBtn, sheetOpen ? 'chevronDown' : 'list', sheetOpen ? t('btn.close') : t('btn.list'), false);
     sheetBtn.setAttribute('aria-expanded', String(sheetOpen));
@@ -1885,7 +1972,16 @@ export function start(host: StudioHost) {
     renderButtons();
     renderPeer();
     // The ask box lives in the bar at the bottom of the game whatever the tool or page.
-    if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // The web demo (no AI behind it, host.offline) shows one grey line in its place instead (design review wave 1, W1-6 / N2,
+    // 2026-10-17): the most visible part of the screen was a box that did nothing when used.
+    if (host.offline) {
+      // One line (the review): a phone's bar fits about 40 characters, so it gets the short words.
+      const short = phone();
+      (offlineLine.querySelector('.label') as HTMLElement).textContent = (short ? t('offline.askLine.short') : t('offline.askLine')) + (host.getUrl ? ' ' : '');
+      const get = offlineLine.querySelector('a');
+      if (get) get.textContent = short ? t('offline.get.short') : t('offline.get');
+      if (offlineLine.parentElement !== askSlot) askSlot.replaceChildren(offlineLine);
+    } else if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();

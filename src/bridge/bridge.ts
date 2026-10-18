@@ -339,9 +339,13 @@ export function startBridge(opts: BridgeOptions): void {
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.
     // Through the editor's layers, so copies, deletions and rules show as the shell sees them.
+    // under(x, y): the object right under a point of the game (radius 0: no finger slack), or null. Tests use it to
+    // choose something to tap that nothing stands in front of (W1 merge 2026-10-17: in test/web-demo the earlier
+    // visits' saves had moved a sailboat in front of the small sea stack, and the tap rightly picked the boat).
     const found = editor.driven;
     Object.defineProperty(api, '_debug', {
-      value: Object.freeze({ anchor: (k: string) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k: string) => found.foot?.(k) ?? null }),
+      value: Object.freeze({ anchor: (k: string) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k: string) => found.foot?.(k) ?? null,
+        under: (x: number, y: number) => { try { return found.pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
       enumerable: false,
     });
     post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false });

@@ -14,7 +14,9 @@
  *       · a descendant with an explicit `userData.studioKey` is also listed (the author asked for it)
  *       · `userData.studio = 'children'` on a node means "list my children, not me" (a level group, a glTF scene root)
  *   - an unnamed, mesh-less group directly under the scene that holds 2+ mesh-bearing children is treated as a
- *     plain container and its children are listed instead (the common `const world = new Group()` pattern)
+ *     plain container and its children are listed instead (the common `const world = new Group()` pattern),
+ *     unless the code placed the group itself (a barn built from walls, roof and door: one object; see
+ *     isPlainContainer)
  *
  * Keys, first that applies (see the placement plan §4-2):
  *   1. `userData.studioKey` — the author's explicit mark; the most stable (names get reused, e.g. every tree "tree")
@@ -61,13 +63,45 @@ function meshChildCount(o) {
   return n;
 }
 
+/** Has the code placed this node itself (moved, turned or sized it)? Missing fields count as untouched. */
+function isPlaced(o) {
+  const p = o.position, r = o.rotation, s = o.scale;
+  if (p && (p.x || p.y || p.z)) return true;
+  if (r && (r.x || r.y || r.z)) return true;
+  if (s && ((s.x ?? 1) !== 1 || (s.y ?? 1) !== 1 || (s.z ?? 1) !== 1)) return true;
+  return false;
+}
+
+/** A child that is itself made of 2+ mesh-bearing parts (a tree group inside a forest, a house inside a town). */
+function hasCompositeChild(o) {
+  for (const c of o.children || []) if (!c.isMesh && !c.isSkinnedMesh && meshChildCount(c) >= 2) return true;
+  return false;
+}
+
+/** More mesh-bearing children than one built thing has (a barn is 3-10 parts; a level is dozens). */
+const MAX_PARTS = 32;
+
+/**
+ * An unnamed group directly under the scene: a plain container (list its children) or one object made of parts?
+ *
+ * WHY the extra tests (dogfood 2026-10-17, "U4"): an AI-written three.js farm builds its barn as
+ * `const barn = new Group(); barn.position.set(-6, 0, -5); barn.add(walls, roof, door)`, with no names. The old rule
+ * ("unnamed, 2+ mesh children = a container like `const world = new Group()`") listed walls, roof and door as three
+ * rows, and clicking the barn selected only its door: the person could not move the barn. A group the code placed
+ * itself (moved, turned, sized) is a thing, not a folder; `world` groups sit at the origin. Still a container even
+ * when placed: one that holds composite things (a forest of tree groups) or more parts than a thing has.
+ * A thing built at the origin out of parts with absolute positions still lists its parts (as before): the person
+ * can name it, or the AI can mark it (`userData.studioKey`).
+ */
 function isPlainContainer(o, parentIsScene) {
   const ud = o.userData || {};
   if (ud.studio === 'children') return true;
   if (ud.studioKey != null) return false;
   if (!parentIsScene || o.name) return false;
   if (o.isMesh || o.isSkinnedMesh) return false;
-  return meshChildCount(o) >= 2;
+  const parts = meshChildCount(o);
+  if (parts < 2) return false;
+  return !isPlaced(o) || hasCompositeChild(o) || parts > MAX_PARTS;
 }
 
 /**

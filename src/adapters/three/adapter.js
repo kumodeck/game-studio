@@ -14,7 +14,7 @@
 
 import { collectCandidates } from './keys.js';
 import { project, rayFromCamera, rayPlaneY, viewProjOf, wrapAngle } from './math.js';
-import { pickNear as pickNearImpl, screenRect, worldBox } from './pick.js';
+import { pickNear as pickNearImpl, screenRect, screenShare, worldBox } from './pick.js';
 import { createEditView, yawOfCamera } from './camera.js';
 import { captureObject } from './capture.js';
 import { assetsOf as assetsOfImpl } from './assets.js';
@@ -361,6 +361,14 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       syncView();
       refresh();
       return pickNearImpl(cands, view.camera, viewProjOf(view.camera), ndcX, ndcY, radiusPx, cssSize());
+    },
+
+    /** Share (0–1) of the canvas the object's on-screen box covers, edges behind the camera included (pick.js screenShare). */
+    coverage(key) {
+      const o = objectOf(key);
+      if (!o || !view) return null;
+      syncView();
+      return screenShare(o, viewProjOf(view.camera));
     },
 
     anchor(key) {

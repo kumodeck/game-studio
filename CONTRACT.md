@@ -301,6 +301,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold? }` |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
 | | `placement/tool` | `{ tool }`: the strip's chosen tool changed in the game (a strip button, M / H / T / S, Escape) |
+| | `placement/menu` | `{ open }`: the strip's choices (the ▾ on turn / size) opened or closed in the game |
 | | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
@@ -315,6 +316,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/marks` | `{ keys, label? }`: what the AI's last change touched (after "Reload the game"), outlined in the AI's colour with one tag |
 | | `placement/tool` | `{ tool: 'move' \| 'lift' \| 'rotate' \| 'scale' \| null }`: choose the strip's tool (the keys and ⌘K when the editor page has focus) |
 | | `placement/look` | `{ on }`: Space is held in the editor page — a drag in the game looks around even with a tool chosen |
+| | `placement/menu` | `{ open: false }`: close the strip's choices (a press or Escape in the editor page while they are open) |
 | | `core/ui` | `{ handlePx, inset?, theme? }`: strip button size; `inset` = px the shell's floating plates cover on each side (`rightTo`: how far down the right one reaches); the strip and "bring into view" keep clear of them. When an inset grows (a phone's list sheet opens) the bridge slides the view — pan only, the least move — so the picked object and its strip sit in the part still seen |
 | | `library/assets` · `library/preview` | see types |
 
@@ -328,7 +330,8 @@ Input rules the bridge implements (shared by every adapter):
 
 | Action | Mouse | Touch |
 |---|---|---|
-| Select | Click (on release, no movement) | Tap |
+| Select | Click (on release, no movement) on the object itself, or within 12 px of its shape (not of its box) | Tap (28 px) |
+| Deselect | Click on nothing: the sky, the water, a ground / background (`Item.backdrop`, or an object covering 60 % of the view or more: `adapter.coverage` in 3D), the margin round the game, the empty part of the list. Escape. A drag from there looks around and keeps the pick | Tap on nothing |
 | Add / take out of the selection | Shift+click, or click in "Select" mode | Tap in "Select" mode |
 | Box selection | Shift+drag from an empty spot (or drag from an empty spot in "Select" mode) | — |
 | Copy / delete the selection | ⌘/Ctrl+D / Delete, Backspace (or the card's buttons) | The card's buttons |
@@ -341,7 +344,7 @@ Input rules the bridge implements (shared by every adapter):
 | Height (3D) | Height tool: drag up or down (the object follows the pointer's height) / PageUp, PageDown | The same |
 | Scale | Size tool: drag right or up = bigger, left or down = smaller (×2 per ~140 px) / +, − | The same |
 | The old way | A drag that starts **on** a strip button still works as before (turn round the object, size from its middle, …) | The same |
-| Look around (3D) / pan (2D) | With no tool chosen (or nothing picked): drag anywhere else, **including on objects that are not picked**, and on very large picked ones (more than 40 % of the window: a ground). **With a tool chosen**: ⌥ Option-drag (orbit), right / middle drag (pan), or hold Space and drag | Two fingers (pan and pinch); one finger only when no tool is chosen |
+| Look around (3D) / pan (2D) | With no tool chosen (or nothing picked): drag anywhere else, **including on objects that are not picked**, and on very large picked ones (their on-screen part 60 % of the window or more: a ground). **With a tool chosen**: ⌥ Option-drag (orbit), right / middle drag (pan), or hold Space and drag | Two fingers (pan and pinch); one finger only when no tool is chosen |
 | Pan | Middle drag, right drag, Shift+drag starting on an object, two-finger trackpad scroll | Two-finger drag |
 | Zoom | Wheel / trackpad pinch (towards the pointer) | Pinch |
 
@@ -392,7 +395,9 @@ asks the creator before deleting: the editor deletes nothing), `request` /
 the optional `offline` flag: `true` when no AI is behind the host (the
 browser-only web demo in `src/hosts/browser/`, which keeps everything in the
 browser). Requests are still kept, but the shell says that nothing picks
-them up instead of waiting for the AI.
+them up instead of waiting for the AI. Such a host shows no ask field and no
+AI status: one line in the ask field's place says what the AI does in Claude
+Code, with a link to the optional `getUrl` (where to get Game Studio).
 
 `open()` also returns `title`: the game's name for the editor's title line
 (the page `<title>`, or the folder name when the title is empty or generic
@@ -504,7 +509,9 @@ a bonus that wakes an agent that happens to be watching.
   name: `20261016-153012-482-ask-9f3c` (UTC). The host makes the id and the
   time; nothing from the browser decides a file name.
 - **Status** (AI → editor). The agent keeps one status: `StudioStatus` with
-  `state` (`received` | `working` | `done` | `failed`), and optionally
+  `state` (`received` | `working` | `asking` | `done` | `failed`; `asking` =
+  the agent waits for the person's answer in its own window, `note` holds the
+  question), and optionally
   `request` (latest id it handled), `handled` (ids), `changed` (how many
   things it changed in the game), `note` (one line for the person, in their
   language), `at`. The shell polls `host.status()` (every 3 s while something

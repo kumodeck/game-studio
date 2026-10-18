@@ -71,7 +71,8 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
                    first). Run it as your watch (Claude Code: Monitor): while it runs, the
                    editor shows the person that you are watching (.studio/watch.json)
   --requests       print the requests waiting in .studio/requests/ (one JSON per line)
-  --status <state> tell the editor how it is going: received | working | done | failed
+  --status <state> tell the editor how it is going: received | working | asking | done | failed
+                   (asking: you asked the person something in your window; --note is the question)
                    (writes .studio/status.json; the editor shows one short line)
     --request <id>   the latest request this is about (default: the newest waiting one)
     --changed <n>    how many things you changed in the game (shown as "done (n)")

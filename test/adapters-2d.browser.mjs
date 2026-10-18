@@ -36,6 +36,8 @@ const KEY_RE = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 const EXAMPLES = [
   { name: 'phaser-garden', engine: 'phaser', target: 'house', still: 'cloud', asset: 'house.svg', minItems: 8 },
   { name: 'phaser-runner', engine: 'phaser', target: 'sun', still: 'cloud', minItems: 5 },
+  // Phaser 3.80.1 from the CDN: the Phaser an AI writes first (dogfood 2026-10-17, the adapter found nothing).
+  { name: 'phaser-v3-hop', engine: 'phaser', target: 'door', still: 'cloud', minItems: 9 },
   { name: 'pixi-garden', engine: 'pixi', target: 'house', still: 'cloud', asset: 'house.svg', minItems: 8 },
   { name: 'pixi-bubbles', engine: 'pixi', target: 'panel', minItems: 2 },
   { name: 'canvas-stars', engine: 'canvas', target: 'basket', still: 'star-1', asset: 'basket.svg', minItems: 5 },

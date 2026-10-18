@@ -10,7 +10,9 @@
 // saved placement.json. Every method below is a few lines of Phaser calls, so
 // an AI agent can adapt it to a game that does unusual things.
 //
-// Tested with Phaser 4.2.1 (CDN build). Phaser 3.60+ uses the same APIs here.
+// Tested with Phaser 4.2.1 and 3.80.1 (CDN builds; 3.60-3.88 share the 3.80
+// APIs used here). The one place they differ, the camera matrix, is in
+// worldToScreen() below.
 (function () {
   'use strict';
   const studio = window.__gameStudio || window.studio;
@@ -87,6 +89,10 @@
     if (mark(o, 'studio') === false || !o.visible || o.active === false) return false;
     if (o.scrollFactorX === 0 && o.scrollFactorY === 0) return false; // HUD
     if (/Particle|Emitter|Light|Zone/.test(o.type || '')) return false;
+    // EDIT HERE if the game's score / hint texts are plain this.add.text(…)
+    // without setScrollFactor(0) (common in AI-written games): they would be
+    // listed as unnamed objects. Uncomment to leave every Text out:
+    // if (o.type === 'Text') return false;
     if (typeof o.getBounds !== 'function') return false;
     // Nothing to see = nothing to grab (an empty text, an empty container).
     const b = o.getBounds();
@@ -162,9 +168,22 @@
     // matrixCombined is refreshed by cam.preRender() during render(); it maps
     // world points with scrollFactor 1. Objects with another scrollFactor
     // (parallax) scroll less, so put back the part of the scroll they skip.
-    let m = arr(cam.matrixCombined);
-    const fx = 1 - (o.scrollFactorX ?? 1), fy = 1 - (o.scrollFactorY ?? 1);
-    if (fx || fy) m = mul(m, [1, 0, 0, 1, cam.scrollX * fx, cam.scrollY * fy]);
+    //
+    // Phaser 3 (3.60-3.88) has no matrixCombined (dogfood 2026-10-17: the
+    // CDN 3.80.1 game an AI writes first found no objects, and the AI spent
+    // ten minutes finding this). There `cam.matrix` holds the viewport offset
+    // (cam.x/y), rotation and zoom, and the renderer takes off
+    // scroll × scrollFactor per object (GetCalcMatrix: camMatrix, then
+    // multiplyWithOffset(parent, -scrollX * scrollFactorX, …)). Same picture,
+    // built the Phaser 3 way. Phaser 4 keeps the path above.
+    let m;
+    if (cam.matrixCombined) {
+      m = arr(cam.matrixCombined);
+      const fx = 1 - (o.scrollFactorX ?? 1), fy = 1 - (o.scrollFactorY ?? 1);
+      if (fx || fy) m = mul(m, [1, 0, 0, 1, cam.scrollX * fx, cam.scrollY * fy]);
+    } else {
+      m = mul(arr(cam.matrix), [1, 0, 0, 1, -cam.scrollX * (o.scrollFactorX ?? 1), -cam.scrollY * (o.scrollFactorY ?? 1)]);
+    }
     const r = game.canvas.getBoundingClientRect();
     const css = [r.width / game.scale.width, 0, 0, r.height / game.scale.height, r.left, r.top];
     return mul(css, m);

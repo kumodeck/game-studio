@@ -11,6 +11,8 @@
 //
 // Output:
 //   index.html, strings.js      sample list (src/hosts/browser/index.html) and its words
+//   favicon.ico, favicon.svg,   KUMODeck's icon (scripts/web-demo-icon/), linked from both pages
+//   apple-touch-icon.png
 //   thumbs/<id>.png             each starter's thumb.png, for the list
 //   studio/index.html           the editor page (src/shell/index.html, with the demo entry)
 //   studio/studio-web.js        shell + browser host (entry src/hosts/browser/main.ts)
@@ -73,6 +75,27 @@ if (existsSync(OUT) && readdirSync(OUT).length && !existsSync(join(OUT, 'studio/
 rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
+// The tab icon: KUMODeck's current one (the same files as the KUMODeck site and dashboard, copied into
+// scripts/web-demo-icon/ so the package builds on its own). WHY (2026-10-17): the hosted demo answered
+// /favicon.ico with a 404 (a red line in every visitor's console, and a blank tab icon).
+// favicon.ico is the 32-px PNG in an ICO wrapper (every browser since 2010 reads PNG inside ICO); the SVG is
+// preferred where supported, the 180-px PNG is for the iPhone home screen.
+const ICON = join(ROOT, 'scripts/web-demo-icon');
+function icoOf(png) {
+  const head = Buffer.alloc(22);
+  head.writeUInt16LE(0, 0); head.writeUInt16LE(1, 2); head.writeUInt16LE(1, 4); // reserved, type 1 = icon, 1 image
+  head.writeUInt8(png.readUInt32BE(16) & 0xff, 6); head.writeUInt8(png.readUInt32BE(20) & 0xff, 7); // width, height (32)
+  head.writeUInt8(0, 8); head.writeUInt8(0, 9); head.writeUInt16LE(1, 10); head.writeUInt16LE(32, 12); // colours, planes, bits
+  head.writeUInt32LE(png.length, 14); head.writeUInt32LE(22, 18); // size and offset of the PNG
+  return Buffer.concat([head, png]);
+}
+/** The <link> tags for a page `up` folders below the demo's root. */
+const iconLinks = (up) => `  <link rel="icon" href="${up}favicon.ico" sizes="32x32" />\n  <link rel="icon" href="${up}favicon.svg" type="image/svg+xml" />\n  <link rel="apple-touch-icon" href="${up}apple-touch-icon.png" />\n</head>`;
+const withIcon = (html, up, name) => {
+  if (!/<\/head>/i.test(html)) throw new Error(`${name} has no </head>: update build-web-demo.mjs`);
+  return html.replace(/<\/head>/i, iconLinks(up));
+};
+
 const write = (rel, text) => {
   const f = join(OUT, rel);
   mkdirSync(dirname(f), { recursive: true });
@@ -89,8 +112,11 @@ const shellHtml = readFileSync(join(SRC, 'shell/index.html'), 'utf8')
   .replace('<link rel="stylesheet" href="shell.css" />', '<link rel="stylesheet" href="shell.css" />\n  <link rel="stylesheet" href="demo.css" />')
   .replace('<script src="studio-shell.js"></script>', '<script src="studio-web.js"></script>');
 if (!shellHtml.includes('studio-web.js') || !shellHtml.includes('demo.css')) throw new Error('src/shell/index.html changed: update build-web-demo.mjs');
-write('studio/index.html', shellHtml);
-write('index.html', readFileSync(join(SRC, 'hosts/browser/index.html'), 'utf8'));
+write('studio/index.html', withIcon(shellHtml, '../', 'src/shell/index.html'));
+write('index.html', withIcon(readFileSync(join(SRC, 'hosts/browser/index.html'), 'utf8'), '', 'src/hosts/browser/index.html'));
+write('favicon.ico', icoOf(readFileSync(join(ICON, 'favicon-32.png'))));
+write('favicon.svg', readFileSync(join(ICON, 'favicon.svg')));
+write('apple-touch-icon.png', readFileSync(join(ICON, 'apple-touch-icon.png')));
 write('strings.js', readFileSync(join(SRC, 'hosts/browser/strings.js'), 'utf8'));
 
 // ---- 2. the samples ----

@@ -27,34 +27,80 @@ export function mainCanvas(doc: Document): HTMLCanvasElement | null {
   return best;
 }
 
+type Box = { x: number; y: number; w: number; h: number };
+
 /**
- * Tiny fingerprint of what the canvas shows. Copying into a 32×32 2D canvas
- * right after render() works for WebGL too: the drawing buffer is still
- * readable within the same task even without preserveDrawingBuffer.
+ * What the canvas shows inside `box` (CSS px of the game's page; null = the whole canvas), as RGBA pixels at the
+ * canvas's own resolution, scaled down only when the box is larger than SNAP px a side.
+ *
+ * WHY a box and not the whole picture (Ive review N1 / W1-5, 2026-10-17): this used to shrink the whole canvas to
+ * 32×32 and compare hashes. In the editor's camera on a phone (390–400 px wide, the world zoomed out) a 40 px test
+ * move of a small object is ~10 screen px, about a third of one of those 32 cells, and the shrink (bilinear, no
+ * mipmaps) samples only a few source pixels per cell, so the move vanished. Our own Firefly Ruins then showed
+ * "This game's adapter needs a fix" on phones and in the 400 px side window. Cropping around the object keeps
+ * its pixels, so any real change shows.
+ *
+ * Read right after render() in the same task: WebGL without preserveDrawingBuffer is still readable then.
  */
-function fingerprint(win: Window, canvas: HTMLCanvasElement | null): string | null {
+const SNAP = 96;
+function snapshot(win: Window, canvas: HTMLCanvasElement | null, box: Box | null): Uint8ClampedArray | null {
   if (!canvas || !canvas.width || !canvas.height) return null;
   try {
+    const cr = canvas.getBoundingClientRect();
+    if (!(cr.width > 0 && cr.height > 0)) return null;
+    const kx = canvas.width / cr.width, ky = canvas.height / cr.height;
+    let sx = 0, sy = 0, sw = canvas.width, sh = canvas.height;
+    if (box) {
+      const x0 = Math.max(cr.left, box.x), y0 = Math.max(cr.top, box.y);
+      const x1 = Math.min(cr.right, box.x + box.w), y1 = Math.min(cr.bottom, box.y + box.h);
+      // The object is off the canvas: fall back to the whole picture rather than read nothing.
+      if (x1 - x0 >= 2 && y1 - y0 >= 2) {
+        sx = Math.floor((x0 - cr.left) * kx);
+        sy = Math.floor((y0 - cr.top) * ky);
+        sw = Math.max(1, Math.ceil((x1 - x0) * kx));
+        sh = Math.max(1, Math.ceil((y1 - y0) * ky));
+      }
+    }
+    const f = Math.min(1, SNAP / Math.max(sw, sh));
+    const w = Math.max(1, Math.round(sw * f)), h = Math.max(1, Math.round(sh * f));
     const c = win.document.createElement('canvas');
-    c.width = 32;
-    c.height = 32;
+    c.width = w;
+    c.height = h;
     const g = c.getContext('2d', { willReadFrequently: true });
     if (!g) return null;
-    g.drawImage(canvas, 0, 0, 32, 32);
-    const d = g.getImageData(0, 0, 32, 32).data;
-    // A perfectly uniform picture means we could not read what was drawn
-    // (WebGL without preserveDrawingBuffer is cleared once presented), not
-    // that the game shows a blank screen: report "unreadable" instead.
-    let uniform = true;
-    for (let i = 4; i < d.length && uniform; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2] || d[i + 3] !== d[3]) uniform = false;
-    if (uniform) return null;
-    let h = 0;
-    for (let i = 0; i < d.length; i += 4) h = (Math.imul(h, 31) + d[i]! + d[i + 1]! * 3 + d[i + 2]! * 7) | 0;
-    return String(h);
+    g.drawImage(canvas, sx, sy, sw, sh, 0, 0, w, h);
+    return g.getImageData(0, 0, w, h).data;
   } catch {
     return null; // tainted canvas (cross-origin image without CORS): cannot read
   }
 }
+
+/** One colour everywhere: we could not read what was drawn (WebGL cleared once presented), not a real picture. */
+function uniform(d: Uint8ClampedArray): boolean {
+  for (let i = 4; i < d.length; i += 4) if (d[i] !== d[0] || d[i + 1] !== d[1] || d[i + 2] !== d[2] || d[i + 3] !== d[3]) return false;
+  return true;
+}
+
+/**
+ * Did the picture change? Pixels whose colour moved by more than 4 (of 255) in any channel. One is enough: the
+ * game is frozen while editing, so two draws of the same scene are the same pixels; 4 only absorbs GPU dithering.
+ */
+function changed(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a.length !== b.length) return true;
+  for (let i = 0; i < a.length; i++) if (Math.abs(a[i]! - b[i]!) > 4) return true;
+  return false;
+}
+
+/** The two boxes together, a few px larger (an outline or soft edge drawn just outside the box counts too). */
+function union(a: Box | undefined, b: Box | undefined): Box | null {
+  if (!a || !b) return a || b ? pad(a || b!) : null;
+  const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+  return pad({ x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y });
+}
+const pad = (r: Box): Box => ({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 });
+/** Without a box from the adapter: a square of its size around the pivot. */
+const boxOf = (a: ReturnType<StudioAdapter['anchor']>): Box | undefined =>
+  !a ? undefined : a.rect || { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
 
 /** Wait for two real frames: adapters that repaint from their own loop draw by then. */
 const frames = (core: Core) => new Promise<void>((r) => core.time.raf(() => core.time.raf(() => r())));
@@ -109,19 +155,41 @@ export async function runSelfCheck(adapter: StudioAdapter | null, core: Core, wi
   const canvas = mainCanvas(win.document);
   const before = clonePose(sample.pose);
   const a0 = adapter.anchor(sample.key);
-  try {
+  // Draw, let loop-driven adapters draw too, then draw once more and read in the same task (see snapshot()).
+  const drawn = async () => {
     adapter.render();
     await frames(core);
-    const fp0 = fingerprint(win, canvas);
+    adapter.render();
+  };
+  try {
     // Move by a visible amount: 2D 40 px; 3D a fifth of the object's size on screen
     // is not known in world units, so use 0.5 units plus 10% of |p|.
-    const moved = clonePose(before);
     const delta = adapter.dim === '2d' ? 40 : 0.5 + Math.abs(before.p[0] || 0) * 0.1;
-    moved.p[0] = (moved.p[0] || 0) + delta;
-    const after = adapter.setPose(sample.key, moved);
-    adapter.render();
-    await frames(core);
-    const fp1 = fingerprint(win, canvas);
+    const moveBy = (d: number) => {
+      const moved = clonePose(before);
+      moved.p[0] = (moved.p[0] || 0) + d;
+      return { moved, after: adapter.setPose(sample.key, moved) };
+    };
+    let { moved, after } = moveBy(delta);
+    let a1 = adapter.anchor(sample.key);
+    // Both pictures are read around where the object was and where it went, after the move (the box is known then).
+    const box = () => union(boxOf(a0), boxOf(a1));
+    const pictures = async () => {
+      adapter.setPose(sample.key, before);
+      await drawn();
+      const p0 = snapshot(win, canvas, box());
+      adapter.setPose(sample.key, moved);
+      await drawn();
+      return [p0, snapshot(win, canvas, box())] as const;
+    };
+    let [fp0, fp1] = await pictures();
+    // Moved behind something (Firefly Ruins' bell slides behind the giant head when moved right), the picture can
+    // barely change. Try the other way before saying "nothing changed on screen".
+    if (fp0 && fp1 && !changed(fp0, fp1)) {
+      ({ moved, after } = moveBy(-delta));
+      a1 = adapter.anchor(sample.key);
+      [fp0, fp1] = await pictures();
+    }
     const back = adapter.list().find((i) => i.key === sample.key)?.pose;
     const eps = adapter.dim === '2d' ? 0.11 : 0.0011;
     checks.push({
@@ -129,9 +197,8 @@ export async function runSelfCheck(adapter: StudioAdapter | null, core: Core, wi
       ok: !!after && near(back?.p, moved.p, eps),
       detail: after ? `asked ${fmt(moved.p)}, read back ${fmt(back?.p)}` : 'setPose returned null for a listed key',
     });
-    if (fp0 == null || fp1 == null) checks.push({ id: 'screen-changes', ok: true, skipped: true, detail: 'canvas pixels not readable here (no canvas, a cross-origin image, or WebGL cleared after drawing)' });
-    else checks.push({ id: 'screen-changes', ok: fp0 !== fp1, detail: fp0 === fp1 ? 'render() after setPose drew the same picture: set() may write a copy, or render() does not draw' : undefined });
-    const a1 = adapter.anchor(sample.key);
+    if (!fp0 || !fp1 || (uniform(fp0) && uniform(fp1))) checks.push({ id: 'screen-changes', ok: true, skipped: true, detail: 'canvas pixels not readable here (no canvas, a cross-origin image, or WebGL cleared after drawing)' });
+    else checks.push({ id: 'screen-changes', ok: changed(fp0, fp1), detail: changed(fp0, fp1) ? undefined : 'render() after setPose drew the same picture around the object: set() may write a copy, or render() does not draw' });
     const followed = !!a0 && !!a1 && Math.hypot(a1.center[0] - a0.center[0], a1.center[1] - a0.center[1]) > 0.5;
     checks.push({ id: 'anchor-follows', ok: followed, detail: followed ? undefined : 'anchor()/bounds() did not move with the object (handles would be left behind)' });
   } catch (e) {

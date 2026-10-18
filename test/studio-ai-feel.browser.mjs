@@ -17,6 +17,8 @@
 //    the camera and the selection kept; only the new crates are marked violet.
 // 5. "Undo AI change": one press, the files are back and the crates are gone; Redo brings them back.
 // 6. With the agent watching, a second request shows "has it" within ~1 s of Enter.
+// 7. The agent asks something in its own window (`--status asking`): the line says "Your AI has a question" with the
+//    question under it, the dot still, no running light (dogfood 2026-10-17, U2).
 // --film: the whole flow on one game (default lantern-cove) as an mp4 (screencast → ffmpeg):
 //   the agent watching from the start, the sentence typed, Enter, the light, the change appearing
 //   with only the new things glowing, Undo, Redo. With --away the agent starts only after the person
@@ -281,6 +283,21 @@ async function run(layout) {
     await page.waitFor(`document.querySelector('.ai-line').classList.contains('done')`, 15000);
     times.done2 = Date.now() - t0;
     ok(`watching: "sent" in ${times.sent} ms, "has it" in ${times.seen} ms, done in ${times.done2} ms`);
+
+    // ---- 7. the AI asks in its own window (dogfood 2026-10-17, U2): the editor says so, with the question ----
+    const q = 'Is the second door a real door, or only for looks?';
+    writeFileSync(join(root, '.studio/status.json'), JSON.stringify({ version: 1, state: 'asking', note: q, at: new Date().toISOString() }) + '\n');
+    await page.waitFor(`document.querySelector('.ai-line').classList.contains('asking')`, 4000);
+    const asking = JSON.parse(await page.eval(`(() => { const l = document.querySelector('.ai-line');
+      return JSON.stringify({ head: l.querySelector('.ai-head')?.textContent, sub: l.querySelector('.ai-sub')?.textContent,
+        dot: getComputedStyle(l, '::before').animationName, ai: document.querySelector('.shell').dataset.ai, hidden: l.hidden }); })()`));
+    assert.equal(asking.hidden, false);
+    assert.equal(asking.head, LANG === 'ja' ? 'AI から質問があります — Claude Code で答えてください。' : 'Your AI has a question — answer it in Claude Code.');
+    assert.equal(asking.sub, q, 'the question is the line under it');
+    assert.equal(asking.dot, 'none', 'the violet dot does not blink');
+    assert.notEqual(asking.ai, 'busy', 'no running light: the person acts now');
+    await shot('asking');
+    ok('asking: the question shows, the dot is still');
     return times;
   } finally {
     await agent?.stop();

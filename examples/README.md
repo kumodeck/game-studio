@@ -9,5 +9,6 @@ Purpose: small sample games to try KUMODeck Game Studio on (and to test it). No 
 | `three-sky-duel/` | three.js r170 | named groups, repeated names (`ring#2`), a follow camera in `scene.onBeforeRender` |
 | `three-crates/` | three.js r186 | .glb models + clones, author marks (`studioKey`, `studioAsset`), an external texture, `studio.ready()` |
 | `three-tumble/` | three.js r186 | physics: placement applied before the bodies are built |
+| `phaser-v3-hop/` | Phaser 3.80.1 | the Phaser an AI writes first; the adapter's Phaser 3 camera path (added 2026-10-17) |
 
 Each game folder has `studio-placement.js`, the placement loader as the AI adds it to a game.

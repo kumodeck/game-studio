@@ -168,18 +168,116 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     return inView(key);
   };
+  /**
+   * Picking never moves the camera (design review wave 1, W1-1 / M3 / U5, 2026-10-17): "the view belongs to whoever made the
+   * game; the tool doesn't move it by itself". Before, the first pick glided the 3D camera up to a 30° editing angle
+   * (the lighthouse became a 30 px dot under the sky), the phone's sheet and ⌘K list slid or pulled the view each time
+   * they opened, and a list pick re-framed with a zoom. Now the ONE case that moves it: a pick from the list (`focus`)
+   * of an object that is not in the seen part of the frame — then, in 0.35 s, the least sideways slide (pan only: no
+   * turn, no zoom) that puts it (and its strip) inside the middle 60 % of that part.
+   */
+  const CENTRE = 0.6; // 0.6 = the middle 60 % of the seen part (the review's number); 1.0 = just inside the edges
+  const GLIDE_MS = 350;
+  let panGlide = 0;
+  // The last pick from the list and when (see core/ui below): the card that the pick brings can make a phone's sheet
+  // taller a moment later and cover the object the person just asked to see.
+  let listPick: { key: string; at: number } | null = null; // the running slide's generation (0 = none); a new pick stops the old one where it is
+  /**
+   * The least pan that brings `key` into the middle part, measured step by step: sideways first, then up / down.
+   * WHY measured, one axis at a time (found while writing W1-1, Lantern Cove's opening view, 2° down): pan() moves the
+   * ground at the point the camera turns round, so an object nearer than that point moves more (a pine moved ~1.8 px
+   * per px and overshot to the far side), and "up the screen" from a near-level view carries the ground tens of metres
+   * while things near the horizon hardly rise — and slide sideways as they come closer. So each axis takes steps of
+   * (what is still needed ÷ how far the last step moved it per px); an up / down step that does not help, or that pushes
+   * the object back out sideways, is taken back and the slide stops there (sideways is the part that always works).
+   */
+  const panIntoMiddle = (key: string): [number, number] | null => {
+    const need = () => {
+      const a = adapter.anchor(key);
+      if (!a || !a.visible) return null;
+      const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+      const f = freeArea(r.y);
+      const mx = ((f.x1 - f.x0) * (1 - CENTRE)) / 2, my = ((f.y1 - f.y0) * (1 - CENTRE)) / 2;
+      const strip = Math.min(HANDLE_ROW, (f.y1 - f.y0) / 4);
+      const fit = (lo: number, hi: number, a0: number, a1: number) => {
+        if (a1 - a0 > hi - lo) return (lo + hi) / 2 - (a0 + a1) / 2;
+        if (a0 < lo) return lo - a0;
+        if (a1 > hi) return hi - a1;
+        return 0;
+      };
+      return [fit(f.x0 + mx, f.x1 - mx, r.x, r.x + r.w), fit(f.y0 + my, f.y1 - my, r.y, r.y + r.h + strip)] as [number, number];
+    };
+    if (!need()) return null;
+    const total: [number, number] = [0, 0];
+    for (const ax of [0, 1, 0] as const) {
+      let gain = 1; // screen px the object moved per px of pan, measured (may be negative, see below)
+      let scale = 0.5; // the share of the measured need a step asks for: half at first (gain unknown), then all
+      for (let i = 0; i < 8; i++) {
+        const d = need();
+        if (!d || Math.abs(d[ax]) < 1) break;
+        const step = (d[ax] / gain) * scale;
+        const before = adapter.anchor(key)?.center;
+        adapter.view.pan(ax ? 0 : step, ax ? step : 0);
+        const after = need();
+        const now = adapter.anchor(key)?.center;
+        const g = before && now ? (now[ax] - before[ax]) / step : NaN;
+        const usable = Math.abs(g) > 0.05 && Math.abs(g) < 5;
+        // Up / down may push it a little sideways (it comes nearer off the middle): up to 15 % of the width, put right by
+        // the last sideways pass below.
+        const worse = !after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95 || (ax === 1 && Math.abs(after[0]) > Math.abs(d[0]) + win.innerWidth * 0.15);
+        if (worse) {
+          adapter.view.pan(ax ? 0 : -step, ax ? -step : 0); // linear in both adapters: exactly back
+          // It went the other way (3D, up / down: an object between the camera and the point it turns round moves
+          // against the ground, Lantern Cove's lighthouse on a phone): the measured sign, half steps. Too far (out of
+          // sight, or past the place): a smaller step. Neither helps after a few tries: stop where it is.
+          if (usable && g * gain < 0) gain = g;
+          scale /= 2;
+          if (scale < 0.05) break;
+          continue;
+        }
+        total[ax] += step;
+        if (usable) gain = g;
+        scale = Math.min(1, scale * 2);
+      }
+    }
+    return total;
+  };
   const focusIfHidden = (key: string) => {
     if (state.multi || inView(key)) return;
-    // On screen but under a panel: slide it out. Off screen (or behind the camera): the adapter's focus first.
-    if (!slideIntoFree(key)) {
+    const gen = ++panGlide;
+    const from = adapter.view.state();
+    const total = panIntoMiddle(key);
+    if (!total) {
+      // Not drawn at all from here (behind the camera, hidden): the adapter's focus is the only way to show it.
+      // Rare (a list pick of something behind you); it frames the object like before.
       adapter.view.focus(key);
       slideIntoFree(key);
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      return;
     }
-    post({ type: 'studio:core/view-state', state: adapter.view.state() });
+    if (!adapter.view.restore) {
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      return; // no way back to the start: the slide happens at once
+    }
+    // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
+    adapter.view.restore(from);
+    const t0 = win.performance.now();
+    let done = 0;
+    const tick = () => {
+      if (gen !== panGlide || !state.editing) return;
+      const t = Math.min(1, (win.performance.now() - t0) / GLIDE_MS);
+      const e = 1 - (1 - t) ** 3;
+      adapter.view.pan(total[0] * (e - done), total[1] * (e - done));
+      done = e;
+      dirtyFrame = true;
+      if (t < 1) core.time.raf(tick);
+      else {
+        panGlide = 0;
+        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      }
+    };
+    core.time.raf(tick);
   };
-  // The frame changes size without the object moving (the phone sheet opens,
-  // the caption line under the game appears): keep the picked object in view.
-  let resizeTimer = 0;
   // List thumbnails waiting to be drawn (placement/thumbs), newest request first.
   let thumbQueue: Array<{ key: string; size: number }> = [];
   let thumbRunning = false;
@@ -208,47 +306,21 @@ export function createEditor(deps: EditorDeps): Editor {
       thumbRunning = false;
     }
   };
-  let insetTimer = 0;
-  // The view before / after the last "slide the pick clear of a sheet that rose" (core/ui inset), to undo it.
-  let insetSlide: { before: unknown; after: string } | null = null;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => {
-      if (state.editing && state.selected && state.group.length <= 1 && !gliding) {
-        focusIfHidden(state.selected);
-        dirtyFrame = true;
-      }
-    }, 120);
-  });
-  /**
-   * The first pick from the opening view (3D: the game's own camera, often
-   * almost level with the ground) glides to an editing angle around it
-   * (adapter view.settle, polish pass 2026-10-16), then slides it clear of
-   * the panels like any focus. Returns false when the adapter has no opening
-   * view or the person already moved the view.
-   */
-  // While it glides, the "keep the pick clear of the panels" slides (a phone's card / sheet appearing, the frame
-  // resizing) wait for its end: a pan in the middle stopped the glide after 50 ms (phone, polish pass).
-  let gliding = false;
-  const settleOn = (key: string) => {
-    if (state.multi || !adapter.view.settle) return false;
-    const sel = key;
-    gliding = true;
-    const started = adapter.view.settle(key, () => {
-      gliding = false;
-      if (state.selected === sel) slideIntoFree(sel);
-      dirtyFrame = true;
-      post({ type: 'studio:core/view-state', state: adapter.view.state() });
-    });
-    if (!started) gliding = false;
-    return started;
-  };
+  // (W1-1: the frame changing size — the phone's sheet, the caption line — no longer slides the view to keep the pick
+  // in sight. It did, and every sheet / ⌘K list opening moved the camera; the person's view stays theirs.)
+  // (W1-1: the first pick's glide from the opening view up to a 30° editing angle — adapter view.settle, polish pass
+  // 2026-10-16 — is gone. It was the "camera flies into the sky" of review photo 02 / 12. The adapters keep settle();
+  // the editor no longer calls it. ⌘K "Back to the opening view" still glides home.)
   const select = (key: string | null, focus = false) => {
     state.selected = key && state.items.some((i) => i.key === key) ? key : null;
     state.group = state.selected ? [state.selected] : [];
-    if (state.selected && settleOn(state.selected)) {
-      /* gliding; slid into the free part when it ends */
-    } else if (state.selected && focus) focusIfHidden(state.selected);
+    if (state.selected && focus) {
+      focusIfHidden(state.selected);
+      listPick = { key: state.selected, at: win.performance.now() };
+    } else {
+      panGlide = 0;
+      listPick = null;
+    }
     input?.selectionChanged();
     postSelected();
   };
@@ -477,38 +549,19 @@ export function createEditor(deps: EditorDeps): Editor {
             input?.setTheme(theme);
           }
           if (msg.inset) {
-            // Only a sheet rising from the bottom (a phone's list / Assets: tens of px at once). Not the PC card's
-            // width or height, which change with the numbers on it — also in the middle of a drag, where sliding
-            // the view turned a strip drag into nothing (e2e three-orb-garden, 10/16).
+            // What the panels cover (the strip and "is it in view" read it). W1-1: a sheet rising or going away no
+            // longer slides the view to keep the pick clear of it (it moved the camera every time); see focusIfHidden.
             const grew = msg.inset.bottom > inset.bottom + 40;
-            const shrank = msg.inset.bottom < inset.bottom - 40;
             inset = { ...msg.inset };
             input?.setInset(inset);
-            // A panel now covers more (a phone's list sheet opened over the game): keep the picked object
-            // in the part that is still seen. After the sheet's slide, measured on its final height.
-            if (grew && state.editing && state.selected && state.group.length <= 1 && !gliding) {
-              clearTimeout(insetTimer);
-              const before = adapter.view.state();
-              insetTimer = window.setTimeout(() => {
-                if (state.selected) focusIfHidden(state.selected);
-                const after = JSON.stringify(adapter.view.state());
-                if (after !== JSON.stringify(before)) insetSlide = { before, after };
-                dirtyFrame = true;
+            // The one exception: a list pick's own card made the sheet rise within 1 s of the pick. That is still
+            // "show me what I picked from the list" (the same slide-if-hidden), not the sheet moving the camera.
+            const lp = listPick;
+            if (grew && lp && lp.key === state.selected && win.performance.now() - lp.at < 1000) {
+              listPick = null;
+              win.setTimeout(() => {
+                if (state.selected === lp.key) focusIfHidden(lp.key);
               }, 60);
-            }
-            // ...and when that panel goes away again, the view goes back where it was (polish pass 2026-10-16,
-            // play test stumble 4: on a phone the ask box's list covered half the game, the picked crate slid up
-            // to the top edge, and stayed there, half cut, after the list closed). Only if nobody moved the
-            // view meanwhile: a look-around in between is the person's own, and stays.
-            if (shrank && insetSlide) {
-              clearTimeout(insetTimer);
-              const s = insetSlide;
-              insetSlide = null;
-              if (JSON.stringify(adapter.view.state()) === s.after && adapter.view.restore) {
-                adapter.view.restore(s.before);
-                post({ type: 'studio:core/view-state', state: adapter.view.state() });
-                dirtyFrame = true;
-              }
             }
           }
           break;
@@ -521,6 +574,9 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:placement/look':
           input?.setLook(!!msg.on);
+          break;
+        case 'studio:placement/menu':
+          input?.closeMenu();
           break;
         case 'studio:placement/marks':
           aiMarks = { keys: Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : [], label: typeof msg.label === 'string' ? msg.label.slice(0, 80) : null };

@@ -4,10 +4,14 @@
 //   node test/studio-assets.browser.mjs [--shots <dir>] [--lang ja|en] [--only firefly-ruins,lantern-cove]
 //
 // Per starter (Firefly Ruins 2D, Lantern Cove 3D), local editor, 1280×800, headless:
-//   1. the starter as `--starter` copies it (no asset files: both samples draw in code), Assets
-//      opened at once / after the scene / after ▶ Play and back → "No assets yet…", never
-//      "Reading the folder…", no "0 files"
-//   2. the same game with two files in assets/ → both listed, "2 files"
+//   0. the starter as `--starter` copies it: its own files in assets/ are listed (since 2026-10-17 each
+//      starter loads a few real files, so the Assets panel has something to show), all "used" but the spare one
+//   1. the same game without assets/ (the games fall back to drawing in code), Assets
+//      opened at once / after the scene / after ▶ Play and back → the names the code still mentions,
+//      marked missing; never "Reading the folder…" for good, never "0 files". (Until 2026-10-17 the
+//      starters had no files and named none, and this step checked "No assets yet…"; the empty line
+//      itself is now only reached by a game that names no files.)
+//   2. the same game with two files in assets/ → both listed with the missing ones"
 //   3. the folder read fails (the shell's fetch of api/assets answers 500) → "Couldn't read the
 //      folder (…)." + Try again; the read works again → Try again → the files are listed
 //   4. (Firefly Ruins only, it takes 15 s) the read never answers → "no answer after 15 seconds"
@@ -16,7 +20,7 @@
 // WHY a fetch wrapper and not CDP Fetch: cdp.mjs's page already answers every paused request
 // itself (its CDN cache), and two handlers for one request race.
 import assert from 'node:assert/strict';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -84,27 +88,46 @@ async function run(starter) {
   };
   const toScene = () => page.eval(IN.click('[data-tool=placement]'));
   /** Wait until the panel shows an answer (a list, an empty line other than "Reading…", or the failure). */
+  let s;
   const settled = async (ms = 10000) => {
     await page.waitFor(`(() => { const s = ${IN.state}; const v = JSON.parse(s);
       return v.names.length > 0 || v.fail || (v.empty && v.empty !== ${JSON.stringify(LOADING)}); })()`, ms);
     return state();
   };
   try {
+    // --- 0. the starter's own files ---
+    const own = readdirSync(join(root, 'assets')).filter((n) => !n.endsWith('.md')).sort(); // its README is not an asset
+    assert.ok(own.length >= 4, `${tag}: only ${own.length} files in assets/`);
+    await open();
+    await page.waitFor(IN.ready, 30000);
+    await toAssets();
+    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === ${own.length}`, 15000);
+    s = await state();
+    assert.deepEqual([...s.names].sort(), own);
+    const unused = await page.eval(`document.querySelectorAll('.gsl-tile .gsl-badge-unused').length`);
+    assert.equal(unused, 1, 'one spare file (to try Replace with) is unused, the rest are used');
+    step(`the starter's own files → listed (${s.count}), ${own.length - unused} used`);
+    await shot(page, '0-own-files');
+    rmSync(join(root, 'assets'), { recursive: true, force: true });
+
     // --- 1. no asset files: an answer, whatever the order ---
+    // The code still names its files (the spare one it does not): those come back as missing.
+    const named = own.filter((n) => !/-(tanbark|lacquer)\./.test(n));
+    const missingOnly = (v) => v.names.length === named.length && [...v.names].sort().join() === named.join() && !v.empty && !/^0\D/.test(v.count || '');
     await open();
     await toAssets(); // before the game is ready
-    let s = await settled();
-    assert.deepEqual(s.names, []);
-    assert.ok(s.empty && s.empty !== LOADING, `first: ${JSON.stringify(s)}`);
-    assert.equal(s.count, '', '"0 files" shown above the empty line');
-    step(`Assets at once → "${s.empty}"`);
-    await shot(page, '1-empty');
+    s = await settled();
+    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-badge-missing').length === ${named.length}`, 15000);
+    s = await state();
+    assert.ok(missingOnly(s), `first: ${JSON.stringify(s)}`);
+    step(`Assets at once → the ${named.length} names in the code, missing (${s.count})`);
+    await shot(page, '1-missing');
     await page.waitFor(IN.ready, 30000);
     await toScene();
     await sleep(300);
     await toAssets();
     s = await settled();
-    assert.ok(s.empty && s.empty !== LOADING && !s.names.length, `scene → assets: ${JSON.stringify(s)}`);
+    assert.ok(missingOnly(s), `scene → assets: ${JSON.stringify(s)}`);
     step('scene → Assets → same answer');
     await toScene();
     await page.eval(IN.click('[data-action=play]'));
@@ -113,7 +136,7 @@ async function run(starter) {
     await page.waitFor(IN.ready, 30000);
     await toAssets();
     s = await settled();
-    assert.ok(s.empty && s.empty !== LOADING && !s.names.length, `after play: ${JSON.stringify(s)}`);
+    assert.ok(missingOnly(s), `after play: ${JSON.stringify(s)}`);
     step('▶ Play → Edit → Assets → same answer');
 
     // --- 2. two files in assets/ ---
@@ -123,10 +146,10 @@ async function run(starter) {
     await open();
     await page.waitFor(IN.ready, 30000);
     await toAssets();
-    s = await settled();
-    assert.deepEqual(s.names.sort(), ['chime.wav', 'sign.png']);
-    assert.match(s.count, /2/);
-    step(`two files → listed (${s.count})`);
+    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === ${named.length + 2}`, 15000);
+    s = await state();
+    assert.deepEqual(s.names.sort(), [...named, 'chime.wav', 'sign.png'].sort());
+    step(`two files → listed with the missing ones (${s.count})`);
     await shot(page, '2-files');
 
     // --- 3. the read fails → the failure line + Try again → works again ---
@@ -142,7 +165,7 @@ async function run(starter) {
     await shot(page, '3-failed');
     await page.eval(`window.__assetsFail = null`);
     assert.ok(await page.eval(IN.click('[data-action=library-retry]')), 'no Try again button');
-    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === 2`, 10000);
+    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === ${named.length + 2}`, 10000);
     s = await state();
     assert.equal(s.fail, null, 'the failure line stayed after a good read');
     step('Try again → listed');

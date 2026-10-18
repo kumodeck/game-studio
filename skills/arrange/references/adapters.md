@@ -13,7 +13,7 @@ already uses the name `studio`):
 ```js
 // .studio/adapter.js
 window.studio.register2D(() => {
-  const game = findTheGame();          // ADAPT: return null until the game and its objects exist
+  const game = findTheGame();          // EDIT HERE: return null until the game and its objects exist
   if (!game) return null;              // the editor asks again after the first frame / studio.ready()
   return {
     name: 'phaser',                    // free text, shown in the editor footer
@@ -58,7 +58,7 @@ Rules that keep the port honest:
 ## Pick the example
 
 The examples are in `adapters/` next to `SKILL.md`. Each one is short and every place you must change is marked
-`ADAPT:`.
+`EDIT HERE`.
 
 | Example | Start from it when | Where objects usually live |
 |---|---|---|

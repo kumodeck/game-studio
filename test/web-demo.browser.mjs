@@ -19,20 +19,20 @@
 // phones of the brief (390×844, 430×932) and at 280×640 (the phone the "save does not
 // stick" report used, 2026-10-16):
 //   1. the sample list (pictures) → the editor opens the sample; the demo line is on top;
-//      (PC) Assets answers: the files, or "No assets yet…" — never "Reading the folder…" for good
+//      (PC) Assets answers with the sample's files — never "Reading the folder…" for good
 //   2. tap an object in the game, drag it → it moves
 //   3. the strip's turn tool, then a drag from anywhere → it turns; the size tool → it grows
 //   4. Save, pressed with real input → "saved in this browser"; the same spot
 //      pressed again does nothing (it once was Undo, sliding in: the object
-//      jumped back and "Save · 1" returned); ask the AI → the words stay on
-//      screen with "the demo isn’t connected to an AI"
+//      jumped back and "Save · 1" returned); no ask box and no "● AI" (nobody would read it, design review wave 1,
+//      W1-6): one grey line in the ask box's place, with a link to get Game Studio
 //   5. ▶ Play (real press) → the game runs without the editor, from the save; it keeps
 //      drawing (not frozen); Lantern Cove's own auto quality settles (on this test's
 //      SwiftShader, a stand-in for a weak phone GPU, it must drop to "low"); back to editing
 //   6. open the page again → the object is where it was left, nothing unsaved; the game's
 //      own fetch('placement.json') gets the save (so Play shows it too)
 //   7. nothing was loaded from another origin (no CDN, no API); no page errors; the
-//      adapter's self-check passed (its "screen-changes" is only noted: too coarse on a phone);
+//      adapter's self-check passed, every check (W1-5, 2026-10-17: "screen-changes" is no longer let off);
 //      and Firefly Ruins' stage is fitted to the frame on every open (it once was not)
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
@@ -228,13 +228,14 @@ async function run(browser, game, size, tag) {
     // --- 1b. Assets ends in an answer (PC; the phone's sheet is covered by studio-e2e) ---
     // Play test 2026-10-17, "the assets don't show up": the hosted demo said "0 files" + "Reading the
     // folder…" for good, because both samples draw everything in code (no asset files) and that
-    // build only left "Reading…" after a read that found something. Now: "No assets yet…", no "0 files".
+    // build only left "Reading…" after a read that found something. Since the same day each starter loads a few real
+    // files (starters/<id>/assets/), so the list must show them; test/web-demo-assets.browser.mjs checks them in detail.
     if (!mobile) {
       await page.eval(`document.querySelector('[data-tool=library]').click()`);
       await page.waitFor(`(() => { const e = document.querySelector('.gsl-empty'); return document.querySelector('.gsl-tile .gsl-name') || document.querySelector('.gsl-readfail:not([hidden])') || (e && e.textContent !== ${JSON.stringify(WORDS.reading)}); })()`, 10000);
       const lib = await j(`JSON.stringify({ empty: document.querySelector('.gsl-empty')?.textContent ?? null, count: document.querySelector('.gsl-count')?.textContent ?? '', fail: document.querySelector('.gsl-readfail:not([hidden])')?.textContent ?? null, files: document.querySelectorAll('.gsl-tile .gsl-name').length })`);
       assert.equal(lib.fail, null, `Assets: ${lib.fail}`);
-      assert.ok(lib.files > 0 || (lib.empty && lib.count === ''), `Assets: ${JSON.stringify(lib)}`);
+      assert.ok(lib.files >= 4, `Assets: ${JSON.stringify(lib)}`);
       step(`Assets → ${lib.files ? `${lib.files} files` : `"${lib.empty}"`}`);
       await shot('1b-assets');
       await page.eval(`document.querySelector('[data-tool=placement]').click()`);
@@ -245,19 +246,46 @@ async function run(browser, game, size, tag) {
     // --- 2. pick and move ---
     const items = await j(IN.list);
     let key = null;
+    // Where a person would put a finger on `k`: the point nearest its middle, inside the game frame with the game
+    // itself there (not the sheet or the ask bar), where `k` is the thing right in front. The middle when it can be:
+    // a tap on the lighthouse's middle on the 430 phone picked a pine beside it (W1 merge, 2026-10-17, fixed in
+    // pick.js). Else a visible part of it: the earlier visits' saves move things around, and at 280 the small sea
+    // stack stood behind the sailboat's sail and the lighthouse's middle was off the left edge. `under` has no finger
+    // slack, so it does not decide what the real tap below picks. null = nowhere.
+    // middleOnly: only its middle (the first pass over the candidates). Else a finger's width (24 px) in from the
+    // frame's edges: a sliver of rock at the edge is not where a person taps.
+    const spot = (k, middleOnly = false) => j(`(() => { const f = ${FRAME}.getBoundingClientRect(); const a = ${DBG}.anchor(${JSON.stringify(k)});
+      if (!a || !a.visible || !a.rect) return 'null';
+      const r = a.rect, pts = [], m = ${middleOnly ? 0 : 24};
+      const x0 = Math.max(r.x, m), x1 = Math.min(r.x + r.w, f.width - m), y0 = Math.max(r.y, m), y1 = Math.min(r.y + r.h, f.height - m);
+      if (x1 <= x0 || y1 <= y0) return 'null';
+      // Not one that covers most of the screen (an earlier visit moved the sea stack right up to the camera): a drag
+      // on that looks around by design (input.ts grabbable, 60 % of the window on screen).
+      if ((x1 - x0) * (y1 - y0) >= 0.6 * f.width * f.height) return 'null';
+      pts.push([a.center[0], a.center[1]]);
+      if (!${middleOnly}) for (let i = 0; i <= 8; i++) for (let jj = 0; jj <= 8; jj++) pts.push([x0 + ((x1 - x0) * i) / 8, y0 + ((y1 - y0) * jj) / 8]);
+      pts.sort((p, q) => Math.hypot(p[0] - a.center[0], p[1] - a.center[1]) - Math.hypot(q[0] - a.center[0], q[1] - a.center[1]));
+      for (const [x, y] of pts) {
+        if (x < 0 || y < 0 || x > f.width || y > f.height) continue;
+        if (document.elementFromPoint(f.left + x, f.top + y) !== ${FRAME}) continue;
+        if (${DBG}.under(x, y) === ${JSON.stringify(k)}) return JSON.stringify({ x: f.left + x, y: f.top + y });
+      }
+      return 'null'; })()`);
     // The same object as on an earlier visit when it is still on screen (a saved, moved rock can stand in
     // front of the next candidate and take its tap).
-    for (const k of [...(lastKey[game] ? [lastKey[game]] : []), ...PICK[game]]) {
-      const a = items.some((i) => i.key === k) && (await j(IN.at(k)));
-      if (!a || !a.visible) continue;
-      // On screen, inside the game frame and with the game itself under the finger (not the sheet or the ask bar).
-      if (await page.eval(`document.elementFromPoint(${a.x}, ${a.y}) === ${FRAME}`)) {
-        key = k;
-        break;
+    let a = null;
+    for (const middleOnly of [true, false]) {
+      for (const k of [...(lastKey[game] ? [lastKey[game]] : []), ...PICK[game]]) {
+        if (!items.some((i) => i.key === k)) continue;
+        a = await spot(k, middleOnly);
+        if (a) {
+          key = k;
+          break;
+        }
       }
+      if (key) break;
     }
     assert.ok(key, `${game}: none of ${PICK[game].join(', ')} is on screen to pick`);
-    const a = await j(IN.at(key));
     await touch(a);
     await sleep(600);
     const picked = await page.eval(`window.studioShell.selected()`);
@@ -269,7 +297,8 @@ async function run(browser, game, size, tag) {
     const before = items.find((i) => i.key === key).pose;
     lastKey[game] = key;
     await shot('2-picked');
-    const b = await j(IN.at(key));
+    // Drag from where the finger is on it (its middle can be off screen, see spot()).
+    const b = (await spot(key, true)) || (await spot(key)) || (await j(IN.at(key)));
     await pointer(b.x, b.y, b.x - Math.min(60, size.width * 0.12), b.y + 30);
     const moved = await poseOf(key);
     const dist = Math.hypot(...moved.p.map((v, i) => v - before.p[i]));
@@ -337,17 +366,18 @@ async function run(browser, game, size, tag) {
     assert.equal(unsaved(await page.eval(IN.saveLabel)), 0, `a second press on Save left "${await page.eval(IN.saveLabel)}"`);
     step('Save (real press) → kept in this browser; pressing the same spot again changes nothing');
     await shot('6-saved');
-    await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.focus(); i.value = ${JSON.stringify(WORDS.ask)}; i.dispatchEvent(new Event('input', { bubbles: true })); i.closest('form').requestSubmit(); })()`);
-    await page.waitFor(`(${IN.aiLine}).includes(${JSON.stringify(WORDS.ask)}) && (${IN.aiLine}).includes(${JSON.stringify(WORDS.noAi)})`, 5000);
-    // Close the ⌘K list the ask field opened (it covers the line under the game), then show the line.
-    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-    await page.eval(`document.activeElement?.blur()`);
-    await sleep(600);
-    assert.ok((await page.eval(IN.aiLine)).includes(WORDS.noAi), 'the line stays after the list closes');
-    // No "say 'look' in your AI" nudge offline.
-    assert.equal(await page.eval(`!!document.querySelector('.ai-line.nudge')`), false);
-    step('ask → the words stay, with "not connected to an AI"');
+    // W1-6 (design review wave 1, 2026-10-17): the demo has no AI behind it, so no ask box and no "● AI"; the same place holds
+    // one grey line and a link to get Game Studio. (Until then: the ask box took the words and said "not connected".)
+    const demo = await j(`JSON.stringify({ ask: !!document.querySelector('.ask-input'), askShown: !!document.querySelector('.ask-input')?.offsetParent, peer: !!document.querySelector('[data-part=peer]'),
+      line: document.querySelector('[data-part=offline-line]')?.textContent || '', link: document.querySelector('[data-part=offline-line] a')?.getAttribute('href') || '',
+      lineShown: !!document.querySelector('[data-part=offline-line]')?.offsetParent })`);
+    assert.equal(demo.askShown, false, 'the ask box is on screen in the demo');
+    assert.equal(demo.peer, false, 'the "● AI" is in the demo');
+    assert.ok(demo.lineShown && /Claude Code/.test(demo.line), `the line in the ask box's place: ${JSON.stringify(demo)}`);
+    assert.match(demo.link, /^https:\/\//, `the line's link: ${demo.link}`);
+    // The bar holds the line, inside the window (no sideways scroll on the narrowest phone).
+    assert.ok(await page.eval(`document.documentElement.scrollWidth <= innerWidth`), 'the demo line made the page scroll sideways');
+    step(`no ask box, no "● AI": "${demo.line}"`);
     await shot('7-ask');
 
     // --- 5. ▶ Play, then back to editing ---
@@ -422,13 +452,13 @@ async function run(browser, game, size, tag) {
     assert.deepEqual(origins.filter((o) => o !== new URL(base).origin && o !== 'null' && !HOST_EXTRA.includes(o)), [], `other origins: ${origins.join(', ')}`);
     const errors = page.logs.filter((l) => /^(error|exception)/.test(l) && !/placement\.json|404/.test(l));
     assert.deepEqual(errors, [], 'page errors');
-    // The self-check's "screen-changes" compares a 32×32 copy of the canvas: on a phone, moving the small bell
-    // 40 px can leave that copy unchanged although the screen did change (seen at 430/280 on later visits,
-    // with the stage fitted; checked above). That one is noted; any other failed check fails the run.
-    const failedChecks = page.logs.filter((l) => l.includes('self-check failed')).flatMap((l) => [...l.matchAll(/"id":"([^"]+)","ok":false/g)].map((m) => m[1]));
-    const others = failedChecks.filter((id) => id !== 'screen-changes');
-    assert.deepEqual(others, [], `the adapter self-check failed: ${others.join(', ')}`);
-    if (failedChecks.length) notes.push(`${tag}: self-check "screen-changes" ${failedChecks.length}× (32×32 copy unchanged; the stage was fitted)`);
+    // Every check, "screen-changes" included: it used to compare a 32×32 copy of the whole canvas and missed the
+    // small bell's move on a phone, so it was only noted here. It now compares the pixels around the object
+    // (src/bridge/selfcheck.ts), and our own samples must never show the warning (Ive review N1 / W1-5).
+    // The demo host logs the result as an object (the log line reads "… self-check failed Object"), so any such
+    // line is a failure; the ids are not in the text.
+    const failedChecks = page.logs.filter((l) => l.includes('self-check failed'));
+    assert.deepEqual(failedChecks, [], `the adapter self-check failed: ${failedChecks.join(' / ')}`);
     step('everything came from the demo folder; no page errors; self-check passed');
   } finally {
     if (stopVideo) await stopVideo(join(VIDEO, `${tag}.mp4`));

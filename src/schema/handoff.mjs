@@ -35,7 +35,8 @@ export const KUMODECK_STEP_IDS = Object.freeze(['publish', 'multiplayer', 'save-
  * so the AI line in the editor follows it too. The host checks each file exists before keeping it.
  */
 export const FILE_STEP_IDS = Object.freeze(['delete-files']);
-export const AI_STATES = Object.freeze(['received', 'working', 'done', 'failed']);
+// `asking`: the agent waits for the person's answer in its own window; `note` is the question (dogfood 2026-10-17, U2).
+export const AI_STATES = Object.freeze(['received', 'working', 'asking', 'done', 'failed']);
 
 const KEY_OK = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 const ID_OK = /^[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}$/;

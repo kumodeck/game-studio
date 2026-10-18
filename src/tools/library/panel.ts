@@ -45,6 +45,11 @@ export interface LibraryDeps {
    * "In the scene: 2"). Optional: without it the button selects the first one.
    */
   selectObjects?(keys: string[]): void;
+  /**
+   * The name a person reads for an object (the list's name). Optional: without it the key is shown. WHY: an unnamed
+   * object's key is `path:3/0`, an inner handle that must never show on screen (dogfood 2026-10-17, U4).
+   */
+  nameOf?(key: string): string;
   /** The shared validator from src/schema (used by the panel's own save button only). */
   validate?: LibraryValidator;
   /**
@@ -486,7 +491,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     }
     const keys = h('div', 'gsl-keys');
     for (const u of row.usedBy) {
-      const k = h('button', 'gsl-key', u.key);
+      const k = h('button', 'gsl-key', deps.nameOf ? deps.nameOf(u.key) : u.key);
       k.type = 'button';
       k.title = L('select');
       if (!u.sure) k.append(h('i', 'gsl-guess', ` (${L('guessed')})`));

@@ -10,9 +10,9 @@
 // - Dragging the object that is ALREADY picked moves it (rebrand 2026-10-16:
 //   the tool strip under it replaced the four round handles, and "drag the
 //   thing itself" is what every other editor does). It needs a pick first, so
-//   a stray drag never moves anything; very large objects (ground, sky: more
-//   than 40 % of the window) and locked ones still look around when dragged,
-//   which keeps the accident above impossible.
+//   a stray drag never moves anything; very large objects (ground, sky: their
+//   on-screen part 60 % of the window or more) and locked ones still look
+//   around when dragged, which keeps the accident above impossible.
 // - Tool modes (play test 2026-10-16): a press on a strip button (or
 //   M / H / T / S) CHOOSES that tool and it stays pressed; then a drag
 //   ANYWHERE on the game does it to what is picked — move follows the drag,
@@ -28,6 +28,18 @@
 //   tool, then the pick. A tap still picks (the tool stays chosen).
 // - Pressing the same spot again picks the next object under it (the one
 //   behind), so small objects hidden by large ones stay reachable.
+// - A tap on "nothing" drops the pick (a web demo try 2026-10-18: "I want to click
+//   an empty spot to deselect, and I can't"). Nothing = no object there, OR
+//   only the background: a ground / background (Item.backdrop) or an object
+//   whose on-screen part covers 60 % of the window or more (HUGE_ON_SCREEN,
+//   the same rule that makes a drag on it look around). People call the sky,
+//   the sea and the grass "nothing"; a tap there used to pick the ground. Such
+//   objects are picked from the list. A press that travels past the tap slop
+//   is a look-around and keeps the pick (as in other 3D editors: turning the
+//   view never changes what is picked). The 3D side of "no object there" is in
+//   adapters/three/pick.js (a box near the press is not enough: the lighthouse's
+//   light beam made its box cover half the sky).
+
 // - One gesture = one undo step: every `moved` of a gesture is sent, the last
 //   one carries `end: true` and `from` (the pose before the gesture).
 // - Listeners sit on window in the capture phase and are installed before any
@@ -48,7 +60,7 @@ import type { Core } from '../core/index.ts';
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
-import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
+import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
 import type { EditsAdapter } from '../core/edits.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
 
@@ -80,6 +92,8 @@ export interface InputHandle {
   setAxis(axis: TurnAxis | 'next'): void;
   /** Choose the strip's tool from the shell (its keys, ⌘K), or none. */
   setTool(tool: HandleKind | null): void;
+  /** Close the strip's choices (a press or Escape in the editor page). */
+  closeMenu(): void;
   /** Space held in the shell: a drag looks around even with a tool chosen. */
   setLook(on: boolean): void;
   setTheme(theme: 'dark' | 'light'): void;
@@ -121,6 +135,13 @@ const TURN_PER_PX = 0.01;
 const SIZE_PER_PX = 0.005;
 /** localStorage flag: the "how to look around" line was seen (it shows once, on this computer). */
 const HINT_SEEN = 'gameStudio.toolHint.v1';
+/** An object whose on-screen part covers this share of the window or more is "huge" (a ground): a drag on it looks around, and a tap on it is a tap on nothing (deselect, 2026-10-18). 0.6 (W1 merge); 0.4 of the whole projected box before. */
+const HUGE_ON_SCREEN = 0.6;
+/**
+ * A press held this long on the turn / size button (without moving) opens its choices, like the ▾ (tool options,
+ * play test 2026-10-18). 450 ms: past a tap (~100-200 ms) and a hesitant press-then-drag, short of iOS's 500 ms callout.
+ */
+const LONG_PRESS_MS = 450;
 
 function wrap(a: number): number {
   while (a <= -Math.PI) a += 2 * Math.PI;
@@ -186,19 +207,31 @@ export function attachInput(deps: InputDeps): InputHandle {
     if (k === 'rotate') return picked.some((i) => i.rotatable);
     return picked.some((i) => i.scalable);
   };
-  const chooseTool = (k: HandleKind | null, from: 'strip' | 'key' | 'shell') => {
+  /**
+   * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D, one object (canTurn). Size: several
+   * picked. 2D has no turn choices, so its turn button has no ▾ (tool options, 2026-10-18).
+   */
+  const hasChoices = (kind: 'axis' | 'scale') =>
+    kind === 'axis' ? canTurn() && toolApplies('rotate') : state.group.length > 1 && toolApplies('scale');
+  /** Open (`kind`) or close (null) the strip's choices, and tell the editor page so a press or Escape there closes them. */
+  const menu = (kind: 'axis' | 'scale' | null) => {
+    const was = handles.menuOpen();
+    handles.menu(kind, kind === 'axis' ? state.axis : kind === 'scale' ? state.scaleMode : '', lang);
+    const now = handles.menuOpen();
+    if (!!was !== !!now) post({ type: 'studio:placement/menu', open: !!now });
+  };
+  const chooseTool = (k: HandleKind | null, from: 'strip' | 'key' | 'shell' | 'menu') => {
     if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return;
     const changed = k !== tool;
     tool = k;
     handles.setTool(k);
     if (changed) post({ type: 'studio:placement/tool', tool: k });
-    // Several picked: the size button shows its two ways when chosen (they change what the drag does to the gaps).
-    // The turn button does NOT open its axis choices any more (polish pass 2026-10-16, play test stumble 7): a
-    // newcomer who only wants to turn something had to answer "Turn / Tip forward / Tip sideways" first. Chosen,
-    // it turns at once around the axis last used (upright at first); a second tap on it, or R, shows the choices
-    // (the first-time line says so).
-    if (k === 'scale' && from === 'strip' && state.group.length > 1) handles.menu('scale', state.scaleMode, lang);
-    else if (handles.menuOpen()) handles.menu(null, '', lang);
+    // A tap on a button only chooses its tool, with the way last used (turn: upright at first; size: together).
+    // The choices open from the ▾ in the button's corner or a long press (tool options, play test 2026-10-18: "nobody
+    // presses a button twice"). History: the turn choices opened on the first tap until the polish pass 2026-10-16
+    // (a newcomer had to answer "Turn / Tilt forward / Tilt sideways" first), then on a second tap, which nobody
+    // found; the size choices (several picked) opened on the first tap until 2026-10-18.
+    if (handles.menuOpen()) menu(null);
     if (k) showHint();
     else handles.hint(null);
   };
@@ -217,11 +250,23 @@ export function attachInput(deps: InputDeps): InputHandle {
     const order: TurnAxis[] = ['y', 'x', 'z'];
     state.axis = ax === 'next' ? order[(order.indexOf(state.axis) + 1) % 3]! : ax;
     showAxis();
-    if (handles.menuOpen() === 'axis') handles.menu('axis', state.axis, lang);
+    if (handles.menuOpen() === 'axis') menu('axis');
   };
-  const toggleMenu = (kind: 'axis' | 'scale') => {
-    if (handles.menuOpen() === kind) handles.menu(null, '', lang);
-    else handles.menu(kind, kind === 'axis' ? state.axis : state.scaleMode, lang);
+  const toggleMenu = (kind: 'axis' | 'scale') => menu(handles.menuOpen() === kind ? null : kind);
+  // The long press on the turn / size button (LONG_PRESS_MS): armed at the press, checked when it fires.
+  let pressTimer = 0;
+  const armLongPress = (id: number, kind: 'axis' | 'scale') => {
+    win.clearTimeout(pressTimer);
+    pressTimer = win.setTimeout(() => {
+      const p = ptrs.get(id);
+      if (!p || ptrs.size !== 1 || (mode.kind !== 'handle' && mode.kind !== 'group') || mode.anywhere) return;
+      if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
+      // Held still: nothing changed yet, so ending the gesture records no undo step. Forget the pointer so its
+      // release is not read as a tap (which would choose the tool, or close the choices again).
+      endGesture();
+      ptrs.delete(id);
+      menu(kind);
+    }, LONG_PRESS_MS);
   };
 
   // Stop page scrolling/zooming by touch while editing; restored on detach.
@@ -452,14 +497,37 @@ export function attachInput(deps: InputDeps): InputHandle {
     mode = { kind: 'none' };
   };
 
+  /** Share of the window (0–1) covered by the object's on-screen part (its box, clipped to the window). */
+  const screenShare = (k: string) => {
+    // 3D: the adapter's own measure (a ground running on under the camera; see StudioAdapter.coverage).
+    try {
+      const c = adapter.coverage?.(k);
+      if (typeof c === 'number' && Number.isFinite(c)) return c;
+    } catch {
+      /* fall back to the box */
+    }
+    const r = adapter.anchor(k)?.rect;
+    if (!r) return 0;
+    // Clipped: the rect is the projected box, so it runs past the window's edges (see grabbable below).
+    const vw = win.innerWidth, vh = win.innerHeight;
+    const cw = Math.max(0, Math.min(vw, r.x + r.w) - Math.max(0, r.x));
+    const ch = Math.max(0, Math.min(vh, r.y + r.h) - Math.max(0, r.y));
+    return vw * vh > 0 ? (cw * ch) / (vw * vh) : 0;
+  };
+  /** The ground / background (or a huge object): what a person calls "nothing" when tapping (see the header). */
+  const background = (k: string) => !!state.items.find((i) => i.key === k)?.backdrop || screenShare(k) >= HUGE_ON_SCREEN;
+  /** What a tap at the point may pick, best first: pickNear without the background. */
+  const tappable = (p: Ptr, radius: number) => {
+    try {
+      return adapter.pickNear(p.x, p.y, radius).filter((k) => !background(k));
+    } catch {
+      return [];
+    }
+  };
+
   const tap = (p: Ptr) => {
     const radius = p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch;
-    let keys: string[] = [];
-    try {
-      keys = adapter.pickNear(p.x, p.y, radius);
-    } catch {
-      keys = [];
-    }
+    const keys = tappable(p, radius);
     let key: string | null = keys[0] ?? null;
     // Same spot again: walk to the next candidate (the object behind).
     if (lastTap && Math.hypot(lastTap.x - p.x, lastTap.y - p.y) <= radius && state.selected && keys.includes(state.selected)) {
@@ -495,14 +563,10 @@ export function attachInput(deps: InputDeps): InputHandle {
     const keys = [...state.group, ...inBox.filter((k) => !state.group.includes(k))];
     selectMany(keys, state.selected && keys.includes(state.selected) ? state.selected : inBox[0]!);
   };
-  /** A mouse press that may become a box: Shift or "select several", and nothing under the pointer. */
+  /** A mouse press that may become a box: Shift or "select several", and nothing (or only the ground) under the pointer. */
   const boxable = (p: Ptr) => {
     if (p.type !== 'mouse' || p.button !== 0 || !(p.shift || state.multi)) return false;
-    try {
-      return adapter.pickNear(p.x, p.y, UI.pickRadiusMouse).length === 0;
-    } catch {
-      return false;
-    }
+    return tappable(p, UI.pickRadiusMouse).length === 0;
   };
   let boxStart = false;
   /** Tool dragged anywhere: the offset from the pointer to the object's point at the start. */
@@ -522,8 +586,12 @@ export function attachInput(deps: InputDeps): InputHandle {
     if (!k) return false;
     const it = state.items.find((i) => i.key === k);
     if (!it || it.movable === false || it.backdrop) return false;
-    const r = adapter.anchor(k)?.rect;
-    return !r || r.w * r.h < 0.4 * win.innerWidth * win.innerHeight;
+    // "Huge" = the part ON SCREEN covers 60 % or more of the window (a ground seen from above the horizon).
+    // WHY clipped, and 60 not 40 (W1 merge, 2026-10-17): the rect is the projected box, so it runs past the
+    // window's edges. Until W1-1 a pick glided the camera back and the barn of test/studio-unnamed shrank; with the
+    // camera kept still, on a phone 390×844 its box is 483 px wide (x −77) = 56 % of the window, 45 % on screen,
+    // and a drag on the barn turned the view instead of moving it. A ground plane covers ~75 %+ on screen.
+    return screenShare(k) < HUGE_ON_SCREEN;
   };
 
   const twoFingers = () => {
@@ -552,21 +620,45 @@ export function attachInput(deps: InputDeps): InputHandle {
       return;
     }
     if (ptrs.size > 2) return;
-    // A choice in the strip's menu (turn axis / resize mode).
+    // The ▾ in the turn / size button's corner: open (or close) its choices; the tool stays as it was.
+    const more = moreFromEvent(e);
+    if (more && state.selected && hasChoices(more)) {
+      toggleMenu(more);
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      return;
+    }
+    // A choice in the strip's menu (turn axis / resize mode): it is used at once — its tool is chosen and the
+    // button wears the choice's picture, so the strip says which way a drag works now.
     const choice = choiceFromEvent(e);
     if (choice) {
       if (choice.kind === 'axis') setAxis(choice.id as TurnAxis);
-      else state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
-      handles.menu(null, '', lang);
+      else {
+        state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
+        handles.setScaleMode(state.scaleMode);
+      }
+      menu(null);
+      const k: HandleKind = choice.kind === 'axis' ? 'rotate' : 'scale';
+      if (tool !== k) chooseTool(k, 'menu');
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
       return;
     }
     if (h && state.selected) {
       mode = startHandle(h, p);
+      if (mode.kind === 'none') {
+        // The gesture could not start (Move: adapter.grab found no ground under the BUTTON — on Lantern Cove the
+        // strip under the lighthouse is over the sea's far edge). The press still chooses the tool, as a tap would;
+        // the drag-anywhere start (toolStart) grabs at the object's own point, which works (tool options, 2026-10-18).
+        ptrs.delete(e.pointerId);
+        chooseTool(h === tool ? null : h, 'strip');
+        return;
+      }
+      const kind = h === 'rotate' ? 'axis' : h === 'scale' ? 'scale' : null;
+      if (kind && hasChoices(kind)) armLongPress(e.pointerId, kind);
       return;
     }
-    if (handles.menuOpen()) handles.menu(null, '', lang);
+    if (handles.menuOpen()) menu(null);
     if (tools.active() && tools.pointer(toolEvent('down', p))) {
       mode = { kind: 'tool' };
       markDirty();
@@ -668,6 +760,7 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   const onUp = (e: PointerEvent) => {
     block(e);
+    win.clearTimeout(pressTimer);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
     ptrs.delete(e.pointerId);
@@ -683,19 +776,18 @@ export function attachInput(deps: InputDeps): InputHandle {
         mode = { kind: 'none' };
       }
     } else if (mode.kind === 'handle' || mode.kind === 'group') {
-      // A tap (no drag) on the turn button (3D, one object) or on the size
-      // button (several) opens its choices; a drag uses the chosen one.
       // A tap (no drag) on a strip button CHOOSES its tool (tool modes, see the header). On the chosen one
-      // again: the turn button (3D, one object) and the size button (several) open / close their choices;
-      // the others put the tool down.
+      // again: the others put the tool down; the turn button (3D, one object) and the size button (several)
+      // open / close their choices — an unadvertised shortcut only since 2026-10-18 (the ▾ and the long press
+      // are the way in; a second press is not something people try, play test 2026-10-18).
       const tap = !mode.anywhere && Math.hypot(p.x - p.sx, p.y - p.sy) <= UI.tapSlopPx;
       const which = mode.handle;
       const single = mode.kind === 'handle';
       endGesture();
       if (tap) {
-        const hasChoices = (which === 'rotate' && single && canTurn()) || (which === 'scale' && !single);
+        const choices = (which === 'rotate' && single && hasChoices('axis')) || (which === 'scale' && !single && hasChoices('scale'));
         if (which !== tool) chooseTool(which, 'strip');
-        else if (hasChoices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
+        else if (choices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
         else chooseTool(null, 'strip');
       }
     } else if (mode.kind === 'box') {
@@ -734,7 +826,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       return;
     }
     if (e.key === 'Escape') {
-      if (handles.menuOpen()) handles.menu(null, '', lang);
+      if (handles.menuOpen()) menu(null);
       else if (tool) chooseTool(null, 'key');
       else select(null);
       return;
@@ -748,7 +840,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     // R: the next turn axis (3D, one object picked), with the choices shown for a moment of feedback.
     if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
       setAxis('next');
-      if (!handles.menuOpen()) handles.menu('axis', state.axis, lang);
+      if (!handles.menuOpen()) menu('axis');
       return;
     }
     if (!key) return;
@@ -767,8 +859,43 @@ export function attachInput(deps: InputDeps): InputHandle {
     handles.setActive(mode.kind === 'handle' || mode.kind === 'group' ? mode.handle : null);
   };
 
+  // The name tag over the picked object shows only while the mouse is over it (design review wave 1, W1-2 / N3, 2026-10-17).
+  // WHY: picking put the same name on screen four times (the tag on the object, the list row, the card, the ask box's
+  // chip); the card is what names it. On touch there is no hover, so no tag at all. `hover` = the mouse over the game
+  // with no button down (null = gone / touch).
+  // `armed`: the mouse has been off the picked object since it was picked. The click that picks leaves the mouse on
+  // the object; without this the tag came back the same instant, which is "a tag when picked" again.
+  let hover: { x: number; y: number } | null = null;
+  let hoverIn = false;
+  let armed = false;
+  const inRects = (rs: Array<{ x: number; y: number; w: number; h: number }>) =>
+    armed && !!hover && rs.some((r) => hover!.x >= r.x && hover!.x <= r.x + r.w && hover!.y >= r.y && hover!.y <= r.y + r.h);
+  const selectionRects = () => rectsOf(state.group.length > 1 ? state.group : state.selected ? [state.selected] : []);
+  const onHover = (e: PointerEvent) => {
+    hover = e.pointerType === 'mouse' && e.buttons === 0 ? { x: e.clientX, y: e.clientY } : null;
+    if (hover && !armed) {
+      armed = true;
+      if (inRects(selectionRects())) armed = false; // still on it: wait until it leaves
+    }
+    const now = inRects(selectionRects());
+    if (now !== hoverIn) {
+      hoverIn = now;
+      markDirty();
+    }
+  };
+  const onLeave = (e: PointerEvent) => {
+    if (e.relatedTarget) return;
+    hover = null;
+    if (hoverIn) {
+      hoverIn = false;
+      markDirty();
+    }
+  };
   win.addEventListener('pointerdown', onDown, opts);
+  // Before onMove: its block() stops the other listeners on window.
+  win.addEventListener('pointermove', onHover, opts);
   win.addEventListener('pointermove', onMove, opts);
+  win.addEventListener('pointerout', onLeave, opts);
   win.addEventListener('pointerup', onUp, opts);
   win.addEventListener('pointercancel', onUp, opts);
   win.addEventListener('wheel', onWheel, opts);
@@ -855,6 +982,8 @@ export function attachInput(deps: InputDeps): InputHandle {
   const place = () => {
     drawGhosts();
     showAxis();
+    // The ▾ on the turn / size buttons: only while they have choices (it sits inside the button: the strip never moves).
+    handles.setOptions({ axis: hasChoices('axis'), scale: hasChoices('scale') }, lang);
     const key = state.selected;
     // The AI's marks first (under your own): what is picked is drawn in your colour only.
     const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
@@ -864,7 +993,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       const items = state.items.filter((i) => state.group.includes(i.key));
       const keys = items.map((i) => i.key);
       const rects = rectsOf(keys);
-      handles.selection(shapeOf('you', keys, rects), rects, (MANY_LABEL[lang] || MANY_LABEL.en)(items.length));
+      handles.selection(shapeOf('you', keys, rects), rects, inRects(rects) ? (MANY_LABEL[lang] || MANY_LABEL.en)(items.length) : null);
       const ga = groupAnchor(adapter, state.group, key);
       handles.place(ga, items.length ? {
         rotatable: items.some((i) => i.rotatable), scalable: items.some((i) => i.scalable),
@@ -875,24 +1004,31 @@ export function attachInput(deps: InputDeps): InputHandle {
     const a = key ? adapter.anchor(key) : null;
     const item = key ? state.items.find((i) => i.key === key) : undefined;
     const rects = a && a.visible && a.rect ? [a.rect] : [];
-    handles.selection(item ? shapeOf('you', [key!], rects) : null, item ? rects : [], item && a?.visible ? item.label : null);
+    // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
+    // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
+    handles.selection(item ? shapeOf('you', [key!], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
     handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: item.liftable !== false } : null, adapter.dim);
   };
 
   return {
     frame: place,
     selectionChanged() {
-      if (handles.menuOpen()) handles.menu(null, '', lang);
+      if (handles.menuOpen()) menu(null);
+      armed = false;
+      hoverIn = false;
       place();
     },
     setAxis(ax) {
       if (!state.selected || !canTurn()) return;
       setAxis(ax);
       // The R key from the editor page: show the choices too, as the R key in the game does.
-      if (!handles.menuOpen()) handles.menu('axis', state.axis, lang);
+      if (!handles.menuOpen()) menu('axis');
     },
     setTool(k) {
       chooseTool(k, 'shell');
+    },
+    closeMenu() {
+      if (handles.menuOpen()) menu(null);
     },
     setLook(on) {
       spaceHeld = !!on;
@@ -922,8 +1058,11 @@ export function attachInput(deps: InputDeps): InputHandle {
     },
     detach() {
       endGesture();
+      win.clearTimeout(pressTimer);
       win.removeEventListener('pointerdown', onDown, opts);
       win.removeEventListener('pointermove', onMove, opts);
+      win.removeEventListener('pointermove', onHover, opts);
+      win.removeEventListener('pointerout', onLeave, opts);
       win.removeEventListener('pointerup', onUp, opts);
       win.removeEventListener('pointercancel', onUp, opts);
       win.removeEventListener('wheel', onWheel, opts);

@@ -5,7 +5,7 @@
 import { Container, Sprite } from 'pixi.js';
 import { paint, glowTexture, rnd, reseed, SUN } from './paint.js';
 import { W, WATER } from './backdrop.js';
-import { parts } from './objects.js';
+import { parts, FILES } from './objects.js';
 
 export function makeLife(objects) {
   const layer = new Container();
@@ -54,15 +54,37 @@ export function makeLife(objects) {
   let wind = 0.25, gust = 0, gustX = 0, gustY = 0;
   const breeze = (x, y) => { gust = 1; gustX = x; gustY = y; };
 
-  // ---- the bell: a pendulum; a tap near it rings it (a soft synthesized tone, after the first user gesture) ----
+  // ---- the bell: a pendulum; a tap near it rings it (after the first user gesture) ----
+  // The sound is assets/bell.mp3 (2026-10-17: a real file, so the editor's Assets panel lists it under the bell).
+  // Its bytes are fetched now; they are decoded on the first ring (an AudioContext may only start after a tap).
+  // Without the file the bell is synthesized here, as it was before.
   const bellObj = objects.all.find((o) => o.studioKey === 'bell');
-  let audio = null;
+  let audio = null, bellBuffer;
+  const bellBytes = fetch(FILES.bellSound).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+  async function playBellFile(strength) {
+    if (bellBuffer === undefined) {
+      const bytes = await bellBytes;
+      bellBuffer = bytes ? await audio.decodeAudioData(bytes.slice(0)).catch(() => null) : null;
+    }
+    if (!bellBuffer) return false;
+    const src = audio.createBufferSource(), g = audio.createGain();
+    src.buffer = bellBuffer;
+    g.gain.value = 0.9 * strength;
+    src.connect(g).connect(audio.destination);
+    src.start();
+    return true;
+  }
   function ring(strength) {
     const p = parts.get(bellObj);
     if (!p) return;
     p.vel += 2.4 * strength;
     try {
       audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      playBellFile(strength).then((played) => played || synthBell(strength), () => synthBell(strength));
+    } catch { /* no audio: the bell still swings */ }
+  }
+  function synthBell(strength) {
+    try {
       const t0 = audio.currentTime, out = audio.createGain();
       out.gain.value = 0.18 * strength;
       out.connect(audio.destination);
@@ -127,7 +149,7 @@ export function makeLife(objects) {
       if (!p || !o.parent) continue;
       if (p.canopy) p.canopy.skew.x = -0.02 - wind * 0.025 + Math.sin(t * 1.4) * 0.008 * (1 + gust * 3);
       if (p.blades) for (const b of p.blades) b.b.rotation = b.r - wind * 0.12 * b.k + Math.sin(t * 1.8 * b.k + b.ph) * 0.05 * (1 + gust * 2);
-      if (p.cloth) { p.sim.step(Math.min(dt, 1 / 30), -wind, t); p.sim.draw(p.cloth); }
+      if (p.cloth) { p.sim.step(Math.min(dt, 1 / 30), -wind, t); p.sim.draw(p.cloth, p.mesh); }
       if (p.flame) {
         const fl = 0.85 + Math.sin(t * 13) * 0.06 + Math.sin(t * 23.7) * 0.05 + Math.sin(t * 5.3) * 0.04;
         p.flame.scale.set(0.75 * fl); p.halo.alpha = 0.3 * fl;

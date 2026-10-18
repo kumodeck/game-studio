@@ -81,3 +81,17 @@ test('typing opens the list only when a word names an action or an object', () =
   assert.equal(suggests('素材', ja), true, 'two Japanese characters are a word');
   assert.equal(suggests('素', ja), false);
 });
+
+// Dogfood 2026-10-17 (U2): on the first save the AI asked "loader or rewrite?" in its terminal while the editor said
+// "Your AI has it" for 5 minutes. `asking` says it: a still violet dot (no running light), the question as the line.
+test('asking: the AI waits for the person; no running light; the game waits for its "done"', () => {
+  const asking = base({ watching: true, status: { state: 'asking', request: ID, note: 'Is the second door real?' } as never, statusTime: 9_500 });
+  assert.equal(aiPhase(asking), 'asking');
+  assert.equal(aiBusy('asking'), false, 'the person acts now: the light does not run');
+  // Also when the page opened after the question (no request of this page pending).
+  assert.equal(aiPhase(base({ pending: null, status: { state: 'asking', note: 'q' } as never, statusTime: 5_000 })), 'asking');
+  const r = (o: Partial<Parameters<typeof reloadDecision>[0]>) =>
+    reloadDecision({ code: 'b', loadedCode: 'a', stableMs: 45_000, phase: 'asking', playing: false, reloading: false, ...o });
+  assert.equal(r({}), 'wait', 'half a change before the question is not reloaded');
+  assert.equal(r({ stableMs: QUIET_MS }), 'now');
+});

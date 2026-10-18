@@ -138,12 +138,17 @@ The plugin's skill only loads in a new session, so this time you start the edito
    > Next time, start a new session and type `/arrange`. *(Codex: `$arrange`)*
 
    If you used `--starter 3d`, start the second line with "Here's a sample game in your folder." If you changed the
-   settings file (§3, no `claude` command), put its one line first. Say nothing else: not the watch (§4 step 5), the
+   settings file (§3, no `claude` command), put its one line first. Say nothing else: not the watch (step 5), the
    log, the self-check, the plugin's version or the folder's path.
 
-5. **After that message, for the rest of this session**, read `PLUGIN/skills/arrange/SKILL.md` and follow it from §3: it is what
-   `/arrange` does (their saves and requests arrive in `.studio/requests/`; when they type "look", read them). When
-   they are finished: `node STUDIO /absolute/game/folder --stop`.
+5. **Right after that message, start the watch** (App and Terminal; not Codex), without saying so: run
+   `node STUDIO /absolute/game/folder --watch` with the Monitor tool (the command itself, not `tail -f` on a log).
+   It prints one `studio:` line for each save or request the person sends, and while it runs the editor tells them
+   you have it. Without it, the first thing they type in the editor answers "Your AI isn't watching", which is how
+   the dogfood of 2026-10-17 met every new person. Start it again whenever it ends.
+6. **For the rest of this session**, read `PLUGIN/skills/arrange/SKILL.md` and follow it from §3: it is what
+   `/arrange` does (their saves and requests arrive in `.studio/requests/`; in Codex, or when no watch runs, they
+   type "look" and you read them). When they are finished: `node STUDIO /absolute/game/folder --stop`.
 
 ## 5. If something fails
 

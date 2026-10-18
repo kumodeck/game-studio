@@ -55,6 +55,8 @@ test('request input: an ask keeps the camera it was asked from (eye, target), ro
 test('status: lenient, unknown fields and bad values dropped', () => {
   assert.equal(normalizeStatus(null), null);
   assert.equal(normalizeStatus({ state: 'great' }), null);
+  // `asking` (dogfood U2): the AI waits for an answer in its own window; the note is the question.
+  assert.deepEqual(normalizeStatus({ state: 'asking', note: 'Loader or rewrite?' }), { version: 1, state: 'asking', note: 'Loader or rewrite?' });
   assert.deepEqual(normalizeStatus({ state: 'working', changed: -1, note: 'line\none', at: 'not a date', request: 'x' }), { version: 1, state: 'working', note: 'line one' });
 });
 

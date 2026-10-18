@@ -105,7 +105,7 @@ the game's structure changes a lot.
 1. Copy the matching example from `adapters/` to **`.studio/adapter.js`** in the game folder. The editor loads that
    file only while editing, right after its own script and before any game code. The game never loads it when it is
    played normally, so it cannot break the game.
-2. Read the game code and change the parts of the example marked `ADAPT:` so they point at this game:
+2. Read the game code and change the parts of the example marked `EDIT HERE` so they point at this game:
    - **where the movable objects live** (the stage or scene, a list such as `enemies` / `level.objects`, DOM elements);
    - **their keys** (§5): the game's own mark, then a name, then a position in the list (marked unstable);
    - **how to read and write a pose** (`x`, `y`, angle, scale, in the object's parent space);
@@ -118,8 +118,11 @@ the game's structure changes a lot.
    the game that exposes them only while editing, for example
    `if (window.studio) window.studio.game = { objects, draw };`
    and read them from there in the adapter. Do not restructure the game for the editor.
+   Phaser 3 (3.60 and later) and Phaser 4 both work with `adapters/phaser.js` as it is: change only its
+   `EDIT HERE` parts, not its camera maths.
 5. Open the editor (§3). It runs a **self-check** at once and tells you the result in one `studio: check …` line, with
-   details in `.studio/check.md`. Fix what it names and reload the editor page in the browser (the server reads
+   details in `.studio/check.md` (the check runs when the editor page loads; with `--no-open`, before anyone opens
+   it, step 6's `--check-view` runs it and prints the same `studio: check …` line). Fix what it names and reload the editor page in the browser (the server reads
    `.studio/adapter.js` again on every load; no restart needed). Do not hand the editor to the user until the check
    passes.
 6. Then run the **view check** once (2D games): `node <this skill's folder>/bin/studio.mjs <game folder> --check-view`.
@@ -127,6 +130,8 @@ the game's structure changes a lot.
    `studio: check-view ok|failed|skipped`. `failed` means the adapter changes how objects are drawn (for example a
    thumbnail step that leaves an object changed): read `.studio/view-check.md`, fix, and run it again. Run it again
    after every change to the adapter.
+7. Never start the person's own browser (Chrome, Safari…) yourself to look at the game or the editor: `--check-view`
+   and `--shot` (§3.3) look in a private headless browser of their own.
 
 The checks, and what usually fixes them, are in [`references/adapters.md`](references/adapters.md#the-self-check)
 and [the view check](references/adapters.md#the-view-check).
@@ -198,7 +203,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
 | `studio: request ask` | The user typed a request about the picked objects ("add 3 more in a row"), or about the whole game when the line ends with `(whole game)` | §3.1 |
 | `studio: request name` | The user asked you to name objects that have no name | §3.1 and §5 (add a mark) |
 | `studio: request next-step fit` / `look` / `tool` | An in-game idea, with the user's words | §3.1, then §8 (fit, tool) or §9 (look) |
-| `studio: saved .studio/data/<tool>.json` | A game tool you wrote (§8) saved its data | Read that file and apply it like placement.json (ask once how) |
+| `studio: saved .studio/data/<tool>.json` | A game tool you wrote (§8) saved its data | Read that file and apply it like placement.json (a loader, without asking, §4) |
 | `studio: undone` | The person pressed **Undo AI change**: the editor already put the game's files back as they were before your last change | §3.1 (`undone`): do not redo it |
 | `studio: watching <n> waiting` | Your watch (`--watch`, below) started; the waiting requests follow, one line each | Handle them in order. `0 waiting`: say nothing |
 
@@ -262,6 +267,7 @@ node <…>/bin/studio.mjs <game folder> --status working --request <id> --note "
 #   … change the code, then look at the game (§3.3) …
 node <…>/bin/studio.mjs <game folder> --status done --request <id> --changed 3 --note "Added 3 lighthouses around the island"  # 3. last
 node <…>/bin/studio.mjs <game folder> --status failed --request <id> --note "Couldn't find the barrel in the code"            # instead of 3
+node <…>/bin/studio.mjs <game folder> --status asking --request <id> --note "Is the second door a real door, or only for looks?"  # when you must ask
 ```
 
 1. `received` right away, before you think about the change: the person sees "Your AI has it" and the violet light.
@@ -274,6 +280,10 @@ node <…>/bin/studio.mjs <game folder> --status failed --request <id> --note "C
    resized or removed (0 for a change in looks or behavior). Give every new object a mark (§5) so the editor can
    show it as new. While you are `working`, the editor waits for `done` instead of reloading a half-written game.
 4. `failed` when you stop without finishing (say why in the note). The person can still press **Undo AI change**.
+5. `asking` **before** you ask the person anything in your own window and wait for the answer: `--note` is the
+   question, in one line. The editor shows "Your AI has a question" with it, so the person in the editor knows to
+   answer you; otherwise it keeps saying "Your AI has it" while you wait. After the answer, go on with `working` and
+   `done`. Ask only what the code and this skill cannot decide (§4: the first save never needs a question).
 
 Keep notes to one short line (under ~60 characters shows in full on a phone). `done` and `failed` move the handled
 requests into `.studio/requests/done/` (only up to `--request <id>` when you give one), so the next `--requests`
@@ -293,7 +303,9 @@ contractions. Name the thing, not a feeling. Say what happened, then what to do 
 | `failed` note | "Couldn't find the barrel in the code" | "An error occurred." |
 | `done` note for an `undone` request | "Okay, it's back to how it was" | "Acknowledged undo" |
 | After applying a layout | "Moved 4 objects and added 2 duplicates. Reload the game to see them." | "Your layout has been applied." |
-| Asking how to apply (once) | "Want me to load placement.json when the game starts (one line), or write the new numbers into the code?" | A list of options with pros and cons |
+| `done` note after the first save (§4) | "Added a loader (1 line). Your layout is in." | "Applied via the loader approach." |
+| In your window after the first save | "Added a loader (1 line) that reads placement.json when the game starts, so your layout is in. Want the numbers written into the code instead? Say so." | A list of options with pros and cons |
+| `asking` note (the question) | "Is the second door a real door, or only for looks?" | "Clarification required." |
 
 Say "select" (not "pick"), "duplicate" for the editor's copy action, and "type *look*" (not "say look").
 
@@ -378,14 +390,23 @@ for example "Reload the game: the rock should be left of the house, and the seco
 loads. Do not ask; look at the game (§3.3), set `done` and say so in one line ("Your layout is in. Reload the game to
 play it."). Copies and deletions (`added`, `removed`) are applied by the loader too.
 
-Otherwise ask the user **once** which way they want, then keep that choice for this game (note it in the project notes your
-environment uses, such as `AGENTS.md` or `CLAUDE.md`, if the user agrees):
+**Otherwise (the first save of a game without the loader): add the loader (Way 1) without asking**, then tell them,
+in this order:
 
-> I can apply your layout in two ways:
-> 1. **Loader**: add one line that reads `placement.json` when the game starts. Your code stays as it is, and you can
->    keep re-arranging without me touching the code again.
-> 2. **Rewrite**: change the numbers in your code and delete `placement.json`. The code becomes the only source of
->    truth.
+1. The editor: `--status done --request <id> --changed <n> --note "Added a loader (1 line). Your layout is in."`
+   (after you looked at the game, §3.3; `--changed` = how many objects it moved).
+2. Your window, one line: "Added a loader (1 line) that reads placement.json when the game starts, so your layout is
+   in. Want the numbers written into the code instead? Say so."
+
+WHY no question first (dogfood 2026-10-17): asking "loader or rewrite?" on the first save stopped every person in
+the editor for minutes. The editor said "Your AI has it" while the question waited in a window they were not
+looking at. The loader is what the samples use, keeps their code as it is, and lets them re-arrange again without
+you. If they then ask for the numbers in the code, use Way 2 and keep that choice for this game (note it in the
+project notes your environment uses, such as `AGENTS.md` or `CLAUDE.md`, if they agree). If something truly needs
+their answer before you can apply the save (a copy of the player or of the goal, §4 "Copies and deletions"), apply
+the rest first, then use `asking` (§3.1) and ask that one question.
+When the saved keys are `path:` keys, the loader applies them as they are; do not ask the person to save again. If
+you also name those objects in the code (§5), rename their keys in `placement.json` the same way in one go.
 
 ### Way 1: the loader
 
@@ -457,7 +478,8 @@ Add each copy **like the code already makes that kind of object**:
   Pixi `copy.studioKey = 'house-2'`, a `key: 'star-4'` field, Godot `studio_key` metadata). Then the editor finds it
   under the same key next time; without it the copy would get a new key and the saved layout would not match.
 - Copies share the original's game logic: add them to the same lists the original is in (enemies, collectables,
-  colliders, physics bodies, counters). Ask the user when a copy of something unique (the player, a goal) looks odd.
+  colliders, physics bodies, counters). That is the default: a copied door is a door, a copied coin is a coin. Ask
+  the user only when a copy of something unique (the player, a goal) looks odd, with `asking` first (§3.1).
 
 Delete each removed object:
 
@@ -612,8 +634,8 @@ Steps:
 4. Ask the user to reload the editor; check that moving now snaps / stays inside. Rules apply to the handles, keys and
    tools; undo and saved files are never changed by them.
 5. A game tool's data is saved to `.studio/data/<id>.json` when the user presses **Save** (stdout:
-   `studio: saved .studio/data/<id>.json`). Apply it to the game like placement.json: ask once whether to add a
-   small loader or to write the data into the code.
+   `studio: saved .studio/data/<id>.json`). Apply it to the game like placement.json: add a small loader without
+   asking and say so in one line (§4); write the data into the code instead only when they ask.
 
 Full reference with examples (grid, bounds, rules, `constrain`, a "draw the course" tool, the tool context API):
 `references/fit-game.md`.

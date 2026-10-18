@@ -94,6 +94,8 @@ export interface PlacementPanel {
   cardEl: HTMLElement;
   /** "Ask your AI to name the N without a name" (the left column's foot). */
   noNameEl: HTMLElement;
+  /** The list's head ("Objects" ··· "Multi-select"): narrow screens move it into the sheet's one head row (main.ts). */
+  listToolsEl: HTMLElement;
   /** The ask box (form): the shell puts it in the strip under the game. */
   askEl: HTMLElement;
   /** Its one-line note (examples, "handed to your AI"): the shell puts it in the strip's caption. */
@@ -113,10 +115,10 @@ const DEG = 180 / Math.PI;
 export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const el = h('div', { class: 'placement' });
   const card = h('section', { class: 'card', 'aria-live': 'polite', dataset: { part: 'card' } });
-  // "N objects have no name → ask your AI to name them": 2D games often list
-  // "graphics (no name)" rows with a ⚠ that read as broken. One quiet line at
-  // the foot of the list (design pass "apple"): it is about the list, and a
-  // missing name is a thing to improve, not an alarm at the top of the panel.
+  // "102 objects have no name · Name them": the FIRST row of the list, grey, with one text button on the right
+  // (supervision 2026-10-17, U4/W1-8: "in the list, its first row, not above it: the list keeps its shape; no yellow,
+  // no frame"). It was a foot row of the column ("✦ Ask your AI to name it 102"), which a person with 102 unnamed
+  // rows never scrolled to, and which read as a request already made. 2D games list "graphics (no name)" rows too.
   const noName = h('div', { class: 'noname', dataset: { part: 'noname' }, hidden: true });
   const list = h('ul', { class: 'objects', role: 'listbox', 'aria-label': d.t('btn.list'), 'aria-multiselectable': 'true' });
   // The list's head: its name and count on the left, "Select" on the right
@@ -127,7 +129,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // The how-to paragraph and the colour key under the list went (rebrand):
   // a one-line first hint over the ask bar says it once (main.ts), and the
   // editor's colours have one meaning each (orange = you, violet = the AI).
-  const listScroll = h('div', { class: 'list-scroll' }, list);
+  const listScroll = h('div', { class: 'list-scroll' }, noName, list);
   el.append(listTools, listScroll);
   let noNameSent = false;
   const renderNoName = () => {
@@ -135,15 +137,13 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     noName.replaceChildren();
     noName.hidden = !keys.length;
     if (!keys.length) return;
-    // One quiet row at the column's foot: ✦ the request · how many.
-    if (noNameSent) {
-      noName.append(h('span', { class: 'foot-row muted', text: d.t('ask.nameSent') }));
-      return;
-    }
-    noName.append(h('button', { type: 'button', class: 'foot-row', dataset: { action: 'ask-name-all' }, title: d.t('noname.count', { n: keys.length }), onclick: async () => {
+    // Grey words, then one text button. After the press the row says it was asked (and stays until the names land).
+    noName.append(h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.row', { n: keys.length }) }));
+    if (noNameSent) return;
+    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: async () => {
       noNameSent = await d.askName(keys);
       renderNoName();
-    } }, icon('spark'), h('span', { class: 'label', text: d.t('ask.name') }), h('span', { class: 'n', text: String(keys.length) })));
+    } }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
   };
   const expanded = new Set<string>();
   const thumbs = new Map<string, HTMLImageElement[]>();
@@ -219,10 +219,12 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const whole = !keys.length || !first;
     const ph = whole ? d.t('ask.game') : keys.length > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
-    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : first.label;
+    // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
+    const firstName = whole ? '' : displayName(first, d.t);
+    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : firstName;
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
-    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: first.label }));
+    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
@@ -305,7 +307,6 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const renderCard = () => {
     card.replaceChildren();
     inputs = [];
-    summaryLine = null;
     const key = d.selected();
     const sel = d.group();
     // The card appears with a short rise when the selection changes (not on
@@ -343,11 +344,10 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const sub = h0.querySelector('.key') as HTMLElement;
     card.append(h0);
     const body = h('div', { class: 'card-body' });
-    // Phone: the head shows the numbers in one mono line; "…" opens the fields.
-    if (d.phone()) {
-      summaryLine = sub;
-      sub.classList.add('mono');
-    }
+    // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
+    // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
+    // "…" (which still opens the fields). The second line stays empty; whoever needs numbers reads them on a PC.
+    if (d.phone()) sub.textContent = '';
     animate();
     // Game rules (.studio/studio.json): a locked object has no strip and no
     // number fields; a kind with a default size gets a one-click reset.
@@ -425,7 +425,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const fields = h('div', { class: 'fields' });
     fields.append(h('span', { class: 'f-l', text: d.t('placement.pos') }));
     const posCells = h('div', { class: `f-cells n${axes.length}` });
-    const metres = (v: number) => v.toFixed(2);
+    // One decimal (W1-11 / D1): "-24.0" fits three to a row of the 272 px card; "-24.00" was cut to "-24.0(".
+    const metres = (v: number) => v.toFixed(1);
     const px = (v: number) => String(Math.round(v * 10) / 10);
     axes.forEach((a, i) => posCells.append(num(a, (p) => p.p[i] ?? 0, (p, v) => ((p.p[i] = v), p), dim === '3d' ? '0.1' : '1', a, dim === '3d' ? metres : px)));
     fields.append(posCells);
@@ -466,17 +467,22 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       } }));
     }
     body.append(fine);
-    // 3. Layer (2D).
+    // 3. Layer (2D). On a phone (and any window up to UI.phoneMaxWidth: the side window at 400) it goes INSIDE "…"
+    // (design review wave 1 merge, 2026-10-17; the review's "what to cut" 6 and D13): the phone card is name, copy,
+    // delete and "…" only. The row under the 56 px card made it ~100 px and the object list above it read 2 rows
+    // at 400×600 (test/studio-narrow wants 4). Draw order stays one press away: "…", and dragging a row's grip in
+    // the list. Before: the row stayed on the folded card ("draw order is a main 2D move", narrow pass 10-17).
+    const layerAt = d.phone() ? fine : body;
     if (hasLayer(it) && it.backdrop) {
       // Ground / background: stays at the back (play test 2026-10-16), said in one line.
-      body.append(h('p', { class: 'muted layer-fixed note-line', dataset: { part: 'layer' }, text: d.t('layer.backdrop') }));
+      layerAt.append(h('p', { class: 'muted layer-fixed note-line', dataset: { part: 'layer' }, text: d.t('layer.backdrop') }));
     } else if (hasLayer(it)) {
       const items = d.items();
       const sib = siblingsOf(items, key);
       const pos = sib.findIndex((s) => s.key === key);
       // "3 / 8" from the front, so the person sees where it is at a glance.
       const at = sib.length > 1 ? `${sib.length - pos} / ${sib.length}` : undefined;
-      body.append(layerRow((op) => layerTarget(items, key, op) === null, (op) => d.reorder(key, op), at, at && d.t('layer.posTip', { i: sib.length - pos, n: sib.length })));
+      layerAt.append(layerRow((op) => layerTarget(items, key, op) === null, (op) => d.reorder(key, op), at, at && d.t('layer.posTip', { i: sib.length - pos, n: sib.length })));
     }
     // 4. The game's rules for this object, said where the hand is: "Grid 1 · 45° steps".
     const rules = d.rules?.(key) || [];
@@ -528,9 +534,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     updateNumbers();
   };
 
-  // Phone: the head's second line, "2.00, 0.00, 2.00 · 52°" (kept current while dragging).
-  let summaryLine: HTMLElement | null = null;
-  const fmt = (v: number, dim: Dim) => (dim === '3d' ? v.toFixed(2) : String(Math.round(v)));
+  // (The phone's numbers line in the card head, "2.00, 0.00, 2.00 · 52°", is gone: W1-11.)
   const updateNumbers = () => {
     const key = d.selected();
     const p = key ? d.pose(key) : undefined;
@@ -538,11 +542,6 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     for (const { input, read, show } of inputs) {
       if (document.activeElement === input) continue; // do not fight the user's typing
       input.value = show(read(p));
-    }
-    if (summaryLine && d.group().length <= 1) {
-      const dim = d.dim();
-      const it = d.items().find((i) => i.key === key);
-      summaryLine.textContent = p.p.slice(0, dim === '3d' ? 3 : 2).map((v) => fmt(v, dim)).join(', ') + (it?.rotatable ? ` · ${Math.round((p.r ?? 0) * DEG)}°` : '');
     }
   };
 
@@ -660,7 +659,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     pre = pre.replace(/[\s#:_.-]+$/, '');
     return pre.length >= 2 ? pre : names[0] || '';
   };
-  const nameOf = (it: Item) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? `${d.t('placement.unstable')} (${it.key})` : undefined, text: displayName(it, d.t) });
+  const nameOf = (it: Item) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : undefined, text: displayName(it, d.t) });
   // Keep the picked row in view inside the list (PC and phone). Before the
   // tool-modes pass (10/16) a phone scrolled the sheet to its top on a new
   // pick, because the card was then inside the sheet; the card now stands on
@@ -796,6 +795,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     el,
     cardEl: card,
     noNameEl: noName,
+    listToolsEl: listTools,
     askEl,
     askNoteEl,
     renderAsk,

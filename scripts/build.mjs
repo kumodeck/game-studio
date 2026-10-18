@@ -51,6 +51,12 @@ async function buildOnce() {
     built++;
     console.log(`  ${t.out}  ${(code.length / 1024).toFixed(1)} KB  (${files.length} modules)`);
   }
+  // The example adapters next to SKILL.md (skills/arrange/adapters/), where SKILL §1-§2 tells the AI to copy one
+  // from. WHY (dogfood 2026-10-17): the plugin shipped without this folder; SKILL said "copy adapters/phaser.js",
+  // the AI found nothing there, searched the editor's code and spent ten minutes before the first URL.
+  const shipped = shipAdapters();
+  console.log(`  ../../adapters/  ${shipped} file(s)`);
+  built += shipped;
   // The local server and the loader have their own small build (plain .mjs, no types).
   const server = join(SRC, 'server/build.mjs');
   if (existsSync(server)) {
@@ -61,6 +67,24 @@ async function buildOnce() {
     built += 2;
   }
   console.log(`built ${built} file(s) in ${Date.now() - t0} ms`);
+}
+
+/** src/adapters/<engine>/… → skills/arrange/adapters/<engine>.js (Godot keeps its two halves in a folder). */
+const SHIPPED_ADAPTERS = [
+  ['phaser/adapter.js', 'phaser.js'],
+  ['pixi/adapter.js', 'pixi.js'],
+  ['canvas/adapter.js', 'canvas.js'],
+  ['dom/adapter.js', 'dom.js'],
+  ['godot/adapter.js', 'godot/adapter.js'],
+  ['godot/studio_bridge.gd', 'godot/studio_bridge.gd'],
+];
+function shipAdapters() {
+  const out = join(ROOT, 'skills/arrange/adapters');
+  for (const [from, to] of SHIPPED_ADAPTERS) {
+    mkdirSync(dirname(join(out, to)), { recursive: true });
+    copyFileSync(join(SRC, 'adapters', from), join(out, to));
+  }
+  return SHIPPED_ADAPTERS.length;
 }
 
 try {

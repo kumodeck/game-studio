@@ -79,7 +79,15 @@ async function run(example, layout) {
   };
   const list = async () => JSON.parse(await page.eval(IN.list));
   const zOf = async (key) => (await list()).find((i) => i.key === key).pose.z;
-  const press = async (sel) => assert.ok(await page.eval(IN.click(sel)), `no enabled ${sel}`);
+  // On a phone the card's Layer row is inside "…" (W1 merge 2026-10-17, the review's "what to cut" 6 / D13): open it
+  // first, the way a person does, and close it after (the open card covers the part of the game the pictures compare).
+  const fold = (open) => page.eval(`(() => { const f = document.querySelector('.card .fine'); if (f && f.open !== ${open}) f.querySelector('summary').click(); })()`);
+  const press = async (sel) => {
+    const layer = mobile && sel.includes('layer-');
+    if (layer) await fold(true);
+    assert.ok(await page.eval(IN.click(sel)), `no enabled ${sel}`);
+    if (layer) await fold(false);
+  };
   const MOD = process.platform === 'darwin' ? 4 : 2;
   // Undo / redo (rebrand 2026-10-16: no toolbar buttons on PC): ⌘Z / ⇧⌘Z there; on a
   // phone Undo is in the top bar and Redo a row of the ⌘K list (press the ask field).

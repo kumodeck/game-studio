@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.0 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.3 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -276,6 +276,15 @@ const CONTRACT_VERSION = 1;
                                                                   
      
                                       
+     
+                                                                            
+                                                                           
+                                                                             
+                                                                             
+                                                                               
+                                         
+     
+                                        
                                                             
                                          
                                                                                        
@@ -791,6 +800,11 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                              
                                                   
+     
+                                                                                                             
+                                                                                                                   
+     
+                                                  
                                                        
                                                               
                                                                                 
@@ -831,6 +845,8 @@ const MSG_PREFIX = 'studio:';
                                                                        
                                                                                      
                                                              
+                                                                                                                       
+                                                    
                                                                                            
                                                                   
                                                    
@@ -934,7 +950,11 @@ function isStudioMessage(x         )                     {
                    
  
 
-                                                                 
+/**
+ * `asking` (dogfood 2026-10-17, U2): the agent asked the person something in its own window and waits for the
+ * answer; `note` is the question. Without it the editor kept saying "Your AI has it" for minutes while the AI waited.
+ */
+                                                                            
 
 /** What the agent writes back (local: .studio/status.json). Only the latest status is kept. */
                                
@@ -1037,6 +1057,12 @@ function isStudioMessage(x         )                     {
               
      
                              
+     
+                                                                                                                               
+                                                                                                                   
+                                                                            
+     
+                           
      
                                                                               
                                                                                 
@@ -3966,6 +3992,11 @@ const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
                                                                                
      
                                        
+     
+                                                                                                                    
+                                                                                                         
+     
+                               
                                                                                          
                               
      
@@ -4407,7 +4438,7 @@ function mountLibrary(root    , deps             )              {
     }
     const keys = h('div', 'gsl-keys');
     for (const u of row.usedBy) {
-      const k = h('button', 'gsl-key', u.key);
+      const k = h('button', 'gsl-key', deps.nameOf ? deps.nameOf(u.key) : u.key);
       k.type = 'button';
       k.title = L('select');
       if (!u.sure) k.append(h('i', 'gsl-guess', ` (${L('guessed')})`));
@@ -4733,6 +4764,60 @@ __def(__exports, "mountLibrary", () => mountLibrary);
 };
 __defs[12] = function (__exports) {
 'use strict';
+// names.ts
+
+// The name a person reads for an object in the list and on the card (polish pass 2026-10-16, play test
+// stumble 8: the list showed "No name" with `path:8` next to it, and two rows both called "tree").
+//
+// WHY here and not in the adapters: the key (`path:6`, `tree#2`) is the editor's and the AI's handle and must not
+// change; only what is SHOWN changes. A tree path means nothing to a newcomer, so an object without a name is
+// called by what it looks like: the picture file it draws ("rock" for rock.svg) or its kind ("Unnamed shape").
+// The key stays in the row's tooltip and in everything sent to the AI.
+                                           
+
+/** Kind tags (adapters' Item.kinds) → the i18n word for "an unnamed one of these". */
+const KIND_WORD                         = {
+  sprite: 'picture', text: 'text', graphics: 'shape', container: 'group', group: 'group', model: 'model',
+  box: 'shape', sphere: 'shape', plane: 'shape', cylinder: 'shape', cone: 'shape', mesh: 'shape',
+};
+
+/** The file name without folder and extension, when `group` is a picture / model URL or path. */
+function fileStem(group                    )                {
+  if (!group || !/\.(png|jpe?g|webp|gif|svg|avif|glb|gltf)(\?|#|$)/i.test(group)) return null;
+  const last = group.split(/[?#]/)[0] .split('/').pop() || '';
+  const stem = decodeURIComponentSafe(last).replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim();
+  return stem || null;
+}
+function decodeURIComponentSafe(s        )         {
+  try {
+    return decodeURIComponent(s);
+  } catch {
+    return s;
+  }
+}
+
+/**
+ * The shown name.
+ * - Named: its label; a second, third… object with the same name (key `tree#2`) reads "tree 2".
+ * - Unnamed (`unstable`): the stem of its picture or model file, else "Unnamed <kind>" (`t('noname.kind.<w>')`).
+ */
+function displayName(it                                                              , t                       )         {
+  if (it.unstable) {
+    const stem = fileStem(it.group);
+    if (stem) return stem;
+    const w = KIND_WORD[(it.kinds || []).find((k) => KIND_WORD[k]) || ''] || 'object';
+    return t(`noname.kind.${w}`);
+  }
+  const m = /^(.*)#(\d+)$/.exec(it.key);
+  if (m && m[2] !== '1' && it.label === m[1]) return `${it.label} ${m[2]}`;
+  return it.label;
+}
+
+__def(__exports, "fileStem", () => fileStem);
+__def(__exports, "displayName", () => displayName);
+};
+__defs[13] = function (__exports) {
+'use strict';
 // ../tools/library/index.ts
 
 // The Library tool as the shell sees it (ShellTool, CONTRACT.md §5).
@@ -4753,6 +4838,7 @@ const { mountLibrary } = __require(11);
 const { assetsOfKey, buildRows, normalizeList } = __require(5);
                                              
 const { t } = __require(7);
+const { displayName } = __require(12);
                                               
 
 let panel                     = null;
@@ -4822,6 +4908,10 @@ const libraryTool            = {
       },
       selectObject: (key) => ctx.selectObject(key),
       selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects (keys) : undefined,
+      nameOf: (key) => {
+        const it = ctx.items().find((i) => i.key === key);
+        return it ? displayName(it, (k) => ctx.t(k)) : key;
+      },
       onPending: () => ctx.changed(),
       // Same hand-off as "Ideas for your AI" and the card's ask box: host.request (kept as
       // .studio/requests/<id>.json, plus .studio/next-step.md and the `studio: next-step
@@ -4996,7 +5086,7 @@ __def(__exports, "filesOfObject", () => filesOfObject);
 __def(__exports, "openAsset", () => openAsset);
 __def(__exports, "renderFilesOfObject", () => renderFilesOfObject);
 };
-__defs[13] = function (__exports) {
+__defs[14] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -5237,7 +5327,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[14] = function (__exports) {
+__defs[15] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -5376,7 +5466,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[15] = function (__exports) {
+__defs[16] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -5400,7 +5490,7 @@ __defs[15] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 const { LIMITS } = __require(0);
-const { hasLayer, orderOfLayer } = __require(14);
+const { hasLayer, orderOfLayer } = __require(15);
 
 function roundTo(v        , step        )         {
   return Math.round(v / step) * step;
@@ -5843,7 +5933,7 @@ __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[16] = function (__exports) {
+__defs[17] = function (__exports) {
 'use strict';
 // dom.ts
 
@@ -5881,7 +5971,7 @@ function safeImageSrc(src                           )                {
 __def(__exports, "h", () => h);
 __def(__exports, "safeImageSrc", () => safeImageSrc);
 };
-__defs[17] = function (__exports) {
+__defs[18] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -5936,7 +6026,7 @@ const en = {
   'status.waiting': 'Waiting for the game to start…',
   'status.noAdapter': 'This game isn’t connected to Game Studio yet.',
   'status.noAdapterHint': 'three.js games connect on their own. For other engines, ask your AI to “write the Game Studio adapter for this game.”',
-  'status.checkFail': 'This game’s adapter needs a fix. Your AI has the details.',
+  'status.checkFail': 'Your AI has the details.',
   // Never stuck (polish pass 2026-10-16): what broke, then what to do, in one line.
   'status.gameError': 'The game stopped on an error:',
   'status.gameErrorHint': 'Ask your AI to fix it, then reload. The editor still works.',
@@ -5976,11 +6066,15 @@ const en = {
   'ask.name': 'Ask your AI to name it',
   'ask.nameSent': 'Asked your AI to name them.',
   'noname.count': '{n} unnamed',
+  'noname.row': '{n:1 object has no name|# objects have no name}',
+  'noname.act': 'Name them',
+  'noname.act1': 'Name it',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to your AI. Waiting for a reply…',
   'ai.nudge': 'Your AI hasn’t seen this yet. Type “look” in your AI’s window.',
   'ai.received': 'Your AI has it',
   'ai.working': 'Your AI is working on it…',
+  'ai.asking': 'Your AI has a question — answer it in Claude Code.',
   'ai.done': 'Done.',
   'ai.done1': '1 thing changed',
   'ai.doneN': '{n} things changed',
@@ -6116,13 +6210,14 @@ const en = {
   'ops.selectGroup': 'Select all {n}',
   'copy.ghost': 'Duplicates show see-through here because this game’s adapter can’t duplicate objects itself. Save, and your AI adds them to the code.',
   'copy.failed': '{n:1 object couldn’t be duplicated.|# objects couldn’t be duplicated.}',
-  'check.adapter-found': 'No adapter found',
-  'check.has-objects': 'The adapter lists no objects',
-  'check.keys-valid': 'Some keys are invalid or duplicated',
-  'check.pose-roundtrip': 'A moved object doesn’t report its new position',
-  'check.screen-changes': 'Moving an object doesn’t change what’s on screen',
-  'check.anchor-follows': 'The handles don’t follow the object',
-  'check.restored': 'The test move wasn’t undone exactly',
+  // What a failed self-check means for the person, in their words (no adapter / render / setPose: those go to the AI).
+  'check.adapter-found': 'This game isn’t connected to Game Studio yet.',
+  'check.has-objects': 'Nothing in this game can be selected yet.',
+  'check.keys-valid': 'Some objects may not keep their place when you save.',
+  'check.pose-roundtrip': 'Moves may not stick in this game yet.',
+  'check.screen-changes': 'Moving things may not show in this game yet.',
+  'check.anchor-follows': 'The handles may not follow things in this game yet.',
+  'check.restored': 'An object may have shifted slightly while the editor checked this game.',
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
   'app.brand': 'Studio',
   'list.title': 'Objects',
@@ -6139,6 +6234,14 @@ const en = {
   'ask.chipMany': 'Ask your AI about these…',
   'ops.manyShort': '{n} selected',
   'pal.title': 'Ask your AI or search actions',
+  // The ⌘K list's own search field (W1-4): actions, objects, the AI's ideas.
+  'pal.search': 'Search actions and objects…',
+  // The web demo (host.offline, W1-6): the line in the ask box's place, and its link.
+  'offline.askLine': 'In Claude Code, your AI makes the changes you type here.',
+  'offline.get': 'Get Game Studio →',
+  // The same on a phone, where the bar holds about 40 characters on one line.
+  'offline.askLine.short': 'Your AI does this in Claude Code.',
+  'offline.get.short': 'Get it →',
   'pal.ask': 'Ask your AI',
   'pal.actions': 'Actions',
   'pal.kumodeck': 'With KUMODeck (optional)',
@@ -6218,7 +6321,7 @@ const ja                               = {
   'status.waiting': 'ゲームの起動を待っています…',
   'status.noAdapter': 'このゲームはまだ Game Studio につながっていません。',
   'status.noAdapterHint': 'three.js のゲームは自動でつながります。ほかのエンジンは AI に「このゲームの Game Studio のつなぎを書いて」と頼んでください。',
-  'status.checkFail': 'このゲームのつなぎ（アダプター）に直す所があります。詳しくは AI に送りました。',
+  'status.checkFail': '詳しくは AI に伝えてあります。',
   'status.gameError': 'ゲームがエラーで止まりました:',
   'status.gameErrorHint': 'AI に直してもらってから、読み込み直してください。エディタはそのまま使えます。',
   'status.gameErrorToast': 'ゲームがエラーで止まりました（{msg}）。AI に直すよう頼んでください。',
@@ -6254,10 +6357,14 @@ const ja                               = {
   'ask.name': 'AI に名前を付けてもらう',
   'ask.nameSent': 'AI に名前付けを頼みました。',
   'noname.count': '名前なし {n} 個',
+  'noname.row': '名前のないオブジェクト {n} 個',
+  'noname.act': '名前を付ける',
+  'noname.act1': '名前を付ける',
   'ai.waiting': '{what}を AI に送りました。返事を待っています…',
   'ai.nudge': 'AI はまだ見ていません。AI の画面で「見て」と打ってください。',
   'ai.received': 'AI が受け取りました',
   'ai.working': 'AI が作業中です…',
+  'ai.asking': 'AI から質問があります — Claude Code で答えてください。',
   'ai.done': '直しました。',
   'ai.done1': '1 個変わりました',
   'ai.doneN': '{n} 個変わりました',
@@ -6387,13 +6494,13 @@ const ja                               = {
   'ops.selectGroup': '{n} 個を全部選ぶ',
   'copy.ghost': 'このゲームのつなぎは物を複製できないので、複製は半透明の仮の姿で出しています。保存すると、AI がコードに足します。',
   'copy.failed': '{n} 個は複製できませんでした。',
-  'check.adapter-found': 'つなぎが見つかりません',
-  'check.has-objects': 'つなぎが物を 1 つも返しません',
-  'check.keys-valid': 'key の形が違うか、重なっています',
-  'check.pose-roundtrip': '動かした位置を読み戻せません',
-  'check.screen-changes': '動かしても画面の絵が変わりません',
-  'check.anchor-follows': 'つまみが物に付いてきません',
-  'check.restored': '試しに動かした物が元に戻りません',
+  'check.adapter-found': 'このゲームはまだ Game Studio につながっていません。',
+  'check.has-objects': 'このゲームには、まだ選べるオブジェクトがありません。',
+  'check.keys-valid': '保存しても位置が残らないオブジェクトがあるかもしれません。',
+  'check.pose-roundtrip': 'このゲームでは、まだ動かした位置が残らないことがあります。',
+  'check.screen-changes': 'このゲームでは、まだ動かしても画面に出ないことがあります。',
+  'check.anchor-follows': 'このゲームでは、まだつまみがオブジェクトに付いてこないことがあります。',
+  'check.restored': 'エディタの確認で、オブジェクトが少しずれたかもしれません。',
   'app.brand': 'Studio',
   'list.title': '物',
   'foot.palette': 'すべての操作',
@@ -6409,6 +6516,11 @@ const ja                               = {
   'ask.chipMany': 'これらについて AI に頼む…',
   'ops.manyShort': '{n} 個を選択',
   'pal.title': 'AI に頼むか、操作を探す',
+  'pal.search': '操作やオブジェクトを探す…',
+  'offline.askLine': 'Claude Code では、ここに書いた変更を AI が行います。',
+  'offline.get': 'ゲームスタジオを入手 →',
+  'offline.askLine.short': 'Claude Code では AI が行います。',
+  'offline.get.short': '入手 →',
   'pal.ask': 'AI に頼む',
   'pal.actions': '操作',
   'pal.kumodeck': 'KUMODeck で（使わなくても大丈夫）',
@@ -6475,7 +6587,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[18] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // icons.ts
 
@@ -6638,7 +6750,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[19] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -6658,8 +6770,8 @@ __defs[19] = function (__exports) {
 // - The agent checks with the user before signing in, uploading or changing code.
 // - No prices in the UI (they change); a link to the pricing page instead.
                                                                              
-const { h } = __require(16);
-const { icon } = __require(18);
+const { h } = __require(17);
+const { icon } = __require(19);
 
 /** The only place the KUMODeck site address appears in the shell. */
 const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
@@ -6741,7 +6853,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[20] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -6782,7 +6894,8 @@ const KUMODECK_STEP_IDS = Object.freeze(['publish', 'multiplayer', 'save-data', 
  * so the AI line in the editor follows it too. The host checks each file exists before keeping it.
  */
 const FILE_STEP_IDS = Object.freeze(['delete-files']);
-const AI_STATES = Object.freeze(['received', 'working', 'done', 'failed']);
+// `asking`: the agent waits for the person's answer in its own window; `note` is the question (dogfood 2026-10-17, U2).
+const AI_STATES = Object.freeze(['received', 'working', 'asking', 'done', 'failed']);
 
 const KEY_OK = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 const ID_OK = /^[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}$/;
@@ -6941,7 +7054,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -6963,13 +7076,15 @@ __defs[21] = function (__exports) {
 //   away             nobody watches: say so AT ONCE, with the one thing to do and what still
 //                    works (play test 10/16: 21 s of "waiting" and then a dead end)
 //   received/working the AI wrote its status (its note, if any, is the line)
+//   asking           the AI asked the person something in its own window and waits (its note is the question;
+//                    dogfood 2026-10-17: "Your AI has it" stayed up 5 minutes while it waited for an answer)
 //   updating         the AI is done and the game is reloading behind the old picture
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                    
-const { statusCovers } = __require(20);
+const { statusCovers } = __require(21);
 
-                                                                                                                                                              
+                                                                                                                                                                         
 
                             
                
@@ -7023,7 +7138,10 @@ function aiPhase(s             )          {
   return s.status.state;
 }
 
-/** The violet light runs round the input in these phases: the AI has it and is on it. */
+/**
+ * The violet light runs round the input in these phases: the AI has it and is on it. Not while `asking`: then the
+ * person is the one to act, and a running light would say "wait" (supervision 2026-10-17: the dot does not blink).
+ */
 function aiBusy(phase         )          {
   return phase === 'sent' || phase === 'seen' || phase === 'received' || phase === 'working' || phase === 'updating';
 }
@@ -7066,7 +7184,8 @@ const QUIET_MS = 180_000;
 function reloadDecision(r             )                        {
   if (!r.code || !r.loadedCode || r.code === r.loadedCode || r.playing || r.reloading) return 'no';
   if (r.phase === 'done' || r.phase === 'failed') return 'now';
-  if (aiBusy(r.phase)) return r.stableMs >= QUIET_MS ? 'now' : 'wait';
+  // Asking: the AI may have written half its change before its question; wait for its "done" like while it works.
+  if (aiBusy(r.phase) || r.phase === 'asking') return r.stableMs >= QUIET_MS ? 'now' : 'wait';
   return r.stableMs > 0 ? 'now' : 'wait';
 }
 
@@ -7076,7 +7195,7 @@ __def(__exports, "aiBusy", () => aiBusy);
 __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 };
-__defs[22] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -7159,7 +7278,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[23] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -7167,9 +7286,9 @@ __defs[23] = function (__exports) {
 // Every change applies at once and is saved to .studio/ui.json (debounced by
 // the caller), so there is no separate Apply/Save step to forget.
                                                     
-const { h } = __require(16);
-const { icon } = __require(18);
-const { DEFAULT_UI, UI_LIMITS } = __require(22);
+const { h } = __require(17);
+const { icon } = __require(19);
+const { DEFAULT_UI, UI_LIMITS } = __require(23);
 
                                
                          
@@ -7252,14 +7371,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(14);
+const { hasLayer } = __require(15);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -7356,60 +7475,6 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[25] = function (__exports) {
-'use strict';
-// names.ts
-
-// The name a person reads for an object in the list and on the card (polish pass 2026-10-16, play test
-// stumble 8: the list showed "No name" with `path:8` next to it, and two rows both called "tree").
-//
-// WHY here and not in the adapters: the key (`path:6`, `tree#2`) is the editor's and the AI's handle and must not
-// change; only what is SHOWN changes. A tree path means nothing to a newcomer, so an object without a name is
-// called by what it looks like: the picture file it draws ("rock" for rock.svg) or its kind ("Unnamed shape").
-// The key stays in the row's tooltip and in everything sent to the AI.
-                                           
-
-/** Kind tags (adapters' Item.kinds) → the i18n word for "an unnamed one of these". */
-const KIND_WORD                         = {
-  sprite: 'picture', text: 'text', graphics: 'shape', container: 'group', group: 'group', model: 'model',
-  box: 'shape', sphere: 'shape', plane: 'shape', cylinder: 'shape', cone: 'shape', mesh: 'shape',
-};
-
-/** The file name without folder and extension, when `group` is a picture / model URL or path. */
-function fileStem(group                    )                {
-  if (!group || !/\.(png|jpe?g|webp|gif|svg|avif|glb|gltf)(\?|#|$)/i.test(group)) return null;
-  const last = group.split(/[?#]/)[0] .split('/').pop() || '';
-  const stem = decodeURIComponentSafe(last).replace(/\.[a-z0-9]+$/i, '').replace(/[-_]+/g, ' ').trim();
-  return stem || null;
-}
-function decodeURIComponentSafe(s        )         {
-  try {
-    return decodeURIComponent(s);
-  } catch {
-    return s;
-  }
-}
-
-/**
- * The shown name.
- * - Named: its label; a second, third… object with the same name (key `tree#2`) reads "tree 2".
- * - Unnamed (`unstable`): the stem of its picture or model file, else "Unnamed <kind>" (`t('noname.kind.<w>')`).
- */
-function displayName(it                                                              , t                       )         {
-  if (it.unstable) {
-    const stem = fileStem(it.group);
-    if (stem) return stem;
-    const w = KIND_WORD[(it.kinds || []).find((k) => KIND_WORD[k]) || ''] || 'object';
-    return t(`noname.kind.${w}`);
-  }
-  const m = /^(.*)#(\d+)$/.exec(it.key);
-  if (m && m[2] !== '1' && it.label === m[1]) return `${it.label} ${m[2]}`;
-  return it.label;
-}
-
-__def(__exports, "fileStem", () => fileStem);
-__def(__exports, "displayName", () => displayName);
-};
 __defs[26] = function (__exports) {
 'use strict';
 // thumb-tone.ts
@@ -7505,11 +7570,11 @@ __defs[27] = function (__exports) {
 // presses (in the game and in the list) to add / take out instead of
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
-const { h, safeImageSrc } = __require(16);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(14);
-const { groupLayerPossible, sameKind } = __require(24);
-const { icon, setButton } = __require(18);
-const { displayName } = __require(25);
+const { h, safeImageSrc } = __require(17);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(15);
+const { groupLayerPossible, sameKind } = __require(25);
+const { icon, setButton } = __require(19);
+const { displayName } = __require(12);
 const { toneThumb } = __require(26);
 
                                      
@@ -7574,6 +7639,8 @@ const { toneThumb } = __require(26);
                       
                                                                              
                         
+                                                                                                                        
+                           
                                                                            
                      
                                                                                                      
@@ -7593,10 +7660,10 @@ const DEG = 180 / Math.PI;
 function createPlacementPanel(d                    )                 {
   const el = h('div', { class: 'placement' });
   const card = h('section', { class: 'card', 'aria-live': 'polite', dataset: { part: 'card' } });
-  // "N objects have no name → ask your AI to name them": 2D games often list
-  // "graphics (no name)" rows with a ⚠ that read as broken. One quiet line at
-  // the foot of the list (design pass "apple"): it is about the list, and a
-  // missing name is a thing to improve, not an alarm at the top of the panel.
+  // "102 objects have no name · Name them": the FIRST row of the list, grey, with one text button on the right
+  // (supervision 2026-10-17, U4/W1-8: "in the list, its first row, not above it: the list keeps its shape; no yellow,
+  // no frame"). It was a foot row of the column ("✦ Ask your AI to name it 102"), which a person with 102 unnamed
+  // rows never scrolled to, and which read as a request already made. 2D games list "graphics (no name)" rows too.
   const noName = h('div', { class: 'noname', dataset: { part: 'noname' }, hidden: true });
   const list = h('ul', { class: 'objects', role: 'listbox', 'aria-label': d.t('btn.list'), 'aria-multiselectable': 'true' });
   // The list's head: its name and count on the left, "Select" on the right
@@ -7607,7 +7674,7 @@ function createPlacementPanel(d                    )                 {
   // The how-to paragraph and the colour key under the list went (rebrand):
   // a one-line first hint over the ask bar says it once (main.ts), and the
   // editor's colours have one meaning each (orange = you, violet = the AI).
-  const listScroll = h('div', { class: 'list-scroll' }, list);
+  const listScroll = h('div', { class: 'list-scroll' }, noName, list);
   el.append(listTools, listScroll);
   let noNameSent = false;
   const renderNoName = () => {
@@ -7615,15 +7682,13 @@ function createPlacementPanel(d                    )                 {
     noName.replaceChildren();
     noName.hidden = !keys.length;
     if (!keys.length) return;
-    // One quiet row at the column's foot: ✦ the request · how many.
-    if (noNameSent) {
-      noName.append(h('span', { class: 'foot-row muted', text: d.t('ask.nameSent') }));
-      return;
-    }
-    noName.append(h('button', { type: 'button', class: 'foot-row', dataset: { action: 'ask-name-all' }, title: d.t('noname.count', { n: keys.length }), onclick: async () => {
+    // Grey words, then one text button. After the press the row says it was asked (and stays until the names land).
+    noName.append(h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.row', { n: keys.length }) }));
+    if (noNameSent) return;
+    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: async () => {
       noNameSent = await d.askName(keys);
       renderNoName();
-    } }, icon('spark'), h('span', { class: 'label', text: d.t('ask.name') }), h('span', { class: 'n', text: String(keys.length) })));
+    } }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
   };
   const expanded = new Set        ();
   const thumbs = new Map                            ();
@@ -7699,10 +7764,12 @@ function createPlacementPanel(d                    )                 {
     const whole = !keys.length || !first;
     const ph = whole ? d.t('ask.game') : keys.length > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
-    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : first.label;
+    // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
+    const firstName = whole ? '' : displayName(first, d.t);
+    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : firstName;
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
-    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: first.label }));
+    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
@@ -7785,7 +7852,6 @@ function createPlacementPanel(d                    )                 {
   const renderCard = () => {
     card.replaceChildren();
     inputs = [];
-    summaryLine = null;
     const key = d.selected();
     const sel = d.group();
     // The card appears with a short rise when the selection changes (not on
@@ -7823,11 +7889,10 @@ function createPlacementPanel(d                    )                 {
     const sub = h0.querySelector('.key')               ;
     card.append(h0);
     const body = h('div', { class: 'card-body' });
-    // Phone: the head shows the numbers in one mono line; "…" opens the fields.
-    if (d.phone()) {
-      summaryLine = sub;
-      sub.classList.add('mono');
-    }
+    // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
+    // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
+    // "…" (which still opens the fields). The second line stays empty; whoever needs numbers reads them on a PC.
+    if (d.phone()) sub.textContent = '';
     animate();
     // Game rules (.studio/studio.json): a locked object has no strip and no
     // number fields; a kind with a default size gets a one-click reset.
@@ -7905,7 +7970,8 @@ function createPlacementPanel(d                    )                 {
     const fields = h('div', { class: 'fields' });
     fields.append(h('span', { class: 'f-l', text: d.t('placement.pos') }));
     const posCells = h('div', { class: `f-cells n${axes.length}` });
-    const metres = (v        ) => v.toFixed(2);
+    // One decimal (W1-11 / D1): "-24.0" fits three to a row of the 272 px card; "-24.00" was cut to "-24.0(".
+    const metres = (v        ) => v.toFixed(1);
     const px = (v        ) => String(Math.round(v * 10) / 10);
     axes.forEach((a, i) => posCells.append(num(a, (p) => p.p[i] ?? 0, (p, v) => ((p.p[i] = v), p), dim === '3d' ? '0.1' : '1', a, dim === '3d' ? metres : px)));
     fields.append(posCells);
@@ -7946,17 +8012,22 @@ function createPlacementPanel(d                    )                 {
       } }));
     }
     body.append(fine);
-    // 3. Layer (2D).
+    // 3. Layer (2D). On a phone (and any window up to UI.phoneMaxWidth: the side window at 400) it goes INSIDE "…"
+    // (design review wave 1 merge, 2026-10-17; the review's "what to cut" 6 and D13): the phone card is name, copy,
+    // delete and "…" only. The row under the 56 px card made it ~100 px and the object list above it read 2 rows
+    // at 400×600 (test/studio-narrow wants 4). Draw order stays one press away: "…", and dragging a row's grip in
+    // the list. Before: the row stayed on the folded card ("draw order is a main 2D move", narrow pass 10-17).
+    const layerAt = d.phone() ? fine : body;
     if (hasLayer(it) && it.backdrop) {
       // Ground / background: stays at the back (play test 2026-10-16), said in one line.
-      body.append(h('p', { class: 'muted layer-fixed note-line', dataset: { part: 'layer' }, text: d.t('layer.backdrop') }));
+      layerAt.append(h('p', { class: 'muted layer-fixed note-line', dataset: { part: 'layer' }, text: d.t('layer.backdrop') }));
     } else if (hasLayer(it)) {
       const items = d.items();
       const sib = siblingsOf(items, key);
       const pos = sib.findIndex((s) => s.key === key);
       // "3 / 8" from the front, so the person sees where it is at a glance.
       const at = sib.length > 1 ? `${sib.length - pos} / ${sib.length}` : undefined;
-      body.append(layerRow((op) => layerTarget(items, key, op) === null, (op) => d.reorder(key, op), at, at && d.t('layer.posTip', { i: sib.length - pos, n: sib.length })));
+      layerAt.append(layerRow((op) => layerTarget(items, key, op) === null, (op) => d.reorder(key, op), at, at && d.t('layer.posTip', { i: sib.length - pos, n: sib.length })));
     }
     // 4. The game's rules for this object, said where the hand is: "Grid 1 · 45° steps".
     const rules = d.rules?.(key) || [];
@@ -8008,9 +8079,7 @@ function createPlacementPanel(d                    )                 {
     updateNumbers();
   };
 
-  // Phone: the head's second line, "2.00, 0.00, 2.00 · 52°" (kept current while dragging).
-  let summaryLine                     = null;
-  const fmt = (v        , dim     ) => (dim === '3d' ? v.toFixed(2) : String(Math.round(v)));
+  // (The phone's numbers line in the card head, "2.00, 0.00, 2.00 · 52°", is gone: W1-11.)
   const updateNumbers = () => {
     const key = d.selected();
     const p = key ? d.pose(key) : undefined;
@@ -8018,11 +8087,6 @@ function createPlacementPanel(d                    )                 {
     for (const { input, read, show } of inputs) {
       if (document.activeElement === input) continue; // do not fight the user's typing
       input.value = show(read(p));
-    }
-    if (summaryLine && d.group().length <= 1) {
-      const dim = d.dim();
-      const it = d.items().find((i) => i.key === key);
-      summaryLine.textContent = p.p.slice(0, dim === '3d' ? 3 : 2).map((v) => fmt(v, dim)).join(', ') + (it?.rotatable ? ` · ${Math.round((p.r ?? 0) * DEG)}°` : '');
     }
   };
 
@@ -8140,7 +8204,7 @@ function createPlacementPanel(d                    )                 {
     pre = pre.replace(/[\s#:_.-]+$/, '');
     return pre.length >= 2 ? pre : names[0] || '';
   };
-  const nameOf = (it      ) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? `${d.t('placement.unstable')} (${it.key})` : undefined, text: displayName(it, d.t) });
+  const nameOf = (it      ) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : undefined, text: displayName(it, d.t) });
   // Keep the picked row in view inside the list (PC and phone). Before the
   // tool-modes pass (10/16) a phone scrolled the sheet to its top on a new
   // pick, because the card was then inside the sheet; the card now stands on
@@ -8276,6 +8340,7 @@ function createPlacementPanel(d                    )                 {
     el,
     cardEl: card,
     noNameEl: noName,
+    listToolsEl: listTools,
     askEl,
     askNoteEl,
     renderAsk,
@@ -8330,8 +8395,16 @@ __defs[28] = function (__exports) {
 // row, the phone's list button, ↑ / ↓ in the field), and while typing only
 // when the typed word names an action or an object (`suggests`): then just
 // those rows show, so "undo" still finds Undo and a sentence never opens it.
-const { h } = __require(16);
-const { icon } = __require(18);
+//
+// Its own search field (design review wave 1, W1-4 / N7, 2026-10-17). Opened on purpose (⌘K, the "…" on a phone, the ⌘K row,
+// ↑ / ↓ in the ask box), the list now has a search field of its own at its top, and what is typed goes there. Before,
+// the ask box WAS the list's field: with Editor view open, ⌘K then "Editor view" put those words in the ask box with
+// its send button live, one Enter (or one tap) from sending a search to the AI. Sending something by mistake is what
+// loses trust fastest, so the ask box's text is never touched by the ⌘K list now; "Ask your AI: “…”" in that list only
+// moves the words into the ask box (focused, not sent). Typing in the ask box still shows suggestions (the `typed`
+// mode below), and those still read the ask box: there the words were written in it on purpose.
+const { h } = __require(17);
+const { icon } = __require(19);
 
                                                                         
 
@@ -8353,7 +8426,7 @@ const { icon } = __require(18);
 
                               
                                                                  
-                                                       
+                                                                                                                 
                           
                                                                           
                        
@@ -8369,6 +8442,8 @@ const { icon } = __require(18);
                 
                     
                  
+                                               
+                           
  
 
 const fold = (s        ) => s.toLowerCase().normalize('NFKC');
@@ -8406,7 +8481,12 @@ function suggests(query        , rows                                           
 }
 
 function createPalette(d             )          {
-  const el = h('div', { class: 'palette', role: 'listbox', id: 'studio-palette', hidden: true, 'aria-label': d.t('pal.title') });
+  // The list's own field (W1-4), shown only when the list was opened on purpose; the rows go in `list` under it.
+  const search = h('input', { type: 'text', class: 'p-search', dataset: { part: 'palette-search' }, autocomplete: 'off', spellcheck: 'false',
+    enterkeyhint: 'go', placeholder: d.t('pal.search'), 'aria-label': d.t('pal.search'), role: 'combobox', 'aria-controls': 'studio-palette-list',
+    'aria-expanded': 'true', 'aria-autocomplete': 'list' })                    ;
+  const list = h('div', { class: 'p-list', role: 'listbox', id: 'studio-palette-list', 'aria-label': d.t('pal.title') });
+  const el = h('div', { class: 'palette', id: 'studio-palette', hidden: true }, search, list);
   let open = false;
   // Opened by typing (suggestions only) or on purpose (⌘K: everything).
   let typed = false;
@@ -8415,8 +8495,10 @@ function createPalette(d             )          {
 
   const SECTIONS                   = ['ask', 'actions', 'kumodeck', 'objects'];
 
+  /** The field the rows are read from: the ask box for suggestions while typing in it, else the list's own field. */
+  const field = () => (typed ? d.input : search);
   const build = ()               => {
-    const q = d.input.value.trim();
+    const q = field().value.trim();
     const all = d.rows();
     if (!q) {
       // Nothing typed: the ask examples and the actions; objects only when searched.
@@ -8424,9 +8506,15 @@ function createPalette(d             )          {
     }
     const scored = all.map((r) => ({ r, s: matchScore(q, r) })).filter((x) => x.s > 0);
     scored.sort((a, b) => b.s - a.s || SECTIONS.indexOf(a.r.section) - SECTIONS.indexOf(b.r.section));
+    // From the ask box (typed): send it, as before. From the list's own field: put the words in the ask box and go
+    // there, nothing sent (W1-4) — the person sends with their own Enter.
     const askRow             = {
       id: 'ask-text', section: 'ask', label: d.t('pal.askThis', { text: q.length > 60 ? q.slice(0, 59) + '…' : q }), icon: 'spark', hint: '↵',
-      data: { action: 'ask-ai' }, run: () => d.ask(),
+      data: { action: 'ask-ai' }, run: typed ? () => d.ask() : () => {
+        d.input.value = q;
+        d.input.dispatchEvent(new Event('input', { bubbles: true }));
+        d.input.focus();
+      },
     };
     const found = scored.map((x) => x.r);
     // Opened by typing: only what the word named, then "Ask your AI: …" (Enter on a sentence is never taken).
@@ -8436,14 +8524,15 @@ function createPalette(d             )          {
   };
 
   const render = () => {
-    el.replaceChildren();
+    list.replaceChildren();
+    search.hidden = typed;
     if (!open) return;
     rows = build();
     at = Math.max(0, Math.min(at, rows.length - 1));
     let last                        = null;
     rows.forEach((r, i) => {
       if (r.section !== last && !(i === 0 && r.id === 'ask-text')) {
-        el.append(h('div', { class: 'p-sec', role: 'presentation', text: d.t(`pal.${r.section}`) }));
+        list.append(h('div', { class: 'p-sec', role: 'presentation', text: d.t(`pal.${r.section}`) }));
       }
       last = r.section;
       const pic = r.thumb ? h('img', { class: 'thumb', alt: '', width: 16, height: 16, src: r.thumb }) : r.icon ? icon(r.icon) : h('span', { class: 'p-blank' });
@@ -8453,19 +8542,21 @@ function createPalette(d             )          {
         onmousedown: (e       ) => e.preventDefault(),
         onclick: () => runAt(i) },
       pic, h('span', { class: 'p-label', text: r.label }), r.hint ? h('span', { class: 'p-k', text: r.hint }) : null);
-      el.append(b);
+      list.append(b);
     });
-    d.input.setAttribute('aria-activedescendant', rows.length ? `studio-pal-${at}` : '');
-    el.querySelector('.p-row.on')?.scrollIntoView({ block: 'nearest' });
+    field().setAttribute('aria-activedescendant', rows.length ? `studio-pal-${at}` : '');
+    list.querySelector('.p-row.on')?.scrollIntoView({ block: 'nearest' });
   };
 
   const runAt = (i        ) => {
     const r = rows[i];
     if (!r) return;
+    const wasTyped = typed;
     if (r.id !== 'ask-text') {
-      d.input.value = '';
+      // Suggestions: the word in the ask box was a search, so it goes. The ⌘K list never touches the ask box (W1-4).
+      if (wasTyped) d.input.value = '';
       // Let go of the field: arrow keys move the picked object again, and the next press reopens the list.
-      d.input.blur();
+      field().blur();
     }
     close();
     r.run();
@@ -8473,9 +8564,11 @@ function createPalette(d             )          {
 
   const setOpen = (on         , byTyping = false) => {
     if (on && open && typed && !byTyping) {
-      // ⌘K while suggestions show: the whole list.
+      // ⌘K while suggestions show: the whole list, in its own field (the words come along; the ask box keeps them too).
       typed = false;
+      search.value = d.input.value;
       render();
+      search.focus();
       d.changed(true, false);
       return;
     }
@@ -8483,9 +8576,11 @@ function createPalette(d             )          {
     open = on;
     typed = on && byTyping;
     el.hidden = !on;
-    d.input.setAttribute('aria-expanded', String(on));
+    d.input.setAttribute('aria-expanded', String(on && typed));
     if (on) at = 0;
+    if (!on) search.value = '';
     render();
+    if (on && !typed) search.focus();
     d.changed(on, typed);
   };
   function close() {
@@ -8498,7 +8593,17 @@ function createPalette(d             )          {
   d.input.setAttribute('aria-autocomplete', 'list');
   // No open on focus or click (see the top): the field is for writing to the AI.
   // A press on the page outside the bar closes it (the rows keep focus in the field, see mousedown above).
-  d.input.addEventListener('blur', () => setOpen(false));
+  // (Only the suggestions belong to the ask box; ⌘K moving the focus to the list's own field must not close it.)
+  d.input.addEventListener('blur', () => {
+    if (typed) setOpen(false);
+  });
+  search.addEventListener('blur', () => {
+    if (!typed) setOpen(false);
+  });
+  search.addEventListener('input', () => {
+    at = 0;
+    render();
+  });
   d.input.addEventListener('input', () => {
     at = 0;
     const q = d.input.value;
@@ -8513,10 +8618,12 @@ function createPalette(d             )          {
     } else if (open) setOpen(false);
   });
   // Capture phase: runs before the ask box's own Enter / Escape handling.
-  d.input.addEventListener('keydown', (e) => {
+  const onKey = (e               ) => {
     if (e.key === 'Escape' && open) {
       e.preventDefault();
+      // stopPropagation too: the page's Escape (close Ideas / Editor view) waits for the next press.
       e.stopImmediatePropagation();
+      e.stopPropagation();
       close();
       return;
     }
@@ -8534,22 +8641,27 @@ function createPalette(d             )          {
       render();
     } else if (e.key === 'Enter' && !e.isComposing) {
       const r = rows[at];
-      // The typed request goes through the form (its own checks, its note).
-      if (!r || r.id === 'ask-text') {
+      // The typed request goes through the form (its own checks, its note). From the list's own field the ask row
+      // only moves the words into the ask box (runAt below), so it is run like any row.
+      if (!r || (r.id === 'ask-text' && typed)) {
         close();
         return;
       }
       e.preventDefault();
       runAt(at);
     }
-  }, true);
+  };
+  d.input.addEventListener('keydown', onKey, true);
+  search.addEventListener('keydown', (e) => {
+    onKey(e);
+    // Keys typed in the list's field are the list's (the editor's single-key shortcuts must not see them).
+    e.stopPropagation();
+  });
 
   return {
     el,
-    open: () => {
-      if (document.activeElement !== d.input) d.input.focus();
-      setOpen(true);
-    },
+    search,
+    open: () => setOpen(true),
     close,
     isOpen: () => open,
     render,
@@ -8562,6 +8674,102 @@ __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
 __defs[29] = function (__exports) {
+'use strict';
+// thumb-fit.ts
+
+// The object fills its picture (design review wave 1, W1-11 / D2, 2026-10-17): the game's picture of one object (adapter
+// capture(), see-through around the object) is cropped to the object's own box, then given a margin of 4 px at the
+// 32 px size the card and the list show it at (4 / 32 = 12.5 % of each side).
+//
+// WHY here and not in each adapter: the adapters frame the object's world box (three.js: its bounding sphere from a
+// little above), so a tall, thin object — the lighthouse — came out as a thin stroke in the middle of a square and
+// read as the letter "i" on the card (review photo 02). Cropping the finished picture by its see-through pixels works
+// the same for every engine, and 2D pictures that are already tight come back nearly unchanged.
+
+/** Margin round the object, as a share of the square's side: 4 px of 32 (the review's number). */
+const FIT_MARGIN = 4 / 32;
+/** A pixel counts as the object from this alpha up (soft edges and the faint halo of the black / white trick stay out). */
+const ALPHA_MIN = 24;
+/** Share of the picture's alpha left out at each side when finding the object's box (see below). 0.01 = 1 %. */
+const TRIM = 0.01;
+const OUT = 96; // the size the shell asks the game for (main.ts placement/thumbs)
+
+const cache = new Map                         ();
+
+/** The picture cropped to its object with the margin; the same picture when it cannot tell (opaque, empty, an error). Never rejects. */
+function fitPicture(src        )                  {
+  let p = cache.get(src);
+  if (!p) {
+    p = new Promise        ((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const w = img.naturalWidth, h = img.naturalHeight;
+          if (!w || !h) return resolve(src);
+          const c = document.createElement('canvas');
+          c.width = w;
+          c.height = h;
+          const g = c.getContext('2d', { willReadFrequently: true });
+          if (!g) return resolve(src);
+          g.drawImage(img, 0, 0);
+          const d = g.getImageData(0, 0, w, h).data;
+          // The object's box by weight, not by the outermost pixel: the 1 % of alpha at each side is left out. WHY: the
+          // lighthouse carries its faint light beam (a wide, nearly clear cone); a plain box round every pixel with
+          // some alpha was the beam's box, and the tower stayed a thin stroke in the middle.
+          const cols = new Float64Array(w), rows = new Float64Array(h);
+          let total = 0, clear = 0;
+          for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+              const a = d[(y * w + x) * 4 + 3] ;
+              if (a < ALPHA_MIN) {
+                clear++;
+                continue;
+              }
+              cols[x] += a;
+              rows[y] += a;
+              total += a;
+            }
+          }
+          // Nothing see-through (an opaque picture: its own background) or nothing drawn: leave it as it is.
+          if (!total || clear < w * h * 0.02) return resolve(src);
+          const span = (sums              )                   => {
+            let lo = 0, hi = sums.length - 1, acc = 0;
+            while (lo < hi && acc + sums[lo]  <= total * TRIM) acc += sums[lo++] ;
+            acc = 0;
+            while (hi > lo && acc + sums[hi]  <= total * TRIM) acc += sums[hi--] ;
+            return [lo, hi];
+          };
+          const [x0, x1] = span(cols);
+          const [y0, y1] = span(rows);
+          const bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+          const side = Math.max(bw, bh) / (1 - 2 * FIT_MARGIN);
+          // Already about this tight (within 2 px of the right size): keep the original pixels.
+          if (side >= Math.max(w, h) - 2) return resolve(src);
+          const cx = x0 + bw / 2, cy = y0 + bh / 2;
+          const o = document.createElement('canvas');
+          o.width = o.height = OUT;
+          const og = o.getContext('2d');
+          if (!og) return resolve(src);
+          og.imageSmoothingQuality = 'high';
+          og.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, OUT, OUT);
+          resolve(o.toDataURL('image/png'));
+        } catch {
+          resolve(src);
+        }
+      };
+      img.onerror = () => resolve(src);
+      img.src = src;
+    });
+    if (cache.size > 600) cache.clear();
+    cache.set(src, p);
+  }
+  return p;
+}
+
+__def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
+__def(__exports, "fitPicture", () => fitPicture);
+};
+__defs[30] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -8648,7 +8856,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -8667,23 +8875,25 @@ __defs[30] = function (__exports) {
 const { LOCAL_PATHS, UI, isStudioMessage } = __require(0);
 const { keyStep } = __require(1);
 const { validateLibrary, validatePlacement } = __require(3);
-const { filesOfObject, libraryTool, openAsset } = __require(12);
-const { rulesFor } = __require(13);
-const { samePose } = __require(15);
-const { h, safeImageSrc } = __require(16);
-const { detectLang, setExtraText, translate } = __require(17);
-const { AI_STEPS, NEXT_STEPS, renderNextSteps } = __require(19);
-const { statusCovers } = __require(20);
-const { aiBusy, aiPhase, reloadDecision } = __require(21);
-const { renderSettings } = __require(23);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(22);
-const { dropTarget, hasLayer, layerTarget } = __require(14);
+const { filesOfObject, libraryTool, openAsset } = __require(13);
+const { rulesFor } = __require(14);
+const { samePose } = __require(16);
+const { h, safeImageSrc } = __require(17);
+const { detectLang, setExtraText, translate } = __require(18);
+const { AI_STEPS, NEXT_STEPS, renderNextSteps } = __require(20);
+const { statusCovers } = __require(21);
+const { aiBusy, aiPhase, reloadDecision } = __require(22);
+const { renderSettings } = __require(24);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(23);
+const { dropTarget, hasLayer, layerTarget } = __require(15);
 const { createPlacementPanel } = __require(27);
-const { icon, setButton } = __require(18);
+const { icon, setButton } = __require(19);
 const { createPalette } = __require(28);
-const { PlacementModel } = __require(15);
-const { UndoStack, poseChange } = __require(29);
-const { copyKey, groupLayerMoves, sameKind } = __require(24);
+const { fitPicture } = __require(29);
+const { PlacementModel } = __require(16);
+const { UndoStack, poseChange } = __require(30);
+const { copyKey, groupLayerMoves, sameKind } = __require(25);
+const { displayName } = __require(12);
 
                                                                         
 
@@ -8731,6 +8941,9 @@ function start(host            ) {
   let multi = false;
   // The tool strip's chosen tool in the game (placement/tool from the bridge): Escape drops it first, ⌘K shows it.
   let stripTool                   = null;
+  // The strip's choices (the ▾ on turn / size) are open in the game (placement/menu): a press in this page or Escape
+  // closes them first (tool options, 2026-10-18). The game frame closes them itself for presses and keys inside it.
+  let stripMenu = false;
   // Stand-in copies were explained once this session (adapters without clone()).
   let ghostTold = false;
   // Copies asked for with ⌘D / Copy whose answer (placement/added) has not come yet: those make a new undo step.
@@ -8756,6 +8969,8 @@ function start(host            ) {
   let toast = '';
   let toastTimer = 0;
   const thumbs = new Map                ();
+  // The last raw picture the game sent per object (before cropping, thumb-fit.ts).
+  const thumbAsked = new Map                ();
   const model = new PlacementModel();
   const undo = new UndoStack();
   const listeners = new Map                                         ();
@@ -8918,19 +9133,32 @@ function start(host            ) {
   const peer = h('span', { class: 'peer', dataset: { part: 'peer' } }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
   // Play is the only white button on screen, so it is never looked for.
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, mk(playBtns, 'play', togglePlay, { class: 'play' }));
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, peer, topActions));
+  // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, host.offline ? null : peer, topActions));
   // The column's foot: "✦ Ask your AI to name them  1" and "⌘K All actions".
   const noNameSlot = h('div', { class: 'noname-slot' });
-  // Phone: the row sits in the list sheet; the sheet closes so the list rises from the ask bar alone.
-  const paletteFoot = h('button', { type: 'button', class: 'foot-row', dataset: { action: 'palette' }, onclick: () => {
+  // Phone: the sheet closes so the ⌘K list rises from the ask bar alone.
+  const openPalette = () => {
     if (phone() && sheetOpen) {
       sheetOpen = false;
       renderAll(true);
     }
     palette.open();
-  } },
+  };
+  const paletteFoot = h('button', { type: 'button', class: 'foot-row', dataset: { action: 'palette' }, onclick: openPalette },
     h('kbd', { text: isMac() ? '⌘K' : 'Ctrl K' }), h('span', { class: 'label' }));
-  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, tabs, status, panel,
+  // Narrow screens (a phone, the side window next to a chat): the sheet's head is ONE row —
+  // [Scene 15 | Assets 1] ··· Multi-select  … — and everything under it is the list.
+  // WHY (a try in the side window next to a chat, ~400×590, 2026-10-17): with an object picked, the sheet stacked
+  // Scene and Assets as two 44 px rows, "Objects ··· Multi-select", "All actions" at its foot,
+  // then the picked object's card and the ask bar over the foot; the list was left ONE row
+  // (sea-arch) — "the object list becomes impossible to follow". Now the two rows are one
+  // segmented switch, the list's own head moves up beside it (renderAll moves listToolsEl here
+  // and back), and "All actions" becomes this "…" (the same ⌘K list, same press). PC keeps its
+  // column as it was: .side-head is `display: contents` there and these tools are hidden.
+  const sheetMore = h('button', { type: 'button', class: 'icon-btn sheet-more', dataset: { action: 'palette' }, onclick: openPalette }, icon('more'));
+  const headTools = h('div', { class: 'side-head-tools' }, sheetMore);
+  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, h('div', { class: 'side-head' }, tabs, headTools), status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
   // Phone: the list opens from the ask bar's left end, as a sheet from the bottom.
   const sheetBtn = btn('sheet', () => {
@@ -8949,6 +9177,9 @@ function start(host            ) {
   const playNote = h('p', { class: 'play-note', hidden: true });
   const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
   const askSlot = h('div', { class: 'ask-slot' });
+  // The web demo's line in the ask box's place (W1-6); its words are set in renderAll (language).
+  const offlineLine = h('p', { class: 'offline-line', dataset: { part: 'offline-line' } }, h('span', { class: 'label' }),
+    host.getUrl ? h('a', { href: host.getUrl, target: '_blank', rel: 'noopener noreferrer' }) : document.createDocumentFragment());
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
@@ -8957,6 +9188,18 @@ function start(host            ) {
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
+  // A click on the bare desk drops the pick, the same as a tap on nothing in the game (bridge/input.ts; a web demo try
+  // 2026-10-18: "I want to click an empty spot to deselect, and I can't"). Bare = the surface itself, not a row, a
+  // button, the card or a field on it: the 8 px margin round the game plate, the empty part of the list column under
+  // the rows, the top bar's empty middle, and the see-through gap between the card and the ask bar (phone; a finger
+  // there is mostly moved onto the ask field by the browser, a mouse is not). `click`, not pointerdown: a press that ends somewhere else (a drag out
+  // of the list) is not a click on nothing.
+  const BARE = '.shell, .top, .top-right, .side, .side-head, .side-foot, .panel, .placement, .tool-body, .list-scroll, .objects, .stage, .dock, .card-slot';
+  app.addEventListener('click', (e) => {
+    const t = e.target                  ;
+    if (!t || !t.matches(BARE) || !editing || playing || !(selected || group.length)) return;
+    selectObject(null);
+  });
   // The news card shows when one of its lines has something to say.
   const updateCaption = () => {
     const any = [...caption.children].some((c) => !(c               ).hidden && (!(c               ).classList.contains('toast') || (c               ).classList.contains('on')));
@@ -8976,6 +9219,12 @@ function start(host            ) {
     // The bar and, on a phone, the card above it (the news card comes and goes: not counted).
     const top = phone() && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
     if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
+    // The phone's list sheet pads its foot by what the bar and the card cover (shell.css --studio-cover):
+    // the card's height differs (2D Layer row, the open numbers), so it is measured, not guessed.
+    if (phone() && !dock.hidden && dock.offsetParent) {
+      const cover = `${Math.max(0, Math.round(window.innerHeight - top))}px`;
+      if (app.style.getPropertyValue('--studio-cover') !== cover) app.style.setProperty('--studio-cover', cover);
+    }
     // A phone's list sheet, and its Assets sheet, cover the lower part of the game.
     // (Its final height, not its rect: it may still be sliding up.)
     if (phone() && (sheetOpen || page !== 'tool') && !playing) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - (window.innerHeight - side.offsetHeight) + 8));
@@ -9093,7 +9342,7 @@ function start(host            ) {
   }
 
   caption.insertBefore(placementPanel.askNoteEl, playNote);
-  noNameSlot.append(placementPanel.noNameEl);
+  // The "no name" row now lives at the top of the list (placement-panel.ts); the slot stays for .studio/ui/ looks.
   // The card grows when its file row arrives: what it covers is sent again.
   new ResizeObserver(() => sendInset()).observe(placementPanel.cardEl);
   // The card: over the game's top right corner on PC, above the ask bar on a phone.
@@ -9122,7 +9371,7 @@ function start(host            ) {
     const rows               = [];
     const keys = group.length > 1 ? group.slice() : selected ? [selected] : [];
     const first = items.find((i) => i.key === keys[0]);
-    const about = keys.length > 1 ? t('ops.manyShort', { n: keys.length }) : first?.label;
+    const about = keys.length > 1 ? t('ops.manyShort', { n: keys.length }) : first && displayName(first, t);
     // Ask your AI: examples for what is picked, then the AI's own steps.
     const ask = (text        ) => () => void askAi({ kind: 'ask', text, objects: requestObjects(keys) }).then((ok) => ok && placementPanel.renderAsk());
     if (about) {
@@ -9179,7 +9428,7 @@ function start(host            ) {
       if (seen.has(g)) continue;
       seen.add(g);
       const members = items.filter((i) => (i.group || `key:${i.key}`) === g);
-      rows.push({ id: `obj-${it.key}`, section: 'objects', label: it.label, thumb: safeImageSrc(thumbs.get(it.key)), hint: members.length > 1 ? t('pal.count', { n: members.length }) : undefined,
+      rows.push({ id: `obj-${it.key}`, section: 'objects', label: displayName(it, t), thumb: safeImageSrc(thumbs.get(it.key)), hint: members.length > 1 ? t('pal.count', { n: members.length }) : undefined,
         words: members.map((m) => `${m.label} ${m.key}`).join(' '), data: { key: it.key },
         run: () => {
           switchTool('placement');
@@ -9216,7 +9465,10 @@ function start(host            ) {
   /** Undo / Redo tooltips name what they would change: "Undo: move house". */
   function describe(e                  )         {
     if (!e) return '';
-    const name = (k        ) => items.find((i) => i.key === k)?.label || k;
+    const name = (k        ) => {
+      const it = items.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    };
     const kinds = new Set(e.changes.map((c) => c.kind));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
@@ -9579,6 +9831,9 @@ function start(host            ) {
       two(t('ai.away'), t('ai.awaySub'));
     } else if (ph === 'received' || ph === 'working') {
       two(note ? `${note.replace(/[.…]+$/, '')}…` : t(`ai.${ph}`), covered ? asked : '');
+    } else if (ph === 'asking') {
+      // The AI waits for an answer in its own window (dogfood U2): say so, and its question (two lines at most).
+      two(t('ai.asking'), note || '');
     } else if (ph === 'updating') {
       two(note || t('ai.updating'), t('ai.updating'));
     } else if (ph === 'done' || ph === 'failed') {
@@ -9680,7 +9935,7 @@ function start(host            ) {
       renderAiLine();
     }
     const ph = currentPhase();
-    const wait = aiBusy(ph) ? 700 : ph === 'away' || ph === 'waiting' || ph === 'nudge' ? 1500 : 3000;
+    const wait = aiBusy(ph) ? 700 : ph === 'away' || ph === 'waiting' || ph === 'nudge' || ph === 'asking' ? 1500 : 3000;
     pollTimer = window.setTimeout(() => void pollStatus(), wait);
   }
   function pollSoon() {
@@ -9991,10 +10246,20 @@ function start(host            ) {
       case 'studio:placement/tool':
         stripTool = m.tool;
         break;
+      case 'studio:placement/menu':
+        stripMenu = !!m.open;
+        break;
       case 'studio:placement/thumb':
         if (m.src) {
-          thumbs.set(m.key, m.src);
-          placementPanel.updateThumb(m.key);
+          // Cropped to the object first (thumb-fit.ts, W1-11): the lighthouse filled its tile instead of being an "i".
+          // `thumbAsked` keeps the newest: a picture that arrives while an older one is still being cropped wins.
+          const key = m.key, raw = m.src;
+          thumbAsked.set(key, raw);
+          void fitPicture(raw).then((src) => {
+            if (thumbAsked.get(key) !== raw) return;
+            thumbs.set(key, src);
+            placementPanel.updateThumb(key);
+          });
         }
         break;
     }
@@ -10329,6 +10594,14 @@ function start(host            ) {
       goHome();
       return true;
     }
+    // Esc closes the open page (Ideas, Editor view) before anything else (design review wave 1, W1-3 / N7, 2026-10-17): it used
+    // to do nothing there, so people reached for ⌘K instead. In Ideas with one idea open, Esc goes back to the ideas.
+    // Also from the game frame (the bridge may have dropped a tool as well; the page still closes).
+    if (!mod && k === 'escape' && page !== 'tool') {
+      if (page === 'next' && nextOpen) openNext(null);
+      else switchTool(tool);
+      return true;
+    }
     if (e.fromGame || mod) return false; // the bridge already handled steps/escape
     // R: the next turn axis (3D; the game frame handles it itself when it has focus).
     if (k === 'r' && !e.shift && selected && editing && dim === '3d') {
@@ -10342,8 +10615,9 @@ function start(host            ) {
       return true;
     }
     if (k === 'escape') {
-      // First the chosen tool, then the pick (the same order as in the game).
-      if (stripTool) setStripTool(null);
+      // First the strip's open choices, then the chosen tool, then the pick (the same order as in the game).
+      if (stripMenu) closeStripMenu();
+      else if (stripTool) setStripTool(null);
       else selectObject(null);
       return true;
     }
@@ -10354,6 +10628,15 @@ function start(host            ) {
     return true;
   }
 
+  function closeStripMenu() {
+    stripMenu = false;
+    send({ type: 'studio:placement/menu', open: false });
+  }
+  // A press anywhere in the editor page (the list, the card, the ask box) is "outside" the strip's choices.
+  // Capture, so a control that stops the press still closes them; presses inside the game frame never reach here.
+  document.addEventListener('pointerdown', () => {
+    if (stripMenu) closeStripMenu();
+  }, true);
   function setStripTool(k                  ) {
     stripTool = k;
     send({ type: 'studio:placement/tool', tool: k });
@@ -10424,9 +10707,12 @@ function start(host            ) {
     else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
     else if (phase === 'no-adapter') line('warn', h('strong', { text: t('status.noAdapter') }), h('span', { text: ' ' + t('status.noAdapterHint') }));
     else if (check && !check.ok) {
-      const ul = h('ul', {});
-      for (const c of check.checks) if (!c.ok && !c.skipped) ul.append(h('li', { text: `${t('check.' + c.id)}${c.detail ? ` — ${c.detail}` : ''}` }));
-      line('warn', h('strong', { text: t('status.checkFail') }), ul);
+      // One plain grey line at the top of the list, not a yellow box (Ive review N1, 2026-10-17). The editor still
+      // works; only one promise of the adapter is off, so it is a note, not an alarm. The check's own details
+      // (`render()`, `setPose`, `set()`…) are words for the AI: they go to it through host.reportCheck (local:
+      // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
+      const first = check.checks.find((c) => !c.ok && !c.skipped);
+      if (first) line('note', `${t('check.' + first.id)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
@@ -10508,6 +10794,15 @@ function start(host            ) {
         icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label')               ).textContent = t('foot.palette');
+    sheetMore.setAttribute('aria-label', t('foot.palette'));
+    sheetMore.title = t('foot.palette');
+    // The list's head: up in the sheet's head row on a phone, back over the list on PC (see sheetMore).
+    const listTools = placementPanel.listToolsEl;
+    if (phone()) {
+      if (listTools.parentElement !== headTools) headTools.prepend(listTools);
+    } else if (listTools.parentElement === headTools) {
+      placementPanel.el.prepend(listTools);
+    }
     // The phone's list button: a list icon that turns into a chevron when the sheet is open.
     setButton(sheetBtn, sheetOpen ? 'chevronDown' : 'list', sheetOpen ? t('btn.close') : t('btn.list'), false);
     sheetBtn.setAttribute('aria-expanded', String(sheetOpen));
@@ -10515,7 +10810,16 @@ function start(host            ) {
     renderButtons();
     renderPeer();
     // The ask box lives in the bar at the bottom of the game whatever the tool or page.
-    if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // The web demo (no AI behind it, host.offline) shows one grey line in its place instead (design review wave 1, W1-6 / N2,
+    // 2026-10-17): the most visible part of the screen was a box that did nothing when used.
+    if (host.offline) {
+      // One line (the review): a phone's bar fits about 40 characters, so it gets the short words.
+      const short = phone();
+      (offlineLine.querySelector('.label')               ).textContent = (short ? t('offline.askLine.short') : t('offline.askLine')) + (host.getUrl ? ' ' : '');
+      const get = offlineLine.querySelector('a');
+      if (get) get.textContent = short ? t('offline.get.short') : t('offline.get');
+      if (offlineLine.parentElement !== askSlot) askSlot.replaceChildren(offlineLine);
+    } else if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();
@@ -10713,7 +11017,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -10877,19 +11181,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(30);
-const { createLocalHost } = __require(31);
+const { start } = __require(31);
+const { createLocalHost } = __require(32);
 
 start(createLocalHost());
 
 
 };
-__require(32);
+__require(33);
 })();

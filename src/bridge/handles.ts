@@ -61,16 +61,30 @@ export const TOOL_HINT: Record<Lang, { mouse: (tool: string) => string; touch: (
   en: { mouse: (t) => `Drag anywhere: ${t} · Look around: ⌥-drag, right-drag, or hold Space · Esc: no tool`, touch: (t) => `One finger: ${t} · Two fingers: look around` },
   ja: { mouse: (t) => `どこでも引く: ${t} ・ 見回す: ⌥ か右ボタンで引く、Space を押しながら ・ Esc: 道具をやめる`, touch: (t) => `1 本指: ${t} ・ 2 本指: 見回す` },
 };
-/** Added to the turn tool's first-time line in 3D: the tilts are one more tap away (polish pass 2026-10-16). */
+/**
+ * Added to the turn tool's first-time line in 3D: where the tilts are. Was "Press Turn again to tilt" (polish pass
+ * 2026-10-16); play test 2026-10-18: "nobody presses a button twice" — the tilts are behind the ▾ on the button now.
+ */
 export const TILT_HINT: Record<Lang, string> = {
-  en: ' · Press Turn again to tilt',
-  ja: ' ・ もう一度押すと倒せます',
+  en: ' · Tilt: ▾ on Turn',
+  ja: ' ・ 倒すのは「回す」の ▾ から',
+};
+/** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
+export const MORE_LABELS: Record<Lang, Record<'axis' | 'scale', string>> = {
+  en: { axis: 'Ways to turn', scale: 'Ways to resize' },
+  ja: { axis: '回し方を選ぶ', scale: '大きさの変え方を選ぶ' },
 };
 /**
- * The two choices behind strip buttons (2026-10-16): a tap (no drag) on the
- * turn button (3D, one object) opens "Turn / Tip forward / Tip sideways"; on
- * the size button with several picked, "Together / Each in place". Big
- * buttons with a picture and a short word, the long words as the tooltip.
+ * The choices behind strip buttons (2026-10-16): the turn button (3D, one
+ * object) has "Turn / Tilt forward / Tilt sideways"; the size button with
+ * several picked, "Together / Each in place". They open from the small ▾ in
+ * the button's bottom-right corner, or a long press on the button (tool
+ * options, play test 2026-10-18; before, a SECOND tap on the chosen button
+ * opened them, which nobody finds — kept only as an unadvertised shortcut).
+ * Big buttons with a picture and a short word, the long words as the tooltip.
+ * The first of each is the default and wears the tool's own picture, so the
+ * strip looks the same until another way is chosen; then the button wears
+ * that way's picture (the menu's and the button's pictures always match).
  */
 export const AXIS_WORDS: Record<Lang, Record<TurnAxis, [string, string]>> = {
   // Turn / Tilt, not Rotate / Tip (words pass 2026-10-17): the tool is Turn (key T), and "tip" and
@@ -91,16 +105,18 @@ export const MANY_LABEL: Record<Lang, (n: number) => string> = {
 };
 
 // Line icons (24×24 grid, stroke = currentColor), same rule as the shell's icons.
-// The three turns, as the motion looks from in front: a flat ellipse = turning
-// on the spot (y), an upright ellipse = tipping forward / back (x), a circle
-// facing you = tipping sideways (z).
+// The three turns, as the motion looks from in front: the turn tool's own
+// arrow = turning on the spot (y, the default), an upright ellipse = tipping
+// forward / back (x), a circle facing you = tipping sideways (z).
 const AXIS_ICONS: Record<TurnAxis, string> = {
-  y: '<ellipse cx="12" cy="12" rx="8" ry="3.5"/><path d="M16.5 6.2 20 8.6l-3.6 1.9"/><path d="M12 4v16" stroke-dasharray="2 2.5"/>',
+  // y = the turn tool's own picture (the default way; see AXIS_WORDS). Was a flat ellipse until 2026-10-18.
+  y: '<path d="M19 12a7 7 0 1 1-2.05-4.95"/><path d="M17.5 3.5v4h-4"/>',
   x: '<ellipse cx="12" cy="12" rx="3.5" ry="8"/><path d="M6.2 7.5 8.6 4l1.9 3.6"/><path d="M4 12h16" stroke-dasharray="2 2.5"/>',
   z: '<circle cx="12" cy="12" r="7.5"/><path d="M15.5 2.8 19 5.2l-3.6 1.9"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
 };
 const SCALE_ICONS: Record<GroupScaleMode, string> = {
-  spread: '<rect x="3" y="13" width="5" height="5" rx="1"/><rect x="16" y="13" width="5" height="5" rx="1"/><path d="M3 21h18"/><path d="M9.5 9.5H3.5M5.5 7.5l-2 2 2 2M14.5 9.5h6M18.5 7.5l2 2-2 2"/>',
+  // spread = the size tool's own picture (the default way). Was two boxes with arrows apart until 2026-10-18.
+  spread: '<path d="M5 19 19 5M13.5 5H19v5.5M5 13.5V19h5.5"/>',
   inplace: '<rect x="4" y="12" width="5" height="6" rx="1"/><rect x="13" y="8" width="7" height="10" rx="1"/><path d="M3 21h18"/><path d="M16.5 2.5v3.5M14.8 4.2l1.7-1.7 1.7 1.7"/>',
 };
 
@@ -157,6 +173,10 @@ export interface Handles {
   box(r: Rect | null): void;
   /** The turn button draws the axis it uses. */
   setAxis(axis: TurnAxis, lang: Lang): void;
+  /** The size button draws the way several objects resize (only while several are picked: `setOptions`). */
+  setScaleMode(mode: GroupScaleMode): void;
+  /** Which buttons have choices now: they show the ▾ (3D turn with one picked; size with several). */
+  setOptions(opts: { axis: boolean; scale: boolean }, lang: Lang): void;
   /**
    * The choices over the strip: 'axis' (3D turn), 'scale' (several picked),
    * or null to close. `current` is the chosen one.
@@ -169,8 +189,8 @@ export interface Handles {
 /** Your hand and the AI's hand. Kept in step with --you / --ai in shell.css (fixed: they sit on the game, not on the shell's theme). */
 const YOU = '#ff6b1a';
 const AI = '#8b7cff';
-/** Gap between the object and the strip (px). */
-const GAP = 10;
+/** Gap between the object and the strip (px): 12 = the review's number (wave 1, W1-2 / M4, 2026-10-17); was 10. */
+const GAP = 12;
 const CSS = `
 :host { all: initial; }
 .root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647;
@@ -216,6 +236,20 @@ svg * { vector-effect: non-scaling-stroke; }
 /* The chosen way: ink, not orange (orange is the picked object, on the game). */
 .menu button.chosen { color: #1c1c1e; background: #f5f5f7; box-shadow: none; }
 @media (pointer: coarse) { .menu button { min-width: 88px; min-height: 64px; } }
+/* The ▾ (tool options, play test 2026-10-18): "this button has choices", in the button's bottom-right corner, inside
+   it — so the strip is not one px taller or wider and does not move when it appears (W1-2). The mark is 7×4 in the
+   button's own colour, faint at rest, full on hover (PC: the hover says "there is more here"); its press area is the
+   corner, 12 px on the mouse strip and 20 px on the finger strip (a quarter of a 44 button; the rest of the button
+   still chooses the tool). A long press anywhere on the button opens the same choices. */
+/* z-index 1: over the button's touch ::after (inset −2 px, drawn after the ▾), which otherwise took the press on a
+   phone and the ▾ chose the tool instead of opening the choices (studio-transform, 2026-10-18). */
+.more { position: absolute; z-index: 1; right: 0; bottom: 0; width: 12px; height: 12px; display: none; place-items: end; padding: 0 2px 2px 0;
+  box-sizing: border-box; pointer-events: auto; cursor: pointer; border-radius: 0 0 8px 0; opacity: .6; transition: opacity .16s cubic-bezier(.2,.8,.2,1); }
+.more svg { width: 7px; height: 4px; stroke-width: 1.5px; }
+button.opts .more { display: grid; }
+button:hover .more, button.on .more, .more.open { opacity: 1; }
+.row.big .more { width: 20px; height: 20px; padding: 0 5px 5px 0; border-radius: 0 0 12px 0; }
+.row.big .more svg { width: 8px; height: 5px; }
 /* Light editor: the light glass, the same two colours. */
 .root.light .menu, .root.light .row { backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
 .root.light .menu button { color: #6e6e73; }
@@ -233,7 +267,20 @@ svg * { vector-effect: non-scaling-stroke; }
 .hint { height: 32px; padding: 0 14px; font-weight: 400; transform: translateX(-50%); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 .root.light .chip, .root.light .hint { color: #1d1d1f; backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
 @media (pointer: coarse) { .hint { height: 36px; font-size: 13px; } }
-@media (prefers-reduced-motion: reduce) { button { transition: none; } .menu, .hint { animation: none; } }
+@media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
+/* The finger-sized strip (buttons 44 px: phones and the side window; .big = 40 px and up), design review wave 1 (W1-2 / N4,
+   2026-10-17): 48 high (44 + 2 in), no gaps between buttons, 14 corners, a light plate — white 92 % with a 12 px blur
+   and a 1 px line (dark: #2a2a2e 92 %). WHY: the dark, thick plate with the chosen tool as a second plate on it weighed
+   ten times the small object it served (review photo 12 / 15 / 18). The chosen tool (and Move at rest) is told by its
+   ground alone, black 8 % (dark: white 10 %), never a filled square on top. */
+.row.big { gap: 0; padding: 2px; border-radius: 14px; background: rgba(42, 42, 46, .92); box-shadow: 0 0 0 1px rgba(255,255,255,.08);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.row.big button { border-radius: 12px; }
+.row.big button:hover { background: transparent; }
+.row.big button.rest, .row.big button.on, .row.big button:active { color: #f5f5f7; background: rgba(255,255,255,.10); }
+.root.light .row.big { background: rgba(255,255,255,.92); box-shadow: 0 0 0 1px rgba(0,0,0,.08); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.root.light .row.big button { color: #6e6e73; }
+.root.light .row.big button.rest, .root.light .row.big button.on, .root.light .row.big button:active { color: #1d1d1f; background: rgba(0,0,0,.08); }
 `;
 
 let scratch: HTMLCanvasElement | null = null;
@@ -309,6 +356,15 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     b.setAttribute('aria-label', HANDLE_LABELS.en[k]);
     b.title = HANDLE_LABELS.en[k];
     b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`; // static markup only
+    if (k === 'rotate' || k === 'scale') {
+      // The ▾ (shown only while the button has choices: setOptions). A span, not a button: a button in a button is not
+      // allowed; keyboards reach the same choices with R (turn) and the menu's own buttons.
+      const more = doc.createElement('span');
+      more.className = 'more';
+      more.dataset.studioMore = k === 'rotate' ? 'axis' : 'scale';
+      more.innerHTML = '<svg viewBox="0 0 7 4" aria-hidden="true"><path d="M.75.75 3.5 3.25 6.25.75"/></svg>'; // static markup only
+      b.append(more);
+    }
     buttons[k] = b;
     row.appendChild(b);
   }
@@ -333,6 +389,15 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   const hintEl = doc.createElement('div');
   hintEl.className = 'hint';
   hintEl.setAttribute('role', 'status');
+  /** Swap a strip button's picture, keeping its ▾. */
+  const paintIcon = (b: HTMLButtonElement, inner: string) => {
+    const tmp = doc.createElement('div');
+    tmp.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${inner}</svg>`; // static markup only
+    b.querySelector(':scope > svg')?.replaceWith(tmp.firstElementChild!);
+  };
+  let scaleMode: GroupScaleMode = 'spread';
+  let scaleOpts = false;
+  const paintScale = () => paintIcon(buttons.scale, scaleOpts ? SCALE_ICONS[scaleMode] : ICONS.scale);
   let held: HandleKind | null = null;
   let chosen: HandleKind | null = null;
   const paintButtons = () => {
@@ -496,8 +561,10 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       }
       const n = kinds.filter((k) => !buttons[k].hidden).length;
       if (n === 0) row.style.display = 'none';
-      const rowW = n * size + (n - 1) * 2 + 4;
-      const rowH = size + 4;
+      // .big (finger size): no gaps, 2 px in (W1-2); else 2 px gaps, 4 px in.
+      const big = size >= 40;
+      const rowW = big ? n * size + 4 : n * size + (n - 1) * 2 + 4;
+      const rowH = big ? size + 4 : size + 8;
       const lo = 8 + inset.top, hi = vh - 8 - inset.bottom - rowH;
       // Under the object; above it when there is no room below (over the ask bar on a phone).
       let y = bottom + GAP;
@@ -517,13 +584,43 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     setAxis(axis, lang) {
       const b = buttons.rotate;
       b.dataset.axis = axis;
-      b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${axis === 'y' ? ICONS.rotate : AXIS_ICONS[axis]}</svg>`; // static markup only
+      paintIcon(b, AXIS_ICONS[axis]);
       const w = (AXIS_WORDS[lang] || AXIS_WORDS.en)[axis];
       b.title = `${w[0]} (${TOOL_KEYS.rotate}) — ${w[1]}`;
       b.setAttribute('aria-label', `${w[0]} (${TOOL_KEYS.rotate})`);
     },
+    setScaleMode(mode) {
+      if (mode === scaleMode) return;
+      scaleMode = mode;
+      buttons.scale.dataset.mode = mode;
+      paintScale();
+    },
+    setOptions(opts, lang) {
+      // Called every frame (place): touch the DOM only when something changed.
+      const words = MORE_LABELS[lang] || MORE_LABELS.en;
+      for (const [k, on, kind] of [['rotate', opts.axis, 'axis'], ['scale', opts.scale, 'scale']] as const) {
+        const b = buttons[k];
+        if (b.classList.contains('opts') === on && b.dataset.optsLang === lang) continue;
+        b.classList.toggle('opts', on);
+        b.dataset.optsLang = lang;
+        if (on) b.setAttribute('aria-haspopup', 'menu');
+        else b.removeAttribute('aria-haspopup');
+        const m = b.querySelector<HTMLElement>('.more');
+        if (m) m.title = words[kind];
+      }
+      if (opts.scale !== scaleOpts) {
+        scaleOpts = opts.scale;
+        paintScale();
+      }
+    },
     menu(kind, current, lang) {
       menuKind = kind;
+      // The open one's ▾ stays lit, and the button says its choices are showing.
+      for (const [k, mk] of [['rotate', 'axis'], ['scale', 'scale']] as const) {
+        const open = kind === mk && row.style.display !== 'none';
+        buttons[k].querySelector('.more')?.classList.toggle('open', open);
+        if (buttons[k].hasAttribute('aria-haspopup')) buttons[k].setAttribute('aria-expanded', String(open));
+      }
       menuEl.replaceChildren();
       if (!kind || row.style.display === 'none') {
         menuKind = null;
@@ -625,6 +722,15 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       host.remove();
     },
   };
+}
+
+/** The ▾ under a pointer event (which choices it opens), or null. Checked before handleFromEvent: it sits in a button. */
+export function moreFromEvent(e: Event): 'axis' | 'scale' | null {
+  for (const el of e.composedPath()) {
+    const m = (el as HTMLElement).dataset?.studioMore;
+    if (m === 'axis' || m === 'scale') return m;
+  }
+  return null;
 }
 
 /** The choice under a pointer event (the strip's menu), or null. */

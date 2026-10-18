@@ -260,6 +260,15 @@ export interface StudioAdapter {
    * "together" or "each in place" keeps these feet on the ground.
    */
   foot?(key: string): number[] | null;
+  /**
+   * Optional: the share (0–1) of the game's view the object's on-screen box
+   * covers, clipped to the view. Absent = the editor uses `anchor().rect`.
+   * 3D adapters give it because a projected box drops the corners behind the
+   * camera, and a ground that runs on under the camera looks small that way.
+   * Used for "huge" (60 % or more): a tap on it is a tap on nothing and a drag
+   * on it looks around (CONTRACT.md §2).
+   */
+  coverage?(key: string): number | null;
   /** 3D only: raise/lower by `dy` units in parent space. */
   nudgeY?(key: string, dy: number): Pose;
   /** Apply an absolute pose (undo/redo, typed numbers). null if the key is unknown. */
@@ -775,6 +784,11 @@ export type ShellToBridge =
   | { type: 'studio:placement/tool'; tool: StripTool | null }
   /** Space is held in the shell: a drag in the game looks around even with a tool chosen. */
   | { type: 'studio:placement/look'; on: boolean }
+  /**
+   * Close the strip's choices (turn axis / size mode): a press anywhere in the editor page, or Escape there,
+   * while they are open (tool options, 2026-10-18: "click outside or Esc closes it", also outside the game frame).
+   */
+  | { type: 'studio:placement/menu'; open: false }
   | { type: 'studio:tool/activate'; id: string | null }
   | { type: 'studio:tool/restore'; id: string; data: unknown }
   /** Ask for the data of tools with unsaved changes (answered by tool/data). */
@@ -815,6 +829,8 @@ export type BridgeToShell =
   | { type: 'studio:placement/thumb'; key: string; src: string | null }
   /** The strip's chosen tool changed (a strip button, a key in the game, Escape). */
   | { type: 'studio:placement/tool'; tool: StripTool | null }
+  /** The strip's choices (the ▾ on turn / size) opened or closed: the editor page closes them on a press or Escape. */
+  | { type: 'studio:placement/menu'; open: boolean }
   | { type: 'studio:library/assets'; loads: LoadEntry[]; uses: Record<string, AssetRef[]> }
   | { type: 'studio:library/previewed'; url: string; ok: boolean }
   /** Game tools registered by .studio/tools.js. */
@@ -918,7 +934,11 @@ export interface StudioRequest extends Omit<StudioRequestInput, 'kind' | 'lang'>
   files?: string[];
 }
 
-export type AiState = 'received' | 'working' | 'done' | 'failed';
+/**
+ * `asking` (dogfood 2026-10-17, U2): the agent asked the person something in its own window and waits for the
+ * answer; `note` is the question. Without it the editor kept saying "Your AI has it" for minutes while the AI waited.
+ */
+export type AiState = 'received' | 'working' | 'asking' | 'done' | 'failed';
 
 /** What the agent writes back (local: .studio/status.json). Only the latest status is kept. */
 export interface StudioStatus {
@@ -1021,6 +1041,12 @@ export interface StudioHost {
    * watching.
    */
   readonly offline?: boolean;
+  /**
+   * With `offline`: where to get Game Studio (design review wave 1, W1-6, 2026-10-17). The demo shows no ask box (nobody would
+   * read what is typed there) but one line in its place, "In Claude Code, your AI makes the changes you type here.
+   * Get Game Studio →", linking here. Left out = the line without the link.
+   */
+  readonly getUrl?: string;
   /**
    * Optional KUMODeck sign-in for making pictures and 3D models with AI, paid
    * from the creator's KUMODeck balance (2026-10-16). Only the local server has

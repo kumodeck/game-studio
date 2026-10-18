@@ -1,7 +1,10 @@
 // Lantern Cove — a small dusk harbour: clear water, a lighthouse, boats that float. Tap the water to sail.
 //
-// A starter for KUMODeck Game Studio. Everything is made from code at load (no model or texture files), so it opens
-// fast and every object has a stable name for the editor (see props.js).
+// A starter for KUMODeck Game Studio. Almost everything is made from code at load, so it opens fast and every object
+// has a stable name for the editor (see props.js). A few things come from files in assets/ (the sails, the planks,
+// the barrel, the buoy's bell and the sea), so the editor's Assets panel has real files to show and swap
+// (2026-10-17). They are small (≈ 0.27 MB together), made by scripts/make-starter-assets.mjs in the Game Studio
+// package, and every one is optional: a missing file falls back to the code version (or silence).
 //
 // Picture, in the order it is built each frame:
 //   sky (baked once, sky.js) → land + props with a low warm sun and long soft shadows → see-through water with a
@@ -18,6 +21,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { applyPlacement } from '../studio-placement.js';
 import { SUN_DIR, SUN_COLOR, HAZE_COLOR, bakeSky } from './sky.js';
 import { makeTerrain, makeDepthField } from './terrain.js';
@@ -28,6 +32,24 @@ import { makeDecor } from './decor.js';
 
 // Tell the editor (when it is there) that the layout is final only after placement.json is applied. No-op otherwise.
 window.studio?.waitForReady?.();
+
+// ------------------------------------------------------------------ files (assets/)
+// Started first, awaited before the props are built (≈ 0.13 MB from the same server), so the very first frame and
+// the editor's first look at the scene already have them. A file that is missing or broken gives null: props.js then uses its
+// code version, so deleting a file never breaks the cove.
+// WHY three's loaders and not fetch: the editor learns which object uses which file from them (a texture keeps its
+// image's URL; r186 announces loaders, so a glTF scene is traced back to its .glb): "Used by: crate, pier, rowboat".
+const optional = (url, p) => p.catch(() => (console.warn(`[cove] ${url} did not load: using the code version`), null));
+const picture = (url) => optional(url, new THREE.TextureLoader().loadAsync(url).then((t) => {
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4; // the sails are seen at a grazing angle: keeps the seams sharp
+  return t;
+}));
+const files = Promise.all([
+  picture('assets/sail.jpg'),
+  picture('assets/planks.jpg'),
+  optional('assets/barrel.glb', new GLTFLoader().loadAsync('assets/barrel.glb').then((g) => g.scene)),
+]);
 
 const params = new URLSearchParams(location.search);
 const FIXED = Number(params.get('fixed')) || 0;
@@ -66,13 +88,58 @@ const terrain = makeTerrain(SUN_DIR, SUN_COLOR);
 scene.add(terrain.mesh);
 const water = makeWater(renderer, depth, { sunDir: SUN_DIR, sunColor: SUN_COLOR });
 scene.add(water.mesh);
-const props = makeProps();
+const [sailTex, plankTex, barrelModel] = await files; // started at the top: downloaded while the sky was baking
+const props = makeProps({ sail: sailTex, planks: plankTex, barrel: barrelModel });
 for (const p of props.all) scene.add(p);
 const decor = makeDecor(props.rockMaterial);
 scene.add(decor.group);
 
 await applyPlacement(scene, './placement.json');
 const sim = makeSim({ scene, props, floorAt: depth.at });
+
+// ------------------------------------------------------------------ sound: the sea, and the bell on the buoy
+// Browsers play sound only after the person taps or presses a key, so both start then. The bell is positional
+// (it lives on the buoy: louder when the camera is near it) and rings every 6–10 s of game time. The editor pauses
+// the game loop, so the sound pauses with it (see quiet() below): editing is silent.
+const listener = new THREE.AudioListener();
+camera.add(listener);
+const sea = new THREE.Audio(listener);
+sea.setLoop(true);
+sea.setVolume(0.32);
+const bell = new THREE.PositionalAudio(listener);
+bell.setRefDistance(9);
+bell.setVolume(0.8);
+// The author's mark, so the editor lists assets/bell.mp3 under "buoy" for sure. Without it the demo's Assets panel
+// showed the sound as used by no object (seen 2026-10-17; the loader tracing covers textures and models).
+bell.userData.studioAsset = 'assets/bell.mp3';
+props.buoy.getObjectByName('bob').add(bell);
+const audioLoader = new THREE.AudioLoader();
+// MP3 files start and end with a few ms of encoder padding: loop inside it, so the sea has no click at the seam.
+audioLoader.load('assets/waves.mp3', (b) => { sea.setBuffer(b); sea.setLoopStart(0.05); sea.setLoopEnd(b.duration - 0.05); }, undefined, () => {});
+audioLoader.load('assets/bell.mp3', (b) => bell.setBuffer(b), undefined, () => {});
+let soundOn = false, nextBell = 2, lastFrameAt = 0;
+function startSound() {
+  if (soundOn) return;
+  soundOn = true;
+  listener.context.resume().catch(() => {});
+}
+addEventListener('pointerdown', startSound);
+addEventListener('keydown', startSound);
+// No frame for a moment (the editor holds the game, or the tab is hidden) → suspend; the next frame resumes.
+setInterval(() => {
+  if (soundOn && listener.context.state === 'running' && performance.now() - lastFrameAt > 400) listener.context.suspend().catch(() => {});
+}, 250);
+function soundStep(t) {
+  lastFrameAt = performance.now();
+  if (!soundOn) return;
+  if (listener.context.state === 'suspended') listener.context.resume().catch(() => {});
+  if (sea.buffer && !sea.isPlaying) sea.play();
+  if (t > nextBell && bell.buffer) {
+    nextBell = t + 6 + ((t * 7.3) % 4);
+    if (bell.isPlaying) bell.stop();
+    bell.play();
+  }
+}
 // The camera is passed because the game has not rendered yet (the loop starts below).
 window.studio?.ready?.({ camera });
 
@@ -181,6 +248,7 @@ function frame() {
   if (sim.ctl.target && props.boat.position.distanceTo(tmpV.set(sim.ctl.target.x, props.boat.position.y, sim.ctl.target.z)) < 2.2 && !dragging) sim.ctl.target = null;
   sim.step(dt, t);
   decor.step(t);
+  soundStep(t);
   water.uniforms.uTime.value = t;
   terrain.uniforms.uTime.value = t;
   grade.uniforms.uTime.value = t;

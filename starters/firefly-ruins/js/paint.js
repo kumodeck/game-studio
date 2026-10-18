@@ -1,4 +1,5 @@
-// Firefly Ruins — every picture is painted at load with Canvas 2D (no image files, nothing to license).
+// Firefly Ruins — the pictures painted at load with Canvas 2D (nothing to license). The bell, the lantern body and the
+// boat come from files in assets/ since 2026-10-17 (objects.js); their painters below stay as the fallback.
 //
 // One light for the whole scene: a low sun on the RIGHT (≈ x 930 of the 1280-wide world). So every painter uses the
 // same three steps: a dark cool body colour, a warm rim on the right edge, moss on the top surfaces. That shared

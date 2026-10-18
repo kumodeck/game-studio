@@ -16,13 +16,15 @@
 //   away             nobody watches: say so AT ONCE, with the one thing to do and what still
 //                    works (play test 10/16: 21 s of "waiting" and then a dead end)
 //   received/working the AI wrote its status (its note, if any, is the line)
+//   asking           the AI asked the person something in its own window and waits (its note is the question;
+//                    dogfood 2026-10-17: "Your AI has it" stayed up 5 minutes while it waited for an answer)
 //   updating         the AI is done and the game is reloading behind the old picture
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
 import type { StudioStatus } from '../contract.ts';
 import { statusCovers } from '../schema/handoff.mjs';
 
-export type AiPhase = 'none' | 'waiting' | 'nudge' | 'sent' | 'seen' | 'away' | 'received' | 'working' | 'updating' | 'done' | 'failed' | 'undone' | 'redone';
+export type AiPhase = 'none' | 'waiting' | 'nudge' | 'sent' | 'seen' | 'away' | 'received' | 'working' | 'asking' | 'updating' | 'done' | 'failed' | 'undone' | 'redone';
 
 export interface AiPending {
   kind: string;
@@ -76,7 +78,10 @@ export function aiPhase(s: AiFlowState): AiPhase {
   return s.status.state;
 }
 
-/** The violet light runs round the input in these phases: the AI has it and is on it. */
+/**
+ * The violet light runs round the input in these phases: the AI has it and is on it. Not while `asking`: then the
+ * person is the one to act, and a running light would say "wait" (supervision 2026-10-17: the dot does not blink).
+ */
 export function aiBusy(phase: AiPhase): boolean {
   return phase === 'sent' || phase === 'seen' || phase === 'received' || phase === 'working' || phase === 'updating';
 }
@@ -119,6 +124,7 @@ export const QUIET_MS = 180_000;
 export function reloadDecision(r: ReloadState): 'now' | 'wait' | 'no' {
   if (!r.code || !r.loadedCode || r.code === r.loadedCode || r.playing || r.reloading) return 'no';
   if (r.phase === 'done' || r.phase === 'failed') return 'now';
-  if (aiBusy(r.phase)) return r.stableMs >= QUIET_MS ? 'now' : 'wait';
+  // Asking: the AI may have written half its change before its question; wait for its "done" like while it works.
+  if (aiBusy(r.phase) || r.phase === 'asking') return r.stableMs >= QUIET_MS ? 'now' : 'wait';
   return r.stableMs > 0 ? 'now' : 'wait';
 }

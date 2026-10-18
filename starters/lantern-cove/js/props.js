@@ -1,4 +1,4 @@
-// Lantern Cove — the things in the cove (all made from code: no files, no third-party models).
+// Lantern Cove — the things in the cove (made from code, plus a few files in assets/: see makeProps).
 //
 // Every prop is one Group whose `userData.studioKey` is its stable name in the editor ("lighthouse", "pine-2", …):
 // that group is what the user picks, moves, turns, scales, copies or deletes. Anything that animates (bobbing on
@@ -123,7 +123,24 @@ function rockGeometry(base, seed, amp, radial = false) {
 }
 
 // ------------------------------------------------------------------ the props
-export function makeProps() {
+/**
+ * `files` = what js/main.js loaded from assets/ (each may be null when the file is missing or broken; then the
+ * object falls back to plain colour / code geometry, so deleting a file never breaks the scene):
+ *   sail   → both sails of the sailboat                (assets/sail.jpg)
+ *   planks → the crate, the pier, the rowboat's seats  (assets/planks.jpg, one shared material)
+ *   barrel → the barrel's model                        (assets/barrel.glb, standing on its end; laid down here)
+ * WHY files here at all (2026-10-17): with everything in code the editor's Assets panel had nothing to show. These
+ * are the objects where a picture or a model reads better than flat colour, and where swapping it is fun to try.
+ */
+export function makeProps(files = {}) {
+  if (files.sail) {
+    M.sail.map = files.sail;
+    M.sail.color.set(0xffffff); // the picture has the cloth colour; white = show it as painted
+  }
+  if (files.planks) {
+    M.plank.map = files.planks;
+    M.plank.color.set(0xd8cfc4); // a touch darker than the picture: the planks sit in dusk light
+  }
   const all = [];
   const add = (g) => (all.push(g), g);
 
@@ -258,7 +275,8 @@ export function makeProps() {
   sail.name = 'sail';
   sail.position.z = 0.6;
   sail.add(mesh(sailGeometry([0, 0.95, 0], [0, 7.1, 0], [0, 0.95, -3.2], 0.45), M.sail));
-  sail.add(mesh(sailGeometry([0, 0.7, 2.2], [0, 6.4, 0.05], [0, 1.0, 0.1], 0.3), M.sail));
+  // The jib shows only the lower-left part of the picture: the emblem stays on the mainsail.
+  sail.add(mesh(sailGeometry([0, 0.7, 2.2], [0, 6.4, 0.05], [0, 1.0, 0.1], 0.3, [0, 0, 0.55, 0.3]), M.sail));
   boatBob.add(sail);
 
   // Rowboat tied by the pier: open hull (double-sided), two thwarts.
@@ -275,8 +293,15 @@ export function makeProps() {
 
   const lathe = new THREE.LatheGeometry([0, 1, 2, 3, 4, 5, 6].map((i) => new THREE.Vector2(0.36 + 0.07 * Math.sin((i / 6) * Math.PI), (i / 6) * 1.0 - 0.5)), 16);
   const [barrel, barrelBob] = floater('barrel', 3.5, 17, 0.3, { len: 1.0, wid: 0.8, draft: 0.04, keel: 0.4, mass: 0.4, radius: 0.6 });
-  barrelBob.add(mesh(lathe, M.wood, { rz: Math.PI / 2 }));
-  for (const x of [-0.3, 0.3]) barrelBob.add(mesh(new THREE.TorusGeometry(0.42, 0.025, 6, 20), M.tar, { x, ry: Math.PI / 2 }));
+  if (files.barrel) {
+    // The model as loaded (not a clone): the editor traces it back to assets/barrel.glb through the loader.
+    files.barrel.rotation.z = Math.PI / 2;
+    files.barrel.traverse((o) => { if (o.isMesh) o.castShadow = o.receiveShadow = true; });
+    barrelBob.add(files.barrel);
+  } else {
+    barrelBob.add(mesh(lathe, M.wood, { rz: Math.PI / 2 }));
+    for (const x of [-0.3, 0.3]) barrelBob.add(mesh(new THREE.TorusGeometry(0.42, 0.025, 6, 20), M.tar, { x, ry: Math.PI / 2 }));
+  }
 
   const [crate, crateBob] = floater('crate', -8, 15, 0.7, { len: 0.9, wid: 0.9, draft: -0.12, keel: 0.35, mass: 0.4, radius: 0.7 });
   crateBob.add(mesh(new THREE.BoxGeometry(0.9, 0.8, 0.9), M.plank));
@@ -285,9 +310,13 @@ export function makeProps() {
   return { all, boat, lighthouse: lh, buoy, rockMaterial: M.rock };
 }
 
-/** A sail: a triangle with a belly (bulging along +x), tack → head along the luff, clew at the back corner. */
-function sailGeometry(tack, head, clew, belly) {
-  const N = 10, pos = [], idx = [];
+/**
+ * A sail: a triangle with a belly (bulging along +x), tack → head along the luff, clew at the back corner.
+ * UV: u = 0 at the luff … 1 at the leech, v = 0 at the foot … 1 at the head, mapped into `uv` = [u0, v0, u1, v1]
+ * of the picture (assets/sail.jpg is laid out for this: panels across, the emblem in the upper middle).
+ */
+function sailGeometry(tack, head, clew, belly, uv = [0, 0, 1, 1]) {
+  const N = 10, pos = [], uvs = [], idx = [];
   const A = new THREE.Vector3(...tack), B = new THREE.Vector3(...head), C = new THREE.Vector3(...clew);
   for (let i = 0; i <= N; i++) for (let j = 0; j <= N - i; j++) {
     const s = i / N, t = j / N; // s up the luff, t toward the leech
@@ -296,6 +325,7 @@ function sailGeometry(tack, head, clew, belly) {
     const p = luff.lerp(leech, f);
     p.x += belly * Math.sin(Math.PI * f) * (1 - s * 0.8);
     pos.push(p.x, p.y, p.z);
+    uvs.push(uv[0] + (uv[2] - uv[0]) * f, uv[1] + (uv[3] - uv[1]) * s);
   }
   let k = 0;
   const id = [];
@@ -306,6 +336,7 @@ function sailGeometry(tack, head, clew, belly) {
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
   return g;

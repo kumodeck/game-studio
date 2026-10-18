@@ -1059,7 +1059,8 @@ const KUMODECK_STEP_IDS = Object.freeze(['publish', 'multiplayer', 'save-data', 
  * so the AI line in the editor follows it too. The host checks each file exists before keeping it.
  */
 const FILE_STEP_IDS = Object.freeze(['delete-files']);
-const AI_STATES = Object.freeze(['received', 'working', 'done', 'failed']);
+// `asking`: the agent waits for the person's answer in its own window; `note` is the question (dogfood 2026-10-17, U2).
+const AI_STATES = Object.freeze(['received', 'working', 'asking', 'done', 'failed']);
 
 const KEY_OK = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 const ID_OK = /^[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}$/;
@@ -4052,7 +4053,8 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
                    first). Run it as your watch (Claude Code: Monitor): while it runs, the
                    editor shows the person that you are watching (.studio/watch.json)
   --requests       print the requests waiting in .studio/requests/ (one JSON per line)
-  --status <state> tell the editor how it is going: received | working | done | failed
+  --status <state> tell the editor how it is going: received | working | asking | done | failed
+                   (asking: you asked the person something in your window; --note is the question)
                    (writes .studio/status.json; the editor shows one short line)
     --request <id>   the latest request this is about (default: the newest waiting one)
     --changed <n>    how many things you changed in the game (shown as "done (n)")
