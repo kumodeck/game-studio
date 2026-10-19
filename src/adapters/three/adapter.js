@@ -505,6 +505,18 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       return [v.x, v.y, v.z];
     },
 
+    /** The middle of the object's world box, in its parent's space (several tilted together turn round these). */
+    middle(key) {
+      const o = objectOf(key);
+      if (!o) return null;
+      scene.updateMatrixWorld(true);
+      const b = worldBox(o);
+      if (!b) return null;
+      const v = o.position.clone().set((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+      if (o.parent) o.parent.worldToLocal(v);
+      return [v.x, v.y, v.z];
+    },
+
     scale(key, factor) {
       const o = objectOf(key);
       if (!o) return null;
@@ -728,6 +740,12 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       orbit(dx, dy) { if (!view) return null; leaveHome(); view.orbit(dx, dy); touch(); return view.state(); },
       pan(dx, dy) { if (!view) return null; leaveHome(); syncView(); view.pan(dx, dy, aspect()); touch(); return view.state(); },
       zoom(factor, ndcX = 0, ndcY = 0) { if (!view) return null; leaveHome(); syncView(); view.zoom(factor, ndcX, ndcY); touch(); return view.state(); },
+      /** Camera up (dy > 0) / down by dy view heights, looking the same way (camera.js rise; ⌘K, E / Q, the ↑↓ buttons). */
+      rise(dy) { if (!view) return null; leaveHome(); view.rise(dy); touch(); return view.state(); },
+      /** Fly (WASD / E Q): right / up / forward in seconds of travel at the scene's speed (camera.js fly). */
+      fly(right, up, fwd) { if (!view) return null; leaveHome(); view.fly(right, up, fwd); touch(); return view.state(); },
+      /** Turn where the camera stands (right-drag while flying; camera.js look), by fractions of the canvas. */
+      look(dx, dy) { if (!view) return null; leaveHome(); view.look(dx, dy); touch(); return view.state(); },
       /**
        * The opening view: exactly the player's camera (position, direction, lens), so the first picture of the
        * editor is the game's own picture — the light, the water, the composition the game was made with.

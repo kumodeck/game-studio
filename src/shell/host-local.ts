@@ -98,7 +98,10 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
     },
     async listAssets() {
       const r = await call<{ assets: AssetFile[]; missing: Array<{ ref: string; in: string[] }> }>('GET', 'assets');
-      const files = (r.assets || []).map((a) => ({ ...a, type: TYPES.includes(a.type) ? a.type : 'other' }) as AssetFile);
+      // The local server says "audio" for sounds (src/server/assets.mjs); the contract says "sound". Mapping it to
+      // "other" put every mp3 under Other in the Library's filters (found with All / 3D / 2D / Sound / Other, 2026-10-18).
+      const typeOf = (t: string) => (t === 'audio' ? 'sound' : TYPES.includes(t as AssetType) ? (t as AssetType) : 'other');
+      const files = (r.assets || []).map((a) => ({ ...a, type: typeOf(a.type) }) as AssetFile);
       const missing: MissingRef[] = (r.missing || []).map((m) => ({ path: m.ref, refsInCode: m.in || [] }));
       return { files, missing };
     },

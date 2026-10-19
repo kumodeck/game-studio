@@ -25,8 +25,13 @@ Build: `node scripts/build-web-demo.mjs --out <dir>` (see that script).
   starts (and plays) with it, like placement.json on disk with the local studio.
   It reads the save as the page starts, so the answer is ready at once (a game that
   sizes its stage after `await applyPlacement()` must not be frozen half-way).
-- `index.html`, `strings.js` — the sample list (the demo's first page, with each
-  starter's thumb.png) and its words (English blurbs from starter.json, Japanese here).
+- `index.html`, `lp.js`, `strings.js` — the front page (2026-10-19, it replaced the sample list): what Game
+  Studio is, the install line (INSTALL.md's, via games.json), the editor itself in a frame
+  (`studio/?game=<id>&embed=1`, loaded when seen, "Click to use" before it takes the wheel and keys, no frame on
+  phones narrower than 768 px: the samples are cards that open the editor), three things it does, KUMODeck as an option.
+  Checked by `test/web-demo-lp.browser.mjs`.
+- `embed.ts` — the editor in that frame: no "← Samples", and arrows / Space / Page Down / End pressed in it (or in
+  the game inside it) don't scroll the front page.
 
 The local studio (src/server + src/shell/host-local.ts) is unchanged by this
 folder: its Host check, pass and API stay as they are.

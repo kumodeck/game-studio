@@ -16,6 +16,7 @@ import {
   isStudioMessage,
   type BridgeToShell,
   type Dim,
+  type FlyKey,
   type GameConfig,
   type Inset,
   type GameToolInfo,
@@ -29,6 +30,7 @@ import {
   type StudioHost,
   type StudioRequestInput,
   type StudioStatus,
+  type LibraryFileUse,
   type ShellPart,
   type StripTool,
   type StudioShellApi,
@@ -37,7 +39,9 @@ import {
 } from '../contract.ts';
 import { keyStep } from '../core/keys.ts';
 import { validateLibrary, validatePlacement } from '../schema/index.ts';
-import { filesOfObject, libraryTool, openAsset } from '../tools/library/index.ts';
+import { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } from '../tools/library/index.ts';
+import { DRAG_FILE } from '../tools/library/panel.ts';
+import { createLibraryObjects, DRAG_OBJECT } from './library-objects.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
 import { h, safeImageSrc } from './dom.ts';
@@ -54,8 +58,13 @@ import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, type Change, type UndoEntry } from './undo.ts';
-import { copyKey, groupLayerMoves, sameKind } from './edit-ops.ts';
+import { copyKey, groupLayerMoves, groupLayerPossible, sameKind } from './edit-ops.ts';
 import { displayName } from './names.ts';
+import { keyOf, tipText } from './keymap.ts';
+import { installTooltips } from './tooltip.ts';
+import { createShortcutSheet } from './shortcuts.ts';
+import { createContextMenu, type MenuEntry } from './context-menu.ts';
+import { contextRows, type CtxPlace } from './context-rows.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
 
@@ -80,6 +89,11 @@ const store = {
 // ⌘ on Apple keyboards, Ctrl elsewhere (both work on every system).
 /** The strip's tool keys (lower case, as shortcut() reads them) — the same as the game page's (bridge/handles.ts TOOL_KEYS). */
 const STRIP_KEYS: Record<string, StripTool> = { m: 'move', h: 'lift', t: 'rotate', s: 'scale' };
+/** Camera up / down steps, shares of the game's height: ⌘K a tenth, E / Q a twentieth (the same as bridge/input.ts). */
+const RISE_STEP = 0.1;
+const RISE_KEY_STEP = 0.05;
+/** 1–4: the same tools in the 3D strip's order (basics pass, 2026-10-18; bridge/handles.ts TOOL_NUMBERS). 2 is Height: nothing in 2D. */
+const STRIP_NUMBERS: Record<string, StripTool> = { '1': 'move', '2': 'lift', '3': 'rotate', '4': 'scale' };
 const STRIP_ICONS: Record<StripTool, string> = { move: 'toolMove', lift: 'toolLift', rotate: 'toolRotate', scale: 'toolScale' };
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -94,6 +108,10 @@ export function start(host: StudioHost) {
   let bridgeAlive = false;
   let editing = false;
   let dim: Dim = '3d';
+  /** The edit camera can go up / down (core/ready `rise`: 3D adapters with view.rise). */
+  let canRise = false;
+  /** It can fly with W A S D (core/ready `fly`: 3D adapters with view.fly; camera-wasd 2026-10-18). */
+  let canFly = false;
   let adapterInfo = '';
   let items: Item[] = [];
   let selected: string | null = null;
@@ -110,10 +128,23 @@ export function start(host: StudioHost) {
   let ghostTold = false;
   // Copies asked for with ⌘D / Copy whose answer (placement/added) has not come yet: those make a new undo step.
   const pendingCopies = new Set<string>();
+  // ⌘C remembers the selection here; ⌘V duplicates what is remembered (basics pass, 2026-10-18). Only keys: the
+  // copies are made by the adapter next to the originals, exactly as ⌘D, so paste = "duplicate what I copied".
+  // Not the system clipboard: an object of a running game cannot travel to another app, and a text there would
+  // only surprise. A key whose object is gone by then (deleted, or the AI removed it) is skipped.
+  let clip: string[] = [];
+  // "Use the Library" (2026-10-18). `filePick`: the files picked in the open Library (its panel tells us), named by the
+  // ask box's chip next to the picked objects. `addingToScene`: copies asked for by the Library's "Add to scene", whose
+  // answer (placement/added) brings the Scene up with them picked.
+  let filePick: string[] = [];
+  const addingToScene = new Set<string>();
   let check: SelfCheckResult | null = null;
   // ?tool=library opens on the Library (studio.mjs --tool library).
   let tool: ToolId = new URLSearchParams(location.search).get('tool') === 'library' ? 'library' : 'placement';
   let page: 'tool' | 'next' | 'settings' = 'tool';
+  // Scene ('placement') and Library ('library') are the left column's two rows ("one Library", a try of the editor, 2026-10-18):
+  // the Scene is the game with its object list; the Library holds every object and every file in one grid
+  // (library-objects.ts + tools/library). Plan 1's third place — the objects' own "Grid" shelf, `objView` — is gone.
   // How the person likes the editor (.studio/ui.json) and what the AI set up
   // for this game (.studio/studio.json, .studio/tools.js).
   let uiPrefs: UiPrefs = { ...DEFAULT_UI, show: { ...DEFAULT_UI.show } };
@@ -278,8 +309,11 @@ export function start(host: StudioHost) {
   // between are a draft only (so closing the tab loses nothing) and are never
   // shown: two different "saved" on one screen read as a contradiction.
   const saveState = h('span', { class: 'save-state', dataset: { part: 'save-state' } });
-  // Undo / redo: phones show Undo here once there is something to undo (no
-  // keyboard there); on PC they are ⌘Z / ⇧⌘Z and rows of the ⌘K list.
+  // Undo / redo: always here, on PC and phone, dimmed while there is nothing to undo / redo (basics pass,
+  // 2026-10-18 — from a try of the editor: "undo and redo are needed: keyboard shortcuts AND buttons"). Before, PC had only ⌘Z and
+  // the ⌘K rows, and phones showed Undo only once there was something to undo (Redo never): a button that comes
+  // and goes moves its neighbours, and a person who does not know ⌘Z had no way to find it. Tooltips name what
+  // they would change and the key ("Undo: move lighthouse  ⌘Z"). Phone: 44 × 44.
   // "✓ Saved" sits right after Save, in the slot Save leaves, and keeps Save's
   // width (renderButtons): nothing next to it moves when Save goes away.
   // WHY (web demo bug, 2026-10-16): it used to sit left of Undo, so on phones
@@ -287,8 +321,12 @@ export function start(host: StudioHost) {
   // tap on "Save" (people tap again when the first one seems to do little)
   // pressed Undo: the object jumped back, "Save · 1" came back, and the next
   // draft write kept the undone place — "saving does not work".
+  // Order since the basics pass: Save / ✓ Saved, then Undo, Redo. The bar's right group is aligned to the right, so
+  // whatever comes and goes must be LEFT of what stays: Save appearing with the first change grows to the left and
+  // Undo / Redo never move (with Undo first, the first change pushed Undo 80 px left under the mouse). And with the
+  // "✓ Saved" slot keeping Save's width, a second tap on Save still lands on Save's place, never on Undo.
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
-    mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }), mk(saveBtns, 'save', () => void handOff()), saveState);
+    mk(saveBtns, 'save', () => void handOff()), saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
   // Is the AI there? Grey until it writes back in this session, green after,
   // violet while it works. (The editor cannot see the AI's window; this is
   // only what the AI told it, so it never claims more.)
@@ -319,6 +357,8 @@ export function start(host: StudioHost) {
   // and back), and "All actions" becomes this "…" (the same ⌘K list, same press). PC keeps its
   // column as it was: .side-head is `display: contents` there and these tools are hidden.
   const sheetMore = h('button', { type: 'button', class: 'icon-btn sheet-more', dataset: { action: 'palette' }, onclick: openPalette }, icon('more'));
+  // (Plan 1's "Grid" button that sat here is gone with the objects' shelf, "one Library" 2026-10-18: Multi-select is
+  // back in the head, the Library is the switch's other side.)
   const headTools = h('div', { class: 'side-head-tools' }, sheetMore);
   const side = h('aside', { class: 'side', dataset: { part: 'side' } }, h('div', { class: 'side-head' }, tabs, headTools), status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
@@ -326,6 +366,7 @@ export function start(host: StudioHost) {
   const sheetBtn = btn('sheet', () => {
     sheetOpen = !sheetOpen;
     page = 'tool';
+    // From the Library the list button brings the Scene's list (the game and its list).
     if (sheetOpen && tool === 'library') tool = 'placement';
     renderAll(true);
   }, { class: 'icon-btn' });
@@ -338,10 +379,8 @@ export function start(host: StudioHost) {
   // step-by-step tour here without asking.
   const playNote = h('p', { class: 'play-note', hidden: true });
   const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
-  const askSlot = h('div', { class: 'ask-slot' });
-  // The web demo's line in the ask box's place (W1-6); its words are set in renderAll (language).
-  const offlineLine = h('p', { class: 'offline-line', dataset: { part: 'offline-line' } }, h('span', { class: 'label' }),
-    host.getUrl ? h('a', { href: host.getUrl, target: '_blank', rel: 'noopener noreferrer' }) : document.createDocumentFragment());
+  // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
+  const askSlot = h('div', { class: 'ask-slot', hidden: !!host.offline });
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
@@ -350,13 +389,83 @@ export function start(host: StudioHost) {
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
+  // Every shortcut in one sheet over the game (? / the ⌘K row), the game dimmed behind it like ⌘K; and the
+  // buttons' own tooltips with their key (basics pass, 2026-10-18).
+  const keysScrim = h('div', { class: 'scrim keys-scrim', hidden: true, onpointerdown: () => keySheet.hide() });
+  let keysFocus: HTMLElement | null = null;
+  const keySheet = createShortcutSheet({
+    t: (k) => t(k),
+    mac: isMac,
+    dim: () => dim,
+    changed: (on) => {
+      keysScrim.hidden = !on;
+      app.dataset.keys = on ? 'open' : 'closed';
+      // Back to where the keys were typed (the list, a button), so the next key works there as before.
+      if (on) keysFocus = document.activeElement as HTMLElement | null;
+      else if (keysFocus?.isConnected) keysFocus.focus({ preventScroll: true });
+    },
+  });
+  stage.append(keysScrim, keySheet.el);
+  // The place's menu (right-click / long press; context-menu.ts): over everything, the game frame included.
+  const ctxMenu = createContextMenu({
+    phone: () => phone(),
+    changed: (on, place) => {
+      app.dataset.menu = on ? place || 'open' : 'closed';
+    },
+  });
+  app.append(ctxMenu.catcher, ctxMenu.el);
+  installTooltips(app);
+  // A Library tile dragged onto the Scene row = its "Add to scene" ("use the Library", 2026-10-18). The row is the
+  // drop target because the Library covers the game on PC (the game is not on screen to drop on); while a tile is
+  // dragged the row says so (grey, like a hover: orange stays the pick). Touch has no drag of this kind: the tile's
+  // detail and its long-press menu have the same "Add to scene".
+  const dragType = (e: DragEvent) => {
+    const ts = e.dataTransfer?.types || [];
+    return ts.includes(DRAG_OBJECT) ? DRAG_OBJECT : ts.includes(DRAG_FILE) ? DRAG_FILE : null;
+  };
+  const sceneRow = (e: Event) => (e.target as Element | null)?.closest?.<HTMLElement>('[data-tool="placement"]') ?? null;
+  document.addEventListener('dragstart', (e) => {
+    if (dragType(e)) app.dataset.drag = 'library';
+  });
+  const dragDone = () => {
+    delete app.dataset.drag;
+    tabs.querySelector('.drop-on')?.classList.remove('drop-on');
+  };
+  document.addEventListener('dragend', dragDone);
+  tabs.addEventListener('dragover', (e) => {
+    const row = sceneRow(e);
+    if (!row || !dragType(e) || !editing) return;
+    e.preventDefault();
+    e.dataTransfer!.dropEffect = 'copy';
+    row.classList.add('drop-on');
+    row.title = t('lib.dropScene');
+  });
+  tabs.addEventListener('dragleave', (e) => {
+    const row = sceneRow(e);
+    if (row && !row.contains(e.relatedTarget as Node | null)) row.classList.remove('drop-on');
+  });
+  tabs.addEventListener('drop', (e) => {
+    const type = dragType(e);
+    if (!sceneRow(e) || !type) return;
+    e.preventDefault();
+    const v = e.dataTransfer!.getData(type);
+    dragDone();
+    if (type === DRAG_OBJECT) {
+      // The dropped tile's kind, picked or not (a drag is about what is in the hand).
+      if (items.some((i) => i.key === v && i.movable !== false)) addToScene([v]);
+    } else if (v) {
+      const p = libraryPickedFiles();
+      fileUse.add?.(p.includes(v) ? p : [v]);
+    }
+  });
   // A click on the bare desk drops the pick, the same as a tap on nothing in the game (bridge/input.ts; a web demo try
   // 2026-10-18: "I want to click an empty spot to deselect, and I can't"). Bare = the surface itself, not a row, a
   // button, the card or a field on it: the 8 px margin round the game plate, the empty part of the list column under
   // the rows, the top bar's empty middle, and the see-through gap between the card and the ask bar (phone; a finger
   // there is mostly moved onto the ask field by the browser, a mouse is not). `click`, not pointerdown: a press that ends somewhere else (a drag out
   // of the list) is not a click on nothing.
-  const BARE = '.shell, .top, .top-right, .side, .side-head, .side-foot, .panel, .placement, .tool-body, .list-scroll, .objects, .stage, .dock, .card-slot';
+  // The Library's own empty space (around and between the tiles) is bare too: the same click drops the objects' pick there.
+  const BARE = '.shell, .top, .top-right, .side, .side-head, .side-foot, .panel, .placement, .tool-body, .list-scroll, .objects, .stage, .dock, .card-slot, .assets-page .gsl, .assets-page .gsl-grid';
   app.addEventListener('click', (e) => {
     const t = e.target as Element | null;
     if (!t || !t.matches(BARE) || !editing || playing || !(selected || group.length)) return;
@@ -450,16 +559,125 @@ export function start(host: StudioHost) {
       if (!undo.push(poseChange(k, from, pose))) model.moved(k, from);
       applyPose(k, pose);
     },
-    ask: (keys, text) => askAi({ kind: 'ask', text, objects: requestObjects(keys) }),
+    ask: (keys, text, files) => askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}) }),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
-    shortcut: (op) => {
-      // ⌘ on Apple keyboards, Ctrl elsewhere (both work on every system).
-      const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-      const key = op === 'toFront' || op === 'forward' ? ']' : '[';
-      const shift = op === 'toFront' || op === 'toBack';
-      return mac ? `${shift ? '⇧' : ''}⌘${key}` : `Ctrl+${shift ? 'Shift+' : ''}${key}`;
-    },
+    // Only while the Library is on screen: back in the Scene the words are about what is picked there.
+    assets: () => (libraryShown() ? filePick : []),
+    showInLibrary: libraryTool ? () => showInLibrary() : undefined,
+    // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
+    shortcut: (op) => keyOf(op, isMac()),
   });
+
+  // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
+  // Object → files, read once per game page (and again after the object list changes: copies use their original's
+  // files). Cleared in loadGame and on every new object list.
+  let usesP: Promise<Map<string, string[]>> | null = null;
+  // The last answer of usesP, kept while a new one is read: what requests name as each object's files.
+  let usesNow: Map<string, string[]> | null = null;
+  let usesTimer = 0;
+  const readUses = () => (usesP ||= filesOfObjects(ctx).then((m) => {
+    usesNow = m;
+    return m;
+  }));
+  const libraryObjects = createLibraryObjects({
+    t,
+    items: () => items,
+    selected: () => selected,
+    group: () => group,
+    multi: () => multi,
+    setMulti: (on) => setMulti(on),
+    thumb: (k) => thumbs.get(k) || null,
+    wantThumbs: (keys) => {
+      if (!uiPrefs.show.thumbs || playing) return;
+      const ask = keys.filter((k) => !visibleShown.has(k));
+      for (const k of ask) visibleShown.add(k);
+      if (ask.length) send({ type: 'studio:placement/thumbs', keys: ask, size: 96 });
+    },
+    pose: (k) => model.pose(k),
+    dim: () => dim,
+    // No camera move (focus false) and no page switch: the Library stays until "Show in game →" or the Scene row.
+    select: (k, add) => (add ? toggleSelect(k) : selectObject(k)),
+    selectMany: (keys, primary) => selectMany(keys, primary),
+    clear: () => {
+      if (selected || group.length) selectObject(null);
+    },
+    copy: () => copySelection(),
+    remove: () => removeSelection(),
+    showInGame: () => showPickInGame(),
+    openFile: (path) => openAsset(path, ctx),
+    uses: () => readUses(),
+    askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    changed: () => renderShelf(),
+    addToScene: () => addToScene(),
+    // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
+    askAi: host.offline ? undefined : () => focusAsk(),
+  });
+
+  /**
+   * The Library's "Add to scene" (2026-10-18; also its tiles' menu and a tile dropped on the Scene row): one copy of
+   * each picked kind ("pine ×3" adds ONE pine), placed in the middle of what the camera sees (copy `at: 'view'`), then
+   * the Scene with the copies picked — the camera stays (the copy is where it looks). One undo step, like Duplicate.
+   * Locked objects are left out (targets()).
+   */
+  function addToScene(keys = targets()) {
+    if (!keys.length || !editing) return;
+    const seen = new Set<string>();
+    const one = keys.filter((k) => {
+      const g = items.find((i) => i.key === k)?.group || `key:${k}`;
+      if (seen.has(g)) return false;
+      seen.add(g);
+      return true;
+    });
+    // The Scene first, so the bridge knows what the game frame really shows when it places the copy: a phone's
+    // Library sheet covered most of it (its inset), and "the middle of what is seen" was then a strip of sky (the
+    // first phone run, 2026-10-18, put the copy off screen). core/ui (renderAll → sendInset) goes before the copy.
+    if (tool !== 'placement' || page !== 'tool' || (phone() && sheetOpen)) {
+      tool = 'placement';
+      page = 'tool';
+      if (phone()) sheetOpen = false;
+      renderAll(true);
+    }
+    for (const k of copySelection(one, 'view')) addingToScene.add(k);
+  }
+
+  /** The Scene's "Show in Library →" (card, menu, ⌘K): the Library with the pick's detail, the camera untouched. */
+  function showInLibrary() {
+    if (!libraryTool) return;
+    switchTool('library');
+    libraryShowPick();
+  }
+
+  // The Library's files as things to use (contract LibraryFileUse). "Add to scene" on a file is the AI's work (a new
+  // object is code): the ask box gets the words with the files' chip, and Enter sends them — the same box, the same
+  // key as every other request. The web demo has no AI: no add (the Library dims it and says why), no ask.
+  const fileUse: LibraryFileUse = {
+    picked: (paths) => {
+      filePick = paths.slice();
+      placementPanel.renderAsk();
+    },
+    add: host.offline ? undefined : (paths) => {
+      filePick = paths.slice();
+      focusAsk(t(paths.length > 1 ? 'lib.addFilesText' : 'lib.addFileText'));
+    },
+    ask: host.offline ? undefined : (paths) => {
+      filePick = paths.slice();
+      focusAsk();
+    },
+  };
+  /** The Library → the game with the pick ("Show in game →" on its detail, and its tiles' menus). */
+  function showPickInGame() {
+    tool = 'placement';
+    page = 'tool';
+    if (phone()) sheetOpen = false;
+    renderAll(true);
+    // Now the game is on screen: bring the selection into view (a slide only, never a new camera angle; W1).
+    send({ type: 'studio:placement/select', key: selected, focus: true, keys: group.length > 1 ? group.slice() : undefined });
+  }
+  /** The Library is on screen (it hides the game: no blind key moves there). */
+  const libraryShown = () => tool === 'library' && page === 'tool' && !playing;
+  const renderShelf = () => {
+    if (tool === 'library') libraryRedraw();
+  };
 
   /**
    * Change the draw order of one object (2D layers): one setPose with a new
@@ -552,32 +770,58 @@ export function start(host: StudioHost) {
     }
     if (uiPrefs.show.next) for (const id of AI_STEPS) rows.push({ id: `step-${id}`, section: 'ask', label: t(`next.${id}`), icon: 'spark', words: t(`next.${id}.desc`), data: { step: id }, run: () => openNext(id) });
     // Actions, with their keys.
-    const mod = isMac() ? '⌘' : 'Ctrl+';
+    const mac = isMac();
     const act = (id: string, label: string, ic: string, run: () => void, hint?: string, words?: string) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), `${mod}S`, 'save 保存');
+    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), keyOf('save', mac), 'save 保存');
     act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', togglePlay, 'P', t('btn.play'));
     if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
-    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, t('tool.library'));
-    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, `${mod}Z`, describe(undo.peekUndo()));
-    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, isMac() ? '⇧⌘Z' : 'Ctrl+Y', describe(undo.peekRedo()));
+    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
+    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
     if (keys.length && editing) {
-      act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'));
-      act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'));
+      act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
+      act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'), 'delete remove 削除');
+      // Copy / paste have no button of their own: Duplicate on the card is the same thing in one press. Here so the
+      // keys can be found by searching "copy" / "paste".
+      act('clip-copy', t('keys.copy'), 'copy', clipCopy, keyOf('copy', mac), 'copy コピー');
     }
+    if (clip.length && editing) act('paste', t('keys.paste'), 'copy', clipPaste, keyOf('paste', mac), 'paste 貼り付け');
+    if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
+    // The pick in the Library, and its file there ("use the Library", 2026-10-18); in the Library, Add to scene.
+    if (keys.length && libraryTool && !libraryShown()) {
+      act('show-in-library', t('pal.showInLibrary'), 'grid', () => showInLibrary(), undefined, t('pal.libraryUseWords'));
+      const src = keys.length === 1 ? usesNow?.get(keys[0]!) || [] : [];
+      if (src[0]) act('show-file-in-library', t('pal.showFileInLibrary', { file: src[0].slice(src[0].lastIndexOf('/') + 1) }), 'grid', () => openAsset(src[0]!, ctx), undefined, t('pal.libraryUseWords'));
+    }
+    if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
     // The strip's tools (with something picked): the chosen one is marked with a check, its key on the right.
     if (keys.length && editing) {
       for (const k of (dim === '3d' ? ['move', 'lift', 'rotate', 'scale'] : ['move', 'rotate', 'scale']) as StripTool[]) {
         const key = Object.keys(STRIP_KEYS).find((c) => STRIP_KEYS[c] === k)!.toUpperCase();
-        act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, t('pal.tool.words'));
+        act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, `${t('pal.tool.words')} ${keyOf(k, mac)}`);
       }
     }
     if (uiPrefs.show.frame) act('frame', t('btn.frame'), 'frame', () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }), 'F');
     // Back to the picture the editor opened on (3D: the game's own camera, polish pass) after looking around or
     // after the first pick's glide; one press, any time (speed pass, 2026-10-17). Always listed: 2D opens on "all".
-    if (editing) act('home', t('pal.home'), 'opening', () => goHome(), isMac() ? '⇧F' : 'Shift+F', t('pal.home.words'));
+    if (editing) act('home', t('pal.home'), 'opening', () => goHome(), keyOf('home', mac), t('pal.home.words'));
+    // Camera up / down (play test 2026-10-18): the one place their words and keys are written (the ↑↓ buttons on the
+    // game carry the same as tooltips). E / Q with nothing picked; with something picked E / Q turn it, so Space+E / Q.
+    if (editing && canRise) {
+      const pre = keys.length ? 'Space+' : '';
+      act('camera-up', t('pal.cameraUp'), 'chevronUp', () => riseCamera(RISE_STEP), pre + 'E', t('pal.camera.words'));
+      act('camera-down', t('pal.cameraDown'), 'chevronDown', () => riseCamera(-RISE_STEP), pre + 'Q', t('pal.camera.words'));
+    }
+    // Fly (W A S D; camera-wasd 2026-10-18): a row so "wasd" / "fly" finds the rule. Its key says when (as Camera up's
+    // Space+E): WASD with nothing picked, the right button + WASD with a pick. Run = the ? sheet, whose row carries the
+    // same rule in words (keys.fly.note — the one place it is written). Not on a phone (no keyboard there; the row
+    // only explains keys). Its id is not camera-* so the Camera up / down rows stay a pair (studio-camera-up looks them up).
+    if (editing && canFly && !phone()) act('fly', t('keys.fly'), 'keyboard', () => keySheet.show(), keys.length ? t('keys.fly.picked') : 'WASD', `${t('keys.fly.note')} ${t('pal.fly.words')}`);
     if (items.length) act('select-all', t('pal.selectAll'), 'hand', () => selectMany(items.map((i) => i.key), selected ?? items[0]!.key), shortcutText('all'));
     act('multi', multi ? t('ops.multiDone') : t('pal.multi'), 'hand', () => setMulti(!multi), undefined, t('ops.multi'));
+    // "Show all" of the keys: the one sheet with every shortcut (also the ? key).
+    act('shortcuts', t('keys.title'), 'keyboard', () => keySheet.show(), '?', 'keyboard shortcuts keys help hotkeys ショートカット キー 一覧');
     act('settings', t('pal.look'), 'look', () => openSettings(), undefined, `${t('btn.settings')} ${t('ui.theme')} ${t('ui.lang')}`);
     act('lang', t('pal.lang'), 'globe', () => setLang(lang === 'en' ? 'ja' : 'en'), undefined, 'language 言葉 English 日本語');
     if (uiPrefs.show.next) act('next', t('pal.ideas'), 'spark', () => openNext(), undefined, t('btn.next'));
@@ -600,6 +844,198 @@ export function start(host: StudioHost) {
     }
     return rows;
   }
+
+  // ----- the place's menu: right-click, or a long press on a phone (context menu, 2026-10-18) -----
+  // context-rows.ts says what each place lists; context-menu.ts draws it. Here: which place was pressed, picking it
+  // first when it was not picked (as other 3D / 2D tools do — never moving the camera), and what each row does. Every
+  // row is an action the editor already has (the card's Duplicate, ⌘C, ⌘K's rows…), so its key and its undo are the same.
+
+  /** The keys a press on this list row / Library tile is about: the row's object, or every member of a "name ×N" row. */
+  function keysOfEl(el: HTMLElement): string[] {
+    const g = el.dataset.group;
+    if (g) return items.filter((i) => (i.group || `key:${i.key}`) === g).map((i) => i.key);
+    return el.dataset.key && items.some((i) => i.key === el.dataset.key) ? [el.dataset.key] : [];
+  }
+  /** Pick `keys` unless they are all picked already (then the whole selection stays, as a right-click in other tools). */
+  function pickForMenu(keys: string[]) {
+    const now = group.length ? group : selected ? [selected] : [];
+    if (!keys.length || keys.every((k) => now.includes(k))) return;
+    // No camera move (focus false), in the list and in the Library alike.
+    if (keys.length === 1) selectObject(keys[0]!);
+    else selectMany(keys, keys[0]!);
+  }
+  /** The ask box with the cursor in it (the menus' "Ask your AI…"); `text` is put in first, never sent. */
+  function focusAsk(text?: string) {
+    if (host.offline) return;
+    if (phone() && sheetOpen) {
+      sheetOpen = false;
+      renderAll(true);
+    }
+    placementPanel.renderAsk();
+    if (text !== undefined) {
+      askInput.value = text;
+      askInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    askInput.focus({ preventScroll: true });
+    const end = askInput.value.length;
+    askInput.setSelectionRange?.(end, end);
+  }
+
+  /** Open the menu of `place` at the page point (x, y). The pick is already what the menu is about. */
+  function openMenu(place: CtxPlace, x: number, y: number, o: { touch?: boolean; keyboard?: boolean; path?: string } = {}) {
+    if (playing && place !== 'libFile') return;
+    const mac = isMac();
+    const picked = group.length ? group.slice() : selected ? [selected] : [];
+    const its = picked.map((k) => items.find((i) => i.key === k)).filter((i): i is Item => !!i);
+    const movable = targets();
+    // 2D draw order: which moves can still happen (the card's Layer buttons ask the same question).
+    let layers: Partial<Record<LayerOp, boolean>> | undefined;
+    if (dim === '2d' && its.some((i) => hasLayer(i))) {
+      layers = {};
+      for (const op of ['forward', 'backward', 'toFront', 'toBack'] as LayerOp[]) {
+        layers[op] = its.length > 1 ? groupLayerPossible(items, picked, op) : its[0]!.movable !== false && layerTarget(items, its[0]!.key, op) !== null;
+      }
+    }
+    const file = place === 'libFile' && o.path ? libraryFile(o.path) : null;
+    // The one picked object's files (Show its asset in Library): the objects' files as last read (usesNow).
+    const src = its.length === 1 ? usesNow?.get(its[0]!.key) || [] : [];
+    const rows = contextRows(place, {
+      dim, offline: !!host.offline, editing: editing && !playing,
+      picked: its.length, movable: movable.length, unnamed: its.filter((i) => i.unstable).length, anyPicked: picked.length > 0,
+      items: items.length, clip: clip.filter((c) => items.some((i) => i.key === c)).length,
+      canUndo: undo.canUndo, canRedo: undo.canRedo, layers, users: file?.users ?? 0, exists: file?.exists, sourceFiles: src.length, compact: phone(),
+    });
+    // A file's menu works on the picked files when the pressed one is among them ("Add 3 to scene"), else on it alone.
+    const files = () => {
+      const p = libraryPickedFiles();
+      return o.path && p.includes(o.path) ? p : o.path ? [o.path] : [];
+    };
+    const name = its.length > 1 ? t('ops.manyShort', { n: its.length }) : its[0] ? displayName(its[0], t) : '';
+    const run: Record<string, () => void> = {
+      ask: () => focusAsk(),
+      name: () => void askAi({ kind: 'name', text: '', objects: requestObjects(its.filter((i) => i.unstable).map((i) => i.key)) }),
+      rename: () => focusAsk(t('ctx.renameText')),
+      duplicate: () => copySelection(),
+      copy: () => clipCopy(),
+      paste: () => clipPaste(),
+      remove: () => removeSelection(),
+      undo: () => doUndo(),
+      redo: () => doRedo(),
+      selectAll: () => items.length && selectMany(items.map((i) => i.key), selected ?? items[0]!.key),
+      deselect: () => selectObject(null),
+      frame: () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }),
+      home: () => goHome(),
+      details: () => libraryAct(place === 'libFile' ? 'open' : 'detail', o.path),
+      showInGame: () => showPickInGame(),
+      showUsers: () => libraryAct('users', o.path),
+      replace: () => libraryAct('replace', o.path),
+      addToScene: () => addToScene(),
+      addFile: () => fileUse.add?.(files()),
+      askFile: () => fileUse.ask?.(files()),
+      showInLibrary: () => showInLibrary(),
+      showFileInLibrary: () => src[0] && openAsset(src[0], ctx),
+    };
+    for (const op of ['forward', 'backward', 'toFront', 'toBack'] as LayerOp[]) {
+      run[`layer-${op}`] = () => (group.length > 1 ? reorderGroup(op) : selected && reorder(selected, op));
+    }
+    const entries: MenuEntry[] = rows.map((r) => ('sep' in r ? r : {
+      id: r.id,
+      // The scene's "Ask your AI" says what it is about: the game, or the pick when something is picked.
+      label: r.id === 'ask' && place === 'scene' && picked.length ? t('ask.chipOne') : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label),
+      key: r.key ? keyOf(r.key, mac) : '',
+      disabled: r.disabled,
+      run: run[r.id] ?? (() => undefined),
+    }));
+    if (!entries.length) return;
+    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+  }
+
+  /** What a press at this element of the editor page opens: a list row, a Library tile, or the list's empty part. */
+  function menuFor(target: Element | null): { place: CtxPlace; el: HTMLElement } | null {
+    if (!target || !editing && tool !== 'library') return null;
+    const row = target.closest<HTMLElement>('.objects .obj[data-key]');
+    if (row && placementPanel.el.contains(row)) return { place: 'object', el: row };
+    const tile = target.closest<HTMLElement>('.assets-page .lib-object[data-key]');
+    if (tile) return { place: 'libObject', el: tile };
+    const file = target.closest<HTMLElement>('.assets-page .gsl-tile[data-kind="file"][data-path]');
+    if (file) return { place: 'libFile', el: file };
+    // The list's empty part (under the rows) is the scene, as the game's empty part is.
+    const list = target.closest<HTMLElement>('.list-scroll');
+    if (list && tool === 'placement' && page === 'tool' && placementPanel.el.contains(list)) return { place: 'scene', el: list };
+    return null;
+  }
+  /** Pick what the pressed element stands for (unless it is picked), then open its menu. */
+  function menuAt(m: { place: CtxPlace; el: HTMLElement }, x: number, y: number, o: { touch?: boolean; keyboard?: boolean } = {}) {
+    // In the Library the pick shows its detail without scrolling the page to it (a phone sheet jumped to its top
+    // under the finger); the menu's "Details" brings it into view.
+    if (m.place === 'object') pickForMenu(keysOfEl(m.el));
+    else if (m.place === 'libObject') libraryHoldStill(() => pickForMenu(keysOfEl(m.el)));
+    let path: string | undefined;
+    if (m.place === 'libFile') {
+      path = m.el.dataset.path!;
+      // A file is "picked" by opening its detail (one thing open in the Library at a time).
+      libraryHoldStill(() => libraryAct('open', path));
+    }
+    openMenu(m.place, x, y, { ...o, path });
+  }
+
+  // The browser's own right-click menu never shows in the editor (it offered Back / Reload / Inspect over the game's
+  // tools), except in a field, where Cut / Copy / Paste / spelling belong to the text.
+  document.addEventListener('contextmenu', (e) => {
+    const t = e.target as HTMLElement | null;
+    if (t?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    e.preventDefault();
+    cancelPress();
+    // The same press's contextmenu after a long press opened the menu already (Android sends one).
+    if (ctxMenu.justOpened() || ctxMenu.el.contains(t)) return;
+    // Shift+F10 / the menu key: no pointer (0, 0 or no pointer type); the menu opens at the element.
+    const keyboard = (e as PointerEvent).pointerType === '' || (!e.clientX && !e.clientY);
+    const m = menuFor(t);
+    if (!m) {
+      // The menu key with the focus on no row (a button, the page): the pick's menu, or the scene's, over the game.
+      if (keyboard && editing && !playing && !libraryShown()) {
+        const g = iframe.getBoundingClientRect();
+        openMenu(selected || group.length ? 'object' : 'scene', g.left + g.width / 2, g.top + g.height / 2, { keyboard });
+      }
+      return;
+    }
+    const r = m.el.getBoundingClientRect();
+    menuAt(m, keyboard ? r.left + 12 : e.clientX, keyboard ? r.bottom : e.clientY, { keyboard });
+  }, true);
+  // The click that ends a long press (and the Mac's Control-click) must not also press the row under the finger.
+  document.addEventListener('click', (e) => {
+    if (ctxMenu.justOpened() && !ctxMenu.el.contains(e.target as Node)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  // A long press on a phone (touch / pen; the mouse has its right button): UI.longPressMs held still on a row or tile.
+  // The 2D list's drag grip, a "×N" row's ▸ and a sound's ▶ keep their own presses.
+  let press: { id: number; x: number; y: number; m: { place: CtxPlace; el: HTMLElement }; timer: number } | null = null;
+  function cancelPress() {
+    if (press) clearTimeout(press.timer);
+    press = null;
+  }
+  document.addEventListener('pointerdown', (e) => {
+    cancelPress();
+    if (e.pointerType === 'mouse' || !e.isPrimary) return;
+    const t = e.target as Element | null;
+    if (t?.closest?.('.grip, .expand, .gsl-play, input, textarea, select')) return;
+    const m = menuFor(t);
+    if (!m || m.place === 'scene') return;
+    const at = { id: e.pointerId, x: e.clientX, y: e.clientY, m };
+    press = { ...at, timer: window.setTimeout(() => {
+      press = null;
+      menuAt(at.m, at.x, at.y, { touch: true });
+    }, UI.longPressMs) };
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > UI.tapSlopPx) cancelPress();
+  }, true);
+  for (const ev of ['pointerup', 'pointercancel'] as const) document.addEventListener(ev, (e) => {
+    if (press && e.pointerId === press.id) cancelPress();
+  }, true);
+  document.addEventListener('scroll', () => cancelPress(), { capture: true, passive: true });
 
   /**
    * The game's rules for one object (.studio/studio.json), in short words for
@@ -639,10 +1075,22 @@ export function start(host: StudioHost) {
 
   // ----- several at once, copy, delete (CONTRACT.md §1.8) -----
   function shortcutText(what: 'copy' | 'remove' | 'all'): string {
-    if (what === 'remove') return isMac() ? '⌫' : 'Delete';
-    const k = what === 'copy' ? 'D' : 'A';
-    return isMac() ? `⌘${k}` : `Ctrl+${k}`;
+    return keyOf(what === 'copy' ? 'duplicate' : what === 'all' ? 'selectAll' : 'remove', isMac());
   }
+  function clipCopy() {
+    clip = targets();
+    if (clip.length) showToast(t('keys.copied', { name: namesOf(clip), key: keyOf('paste', isMac()) }), 2500);
+  }
+  function clipPaste() {
+    const keys = clip.filter((c) => items.some((i) => i.key === c && i.movable !== false));
+    if (keys.length) copySelection(keys);
+    else showToast(t(clip.length ? 'keys.pasteGone' : 'keys.pasteEmpty', { key: keyOf('copy', isMac()) }), 2500);
+  }
+  /** "lighthouse" or "3 objects", for the short notes (copied…). */
+  const namesOf = (keys: string[]) => {
+    const it = keys.length === 1 ? items.find((i) => i.key === keys[0]) : undefined;
+    return it ? displayName(it, t) : t('undo.n', { n: keys.length });
+  };
   /** What the actions work on: the selection (locked objects left out). */
   const targets = () => (group.length ? group : selected ? [selected] : [])
     .filter((k) => items.find((i) => i.key === k)?.movable !== false);
@@ -651,6 +1099,7 @@ export function start(host: StudioHost) {
     send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
+    renderShelf();
     sendInset();
     emit('selected', selected);
   }
@@ -673,14 +1122,18 @@ export function start(host: StudioHost) {
     multi = on;
     send({ type: 'studio:placement/multi', on });
     if (tool === 'placement' && page === 'tool') placementPanel.render();
+    renderShelf();
   }
 
   /** Every key in use, so a new copy never takes one (deleted copies included: redo brings them back). */
   const takenKeys = () => new Set([...items.map((i) => i.key), ...model.copiesEver()]);
 
-  function copySelection() {
-    const keys = targets();
-    if (!keys.length || !editing) return;
+  /**
+   * Duplicate `keys` (the selection for ⌘D / the card's Duplicate; what ⌘C remembered for ⌘V). `at: 'view'`: in the
+   * middle of what the camera sees (the Library's "Add to scene"). Returns the new copies' keys.
+   */
+  function copySelection(keys = targets(), at?: 'view'): string[] {
+    if (!keys.length || !editing) return [];
     const taken = takenKeys();
     const reqs = keys.map((from) => {
       const it = items.find((i) => i.key === from);
@@ -689,7 +1142,8 @@ export function start(host: StudioHost) {
       pendingCopies.add(key);
       return { key, from };
     });
-    send({ type: 'studio:placement/copy', items: reqs });
+    send({ type: 'studio:placement/copy', items: reqs, ...(at ? { at } : {}) });
+    return reqs.map((r) => r.key);
   }
 
   function removeSelection() {
@@ -758,21 +1212,25 @@ export function start(host: StudioHost) {
       return () => set.delete(cb as (m: BridgeToShell) => void);
     },
     items: () => items,
+    // The Library → the game ("Show in game →"): the Scene with the object picked.
     selectObject: (k) => {
       switchTool('placement');
       selectObject(k, true);
     },
-    // Assets → Scene: "In the scene: 2" selects every object that uses the file.
+    // The Library → the game: a file's "Show in game →" picks every object that uses the file.
     selectObjects: (keys) => {
       switchTool('placement');
       const known = keys.filter((k) => items.some((i) => i.key === k));
       if (known.length === 1) selectObject(known[0]!, true);
       else if (known.length) selectMany(known, known[0]!);
     },
+    // The objects, for the Library's one grid (no `showObjects`: the Library narrows to a file's objects itself).
+    objects: libraryObjects,
     switchTool: (id) => switchTool(id),
     changed: () => renderButtons(),
     phone,
     ask: (r) => askAi(r),
+    files: fileUse,
   };
   const tools: Partial<Record<ToolId, ShellTool>> = {};
   if (libraryTool) tools.library = libraryTool;
@@ -811,8 +1269,16 @@ export function start(host: StudioHost) {
       return;
     }
     tool = id;
-    // Phone: Assets is its own sheet; the scene list closes behind it.
-    if (phone()) sheetOpen = id === 'placement' ? sheetOpen : false;
+    // Files picked in the Library belong to that visit: the next one starts with none (its panel tells us again).
+    filePick = [];
+    // Phone: the Library is its own sheet; the scene list closes behind it. The Scene from the Library sheet (its
+    // head's switch) opens the Scene's list sheet over the game.
+    if (phone()) sheetOpen = id === 'placement';
+    // The objects' files may have changed while the Library was away (copies, the AI's change): read them again.
+    if (id === 'library') {
+      usesP = null;
+      libraryObjects.refreshUses();
+    }
     renderAll(true);
   }
 
@@ -896,7 +1362,9 @@ export function start(host: StudioHost) {
   function requestObjects(keys: string[]) {
     return keys.map((k) => {
       const it = items.find((i) => i.key === k);
-      return { key: k, label: it?.label, pose: model.pose(k), unstable: it?.unstable || undefined };
+      // The files it is drawn with (the Library's "Asset" row), so "make this enemy the boss" names its model too.
+      const files = usesNow?.get(k);
+      return { key: k, label: it?.label, pose: model.pose(k), unstable: it?.unstable || undefined, ...(files?.length ? { files: files.slice() } : {}) };
     });
   }
 
@@ -923,6 +1391,13 @@ export function start(host: StudioHost) {
 
   /** Hand a request to the AI through the host. Never assumes local files: the host decides where it goes. */
   async function askAi(r: Omit<StudioRequestInput, 'lang'>): Promise<boolean> {
+    // Each object's files go with it (requestObjects). Not read yet (the Library was never opened in this game page):
+    // read them now, but never hold the request up for more than a second — the words matter, the files are a hint.
+    if (r.objects?.length && !usesNow && !host.offline) {
+      await Promise.race([readUses().catch(() => null), new Promise((ok) => window.setTimeout(ok, 1000))]);
+      const keys = r.objects.map((o) => o.key);
+      r = { ...r, objects: requestObjects(keys) };
+    }
     const view = r.kind === 'ask' ? askView() : undefined;
     const res = await host.request({ ...r, lang, dim, unsaved: dirtyCount() || undefined, ...(view ? { view } : {}) }).catch((e) => ({ ok: false, error: (e as Error).message, id: undefined, at: undefined } as { ok: boolean; error?: string; id?: string; at?: number; watching?: boolean; seen?: string; undo?: boolean }));
     if (!res.ok) {
@@ -1128,6 +1603,7 @@ export function start(host: StudioHost) {
     // The card first, then the selection: "bring into view" must already know what the card covers.
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
+    renderShelf();
     sendInset();
     send({ type: 'studio:placement/select', key, focus });
   }
@@ -1246,6 +1722,8 @@ export function start(host: StudioHost) {
         break;
       case 'studio:core/ready':
         dim = m.dim;
+        canRise = !!m.rise;
+        canFly = !!m.fly;
         adapterInfo = `${m.kind}${m.version ? ' ' + m.version : ''}`;
         editing = m.editing;
         phase = 'ready';
@@ -1334,6 +1812,15 @@ export function start(host: StudioHost) {
         }
         items = m.items;
         itemsSeen = true;
+        // New objects (copies, the AI's change): their files are read again for the Library (or when it opens next).
+        usesP = null;
+        if (libraryShown()) libraryObjects.refreshUses();
+        // Elsewhere too, a moment later (copies and the AI's change come in bursts): the Scene's menu offers "Show its
+        // asset in Library" and every request names each object's files, both from usesNow.
+        else {
+          clearTimeout(usesTimer);
+          usesTimer = window.setTimeout(() => void readUses().catch(() => undefined), 1200);
+        }
         if (aiMarksMsg.keys.length) send({ type: 'studio:placement/marks', ...aiMarksMsg });
         const apply = model.setItems(items, dim);
         // Continue from the last save: push saved poses the game does not show.
@@ -1366,7 +1853,13 @@ export function start(host: StudioHost) {
       case 'studio:placement/selected':
         selected = m.key;
         group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
-        if (tool !== 'placement') switchTool('placement');
+        // With the Library on screen the game is hidden, so this is only the game's echo of a pick made in the
+        // Library: stay there (going to the Scene here was the try's "pressing an object throws me back to the
+        // game", 10/18). A pick made in the game itself (the Scene) still lands on the Scene.
+        if (libraryShown()) {
+          placementPanel.renderAsk();
+          renderShelf();
+        } else if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
         break;
@@ -1402,6 +1895,19 @@ export function start(host: StudioHost) {
           showToast(t('copy.ghost'), 6000);
         }
         if (m.failed.length) showToast(t('copy.failed', { n: m.failed.length }));
+        // The Library's "Add to scene": now the Scene, with the copies picked (the bridge picks them; its
+        // placement/selected comes next and lands on the Scene). The camera stays: the copies are where it looks.
+        const added = m.items.filter((a) => addingToScene.delete(a.key));
+        for (const k of m.failed) addingToScene.delete(k);
+        if (added.length) {
+          if (tool !== 'placement' || page !== 'tool') {
+            tool = 'placement';
+            page = 'tool';
+            if (phone()) sheetOpen = false;
+            renderAll(true);
+          }
+          showToast(t('lib.added', { name: namesOf(added.map((a) => a.key)) }), 2500);
+        }
         renderButtons();
         break;
       }
@@ -1411,6 +1917,15 @@ export function start(host: StudioHost) {
       case 'studio:placement/menu':
         stripMenu = !!m.open;
         break;
+      case 'studio:placement/context': {
+        // A right-click / long press on the game (bridge/input.ts): the pick is already what it is about (the bridge
+        // picked an object that was not picked, and its placement/selected came first). The point is the game page's.
+        if (!editing || playing || libraryShown()) break;
+        const r = iframe.getBoundingClientRect();
+        cancelPress();
+        openMenu(m.key ? 'object' : 'scene', r.left + m.x, r.top + m.y, { touch: m.touch });
+        break;
+      }
       case 'studio:placement/thumb':
         if (m.src) {
           // Cropped to the object first (thumb-fit.ts, W1-11): the lighthouse filled its tile instead of being an "i".
@@ -1421,6 +1936,7 @@ export function start(host: StudioHost) {
             if (thumbAsked.get(key) !== raw) return;
             thumbs.set(key, src);
             placementPanel.updateThumb(key);
+            libraryObjects.updateThumb(key);
           });
         }
         break;
@@ -1667,6 +2183,10 @@ export function start(host: StudioHost) {
     bridgeAlive = false;
     gameError = null;
     filesCache.clear();
+    usesP = null;
+    if (!soft) usesNow = null;
+    filePick = [];
+    addingToScene.clear();
     editing = false;
     // A soft reload keeps the list, the selection and the pictures on screen
     // until the new game answers (no flash of an empty list).
@@ -1700,6 +2220,11 @@ export function start(host: StudioHost) {
   function shortcut(e: { key: string; ctrl: boolean; meta: boolean; shift: boolean; fromGame?: boolean }): boolean {
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
+    // The shortcut sheet: Esc or ? again closes it first (from the game frame too).
+    if (keySheet.isOpen() && !mod && (k === 'escape' || k === '?')) {
+      keySheet.hide();
+      return true;
+    }
     if (mod && k === 'z') {
       if (e.shift) doRedo();
       else doUndo();
@@ -1721,6 +2246,18 @@ export function start(host: StudioHost) {
     // ⌘D copy (also stops the browser's "bookmark this page"), ⌘A select all.
     if (mod && k === 'd' && !e.shift) {
       if (editing) copySelection();
+      return true;
+    }
+    // ⌘C / ⌘V: copy the selection, paste = duplicates of it next to the originals (see `clip`). A text selected on
+    // the page (a name on the card, the AI's line) keeps the browser's own copy.
+    if (mod && k === 'c' && !e.shift) {
+      if (!editing || !targets().length || (!e.fromGame && String(window.getSelection?.() || ''))) return false;
+      clipCopy();
+      return true;
+    }
+    if (mod && k === 'v' && !e.shift) {
+      if (!editing) return false;
+      clipPaste();
       return true;
     }
     if (mod && k === 'a' && editing && tool === 'placement') {
@@ -1764,14 +2301,30 @@ export function start(host: StudioHost) {
       else switchTool(tool);
       return true;
     }
+    // The menu key / Shift+F10 pressed in the game frame (the bridge keeps the browser's own menu there): the menu of
+    // the pick, or of the scene, in the middle of the game. In the editor page the browser sends `contextmenu` itself.
+    if (e.fromGame && !mod && editing && !playing && (k === 'contextmenu' || (k === 'f10' && e.shift))) {
+      const r = iframe.getBoundingClientRect();
+      openMenu(selected || group.length ? 'object' : 'scene', r.left + r.width / 2, r.top + r.height / 2, { keyboard: true });
+      return true;
+    }
+    // ?: every shortcut in one sheet (Shift+/ on US keyboards; the key reads '?' on every layout that has it).
+    if (!mod && k === '?') {
+      keySheet.show();
+      return true;
+    }
     if (e.fromGame || mod) return false; // the bridge already handled steps/escape
+    // The Library hides the game: keys that move or turn the selection there (arrows, R, M / H / T / S) would
+    // change an object nobody can see. Escape still drops the selection (below); Delete and ⌘D / ⌘Z work as on the
+    // detail's buttons. (Before "one Library" the Assets page let arrows move the hidden pick.)
+    const blind = libraryShown();
     // R: the next turn axis (3D; the game frame handles it itself when it has focus).
-    if (k === 'r' && !e.shift && selected && editing && dim === '3d') {
+    if (k === 'r' && !e.shift && selected && editing && dim === '3d' && !blind) {
       send({ type: 'studio:placement/axis', axis: 'next' });
       return true;
     }
     // M / H / T / S: the strip's tools (the game frame handles them itself when it has focus).
-    const strip = !e.shift && selected && editing ? STRIP_KEYS[k] : undefined;
+    const strip = !e.shift && selected && editing && !blind ? (STRIP_KEYS[k] ?? STRIP_NUMBERS[k]) : undefined;
     if (strip && !(strip === 'lift' && dim !== '3d')) {
       setStripTool(strip);
       return true;
@@ -1783,7 +2336,7 @@ export function start(host: StudioHost) {
       else selectObject(null);
       return true;
     }
-    if (!selected || !editing) return false;
+    if (!selected || !editing || blind) return false;
     const s = keyStep(e.key, e.shift, dim);
     if (!s) return false;
     send({ type: 'studio:placement/step', key: selected, ...s, hold: false, keys: group.length > 1 ? group.slice() : undefined });
@@ -1803,6 +2356,8 @@ export function start(host: StudioHost) {
     stripTool = k;
     send({ type: 'studio:placement/tool', tool: k });
   }
+  /** Camera up (> 0) / down by this share of the game's height (input.ts has the same steps for the game's own keys). */
+  const riseCamera = (by: number) => send({ type: 'studio:core/view', view: { action: 'rise', by } });
   // Space held with the shell focused: a drag in the game looks around even with a tool chosen.
   let spaceDown = false;
   const spaceLook = (on: boolean) => {
@@ -1810,23 +2365,82 @@ export function start(host: StudioHost) {
     spaceDown = on;
     send({ type: 'studio:placement/look', on });
   };
+  // Fly keys held with the editor page focused (camera-wasd 2026-10-18; bridge/input.ts has the rules and the motion):
+  // W A S D with nothing picked, E / Q with nothing picked or Space held. The whole held set goes to the game each
+  // time it changes; the game moves the camera every frame until it gets [].
+  const FLY_CODES: Record<string, FlyKey> = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyE: 'e', KeyQ: 'q' };
+  const flyKeys = new Set<FlyKey>();
+  let flyShift = false;
+  const flySend = () => send({ type: 'studio:core/fly', keys: [...flyKeys], fast: flyShift });
+  const flyClear = () => {
+    if (!flyKeys.size) return;
+    flyKeys.clear();
+    flySend();
+  };
   window.addEventListener('keyup', (e) => {
     if (e.key === ' ') spaceLook(false);
+    const fk = FLY_CODES[e.code];
+    if (fk && flyKeys.delete(fk)) {
+      flyShift = e.shiftKey;
+      flySend();
+    } else if (e.key === 'Shift' && flyKeys.size) {
+      flyShift = false;
+      flySend();
+    }
   });
-  window.addEventListener('blur', () => spaceLook(false));
+  window.addEventListener('blur', () => {
+    spaceLook(false);
+    flyClear();
+  });
 
   window.addEventListener('keydown', (e) => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
     if (typing && !(e.ctrlKey || e.metaKey)) return;
+    // Typing in a field (the ask box, ⌘K's search, a number on the card, a rename): the field keeps ⌘Z, ⌘A, ⌘C, ⌘V,
+    // ⌘X, ⌘Y and Delete for its own text (basics pass, 2026-10-18 — ⌘A used to select every object instead of the
+    // words). Only ⌘S (save) and ⌘K (all actions) still reach the editor; ⌘D only stops the browser's bookmark.
+    if (typing) {
+      const k = e.key.toLowerCase();
+      if (k === 'd') e.preventDefault();
+      if (k !== 's' && k !== 'k') return;
+    }
     // Space on a focused button presses it; only take Space when nothing that types or presses has focus.
     if (e.key === ' ' && editing && !e.ctrlKey && !e.metaKey && !(e.target as HTMLElement | null)?.closest?.('button, a, [role=option], [role=button]')) {
       spaceLook(true);
       e.preventDefault();
       return;
     }
-    if (typing && e.key.toLowerCase() === 'z') return; // native undo inside the field
-    if (e.repeat && selected) {
+    const kl = e.key.toLowerCase();
+    // Fly (W A S D, E / Q; nothing picked, or Space+E / Q): held keys go to the game, which moves while they are down.
+    // ⌘ / Ctrl / ⌥ = a shortcut instead (and a Mac drops keyups while ⌘ is down, so the held ones stop here). Not
+    // while the Library hides the game (integrate1: the Library's rule, no blind key moves there).
+    const fk = FLY_CODES[e.code];
+    if (canFly && (e.ctrlKey || e.metaKey || e.altKey)) flyClear();
+    else if (canFly && !typing && !e.isComposing && editing && !playing && !libraryShown() && (e.key === 'Shift' ? flyKeys.size > 0 : !!fk)) {
+      if (e.key === 'Shift') {
+        flyShift = true;
+        flySend();
+        return;
+      }
+      if (flyKeys.has(fk!) || !selected || ((fk === 'e' || fk === 'q') && spaceDown)) {
+        if (!flyKeys.has(fk!)) {
+          flyKeys.add(fk!);
+          flyShift = e.shiftKey;
+          flySend();
+        }
+        e.preventDefault();
+        return;
+      }
+    }
+    // E / Q steps for adapters that can rise but not fly (before camera-wasd, every 3D one): camera up / down, as in
+    // the game (nothing picked, or Space held).
+    if (!typing && (kl === 'e' || kl === 'q') && editing && canRise && !canFly && !libraryShown() && !e.ctrlKey && !e.metaKey && !e.altKey && (!selected || spaceDown)) {
+      riseCamera((kl === 'e' ? 1 : -1) * (e.shiftKey ? RISE_KEY_STEP / 5 : RISE_KEY_STEP));
+      e.preventDefault();
+      return;
+    }
+    if (e.repeat && selected && !libraryShown()) {
       const s = keyStep(e.key, e.shiftKey, dim);
       if (s && !e.ctrlKey && !e.metaKey) {
         send({ type: 'studio:placement/step', key: selected, ...s, hold: true, keys: group.length > 1 ? group.slice() : undefined });
@@ -1885,19 +2499,20 @@ export function start(host: StudioHost) {
   let saveSlotW = 0;
   function renderButtons() {
     const n = dirtyCount();
-    // Undo / redo say what they would change ("Undo: move house (⌘Z)").
-    const mod = isMac() ? '⌘' : 'Ctrl+';
+    // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
+    // apart). With nothing to undo they stay where they are, dimmed, and say so ("Nothing to undo  ⌘Z").
+    const mac = isMac();
     const nextUndo = describe(undo.peekUndo());
     const nextRedo = describe(undo.peekRedo());
     unsavedKeys = model.changedKeys();
     placementPanel.markRows();
     for (const b of undoBtns) {
-      setButton(b, 'undo', t('btn.undo'), false, `${t('btn.undo')}${nextUndo ? ': ' + nextUndo : ''} (${mod}Z)`);
+      setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
       // While playing, undo/redo would change a game the person cannot see as edited.
       b.disabled = playing || !undo.canUndo;
     }
     for (const b of redoBtns) {
-      setButton(b, 'redo', t('btn.redo'), false, `${t('btn.redo')}${nextRedo ? ': ' + nextRedo : ''} (${isMac() ? '⇧⌘Z' : 'Ctrl+Y'})`);
+      setButton(b, 'redo', t('btn.redo'), false, tipText(nextRedo ? `${t('btn.redo')}: ${nextRedo}` : t('keys.nothingRedo'), keyOf('redo', mac)));
       b.disabled = playing || !undo.canRedo;
     }
     // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
@@ -1911,13 +2526,13 @@ export function start(host: StudioHost) {
     saveState.style.minWidth = saveSlotW ? `${saveSlotW}px` : '';
     for (const b of saveBtns) {
       // "Save · 3": only while there is something not saved.
-      setButton(b, null, t('btn.save'), true, `${t('save.unsavedTip', { n })} (${mod}S)`);
+      setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
       if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
       b.hidden = n === 0 || playing;
       b.dataset.unsaved = String(n);
     }
     for (const b of playBtns) {
-      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, `${playing ? t('btn.edit') : t('btn.play')} (P)`);
+      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
       if (!phone()) b.append(h('kbd', { text: 'P' }));
     }
     keepSoon();
@@ -1938,22 +2553,28 @@ export function start(host: StudioHost) {
   let lastPage = '';
   function renderAll(remount = false) {
     document.documentElement.lang = lang;
+    keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
     app.dataset.sheet = sheetOpen ? 'open' : 'closed';
     app.dataset.view = tool; // not data-tool: the Scene / Assets rows carry data-tool
     app.dataset.page = page;
+    // The Library takes the game's place: the card steps away.
+    app.dataset.shelf = tool === 'library' ? 'on' : 'off';
     // ▣ Studio / <the game> / <where you are>.
     (header.querySelector('.title') as HTMLElement).textContent = gameName || t('app.title');
     (header.querySelector('.app') as HTMLElement).textContent = t('app.brand');
     (header.querySelector('.here') as HTMLElement).textContent = page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : t('tool.' + tool);
     (header.querySelector('.adapter') as HTMLElement).textContent = adapterInfo;
     langBtn.textContent = t('btn.lang');
-    // Scene / Assets: two rows, a 16 px icon, the name, the count.
+    // Scene / Library: two rows, a 16 px icon, the name, a grey word for what is in it (PC: "the game" / "objects &
+    // assets"; the phone's switch has no room for it). Only the Library has a count — everything in it; the Scene's
+    // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library'] as ToolId[]) {
-      const n = id === 'placement' ? items.length : libraryCount;
+      const n = id === 'placement' ? 0 : items.length + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
-        icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), n ? h('span', { class: 'n', text: String(n) }) : null));
+        icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), h('span', { class: 'sub', text: t(`tool.${id}.sub`) }),
+        n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label') as HTMLElement).textContent = t('foot.palette');
     sheetMore.setAttribute('aria-label', t('foot.palette'));
@@ -1972,16 +2593,12 @@ export function start(host: StudioHost) {
     renderButtons();
     renderPeer();
     // The ask box lives in the bar at the bottom of the game whatever the tool or page.
-    // The web demo (no AI behind it, host.offline) shows one grey line in its place instead (design review wave 1, W1-6 / N2,
-    // 2026-10-17): the most visible part of the screen was a box that did nothing when used.
-    if (host.offline) {
-      // One line (the review): a phone's bar fits about 40 characters, so it gets the short words.
-      const short = phone();
-      (offlineLine.querySelector('.label') as HTMLElement).textContent = (short ? t('offline.askLine.short') : t('offline.askLine')) + (host.getUrl ? ' ' : '');
-      const get = offlineLine.querySelector('a');
-      if (get) get.textContent = short ? t('offline.get.short') : t('offline.get');
-      if (offlineLine.parentElement !== askSlot) askSlot.replaceChildren(offlineLine);
-    } else if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // The web demo (no AI behind it, host.offline) has no ask box (design review wave 1, W1-6 / N2, 2026-10-17: the most
+    // visible part of the screen was a box that did nothing when used) and nothing in its place. W1-6 first put one grey
+    // line there, "In Claude Code, your AI makes the changes you type here. Get Game Studio →"; it was taken out after a try
+    // on 2026-10-18 ("what is this for? I'm already using Game Studio — get what?"). The demo's top line alone says it
+    // isn't connected to an AI (src/hosts/browser/text.ts). Don't put a pitch or a link back down here without asking.
+    if (!host.offline && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();
@@ -2002,6 +2619,13 @@ export function start(host: StudioHost) {
     }
     mountTool();
     assetsPage.hidden = tool !== 'library' || playing;
+    // The Scene | Library switch: the left column on PC; on a phone, the head of the sheet that is open (the list
+    // sheet's, or the Library's: it has no list sheet under it).
+    const lib = tool === 'library' ? libraryParts() : null;
+    const tabsHome = phone() && page === 'tool' && lib ? lib.head : null;
+    if (tabsHome) {
+      if (tabs.parentElement !== tabsHome) tabsHome.prepend(tabs);
+    } else if (tabs.parentElement !== side.firstElementChild) (side.firstElementChild as HTMLElement).prepend(tabs);
     // The left column: the Look page, the Ideas page, or the scene list.
     if (page === 'settings') {
       renderSettings(toolEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
@@ -2014,10 +2638,21 @@ export function start(host: StudioHost) {
         nextOpen = id;
         renderAll();
       });
+    } else if (!phone() && lib) {
+      // The Library is open: the left column holds its filters and nothing else. The object list is not here next to
+      // the grid, so a click in the column never leaves the Library for the game (the bug found in a try on 10/18).
+      const f = lib.filters;
+      // The list stays in the page, hidden (not shown, not pressable): its pictures and marks are ready when the game
+      // view comes back, and scripts (.studio/ui/, the tests) that wait for its rows keep working.
+      placementPanel.el.hidden = true;
+      if (toolEl.firstChild !== f || toolEl.lastChild !== placementPanel.el || toolEl.childNodes.length !== 2) toolEl.replaceChildren(f, placementPanel.el);
+      placementPanel.render();
     } else {
+      placementPanel.el.hidden = false;
       if (toolEl.firstChild !== placementPanel.el || toolEl.childNodes.length !== 1) toolEl.replaceChildren(placementPanel.el);
       placementPanel.render();
     }
+    renderShelf();
     // Rows may have come into view without a scroll (a kind opened, the sheet opened).
     thumbsSoon(false);
     sendInset();

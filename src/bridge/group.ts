@@ -7,6 +7,10 @@
 // "start + the total movement". The adapter (with the game rules) does all
 // the engine maths; this file only decides where each member should go.
 //
+// Turning several has two ways since 2026-10-18 (play test: "no turn options with several picked"), the same two words
+// as resizing: "together" (the arrangement turns as one piece round the middle of the selection) and "each in place"
+// (each object turns on its own spot). 3D also on the three axes (turn / tilt forward / tilt sideways), as one object.
+//
 // WHY two ways:
 // - 2D: in SCREEN space. Members can sit in different parents (a fence post
 //   inside a scaled container next to a tree on the stage); moving each by
@@ -17,7 +21,7 @@
 //   ground for near and far objects, so the first member is moved with the
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
-import type { Anchor, GroupScaleMode, Item, Pose, StudioAdapter } from '../contract.ts';
+import type { Anchor, GroupScaleMode, Item, Pose, StudioAdapter, TurnAxis } from '../contract.ts';
 
 export interface GroupSession {
   keys: string[];
@@ -40,6 +44,17 @@ export interface GroupSession {
   feet: Map<string, number[]>;
   /** The middle of the feet (3D: x / z middle and the lowest foot; 2D: screen x middle and the lowest bottom). */
   footMid: number[] | null;
+  /**
+   * 3D: the middle of all the members' boxes (parent space; adapter.middle), else of their origins. Tilting
+   * "together" turns round it — the point a person sees as "the middle of what I picked".
+   */
+  mid: number[];
+}
+
+/** How several turn: the axis (3D; y = upright) and together / each in place (the turn button's choices). */
+export interface TurnWay {
+  axis?: TurnAxis;
+  mode?: GroupScaleMode;
 }
 
 const wrap = (a: number) => {
@@ -86,6 +101,7 @@ export function beginGroup(adapter: StudioAdapter, keys: string[], primary: stri
     items,
     feet: new Map(),
     footMid: null,
+    mid: [0, 0, 0],
   };
   let gx0 = Infinity, gz0 = Infinity, gx1 = -Infinity, gz1 = -Infinity;
   let minY = Infinity;
@@ -103,6 +119,18 @@ export function beginGroup(adapter: StudioAdapter, keys: string[], primary: stri
   }
   s.ground = [(gx0 + gx1) / 2, (gz0 + gz1) / 2];
   s.minY = Number.isFinite(minY) ? minY : 0;
+  if (adapter.dim === '3d') {
+    // The box round the members' box middles (origins without adapter.middle), and its middle.
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const k of live) {
+      const m = (adapter.middle && adapter.middle(k)) || s.from.get(k)!.p;
+      for (let i = 0; i < 3; i++) {
+        lo[i] = Math.min(lo[i]!, m[i] ?? 0);
+        hi[i] = Math.max(hi[i]!, m[i] ?? 0);
+      }
+    }
+    s.mid = lo.map((v, i) => (v + hi[i]!) / 2);
+  }
   const ga = groupAnchor(adapter, live, s.primary);
   s.center = ga ? ga.center : [0, 0];
   for (const k of live) {
@@ -174,11 +202,53 @@ export function groupShift(adapter: StudioAdapter, s: GroupSession, delta: numbe
   }
 }
 
+type Quat = [number, number, number, number]; // x, y, z, w
+const qmul = (a: Quat, b: Quat): Quat => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+/** A pose's turn as a quaternion: Euler x = t[0], y = r, z = t[1] in three.js's default XYZ order (Pose.t). */
+function quatOf(p: Pose): Quat {
+  const [x = 0, z = 0] = p.t ?? [0, 0];
+  const y = p.r ?? 0;
+  const c1 = Math.cos(x / 2), c2 = Math.cos(y / 2), c3 = Math.cos(z / 2);
+  const s1 = Math.sin(x / 2), s2 = Math.sin(y / 2), s3 = Math.sin(z / 2);
+  return [s1 * c2 * c3 + c1 * s2 * s3, c1 * s2 * c3 - s1 * c2 * s3, c1 * c2 * s3 + s1 * s2 * c3, c1 * c2 * c3 - s1 * s2 * s3];
+}
+/** v turned by the unit quaternion q. */
+function qapply(q: Quat, v: number[]): number[] {
+  const [x, y, z, w] = q;
+  const [vx = 0, vy = 0, vz = 0] = v;
+  const tx = 2 * (y * vz - z * vy), ty = 2 * (z * vx - x * vz), tz = 2 * (x * vy - y * vx);
+  return [vx + w * tx + (y * tz - z * ty), vy + w * ty + (z * tx - x * tz), vz + w * tz + (x * ty - y * tx)];
+}
+
 /**
  * Turn the whole group by `d` radians as seen on screen (clockwise positive,
- * the same sign as `rotate()`), around its middle.
+ * the same sign as `rotate()`). `way.mode`: `spread` (default) = round the
+ * middle of the group, the places turn too; `inplace` = each member turns on
+ * its own spot (2D: round its own pivot; 3D: adapter.turn, round the middle
+ * of its box) and stays where it is. `way.axis` (3D, needs adapter.turn):
+ * y = upright (default), x / z = tilt.
  */
-export function groupRotate(adapter: StudioAdapter, dim: '2d' | '3d', s: GroupSession, d: number): void {
+export function groupRotate(adapter: StudioAdapter, dim: '2d' | '3d', s: GroupSession, d: number, way: TurnWay = {}): void {
+  const mode = way.mode ?? 'spread';
+  const axis: TurnAxis = dim === '3d' && adapter.turn ? way.axis ?? 'y' : 'y';
+  if (mode === 'inplace') {
+    for (const k of s.keys) {
+      reset(adapter, s, k);
+      if (!rotatable(s, k)) continue;
+      if (dim === '3d' && adapter.turn) adapter.turn(k, d, axis);
+      else adapter.rotate(k, d);
+    }
+    return;
+  }
+  if (axis !== 'y') {
+    groupTilt(adapter, s, d, axis);
+    return;
+  }
   if (dim === '2d') {
     const [cx, cy] = s.center;
     const c = Math.cos(d), n = Math.sin(d);
@@ -215,6 +285,31 @@ export function groupRotate(adapter: StudioAdapter, dim: '2d' | '3d', s: GroupSe
     const p = movable(s, k) ? [gx + rx * c + rz * n, y, gz - rx * n + rz * c] : f.p.slice();
     adapter.setPose(k, { ...clone(f), p });
     if (rotatable(s, k)) adapter.rotate(k, d);
+  }
+}
+
+/**
+ * 3D, together, on a tilt axis (x / z): the arrangement tips as one piece round the middle of the members' boxes
+ * (s.mid). The adapter knows which way the camera makes "clockwise" (adapter.turn), so the turn is done once on the
+ * first member that may turn and read back as a quaternion (its pose before and after, in its parent's space); the
+ * places of all the members turn by that same quaternion round the middle, and each member that may turn gets the
+ * same turn of its own (adapter.turn, then its place is set). Members in differently turned parents are not
+ * handled (as the upright turn above).
+ */
+function groupTilt(adapter: StudioAdapter, s: GroupSession, d: number, axis: TurnAxis): void {
+  const lead = s.keys.find((k) => rotatable(s, k));
+  if (!lead || !adapter.turn) return;
+  reset(adapter, s, lead);
+  const q0 = quatOf(s.from.get(lead)!);
+  const q1 = quatOf(adapter.turn(lead, d, axis));
+  const dq = qmul(q1, [-q0[0], -q0[1], -q0[2], q0[3]]);
+  const g = s.mid;
+  for (const k of s.keys) {
+    const f = s.from.get(k)!;
+    reset(adapter, s, k);
+    const turned = rotatable(s, k) ? adapter.turn(k, d, axis) : f;
+    const p = movable(s, k) ? qapply(dq, f.p.map((v, i) => v - (g[i] ?? 0))).map((v, i) => v + (g[i] ?? 0)) : f.p.slice();
+    adapter.setPose(k, { ...clone(turned), p });
   }
 }
 

@@ -12,10 +12,10 @@
 // - Pictures are shown with <img> only (SVG included), so an SVG file cannot
 //   run a script in the shell.
 
-import type { AssetRef, Lang, LoadEntry, StudioHost } from '../../contract.ts';
+import type { AssetRef, Lang, LibraryFileUse, LibraryObjects, LoadEntry, StudioHost } from '../../contract.ts';
 import { ASSET_EXT } from '../../contract.ts';
-import { assetsOfKey, buildRows, countBadges, filterRows, normalizeList } from './marks.ts';
-import type { Badge, BadgeFilter, LibraryRow, TypeFilter } from './marks.ts';
+import { assetsOfKey, buildRows, filterRows, normalizeList, SHELVES, shelfOfType } from './marks.ts';
+import type { Badge, LibraryRow, Shelf } from './marks.ts';
 import { addFile, buildLibraryJson, emptyState, pendingCount, setReplace, stateFromFile } from './result.ts';
 import type { LibraryState, LibraryValidator } from './result.ts';
 import { formatSize, t } from './strings.ts';
@@ -46,6 +46,12 @@ export interface LibraryDeps {
    */
   selectObjects?(keys: string[]): void;
   /**
+   * The Objects shelf instead of the game (plan 1, 2026-10-18): `file` narrows it to the objects that use the file
+   * ("Show in Objects →"), `key` opens one object there (a name under "3 objects use this file"). Optional: without
+   * it those presses select in the game as before.
+   */
+  showObjects?(o: { file?: string; key?: string }): void;
+  /**
    * The name a person reads for an object (the list's name). Optional: without it the key is shown. WHY: an unnamed
    * object's key is `path:3/0`, an inner handle that must never show on screen (dogfood 2026-10-17, U4).
    */
@@ -57,6 +63,13 @@ export interface LibraryDeps {
    * undefined = the panel loads it itself through host.load().
    */
   initial?: object | null;
+  /**
+   * With `initial`: the last SAVED decisions, when they differ from `initial` (the panel was closed with
+   * unsaved swaps and is opened again: index.ts keeps both). Absent = `initial` is the saved state.
+   * WHY (e2e-save 2026-10-18): a swap, then back to the Scene and ⌘S, never reached the AI — the panel was
+   * gone, so it counted 0 unsaved and the shell's Save skipped library.json.
+   */
+  initialSaved?: object | null;
   /** Called whenever the unsaved count changes (for the shell's save button). */
   onPending?(n: number): void;
   /** Show the panel's own save button (the dev harness); the shell has its own. */
@@ -74,6 +87,35 @@ export interface LibraryDeps {
    * AI to make it lighter" on heavy 3D files. Resolves false when it couldn't be sent. Absent = no button.
    */
   askAi?(text: string): Promise<boolean>;
+  /**
+   * The objects placed in the game ("one Library", 2026-10-18): with them the panel is the whole Library — objects
+   * and assets in one grid, counted with the files in All / 3D / 2D (by the game's dim), one search, one count, one
+   * detail at a time (an object's or a file's). Absent (the dev harness, older shells) = assets only, as before.
+   */
+  objects?: LibraryObjects;
+  /**
+   * What the Library shows (All / 3D / 2D / Sound / Other and the search), kept by the caller across
+   * re-mounts (a language or layout change mounts a new panel; the view should not jump back to All). Mutated here.
+   */
+  view?: LibraryView;
+  /**
+   * The files as things to use ("use the Library", 2026-10-18; ShellContext.files): the pick goes to the ask box's
+   * chip, a file's detail gets "Add to scene" and "Ask your AI…", and its tile can be dragged onto the Scene row.
+   * Absent (the dev harness) = none of that.
+   */
+  files?: LibraryFileUse;
+}
+
+/** The drag type of a file's tile (dropped on the Scene row = "Add to scene"); the data is the file's folder path. */
+export const DRAG_FILE = 'application/x-studio-file';
+
+/**
+ * What the Library shows: one of All / 3D / 2D / Sound / Other (marks.ts Shelf; a review of the editor, 2026-10-18, it replaced
+ * Show: All / Objects / Assets, the objects' Made from, Asset type and Use) and the search.
+ */
+export interface LibraryView {
+  shelf: Shelf;
+  q: string;
 }
 
 export interface LibraryTool {
@@ -84,8 +126,31 @@ export interface LibraryTool {
   /** The shell saved result(): the current decisions are now the saved ones. */
   markSaved(): void;
   pending(): number;
+  /** The last saved decisions as a library.json object (index.ts keeps it when the panel closes unsaved). */
+  savedResult(): object;
   /** Open the detail of one file. */
   open(path: string): void;
+  /** The Library narrowed to the objects that use this file. */
+  showUsers(path: string): void;
+  /** The file's detail with its "Replace…" picker open. */
+  replace(path: string): void;
+  /** Bring the open detail (a file's or the picked objects') into view: the menus' "Details". */
+  revealDetail(): void;
+  /** Run `fn` (a pick or an open for a tile's menu) without the page scrolling to the new detail. */
+  holdStill(fn: () => void): void;
+  /**
+   * The Scene's "Show in Library →" (2026-10-18): the picked objects' detail, with nothing else open or narrowing
+   * the grid, and their tile in view.
+   */
+  showPick(): void;
+  /** The files picked now (the open file, or several with Shift / Multi-select), for the tile's menu. */
+  pickedFiles(): string[];
+  /** The filters (All / 3D / 2D / Sound / Other): the shell puts them in its left column on PC; on a phone a chip row. */
+  filtersEl: HTMLElement;
+  /** An empty head at the top of the panel: the shell puts its Objects | Assets switch there on a phone. */
+  headEl: HTMLElement;
+  /** Draw again (the shell's selection or object list changed). */
+  redraw(): void;
   /** Rows of one object (for the placement side's "files of this object"). */
   assetsOf(key: string): LibraryRow[];
   /** Render "files of this object" into a container owned by the placement panel. */
@@ -110,8 +175,6 @@ function baseName(p: string): string {
 }
 
 const TYPE_ICON: Record<string, string> = { image: '▦', model: '◆', sound: '♪', atlas: '▤', font: 'Aa', other: '•' };
-const TYPES: TypeFilter[] = ['all', 'image', 'model', 'sound', 'atlas', 'font'];
-const BADGES: Badge[] = ['used', 'codeOnly', 'unused', 'missing'];
 const ACCEPT = Object.values(ASSET_EXT).flat().filter((e) => e !== 'json').map((e) => `.${e}`).join(',');
 /**
  * How long one read of the folder may take before the panel says it got no answer (seconds).
@@ -129,8 +192,35 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   let rows: LibraryRow[] = [];
   let state: LibraryState = emptyState();
   let saved: LibraryState = emptyState();
-  let filter: { type: TypeFilter; badge: BadgeFilter; q: string } = { type: 'all', badge: 'all', q: '' };
+  const objects = deps.objects;
+  // Kept by the caller across re-mounts (index.ts); a fresh one in the dev harness.
+  const filter: LibraryView = deps.view || { shelf: 'all', q: '' };
+  /** The shelf the game's objects sit on (3D or 2D), or null without objects (the dev harness: files only). */
+  const objShelf = (): Shelf | null => (objects ? (objects.dim() === '2d' ? '2d' : '3d') : null);
+  /**
+   * The objects are in the grid on All and on their own shelf, and never while a file's "Show just these objects"
+   * narrows them (then only those objects: the band above the grid says so and has the × back).
+   */
+  const showsObjects = () => !!objects && (filter.shelf === 'all' || filter.shelf === objShelf());
+  const showsFiles = () => !objects?.band();
+  /** The detail last drawn (a file's path or the picked objects' keys): a new one scrolls the phone sheet up to it. */
+  let lastDetail = '';
+  /**
+   * A pick made for a tile's menu (context menu, 2026-10-18): the new detail does NOT scroll the page to itself. The
+   * menu opens at the finger / pointer over the tile; a phone sheet jumping to its top under it moved the tile away
+   * and closed the menu. The menu's "Details" brings the detail into view instead (revealDetail).
+   */
+  let still = false;
   let openPath: string | null = null;
+  /**
+   * Files picked to use ("use the Library", 2026-10-18): the open file, or several with Shift / Multi-select (then the
+   * picked objects stay picked too: "these two and this sound"). They are what the ask box's chip names and what
+   * "Add to scene" / "Ask your AI…" on a file's detail work on. Orange like any pick; the detail shows the last one.
+   */
+  const pickedFiles = new Set<string>();
+  // What the shell was last told; null = nothing yet, so a new panel (a re-mount) always tells it its pick, even an empty
+  // one (the shell kept the old panel's files and the chip said "3 picked" for 1 — found in the pictures, 2026-10-18).
+  let pickSent: string | null = null;
   let picking = false;
   let deleting = false;
   const asked = deps.asked || new Set<string>();
@@ -161,13 +251,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   search.type = 'search';
   search.placeholder = L('search');
   search.setAttribute('aria-label', L('search'));
-  const typeSel = h('select', 'gsl-type');
-  typeSel.setAttribute('aria-label', L('typeAll'));
-  for (const ty of TYPES) {
-    const o = h('option', undefined, ty === 'all' ? L('typeAll') : L(`type_${ty}` as StringKey));
-    o.value = ty;
-    typeSel.append(o);
-  }
+  search.value = filter.q;
   const addBtn = h('button', 'gsl-btn gsl-add', L('addFiles'));
   addBtn.type = 'button';
   const addInput = h('input');
@@ -175,7 +259,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   addInput.multiple = true;
   addInput.accept = ACCEPT;
   addInput.hidden = true;
-  bar.append(search, typeSel, addBtn, addInput);
+  bar.append(search, addBtn, addInput);
   // "Make with AI" (ai-make.ts): only when the host has the optional KUMODeck sign-in (the local
   // server). One quiet button; nothing is asked of KUMODeck until it is pressed.
   const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open', L('aiOpen')) : null;
@@ -185,7 +269,14 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     bar.append(aiBtn);
   }
 
-  const chips = h('div', 'gsl-chips');
+  // The filters: All / 3D / 2D / Sound / Other, one list with no headings (a review of the editor, 2026-10-18: "I couldn't make out
+  // how they are split at all. 3D assets, 2D assets, music, other is about enough."). In the shell's left column on PC
+  // (as rows), a row of chips that scrolls sideways on a phone. Before: four headed groups — Show (All / Objects /
+  // Assets), Made from (a file / drawn in code), Asset type (Images / 3D models / Sounds…) and Use (used / not used).
+  // Object vs asset is still on each tile's small tag; used / not used still on a file's tile and in its detail.
+  const chips = h('div', 'gsl-chips shelf-filters');
+  chips.setAttribute('role', 'group');
+  const headEl = h('div', 'gsl-head shelf-head');
   const count = h('div', 'gsl-count');
   const grid = h('div', 'gsl-grid');
   // "Couldn't read the folder (…)." + Try again: only after a failed read (renderReadFail).
@@ -211,7 +302,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   saveBtn.type = 'button';
   foot.append(statusEl, pendingEl);
   if (deps.ownSave) foot.append(saveBtn);
-  wrap.append(bar);
+  wrap.append(headEl, bar);
   const ai = deps.host.kumo
     ? mountAiMake(wrap, {
         kumo: deps.host.kumo,
@@ -348,34 +439,70 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   }
 
   // ---------- list ----------
+  /** One filter row: a chip in the phone's row, a row of the left column on PC (the shell's CSS). */
+  function chip(label: string, n: number, on: boolean, press: () => void, data: Record<string, string>, extra = ''): HTMLButtonElement {
+    const c = h('button', `gsl-chip filter-row${extra ? ` ${extra}` : ''}`);
+    c.type = 'button';
+    for (const [k, v] of Object.entries(data)) c.dataset[k] = v;
+    c.setAttribute('aria-pressed', String(on));
+    c.append(h('span', 'label', label));
+    if (n) c.append(h('b', undefined, String(n)));
+    c.addEventListener('click', press);
+    return c;
+  }
+
   function renderChips() {
     chips.replaceChildren();
-    const c = countBadges(rows);
-    for (const b of BADGES) {
-      // A mark with nothing behind it ("missing 0") is only noise, and four
-      // chips took half the phone sheet (UI/UX 2026-10-16). Kept while it is the
-      // active filter, so the person can still turn the filter off.
-      if (c[b] === 0 && filter.badge !== b) continue;
-      const chip = h('button', `gsl-chip gsl-chip-${b}`);
-      chip.type = 'button';
-      chip.setAttribute('aria-pressed', String(filter.badge === b));
-      chip.title = L(`hint_${b}` as StringKey);
-      chip.append(h('span', `gsl-dot gsl-dot-${b}`), h('span', undefined, L(`badge_${b}` as StringKey)), h('b', undefined, String(c[b])));
-      chip.addEventListener('click', () => {
-        filter.badge = filter.badge === b ? 'all' : b;
+    chips.dataset.shelf = filter.shelf;
+    chips.setAttribute('aria-label', L('filterShow'));
+    const n: Record<Shelf, number> = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0 };
+    for (const r of rows) n[shelfOfType(r.type)]++;
+    const os = objShelf();
+    if (os) {
+      n.all += objects!.count();
+      n[os] += objects!.count();
+    }
+    for (const sh of SHELVES) {
+      // A shelf with nothing on it is noise (Lantern Cove has no 2D, Firefly Ruins no 3D); kept while it is the one on,
+      // so it can still be turned off. All is always there.
+      if (sh !== 'all' && !n[sh] && filter.shelf !== sh) continue;
+      chips.append(chip(L(`shelf_${sh}` as StringKey), n[sh], filter.shelf === sh, () => {
+        // A press on the one that is on goes back to All; any press ends "Show just these objects".
+        filter.shelf = filter.shelf === sh ? 'all' : sh;
+        objects?.showFile(null);
         render();
-      });
-      chips.append(chip);
+      }, { shelf: sh }));
     }
   }
 
   function renderGrid() {
-    const list = filterRows(rows, filter);
+    const showFiles = showsFiles();
+    const list = showFiles ? filterRows(rows, filter) : [];
+    // The objects first (what is in the game), then the files they are made from: one grid ("one Library").
+    const objs = showsObjects() ? objects!.tiles(filter.q.trim().toLowerCase()) : null;
     // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
     // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
     // While "Couldn't read the folder" shows, it takes the count's place (same cell in shell.css).
-    count.textContent = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
+    const fileCount = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
+    const band = objs ? objects!.band() : null;
+    count.replaceChildren();
+    if (band) count.append(band);
+    else if (!objs) count.textContent = fileCount;
+    else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
+    else count.textContent = fileCount ? L('countBoth', { o: objs.n, f: list.length }) : objs.n ? L('countObjects', { n: objs.n }) : '';
     grid.replaceChildren();
+    if (objs) {
+      grid.append(...objs.tiles);
+      if (!showFiles) {
+        if (!objs.tiles.length) grid.append(h('div', 'gsl-empty', objects!.count() ? L('emptyObjects') : L('noObjectsYet')));
+        return;
+      }
+      // Nothing at all for this search: one line for both halves.
+      if (!objs.tiles.length && !list.length && filter.q.trim() && loaded) {
+        grid.append(h('div', 'gsl-empty', L('emptyBoth')));
+        return;
+      }
+    }
     // What Make with AI is making: a tile first, so the wait has a place even with the panel closed.
     for (const w of aiWork) {
       const tile = h('div', 'gsl-tile gsl-tile-making');
@@ -395,6 +522,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       // Not read yet and the read failed: the line above the grid says so (and has Try again).
       if (!loaded && readError) return;
       const empty = !loaded ? L('loading') : rows.length || status ? L('empty') : deps.host.kumo ? L('noFilesYetAi') : L('noFilesYet');
+      // Under the objects, a line about the assets only when there is something to say (none yet / still reading).
+      if (objs?.tiles.length && loaded && rows.length) return;
       grid.append(h('div', 'gsl-empty', empty));
       return;
     }
@@ -405,21 +534,47 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       tile.tabIndex = 0;
       tile.setAttribute('role', 'button');
       tile.dataset.path = row.path; // dataset is an attribute value, not HTML
+      tile.dataset.kind = 'file';
       tile.title = row.path;
       if (row.path === openPath) tile.classList.add('gsl-open');
       const name = h('span', 'gsl-name', baseName(row.path));
       const meta = h('span', 'gsl-meta');
-      meta.append(badgeEl(row.badge));
+      // One file, many objects (plan 1): a file that objects use says how many ("Used by 3"), in your colour, instead
+      // of the plain "Used" mark; files the game only loads (a sound, a sky) keep their mark, and so does every other
+      // mark (a missing file an object asks for stays "Missing": that is the news).
+      const users = new Set(row.usedBy.map((u) => u.key)).size;
+      if (users && row.badge === 'used') {
+        const u = h('span', 'gsl-uses', L('usedByN', { n: users }));
+        u.title = L('hint_used');
+        meta.append(u);
+      } else meta.append(badgeEl(row.badge));
       const to = state.replace.get(row.path);
       if (to) meta.append(h('span', 'gsl-tag gsl-tag-replace', `→ ${baseName(to)}`));
       if (newFiles.has(row.path) || state.added.some((a) => a.file === row.path)) meta.append(h('span', 'gsl-tag gsl-tag-new', L('added')));
       if (asked.has(row.path)) meta.append(h('span', 'gsl-tag gsl-tag-del', L('delAsked')));
-      tile.append(thumbFor(row, 128), name, meta);
-      tile.addEventListener('click', () => open(row.path));
+      const pic = thumbFor(row, 128);
+      // "Asset" in the picture's corner (an object's tile says "Object"): what the tile is, read before the picture.
+      // Only with the objects in the same grid; grey words, no colour of their own (orange = picked, violet = AI).
+      if (objects) pic.append(h('span', 'lib-kind', L('tagFile')));
+      tile.append(pic, name, meta);
+      if (pickedFiles.has(row.path)) tile.classList.add('gsl-open');
+      // Dragged onto the Scene row = "Add to scene" (main.ts). Only where an AI can make the object (deps.files.add).
+      if (deps.files?.add && row.exists) {
+        tile.draggable = true;
+        tile.addEventListener('dragstart', (e) => {
+          if (!e.dataTransfer) return;
+          e.dataTransfer.setData(DRAG_FILE, row.path);
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+      }
+      // Shift, or Multi-select: add the file to the pick (or take it out) instead of opening it alone.
+      const press = (add: boolean) => (add || objects?.multi() ? toggleFile(row.path) : open(row.path));
+      tile.addEventListener('click', (e) => press(e.shiftKey));
       tile.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          open(row.path);
+          e.stopPropagation();
+          press(e.shiftKey);
         }
       });
       grid.append(tile);
@@ -429,9 +584,18 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   // ---------- detail ----------
   function renderDetail() {
     const row = rows.find((r) => r.path === openPath);
-    detail.hidden = !row;
-    wrap.classList.toggle('gsl-has-detail', !!row);
+    // One detail at a time: the open file's, else the picked objects' (an open file drops the pick, see open()).
+    const obj = !row && objects ? objects.detail() : null;
+    detail.hidden = !row && !obj;
+    wrap.classList.toggle('gsl-has-detail', !detail.hidden);
+    detail.dataset.kind = row ? 'file' : obj ? 'object' : '';
     detail.replaceChildren();
+    const key = row ? `file:${row.path}` : obj ? `obj:${obj.key}` : '';
+    // Phone: the detail sits at the top of the sheet, under its head; a new one picked further down scrolls the sheet
+    // back up to it (scrolling the detail itself into view hid the Scene | Library switch above it).
+    if (key && key !== lastDetail && !still && getComputedStyle(detail).order !== '0') requestAnimationFrame(() => wrap.scrollTo?.({ top: 0 }));
+    lastDetail = key;
+    if (obj) detail.append(obj.el);
     if (!row) return;
 
     const head = h('div', 'gsl-dhead');
@@ -440,6 +604,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     close.setAttribute('aria-label', L('close'));
     close.addEventListener('click', () => {
       openPath = null;
+      pickedFiles.clear();
       picking = false;
       render();
     });
@@ -452,6 +617,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     info.append(badgeEl(row.badge), h('span', 'gsl-hint', L(`hint_${row.badge}` as StringKey)));
     if (row.exists) info.append(h('span', 'gsl-size', formatSize(deps.lang, row.size)));
     detail.append(info);
+    if (deps.files) detail.append(useSection(row));
 
     // A heavy 3D file: say what it costs the game, and hand the fix to the AI (the editor only adds files).
     if (row.exists && row.type === 'model' && row.size > HEAVY_MODEL_BYTES) {
@@ -478,27 +644,53 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     // "In the scene: 2" selects them all in the scene (handles and outlines
     // on the game), and each name below selects one. The scene side has the
     // mirror of it ("Assets: tree.png" on the selected object's card).
+    // Plan 1 (2026-10-18): "3 objects use this file", their names, then two ways on — "Show in Objects →" (the Objects
+    // shelf narrowed to them: shelf to shelf, the game stays where it is) and "Show in game →" (selects them all in the
+    // game, what "In the scene: 3" did). A name opens that object on the Objects shelf. Before, every press here
+    // jumped to the game; that jump was the confusing part in a try on 10/18.
     const used = h('div', 'gsl-section gsl-in-scene');
-    if (!row.usedBy.length) used.append(h('p', 'gsl-muted', L('inSceneNone')));
-    else {
-      const all = h('button', 'gsl-btn gsl-scene-all', L('inScene', { n: row.usedBy.length }));
-      all.type = 'button';
-      all.title = L('inSceneTip');
-      all.dataset.action = 'asset-select-users';
-      const keysOf = row.usedBy.map((u) => u.key);
-      all.addEventListener('click', () => (deps.selectObjects ? deps.selectObjects(keysOf) : deps.selectObject(keysOf[0]!)));
-      used.append(all);
-    }
+    const keysOf = [...new Set(row.usedBy.map((u) => u.key))];
+    if (!keysOf.length) used.append(h('p', 'gsl-muted', L('inSceneNone')));
+    else used.append(h('h4', undefined, L('usersHead', { n: keysOf.length })));
     const keys = h('div', 'gsl-keys');
     for (const u of row.usedBy) {
       const k = h('button', 'gsl-key', deps.nameOf ? deps.nameOf(u.key) : u.key);
       k.type = 'button';
+      k.dataset.key = u.key;
       k.title = L('select');
       if (!u.sure) k.append(h('i', 'gsl-guess', ` (${L('guessed')})`));
-      k.addEventListener('click', () => deps.selectObject(u.key));
+      // In the Library: that object's detail, right here (the file closes). Elsewhere: the shell's way.
+      k.addEventListener('click', () => {
+        if (objects) {
+          openPath = null;
+          objects.select(u.key);
+        } else if (deps.showObjects) deps.showObjects({ key: u.key });
+        else deps.selectObject(u.key);
+      });
       keys.append(k);
     }
     used.append(keys);
+    if (keysOf.length) {
+      const acts = h('div', 'gsl-acts');
+      if (objects || deps.showObjects) {
+        // "Show just these objects": the Library narrowed to the objects that use this file — still the Library, the
+        // game stays where it is. (In plan 1 this was "Show in Objects →", the other shelf.)
+        const shelf = h('button', 'gsl-btn gsl-to-shelf', objects ? L('showUsers') : L('showInShelf'));
+        shelf.type = 'button';
+        shelf.title = objects ? L('showUsersTip') : L('showInShelfTip');
+        shelf.dataset.action = 'asset-show-users';
+        shelf.addEventListener('click', () => showUsers(row.path));
+        acts.append(shelf);
+      }
+      // The class and action name stay from "In the scene: 2" (scripts and .studio/ui/ CSS find it by them).
+      const all = h('button', 'gsl-btn gsl-scene-all', L('showInGame'));
+      all.type = 'button';
+      all.title = L('inSceneTip');
+      all.dataset.action = 'asset-select-users';
+      all.addEventListener('click', () => (deps.selectObjects ? deps.selectObjects(keysOf) : deps.selectObject(keysOf[0]!)));
+      acts.append(all);
+      used.append(acts);
+    }
     detail.append(used);
 
     const code = h('div', 'gsl-section');
@@ -573,6 +765,63 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       }
       detail.append(del);
     }
+  }
+
+  /**
+   * "Add to scene" and "Ask your AI…" for the picked files ("use the Library", 2026-10-18). A new object from a file
+   * is code the AI writes, so "Add to scene" drafts that request in the ask box (the file's chip in it, sent with
+   * Enter) — the same box and the same Enter as everywhere else, nothing sent behind the person's back. Without an AI
+   * (the web demo) the button stays, dimmed, with one line saying why: a missing button reads as "can't be done".
+   */
+  function useSection(row: LibraryRow): El {
+    const use = h('div', 'gsl-section gsl-use');
+    const acts = h('div', 'gsl-acts');
+    const paths = pickedFiles.size > 1 && pickedFiles.has(row.path) ? [...pickedFiles] : [row.path];
+    const many = paths.length > 1;
+    const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', many ? L('addToSceneN', { n: paths.length }) : L('addToScene'));
+    add.type = 'button';
+    add.dataset.action = 'file-add-to-scene';
+    const can = !!deps.files!.add && row.exists;
+    add.disabled = !can;
+    if (can) add.addEventListener('click', () => deps.files!.add!(paths));
+    acts.append(add);
+    if (deps.files!.ask) {
+      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
+      ask.type = 'button';
+      ask.dataset.action = 'file-ask';
+      ask.addEventListener('click', () => deps.files!.ask!(paths));
+      acts.append(ask);
+    }
+    use.append(acts);
+    if (!deps.files!.add) use.append(h('p', 'gsl-muted gsl-use-why', L('addNeedsAi')));
+    else if (!row.exists) use.append(h('p', 'gsl-muted gsl-use-why', L('addMissing')));
+    return use;
+  }
+
+  /** Shift / Multi-select on a file's tile: in or out of the pick; the detail shows the last one put in. */
+  function toggleFile(path: string) {
+    if (pickedFiles.has(path)) {
+      pickedFiles.delete(path);
+      if (openPath === path) openPath = [...pickedFiles].pop() ?? null;
+    } else {
+      // The file open alone so far becomes the first of several.
+      if (openPath && !pickedFiles.size) pickedFiles.add(openPath);
+      pickedFiles.add(path);
+      openPath = path;
+    }
+    picking = false;
+    deleting = false;
+    objects?.showFile(null);
+    render();
+  }
+
+  /** Tell the shell what is picked when it changed (its ask box's chip). */
+  function sendPick() {
+    const list = [...pickedFiles].filter((p) => rows.some((r) => r.path === p));
+    const sig = list.join('\n');
+    if (sig === pickSent) return;
+    pickSent = sig;
+    deps.files?.picked(list);
   }
 
   function picker(row: LibraryRow): El {
@@ -679,9 +928,13 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     filter.q = search.value;
     renderGrid();
   });
-  typeSel.addEventListener('change', () => {
-    filter.type = typeSel.value as TypeFilter;
-    renderGrid();
+  // A press on an object's tile picks it: the file open on the right closes (one detail at a time).
+  objects?.onPick((add) => {
+    picking = false;
+    deleting = false;
+    // Shift / Multi-select: the files stay picked with the objects; the detail shows the objects now.
+    if (!add) pickedFiles.clear();
+    openPath = null;
   });
   saveBtn.addEventListener('click', () => void save());
 
@@ -691,11 +944,18 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   }
 
   function render() {
+    // Multi-select acts on the objects: in the bar while objects are shown.
+    if (objects) {
+      const mb = objects.multiButton();
+      if (!showsObjects()) mb.remove();
+      else if (mb.parentElement !== bar) bar.insertBefore(mb, addBtn);
+    }
     renderChips();
     renderReadFail();
     renderGrid();
     renderDetail();
     notifyPending();
+    sendPick();
   }
 
   // ---------- public ----------
@@ -756,10 +1016,42 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
 
   function open(path: string) {
     openPath = path;
+    pickedFiles.clear();
+    pickedFiles.add(path);
     picking = false;
     deleting = false;
+    // One thing open in the Library: a file's detail drops the objects' pick (its tiles would stay orange next to the
+    // open file's: two "picked" at once). On another shelf the file would not be in the grid: show all.
+    if (objects) {
+      objects.showFile(null);
+      objects.clear();
+    }
+    const row = rows.find((r) => r.path === path);
+    if (row && filter.shelf !== 'all' && shelfOfType(row.type) !== filter.shelf) filter.shelf = 'all';
     render();
-    detail.scrollIntoView?.({ block: 'nearest' });
+    // The shell's phone sheet draws the detail at its top, under the head (CSS `order`, plan 1): renderDetail scrolls
+    // the sheet up to it so its head (the Scene | Library switch) stays in sight. Elsewhere the detail is where it was.
+    if (!still && getComputedStyle(detail).order === '0') detail.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  /** "Show just these objects": the Library narrowed to the objects that use `path` (the detail's button, the tile's menu). */
+  function showUsers(path: string) {
+    if (!objects) return deps.showObjects?.({ file: path });
+    openPath = null;
+    pickedFiles.clear();
+    // On the objects' shelf or All (Sound / Other would hide them); the files step aside while the band shows.
+    if (!showsObjects()) filter.shelf = 'all';
+    objects.showFile(path);
+    objects.clear();
+    render();
+  }
+
+  /** "Replace…" from the tile's menu (context menu, 2026-10-18): the file's detail with its picker open, in view. */
+  function replace(path: string) {
+    open(path);
+    picking = true;
+    render();
+    detail.querySelector('.gsl-replace')?.scrollIntoView?.({ block: 'nearest' });
   }
 
   function renderAssetsOf(into: El, key: string) {
@@ -784,12 +1076,15 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   }
 
   // The last saved decisions: from the shell (restore) or read here.
-  const restore = (j: unknown) => {
+  const restore = (j: unknown, s: unknown = j) => {
     state = stateFromFile(j);
-    saved = stateFromFile(j);
+    saved = stateFromFile(s);
     render();
   };
-  if (deps.initial !== undefined) restore(deps.initial);
+  if (deps.initial !== undefined) {
+    restore(deps.initial, deps.initialSaved !== undefined ? deps.initialSaved : deps.initial);
+    if (deps.initialSaved !== undefined) notifyPending();
+  }
   else {
     render();
     void deps.host.load('library').then(restore).catch(() => undefined);
@@ -800,7 +1095,48 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     save,
     markSaved,
     pending: () => pendingCount(state, saved),
+    savedResult: () => buildLibraryJson(saved, rows),
     open,
+    showUsers,
+    replace,
+    revealDetail: () => {
+      render();
+      if (detail.hidden) return;
+      // Phone: the detail heads the sheet (CSS order): the sheet's top. PC: its own column, into view.
+      if (getComputedStyle(detail).order !== '0') wrap.scrollTo?.({ top: 0 });
+      else detail.scrollIntoView?.({ block: 'nearest' });
+    },
+    showPick() {
+      openPath = null;
+      pickedFiles.clear();
+      picking = false;
+      deleting = false;
+      objects?.showFile(null);
+      // The objects sit on All and on the game's 3D / 2D only; a search that hides the pick is cleared too.
+      if (!showsObjects()) filter.shelf = 'all';
+      const sel = (objects?.detail()?.key || '').split(',').filter(Boolean);
+      if (filter.q && sel.length && !objects!.tiles(filter.q.trim().toLowerCase()).tiles.some((t) => sel.includes(t.dataset.key!))) {
+        filter.q = '';
+        search.value = '';
+      }
+      render();
+      // The picked tile in view (it may be far down a long grid), without scrolling the page sideways.
+      const tile = sel.length ? grid.querySelector<HTMLElement>('.lib-object.gsl-open') : null;
+      if (tile) tile.scrollIntoView?.({ block: 'nearest' });
+      if (getComputedStyle(detail).order !== '0') wrap.scrollTo?.({ top: 0 });
+    },
+    pickedFiles: () => [...pickedFiles],
+    holdStill: (fn: () => void) => {
+      still = true;
+      try {
+        fn();
+      } finally {
+        still = false;
+      }
+    },
+    redraw: () => render(),
+    filtersEl: chips,
+    headEl,
     assetsOf: (key) => assetsOfKey(rows, key),
     renderAssetsOf,
     rows: () => rows,
@@ -809,6 +1145,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       audio.pause();
       if (workTick) window.clearInterval(workTick);
       wrap.remove();
+      // The shell may have moved the filters into its left column.
+      chips.remove();
     },
   };
 }

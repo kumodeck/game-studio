@@ -29,6 +29,7 @@ import { h, safeImageSrc } from './dom.ts';
 import { hasLayer, layerBlocks, layerTarget, siblingsOf, type LayerOp } from './layers.ts';
 import { groupLayerPossible, sameKind } from './edit-ops.ts';
 import { icon, setButton } from './icons.ts';
+import { tipText } from './keymap.ts';
 import { displayName } from './names.ts';
 import { toneThumb } from './thumb-tone.ts';
 
@@ -63,8 +64,15 @@ export interface PlacementPanelDeps {
    * returns them all and the ask box says "the 4 you picked".
    */
   selectedKeys(): string[];
-  /** Hand the person's words about these objects to the AI (host.request). Resolves true when kept. */
-  ask(keys: string[], text: string): Promise<boolean>;
+  /** Hand the person's words about these objects (and files) to the AI (host.request). Resolves true when kept. */
+  ask(keys: string[], text: string, files: string[]): Promise<boolean>;
+  /**
+   * Files picked in the Library while it is open ("use the Library", 2026-10-18): the chip names them with the
+   * objects, and the words are sent about both. Absent / empty = objects only.
+   */
+  assets?(): string[];
+  /** The card's "Show in Library →": the Library with this pick's detail. Absent = no Library in this build. */
+  showInLibrary?(): void;
   /** Ask the AI to name these objects (the "no name" warning). */
   askName(keys: string[]): Promise<boolean>;
   /**
@@ -185,13 +193,14 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   askEl.addEventListener('submit', async (e) => {
     e.preventDefault();
     const keys = d.selectedKeys();
+    const files = d.assets?.() || [];
     const text = askInput.value.trim();
     if (!text) {
       askInput.focus();
       return;
     }
     askSend.disabled = true;
-    const ok = await d.ask(keys, text);
+    const ok = await d.ask(keys, text, files);
     askSend.disabled = false;
     if (ok) {
       askInput.value = '';
@@ -210,21 +219,27 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
 
   const renderAsk = () => {
     const keys = d.selectedKeys();
+    const files = d.assets?.() || [];
     const items = d.items();
     const first = items.find((i) => i.key === keys[0]);
-    const k = keys.length ? [...keys].sort().join(',') : null;
+    const k = keys.length || files.length ? [...[...keys].sort(), ...files].join(',') : null;
     // "Sent to your AI" belongs to what it was sent about.
     if (k !== askKey) askNote = '';
     askKey = k;
-    const whole = !keys.length || !first;
-    const ph = whole ? d.t('ask.game') : keys.length > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    const noObj = !keys.length || !first;
+    const whole = noObj && !files.length;
+    const n = (noObj ? 0 : keys.length) + files.length;
+    const ph = whole ? d.t('ask.game') : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
-    const firstName = whole ? '' : displayName(first, d.t);
-    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : firstName;
+    // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
+    const fileName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+    const firstName = noObj ? (files.length ? fileName(files[0]!) : '') : displayName(first, d.t);
+    askChip.textContent = whole ? '' : n === 1 ? firstName : noObj ? d.t('ask.files', { n }) : files.length ? d.t('ask.picked', { n }) : d.t('ops.manyShort', { n });
+    askChip.title = files.length ? [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files].join('\n') : '';
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
-    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: firstName }));
+    askInput.setAttribute('aria-label', whole ? ph : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
@@ -242,9 +257,12 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // .card-actions (the place the AI-partner card keeps for these buttons) holding the edit-ops row.
     const row = h('div', { class: 'card-actions edit-ops', dataset: { part: 'edit-ops' } });
     const copy = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'copy' }, onclick: () => d.copy() });
-    setButton(copy, 'copy', d.t('ops.copy'), false, `${d.t('ops.copy')} — ${d.t('ops.copyHint')} (${d.shortcutOf('copy')})`);
+    // Tooltip = the name and its key (tooltip.ts sets the key apart); the longer how-to stays for screen readers.
+    setButton(copy, 'copy', d.t('ops.copy'), false, tipText(d.t('ops.copy'), d.shortcutOf('copy')));
+    copy.setAttribute('aria-description', d.t('ops.copyHint'));
     const del = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'remove' }, onclick: () => d.remove() });
-    setButton(del, 'trash', d.t('ops.remove'), false, `${d.t('ops.remove')} — ${d.t('ops.removeHint')} (${d.shortcutOf('remove')})`);
+    setButton(del, 'trash', d.t('ops.remove'), false, tipText(d.t('ops.remove'), d.shortcutOf('remove')));
+    del.setAttribute('aria-description', d.t('ops.removeHint'));
     row.append(copy, del);
     return row;
   };
@@ -265,7 +283,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const seg = h('div', { class: 'seg layer-seg', role: 'group', 'aria-label': d.t('layer.title') });
     for (const op of ['toBack', 'backward', 'forward', 'toFront'] as LayerOp[]) {
       const b = h('button', { type: 'button', class: 'layer-btn', dataset: { action: `layer-${op}` }, disabled: disabled(op), onclick: () => act(op) });
-      setButton(b, op, d.t(`layer.${op}`), false, `${d.t(`layer.${op}`)} (${d.shortcut(op)})`);
+      setButton(b, op, d.t(`layer.${op}`), false, tipText(d.t(`layer.${op}`), d.shortcut(op)));
       seg.append(b);
     }
     return h('div', { class: 'f-row layer-row', dataset: { part: 'layer' } },
@@ -528,6 +546,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         } })));
     }
     if (it.copyOf) body.append(h('p', { class: 'muted copy-note note-line', text: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf }) }));
+    // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
+    // want to go straight to its page in the Library"); its file is the Assets row above.
+    if (d.showInLibrary) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary!() }));
     const kl = kindLink(key);
     if (kl) body.append(kl);
     card.append(body);

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.3 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.5 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1114,6 +1114,12 @@ __defs[5] = function (__exports) {
  * Gestures use fractions of the canvas, not pixels, so they feel the same on a phone and a 4K screen:
  *   orbit(dx, dy): full width = half a turn, full height = 90°; dragging down looks more from above
  *   pan(dx, dy):   the ground under the finger follows the finger (horizontally; the target height never changes)
+ *   rise(dy):      camera up (dy > 0) or down, straight up: the target and the camera move together, so the direction
+ *                  never changes; dy = 1 is one view height at the target (the scene slides down the screen by its
+ *                  full height). The one way to change height — pan keeps it, orbit turns round it, zoom slides along
+ *                  the line of sight (camera up / down, play test 2026-10-18: "I can't raise the camera; it's needed").
+ *   fly(r, u, f):  WASD — the camera and its turning point together, scaled to the scene (see fly)
+ *   look(dx, dy):  turn where the camera stands (right-drag while flying); orbit turns round the point in front
  *   zoom(f, x, y): f > 1 moves closer; the point under (x, y) stays under the cursor (the camera slides along the line
  *                  through that point — exact for perspective)
  */
@@ -1123,6 +1129,9 @@ const { rayFromCamera, rayPlaneY, v } = __require(3);
 const DEG = Math.PI / 180;
 const PITCH_MIN = 8 * DEG;
 const PITCH_MAX = 85 * DEG;
+/** Fly speed (WASD): 0.8 of the distance to the turning point per second (see fly) — the first value (2026-10-18), about
+ * a screen's depth a second; tune it here after people try it. Shift (the bridge) = ×3, as engines' "fast". */
+const FLY_PER_S = 0.8;
 
 function createEditView(gameCamera) {
   // clone() keeps the game's camera type and three version (we cannot `new` a class we did not import).
@@ -1166,6 +1175,11 @@ function createEditView(gameCamera) {
     // 0.3 m lets you inspect a small prop; 8× the scene radius is "far enough to see everything, small"
     st.distance = Math.min(Math.max(0.3, st.distance), Math.max(60, st.radius * 8));
   }
+  /** Where the camera stands (apply()'s position, from the state, so it is right before the next apply too). */
+  function eyeOf() {
+    const cp = Math.cos(st.pitch);
+    return [st.target[0] + st.distance * cp * Math.sin(st.yaw), st.target[1] + st.distance * Math.sin(st.pitch), st.target[2] + st.distance * cp * Math.cos(st.yaw)];
+  }
   function viewHeight() {
     return cam.isPerspectiveCamera ? 2 * st.distance * Math.tan((cam.fov * DEG) / 2) : 2 * st.distance * Math.tan(25 * DEG);
   }
@@ -1195,6 +1209,44 @@ function createEditView(gameCamera) {
       const fwd = [-Math.sin(st.yaw), 0, -Math.cos(st.yaw)]; // horizontal, from the camera toward the target
       const k = 1 / Math.max(0.15, Math.sin(st.pitch)); // a screen-height of drag covers more ground when looking flat
       st.target = v.add(st.target, v.add(v.scale(right, -dx * w), v.scale(fwd, dy * h * k)));
+    },
+    rise(dy) {
+      // Bound like the distance: far enough to look down on the whole scene, never a camera lost kilometres away.
+      // Before 2026-10-18 the target's height was fixed by the opening view / frame (no way to change it at all).
+      const lim = Math.max(60, st.radius * 8);
+      st.target[1] = Math.min(lim, Math.max(-lim, st.target[1] + dy * viewHeight()));
+    },
+    /**
+     * Fly (WASD, camera-wasd pass 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"):
+     * move the camera and the point it turns round together by `right` / `up` / `fwd`, each in seconds of travel at
+     * the normal speed (the bridge passes the frame's dt; Shift multiplies it). fwd follows the line of sight, so W
+     * dives where you look, as in Unity / Unreal / Godot; up is straight up (the same as rise), right is level.
+     * Speed: FLY_PER_S of the distance to the turning point, kept within 0.25–2 scene radii — the view crosses
+     * about the same share of the screen per second in a small room and on Lantern Cove, slows down close to a
+     * small prop, and never crawls (or races) when zoomed very far in (or out). The height keeps rise's bound;
+     * sideways has none, as pan (engines let you fly anywhere, under the ground too).
+     */
+    fly(right, up, fwd) {
+      const sp = FLY_PER_S * Math.min(Math.max(st.distance, st.radius * 0.25), st.radius * 2);
+      const cp = Math.cos(st.pitch);
+      const look = [-cp * Math.sin(st.yaw), -Math.sin(st.pitch), -cp * Math.cos(st.yaw)];
+      const side = [Math.cos(st.yaw), 0, -Math.sin(st.yaw)];
+      st.target = v.add(st.target, v.scale(v.add(v.add(v.scale(side, right), [0, up, 0]), v.scale(look, fwd)), sp));
+      const lim = Math.max(60, st.radius * 8);
+      st.target[1] = Math.min(lim, Math.max(-lim, st.target[1]));
+    },
+    /**
+     * Turn the view where the camera stands (a fly-through look: right-drag while flying, as engines do), instead of
+     * turning round the point in front (orbit). Same signs and sensitivity as orbit: right = turn right, up = look up;
+     * the pitch keeps orbit's limits, so a later orbit never jumps.
+     */
+    look(dx, dy) {
+      const eye = eyeOf();
+      st.yaw -= dx * Math.PI;
+      st.pitch += dy * (Math.PI / 2);
+      clampPitch();
+      const cp = Math.cos(st.pitch);
+      st.target = v.sub(eye, v.scale([cp * Math.sin(st.yaw), Math.sin(st.pitch), cp * Math.cos(st.yaw)], st.distance));
     },
     zoom(factor, ndcX = 0, ndcY = 0) {
       const f = Math.min(5, Math.max(0.2, factor));
@@ -1259,6 +1311,7 @@ function yawOfCamera(camera) {
 
 __def(__exports, "PITCH_MIN", () => PITCH_MIN);
 __def(__exports, "PITCH_MAX", () => PITCH_MAX);
+__def(__exports, "FLY_PER_S", () => FLY_PER_S);
 __def(__exports, "createEditView", () => createEditView);
 __def(__exports, "yawOfCamera", () => yawOfCamera);
 };
@@ -2112,6 +2165,18 @@ function createThreeAdapter({ scene, renderer, camera }) {
       return [v.x, v.y, v.z];
     },
 
+    /** The middle of the object's world box, in its parent's space (several tilted together turn round these). */
+    middle(key) {
+      const o = objectOf(key);
+      if (!o) return null;
+      scene.updateMatrixWorld(true);
+      const b = worldBox(o);
+      if (!b) return null;
+      const v = o.position.clone().set((b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+      if (o.parent) o.parent.worldToLocal(v);
+      return [v.x, v.y, v.z];
+    },
+
     scale(key, factor) {
       const o = objectOf(key);
       if (!o) return null;
@@ -2335,6 +2400,12 @@ function createThreeAdapter({ scene, renderer, camera }) {
       orbit(dx, dy) { if (!view) return null; leaveHome(); view.orbit(dx, dy); touch(); return view.state(); },
       pan(dx, dy) { if (!view) return null; leaveHome(); syncView(); view.pan(dx, dy, aspect()); touch(); return view.state(); },
       zoom(factor, ndcX = 0, ndcY = 0) { if (!view) return null; leaveHome(); syncView(); view.zoom(factor, ndcX, ndcY); touch(); return view.state(); },
+      /** Camera up (dy > 0) / down by dy view heights, looking the same way (camera.js rise; ⌘K, E / Q, the ↑↓ buttons). */
+      rise(dy) { if (!view) return null; leaveHome(); view.rise(dy); touch(); return view.state(); },
+      /** Fly (WASD / E Q): right / up / forward in seconds of travel at the scene's speed (camera.js fly). */
+      fly(right, up, fwd) { if (!view) return null; leaveHome(); view.fly(right, up, fwd); touch(); return view.state(); },
+      /** Turn where the camera stands (right-drag while flying; camera.js look), by fractions of the canvas. */
+      look(dx, dy) { if (!view) return null; leaveHome(); view.look(dx, dy); touch(); return view.state(); },
       /**
        * The opening view: exactly the player's camera (position, direction, lens), so the first picture of the
        * editor is the game's own picture — the light, the water, the composition the game was made with.
@@ -2524,6 +2595,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
     // The axis and sign are worked out in adapter.js from the edit camera (d stays screen clockwise).
     turn: (key, d, axis) => pose(key, raw.turn(key, d, axis)),
     foot: (key) => raw.foot(key),
+    middle: (key) => raw.middle(key),
     coverage: (key) => raw.coverage(key),
     scale: (key, f) => pose(key, raw.scale(key, f)),
     nudgeY: (key, dy) => pose(key, raw.nudgeY(key, dy)),
@@ -2554,6 +2626,9 @@ function fitThreeAdapter(raw     , canvas                   )                {
     view: {
       orbit: (dx, dy) => void raw.view.orbit(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       pan: (dx, dy) => void raw.view.pan(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
+      rise: (dy) => void raw.view.rise(dy / Math.max(1, rect().height)),
+      fly: (right, up, fwd) => void raw.view.fly(right, up, fwd),
+      look: (dx, dy) => void raw.view.look(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       zoom: (f, x, y) => void (x === undefined || y === undefined ? raw.view.zoom(f) : raw.view.zoom(f, ...ndc(x, y))),
       frameAll: () => void raw.view.frameAll(),
       focus: (key) => void raw.view.focus(key),
@@ -2688,7 +2763,11 @@ const CONTRACT_VERSION = 1;
  * middle drag, or Space held; one finger = the tool, two = looking on touch.
  */
                                                              
-/** Resizing several objects: `spread` = the gaps grow too, `inplace` = each grows on its own spot. */
+/**
+ * Resizing or turning several objects: `spread` ("together") = the whole arrangement as one piece (the gaps grow;
+ * the places turn round the middle of the selection), `inplace` ("each in place") = each one on its own spot.
+ * The turn uses the same two words since 2026-10-18 (play test: "no turn options with several picked").
+ */
                                                   
 
 /** One movable object as listed by an adapter. */
@@ -2872,6 +2951,12 @@ const CONTRACT_VERSION = 1;
      
                                       
      
+                                                                                                                
+                                                                                                                  
+                      
+     
+                                        
+     
                                                                             
                                                                            
                                                                              
@@ -2941,6 +3026,23 @@ const CONTRACT_VERSION = 1;
                                        
                                      
                                     
+     
+                                                                                                                   
+                                                                                                                     
+                                                                                                                     
+                                                                       
+     
+                          
+     
+                                                                                                                  
+                                                                                                                     
+                                                                                                                
+                                                                                                                   
+                                                             
+     
+                                                     
+                                                                                                                                
+                                      
                                                                              
                                                      
                                          
@@ -3324,6 +3426,9 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
  */
 const MSG_PREFIX = 'studio:';
 
+/** A fly key (WASD + E / Q up / down), by its place on the keyboard (KeyboardEvent.code minus "Key"), lower case. */
+                                                       
+
                         
                           
                                                                                   
@@ -3332,6 +3437,8 @@ const MSG_PREFIX = 'studio:';
                                       
                                                
                                              
+                                                                                                                          
+                                  
                                           
 
 /**
@@ -3359,8 +3466,11 @@ const MSG_PREFIX = 'studio:';
                                                                             
                                                                            
                                                                           
+                                                                                                                    
+                                                                                                                    
+                                                                                                      
      
-                                                                                               
+                                                                                                            
                                                                    
                                                        
                                                         
@@ -3396,6 +3506,12 @@ const MSG_PREFIX = 'studio:';
                                                                                              
                                                   
      
+                                                                                                                      
+                                                                                                                 
+                                                                               
+     
+                                                              
+     
                                                                                                              
                                                                                                                    
      
@@ -3412,7 +3528,9 @@ const MSG_PREFIX = 'studio:';
                                                    
                                                                                 
                                                                                    
-                                                                                                  
+                                                                                                                     
+                                                                                                              
+                                                                                                                                 
                                                       
                                                           
                                                                                       
@@ -3442,6 +3560,13 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                                                        
                                                     
+     
+                                                                                                                   
+                                                                                                                    
+                                                                                                                
+                                                                                                                    
+     
+                                                                                                  
                                                                                            
                                                                   
                                                    
@@ -3502,6 +3627,11 @@ function isStudioMessage(x         )                     {
                                                                                   
               
                      
+     
+                                                                                                                    
+                                                                                                           
+     
+                   
  
 
 /** What the shell hands to host.request(). */
@@ -3530,6 +3660,12 @@ function isStudioMessage(x         )                     {
                                                                    
      
                                                                              
+     
+                                                                                                                   
+                                                                                                                   
+                                                                                    
+     
+                    
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -3652,12 +3788,6 @@ function isStudioMessage(x         )                     {
               
      
                              
-     
-                                                                                                                               
-                                                                                                                   
-                                                                            
-     
-                           
      
                                                                               
                                                                                 
@@ -3912,6 +4042,44 @@ const RESULT_FILES                         = {
                                       
  
 
+/**
+ * The objects as the Library shows them (ShellContext.objects, "one Library" 2026-10-18). The shell owns the
+ * objects and the selection; the Library owns its page (search, the All / Objects / Files filter, the grid, the
+ * detail on the right) and asks this for the objects' part of each. Names are untrusted text: the elements are
+ * built with textContent only.
+ */
+                                 
+                                                                                                  
+                  
+     
+                                                                                                                       
+                                                                                                                     
+                                                         
+     
+             
+                                                                                              
+                                      
+                                                                                    
+                             
+                                                                                                             
+                                                        
+                                                                                                              
+                                                    
+                                                                                                            
+                            
+                                                                     
+                
+                                                    
+                             
+     
+                                                                                                                   
+                                                                                                                  
+     
+                                           
+                                                                              
+                   
+ 
+
                                
                    
              
@@ -3931,6 +4099,19 @@ const RESULT_FILES                         = {
                               
      
                                        
+     
+                                                                                                                   
+                                                                                                                  
+                                                                                                                    
+                                                                                                              
+     
+                                                         
+     
+                                                                                                                    
+                                                                                                                            
+                                                                         
+     
+                           
                                
                                                                           
                   
@@ -3942,6 +4123,28 @@ const RESULT_FILES                         = {
                                                     
      
                                                              
+     
+                                                                                                                
+                                                                                                
+     
+                         
+ 
+
+/** What the Library does with its files through the shell (ShellContext.files). Paths are folder paths. */
+                                 
+     
+                                                                                                                   
+                                                                     
+     
+                                
+     
+                                                                                                                      
+                                                                                                                     
+                                                       
+     
+                              
+                                                                                                              
+                              
  
 
 // ---------------------------------------------------------------------------
@@ -4014,6 +4217,14 @@ const UI = {
   /** Long-press on rotate/scale/lift handles repeats; the whole run is one undo step. */
   holdDelayMs: 350,
   holdRepeatMs: 60,
+  /**
+   * A press held this long without moving opens choices: the strip's turn / size options (on their button) and the
+   * menu of the place pressed (anywhere else on the game, the list's rows, the Library's tiles; context menu,
+   * 2026-10-18). One length for both, so a long press feels the same everywhere; they never meet, because the strip's
+   * long press is only on its buttons. 450 ms: past a tap (~100–200 ms) and a hesitant press-then-drag, short of
+   * iOS's 500 ms callout.
+   */
+  longPressMs: 450,
   /** Narrower than this = phone layout (bottom bar instead of right column). */
   phoneMaxWidth: 720,
 }         ;
@@ -5510,6 +5721,7 @@ function withEdits(inner               )               {
       return g ? onGhost(g, () => inner.turn (g.src, d, axis)) : inner.turn (key, d, axis);
     } : undefined,
     foot: inner.foot ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.foot (key)) : undefined,
+    middle: inner.middle ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.middle (key)) : undefined,
     coverage: inner.coverage ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.coverage (key)) : undefined,
     scale(key, f) {
       const g = ghostOf(key);
@@ -5640,6 +5852,10 @@ __defs[19] = function (__exports) {
 // "start + the total movement". The adapter (with the game rules) does all
 // the engine maths; this file only decides where each member should go.
 //
+// Turning several has two ways since 2026-10-18 (play test: "no turn options with several picked"), the same two words
+// as resizing: "together" (the arrangement turns as one piece round the middle of the selection) and "each in place"
+// (each object turns on its own spot). 3D also on the three axes (turn / tilt forward / tilt sideways), as one object.
+//
 // WHY two ways:
 // - 2D: in SCREEN space. Members can sit in different parents (a fence post
 //   inside a scaled container next to a tree on the stage); moving each by
@@ -5650,7 +5866,7 @@ __defs[19] = function (__exports) {
 //   ground for near and far objects, so the first member is moved with the
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
-                                                                                        
+                                                                                                  
 
                                
                  
@@ -5673,6 +5889,17 @@ __defs[19] = function (__exports) {
                               
                                                                                                                   
                            
+     
+                                                                                                            
+                                                                                          
+     
+                
+ 
+
+/** How several turn: the axis (3D; y = upright) and together / each in place (the turn button's choices). */
+                          
+                  
+                        
  
 
 const wrap = (a        ) => {
@@ -5719,6 +5946,7 @@ function beginGroup(adapter               , keys          , primary        )    
     items,
     feet: new Map(),
     footMid: null,
+    mid: [0, 0, 0],
   };
   let gx0 = Infinity, gz0 = Infinity, gx1 = -Infinity, gz1 = -Infinity;
   let minY = Infinity;
@@ -5736,6 +5964,18 @@ function beginGroup(adapter               , keys          , primary        )    
   }
   s.ground = [(gx0 + gx1) / 2, (gz0 + gz1) / 2];
   s.minY = Number.isFinite(minY) ? minY : 0;
+  if (adapter.dim === '3d') {
+    // The box round the members' box middles (origins without adapter.middle), and its middle.
+    const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    for (const k of live) {
+      const m = (adapter.middle && adapter.middle(k)) || s.from.get(k) .p;
+      for (let i = 0; i < 3; i++) {
+        lo[i] = Math.min(lo[i] , m[i] ?? 0);
+        hi[i] = Math.max(hi[i] , m[i] ?? 0);
+      }
+    }
+    s.mid = lo.map((v, i) => (v + hi[i] ) / 2);
+  }
   const ga = groupAnchor(adapter, live, s.primary);
   s.center = ga ? ga.center : [0, 0];
   for (const k of live) {
@@ -5807,11 +6047,53 @@ function groupShift(adapter               , s              , delta          , sk
   }
 }
 
+                                              // x, y, z, w
+const qmul = (a      , b      )       => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+/** A pose's turn as a quaternion: Euler x = t[0], y = r, z = t[1] in three.js's default XYZ order (Pose.t). */
+function quatOf(p      )       {
+  const [x = 0, z = 0] = p.t ?? [0, 0];
+  const y = p.r ?? 0;
+  const c1 = Math.cos(x / 2), c2 = Math.cos(y / 2), c3 = Math.cos(z / 2);
+  const s1 = Math.sin(x / 2), s2 = Math.sin(y / 2), s3 = Math.sin(z / 2);
+  return [s1 * c2 * c3 + c1 * s2 * s3, c1 * s2 * c3 - s1 * c2 * s3, c1 * c2 * s3 + s1 * s2 * c3, c1 * c2 * c3 - s1 * s2 * s3];
+}
+/** v turned by the unit quaternion q. */
+function qapply(q      , v          )           {
+  const [x, y, z, w] = q;
+  const [vx = 0, vy = 0, vz = 0] = v;
+  const tx = 2 * (y * vz - z * vy), ty = 2 * (z * vx - x * vz), tz = 2 * (x * vy - y * vx);
+  return [vx + w * tx + (y * tz - z * ty), vy + w * ty + (z * tx - x * tz), vz + w * tz + (x * ty - y * tx)];
+}
+
 /**
  * Turn the whole group by `d` radians as seen on screen (clockwise positive,
- * the same sign as `rotate()`), around its middle.
+ * the same sign as `rotate()`). `way.mode`: `spread` (default) = round the
+ * middle of the group, the places turn too; `inplace` = each member turns on
+ * its own spot (2D: round its own pivot; 3D: adapter.turn, round the middle
+ * of its box) and stays where it is. `way.axis` (3D, needs adapter.turn):
+ * y = upright (default), x / z = tilt.
  */
-function groupRotate(adapter               , dim             , s              , d        )       {
+function groupRotate(adapter               , dim             , s              , d        , way          = {})       {
+  const mode = way.mode ?? 'spread';
+  const axis           = dim === '3d' && adapter.turn ? way.axis ?? 'y' : 'y';
+  if (mode === 'inplace') {
+    for (const k of s.keys) {
+      reset(adapter, s, k);
+      if (!rotatable(s, k)) continue;
+      if (dim === '3d' && adapter.turn) adapter.turn(k, d, axis);
+      else adapter.rotate(k, d);
+    }
+    return;
+  }
+  if (axis !== 'y') {
+    groupTilt(adapter, s, d, axis);
+    return;
+  }
   if (dim === '2d') {
     const [cx, cy] = s.center;
     const c = Math.cos(d), n = Math.sin(d);
@@ -5848,6 +6130,31 @@ function groupRotate(adapter               , dim             , s              , 
     const p = movable(s, k) ? [gx + rx * c + rz * n, y, gz - rx * n + rz * c] : f.p.slice();
     adapter.setPose(k, { ...clone(f), p });
     if (rotatable(s, k)) adapter.rotate(k, d);
+  }
+}
+
+/**
+ * 3D, together, on a tilt axis (x / z): the arrangement tips as one piece round the middle of the members' boxes
+ * (s.mid). The adapter knows which way the camera makes "clockwise" (adapter.turn), so the turn is done once on the
+ * first member that may turn and read back as a quaternion (its pose before and after, in its parent's space); the
+ * places of all the members turn by that same quaternion round the middle, and each member that may turn gets the
+ * same turn of its own (adapter.turn, then its place is set). Members in differently turned parents are not
+ * handled (as the upright turn above).
+ */
+function groupTilt(adapter               , s              , d        , axis          )       {
+  const lead = s.keys.find((k) => rotatable(s, k));
+  if (!lead || !adapter.turn) return;
+  reset(adapter, s, lead);
+  const q0 = quatOf(s.from.get(lead) );
+  const q1 = quatOf(adapter.turn(lead, d, axis));
+  const dq = qmul(q1, [-q0[0], -q0[1], -q0[2], q0[3]]);
+  const g = s.mid;
+  for (const k of s.keys) {
+    const f = s.from.get(k) ;
+    reset(adapter, s, k);
+    const turned = rotatable(s, k) ? adapter.turn(k, d, axis) : f;
+    const p = movable(s, k) ? qapply(dq, f.p.map((v, i) => v - (g[i] ?? 0))).map((v, i) => v + (g[i] ?? 0)) : f.p.slice();
+    adapter.setPose(k, { ...clone(turned), p });
   }
 }
 
@@ -6250,8 +6557,10 @@ const { UI } = __require(11);
 
 /** The tools' keys (also in the tooltips and in ⌘K): the English initials, none taken by another single key (Q/E steps, R axis, F, P). */
 const TOOL_KEYS                             = { move: 'M', lift: 'H', rotate: 'T', scale: 'S' };
+/** 1–4: the same tools in the 3D strip's order (basics pass, 2026-10-18; shell/keymap.ts). Not W/E/R: E turns, R is the axis. */
+const TOOL_NUMBERS                             = { move: '1', lift: '2', rotate: '3', scale: '4' };
 const toolFromKey = (key        )                    =>
-  (Object.keys(TOOL_KEYS)                ).find((k) => TOOL_KEYS[k] === key.toUpperCase()) ?? null;
+  (Object.keys(TOOL_KEYS)                ).find((k) => TOOL_KEYS[k] === key.toUpperCase() || TOOL_NUMBERS[k] === key) ?? null;
 
 const HANDLE_LABELS                                           = {
   en: { move: 'Move (M)', rotate: 'Turn (T)', lift: 'Height (H)', scale: 'Size (S)' },
@@ -6307,7 +6616,15 @@ const SCALE_WORDS                                                         = {
   en: { spread: ['Together', 'Everything grows, including the gaps, from each object’s base'], inplace: ['Each in place', 'Each one grows in its own spot; the gaps stay the same'] },
   ja: { spread: ['並びごと', '物どうしの間も一緒に広がる（足元が基準）'], inplace: ['その場で', 'それぞれが自分の足元で大きくなる（間はそのまま）'] },
 };
-                                                     
+/**
+ * Turning several (multi rotate, play test 2026-10-18: "no turn options with several picked"): the size button's two
+ * words, in the same order, under the axes on the turn button's ▾ (2D: alone — one axis there).
+ */
+const TURN_WAY_WORDS                                                         = {
+  en: { spread: ['Together', 'Everything turns as one piece, around the middle of what’s selected'], inplace: ['Each in place', 'Each one turns in its own spot; nothing moves away'] },
+  ja: { spread: ['並びごと', '並び全体が 1 つの物のように、選んだ物の真ん中を中心に回る'], inplace: ['その場で', 'それぞれが自分の場所で回る（置き場所はそのまま）'] },
+};
+                                                              
 
 /** The group tag ("3 selected"). */
 const MANY_LABEL                                      = {
@@ -6329,6 +6646,16 @@ const SCALE_ICONS                                 = {
   // spread = the size tool's own picture (the default way). Was two boxes with arrows apart until 2026-10-18.
   spread: '<path d="M5 19 19 5M13.5 5H19v5.5M5 13.5V19h5.5"/>',
   inplace: '<rect x="4" y="12" width="5" height="6" rx="1"/><rect x="13" y="8" width="7" height="10" rx="1"/><path d="M3 21h18"/><path d="M16.5 2.5v3.5M14.8 4.2l1.7-1.7 1.7 1.7"/>',
+};
+
+/**
+ * Turning several. Each in place: two boxes, each with its own small turn arrow. Together: two boxes riding one big
+ * turn round a middle dot — not the turn tool's own picture, which the axes row's Turn already wears in 3D (2D, where
+ * the axes are not shown, uses the tool's own picture for Together: see `turnWayIcon`).
+ */
+const TURN_WAY_ICONS                                 = {
+  spread: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M17.8 2.8v4h-4"/><rect x="2.5" y="10" width="4" height="4" rx=".8"/><rect x="17.5" y="10" width="4" height="4" rx=".8"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  inplace: '<rect x="3" y="13" width="6" height="6" rx="1"/><rect x="15" y="13" width="6" height="6" rx="1"/><path d="M3.5 9a3 3 0 0 1 5-1.8"/><path d="M8.8 4.8v2.6H6.2"/><path d="M15.5 9a3 3 0 0 1 5-1.8"/><path d="M20.8 4.8v2.6h-2.6"/>',
 };
 
 const ICONS                             = {
@@ -6386,13 +6713,20 @@ const ICONS                             = {
                                             
                                                                                                             
                                            
-                                                                                                      
-                                                                        
+                                                                                                      
+                                          
      
-                                                                            
-                                                   
+                                                                                                                   
+                                                                                     
      
-                                                                         
+                                                                                                           
+     
+                                                                                    
+                                                                                 
+                                                                                  
+                                                                          
+     
+                                                                                                                               
                                       
                   
  
@@ -6447,6 +6781,12 @@ svg * { vector-effect: non-scaling-stroke; }
 /* The chosen way: ink, not orange (orange is the picked object, on the game). */
 .menu button.chosen { color: #1c1c1e; background: #f5f5f7; box-shadow: none; }
 @media (pointer: coarse) { .menu button { min-width: 88px; min-height: 64px; } }
+/* Two rows (3D, several picked): the axes, a hairline, then Together / Each in place — the size menu's words and
+   order (multi rotate, 2026-10-18). Each row centred, the menu as wide as the wider row. */
+.menu.rows { flex-direction: column; align-items: center; }
+.menu .mrow { display: flex; gap: 2px; }
+.menu .msep { align-self: stretch; height: .5px; margin: 4px 6px; background: rgba(255,255,255,.14); }
+.root.light .menu .msep { background: rgba(0,0,0,.1); }
 /* The ▾ (tool options, play test 2026-10-18): "this button has choices", in the button's bottom-right corner, inside
    it — so the strip is not one px taller or wider and does not move when it appears (W1-2). The mark is 7×4 in the
    button's own colour, faint at rest, full on hover (PC: the hover says "there is more here"); its press area is the
@@ -6609,6 +6949,24 @@ function createHandles(doc          , hasLift         )          {
   let scaleMode                 = 'spread';
   let scaleOpts = false;
   const paintScale = () => paintIcon(buttons.scale, scaleOpts ? SCALE_ICONS[scaleMode] : ICONS.scale);
+  // The turn button: 3D wears its axis (AXIS_ICONS, the first row of its choices); 2D with several picked wears
+  // together / each in place (its only choices), the tool's own picture for together (the default), as the size button.
+  let turnAxis           = 'y';
+  let turnMode                 = 'spread';
+  let turnAxes = false;
+  let turnSeveral = false;
+  let turnLang       = 'en';
+  const turnWayIcon = (m                ) => (turnAxes || m === 'inplace' ? TURN_WAY_ICONS[m] : ICONS.rotate);
+  const paintTurn = () => {
+    const b = buttons.rotate;
+    const wayOnly = turnSeveral && !turnAxes;
+    paintIcon(b, wayOnly ? turnWayIcon(turnMode) : AXIS_ICONS[turnAxis]);
+    const w = wayOnly ? (TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode] : (AXIS_WORDS[turnLang] || AXIS_WORDS.en)[turnAxis];
+    // 3D, several: the way too ("Tilt forward · Each in place"), since the picture shows the axis only.
+    const way = turnSeveral && turnAxes ? ` · ${(TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode][0]}` : '';
+    b.title = `${w[0]}${way} (${TOOL_KEYS.rotate}) — ${w[1]}`;
+    b.setAttribute('aria-label', `${w[0]}${way} (${TOOL_KEYS.rotate})`);
+  };
   let held                    = null;
   let chosen                    = null;
   const paintButtons = () => {
@@ -6793,12 +7151,16 @@ function createHandles(doc          , hasLift         )          {
       positionHint();
     },
     setAxis(axis, lang) {
-      const b = buttons.rotate;
-      b.dataset.axis = axis;
-      paintIcon(b, AXIS_ICONS[axis]);
-      const w = (AXIS_WORDS[lang] || AXIS_WORDS.en)[axis];
-      b.title = `${w[0]} (${TOOL_KEYS.rotate}) — ${w[1]}`;
-      b.setAttribute('aria-label', `${w[0]} (${TOOL_KEYS.rotate})`);
+      buttons.rotate.dataset.axis = axis;
+      turnAxis = axis;
+      turnLang = lang;
+      paintTurn();
+    },
+    setTurnMode(mode) {
+      if (mode === turnMode) return;
+      turnMode = mode;
+      buttons.rotate.dataset.mode = mode;
+      paintTurn();
     },
     setScaleMode(mode) {
       if (mode === scaleMode) return;
@@ -6823,8 +7185,15 @@ function createHandles(doc          , hasLift         )          {
         scaleOpts = opts.scale;
         paintScale();
       }
+      const axes = !!opts.axes, several = !!opts.several;
+      if (axes !== turnAxes || several !== turnSeveral || lang !== turnLang) {
+        turnAxes = axes;
+        turnSeveral = several;
+        turnLang = lang;
+        paintTurn();
+      }
     },
-    menu(kind, current, lang) {
+    menu(kind, current, lang, turn) {
       menuKind = kind;
       // The open one's ▾ stays lit, and the button says its choices are showing.
       for (const [k, mk] of [['rotate', 'axis'], ['scale', 'scale']]         ) {
@@ -6838,22 +7207,41 @@ function createHandles(doc          , hasLift         )          {
         menuEl.style.display = 'none';
         return;
       }
-      const words                                   = kind === 'axis' ? (AXIS_WORDS[lang] || AXIS_WORDS.en) : (SCALE_WORDS[lang] || SCALE_WORDS.en);
-      const icons                         = kind === 'axis' ? AXIS_ICONS : SCALE_ICONS;
-      for (const id of Object.keys(words)) {
-        const b = doc.createElement('button');
-        b.type = 'button';
-        b.dataset.studioChoice = `${kind}:${id}`;
-        b.setAttribute('role', 'menuitemradio');
-        b.setAttribute('aria-checked', String(id === current));
-        if (id === current) b.classList.add('chosen');
-        b.title = words[id] [1];
-        b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[id]}</svg>`; // static markup only
-        const t = doc.createElement('span');
-        t.textContent = words[id] [0];
-        b.append(t);
-        menuEl.append(b);
-      }
+      /** One row of choices (the buttons go straight into `into`). */
+      const choices = (into             , ck                , words                                  , icons                        , cur        ) => {
+        for (const id of Object.keys(words)) {
+          const b = doc.createElement('button');
+          b.type = 'button';
+          b.dataset.studioChoice = `${ck}:${id}`;
+          b.setAttribute('role', 'menuitemradio');
+          b.setAttribute('aria-checked', String(id === cur));
+          if (id === cur) b.classList.add('chosen');
+          b.title = words[id] [1];
+          b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[id]}</svg>`; // static markup only
+          const t = doc.createElement('span');
+          t.textContent = words[id] [0];
+          b.append(t);
+          into.append(b);
+        }
+      };
+      const axes = kind === 'axis' && (!turn || turn.axes);
+      const way = kind === 'axis' && turn ? turn.way : null;
+      const wayIcons = { spread: turnWayIcon('spread'), inplace: TURN_WAY_ICONS.inplace };
+      // One row as before (one object in 3D, the size button, 2D's turn with several); two rows in 3D with several.
+      menuEl.classList.toggle('rows', axes && !!way);
+      if (kind === 'scale') choices(menuEl, 'scale', SCALE_WORDS[lang] || SCALE_WORDS.en, SCALE_ICONS, current);
+      else if (axes && way) {
+        const top = doc.createElement('div'), sep = doc.createElement('div'), bottom = doc.createElement('div');
+        top.className = bottom.className = 'mrow';
+        top.setAttribute('role', 'group');
+        bottom.setAttribute('role', 'group');
+        sep.className = 'msep';
+        sep.setAttribute('role', 'separator');
+        choices(top, 'axis', AXIS_WORDS[lang] || AXIS_WORDS.en, AXIS_ICONS, current);
+        choices(bottom, 'turn', TURN_WAY_WORDS[lang] || TURN_WAY_WORDS.en, wayIcons, way);
+        menuEl.append(top, sep, bottom);
+      } else if (way) choices(menuEl, 'turn', TURN_WAY_WORDS[lang] || TURN_WAY_WORDS.en, wayIcons, way);
+      else choices(menuEl, 'axis', AXIS_WORDS[lang] || AXIS_WORDS.en, AXIS_ICONS, current);
       menuEl.style.display = 'flex';
       positionMenu();
     },
@@ -6949,7 +7337,7 @@ function choiceFromEvent(e       )                {
   for (const el of e.composedPath()) {
     const c = (el               ).dataset?.studioChoice;
     if (c) {
-      const [kind, id] = c.split(':')                              ;
+      const [kind, id] = c.split(':')                            ;
       return { kind, id };
     }
   }
@@ -6966,6 +7354,7 @@ function handleFromEvent(e       )                    {
 }
 
 __def(__exports, "TOOL_KEYS", () => TOOL_KEYS);
+__def(__exports, "TOOL_NUMBERS", () => TOOL_NUMBERS);
 __def(__exports, "toolFromKey", () => toolFromKey);
 __def(__exports, "HANDLE_LABELS", () => HANDLE_LABELS);
 __def(__exports, "READOUT_WORDS", () => READOUT_WORDS);
@@ -6974,6 +7363,7 @@ __def(__exports, "TILT_HINT", () => TILT_HINT);
 __def(__exports, "MORE_LABELS", () => MORE_LABELS);
 __def(__exports, "AXIS_WORDS", () => AXIS_WORDS);
 __def(__exports, "SCALE_WORDS", () => SCALE_WORDS);
+__def(__exports, "TURN_WAY_WORDS", () => TURN_WAY_WORDS);
 __def(__exports, "MANY_LABEL", () => MANY_LABEL);
 __def(__exports, "createHandles", () => createHandles);
 __def(__exports, "moreFromEvent", () => moreFromEvent);
@@ -6981,6 +7371,162 @@ __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
 __defs[23] = function (__exports) {
+'use strict';
+// rise.ts
+
+// Camera up / down: two small buttons, ↑ over ↓, in the game's bottom-right corner (3D only, while editing).
+//
+// Play test 2026-10-18: "I can't raise the camera; it's needed." Looking around had orbit (turn round a point), pan
+// (slide over the ground: the height never changes) and zoom (along the line of sight), so there was no way to
+// just go up — over a wall, above a roof, down to the water. What it does: the camera goes straight up or down,
+// looking the same way (adapter view.rise). It only moves when the person asks (the first-wave rule: the view is
+// theirs, the tool never moves it by itself).
+//
+// The ways to do it (input.ts does the gestures; this file only draws the buttons and tells which was pressed):
+//   - a click / tap on ↑ or ↓: one step (a tenth of the game's height);
+//   - holding it: keeps going (after RISE_HOLD_MS) until let go;
+//   - dragging up / down on it (mouse or finger): the camera follows the drag, like a slider;
+//   - E / Q (up / down) with nothing picked, or while looking around (Space held, right / middle / ⌥ drag) — the
+//     keys 3D tools use for this (Unity, Unreal, Godot: right button + Q / E). With something picked and no
+//     look-around held, Q / E keep turning it (the old keys: never taken away);
+//   - ⌘K "Camera up" / "Camera down" (the editor page), the one place where the words and the keys are written.
+// WHY buttons on the game and not a key alone: a key is found only by people who already know it; a phone has no
+// keys; and two fingers already pan and pinch, so a two-finger "up" would take panning forward away.
+// WHY its own small shadow root (not in handles.ts with the strip): the strip follows the picked object and is
+// gone with nothing picked; these stay in one corner, always. Same glass, same sizes, same theme as the strip.
+const { UI } = __require(11);
+
+                                    
+
+/** Tooltips / labels. `picked`: with something picked, E / Q turn it, so the key named is Space + E / Q. */
+const RISE_LABELS                                                          = {
+  en: (d, p) => `${d === 'up' ? 'Camera up' : 'Camera down'} (${p ? 'Space+' : ''}${d === 'up' ? 'E' : 'Q'})`,
+  ja: (d, p) => `${d === 'up' ? 'カメラを上げる' : 'カメラを下げる'}（${p ? 'Space+' : ''}${d === 'up' ? 'E' : 'Q'}）`,
+};
+
+                              
+                                                                              
+                                      
+                               
+                                          
+                                                                                
+                            
+                                               
+                                                            
+                                       
+                  
+ 
+
+const ICONS                          = {
+  up: '<path d="M7 14.5 12 9.5l5 5"/>',
+  down: '<path d="M7 9.5 12 14.5l5-5"/>',
+};
+/** Gap to the game's edges and to the shell's panels (the hint line's 12). */
+const EDGE = 12;
+const CSS = `
+:host { all: initial; }
+.cam { position: fixed; display: grid; gap: 0; padding: 2px; border-radius: 12px; z-index: 2147483646; pointer-events: none;
+  background: rgba(28, 28, 30, .86); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.09), 0 1px 1px rgba(0,0,0,.2), 0 10px 32px rgba(0,0,0,.36);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
+button { pointer-events: auto; width: var(--h, ${UI.handlePx}px); height: var(--h, ${UI.handlePx}px); border-radius: 10px; border: 0; padding: 0;
+  background: transparent; color: #a1a1a6; display: grid; place-items: center; cursor: ns-resize; touch-action: none; -webkit-tap-highlight-color: transparent;
+  transition: background-color .16s cubic-bezier(.2,.8,.2,1), color .16s cubic-bezier(.2,.8,.2,1); }
+button:hover { color: #f5f5f7; background: rgba(255,255,255,.07); }
+button.on { color: #f5f5f7; background: rgba(255,255,255,.14); transition-duration: 0s; }
+button:focus-visible { outline: 2px solid #ff6b1a; outline-offset: 1px; }
+svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8px; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.big svg { width: 20px; height: 20px; }
+.big { border-radius: 14px; background: rgba(42, 42, 46, .92); box-shadow: 0 0 0 1px rgba(255,255,255,.08); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.big button { border-radius: 12px; }
+.light { background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13);
+  backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); }
+.light.big { background: rgba(255,255,255,.92); box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.light button { color: #6e6e73; }
+.light button:hover { color: #1d1d1f; background: rgba(0,0,0,.045); }
+.light button.on { color: #1d1d1f; background: rgba(0,0,0,.08); }
+@media (pointer: coarse) { button:hover { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { button { transition: none; } }
+`;
+
+function createRiseButtons(doc          )              {
+  const win = doc.defaultView ;
+  const host = doc.createElement('div');
+  host.setAttribute('data-studio-ui', ''); // as the strip's host: never taken for a game element
+  const root = host.attachShadow({ mode: 'open' });
+  const style = doc.createElement('style');
+  style.textContent = CSS;
+  const box = doc.createElement('div');
+  box.className = 'cam';
+  box.setAttribute('role', 'group');
+  const buttons = {}                                      ;
+  for (const dir of ['up', 'down']             ) {
+    const b = doc.createElement('button');
+    b.type = 'button';
+    b.dataset.rise = dir;
+    b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[dir]}</svg>`; // static markup only
+    buttons[dir] = b;
+    box.append(b);
+  }
+  root.append(style, box);
+  (doc.body || doc.documentElement).appendChild(host);
+
+  let inset        = { top: 0, right: 0, bottom: 0, left: 0 };
+  let size         = UI.handlePx;
+  /** Bottom-right of the part of the game the shell's panels leave free (the right inset only reaches down to rightTo). */
+  const position = () => {
+    const h = box.offsetHeight || size * 2 + 4;
+    const top = win.innerHeight - inset.bottom - EDGE - h;
+    const right = inset.rightTo === undefined || top < inset.rightTo ? inset.right : 0;
+    box.style.right = `${right + EDGE}px`;
+    box.style.top = `${Math.max(inset.top + EDGE, top)}px`;
+  };
+  const onResize = () => position();
+  win.addEventListener('resize', onResize);
+  position();
+
+  return {
+    fromEvent(e) {
+      for (const n of e.composedPath()) {
+        const d = (n               ).dataset?.rise;
+        if (d === 'up' || d === 'down') return d;
+        if (n === host) return null;
+      }
+      return null;
+    },
+    setInset(i) {
+      inset = i;
+      position();
+    },
+    setTheme(theme) {
+      box.classList.toggle('light', theme === 'light');
+    },
+    setSize(px) {
+      size = px;
+      box.style.setProperty('--h', `${px}px`);
+      box.classList.toggle('big', px >= 40);
+      position();
+    },
+    setLabels(lang, picked) {
+      for (const dir of ['up', 'down']             ) {
+        const text = (RISE_LABELS[lang] || RISE_LABELS.en)(dir, picked);
+        buttons[dir].title = text;
+        buttons[dir].setAttribute('aria-label', text);
+      }
+    },
+    setActive(dir) {
+      for (const d of ['up', 'down']             ) buttons[d].classList.toggle('on', d === dir);
+    },
+    destroy() {
+      win.removeEventListener('resize', onResize);
+      host.remove();
+    },
+  };
+}
+
+__def(__exports, "RISE_LABELS", () => RISE_LABELS);
+__def(__exports, "createRiseButtons", () => createRiseButtons);
+};
+__defs[24] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -7041,6 +7587,27 @@ __defs[23] = function (__exports) {
 //   sit under the whole group and move / turn / resize all of it (group.ts).
 //   WHY not a plain drag for the box: a plain drag has always looked around,
 //   on objects and next to them, and that must keep working the same.
+// - Camera up / down (3D, play test 2026-10-18; rise.ts says why and how it is
+//   found): the ↑↓ buttons (a click = a step, held = keeps going, dragged =
+//   follows the drag) and E / Q when nothing is picked or while looking
+//   around. A press on the buttons is never a tap on "nothing": the pick stays.
+// - Fly (3D, camera-wasd pass 2026-10-18 — "anyone who has used a 3D game engine moves the camera with WASD too"):
+//   W / S forward / back along the line of sight, A / D left / right, E / Q straight up / down, Shift ×3 — smooth
+//   while held, stopped on release (each frame, core.time.raf), at a speed the adapter takes from the scene's size
+//   (adapters/three/camera.js fly). When: with nothing picked always (W A S D have no other job then: the tool keys
+//   need a pick); with something picked only while the right button is held (Unity / Unreal / Godot's fly mode),
+//   because then S is the Size tool and E / Q turn the pick — those keep their meaning without the right button.
+//   E / Q also fly while looking around in the other ways (Space held, a middle / ⌥ drag), as before. Holding the
+//   right button and pressing a fly key turns that drag into a fly-through look (view.look: the view turns where
+//   the camera stands, as in the engines) instead of a pan, and its release opens no menu. Keys pressed in the
+//   editor page come as studio:core/fly (shell/main.ts decides there). Never by itself: no key, no move.
+// - The place's menu (context menu, 2026-10-18; a request after a try of the editor: "right-click in each place should bring up the menu for it —
+//   in the scene, duplicate, delete, that kind of thing"): a right-click that did not travel (Mac: also Control-click),
+//   or a touch held still for LONG_PRESS_MS away from the strip's buttons, sends placement/context; the editor page
+//   draws the menu (shell/context-menu.ts). An object under it that is not picked yet is picked first (select(),
+//   never focus: the camera stays where it is), as other 3D / 2D tools do; one already in the selection keeps the
+//   whole selection. Nothing under it (or only the ground) keeps the pick: the menu then has Deselect. A right DRAG
+//   still pans (the menu waits for the release, as in Blender / Unity), so the press never moves the view by itself.
 const { UI } = __require(11);
                                              
 const { keyStep } = __require(21);
@@ -7048,6 +7615,7 @@ const { keyStep } = __require(21);
                                                 
 const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(22);
                                                      
+const { createRiseButtons } = __require(23);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(19);
 
                             
@@ -7082,6 +7650,8 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                     
                                                                               
                              
+                                                                                                        
+                                              
                                           
                                                                                 
                                                          
@@ -7099,6 +7669,10 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                  
                                                                           
                
+                                                                                                                  
+                 
+                                                                                                                                  
+                 
  
 
 /** What the current single-pointer gesture does. */
@@ -7110,6 +7684,8 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                                                                                                                           
                    
                                                            
+                                                                                                                       
+                                                               
                     
                      
 
@@ -7126,8 +7702,42 @@ const HUGE_ON_SCREEN = 0.6;
 /**
  * A press held this long on the turn / size button (without moving) opens its choices, like the ▾ (tool options,
  * play test 2026-10-18). 450 ms: past a tap (~100-200 ms) and a hesitant press-then-drag, short of iOS's 500 ms callout.
+ * The same length opens the place's menu on a touch held anywhere else on the game (context menu, 2026-10-18): one
+ * long press, one feel; the two never meet (the strip's is on its buttons only, the menu's never starts on them).
  */
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = UI.longPressMs;
+/** Control-click is the Mac's right-click (one-button mice, trackpads without two-finger click set up). */
+const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
+/**
+ * Camera up / down (rise.ts), as shares of the game's height: a click on ↑ / ↓ moves a tenth (big enough to see,
+ * small enough to aim: ~10 clicks lift the view by a whole screen); E / Q a twentieth per press — key repeat
+ * (~30 / s) then gives ~1.5 screens a second; Shift = a fifth of that (as Shift = fine for the other keys).
+ */
+const RISE_STEP = 0.1;
+const RISE_KEY_STEP = 0.05;
+/** Held this long on ↑ / ↓ without moving, the camera keeps going at RISE_HOLD_PER_S screens a second until let go. */
+const RISE_HOLD_MS = 350;
+const RISE_HOLD_PER_S = 0.6;
+/**
+ * Fly keys (see the header) by KeyboardEvent.code, the key's PLACE: WASD stays under the left hand on AZERTY / QWERTZ
+ * as in the engines. (E / Q were read by e.key before; on QWERTY that is the same.) `[right, up, forward]`.
+ */
+const FLY_DIRS                                           = { w: [0, 0, 1], s: [0, 0, -1], a: [-1, 0, 0], d: [1, 0, 0], e: [0, 1, 0], q: [0, -1, 0] };
+const FLY_CODES                         = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyE: 'e', KeyQ: 'q' };
+/** Shift while flying: ×3 (engines' "fast"; Shift = fine for the step keys, but flying slower than this is never wanted). */
+const FLY_FAST = 3;
+/**
+ * A fresh press moves this many seconds' worth at once, then the hold goes on smoothly: a tap still moves visibly.
+ * 0.06 s ≈ the E / Q step before flying (RISE_KEY_STEP, a twentieth of the view), so a tap of E feels as it did.
+ */
+const FLY_KICK_S = 0.06;
+
+/** A field of the page's own (the game's inputs, a contenteditable): its keys are typing, never flying. */
+function typingIn(t                    )          {
+  const el = t                      ;
+  if (!el || typeof el.tagName !== 'string') return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || !!el.isContentEditable;
+}
 
 function wrap(a        )         {
   while (a <= -Math.PI) a += 2 * Math.PI;
@@ -7139,7 +7749,7 @@ const samePose = (a      , b      ) => JSON.stringify(a) === JSON.stringify(b);
 const sizeOf = (p      ) => Math.abs((Array.isArray(p.s) ? p.s[0] : p.s) ?? 1) || 1;
 
 function attachInput(deps           )              {
-  const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits } = deps;
+  const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits, core } = deps;
   const toolEvent = (type                        , p     ) => ({ type, x: p.x, y: p.y, pointerType: p.type, shift: p.shift });
   const doc = win.document;
   const ptrs = new Map             ();
@@ -7147,6 +7757,96 @@ function attachInput(deps           )              {
   let lastTap                                                      = null;
   let lang       = 'en';
   const handles          = createHandles(doc, adapter.dim === '3d' && !!adapter.nudgeY);
+  // Camera up / down: 3D adapters with view.rise only (2D has no height to go up: its view only pans and zooms).
+  const riseUi = adapter.dim === '3d' && adapter.view.rise ? createRiseButtons(doc) : null;
+  const riseLabels = () => riseUi?.setLabels(lang, !!state.selected);
+  riseLabels();
+  /** Camera up (dy > 0) / down by dy px; the view state goes to the shell when the gesture or key ends. */
+  const riseBy = (dy        ) => {
+    if (!adapter.view.rise || !dy) return;
+    adapter.view.rise(dy);
+    markDirty();
+  };
+  // Held ↑ / ↓: keeps going every frame after RISE_HOLD_MS (stops by itself once the gesture is no longer 'rise').
+  // core.time.raf, not win.requestAnimationFrame: while editing the game's frames are frozen, and the page's rAF is
+  // the game's (core/time.ts) — the first try used it and a held ↑ moved one step only (2026-10-18).
+  let riseFrame = 0;
+  let riseLast = 0;
+  const riseHold = (now        ) => {
+    riseFrame = 0;
+    if (mode.kind !== 'rise' || mode.follow) return;
+    if (now - mode.t0 >= RISE_HOLD_MS) {
+      const dt = Math.min(0.1, (now - Math.max(riseLast, mode.t0 + RISE_HOLD_MS)) / 1000);
+      riseBy((mode.dir === 'up' ? 1 : -1) * RISE_HOLD_PER_S * dt * win.innerHeight);
+      riseLast = now;
+    }
+    riseFrame = core.time.raf(riseHold);
+  };
+  const riseEnd = () => {
+    if (riseFrame) core.time.cancelRaf(riseFrame);
+    riseFrame = 0;
+    riseUi?.setActive(null);
+    post({ type: 'studio:core/view-state', state: adapter.view.state() });
+  };
+  // Fly (see the header): keys held in the game page / in the shell, Shift for each, and the frame that moves.
+  const flyHeld = new Set        ();
+  let flyFast = false;
+  let shellFly           = [];
+  let shellFast = false;
+  let flyFrame = 0;
+  let flyLast = 0;
+  let flyMoved = false;
+  const canFly = () => adapter.dim === '3d' && !!adapter.view.fly;
+  const rightHeld = () => [...ptrs.values()].some((p) => p.type === 'mouse' && p.button === 2);
+  /** May this key fly now? W A S D: nothing picked, or the right button held. E / Q: also while looking around (as before). */
+  const flyOk = (k        ) =>
+    !state.selected || rightHeld() || ((k === 'e' || k === 'q') && (spaceHeld || mode.kind === 'look' || [...ptrs.values()].some(looksAround)));
+  /** Move by `dt` seconds of every key that may fly now; true when something moved. */
+  const flyBy = (keys                  , dt        , fast         , all = false) => {
+    let r = 0, u = 0, f = 0;
+    for (const k of keys) {
+      if (!all && !flyOk(k)) continue;
+      const d = FLY_DIRS[k];
+      r += d[0];
+      u += d[1];
+      f += d[2];
+    }
+    if (!r && !u && !f) return false;
+    const m = dt * (fast ? FLY_FAST : 1);
+    adapter.view.fly (r * m, u * m, f * m);
+    // The right-drag under way turns where the camera stands from now on (onMove) and opens no menu (onUp).
+    for (const p of ptrs.values()) if (p.type === 'mouse' && p.button === 2) p.flew = true;
+    flyMoved = true;
+    markDirty();
+    return true;
+  };
+  const flyStep = (now        ) => {
+    flyFrame = 0;
+    if (!flyHeld.size && !shellFly.length) {
+      flyStop();
+      return;
+    }
+    const dt = Math.min(0.1, (now - flyLast) / 1000);
+    flyLast = now;
+    if (dt > 0) {
+      flyBy(flyHeld, dt, flyFast);
+      flyBy(shellFly, dt, shellFast, true);
+    }
+    flyFrame = core.time.raf(flyStep);
+  };
+  const flyStart = () => {
+    if (flyFrame) return;
+    flyLast = win.performance.now();
+    flyFrame = core.time.raf(flyStep);
+  };
+  /** Every key let go (or the page lost them): stop, and tell the shell where the view ended (kept across reloads). */
+  const flyStop = () => {
+    if (flyFrame) core.time.cancelRaf(flyFrame);
+    flyFrame = 0;
+    if (flyMoved) post({ type: 'studio:core/view-state', state: adapter.view.state() });
+    flyMoved = false;
+  };
+  const flyKeyOf = (e               )                => FLY_CODES[e.code] ?? (e.code ? null : (FLY_CODES[`Key${e.key.toUpperCase()}`] ?? null));
   // A press on the picked object: a drag from it moves it (see the header).
   let grabStart = false;
   // The chosen strip tool (stays until another is chosen or Escape), and a press that will use it.
@@ -7194,15 +7894,18 @@ function attachInput(deps           )              {
     return picked.some((i) => i.scalable);
   };
   /**
-   * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D, one object (canTurn). Size: several
-   * picked. 2D has no turn choices, so its turn button has no ▾ (tool options, 2026-10-18).
+   * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D (the axes, canTurn), or several picked
+   * (together / each in place, 2D too: multi rotate, play test 2026-10-18 — before, several turned "together" upright
+   * only and a 2D turn button had no ▾). Size: several picked (tool options, 2026-10-18).
    */
   const hasChoices = (kind                  ) =>
-    kind === 'axis' ? canTurn() && toolApplies('rotate') : state.group.length > 1 && toolApplies('scale');
+    kind === 'axis' ? (canTurn() || state.group.length > 1) && toolApplies('rotate') : state.group.length > 1 && toolApplies('scale');
   /** Open (`kind`) or close (null) the strip's choices, and tell the editor page so a press or Escape there closes them. */
   const menu = (kind                         ) => {
     const was = handles.menuOpen();
-    handles.menu(kind, kind === 'axis' ? state.axis : kind === 'scale' ? state.scaleMode : '', lang);
+    // The turn button's choices: the axes (3D) and, with several picked, together / each in place under them.
+    const turnRows = { axes: canTurn(), way: state.group.length > 1 ? state.turnMode : null };
+    handles.menu(kind, kind === 'axis' ? state.axis : kind === 'scale' ? state.scaleMode : '', lang, turnRows);
     const now = handles.menuOpen();
     if (!!was !== !!now) post({ type: 'studio:placement/menu', open: !!now });
   };
@@ -7223,8 +7926,10 @@ function attachInput(deps           )              {
   };
   /** The press looks around even with a tool chosen: Option, a right / middle button, or Space held. */
   const looksAround = (p     ) => p.type === 'mouse' && (p.button !== 0 || p.alt || spaceHeld);
-  // 3D turns around three axes (adapter.turn); groups still turn upright only.
-  const canTurn = () => adapter.dim === '3d' && !!adapter.turn && state.group.length <= 1;
+  // 3D turns around three axes (adapter.turn). Groups too since 2026-10-18 (multi rotate; upright only before).
+  const canTurn = () => adapter.dim === '3d' && !!adapter.turn;
+  /** How the group turns now (the turn button's choices). */
+  const turnWay = () => ({ axis: canTurn() ? state.axis : ('y'            ), mode: state.turnMode });
   let axisShown                  = null;
   const showAxis = () => {
     const ax           = canTurn() ? state.axis : 'y';
@@ -7307,7 +8012,7 @@ function attachInput(deps           )              {
         let d = (p.x - m.x0) * TURN_PER_PX;
         const t = Math.round(d / SNAP) * SNAP;
         if (!p.shift && Math.abs(t - d) <= SNAP_WINDOW) d = t;
-        groupRotate(adapter, adapter.dim, s, d);
+        groupRotate(adapter, adapter.dim, s, d, turnWay());
       } else groupScale(adapter, adapter.dim, s, Math.exp((p.x - m.x0 - (p.y - m.y0)) * SIZE_PER_PX), state.scaleMode);
     } else if (m.handle === 'move') groupMove(adapter, adapter.dim, s, p.x - m.x0, p.y - m.y0);
     else if (m.handle === 'rotate' && ga) {
@@ -7320,7 +8025,7 @@ function attachInput(deps           )              {
       // 15° steps within ±3° unless Shift, like one object.
       const t = Math.round(d / SNAP) * SNAP;
       if (!p.shift && Math.abs(t - d) <= SNAP_WINDOW) d = t;
-      groupRotate(adapter, adapter.dim, s, d);
+      groupRotate(adapter, adapter.dim, s, d, turnWay());
     } else if (m.handle === 'scale') {
       const dist = Math.max(8, Math.hypot(p.x - s.center[0], p.y - s.center[1]));
       groupScale(adapter, adapter.dim, s, dist / data.dist , state.scaleMode);
@@ -7334,7 +8039,7 @@ function attachInput(deps           )              {
     markDirty();
     post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle });
     const from = s.from.get(s.primary), now = adapter.anchor(s.primary)?.pose;
-    if (from && now) handles.readout(readout(m.handle, from, now, 'y'));
+    if (from && now) handles.readout(readout(m.handle, from, now, canTurn() ? state.axis : 'y'));
   };
 
   const startHandle = (handle            , p     , anywhere = false)       => {
@@ -7531,6 +8236,34 @@ function attachInput(deps           )              {
     select(key);
   };
 
+  /**
+   * The place's menu at the pointer (see the header): pick what is under it if it is not picked yet (no camera move),
+   * then ask the editor page to draw the menu. The strip's own choices close first (one menu at a time).
+   */
+  const contextAt = (p     ) => {
+    if (handles.menuOpen()) menu(null);
+    const key = tappable(p, p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null;
+    const picked = state.group.length > 1 ? state.group : state.selected ? [state.selected] : [];
+    if (key && !picked.includes(key)) select(key);
+    // The next plain tap on the same spot should not walk to the object behind (that is for a second LEFT press).
+    lastTap = null;
+    post({ type: 'studio:placement/context', key, x: p.x, y: p.y, touch: p.type !== 'mouse' });
+  };
+  // The touch held still for the menu (LONG_PRESS_MS): armed when a plain press starts, checked when it fires.
+  let menuTimer = 0;
+  const armMenuPress = (id        ) => {
+    win.clearTimeout(menuTimer);
+    menuTimer = win.setTimeout(() => {
+      const p = ptrs.get(id);
+      if (!p || ptrs.size !== 1 || mode.kind !== 'pending') return;
+      if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
+      // Forget the pointer: its release must not also be read as a tap (which would pick or drop the pick again).
+      ptrs.delete(id);
+      mode = { kind: 'none' };
+      contextAt(p);
+    }, LONG_PRESS_MS);
+  };
+
   /** Box selection: every listed object whose pivot is inside the band joins the selection. */
   let band                                                        = null;
   const finishBox = () => {
@@ -7592,7 +8325,8 @@ function attachInput(deps           )              {
     ptrs.delete(e.pointerId);
     // A new touch while nothing is down: clear leftovers from lost releases.
     if (e.pointerType !== 'mouse' && e.isPrimary) ptrs.clear();
-    const p      = { id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, shift: e.shiftKey, alt: e.altKey };
+    const p      = { id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, shift: e.shiftKey, alt: e.altKey,
+      menu: e.pointerType === 'mouse' && (e.button === 2 || (MAC && e.button === 0 && e.ctrlKey && !e.metaKey)) };
     ptrs.set(e.pointerId, p);
     try {
       (e.target           ).setPointerCapture?.(e.pointerId);
@@ -7600,12 +8334,27 @@ function attachInput(deps           )              {
       /* element may not accept capture (e.g. document) */
     }
     if (ptrs.size === 2) {
+      win.clearTimeout(menuTimer);
       // Second finger: whatever the first was doing turns into pinch/pan.
       if (mode.kind === 'handle' || mode.kind === 'group') endGesture();
+      if (mode.kind === 'rise') riseEnd();
       mode = { kind: 'pinch', ...twoFingers() };
       return;
     }
     if (ptrs.size > 2) return;
+    // Camera up / down: one step now, more while held (riseHold), or the drag's travel (onMove). Before the strip and
+    // the tool: these buttons belong to the view, whatever is picked or chosen.
+    const rd = riseUi?.fromEvent(e);
+    if (rd) {
+      if (handles.menuOpen()) menu(null);
+      const t0 = win.performance.now();
+      mode = { kind: 'rise', dir: rd, t0, follow: false };
+      riseLast = 0;
+      riseUi .setActive(rd);
+      riseBy((rd === 'up' ? 1 : -1) * RISE_STEP * win.innerHeight);
+      if (!riseFrame) riseFrame = core.time.raf(riseHold);
+      return;
+    }
     // The ▾ in the turn / size button's corner: open (or close) its choices; the tool stays as it was.
     const more = moreFromEvent(e);
     if (more && state.selected && hasChoices(more)) {
@@ -7619,12 +8368,15 @@ function attachInput(deps           )              {
     const choice = choiceFromEvent(e);
     if (choice) {
       if (choice.kind === 'axis') setAxis(choice.id            );
-      else {
+      else if (choice.kind === 'turn') {
+        state.turnMode = choice.id === 'inplace' ? 'inplace' : 'spread';
+        handles.setTurnMode(state.turnMode);
+      } else {
         state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
         handles.setScaleMode(state.scaleMode);
       }
       menu(null);
-      const k             = choice.kind === 'axis' ? 'rotate' : 'scale';
+      const k             = choice.kind === 'scale' ? 'scale' : 'rotate';
       if (tool !== k) chooseTool(k, 'menu');
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
@@ -7650,11 +8402,14 @@ function attachInput(deps           )              {
       markDirty();
       return;
     }
-    boxStart = boxable(p);
+    // The Mac's Control-click is a right-click here: never a box, a tool drag or a grab (a drag from it looks around).
+    boxStart = !p.menu && boxable(p);
     // A chosen tool that can act on the pick: a drag from here uses it (Shift at the press still draws a box from an empty spot).
-    toolStart = !boxStart && !!tool && !!state.selected && !looksAround(p) && toolApplies(tool);
-    grabStart = !boxStart && !toolStart && grabbable(p);
+    toolStart = !p.menu && !boxStart && !!tool && !!state.selected && !looksAround(p) && toolApplies(tool);
+    grabStart = !p.menu && !boxStart && !toolStart && grabbable(p);
     mode = { kind: 'pending' };
+    // A finger (or pen) held still here opens the place's menu. Not with a game tool (it took the press above).
+    if (p.type !== 'mouse' && ptrs.size === 1) armMenuPress(p.id);
   };
 
   const onMove = (e              ) => {
@@ -7676,6 +8431,12 @@ function attachInput(deps           )              {
       adapter.view.pan(t.cx - mode.cx, t.cy - mode.cy);
       mode = { kind: 'pinch', ...t };
       markDirty();
+      return;
+    }
+    if (mode.kind === 'rise') {
+      // Dragged on ↑ / ↓: from the slop on, the camera follows the drag (up = up, the whole travel), held-repeat stops.
+      if (!mode.follow && Math.abs(p.y - p.sy) > UI.tapSlopPx) mode.follow = true;
+      if (mode.follow) riseBy(-dy);
       return;
     }
     // A tool dragged anywhere reads the pointer shifted onto the object's point (see the start above).
@@ -7734,11 +8495,13 @@ function attachInput(deps           )              {
       // Pan: middle or right button, Shift, or (2D) any drag. 3D left drag orbits.
       // (3D right drag used to orbit too; it pans now, like most 3D editors,
       // since Shift+drag from an empty spot became the box selection.)
-      const pan = adapter.dim === '2d' || p.button === 1 || p.button === 2 || p.shift || !adapter.view.orbit;
+      const pan = adapter.dim === '2d' || p.button === 1 || p.button === 2 || p.menu || p.shift || !adapter.view.orbit;
       mode = { kind: 'look', pan };
     }
     if (mode.kind === 'look') {
-      if (mode.pan) adapter.view.pan(dx, dy);
+      // A right-drag while flying looks where the camera stands (the engines' fly mode; see the header).
+      if (p.flew && adapter.view.look) adapter.view.look(dx, dy);
+      else if (mode.pan) adapter.view.pan(dx, dy);
       else adapter.view.orbit (dx, dy);
       markDirty();
     }
@@ -7747,10 +8510,22 @@ function attachInput(deps           )              {
   const onUp = (e              ) => {
     block(e);
     win.clearTimeout(pressTimer);
+    win.clearTimeout(menuTimer);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
     ptrs.delete(e.pointerId);
-    if (mode.kind === 'pending' && e.type === 'pointerup') tap(p);
+    if (mode.kind === 'rise') {
+      riseEnd();
+      mode = { kind: 'none' };
+      return;
+    }
+    // A right-click (no travel): the place's menu instead of a tap (it picks only what is not picked yet).
+    if (mode.kind === 'pending' && e.type === 'pointerup') {
+      // A right press that flew (WASD held with it) was the engines' fly mode, not a click: no menu.
+      if (p.menu) {
+        if (!p.flew) contextAt(p);
+      } else tap(p);
+    }
     if (mode.kind === 'look' || mode.kind === 'pending') {
       post({ type: 'studio:core/view-state', state: adapter.view.state() });
       mode = { kind: 'none' };
@@ -7763,7 +8538,7 @@ function attachInput(deps           )              {
       }
     } else if (mode.kind === 'handle' || mode.kind === 'group') {
       // A tap (no drag) on a strip button CHOOSES its tool (tool modes, see the header). On the chosen one
-      // again: the others put the tool down; the turn button (3D, one object) and the size button (several)
+      // again: the others put the tool down; the turn button (3D, or several) and the size button (several)
       // open / close their choices — an unadvertised shortcut only since 2026-10-18 (the ▾ and the long press
       // are the way in; a second press is not something people try, play test 2026-10-18).
       const tap = !mode.anywhere && Math.hypot(p.x - p.sx, p.y - p.sy) <= UI.tapSlopPx;
@@ -7771,7 +8546,7 @@ function attachInput(deps           )              {
       const single = mode.kind === 'handle';
       endGesture();
       if (tap) {
-        const choices = (which === 'rotate' && single && hasChoices('axis')) || (which === 'scale' && !single && hasChoices('scale'));
+        const choices = (which === 'rotate' && hasChoices('axis')) || (which === 'scale' && !single && hasChoices('scale'));
         if (which !== tool) chooseTool(which, 'strip');
         else if (choices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
         else chooseTool(null, 'strip');
@@ -7805,8 +8580,25 @@ function attachInput(deps           )              {
     // Shortcuts that belong to the shell (undo, redo, save, escape...) are
     // forwarded so they work wherever focus is.
     post({ type: 'studio:core/key', key: e.key, code: e.code, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey });
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    flyFast = e.shiftKey;
+    // ⌘ / Ctrl / ⌥ with a fly key is a shortcut, not flying; and a Mac sends no keyup for keys let go while ⌘ is
+    // down, so whatever was held stops here rather than flying on by itself.
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      flyHeld.clear();
+      return;
+    }
     const key = state.selected;
+    // Fly (see the header): before the tool keys (S = Size with a pick) and the turn keys (E / Q), which keep their
+    // meaning unless flying is allowed now. Not while typing in one of the game's own fields, nor composing (IME).
+    const fk = canFly() && !e.isComposing && !typingIn(e.target) ? flyKeyOf(e) : null;
+    if (fk && (flyHeld.has(fk) || flyOk(fk))) {
+      if (!flyHeld.has(fk)) {
+        flyHeld.add(fk);
+        if (!e.repeat) flyBy([fk], FLY_KICK_S, e.shiftKey);
+      }
+      flyStart();
+      return;
+    }
     if (e.key === ' ') {
       spaceHeld = true;
       return;
@@ -7823,10 +8615,19 @@ function attachInput(deps           )              {
       chooseTool(tk, 'key');
       return;
     }
-    // R: the next turn axis (3D, one object picked), with the choices shown for a moment of feedback.
+    // R: the next turn axis (3D, one or several picked), with the choices shown for a moment of feedback.
     if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
       setAxis('next');
       if (!handles.menuOpen()) menu('axis');
+      return;
+    }
+    // E / Q: camera up / down with nothing picked (they have no other job then) or while looking around (Space held,
+    // a right / middle / ⌥ drag) — the 3D tools' habit. With something picked otherwise they still turn it (keyStep).
+    const kl = e.key.toLowerCase();
+    // Adapters without fly (rise only) keep the steps.
+    if ((kl === 'e' || kl === 'q') && !canFly() && adapter.view.rise && (!key || spaceHeld || mode.kind === 'look' || [...ptrs.values()].some(looksAround))) {
+      riseBy((kl === 'e' ? 1 : -1) * (e.shiftKey ? RISE_KEY_STEP / 5 : RISE_KEY_STEP) * win.innerHeight);
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
       return;
     }
     if (!key) return;
@@ -7836,10 +8637,15 @@ function attachInput(deps           )              {
 
   const onKeyUp = (e               ) => {
     if (e.key === ' ') spaceHeld = false;
+    flyFast = e.shiftKey;
+    const fk = flyKeyOf(e);
+    if (fk) flyHeld.delete(fk);
   };
 
   const onBlur = () => {
     spaceHeld = false;
+    // The keyups go elsewhere now: stop flying (the next frame sees no key).
+    flyHeld.clear();
     // Do NOT clear pointers here (see the header comment). Only stop showing
     // a pressed handle; the gesture itself continues if the finger is down.
     handles.setActive(mode.kind === 'handle' || mode.kind === 'group' ? mode.handle : null);
@@ -7969,7 +8775,7 @@ function attachInput(deps           )              {
     drawGhosts();
     showAxis();
     // The ▾ on the turn / size buttons: only while they have choices (it sits inside the button: the strip never moves).
-    handles.setOptions({ axis: hasChoices('axis'), scale: hasChoices('scale') }, lang);
+    handles.setOptions({ axis: hasChoices('axis'), scale: hasChoices('scale'), axes: canTurn(), several: state.group.length > 1 }, lang);
     const key = state.selected;
     // The AI's marks first (under your own): what is picked is drawn in your colour only.
     const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
@@ -7999,6 +8805,7 @@ function attachInput(deps           )              {
   return {
     frame: place,
     selectionChanged() {
+      riseLabels();
       if (handles.menuOpen()) menu(null);
       armed = false;
       hoverIn = false;
@@ -8019,15 +8826,28 @@ function attachInput(deps           )              {
     setLook(on) {
       spaceHeld = !!on;
     },
+    setFly(keys, fast) {
+      if (!canFly()) return;
+      const next = keys.filter((k)              => k in FLY_DIRS);
+      // A key just pressed in the shell moves at once, as in the game page (FLY_KICK_S).
+      const fresh = next.filter((k) => !shellFly.includes(k));
+      shellFly = next;
+      shellFast = !!fast;
+      if (fresh.length) flyBy(fresh, FLY_KICK_S, shellFast, true);
+      if (next.length) flyStart();
+    },
     setHandleSize(px) {
       handles.setSize(px);
+      riseUi?.setSize(px);
       place();
     },
     setTheme(theme) {
       handles.setTheme(theme);
+      riseUi?.setTheme(theme);
     },
     setInset(inset) {
       handles.setInset(inset);
+      riseUi?.setInset(inset);
       place();
     },
     setAiMarks(keys, label) {
@@ -8039,12 +8859,14 @@ function attachInput(deps           )              {
     setLang(l) {
       lang = l;
       handles.setLabels(HANDLE_LABELS[lang] || HANDLE_LABELS.en);
+      riseLabels();
       axisShown = null;
       showAxis();
     },
     detach() {
       endGesture();
       win.clearTimeout(pressTimer);
+      win.clearTimeout(menuTimer);
       win.removeEventListener('pointerdown', onDown, opts);
       win.removeEventListener('pointermove', onMove, opts);
       win.removeEventListener('pointermove', onHover, opts);
@@ -8058,6 +8880,9 @@ function attachInput(deps           )              {
       win.clearTimeout(hintTimer);
       for (const t of blocked) win.removeEventListener(t, block, opts);
       handles.destroy();
+      if (riseFrame) core.time.cancelRaf(riseFrame);
+      if (flyFrame) core.time.cancelRaf(flyFrame);
+      riseUi?.destroy();
       doc.documentElement.style.touchAction = prevTouchAction;
     },
   };
@@ -8065,7 +8890,7 @@ function attachInput(deps           )              {
 
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -8076,9 +8901,9 @@ __defs[24] = function (__exports) {
                                              
 const { withRules } = __require(17);
 const { withEdits } = __require(18);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(19);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(19);
 const { createToolHost } = __require(20);
-const { attachInput } = __require(23);
+const { attachInput } = __require(24);
 const { runSelfCheck } = __require(16);
 
                              
@@ -8115,6 +8940,8 @@ const { runSelfCheck } = __require(16);
                  
                                                                                                  
                             
+                                                                                                                   
+                           
  
 
 function createEditor(deps            )         {
@@ -8124,7 +8951,7 @@ function createEditor(deps            )         {
   // the adapter itself is unaware of both.
   const edits = withEdits(raw);
   const adapter = withRules(edits, deps.rules);
-  const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread' };
+  const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
   let lang       = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -8441,7 +9268,8 @@ function createEditor(deps            )         {
       groupMove(adapter, adapter.dim, g, run.dx, run.dy);
     } else if (m.op === 'rotate') {
       run.total += m.d || 0;
-      groupRotate(adapter, adapter.dim, g, run.total);
+      // Q / E: upright, as for one object (the axis is the turn tool's), together or each in place as chosen.
+      groupRotate(adapter, adapter.dim, g, run.total, { mode: state.turnMode });
     } else if (m.op === 'scale') {
       run.total *= m.d || 1;
       groupScale(adapter, adapter.dim, g, run.total, state.scaleMode);
@@ -8494,8 +9322,11 @@ function createEditor(deps            )         {
    * - otherwise: just to the right of the original(s) on screen (a group
    *   keeps its shape: everyone moves the same way).
    * With a `pose` (redo, reopening) the copy goes exactly there.
+   * `at: 'view'` (the Library's "Add to scene", 2026-10-18): the copies go to the middle of the free part of the
+   * frame instead (what the card and the ask bar leave), keeping the group's shape — on the original's ground in
+   * 3D (a drag of the screen box, as the move tool does), so "add a pine" lands where the person is looking.
    */
-  const copy = (reqs                                                   ) => {
+  const copy = (reqs                                                   , at         ) => {
     const done                                                                    = [];
     const failed           = [];
     const before = new Map(adapter.list().map((i) => [i.key, i]));
@@ -8512,6 +9343,7 @@ function createEditor(deps            )         {
     }
     // Spacing of copies of copies, in parent space.
     const rest                                       = [];
+    if (at === 'view' && fresh.length && toView(fresh)) fresh.length = 0;
     for (const f of fresh) {
       const src = before.get(f.from);
       const orig = src?.copyOf ? before.get(src.copyOf) : undefined;
@@ -8537,6 +9369,45 @@ function createEditor(deps            )         {
     post({ type: 'studio:placement/added', items: done.filter((d) => d.pose), failed });
     // The copies become the selection, so they can be moved (or copied again) at once.
     if (done.length) selectMany(done.map((d) => d.key), done[done.length - 1] .key);
+  };
+
+  /**
+   * Put new copies in the middle of the free part of the frame (copy with `at: 'view'`). True when done.
+   * 2D: a screen drag of the group from where the originals' box is drawn to the middle (stage space).
+   * 3D: "on the ground where the camera looks". The middle of the view is often sky or far hills (Lantern Cove opens
+   * on the player's camera, its horizon a little under the middle), so the spot is the first point straight down
+   * from the middle whose ray meets the original's ground (toGround at its height): the lead copy's origin goes
+   * there (the others by the same metres), then — now in front of the camera — a drag of its pivot onto that screen
+   * point, so a long thing (the pier) is placed by its middle, not its origin. WHY: the first try (2026-10-18) only
+   * dragged from the original's screen point to the middle; that ray hit the sky, the drag kept the object where it
+   * was, and the pier copy stayed at the frame's right edge (off screen on a phone). Without toGround, or with no
+   * ground anywhere under the middle: the drag from the originals' box, as in 2D.
+   */
+  const toView = (fresh                                      )          => {
+    const keys = fresh.map((f) => f.key);
+    const area = freeArea(inset.top);
+    const tx = (area.x0 + area.x1) / 2, ty = (area.y0 + area.y1) / 2;
+    const g = beginGroup(adapter, keys, keys[0] );
+    if (!g) return false;
+    const lead = g.from.get(g.primary);
+    if (adapter.dim === '3d' && lead && adapter.toGround) {
+      // From the middle down to 85 % of the free height: 0.5 = the middle itself (a camera looking down at the ground).
+      for (const f of [0.5, 0.58, 0.66, 0.75, 0.85]) {
+        const y = area.y0 + (area.y1 - area.y0) * f;
+        const hit = adapter.toGround(tx, y, lead.p[1] ?? 0);
+        if (!hit) continue;
+        groupShift(adapter, g, [hit[0]  - (lead.p[0] ?? 0), 0, hit[2]  - (lead.p[2] ?? 0)]);
+        const a = adapter.anchor(g.primary);
+        const g2 = a && a.visible ? beginGroup(adapter, keys, g.primary) : null;
+        if (g2 && a) groupMove(adapter, '3d', g2, tx - a.center[0], y - a.center[1]);
+        return true;
+      }
+    }
+    // The originals' box: the copies stand exactly there, but were made this frame (not drawn yet).
+    const ga = groupAnchor(adapter, fresh.map((f) => f.from), fresh[0] .from);
+    if (!ga || !ga.visible) return false;
+    groupMove(adapter, adapter.dim, g, tx - ga.center[0], ty - ga.center[1]);
+    return true;
   };
 
   const setEditing = (on         , viewState          ) => {
@@ -8594,7 +9465,7 @@ function createEditor(deps            )         {
         /* the page is usually reloaded after editing anyway */
       }
     }
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing });
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
   };
 
   toolHost = createToolHost({ win, adapter, state, post, select: (k) => select(k), lang: () => lang, markDirty: () => (dirtyFrame = true) });
@@ -8646,6 +9517,9 @@ function createEditor(deps            )         {
         case 'studio:placement/look':
           input?.setLook(!!msg.on);
           break;
+        case 'studio:core/fly':
+          input?.setFly(Array.isArray(msg.keys) ? msg.keys : [], !!msg.fast);
+          break;
         case 'studio:placement/menu':
           input?.closeMenu();
           break;
@@ -8682,6 +9556,8 @@ function createEditor(deps            )         {
           else if (v.action === 'zoom') adapter.view.zoom(v.factor);
           else if (v.action === 'orbit') adapter.view.orbit?.(v.dx, v.dy);
           else if (v.action === 'pan') adapter.view.pan(v.dx, v.dy);
+          // Camera up / down from the editor page (⌘K, E / Q there): `by` is a share of the game's height.
+          else if (v.action === 'rise') adapter.view.rise?.(v.by * win.innerHeight);
           else if (v.action === 'restore') adapter.view.restore?.(v.state);
           dirtyFrame = true;
           post({ type: 'studio:core/view-state', state: adapter.view.state() });
@@ -8703,7 +9579,7 @@ function createEditor(deps            )         {
           break;
         case 'studio:placement/copy':
           closeStepRun();
-          copy(msg.items);
+          copy(msg.items, msg.at);
           break;
         case 'studio:placement/remove': {
           closeStepRun();
@@ -8775,7 +9651,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -8789,7 +9665,7 @@ const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(11);
 const { installCore } = __require(14);
 const { adapterFromPort2D } = __require(15);
 const { runSelfCheck } = __require(16);
-const { createEditor } = __require(24);
+const { createEditor } = __require(25);
                                                     
 
                                 
@@ -9114,10 +9990,11 @@ function startBridge(opts               )       {
     const found = editor.driven;
     Object.defineProperty(api, '_debug', {
       value: Object.freeze({ anchor: (k        ) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k        ) => found.foot?.(k) ?? null,
+        middle: (k        ) => found.middle?.(k) ?? null,
         under: (x        , y        ) => { try { return found.pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
       enumerable: false,
     });
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false });
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
     for (const m of queue.splice(0)) editor.handle(m);
   });
 }
@@ -9125,7 +10002,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -9144,11 +10021,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(10);
-const { startBridge } = __require(25);
+const { startBridge } = __require(26);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(26);
+__require(27);
 })();

@@ -13,6 +13,12 @@
  * Gestures use fractions of the canvas, not pixels, so they feel the same on a phone and a 4K screen:
  *   orbit(dx, dy): full width = half a turn, full height = 90°; dragging down looks more from above
  *   pan(dx, dy):   the ground under the finger follows the finger (horizontally; the target height never changes)
+ *   rise(dy):      camera up (dy > 0) or down, straight up: the target and the camera move together, so the direction
+ *                  never changes; dy = 1 is one view height at the target (the scene slides down the screen by its
+ *                  full height). The one way to change height — pan keeps it, orbit turns round it, zoom slides along
+ *                  the line of sight (camera up / down, play test 2026-10-18: "I can't raise the camera; it's needed").
+ *   fly(r, u, f):  WASD — the camera and its turning point together, scaled to the scene (see fly)
+ *   look(dx, dy):  turn where the camera stands (right-drag while flying); orbit turns round the point in front
  *   zoom(f, x, y): f > 1 moves closer; the point under (x, y) stays under the cursor (the camera slides along the line
  *                  through that point — exact for perspective)
  */
@@ -22,6 +28,9 @@ import { rayFromCamera, rayPlaneY, v } from './math.js';
 const DEG = Math.PI / 180;
 export const PITCH_MIN = 8 * DEG;
 export const PITCH_MAX = 85 * DEG;
+/** Fly speed (WASD): 0.8 of the distance to the turning point per second (see fly) — the first value (2026-10-18), about
+ * a screen's depth a second; tune it here after people try it. Shift (the bridge) = ×3, as engines' "fast". */
+export const FLY_PER_S = 0.8;
 
 export function createEditView(gameCamera) {
   // clone() keeps the game's camera type and three version (we cannot `new` a class we did not import).
@@ -65,6 +74,11 @@ export function createEditView(gameCamera) {
     // 0.3 m lets you inspect a small prop; 8× the scene radius is "far enough to see everything, small"
     st.distance = Math.min(Math.max(0.3, st.distance), Math.max(60, st.radius * 8));
   }
+  /** Where the camera stands (apply()'s position, from the state, so it is right before the next apply too). */
+  function eyeOf() {
+    const cp = Math.cos(st.pitch);
+    return [st.target[0] + st.distance * cp * Math.sin(st.yaw), st.target[1] + st.distance * Math.sin(st.pitch), st.target[2] + st.distance * cp * Math.cos(st.yaw)];
+  }
   function viewHeight() {
     return cam.isPerspectiveCamera ? 2 * st.distance * Math.tan((cam.fov * DEG) / 2) : 2 * st.distance * Math.tan(25 * DEG);
   }
@@ -94,6 +108,44 @@ export function createEditView(gameCamera) {
       const fwd = [-Math.sin(st.yaw), 0, -Math.cos(st.yaw)]; // horizontal, from the camera toward the target
       const k = 1 / Math.max(0.15, Math.sin(st.pitch)); // a screen-height of drag covers more ground when looking flat
       st.target = v.add(st.target, v.add(v.scale(right, -dx * w), v.scale(fwd, dy * h * k)));
+    },
+    rise(dy) {
+      // Bound like the distance: far enough to look down on the whole scene, never a camera lost kilometres away.
+      // Before 2026-10-18 the target's height was fixed by the opening view / frame (no way to change it at all).
+      const lim = Math.max(60, st.radius * 8);
+      st.target[1] = Math.min(lim, Math.max(-lim, st.target[1] + dy * viewHeight()));
+    },
+    /**
+     * Fly (WASD, camera-wasd pass 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"):
+     * move the camera and the point it turns round together by `right` / `up` / `fwd`, each in seconds of travel at
+     * the normal speed (the bridge passes the frame's dt; Shift multiplies it). fwd follows the line of sight, so W
+     * dives where you look, as in Unity / Unreal / Godot; up is straight up (the same as rise), right is level.
+     * Speed: FLY_PER_S of the distance to the turning point, kept within 0.25–2 scene radii — the view crosses
+     * about the same share of the screen per second in a small room and on Lantern Cove, slows down close to a
+     * small prop, and never crawls (or races) when zoomed very far in (or out). The height keeps rise's bound;
+     * sideways has none, as pan (engines let you fly anywhere, under the ground too).
+     */
+    fly(right, up, fwd) {
+      const sp = FLY_PER_S * Math.min(Math.max(st.distance, st.radius * 0.25), st.radius * 2);
+      const cp = Math.cos(st.pitch);
+      const look = [-cp * Math.sin(st.yaw), -Math.sin(st.pitch), -cp * Math.cos(st.yaw)];
+      const side = [Math.cos(st.yaw), 0, -Math.sin(st.yaw)];
+      st.target = v.add(st.target, v.scale(v.add(v.add(v.scale(side, right), [0, up, 0]), v.scale(look, fwd)), sp));
+      const lim = Math.max(60, st.radius * 8);
+      st.target[1] = Math.min(lim, Math.max(-lim, st.target[1]));
+    },
+    /**
+     * Turn the view where the camera stands (a fly-through look: right-drag while flying, as engines do), instead of
+     * turning round the point in front (orbit). Same signs and sensitivity as orbit: right = turn right, up = look up;
+     * the pitch keeps orbit's limits, so a later orbit never jumps.
+     */
+    look(dx, dy) {
+      const eye = eyeOf();
+      st.yaw -= dx * Math.PI;
+      st.pitch += dy * (Math.PI / 2);
+      clampPitch();
+      const cp = Math.cos(st.pitch);
+      st.target = v.sub(eye, v.scale([cp * Math.sin(st.yaw), Math.sin(st.pitch), cp * Math.cos(st.yaw)], st.distance));
     },
     zoom(factor, ndcX = 0, ndcY = 0) {
       const f = Math.min(5, Math.max(0.2, factor));

@@ -47,8 +47,8 @@ Someone trying the editor for the first time often has no game yet. Look once (t
    are three.js (3D) and PixiJS (2D) with their adapter included, so skip §1 and §2. In the Claude app, add
    `--no-open` and open the editor next to the chat (§3, "In the Claude app").
 3. Tell the user the URL (in the Claude app: "The editor is open next to this chat." instead) and one line: "Here's a sample game in your folder. Click anything and drag it to move
-   it, type a change in the box at the bottom, and click Save when you like it." The editor shows the same steps the first
-   time, one line at a time. Say nothing else about the editor: not the self-check (mention it only if it printed
+   it, type a change in the box at the bottom, and click Save when you like it."
+   Say nothing else about the editor: not the self-check (mention it only if it printed
    `studio: check failed`), not the watch, not the log.
 4. **The samples already read `placement.json` when they start** (the loader is in them, §4 Way 1). When the person
    saves, do not ask how to apply it: look at the game (§3.3), set `done`, and tell them it's in.
@@ -200,7 +200,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
 | `studio: saved placement` | `placement.json` was written | §4 |
 | `studio: saved library` | `library.json` was written | §6 |
 | `studio: next-step` | The user picked a KUMODeck item in "Ideas for your AI", or pressed "Ask AI to delete" (Delete) on unused files in the library (`next-step delete-files`) | Read `.studio/next-step.md`, then §7 (delete-files: §6) |
-| `studio: request ask` | The user typed a request about the picked objects ("add 3 more in a row"), or about the whole game when the line ends with `(whole game)` | §3.1 |
+| `studio: request ask` | The user typed a request about the picked objects ("add 3 more in a row") — the names in brackets, then any files they picked in the Library (`(assets/boss.glb)`) —, or about the whole game when the line ends with `(whole game)` | §3.1 |
 | `studio: request name` | The user asked you to name objects that have no name | §3.1 and §5 (add a mark) |
 | `studio: request next-step fit` / `look` / `tool` | An in-game idea, with the user's words | §3.1, then §8 (fit, tool) or §9 (look) |
 | `studio: saved .studio/data/<tool>.json` | A game tool you wrote (§8) saved its data | Read that file and apply it like placement.json (a loader, without asking, §4) |
@@ -253,7 +253,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units | Do what they asked in the game code. Find each object by its key (§5). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name | Add a mark to each in the code (§5), choosing names from what they are; say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `undone` | They pressed **Undo AI change** (or **Redo**, said in `text`). The editor already put the game's files back; `files` lists what changed | Do **not** redo it or "fix" it. Forget the undone change (the code is as it was before it); say one line in your window and mark it handled: `--status done --request <id> --note "Okay, it's back to how it was"` (Redo: `"Okay, your change is back"`) |
@@ -280,6 +280,9 @@ node <…>/bin/studio.mjs <game folder> --status asking --request <id> --note "I
    resized or removed (0 for a change in looks or behavior). Give every new object a mark (§5) so the editor can
    show it as new. While you are `working`, the editor waits for `done` instead of reloading a half-written game.
 4. `failed` when you stop without finishing (say why in the note). The person can still press **Undo AI change**.
+   With several requests waiting, finish one (its file changes, then `done`) before you touch the code for the next:
+   **Undo AI change** puts back everything changed since the request it belongs to, so work for a later request done
+   early is undone with it (a save and "add 2 rocks" handled in one go: undoing the save also took the rocks away).
 5. `asking` **before** you ask the person anything in your own window and wait for the answer: `--note` is the
    question, in one line. The editor shows "Your AI has a question" with it, so the person in the editor knows to
    answer you; otherwise it keeps saying "Your AI has it" while you wait. After the answer, go on with `working` and

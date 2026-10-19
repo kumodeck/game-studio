@@ -15,6 +15,14 @@
 .demo-banner .demo-back { color: inherit; text-decoration: none; opacity: .8; flex: none; }
 .demo-banner .demo-back:hover { opacity: 1; text-decoration: underline; }
 body.studio-demo .shell { height: calc(100dvh - var(--demo-h)); }
+/* On a phone the words don't fit one line (2026-10-18: the line now also says the demo isn't connected to an AI, the
+   only place that says so since the "Get Game Studio →" line under the game was taken out): two lines, not a cut-off "…".
+   The shell gets the same height less (--demo-h), so nothing is covered. 36 px = 2 × 14 px + 4 px above and below. */
+@media (max-width: 640px) {
+  :root { --demo-h: 36px; }
+  .demo-banner { white-space: normal; line-height: 14px; }
+  .demo-banner .demo-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+}
 /* The demo keeps the person's whole request in the AI line (the local studio cuts it at 40
    characters). The caption is a grid, whose items would grow to the text: let them shrink so
    .ai-text's own ellipsis applies (full text on hover). */

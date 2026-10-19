@@ -178,6 +178,7 @@ export function withEdits(inner: StudioAdapter): EditsAdapter {
       return g ? onGhost(g, () => inner.turn!(g.src, d, axis)) : inner.turn!(key, d, axis);
     } : undefined,
     foot: inner.foot ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.foot!(key)) : undefined,
+    middle: inner.middle ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.middle!(key)) : undefined,
     coverage: inner.coverage ? (key) => (ghosts.has(key) || removed.has(key) ? null : inner.coverage!(key)) : undefined,
     scale(key, f) {
       const g = ghostOf(key);

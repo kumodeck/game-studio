@@ -58,7 +58,7 @@ const FETCH_SWITCH = `(() => {
 const IN = {
   ready: `document.querySelectorAll('.obj').length > 0 && !!document.querySelector('iframe').contentWindow.__gameStudio?._debug`,
   state: `JSON.stringify({
-    names: [...document.querySelectorAll('.gsl-tile .gsl-name')].map((e) => e.textContent),
+    names: [...document.querySelectorAll('.gsl-tile[data-kind=file] .gsl-name')].map((e) => e.textContent),
     count: document.querySelector('.gsl-count')?.textContent ?? null,
     empty: document.querySelector('.gsl-empty')?.textContent ?? null,
     fail: document.querySelector('.gsl-readfail:not([hidden])')?.textContent ?? null,
@@ -85,6 +85,10 @@ async function run(starter) {
   const toAssets = async () => {
     await page.eval(IN.click('[data-tool=library]'));
     await page.waitFor(`document.querySelector('[data-tool=library]')?.getAttribute('aria-selected') === 'true'`);
+    // The Library shows objects and assets in one grid ("one Library", 2026-10-18): this test is about the assets, so
+    // it reads the file tiles only (`[data-kind=file]`). It used to press "Assets" in the filters; since a review's
+    // All / 3D / 2D / Sound / Other (2026-10-18) there is no "files only" filter, and the files are in All anyway.
+    await page.waitFor(`!!document.querySelector('.shelf-filters [data-shelf=all]')`, 5000);
   };
   const toScene = () => page.eval(IN.click('[data-tool=placement]'));
   /** Wait until the panel shows an answer (a list, an empty line other than "Reading…", or the failure). */
@@ -101,7 +105,7 @@ async function run(starter) {
     await open();
     await page.waitFor(IN.ready, 30000);
     await toAssets();
-    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === ${own.length}`, 15000);
+    await page.waitFor(`document.querySelectorAll('.gsl-tile[data-kind=file] .gsl-name').length === ${own.length}`, 15000);
     s = await state();
     assert.deepEqual([...s.names].sort(), own);
     const unused = await page.eval(`document.querySelectorAll('.gsl-tile .gsl-badge-unused').length`);
@@ -146,7 +150,7 @@ async function run(starter) {
     await open();
     await page.waitFor(IN.ready, 30000);
     await toAssets();
-    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === ${named.length + 2}`, 15000);
+    await page.waitFor(`document.querySelectorAll('.gsl-tile[data-kind=file] .gsl-name').length === ${named.length + 2}`, 15000);
     s = await state();
     assert.deepEqual(s.names.sort(), [...named, 'chime.wav', 'sign.png'].sort());
     step(`two files → listed with the missing ones (${s.count})`);
@@ -165,7 +169,7 @@ async function run(starter) {
     await shot(page, '3-failed');
     await page.eval(`window.__assetsFail = null`);
     assert.ok(await page.eval(IN.click('[data-action=library-retry]')), 'no Try again button');
-    await page.waitFor(`document.querySelectorAll('.gsl-tile .gsl-name').length === ${named.length + 2}`, 10000);
+    await page.waitFor(`document.querySelectorAll('.gsl-tile[data-kind=file] .gsl-name').length === ${named.length + 2}`, 10000);
     s = await state();
     assert.equal(s.fail, null, 'the failure line stayed after a good read');
     step('Try again → listed');

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildAssetList, candidatesFor, extractRefs, looksLikeAtlas, matchCode, typeOfPath } from '../src/tools/library/refs.ts';
-import { assetsOfKey, buildRows, countBadges, filterRows, urlToPath } from '../src/tools/library/marks.ts';
+import { assetsOfKey, buildRows, countBadges, filterRows, shelfOfType, urlToPath } from '../src/tools/library/marks.ts';
 import { addFile, buildLibraryJson, emptyState, pendingCount, setReplace, stateFromFile } from '../src/tools/library/result.ts';
 
 test('extractRefs finds quoted names, CSS url() and HTML attributes, not remote or templated ones', () => {
@@ -160,6 +160,30 @@ test('filterRows by type, badge and name', () => {
   assert.deepEqual(filterRows(rows, { badge: 'unused' }).map((r) => r.path), ['assets/old.png']);
   assert.deepEqual(filterRows(rows, { q: 'TRE' }).map((r) => r.path), ['assets/tree.png']);
   assert.equal(filterRows(rows, { type: 'all', badge: 'all', q: '' }).length, rows.length);
+});
+
+test('shelves: All / 3D / 2D / Sound / Other (a review of the editor, 2026-10-18)', () => {
+  assert.equal(shelfOfType('model'), '3d');
+  assert.equal(shelfOfType('image'), '2d');
+  assert.equal(shelfOfType('atlas'), '2d');
+  assert.equal(shelfOfType('sound'), 'sound');
+  assert.equal(shelfOfType('font'), 'other');
+  assert.equal(shelfOfType('other'), 'other');
+  const files = [
+    { path: 'a/rock.glb', size: 1, type: 'model' as const, refsInCode: [] },
+    { path: 'a/tree.png', size: 1, type: 'image' as const, refsInCode: [] },
+    { path: 'a/hit.ogg', size: 1, type: 'sound' as const, refsInCode: [] },
+    { path: 'a/ui.woff2', size: 1, type: 'font' as const, refsInCode: [] },
+    { path: 'a/level.json', size: 1, type: 'other' as const, refsInCode: [] },
+  ];
+  const rows = buildRows({ files, missing: [], loads: [], uses: {}, base: 'http://x/' });
+  const of = (shelf: 'all' | '3d' | '2d' | 'sound' | 'other') => filterRows(rows, { shelf }).map((r) => r.path);
+  assert.deepEqual(of('3d'), ['a/rock.glb']);
+  assert.deepEqual(of('2d'), ['a/tree.png']);
+  assert.deepEqual(of('sound'), ['a/hit.ogg']);
+  assert.deepEqual(of('other'), ['a/level.json', 'a/ui.woff2']);
+  assert.equal(of('all').length, 5);
+  assert.deepEqual(filterRows(rows, { shelf: '2d', q: 'rock' }), []);
 });
 
 test('library.json: replace carries usedBy, added files and targets are not unused, stable order', () => {

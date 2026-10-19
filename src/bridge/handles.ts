@@ -39,8 +39,10 @@ export type HandleKind = StripTool;
 
 /** The tools' keys (also in the tooltips and in ⌘K): the English initials, none taken by another single key (Q/E steps, R axis, F, P). */
 export const TOOL_KEYS: Record<HandleKind, string> = { move: 'M', lift: 'H', rotate: 'T', scale: 'S' };
+/** 1–4: the same tools in the 3D strip's order (basics pass, 2026-10-18; shell/keymap.ts). Not W/E/R: E turns, R is the axis. */
+export const TOOL_NUMBERS: Record<HandleKind, string> = { move: '1', lift: '2', rotate: '3', scale: '4' };
 export const toolFromKey = (key: string): HandleKind | null =>
-  (Object.keys(TOOL_KEYS) as HandleKind[]).find((k) => TOOL_KEYS[k] === key.toUpperCase()) ?? null;
+  (Object.keys(TOOL_KEYS) as HandleKind[]).find((k) => TOOL_KEYS[k] === key.toUpperCase() || TOOL_NUMBERS[k] === key) ?? null;
 
 export const HANDLE_LABELS: Record<Lang, Record<HandleKind, string>> = {
   en: { move: 'Move (M)', rotate: 'Turn (T)', lift: 'Height (H)', scale: 'Size (S)' },
@@ -96,7 +98,15 @@ export const SCALE_WORDS: Record<Lang, Record<GroupScaleMode, [string, string]>>
   en: { spread: ['Together', 'Everything grows, including the gaps, from each object’s base'], inplace: ['Each in place', 'Each one grows in its own spot; the gaps stay the same'] },
   ja: { spread: ['並びごと', '物どうしの間も一緒に広がる（足元が基準）'], inplace: ['その場で', 'それぞれが自分の足元で大きくなる（間はそのまま）'] },
 };
-type Choice = { kind: 'axis' | 'scale'; id: string };
+/**
+ * Turning several (multi rotate, play test 2026-10-18: "no turn options with several picked"): the size button's two
+ * words, in the same order, under the axes on the turn button's ▾ (2D: alone — one axis there).
+ */
+export const TURN_WAY_WORDS: Record<Lang, Record<GroupScaleMode, [string, string]>> = {
+  en: { spread: ['Together', 'Everything turns as one piece, around the middle of what’s selected'], inplace: ['Each in place', 'Each one turns in its own spot; nothing moves away'] },
+  ja: { spread: ['並びごと', '並び全体が 1 つの物のように、選んだ物の真ん中を中心に回る'], inplace: ['その場で', 'それぞれが自分の場所で回る（置き場所はそのまま）'] },
+};
+type Choice = { kind: 'axis' | 'scale' | 'turn'; id: string };
 
 /** The group tag ("3 selected"). */
 export const MANY_LABEL: Record<Lang, (n: number) => string> = {
@@ -118,6 +128,16 @@ const SCALE_ICONS: Record<GroupScaleMode, string> = {
   // spread = the size tool's own picture (the default way). Was two boxes with arrows apart until 2026-10-18.
   spread: '<path d="M5 19 19 5M13.5 5H19v5.5M5 13.5V19h5.5"/>',
   inplace: '<rect x="4" y="12" width="5" height="6" rx="1"/><rect x="13" y="8" width="7" height="10" rx="1"/><path d="M3 21h18"/><path d="M16.5 2.5v3.5M14.8 4.2l1.7-1.7 1.7 1.7"/>',
+};
+
+/**
+ * Turning several. Each in place: two boxes, each with its own small turn arrow. Together: two boxes riding one big
+ * turn round a middle dot — not the turn tool's own picture, which the axes row's Turn already wears in 3D (2D, where
+ * the axes are not shown, uses the tool's own picture for Together: see `turnWayIcon`).
+ */
+const TURN_WAY_ICONS: Record<GroupScaleMode, string> = {
+  spread: '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M17.8 2.8v4h-4"/><rect x="2.5" y="10" width="4" height="4" rx=".8"/><rect x="17.5" y="10" width="4" height="4" rx=".8"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+  inplace: '<rect x="3" y="13" width="6" height="6" rx="1"/><rect x="15" y="13" width="6" height="6" rx="1"/><path d="M3.5 9a3 3 0 0 1 5-1.8"/><path d="M8.8 4.8v2.6H6.2"/><path d="M15.5 9a3 3 0 0 1 5-1.8"/><path d="M20.8 4.8v2.6h-2.6"/>',
 };
 
 const ICONS: Record<HandleKind, string> = {
@@ -175,13 +195,20 @@ export interface Handles {
   setAxis(axis: TurnAxis, lang: Lang): void;
   /** The size button draws the way several objects resize (only while several are picked: `setOptions`). */
   setScaleMode(mode: GroupScaleMode): void;
-  /** Which buttons have choices now: they show the ▾ (3D turn with one picked; size with several). */
-  setOptions(opts: { axis: boolean; scale: boolean }, lang: Lang): void;
+  /** How several turn (together / each in place): 2D's turn button wears it (3D's wears its axis). */
+  setTurnMode(mode: GroupScaleMode): void;
   /**
-   * The choices over the strip: 'axis' (3D turn), 'scale' (several picked),
-   * or null to close. `current` is the chosen one.
+   * Which buttons have choices now: they show the ▾ (turn: 3D, or several picked; size: several). `axes`: the turn
+   * choices include the axes (3D); `several`: they include together / each in place.
    */
-  menu(kind: 'axis' | 'scale' | null, current: string, lang: Lang): void;
+  setOptions(opts: { axis: boolean; scale: boolean; axes?: boolean; several?: boolean }, lang: Lang): void;
+  /**
+   * The choices over the strip: 'axis' (the turn button), 'scale' (several picked),
+   * or null to close. `current` is the chosen one. The turn button's choices are
+   * `turn.axes` (3D: Turn / Tilt forward / Tilt sideways) and, when `turn.way` is
+   * given (several picked), Together / Each in place in a row under them.
+   */
+  menu(kind: 'axis' | 'scale' | null, current: string, lang: Lang, turn?: { axes: boolean; way: GroupScaleMode | null }): void;
   menuOpen(): 'axis' | 'scale' | null;
   destroy(): void;
 }
@@ -236,6 +263,12 @@ svg * { vector-effect: non-scaling-stroke; }
 /* The chosen way: ink, not orange (orange is the picked object, on the game). */
 .menu button.chosen { color: #1c1c1e; background: #f5f5f7; box-shadow: none; }
 @media (pointer: coarse) { .menu button { min-width: 88px; min-height: 64px; } }
+/* Two rows (3D, several picked): the axes, a hairline, then Together / Each in place — the size menu's words and
+   order (multi rotate, 2026-10-18). Each row centred, the menu as wide as the wider row. */
+.menu.rows { flex-direction: column; align-items: center; }
+.menu .mrow { display: flex; gap: 2px; }
+.menu .msep { align-self: stretch; height: .5px; margin: 4px 6px; background: rgba(255,255,255,.14); }
+.root.light .menu .msep { background: rgba(0,0,0,.1); }
 /* The ▾ (tool options, play test 2026-10-18): "this button has choices", in the button's bottom-right corner, inside
    it — so the strip is not one px taller or wider and does not move when it appears (W1-2). The mark is 7×4 in the
    button's own colour, faint at rest, full on hover (PC: the hover says "there is more here"); its press area is the
@@ -398,6 +431,24 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   let scaleMode: GroupScaleMode = 'spread';
   let scaleOpts = false;
   const paintScale = () => paintIcon(buttons.scale, scaleOpts ? SCALE_ICONS[scaleMode] : ICONS.scale);
+  // The turn button: 3D wears its axis (AXIS_ICONS, the first row of its choices); 2D with several picked wears
+  // together / each in place (its only choices), the tool's own picture for together (the default), as the size button.
+  let turnAxis: TurnAxis = 'y';
+  let turnMode: GroupScaleMode = 'spread';
+  let turnAxes = false;
+  let turnSeveral = false;
+  let turnLang: Lang = 'en';
+  const turnWayIcon = (m: GroupScaleMode) => (turnAxes || m === 'inplace' ? TURN_WAY_ICONS[m] : ICONS.rotate);
+  const paintTurn = () => {
+    const b = buttons.rotate;
+    const wayOnly = turnSeveral && !turnAxes;
+    paintIcon(b, wayOnly ? turnWayIcon(turnMode) : AXIS_ICONS[turnAxis]);
+    const w = wayOnly ? (TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode] : (AXIS_WORDS[turnLang] || AXIS_WORDS.en)[turnAxis];
+    // 3D, several: the way too ("Tilt forward · Each in place"), since the picture shows the axis only.
+    const way = turnSeveral && turnAxes ? ` · ${(TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode][0]}` : '';
+    b.title = `${w[0]}${way} (${TOOL_KEYS.rotate}) — ${w[1]}`;
+    b.setAttribute('aria-label', `${w[0]}${way} (${TOOL_KEYS.rotate})`);
+  };
   let held: HandleKind | null = null;
   let chosen: HandleKind | null = null;
   const paintButtons = () => {
@@ -582,12 +633,16 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       positionHint();
     },
     setAxis(axis, lang) {
-      const b = buttons.rotate;
-      b.dataset.axis = axis;
-      paintIcon(b, AXIS_ICONS[axis]);
-      const w = (AXIS_WORDS[lang] || AXIS_WORDS.en)[axis];
-      b.title = `${w[0]} (${TOOL_KEYS.rotate}) — ${w[1]}`;
-      b.setAttribute('aria-label', `${w[0]} (${TOOL_KEYS.rotate})`);
+      buttons.rotate.dataset.axis = axis;
+      turnAxis = axis;
+      turnLang = lang;
+      paintTurn();
+    },
+    setTurnMode(mode) {
+      if (mode === turnMode) return;
+      turnMode = mode;
+      buttons.rotate.dataset.mode = mode;
+      paintTurn();
     },
     setScaleMode(mode) {
       if (mode === scaleMode) return;
@@ -612,8 +667,15 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
         scaleOpts = opts.scale;
         paintScale();
       }
+      const axes = !!opts.axes, several = !!opts.several;
+      if (axes !== turnAxes || several !== turnSeveral || lang !== turnLang) {
+        turnAxes = axes;
+        turnSeveral = several;
+        turnLang = lang;
+        paintTurn();
+      }
     },
-    menu(kind, current, lang) {
+    menu(kind, current, lang, turn) {
       menuKind = kind;
       // The open one's ▾ stays lit, and the button says its choices are showing.
       for (const [k, mk] of [['rotate', 'axis'], ['scale', 'scale']] as const) {
@@ -627,22 +689,41 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
         menuEl.style.display = 'none';
         return;
       }
-      const words: Record<string, [string, string]> = kind === 'axis' ? (AXIS_WORDS[lang] || AXIS_WORDS.en) : (SCALE_WORDS[lang] || SCALE_WORDS.en);
-      const icons: Record<string, string> = kind === 'axis' ? AXIS_ICONS : SCALE_ICONS;
-      for (const id of Object.keys(words)) {
-        const b = doc.createElement('button');
-        b.type = 'button';
-        b.dataset.studioChoice = `${kind}:${id}`;
-        b.setAttribute('role', 'menuitemradio');
-        b.setAttribute('aria-checked', String(id === current));
-        if (id === current) b.classList.add('chosen');
-        b.title = words[id]![1];
-        b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[id]}</svg>`; // static markup only
-        const t = doc.createElement('span');
-        t.textContent = words[id]![0];
-        b.append(t);
-        menuEl.append(b);
-      }
+      /** One row of choices (the buttons go straight into `into`). */
+      const choices = (into: HTMLElement, ck: Choice['kind'], words: Record<string, [string, string]>, icons: Record<string, string>, cur: string) => {
+        for (const id of Object.keys(words)) {
+          const b = doc.createElement('button');
+          b.type = 'button';
+          b.dataset.studioChoice = `${ck}:${id}`;
+          b.setAttribute('role', 'menuitemradio');
+          b.setAttribute('aria-checked', String(id === cur));
+          if (id === cur) b.classList.add('chosen');
+          b.title = words[id]![1];
+          b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[id]}</svg>`; // static markup only
+          const t = doc.createElement('span');
+          t.textContent = words[id]![0];
+          b.append(t);
+          into.append(b);
+        }
+      };
+      const axes = kind === 'axis' && (!turn || turn.axes);
+      const way = kind === 'axis' && turn ? turn.way : null;
+      const wayIcons = { spread: turnWayIcon('spread'), inplace: TURN_WAY_ICONS.inplace };
+      // One row as before (one object in 3D, the size button, 2D's turn with several); two rows in 3D with several.
+      menuEl.classList.toggle('rows', axes && !!way);
+      if (kind === 'scale') choices(menuEl, 'scale', SCALE_WORDS[lang] || SCALE_WORDS.en, SCALE_ICONS, current);
+      else if (axes && way) {
+        const top = doc.createElement('div'), sep = doc.createElement('div'), bottom = doc.createElement('div');
+        top.className = bottom.className = 'mrow';
+        top.setAttribute('role', 'group');
+        bottom.setAttribute('role', 'group');
+        sep.className = 'msep';
+        sep.setAttribute('role', 'separator');
+        choices(top, 'axis', AXIS_WORDS[lang] || AXIS_WORDS.en, AXIS_ICONS, current);
+        choices(bottom, 'turn', TURN_WAY_WORDS[lang] || TURN_WAY_WORDS.en, wayIcons, way);
+        menuEl.append(top, sep, bottom);
+      } else if (way) choices(menuEl, 'turn', TURN_WAY_WORDS[lang] || TURN_WAY_WORDS.en, wayIcons, way);
+      else choices(menuEl, 'axis', AXIS_WORDS[lang] || AXIS_WORDS.en, AXIS_ICONS, current);
       menuEl.style.display = 'flex';
       positionMenu();
     },
@@ -738,7 +819,7 @@ export function choiceFromEvent(e: Event): Choice | null {
   for (const el of e.composedPath()) {
     const c = (el as HTMLElement).dataset?.studioChoice;
     if (c) {
-      const [kind, id] = c.split(':') as ['axis' | 'scale', string];
+      const [kind, id] = c.split(':') as [Choice['kind'], string];
       return { kind, id };
     }
   }

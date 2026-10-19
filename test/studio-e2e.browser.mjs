@@ -266,7 +266,7 @@ async function run(example, layout) {
     // The panel shows files, or its "nothing here" line (a game may have no asset files at all).
     await page.waitFor(`!!document.querySelector('.gsl-name, .gsl-empty')`, 10000);
     await sleep(600);
-    const nFiles = await page.eval(`document.querySelectorAll('.gsl-name').length`);
+    const nFiles = await page.eval(`document.querySelectorAll('.gsl-tile[data-path] .gsl-name').length`);
     step(`switched to Library (${nFiles} files listed)`);
     await shot(page, `${tag}-5-library`);
 

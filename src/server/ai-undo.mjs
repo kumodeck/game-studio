@@ -109,7 +109,12 @@ async function undoDir(rootReal, sub = '') {
       if (!st.isDirectory()) throw new Error(`${part} is not a folder`);
     } catch (e) {
       if (e.code !== 'ENOENT') throw e;
-      await fs.mkdir(dir);
+      // Two requests at the same moment (⌘S hands over placement.json and library.json 1 ms apart) both find no
+      // folder; the second mkdir then fails with EEXIST and that request got no undo copy (e2e-save 2026-10-18,
+      // "studio: note no undo … EEXIST"). The folder the other one made is fine, if it is a real folder.
+      await fs.mkdir(dir).catch(async (m) => {
+        if (m.code !== 'EEXIST' || !(await fs.lstat(dir)).isDirectory()) throw m;
+      });
     }
   }
   return dir;

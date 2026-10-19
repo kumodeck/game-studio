@@ -206,6 +206,7 @@ async function run(example, layout) {
       const want = pickable.slice(0, Math.min(4, pickable.length));
       assert.ok(want.length >= 2, `only ${pickable.length} pickable objects`);
       await openSheet();
+      // (Phone: Multi-select is back in the list sheet's head with "one Library", 2026-10-18; plan 1 had moved it to "…".)
       await press('[data-action=multi]');
       for (const k of want) {
         if (!(await page.eval(`document.querySelector('li.obj[data-key="${k}"]')?.getAttribute('aria-selected') === 'true'`))) {

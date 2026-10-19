@@ -58,8 +58,8 @@ Entries: `local.ts` (studio-shell.js, the local server with `host-local.ts`)
 and `src/hosts/browser/main.ts` (the browser-only web demo). Both call
 `start(host)` from `main.ts`; a host with `offline: true` (no AI behind it)
 gets no "say 'look'" nudge and keeps the whole request text in the AI line; since
-design review wave 1 (W1-6) it shows no ask field and no "● AI" at all, but one grey line in
-the ask field's place with a link to `host.getUrl`.
+design review wave 1 (W1-6) it shows no ask field and no "● AI" at all, and since 2026-10-18 nothing
+in the ask field's place either (the demo's top line says it isn't connected to an AI).
 
 Names in the list and on the card (`names.ts`, polish pass 2026-10-16): an object without a name is called
 by its picture / model file or its kind ("Unnamed shape"), never by its tree path; the second "tree" reads
@@ -67,3 +67,55 @@ by its picture / model file or its kind ("Unnamed shape"), never by its tree pat
 `thumb-fit.ts` crops every picture the game sends to the object itself with a 4 px margin at 32 px (W1-11:
 the lighthouse was an "i"). Ideas and Editor view flow down inside the list's own column (W1-3; they used to
 widen it to ~950 px) and close with Esc.
+
+One Library (decided after a try of the editor, 2026-10-18; it replaced plan 1's two shelves of the same morning): the left
+column has two rows, **Scene** (the game, with its object list under "In this scene") and **Library** (every object
+and every asset, counted). The Library takes the game's place (PC) or is a sheet (phone): one search, one count, ONE
+grid — the objects first (a tile per kind, "pine ×3"), then the files — each tile tagged "Object" / "Asset" in grey,
+and one detail at a time on the right. Its filters fill the left column (PC) or one sideways row of chips (phone):
+All / 3D / 2D / Sound / Other and nothing else (a review of the editor, 2026-10-18: four headed groups — Show, Made from, Asset type,
+Use — were too many to tell apart). A 3D game's objects count under 3D, a 2D game's under 2D; files go by their type
+(models 3D; images and sprite sheets 2D; sounds Sound; fonts, JSON… Other); a shelf with nothing on it is hidden. A press on an object's tile picks it and shows its detail (its file "planks.jpg →", where it is,
+Show in game →, Duplicate, Delete) — the Library stays; the game's echo of that pick no longer switches to the Scene.
+Only "Show in game →" or the Scene row go to the game. A file's detail names the objects that use it, "Show just these
+objects" narrows the Library to them, a name opens that object's detail; opening a file drops the objects' pick (one
+thing open at a time). Keys that move the pick do nothing while the Library hides the game. Orange is only the pick:
+"Used by 3", an object's file and the "planks.jpg used by 3 ×" band are grey. `library-objects.ts` is the objects'
+part (`ShellContext.objects`, contract.ts `LibraryObjects`); the page is the Library tool (`tools/library/panel.ts`).
+`test/studio-library.browser.mjs` checks it all and takes the pictures.
+
+Basic actions with a button AND a shortcut (basics pass, 2026-10-18; from a try of the editor: "undo, redo…
+keyboard shortcuts and buttons"): Undo / Redo always in the top bar (dimmed when there is nothing to undo; Save left of them so they
+never move), ⌘C / ⌘V (paste = duplicates of what was copied), 1–4 for the strip's tools, and `?` for the sheet of
+every shortcut. `keymap.ts` is the one table of keys that the tooltips, the ⌘K rows and the sheet (`shortcuts.ts`)
+print; `tooltip.ts` is the buttons' own tooltip (name, then the key in grey). While typing in a field only ⌘S and
+⌘K reach the editor. `test/keymap.test.ts`, `test/studio-basics.browser.mjs`.
+
+The place's menu (context menu, 2026-10-18; a request after a try of the editor: "right-click in each place should bring up the menu for it — in
+the scene, duplicate, delete, that kind of thing"): a right-click (Mac: also Control-click), a finger held still for
+450 ms on a phone, or the menu key opens a small menu for what is under it. `context-rows.ts` says what each place lists
+(an object in the game or its list row: Ask your AI · Rename / name it · Duplicate · Copy · Paste · Delete · 2D draw
+order · Undo · Redo; nothing in the game: Paste · Select all · Deselect · Show all · Back to the opening view · Undo ·
+Redo; a Library object: Details · Show in game · Duplicate · Delete; a Library file: Details · Show just these objects ·
+Replace…), with the names and keys of `keymap.ts`; rows that cannot act are dimmed, not removed; no "Ask your AI" in
+the web demo. `context-menu.ts` draws it (glass, nesting corners, grey highlight — orange stays the pick), places it at
+the pointer (above a finger), runs ↑ ↓ Enter Esc, and puts a clear layer over everything so the press outside only
+closes it. What is pressed is picked first unless it already is (the camera never moves); the game frame reports its
+own right-clicks and long presses (`placement/context`, bridge/input.ts), away from the strip's buttons and their own
+long press. The browser's menu stays out of the editor except in text fields. `test/context-rows.test.ts`,
+`test/studio-context-menu.browser.mjs`.
+
+Using the Library ("use the Library", 2026-10-18; a request after a try of the editor: "I can look at things in the Library,
+but it doesn't do anything yet — I want to add from it to the scene, and point at an enemy there and ask the AI to make it
+the boss at the climax", and "when I pick something in the game, take me straight to its page in the Library"):
+- **Add to scene** on an object (its detail, its tile's menu, or its tile dragged onto the Scene row) puts one copy of each
+  picked kind in the middle of what the camera sees (`placement/copy` with `at: 'view'`: on the ground under the view in
+  3D), then shows the Scene with the copy picked; the camera stays; one undo step, like Duplicate.
+- **Add to scene** on a file is the AI's job (a new object is code): the ask box gets "Add this to the scene" with the
+  file's chip and Enter sends it (`assets` in the request). The web demo dims the button and says why in one line.
+- A pick in the Library — objects, files, or both with Shift / Multi-select — fills the ask box's chip, the same box
+  as in the Scene ("pier", "barrel.glb", "2 files", "3 picked"); **Ask your AI…** puts the cursor there. Requests name
+  each object's files (`objects[].files`) and the picked files (`assets`).
+- From the Scene: the card's **Show in Library →**, the object's menu (**Show in Library**, **Show its asset in Library**)
+  and ⌘K open the Library on that object's detail (its file one press further); the camera never moves.
+`test/studio-library-use.browser.mjs`.

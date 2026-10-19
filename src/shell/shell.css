@@ -220,8 +220,11 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .save-state { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; gap: 6px; color: var(--text-3); font-size: var(--fs-s); }
 .save-state .icon { width: 14px; height: 14px; }
 .top .actions { display: flex; align-items: center; gap: 4px; }
-/* PC: undo / redo are ⌘Z / ⇧⌘Z and rows of the ⌘K list. */
-.shell:not([data-layout="phone"]) .top [data-action="undo"], .shell:not([data-layout="phone"]) .top [data-action="redo"] { display: none; }
+/* Undo / redo: always in the top bar, PC and phone, dimmed (button:disabled) when there is nothing to undo / redo
+   (basics pass, 2026-10-18). Until then PC hid them (⌘Z and ⌘K only) and the phone showed Undo only when it could
+   act: a person without the shortcut had nothing to find, and a button that comes and goes moves its neighbours.
+   They sit left of Save, so nothing here moves when Save comes and goes ("✓ Saved" keeps Save's width). */
+.top [data-action="undo"], .top [data-action="redo"] { flex: none; }
 /* "Save · 3": a quiet button, only while something is not saved. */
 [data-action="save"] { background: var(--raise-2); font-weight: 600; padding: 0 12px; }
 [data-action="save"] .n { margin-left: 0; color: var(--text-2); }
@@ -254,6 +257,10 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .nav-row { justify-content: flex-start; gap: 8px; color: var(--text-2); padding: 0 8px; font-weight: 600; }
 .nav-row[aria-selected="true"] { background: var(--raise-2); color: var(--text); }
 .nav-row .n { color: var(--text-3); }
+/* "Objects  in the game  15" / "Assets  files  7" (plan 1): the grey second word says what is in each (the phone's
+   switch has no room for it). */
+.nav-row .sub { color: var(--text-3); font-weight: 400; font-size: var(--fs-s); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.shell[data-layout="phone"] .nav-row .sub { display: none; }
 .panel { flex: 1; min-height: 0; overflow: auto; margin: 0 -8px; padding: 0 8px; }
 .tool-body:has(> .placement) { height: 100%; }
 .status { margin: 8px 8px 0; font-size: var(--fs-s); flex: none; }
@@ -267,6 +274,9 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .shell[data-items="waiting"] .placement { visibility: hidden; }
 .list-tools { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 4px; flex: none; }
 .list-title { color: var(--text-3); font-size: var(--fs-s); font-weight: 600; }
+/* "In this scene" over the Scene's list ("one Library", 2026-10-18): the list is what is in the game NOW, the Library
+   is everything there is — the heading keeps the two apart by name, the rows (no pictures on a grid, no kind tags)
+   by look. (Plan 1 hid it: the row above said "Objects — in the game" then.) */
 .list-tools .toggle { min-height: 22px; padding: 0 8px; border-radius: 999px; font-size: var(--fs-s); font-weight: 600; color: var(--text-2); }
 .list-tools .toggle[aria-pressed="true"] { color: var(--you-text); background: var(--you-soft); }
 .list-hint { display: block; width: 100%; padding: 4px 0 0; font-size: var(--fs-s); }
@@ -332,7 +342,7 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .inspector { position: absolute; top: 12px; right: 12px; width: 272px; z-index: 3; display: grid; }
 .inspector:empty, .inspector:has(> .card[hidden]) { display: none; }
 /* Assets has its own card (the file's); the object's waits until you are back in the scene. */
-.shell[data-view="library"] .inspector { display: none; }
+.shell[data-shelf="on"] .inspector { display: none; }
 .card { border-radius: var(--R); padding: var(--gap); color: var(--text); position: relative; max-height: calc(100dvh - var(--bar) - 112px); overflow: auto; }
 .card.enter { animation: studio-rise var(--dur-in) var(--ease); }
 .card-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -398,7 +408,7 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 /* ----- The bar at the bottom of the game: news · (phone: card) · ⌘K list · the input ----- */
 /* One column that never grows past the dock: a long ⌘K row (17 px type on a phone) pushed the grid wider than the screen. */
 .dock { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(600px, calc(100% - 32px)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; z-index: 5; }
-.shell[data-view="library"]:not([data-layout="phone"]) .dock { z-index: 6; }
+.shell[data-shelf="on"]:not([data-layout="phone"]) .dock { z-index: 6; }
 .bar { display: flex; align-items: center; gap: 4px; }
 .bar [data-action="sheet"] { display: none; }
 .ask-slot { flex: 1; min-width: 0; }
@@ -473,15 +483,6 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .play-note { color: var(--text-2); }
 .palette { max-height: min(400px, 52dvh); display: flex; flex-direction: column; overflow: hidden; padding: var(--gap); border-radius: var(--R); animation: studio-rise var(--dur-in) var(--ease); transform-origin: 50% 100%; }
 .p-list { min-height: 0; overflow: auto; overscroll-behavior: contain; }
-/* The web demo's line where the ask box would be (W1-6, the review's numbers): grey, 12 px, one line, centred in the bar. */
-.offline-line { margin: 0; min-height: 44px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0 4px; padding: 0 12px;
-  font-size: 12px; line-height: 16px; color: var(--text-2); text-align: center; }
-/* PC: on the game itself, so a small glass pill (as wide as the words, never input-shaped) keeps it readable on any picture. */
-.shell:not([data-layout="phone"]) .offline-line { width: fit-content; margin: 0 auto; min-height: 32px; border-radius: 999px; background: var(--glass); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
-.offline-line .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.offline-line { flex-wrap: nowrap; }
-.offline-line a { color: var(--text); font-weight: 500; text-decoration: none; white-space: nowrap; }
-.offline-line a:hover { text-decoration: underline; text-underline-offset: 3px; }
 /* The list's own search field (W1-4): one quiet line at the top, no box of its own (the list is the box). */
 .p-search { display: block; width: 100%; height: 36px; margin: 0 0 4px; padding: 0 10px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
   background: transparent; color: var(--text); font: inherit; font-size: var(--fs); outline: none; }
@@ -519,16 +520,27 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .assets-page .gsl-count { grid-area: count; color: var(--text-3); font-size: var(--fs-s); }
 /* "Couldn't read the folder (…)." + Try again shares the count's cell: the count is empty while it shows. */
 .assets-page .gsl-readfail { grid-area: count; justify-self: start; max-width: 560px; border: 0; border-radius: var(--R); background: var(--raise); box-shadow: inset 3px 0 0 var(--gsl-missing); padding: 10px 10px 10px 14px; }
-.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; margin-bottom: -108px; padding-bottom: 108px; }
+/* The grid scrolls all the way down to the plate's edge, under the floating AI bar, and the last 96 px of it are
+   room to scroll the last row up above that bar. Before (found 10/18 on the web demo, v4): the grid stopped at the
+   page's 96 px bottom padding, so the last row was cut straight through — buoy / barrel / crate showed a picture
+   and no name, and with the Mac's hidden scrollbars nothing said there was more. The page keeps that padding for
+   the detail on the right; only the grid reaches past it (108 = the 96 px padding + the 12 px gap above the foot row,
+   which is empty unless a status shows — then it floats over the grid as a glass pill). (From the stopped member's
+   unfinished patch, 10/18.) */
+.assets-page .gsl-foot:has(.gsl-status:not(:empty), .gsl-pending:not(:empty)) { position: relative; z-index: 1; justify-self: start; min-height: 28px;
+  padding: 0 12px; border-radius: 999px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); }
 .assets-page .gsl-detail { grid-area: detail; align-self: start; max-height: 100%; border: 0; border-radius: var(--R); padding: 12px; }
 .assets-page .gsl-foot { grid-area: foot; min-height: 0; }
 .assets-page .gsl-search, .assets-page .gsl-type { height: var(--h); border: 0; border-radius: 999px; background: var(--raise); color: var(--text); padding: 0 10px; font: inherit; }
 .assets-page .gsl-btn { min-height: var(--h); border: 0; border-radius: 999px; font-weight: 600; background: var(--raise); color: var(--text); font: inherit; padding: 0 10px; }
 .assets-page .gsl-btn:hover { background: var(--raise-2); }
 .assets-page .gsl-primary { background: var(--solid); color: var(--solid-fg); }
+/* A primary under the mouse stays solid (the grey hover above made "Add to scene" look dimmed right after a click). */
+.assets-page .gsl-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
 .assets-page .gsl-chip { border: 0; background: var(--raise); height: 24px; padding: 0 10px; border-radius: 999px; font-size: var(--fs-s); font-weight: 600; color: var(--text-2); }
 /* A pressed filter is ink on the desk, not orange: orange is your hand on the game (rule 2). */
-.assets-page .gsl-chip[aria-pressed="true"] { background: var(--solid); color: var(--solid-fg); }
+.assets-page .gsl-chip[aria-pressed="true"] { background: var(--solid); color: var(--solid-fg); box-shadow: none; }
 /* Tile 16 = picture 10 + the 6 around it (rule 3). */
 .assets-page .gsl-tile { border: 0; border-radius: calc(var(--r) + 6px); background: none; padding: 6px; gap: 4px; transition: background-color var(--dur) var(--ease); }
 .assets-page .gsl-tile:hover { background: var(--raise); }
@@ -595,6 +607,62 @@ textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
 @keyframes studio-pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 
+
+/* ----- One Library ("one Library", a try of the editor, 2026-10-18; plan 1's two shelves before it) -----
+   The left column has two rows, Scene and Library. The Library takes the game's place: every object and every asset
+   in one grid (objects first), its filters in the left column (and nothing else there), one detail on the right.
+   The objects' part (library-objects.ts) wears the Assets classes; what is its own is here. */
+/* The Library's filters in the left column: one list, All / 3D / 2D / Sound / Other, no headings (a review of the editor, 2026-10-18).
+   The top padding stands in for the heading's margin it used to start with. */
+.side .shelf-filters { display: grid; gap: 2px; padding: 8px 0; --gsl-used: var(--live); --gsl-code: var(--text-2); --gsl-unused: var(--text-3); --gsl-missing: var(--danger); }
+.side .gsl-chip.filter-row { display: flex; width: 100%; height: var(--h); min-height: var(--h); padding: 0 8px; gap: 8px; justify-content: flex-start; border: 0; border-radius: var(--r);
+  background: none; box-shadow: none; color: var(--text-2); font: inherit; font-weight: 600; }
+.side .gsl-chip.filter-row:hover { background: var(--raise); }
+.side .gsl-chip.filter-row[aria-pressed="true"] { background: var(--raise-2); color: var(--text); box-shadow: none; }
+.side .gsl-chip.filter-row .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.side .gsl-chip.filter-row b { margin-left: auto; color: var(--text-3); font-weight: 400; font-size: var(--fs-s); font-variant-numeric: tabular-nums; }
+.side .gsl-chip .gsl-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.gsl-head { display: none; }
+/* One file, many objects: the line under each card. An object's file ("planks.jpg"), or grey "Drawn in code";
+   a file's "Used by 3". Grey, all of them: orange is what you picked, nothing else (Ive's rule; plan 1 had "Used by 3"
+   and the detail's file link in orange, and next to a picked tile they read as picked too). */
+.shelf-file, .assets-page .gsl-uses { display: inline-flex; align-items: center; max-width: 100%; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--raise); color: var(--text-2);
+  font-size: var(--fs-s); font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.shelf-file.code { background: none; padding: 0 2px; color: var(--text-3); font-weight: 400; }
+button.shelf-file.to { min-height: 0; height: 24px; color: var(--text); }
+button.shelf-file.to:hover { background: var(--raise-2); }
+.lib-object .gsl-thumb img, .lib-object-detail .gsl-thumb img { inset: 8%; width: 84%; height: 84%; }
+.lib-object .gsl-thumb:has(img[data-tone="light"]), .lib-object-detail .gsl-thumb:has(img[data-tone="light"]) { background: #8d9199; }
+.lib-object .gsl-name.unnamed { color: var(--text-2); font-style: italic; }
+/* "Object" / "Asset" in the picture's top left corner: what the tile is, read before the picture (an object drawn
+   with planks.jpg and planks.jpg itself can look alike). The same glass as everything over a picture, grey words. */
+.lib-kind { position: absolute; top: 6px; left: 6px; z-index: 1; padding: 1px 7px; border-radius: 999px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  color: var(--text-2); font-size: 11px; font-weight: 600; line-height: 16px; pointer-events: none; }
+.assets-page .gsl-detail .lib-kind { display: none; }
+.shelf-many { position: absolute; right: 6px; bottom: 6px; padding: 1px 7px; border-radius: 999px; background: var(--raise-3); color: var(--text); font-size: var(--fs-s); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* "planks.jpg used by 3 ×": the Library narrowed by a file's "Show just these objects". */
+.assets-page .gsl-count:has(.shelf-band) { color: var(--text); }
+.shelf-band { display: inline-flex; align-items: center; gap: 4px; height: 32px; padding: 0 4px 0 12px; border-radius: 999px; background: var(--raise); color: var(--text-2); font-size: var(--fs-s); }
+.shelf-band b { color: var(--text); }
+.shelf-band .shelf-band-x { width: 24px; min-height: 24px; height: 24px; padding: 0; border-radius: 50%; color: var(--text-2); }
+.shelf-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px 16px; align-items: center; margin: 12px 0 0; font-size: var(--fs-s); }
+.shelf-rows dt { color: var(--text-3); }
+.shelf-rows dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.shelf-rows .axis { margin-right: 8px; } .shelf-rows .axis i { font-style: normal; color: var(--text-3); }
+.shelf-note { margin: 10px 0 0; font-size: var(--fs-s); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.shelf-acts, .assets-page .gsl-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.assets-page .gsl-in-scene .gsl-keys { margin-top: 6px; }
+.assets-page .shelf-multi[aria-pressed="true"] { background: var(--solid); color: var(--solid-fg); }
+/* Use the Library (2026-10-18): a file's Add to scene / Ask your AI row sits right under its name and size; the
+   web demo dims Add to scene and says why in one grey line. While a tile is dragged, the Scene row shows it takes
+   the drop (grey: orange stays the pick). */
+.assets-page .gsl-use { margin-top: 12px; }
+.assets-page .gsl-use .gsl-acts { margin-top: 0; }
+.assets-page .gsl-use-why { margin: 8px 0 0; font-size: var(--fs-s); }
+.assets-page .gsl-tile[draggable="true"] { -webkit-user-drag: element; }
+.shell[data-drag="library"] .nav-row[data-tool="placement"] { box-shadow: inset 0 0 0 1px var(--line-2); color: var(--text); }
+.shell[data-drag="library"] .nav-row[data-tool="placement"].drop-on { background: var(--raise-3); }
+
 /* ═════════ Phone: built for a thumb, not the PC layout made small ═════════
    Top bar 48: the mark, the game's name, Undo (once there is something to
    undo), Play. Then the game, edge to edge. At the bottom, the input (52):
@@ -613,7 +681,6 @@ textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
 .shell[data-layout="phone"] .top-right { gap: 2px; }
 .shell[data-layout="phone"] .peer { display: none; }
 .shell[data-layout="phone"] .save-state { padding: 0 6px; }
-.shell[data-layout="phone"] .top [data-action="undo"]:disabled, .shell[data-layout="phone"] .top [data-action="redo"] { display: none; }
 .shell[data-layout="phone"] .top .icon-btn { width: 44px; }
 .shell[data-layout="phone"] .top .icon-btn .icon { width: 20px; height: 20px; }
 /* Save and Play are drawn 36 high (a 44 capsule filled the 48 bar edge to edge) and pressed 44 high (::after). */
@@ -692,6 +759,8 @@ textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
 .shell[data-layout="phone"] .bar { position: relative; height: 52px; border-radius: 999px; background: var(--glass); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); padding: 0 6px 0 4px; gap: 2px; }
 .shell[data-layout="phone"] .bar [data-action="sheet"] { display: inline-flex; width: 44px; min-height: 44px; border-radius: 50%; }
 .shell[data-layout="phone"] .bar [data-action="sheet"] .icon { width: 20px; height: 20px; }
+/* The web demo has no ask box (host.offline, 2026-10-18): the phone's bar is just the round list button, not a wide empty pill. */
+.shell[data-layout="phone"] .bar:has(> .ask-slot[hidden]) { width: fit-content; padding: 0 4px; }
 .shell[data-layout="phone"] .ask-box { background: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; height: 52px; padding: 0; gap: 6px; position: static; }
 .shell[data-layout="phone"] .ask-box::after { display: none; }
 /* (No ring on the phone's ask bar while the ⌘K list is open: the list has its own field, W1-4.) */
@@ -717,7 +786,7 @@ textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
 .shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body > :not(.fine) { display: none; }
 .shell[data-layout="phone"] .card:has(.fine):not(:has(.fine[open])) .card-body { display: block; height: 0; margin: 0; padding: 0; border: 0; }
 /* Assets open on a phone: its sheet, and the input under it. */
-.shell[data-layout="phone"][data-view="library"] .card-slot { display: none; }
+.shell[data-layout="phone"][data-shelf="on"] .card-slot { display: none; }
 .shell[data-layout="phone"] .fine > summary { position: absolute; top: 6px; right: 4px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2); cursor: pointer; }
 .shell[data-layout="phone"] .fine[open] > summary { background: var(--raise-2); color: var(--text); }
 .shell[data-layout="phone"] .fields { grid-template-columns: 56px minmax(0, 1fr); gap: 6px 0; }
@@ -739,9 +808,89 @@ textarea.prompt:focus { box-shadow: inset 0 0 0 1px var(--ai); }
 .shell[data-layout="phone"] .assets-page::before { content: ""; display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--raise-3); margin: 8px auto 0; }
 .shell[data-layout="phone"] .assets-page .tool-mount { height: calc(100% - 13px); }
 .shell[data-layout="phone"] .assets-page .gsl { display: flex; padding: 8px 16px 96px; overflow: auto; }
-.shell[data-layout="phone"] .assets-page .gsl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; flex: none; }
+.shell[data-layout="phone"] .assets-page .gsl-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; overflow: visible; flex: none; margin-bottom: 0; padding-bottom: 0; }
 .shell[data-layout="phone"] .assets-page .gsl-detail { max-height: none; }
 .shell[data-layout="phone"] .assets-page .gsl-btn, .shell[data-layout="phone"] .assets-page .gsl-search, .shell[data-layout="phone"] .assets-page .gsl-type { min-height: 44px; height: 44px; }
 .shell[data-layout="phone"] .assets-page .gsl-chip, .shell[data-layout="phone"] .assets-page .gsl-key { min-height: 36px; height: 36px; }
 .shell[data-layout="phone"] .page-head .link { min-height: 44px; }
 .shell[data-layout="phone"] .step { min-height: 44px; }
+/* The Library on a phone: a sheet with its own head — [Scene | Library 22] (plan 1 had two shelves here, and for objects
+   [Scene | Grid] — then the filters as ONE row of chips that scrolls sideways (the mock cut it off at the edge:
+   "Used…"), then the search and the buttons. The detail (an object's or a file's) comes right under them, and a
+   press on a tile scrolls the sheet back to its top: the switch stays in sight with the detail (it used to open
+   at the foot of the Assets sheet, under all the files). */
+.shell[data-layout="phone"] .assets-page .gsl-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: none; order: -3; }
+.shell[data-layout="phone"] .assets-page .shelf-filters { order: -2; flex: none; flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+  margin: 0 -16px; padding: 4px 16px; scroll-padding: 0 16px; }
+.shell[data-layout="phone"] .assets-page .shelf-filters::-webkit-scrollbar { display: none; }
+.shell[data-layout="phone"] .assets-page .shelf-filters .gsl-chip { flex: none; padding: 0 12px; }
+/* The search has a row of its own (in the Library the bar also holds Multi-select, Add files and Make with AI: next
+   to them the field was 90 px wide, its placeholder cut after four letters); the buttons share the row under it. */
+.shell[data-layout="phone"] .assets-page .gsl-bar { order: -1; flex-wrap: wrap; }
+.shell[data-layout="phone"] .assets-page .gsl-bar .gsl-search { flex: 1 1 100%; min-width: 0; }
+.shell[data-layout="phone"] .assets-page .gsl-detail { order: -1; }
+/* In the sheet's one column the detail is as wide as the grid (the PC grid's `align-self: start` made it shrink to its text). */
+.shell[data-layout="phone"] .assets-page .gsl-detail { align-self: stretch; }
+.shell[data-layout="phone"] .shelf-file.to, .shell[data-layout="phone"] .shelf-band .shelf-band-x { min-height: 36px; height: 36px; }
+
+/* ----- The buttons' tooltip (tooltip.ts) and the shortcut sheet (shortcuts.ts); basics pass, 2026-10-18 ----- */
+/* One line of glass, the small size: the name in the text colour, the key after it in the third grey (as a Mac menu
+   writes keys). Fixed, so it can leave the bar it points from; never in the way of a press (pointer-events: none). */
+.tip { position: fixed; z-index: 50; pointer-events: none; display: flex; align-items: baseline; gap: 10px; max-width: min(360px, calc(100vw - 16px));
+  padding: 5px 9px; border-radius: 8px; font-size: var(--fs-s); line-height: 16px; color: var(--text);
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  animation: studio-fade var(--dur) var(--ease); }
+/* Most tips are one line; a longer one (Save says what it does) wraps at 360 px instead of being cut. */
+.tip > span { min-width: 0; }
+.tip kbd { flex: none; white-space: nowrap; }
+/* The sheet: one glass plate in the middle of the game, over a dimmed game (the ⌘K scrim). PC: three columns
+   (four in 2D, wrapping), names left and keys right in each. Phone: one column, scrolls inside the plate. */
+.keys-scrim { z-index: 6; }
+.keys-sheet { position: absolute; z-index: 7; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(880px, calc(100% - 32px)); max-height: calc(100% - 32px);
+  display: flex; flex-direction: column; overflow: hidden; padding: 16px 20px 14px; border-radius: var(--R);
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  animation: studio-fade var(--dur-in) var(--ease); }
+.keys-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.keys-head h2 { margin: 0; font-size: var(--fs); font-weight: 600; }
+.keys-head .icon-btn { margin-right: -6px; }
+.keys-cols { min-height: 0; overflow: auto; overscroll-behavior: contain; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 4px 28px; }
+.keys-group h3 { margin: 8px 0 4px; font-size: var(--fs-s); font-weight: 600; color: var(--text-2); }
+.keys-list { margin: 0; }
+.keys-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 0; }
+.keys-row dt { color: var(--text); min-width: 0; }
+.keys-row dd { margin: 0; flex: none; white-space: nowrap; }
+.keys-row kbd { font-size: var(--fs); color: var(--text-2); }
+/* A key's "when" under its name (fly: WASD alone, or with the right button when something is picked). */
+.keys-note { display: block; margin-top: 2px; color: var(--text-3); font-size: var(--fs-s); }
+.keys-or { display: inline-block; width: 10px; }
+.keys-foot { margin: 10px 0 0; color: var(--text-3); font-size: var(--fs-s); }
+.shell[data-layout="phone"] .keys-sheet { width: calc(100% - 16px); max-height: calc(100% - 16px); padding: 14px 16px 12px; }
+.shell[data-layout="phone"] .keys-row { padding: 8px 0; }
+.shell[data-layout="phone"] .keys-row kbd { font-size: var(--fs-s); }
+.keys-sheet:focus-visible { outline: none; }
+
+/* ----- The place's menu: right-click, or a long press on a phone (context-menu.ts; 2026-10-18) -----
+   One small plate of the glass (rule 1), corners that nest (rule 3: plate 16 = row 10 + padding 6; phone 22 = 14 + 8),
+   rows the height of every other row (rule 5: 28 PC, 44 phone), no colour of its own (rule 2): the row under the
+   pointer or the keys is the hovered ⌘K row's grey, so orange still means only "what you picked" (the outline on the
+   object says what the menu is about). Keys in the third grey at the right end, as a Mac menu prints them. It arrives
+   with the short fade (motion rule 6), from the corner nearest the pointer. */
+.ctx-catch { position: fixed; inset: 0; z-index: 60; background: transparent; }
+.ctx-menu { position: fixed; z-index: 61; min-width: 196px; max-width: min(320px, calc(100vw - 16px)); max-height: calc(100dvh - 16px); overflow: auto;
+  display: flex; flex-direction: column; padding: 6px; border-radius: calc(var(--r) + 6px);
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  font-size: var(--fs); color: var(--text); animation: studio-fade var(--dur) var(--ease); outline: none; user-select: none; -webkit-user-select: none; }
+.ctx-row { width: 100%; height: var(--h); min-height: var(--h); display: flex; align-items: center; justify-content: flex-start; gap: 24px; padding: 0 10px;
+  border: 0; border-radius: var(--r); background: none; color: var(--text); font: inherit; text-align: left; cursor: default; }
+.ctx-row.on, .ctx-row:hover:not(:disabled) { background: var(--raise-2); }
+.ctx-row:focus-visible { outline: none; }
+.ctx-row:disabled { color: var(--text-3); background: none; }
+.ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-key { margin-left: auto; flex: none; color: var(--text-3); }
+.ctx-row:disabled .ctx-key { opacity: .6; }
+.ctx-sep { flex: none; height: .5px; margin: 4px 10px; background: var(--line-2); }
+.shell[data-layout="phone"] .ctx-menu { min-width: 224px; padding: 8px; border-radius: var(--R); }
+.shell[data-layout="phone"] .ctx-row { border-radius: calc(var(--R) - 8px); padding: 0 12px; }
+.shell[data-layout="phone"] .ctx-sep { margin: 4px 12px; }
+/* A long press on a row or a tile must not also start the phone's own text selection or its picture callout. */
+.shell[data-layout="phone"] .obj, .shell[data-layout="phone"] .assets-page .gsl-tile { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }

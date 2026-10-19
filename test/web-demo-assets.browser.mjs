@@ -142,6 +142,11 @@ async function run(size, game) {
   const sceneShot = async (name) => {
     await page.eval(IN.click('[data-tool=placement]'));
     await sleep(900);
+    // Phone: the Scene from the Library sheet opens the object list sheet; close it to see the game.
+    if (await page.eval(`document.querySelector('.shell')?.dataset.sheet === 'open'`)) {
+      await page.eval(IN.click('[data-action=sheet]'));
+      await sleep(700);
+    }
     return decodePng(name ? await shot(name) : await page.screenshot());
   };
   VIEW_W = size.width;

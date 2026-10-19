@@ -40,7 +40,7 @@ computer, and needs no account. Signing in with KUMODeck adds AI images and 3D m
 | Your AI has it / Your AI hasn't seen this yet | picked it up | |
 | type “look” | say "look" | They type it. |
 | click (desktop) / tap (phone) / press (keys, or both) | "Presses add…" | Name the device only when the string is for one device. |
-| Assets, Objects, Scene, Play, Edit, Save | library, items, files (for the panel) | The names on the buttons. |
+| Scene, Library (with Objects and Assets inside it), Play, Edit, Save | items, files (for the panel) | The names on the buttons. The left column has Scene and Library (a try of the editor, 2026-10-18). |
 | Unnamed | No name, `path:8` | Never show internal keys. |
 | credits | balance, funds | KUMODeck sign-in pays with credits. |
 | image | picture | Matches "Images" in Assets. (Thumbnails in a list are "thumbnails".) |

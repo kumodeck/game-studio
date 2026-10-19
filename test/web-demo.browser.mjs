@@ -18,14 +18,16 @@
 // Firefly Ruins (2D, PixiJS). Each at 1280×800 with a mouse, and with touch at the two
 // phones of the brief (390×844, 430×932) and at 280×640 (the phone the "save does not
 // stick" report used, 2026-10-16):
-//   1. the sample list (pictures) → the editor opens the sample; the demo line is on top;
+//   1. the front page (2026-10-19: it replaced the sample list; its own checks are test/web-demo-lp.browser.mjs) → the
+//      editor opens the sample on its own page: PC the sample's switch then "Open full size", phones a tap on the
+//      sample's card; the demo line is on top;
 //      (PC) Assets answers with the sample's files — never "Reading the folder…" for good
 //   2. tap an object in the game, drag it → it moves
 //   3. the strip's turn tool, then a drag from anywhere → it turns; the size tool → it grows
 //   4. Save, pressed with real input → "saved in this browser"; the same spot
 //      pressed again does nothing (it once was Undo, sliding in: the object
 //      jumped back and "Save · 1" returned); no ask box and no "● AI" (nobody would read it, design review wave 1,
-//      W1-6): one grey line in the ask box's place, with a link to get Game Studio
+//      W1-6), and nothing in their place (the "Get Game Studio →" line was taken out, 2026-10-18)
 //   5. ▶ Play (real press) → the game runs without the editor, from the save; it keeps
 //      drawing (not frozen); Lantern Cove's own auto quality settles (on this test's
 //      SwiftShader, a stand-in for a weak phone GPU, it must drop to "low"); back to editing
@@ -116,8 +118,8 @@ const turn = (a, b) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 // The heading of a pose. Past ±90° the 3D editor may keep a turn as r with t = [π, π] (x and z flipped):
 // Rx(π)·Ry(r)·Rz(π) = Ry(π − r), the same heading written another way (seen on a second visit, 2026-10-17).
 const yawOf = (pose) => (Array.isArray(pose.t) && Math.abs(Math.abs(pose.t[0]) - Math.PI) < 1e-3 && Math.abs(Math.abs(pose.t[1]) - Math.PI) < 1e-3 ? Math.PI - (pose.r ?? 0) : pose.r ?? 0);
-const WORDS = { ja: { banner: '試し版・保存はこのブラウザの中だけ', saved: 'ブラウザの中に保存', noAi: 'AI にはつながっていません', ask: 'もっと左に寄せて', reading: 'フォルダを読んでいます…' },
-  en: { banner: 'Saves stay in this browser', saved: 'Saved in this browser', noAi: 'isn’t connected to an AI', ask: 'move it further left', reading: 'Reading the folder…' } }[LANG];
+const WORDS = { ja: { banner: '試し版・AI にはつながっていません・保存はこのブラウザの中だけ', saved: 'ブラウザの中に保存', noAi: 'AI にはつながっていません', ask: 'もっと左に寄せて', reading: 'フォルダを読んでいます…' },
+  en: { banner: 'Demo · Not connected to an AI · Saves stay in this browser', saved: 'Saved in this browser', noAi: 'isn’t connected to an AI', ask: 'move it further left', reading: 'Reading the folder…' } }[LANG];
 
 let server;
 let base;
@@ -200,17 +202,27 @@ async function run(browser, game, size, tag) {
   try {
     // A fresh browser profile per run would be cleaner, but one profile shared by the runs is
     // what a visitor has: the two samples must not see each other's saves (keys are per sample).
-    // --- 1. the list, then the sample ---
+    // --- 1. the front page, then the sample on its own page ---
     await page.goto(`${base}index.html?lang=${LANG}`);
-    await page.waitFor(`document.querySelectorAll('a.card').length === 2 && [...document.querySelectorAll('a.card img')].every((i) => i.complete && i.naturalWidth > 0)`);
+    await page.waitFor(`document.querySelectorAll('a.sample').length === 2 && [...document.querySelectorAll('a.sample img')].every((i) => i.complete && i.naturalWidth > 0)`);
     await shot('0-list');
-    // The list on a phone: one column, the cards fit the width (no sideways scroll).
-    assert.ok(await page.eval(`document.documentElement.scrollWidth <= innerWidth`), 'the sample list scrolls sideways');
-    // The second card is below the fold on a small phone: scroll it into view first, like a thumb would.
-    await page.eval(`document.querySelector('a.card[data-game=${game}]').scrollIntoView({ block: 'center' })`);
+    // On a phone: one column, the cards fit the width (no sideways scroll), and no frame (the editor opens on its own page).
+    assert.ok(await page.eval(`document.documentElement.scrollWidth <= innerWidth`), 'the front page scrolls sideways');
+    if (mobile) assert.equal(await page.eval(`document.querySelectorAll('iframe').length`), 0, 'an iframe on the phone front page');
+    // The card / switch can be below the fold on a small phone: scroll it into view first, like a thumb would.
+    await page.eval(`document.querySelector('a.sample[data-game=${game}]').scrollIntoView({ block: 'center' })`);
     await sleep(300);
-    const card2 = await j(`(() => { const r = document.querySelector('a.card[data-game=${game}]').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
+    const card2 = await j(`(() => { const r = document.querySelector('a.sample[data-game=${game}]').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
     await touch(card2);
+    if (!mobile) {
+      // PC: the switch puts the sample in the page's frame; "Open full size" opens the same editor without it.
+      await page.waitFor(`document.querySelector('#stage iframe')?.getAttribute('src')?.includes('game=${game}')`, 10000);
+      await page.eval(`document.getElementById('full').scrollIntoView({ block: 'center' })`);
+      await sleep(300);
+      const full = await j(IN.button('#full'));
+      assert.ok(full, 'no "Open full size" link');
+      await touch(full);
+    }
     await page.waitFor(`location.pathname.endsWith('/studio/')`);
     const t0 = Date.now();
     await page.waitFor(IN.ready, 60000);
@@ -222,7 +234,7 @@ async function run(browser, game, size, tag) {
       assert.equal(await page.eval(`!!document.querySelector('test-version-bar') && !!${FRAME}.contentDocument.querySelector('test-version-bar')`), true, 'the test-version bar is not in both pages');
     }
     if (game === 'firefly-ruins') await fitted('open');
-    step(`the list (with pictures) opens the sample in ${(openMs / 1000).toFixed(1)} s; the demo line is on top`);
+    step(`the front page opens the sample in ${(openMs / 1000).toFixed(1)} s; the demo line is on top`);
     await shot('1-open');
 
     // --- 1b. Assets ends in an answer (PC; the phone's sheet is covered by studio-e2e) ---
@@ -232,8 +244,8 @@ async function run(browser, game, size, tag) {
     // files (starters/<id>/assets/), so the list must show them; test/web-demo-assets.browser.mjs checks them in detail.
     if (!mobile) {
       await page.eval(`document.querySelector('[data-tool=library]').click()`);
-      await page.waitFor(`(() => { const e = document.querySelector('.gsl-empty'); return document.querySelector('.gsl-tile .gsl-name') || document.querySelector('.gsl-readfail:not([hidden])') || (e && e.textContent !== ${JSON.stringify(WORDS.reading)}); })()`, 10000);
-      const lib = await j(`JSON.stringify({ empty: document.querySelector('.gsl-empty')?.textContent ?? null, count: document.querySelector('.gsl-count')?.textContent ?? '', fail: document.querySelector('.gsl-readfail:not([hidden])')?.textContent ?? null, files: document.querySelectorAll('.gsl-tile .gsl-name').length })`);
+      await page.waitFor(`(() => { const e = document.querySelector('.gsl-empty'); return document.querySelector('.gsl-tile[data-path] .gsl-name') || document.querySelector('.gsl-readfail:not([hidden])') || (e && e.textContent !== ${JSON.stringify(WORDS.reading)}); })()`, 10000);
+      const lib = await j(`JSON.stringify({ empty: document.querySelector('.gsl-empty')?.textContent ?? null, count: document.querySelector('.gsl-count')?.textContent ?? '', fail: document.querySelector('.gsl-readfail:not([hidden])')?.textContent ?? null, files: document.querySelectorAll('.gsl-tile[data-path] .gsl-name').length })`);
       assert.equal(lib.fail, null, `Assets: ${lib.fail}`);
       assert.ok(lib.files >= 4, `Assets: ${JSON.stringify(lib)}`);
       step(`Assets → ${lib.files ? `${lib.files} files` : `"${lib.empty}"`}`);
@@ -366,18 +378,20 @@ async function run(browser, game, size, tag) {
     assert.equal(unsaved(await page.eval(IN.saveLabel)), 0, `a second press on Save left "${await page.eval(IN.saveLabel)}"`);
     step('Save (real press) → kept in this browser; pressing the same spot again changes nothing');
     await shot('6-saved');
-    // W1-6 (design review wave 1, 2026-10-17): the demo has no AI behind it, so no ask box and no "● AI"; the same place holds
-    // one grey line and a link to get Game Studio. (Until then: the ask box took the words and said "not connected".)
+    // W1-6 (design review wave 1, 2026-10-17): the demo has no AI behind it, so no ask box and no "● AI". W1-6 put one grey
+    // line and a "Get Game Studio →" link in the ask box's place; it was taken out on 2026-10-18 (the person is already
+    // using Game Studio), so nothing stands there now: the top line alone says the demo isn't connected to an AI.
     const demo = await j(`JSON.stringify({ ask: !!document.querySelector('.ask-input'), askShown: !!document.querySelector('.ask-input')?.offsetParent, peer: !!document.querySelector('[data-part=peer]'),
-      line: document.querySelector('[data-part=offline-line]')?.textContent || '', link: document.querySelector('[data-part=offline-line] a')?.getAttribute('href') || '',
-      lineShown: !!document.querySelector('[data-part=offline-line]')?.offsetParent })`);
+      slot: document.querySelector('[data-part=bar] .ask-slot')?.textContent ?? null, slotShown: !!document.querySelector('[data-part=bar] .ask-slot')?.offsetParent,
+      offlineLine: !!document.querySelector('[data-part=offline-line]'), get: !!document.querySelector('[data-part=bar] a'),
+      top: document.querySelector('.demo-banner')?.textContent || '' })`);
     assert.equal(demo.askShown, false, 'the ask box is on screen in the demo');
     assert.equal(demo.peer, false, 'the "● AI" is in the demo');
-    assert.ok(demo.lineShown && /Claude Code/.test(demo.line), `the line in the ask box's place: ${JSON.stringify(demo)}`);
-    assert.match(demo.link, /^https:\/\//, `the line's link: ${demo.link}`);
-    // The bar holds the line, inside the window (no sideways scroll on the narrowest phone).
-    assert.ok(await page.eval(`document.documentElement.scrollWidth <= innerWidth`), 'the demo line made the page scroll sideways');
-    step(`no ask box, no "● AI": "${demo.line}"`);
+    assert.ok(!demo.offlineLine && !demo.get && !demo.slot && !demo.slotShown, `something in the ask box's place: ${JSON.stringify(demo)}`);
+    assert.ok(!/Get Game Studio|入手/.test(await page.eval('document.body.innerText')), 'a "Get Game Studio" line is on the page');
+    assert.ok(demo.top.includes(WORDS.banner), `the top line: ${demo.top}`);
+    assert.ok(await page.eval(`document.documentElement.scrollWidth <= innerWidth`), 'the demo page scrolls sideways');
+    step('no ask box, no "● AI", nothing in their place');
     await shot('7-ask');
 
     // --- 5. ▶ Play, then back to editing ---

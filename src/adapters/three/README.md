@@ -31,7 +31,7 @@ Games whose start layout needs async work call `studio.waitForReady()` early and
 - `keys.js` — which objects are movable and their keys (pure; shared with the placement loader)
 - `apply.js` — apply a placement.json to a scene (the three.js half of the loader)
 - `pick.js` — bounds, ray casts, pickNear ordering rules
-- `camera.js` — the edit camera (orbit / pan / zoom / frame)
+- `camera.js` — the edit camera (orbit / pan / zoom / rise = straight up or down / fly = WASD, scaled to the scene / look = turn in place / frame)
 - `focus.js` — what the edit camera frames: the object and its neighbours when picked from the list, the play area for frameAll (pure maths)
 - `capture.js` — one-object thumbnails that bypass the game's render hooks
 - `assets.js` — object → files it uses

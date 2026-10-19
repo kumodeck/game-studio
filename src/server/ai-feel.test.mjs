@@ -199,3 +199,17 @@ test('the built studio.mjs --watch prints its first line and removes its heartbe
   await new Promise((r) => child.on('exit', r));
   assert.equal((await s.req('GET', 'status')).json.watching, false);
 });
+
+// e2e-save 2026-10-18: ⌘S hands over placement.json and library.json 1 ms apart. Both snapshots found no
+// .studio/undo/ and the second mkdir failed (EEXIST): that request had no "Undo AI change".
+test('undo: two snapshots at the same moment both keep a copy', async () => {
+  const { snapshotGame, hasSnapshot } = await import('./ai-undo.mjs');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'game-studio-undo-race-'));
+  await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><title>t</title>');
+  await fs.mkdir(path.join(root, '.studio'));
+  const a = '20261018-134758-235-saved-6078', b = '20261018-134758-236-saved-d5cc';
+  const got = await Promise.all([snapshotGame(root, a), snapshotGame(root, b)]);
+  assert.deepEqual(got, [true, true]);
+  assert.ok(await hasSnapshot(root, a) && await hasSnapshot(root, b));
+  await fs.rm(root, { recursive: true, force: true });
+});

@@ -4,6 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, statusCovers } from '../src/schema/handoff.mjs';
 import { focusSphere, sceneSphere } from '../src/adapters/three/focus.js';
+import { handoffLine } from '../src/server/ai-watch.mjs';
 
 test('request ids sort by time and say what they are', () => {
   const a = requestId('ask', new Date('2026-10-16T15:30:12.482Z'), () => 0.5);
@@ -31,6 +32,28 @@ test('request input: one line of words, objects with keys, known steps only', ()
   assert.equal(normalizeRequestInput({ kind: 'ask', text: '' }).ok, false);
   assert.equal(normalizeRequestInput({ kind: 'name', text: '', objects: [] }).ok, false);
   assert.equal(normalizeRequestInput({ kind: 'ask', text: 'x'.repeat(900), objects: [{ key: 'a' }] }).value.text.length, 500);
+});
+
+test('use the Library (2026-10-18): an ask carries the picked files (assets) and each object\'s own files', () => {
+  // "Make this enemy the boss": the object, and the model it is drawn with.
+  const boss = normalizeRequestInput({ kind: 'ask', text: 'make this enemy the boss at the climax', objects: [{ key: 'slime', files: ['assets/slime.glb', 'assets/slime.png', 'assets/slime.glb', '../x', '.studio/a', 3] }] });
+  assert.ok(boss.ok);
+  assert.deepEqual(boss.value.objects, [{ key: 'slime', files: ['assets/slime.glb', 'assets/slime.png'] }], 'bad entries dropped, never an error');
+  assert.equal(normalizeRequestInput({ kind: 'ask', text: 'x', objects: [{ key: 'a', files: Array.from({ length: 20 }, (_, i) => `f${i}.png`) }] }).value.objects[0].files.length, 8);
+  // "Add this to the scene" with a file picked in the Library: the file is what "this" is.
+  const add = normalizeRequestInput({ kind: 'ask', text: 'Add this to the scene', assets: ['assets/boss.glb', 'assets/boss.glb'], objects: [], view: { eye: [0, 5, 10], target: [0, 0, 0] } });
+  assert.ok(add.ok);
+  assert.deepEqual(add.value.assets, ['assets/boss.glb']);
+  assert.deepEqual(add.value.view, { eye: [0, 5, 10], target: [0, 0, 0] });
+  for (const assets of ['a.png', ['../x'], ['/etc/passwd'], ['.env'], ['a/.git/config'], ['a\\b'], [3], Array.from({ length: 51 }, (_, i) => `f${i}`)]) {
+    assert.equal(normalizeRequestInput({ kind: 'ask', text: 'x', assets }).ok, false, JSON.stringify(assets)?.slice(0, 40));
+  }
+  // Only an ask carries them; an empty list is no list.
+  assert.equal(normalizeRequestInput({ kind: 'name', text: '', objects: [{ key: 'a' }], assets: ['a.png'] }).value.assets, undefined);
+  assert.equal(normalizeRequestInput({ kind: 'ask', text: 'x', assets: [] }).value.assets, undefined);
+  // The stdout line names the files after the objects, so it alone says what "this" is.
+  assert.equal(handoffLine(add.value, '.studio/requests/r.json'), 'studio: request ask .studio/requests/r.json "Add this to the scene" (assets/boss.glb)');
+  assert.equal(handoffLine({ kind: 'ask', text: 'use this sound', objects: [{ key: 'door', label: 'door' }], assets: ['sfx/creak.mp3'] }, 'r.json'), 'studio: request ask r.json "use this sound" (door, sfx/creak.mp3)');
 });
 
 test('request input: delete-files carries a sorted, de-duplicated list of folder paths', () => {

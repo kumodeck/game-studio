@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.3 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.5 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -93,7 +93,11 @@ const CONTRACT_VERSION = 1;
  * middle drag, or Space held; one finger = the tool, two = looking on touch.
  */
                                                              
-/** Resizing several objects: `spread` = the gaps grow too, `inplace` = each grows on its own spot. */
+/**
+ * Resizing or turning several objects: `spread` ("together") = the whole arrangement as one piece (the gaps grow;
+ * the places turn round the middle of the selection), `inplace` ("each in place") = each one on its own spot.
+ * The turn uses the same two words since 2026-10-18 (play test: "no turn options with several picked").
+ */
                                                   
 
 /** One movable object as listed by an adapter. */
@@ -277,6 +281,12 @@ const CONTRACT_VERSION = 1;
      
                                       
      
+                                                                                                                
+                                                                                                                  
+                      
+     
+                                        
+     
                                                                             
                                                                            
                                                                              
@@ -346,6 +356,23 @@ const CONTRACT_VERSION = 1;
                                        
                                      
                                     
+     
+                                                                                                                   
+                                                                                                                     
+                                                                                                                     
+                                                                       
+     
+                          
+     
+                                                                                                                  
+                                                                                                                     
+                                                                                                                
+                                                                                                                   
+                                                             
+     
+                                                     
+                                                                                                                                
+                                      
                                                                              
                                                      
                                          
@@ -729,6 +756,9 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
  */
 const MSG_PREFIX = 'studio:';
 
+/** A fly key (WASD + E / Q up / down), by its place on the keyboard (KeyboardEvent.code minus "Key"), lower case. */
+                                                       
+
                         
                           
                                                                                   
@@ -737,6 +767,8 @@ const MSG_PREFIX = 'studio:';
                                       
                                                
                                              
+                                                                                                                          
+                                  
                                           
 
 /**
@@ -764,8 +796,11 @@ const MSG_PREFIX = 'studio:';
                                                                             
                                                                            
                                                                           
+                                                                                                                    
+                                                                                                                    
+                                                                                                      
      
-                                                                                               
+                                                                                                            
                                                                    
                                                        
                                                         
@@ -801,6 +836,12 @@ const MSG_PREFIX = 'studio:';
                                                                                              
                                                   
      
+                                                                                                                      
+                                                                                                                 
+                                                                               
+     
+                                                              
+     
                                                                                                              
                                                                                                                    
      
@@ -817,7 +858,9 @@ const MSG_PREFIX = 'studio:';
                                                    
                                                                                 
                                                                                    
-                                                                                                  
+                                                                                                                     
+                                                                                                              
+                                                                                                                                 
                                                       
                                                           
                                                                                       
@@ -847,6 +890,13 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                                                        
                                                     
+     
+                                                                                                                   
+                                                                                                                    
+                                                                                                                
+                                                                                                                    
+     
+                                                                                                  
                                                                                            
                                                                   
                                                    
@@ -907,6 +957,11 @@ function isStudioMessage(x         )                     {
                                                                                   
               
                      
+     
+                                                                                                                    
+                                                                                                           
+     
+                   
  
 
 /** What the shell hands to host.request(). */
@@ -935,6 +990,12 @@ function isStudioMessage(x         )                     {
                                                                    
      
                                                                              
+     
+                                                                                                                   
+                                                                                                                   
+                                                                                    
+     
+                    
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1057,12 +1118,6 @@ function isStudioMessage(x         )                     {
               
      
                              
-     
-                                                                                                                               
-                                                                                                                   
-                                                                            
-     
-                           
      
                                                                               
                                                                                 
@@ -1317,6 +1372,44 @@ const RESULT_FILES                         = {
                                       
  
 
+/**
+ * The objects as the Library shows them (ShellContext.objects, "one Library" 2026-10-18). The shell owns the
+ * objects and the selection; the Library owns its page (search, the All / Objects / Files filter, the grid, the
+ * detail on the right) and asks this for the objects' part of each. Names are untrusted text: the elements are
+ * built with textContent only.
+ */
+                                 
+                                                                                                  
+                  
+     
+                                                                                                                       
+                                                                                                                     
+                                                         
+     
+             
+                                                                                              
+                                      
+                                                                                    
+                             
+                                                                                                             
+                                                        
+                                                                                                              
+                                                    
+                                                                                                            
+                            
+                                                                     
+                
+                                                    
+                             
+     
+                                                                                                                   
+                                                                                                                  
+     
+                                           
+                                                                              
+                   
+ 
+
                                
                    
              
@@ -1336,6 +1429,19 @@ const RESULT_FILES                         = {
                               
      
                                        
+     
+                                                                                                                   
+                                                                                                                  
+                                                                                                                    
+                                                                                                              
+     
+                                                         
+     
+                                                                                                                    
+                                                                                                                            
+                                                                         
+     
+                           
                                
                                                                           
                   
@@ -1347,6 +1453,28 @@ const RESULT_FILES                         = {
                                                     
      
                                                              
+     
+                                                                                                                
+                                                                                                
+     
+                         
+ 
+
+/** What the Library does with its files through the shell (ShellContext.files). Paths are folder paths. */
+                                 
+     
+                                                                                                                   
+                                                                     
+     
+                                
+     
+                                                                                                                      
+                                                                                                                     
+                                                       
+     
+                              
+                                                                                                              
+                              
  
 
 // ---------------------------------------------------------------------------
@@ -1419,6 +1547,14 @@ const UI = {
   /** Long-press on rotate/scale/lift handles repeats; the whole run is one undo step. */
   holdDelayMs: 350,
   holdRepeatMs: 60,
+  /**
+   * A press held this long without moving opens choices: the strip's turn / size options (on their button) and the
+   * menu of the place pressed (anywhere else on the game, the list's rows, the Library's tiles; context menu,
+   * 2026-10-18). One length for both, so a long press feels the same everywhere; they never meet, because the strip's
+   * long press is only on its buttons. 450 ms: past a tap (~100–200 ms) and a hesitant press-then-drag, short of
+   * iOS's 500 ms callout.
+   */
+  longPressMs: 450,
   /** Narrower than this = phone layout (bottom bar instead of right column). */
   phoneMaxWidth: 720,
 }         ;
@@ -2627,12 +2763,34 @@ function assetsOfKey(rows              , key        )               {
                                            
                                         
 
-/** Filter by type, badge and a case-insensitive name search (matches anywhere in the path). */
-function filterRows(rows              , f                                                        )               {
+/**
+ * The Library's one row of filters (a review of the editor, 2026-10-18): All / 3D / 2D / Sound / Other. It replaced four groups
+ * (Show: All / Objects / Assets, Made from, Asset type, Use) that nobody could tell apart ("I couldn't make out how
+ * they are split at all. 3D assets, 2D assets, music, other is about enough."). Objects and files share the rows: a
+ * 3D game's objects are 3D, a 2D game's objects are 2D (panel.ts); a file goes by its type (shelfOfType).
+ * Object vs file stays readable on each tile's small tag; used / not used stays on the file's tile and detail.
+ */
+                                                            
+const SHELVES          = ['all', '3d', '2d', 'sound', 'other'];
+
+/**
+ * Where a file goes in the filters: 3D models → 3D; images and sprite sheets → 2D; sounds → Sound; the rest (fonts,
+ * JSON, a name in code with no known kind) → Other. A missing file still goes by its name's extension.
+ */
+function shelfOfType(type           )                        {
+  if (type === 'model') return '3d';
+  if (type === 'image' || type === 'atlas') return '2d';
+  if (type === 'sound') return 'sound';
+  return 'other';
+}
+
+/** Filter by type, badge, shelf (All / 3D / 2D / Sound / Other) and a case-insensitive name search (anywhere in the path). */
+function filterRows(rows              , f                                                                       )               {
   const q = (f.q ?? '').trim().toLowerCase();
   return rows.filter((r) =>
     (!f.type || f.type === 'all' || r.type === f.type)
     && (!f.badge || f.badge === 'all' || r.badge === f.badge)
+    && (!f.shelf || f.shelf === 'all' || shelfOfType(r.type) === f.shelf)
     && (!q || r.path.toLowerCase().includes(q)));
 }
 
@@ -2647,6 +2805,8 @@ __def(__exports, "isStudioFile", () => isStudioFile);
 __def(__exports, "urlToPath", () => urlToPath);
 __def(__exports, "buildRows", () => buildRows);
 __def(__exports, "assetsOfKey", () => assetsOfKey);
+__def(__exports, "SHELVES", () => SHELVES);
+__def(__exports, "shelfOfType", () => shelfOfType);
 __def(__exports, "filterRows", () => filterRows);
 __def(__exports, "countBadges", () => countBadges);
 };
@@ -2782,13 +2942,6 @@ __defs[7] = function (__exports) {
 const en = {
   title: 'Assets',
   search: 'Search by name',
-  typeAll: 'All types',
-  type_image: 'Images',
-  type_model: '3D models',
-  type_sound: 'Sounds',
-  type_atlas: 'Sprite sheets',
-  type_font: 'Fonts',
-  type_other: 'Other',
   badgeAll: 'Any status',
   badge_used: 'Used',
   badge_codeOnly: 'Only in code',
@@ -2913,6 +3066,39 @@ const en = {
   aiTooMany: 'Too many requests. Wait a minute and try again.',
   aiUnreachable: 'Couldn’t reach KUMODeck.',
   aiFailed: 'Couldn’t make it.',
+  // The shelf of files (plan 1 "objects and files on the same shelf", 2026-10-18): the card's line says how many objects
+  // use the file (one file, many objects).
+  usedByN: '{n:Used by 1 object|Used by # objects}',
+  usersHead: '{n:1 object uses this file|# objects use this file}',
+  showInShelf: 'Show in Objects →',
+  showInShelfTip: 'The objects that use this file, on the Objects shelf',
+  showInGame: 'Show in game →',
+  // One Library (a try of the editor, 2026-10-18): objects and assets in one grid. The filters' name (for screen readers).
+  filterShow: 'Show',
+  // The one row of filters (a review of the editor, 2026-10-18): what kind of thing, not where it came from. 3D = the objects of a 3D
+  // game and 3D model files; 2D = a 2D game's objects, images and sprite sheets; Sound = sound files; Other = the rest
+  // (fonts, JSON…). Plain words a North American player would use; "Sound" over "Audio" (it is sounds and music).
+  shelf_all: 'All',
+  shelf_3d: '3D',
+  shelf_2d: '2D',
+  shelf_sound: 'Sound',
+  shelf_other: 'Other',
+  tagObject: 'Object',
+  tagFile: 'Asset',
+  countObjects: '{n:1 object|# objects}',
+  countBoth: '{o:1 object|# objects} · {f:1 asset|# assets}',
+  emptyObjects: 'No objects match.',
+  noObjectsYet: 'No objects in the game yet.',
+  emptyBoth: 'Nothing matches.',
+  showUsers: 'Show just these objects',
+  showUsersTip: 'The Library narrowed to the objects that use this file',
+  // Using a file ("use the Library", 2026-10-18): a new object from a file is code, so it is a request to the AI,
+  // drafted in the ask box and sent with Enter.
+  addToScene: 'Add to scene',
+  addToSceneN: 'Add {n} to scene',
+  askAiFile: 'Ask your AI…',
+  addNeedsAi: 'Your AI adds files to the scene. It isn’t connected here.',
+  addMissing: 'This file isn’t in the folder.',
   bytes: '{n} B',
   kb: '{n} KB',
   mb: '{n} MB',
@@ -2922,14 +3108,32 @@ const en = {
 
 const ja                                     = {
   title: '素材',
+  usedByN: '物 {n} で使う',
+  usersHead: 'この素材を使っている物 {n}',
+  showInShelf: '物の棚で見る →',
+  showInShelfTip: 'この素材を使っている物を、物の棚で見る',
+  showInGame: 'ゲームで見る →',
+  filterShow: '表示',
+  shelf_all: 'すべて',
+  shelf_3d: '3D',
+  shelf_2d: '2D',
+  shelf_sound: '音',
+  shelf_other: 'その他',
+  tagObject: '物',
+  tagFile: '素材',
+  countObjects: '物 {n}',
+  countBoth: '物 {o} ・ 素材 {f}',
+  emptyObjects: '当てはまる物はありません。',
+  noObjectsYet: 'ゲームに置いた物はまだありません。',
+  emptyBoth: '当てはまる物も素材もありません。',
+  showUsers: '使っている物だけ見る',
+  showUsersTip: 'この素材を使っている物だけに絞る',
+  addToScene: 'シーンに足す',
+  addToSceneN: '{n} 個をシーンに足す',
+  askAiFile: 'AI に頼む…',
+  addNeedsAi: '素材をシーンに足すのは AI の仕事です。ここでは AI につながっていません。',
+  addMissing: 'この素材はフォルダにありません。',
   search: '名前で探す',
-  typeAll: 'すべての種類',
-  type_image: '画像',
-  type_model: '3D モデル',
-  type_sound: '音',
-  type_atlas: 'スプライトシート',
-  type_font: 'フォント',
-  type_other: 'その他',
   badgeAll: 'すべての印',
   badge_used: '使っている',
   badge_codeOnly: 'コードにだけある',
@@ -3959,10 +4163,10 @@ __defs[11] = function (__exports) {
 // - Pictures are shown with <img> only (SVG included), so an SVG file cannot
 //   run a script in the shell.
 
-                                                                               
+                                                                                                               
 const { ASSET_EXT } = __require(0);
-const { assetsOfKey, buildRows, countBadges, filterRows, normalizeList } = __require(5);
-                                                                             
+const { assetsOfKey, buildRows, filterRows, normalizeList, SHELVES, shelfOfType } = __require(5);
+                                                           
 const { addFile, buildLibraryJson, emptyState, pendingCount, setReplace, stateFromFile } = __require(6);
                                                                   
 const { formatSize, t } = __require(7);
@@ -3993,6 +4197,12 @@ const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
      
                                        
      
+                                                                                                                   
+                                                                                                                    
+                                                   
+     
+                                                         
+     
                                                                                                                     
                                                                                                          
      
@@ -4004,6 +4214,13 @@ const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
                                                                
      
                           
+     
+                                                                                                         
+                                                                                                    
+                                                                                                           
+                                                                             
+     
+                               
                                                                                  
                               
                                                                                    
@@ -4021,6 +4238,35 @@ const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
                                                                                                            
      
                                          
+     
+                                                                                                                   
+                                                                                                                    
+                                                                                                                 
+     
+                           
+     
+                                                                                                     
+                                                                                                                    
+     
+                     
+     
+                                                                                                                   
+                                                                                                                  
+                                             
+     
+                         
+ 
+
+/** The drag type of a file's tile (dropped on the Scene row = "Add to scene"); the data is the file's folder path. */
+const DRAG_FILE = 'application/x-studio-file';
+
+/**
+ * What the Library shows: one of All / 3D / 2D / Sound / Other (marks.ts Shelf; a review of the editor, 2026-10-18, it replaced
+ * Show: All / Objects / Assets, the objects' Made from, Asset type and Use) and the search.
+ */
+                              
+               
+            
  
 
                               
@@ -4031,8 +4277,31 @@ const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
                                                                                 
                     
                     
+                                                                                                             
+                        
                                      
                            
+                                                                
+                                
+                                                           
+                              
+                                                                                                 
+                       
+                                                                                                     
+                                  
+     
+                                                                                                                  
+                                      
+     
+                   
+                                                                                                         
+                          
+                                                                                                                          
+                         
+                                                                                                            
+                      
+                                                                   
+                 
                                                                               
                                       
                                                                                      
@@ -4057,8 +4326,6 @@ function baseName(p        )         {
 }
 
 const TYPE_ICON                         = { image: '▦', model: '◆', sound: '♪', atlas: '▤', font: 'Aa', other: '•' };
-const TYPES               = ['all', 'image', 'model', 'sound', 'atlas', 'font'];
-const BADGES          = ['used', 'codeOnly', 'unused', 'missing'];
 const ACCEPT = Object.values(ASSET_EXT).flat().filter((e) => e !== 'json').map((e) => `.${e}`).join(',');
 /**
  * How long one read of the folder may take before the panel says it got no answer (seconds).
@@ -4076,8 +4343,35 @@ function mountLibrary(root    , deps             )              {
   let rows               = [];
   let state               = emptyState();
   let saved               = emptyState();
-  let filter                                                      = { type: 'all', badge: 'all', q: '' };
+  const objects = deps.objects;
+  // Kept by the caller across re-mounts (index.ts); a fresh one in the dev harness.
+  const filter              = deps.view || { shelf: 'all', q: '' };
+  /** The shelf the game's objects sit on (3D or 2D), or null without objects (the dev harness: files only). */
+  const objShelf = ()               => (objects ? (objects.dim() === '2d' ? '2d' : '3d') : null);
+  /**
+   * The objects are in the grid on All and on their own shelf, and never while a file's "Show just these objects"
+   * narrows them (then only those objects: the band above the grid says so and has the × back).
+   */
+  const showsObjects = () => !!objects && (filter.shelf === 'all' || filter.shelf === objShelf());
+  const showsFiles = () => !objects?.band();
+  /** The detail last drawn (a file's path or the picked objects' keys): a new one scrolls the phone sheet up to it. */
+  let lastDetail = '';
+  /**
+   * A pick made for a tile's menu (context menu, 2026-10-18): the new detail does NOT scroll the page to itself. The
+   * menu opens at the finger / pointer over the tile; a phone sheet jumping to its top under it moved the tile away
+   * and closed the menu. The menu's "Details" brings the detail into view instead (revealDetail).
+   */
+  let still = false;
   let openPath                = null;
+  /**
+   * Files picked to use ("use the Library", 2026-10-18): the open file, or several with Shift / Multi-select (then the
+   * picked objects stay picked too: "these two and this sound"). They are what the ask box's chip names and what
+   * "Add to scene" / "Ask your AI…" on a file's detail work on. Orange like any pick; the detail shows the last one.
+   */
+  const pickedFiles = new Set        ();
+  // What the shell was last told; null = nothing yet, so a new panel (a re-mount) always tells it its pick, even an empty
+  // one (the shell kept the old panel's files and the chip said "3 picked" for 1 — found in the pictures, 2026-10-18).
+  let pickSent                = null;
   let picking = false;
   let deleting = false;
   const asked = deps.asked || new Set        ();
@@ -4108,13 +4402,7 @@ function mountLibrary(root    , deps             )              {
   search.type = 'search';
   search.placeholder = L('search');
   search.setAttribute('aria-label', L('search'));
-  const typeSel = h('select', 'gsl-type');
-  typeSel.setAttribute('aria-label', L('typeAll'));
-  for (const ty of TYPES) {
-    const o = h('option', undefined, ty === 'all' ? L('typeAll') : L(`type_${ty}`             ));
-    o.value = ty;
-    typeSel.append(o);
-  }
+  search.value = filter.q;
   const addBtn = h('button', 'gsl-btn gsl-add', L('addFiles'));
   addBtn.type = 'button';
   const addInput = h('input');
@@ -4122,7 +4410,7 @@ function mountLibrary(root    , deps             )              {
   addInput.multiple = true;
   addInput.accept = ACCEPT;
   addInput.hidden = true;
-  bar.append(search, typeSel, addBtn, addInput);
+  bar.append(search, addBtn, addInput);
   // "Make with AI" (ai-make.ts): only when the host has the optional KUMODeck sign-in (the local
   // server). One quiet button; nothing is asked of KUMODeck until it is pressed.
   const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open', L('aiOpen')) : null;
@@ -4132,7 +4420,14 @@ function mountLibrary(root    , deps             )              {
     bar.append(aiBtn);
   }
 
-  const chips = h('div', 'gsl-chips');
+  // The filters: All / 3D / 2D / Sound / Other, one list with no headings (a review of the editor, 2026-10-18: "I couldn't make out
+  // how they are split at all. 3D assets, 2D assets, music, other is about enough."). In the shell's left column on PC
+  // (as rows), a row of chips that scrolls sideways on a phone. Before: four headed groups — Show (All / Objects /
+  // Assets), Made from (a file / drawn in code), Asset type (Images / 3D models / Sounds…) and Use (used / not used).
+  // Object vs asset is still on each tile's small tag; used / not used still on a file's tile and in its detail.
+  const chips = h('div', 'gsl-chips shelf-filters');
+  chips.setAttribute('role', 'group');
+  const headEl = h('div', 'gsl-head shelf-head');
   const count = h('div', 'gsl-count');
   const grid = h('div', 'gsl-grid');
   // "Couldn't read the folder (…)." + Try again: only after a failed read (renderReadFail).
@@ -4158,7 +4453,7 @@ function mountLibrary(root    , deps             )              {
   saveBtn.type = 'button';
   foot.append(statusEl, pendingEl);
   if (deps.ownSave) foot.append(saveBtn);
-  wrap.append(bar);
+  wrap.append(headEl, bar);
   const ai = deps.host.kumo
     ? mountAiMake(wrap, {
         kumo: deps.host.kumo,
@@ -4295,34 +4590,70 @@ function mountLibrary(root    , deps             )              {
   }
 
   // ---------- list ----------
+  /** One filter row: a chip in the phone's row, a row of the left column on PC (the shell's CSS). */
+  function chip(label        , n        , on         , press            , data                        , extra = '')                    {
+    const c = h('button', `gsl-chip filter-row${extra ? ` ${extra}` : ''}`);
+    c.type = 'button';
+    for (const [k, v] of Object.entries(data)) c.dataset[k] = v;
+    c.setAttribute('aria-pressed', String(on));
+    c.append(h('span', 'label', label));
+    if (n) c.append(h('b', undefined, String(n)));
+    c.addEventListener('click', press);
+    return c;
+  }
+
   function renderChips() {
     chips.replaceChildren();
-    const c = countBadges(rows);
-    for (const b of BADGES) {
-      // A mark with nothing behind it ("missing 0") is only noise, and four
-      // chips took half the phone sheet (UI/UX 2026-10-16). Kept while it is the
-      // active filter, so the person can still turn the filter off.
-      if (c[b] === 0 && filter.badge !== b) continue;
-      const chip = h('button', `gsl-chip gsl-chip-${b}`);
-      chip.type = 'button';
-      chip.setAttribute('aria-pressed', String(filter.badge === b));
-      chip.title = L(`hint_${b}`             );
-      chip.append(h('span', `gsl-dot gsl-dot-${b}`), h('span', undefined, L(`badge_${b}`             )), h('b', undefined, String(c[b])));
-      chip.addEventListener('click', () => {
-        filter.badge = filter.badge === b ? 'all' : b;
+    chips.dataset.shelf = filter.shelf;
+    chips.setAttribute('aria-label', L('filterShow'));
+    const n                        = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0 };
+    for (const r of rows) n[shelfOfType(r.type)]++;
+    const os = objShelf();
+    if (os) {
+      n.all += objects .count();
+      n[os] += objects .count();
+    }
+    for (const sh of SHELVES) {
+      // A shelf with nothing on it is noise (Lantern Cove has no 2D, Firefly Ruins no 3D); kept while it is the one on,
+      // so it can still be turned off. All is always there.
+      if (sh !== 'all' && !n[sh] && filter.shelf !== sh) continue;
+      chips.append(chip(L(`shelf_${sh}`             ), n[sh], filter.shelf === sh, () => {
+        // A press on the one that is on goes back to All; any press ends "Show just these objects".
+        filter.shelf = filter.shelf === sh ? 'all' : sh;
+        objects?.showFile(null);
         render();
-      });
-      chips.append(chip);
+      }, { shelf: sh }));
     }
   }
 
   function renderGrid() {
-    const list = filterRows(rows, filter);
+    const showFiles = showsFiles();
+    const list = showFiles ? filterRows(rows, filter) : [];
+    // The objects first (what is in the game), then the files they are made from: one grid ("one Library").
+    const objs = showsObjects() ? objects .tiles(filter.q.trim().toLowerCase()) : null;
     // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
     // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
     // While "Couldn't read the folder" shows, it takes the count's place (same cell in shell.css).
-    count.textContent = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
+    const fileCount = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
+    const band = objs ? objects .band() : null;
+    count.replaceChildren();
+    if (band) count.append(band);
+    else if (!objs) count.textContent = fileCount;
+    else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
+    else count.textContent = fileCount ? L('countBoth', { o: objs.n, f: list.length }) : objs.n ? L('countObjects', { n: objs.n }) : '';
     grid.replaceChildren();
+    if (objs) {
+      grid.append(...objs.tiles);
+      if (!showFiles) {
+        if (!objs.tiles.length) grid.append(h('div', 'gsl-empty', objects .count() ? L('emptyObjects') : L('noObjectsYet')));
+        return;
+      }
+      // Nothing at all for this search: one line for both halves.
+      if (!objs.tiles.length && !list.length && filter.q.trim() && loaded) {
+        grid.append(h('div', 'gsl-empty', L('emptyBoth')));
+        return;
+      }
+    }
     // What Make with AI is making: a tile first, so the wait has a place even with the panel closed.
     for (const w of aiWork) {
       const tile = h('div', 'gsl-tile gsl-tile-making');
@@ -4342,6 +4673,8 @@ function mountLibrary(root    , deps             )              {
       // Not read yet and the read failed: the line above the grid says so (and has Try again).
       if (!loaded && readError) return;
       const empty = !loaded ? L('loading') : rows.length || status ? L('empty') : deps.host.kumo ? L('noFilesYetAi') : L('noFilesYet');
+      // Under the objects, a line about the assets only when there is something to say (none yet / still reading).
+      if (objs?.tiles.length && loaded && rows.length) return;
       grid.append(h('div', 'gsl-empty', empty));
       return;
     }
@@ -4352,21 +4685,47 @@ function mountLibrary(root    , deps             )              {
       tile.tabIndex = 0;
       tile.setAttribute('role', 'button');
       tile.dataset.path = row.path; // dataset is an attribute value, not HTML
+      tile.dataset.kind = 'file';
       tile.title = row.path;
       if (row.path === openPath) tile.classList.add('gsl-open');
       const name = h('span', 'gsl-name', baseName(row.path));
       const meta = h('span', 'gsl-meta');
-      meta.append(badgeEl(row.badge));
+      // One file, many objects (plan 1): a file that objects use says how many ("Used by 3"), in your colour, instead
+      // of the plain "Used" mark; files the game only loads (a sound, a sky) keep their mark, and so does every other
+      // mark (a missing file an object asks for stays "Missing": that is the news).
+      const users = new Set(row.usedBy.map((u) => u.key)).size;
+      if (users && row.badge === 'used') {
+        const u = h('span', 'gsl-uses', L('usedByN', { n: users }));
+        u.title = L('hint_used');
+        meta.append(u);
+      } else meta.append(badgeEl(row.badge));
       const to = state.replace.get(row.path);
       if (to) meta.append(h('span', 'gsl-tag gsl-tag-replace', `→ ${baseName(to)}`));
       if (newFiles.has(row.path) || state.added.some((a) => a.file === row.path)) meta.append(h('span', 'gsl-tag gsl-tag-new', L('added')));
       if (asked.has(row.path)) meta.append(h('span', 'gsl-tag gsl-tag-del', L('delAsked')));
-      tile.append(thumbFor(row, 128), name, meta);
-      tile.addEventListener('click', () => open(row.path));
+      const pic = thumbFor(row, 128);
+      // "Asset" in the picture's corner (an object's tile says "Object"): what the tile is, read before the picture.
+      // Only with the objects in the same grid; grey words, no colour of their own (orange = picked, violet = AI).
+      if (objects) pic.append(h('span', 'lib-kind', L('tagFile')));
+      tile.append(pic, name, meta);
+      if (pickedFiles.has(row.path)) tile.classList.add('gsl-open');
+      // Dragged onto the Scene row = "Add to scene" (main.ts). Only where an AI can make the object (deps.files.add).
+      if (deps.files?.add && row.exists) {
+        tile.draggable = true;
+        tile.addEventListener('dragstart', (e) => {
+          if (!e.dataTransfer) return;
+          e.dataTransfer.setData(DRAG_FILE, row.path);
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+      }
+      // Shift, or Multi-select: add the file to the pick (or take it out) instead of opening it alone.
+      const press = (add         ) => (add || objects?.multi() ? toggleFile(row.path) : open(row.path));
+      tile.addEventListener('click', (e) => press(e.shiftKey));
       tile.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
-          open(row.path);
+          e.stopPropagation();
+          press(e.shiftKey);
         }
       });
       grid.append(tile);
@@ -4376,9 +4735,18 @@ function mountLibrary(root    , deps             )              {
   // ---------- detail ----------
   function renderDetail() {
     const row = rows.find((r) => r.path === openPath);
-    detail.hidden = !row;
-    wrap.classList.toggle('gsl-has-detail', !!row);
+    // One detail at a time: the open file's, else the picked objects' (an open file drops the pick, see open()).
+    const obj = !row && objects ? objects.detail() : null;
+    detail.hidden = !row && !obj;
+    wrap.classList.toggle('gsl-has-detail', !detail.hidden);
+    detail.dataset.kind = row ? 'file' : obj ? 'object' : '';
     detail.replaceChildren();
+    const key = row ? `file:${row.path}` : obj ? `obj:${obj.key}` : '';
+    // Phone: the detail sits at the top of the sheet, under its head; a new one picked further down scrolls the sheet
+    // back up to it (scrolling the detail itself into view hid the Scene | Library switch above it).
+    if (key && key !== lastDetail && !still && getComputedStyle(detail).order !== '0') requestAnimationFrame(() => wrap.scrollTo?.({ top: 0 }));
+    lastDetail = key;
+    if (obj) detail.append(obj.el);
     if (!row) return;
 
     const head = h('div', 'gsl-dhead');
@@ -4387,6 +4755,7 @@ function mountLibrary(root    , deps             )              {
     close.setAttribute('aria-label', L('close'));
     close.addEventListener('click', () => {
       openPath = null;
+      pickedFiles.clear();
       picking = false;
       render();
     });
@@ -4399,6 +4768,7 @@ function mountLibrary(root    , deps             )              {
     info.append(badgeEl(row.badge), h('span', 'gsl-hint', L(`hint_${row.badge}`             )));
     if (row.exists) info.append(h('span', 'gsl-size', formatSize(deps.lang, row.size)));
     detail.append(info);
+    if (deps.files) detail.append(useSection(row));
 
     // A heavy 3D file: say what it costs the game, and hand the fix to the AI (the editor only adds files).
     if (row.exists && row.type === 'model' && row.size > HEAVY_MODEL_BYTES) {
@@ -4425,27 +4795,53 @@ function mountLibrary(root    , deps             )              {
     // "In the scene: 2" selects them all in the scene (handles and outlines
     // on the game), and each name below selects one. The scene side has the
     // mirror of it ("Assets: tree.png" on the selected object's card).
+    // Plan 1 (2026-10-18): "3 objects use this file", their names, then two ways on — "Show in Objects →" (the Objects
+    // shelf narrowed to them: shelf to shelf, the game stays where it is) and "Show in game →" (selects them all in the
+    // game, what "In the scene: 3" did). A name opens that object on the Objects shelf. Before, every press here
+    // jumped to the game; that jump was the confusing part in a try on 10/18.
     const used = h('div', 'gsl-section gsl-in-scene');
-    if (!row.usedBy.length) used.append(h('p', 'gsl-muted', L('inSceneNone')));
-    else {
-      const all = h('button', 'gsl-btn gsl-scene-all', L('inScene', { n: row.usedBy.length }));
-      all.type = 'button';
-      all.title = L('inSceneTip');
-      all.dataset.action = 'asset-select-users';
-      const keysOf = row.usedBy.map((u) => u.key);
-      all.addEventListener('click', () => (deps.selectObjects ? deps.selectObjects(keysOf) : deps.selectObject(keysOf[0] )));
-      used.append(all);
-    }
+    const keysOf = [...new Set(row.usedBy.map((u) => u.key))];
+    if (!keysOf.length) used.append(h('p', 'gsl-muted', L('inSceneNone')));
+    else used.append(h('h4', undefined, L('usersHead', { n: keysOf.length })));
     const keys = h('div', 'gsl-keys');
     for (const u of row.usedBy) {
       const k = h('button', 'gsl-key', deps.nameOf ? deps.nameOf(u.key) : u.key);
       k.type = 'button';
+      k.dataset.key = u.key;
       k.title = L('select');
       if (!u.sure) k.append(h('i', 'gsl-guess', ` (${L('guessed')})`));
-      k.addEventListener('click', () => deps.selectObject(u.key));
+      // In the Library: that object's detail, right here (the file closes). Elsewhere: the shell's way.
+      k.addEventListener('click', () => {
+        if (objects) {
+          openPath = null;
+          objects.select(u.key);
+        } else if (deps.showObjects) deps.showObjects({ key: u.key });
+        else deps.selectObject(u.key);
+      });
       keys.append(k);
     }
     used.append(keys);
+    if (keysOf.length) {
+      const acts = h('div', 'gsl-acts');
+      if (objects || deps.showObjects) {
+        // "Show just these objects": the Library narrowed to the objects that use this file — still the Library, the
+        // game stays where it is. (In plan 1 this was "Show in Objects →", the other shelf.)
+        const shelf = h('button', 'gsl-btn gsl-to-shelf', objects ? L('showUsers') : L('showInShelf'));
+        shelf.type = 'button';
+        shelf.title = objects ? L('showUsersTip') : L('showInShelfTip');
+        shelf.dataset.action = 'asset-show-users';
+        shelf.addEventListener('click', () => showUsers(row.path));
+        acts.append(shelf);
+      }
+      // The class and action name stay from "In the scene: 2" (scripts and .studio/ui/ CSS find it by them).
+      const all = h('button', 'gsl-btn gsl-scene-all', L('showInGame'));
+      all.type = 'button';
+      all.title = L('inSceneTip');
+      all.dataset.action = 'asset-select-users';
+      all.addEventListener('click', () => (deps.selectObjects ? deps.selectObjects(keysOf) : deps.selectObject(keysOf[0] )));
+      acts.append(all);
+      used.append(acts);
+    }
     detail.append(used);
 
     const code = h('div', 'gsl-section');
@@ -4520,6 +4916,63 @@ function mountLibrary(root    , deps             )              {
       }
       detail.append(del);
     }
+  }
+
+  /**
+   * "Add to scene" and "Ask your AI…" for the picked files ("use the Library", 2026-10-18). A new object from a file
+   * is code the AI writes, so "Add to scene" drafts that request in the ask box (the file's chip in it, sent with
+   * Enter) — the same box and the same Enter as everywhere else, nothing sent behind the person's back. Without an AI
+   * (the web demo) the button stays, dimmed, with one line saying why: a missing button reads as "can't be done".
+   */
+  function useSection(row            )     {
+    const use = h('div', 'gsl-section gsl-use');
+    const acts = h('div', 'gsl-acts');
+    const paths = pickedFiles.size > 1 && pickedFiles.has(row.path) ? [...pickedFiles] : [row.path];
+    const many = paths.length > 1;
+    const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', many ? L('addToSceneN', { n: paths.length }) : L('addToScene'));
+    add.type = 'button';
+    add.dataset.action = 'file-add-to-scene';
+    const can = !!deps.files .add && row.exists;
+    add.disabled = !can;
+    if (can) add.addEventListener('click', () => deps.files .add (paths));
+    acts.append(add);
+    if (deps.files .ask) {
+      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
+      ask.type = 'button';
+      ask.dataset.action = 'file-ask';
+      ask.addEventListener('click', () => deps.files .ask (paths));
+      acts.append(ask);
+    }
+    use.append(acts);
+    if (!deps.files .add) use.append(h('p', 'gsl-muted gsl-use-why', L('addNeedsAi')));
+    else if (!row.exists) use.append(h('p', 'gsl-muted gsl-use-why', L('addMissing')));
+    return use;
+  }
+
+  /** Shift / Multi-select on a file's tile: in or out of the pick; the detail shows the last one put in. */
+  function toggleFile(path        ) {
+    if (pickedFiles.has(path)) {
+      pickedFiles.delete(path);
+      if (openPath === path) openPath = [...pickedFiles].pop() ?? null;
+    } else {
+      // The file open alone so far becomes the first of several.
+      if (openPath && !pickedFiles.size) pickedFiles.add(openPath);
+      pickedFiles.add(path);
+      openPath = path;
+    }
+    picking = false;
+    deleting = false;
+    objects?.showFile(null);
+    render();
+  }
+
+  /** Tell the shell what is picked when it changed (its ask box's chip). */
+  function sendPick() {
+    const list = [...pickedFiles].filter((p) => rows.some((r) => r.path === p));
+    const sig = list.join('\n');
+    if (sig === pickSent) return;
+    pickSent = sig;
+    deps.files?.picked(list);
   }
 
   function picker(row            )     {
@@ -4626,9 +5079,13 @@ function mountLibrary(root    , deps             )              {
     filter.q = search.value;
     renderGrid();
   });
-  typeSel.addEventListener('change', () => {
-    filter.type = typeSel.value              ;
-    renderGrid();
+  // A press on an object's tile picks it: the file open on the right closes (one detail at a time).
+  objects?.onPick((add) => {
+    picking = false;
+    deleting = false;
+    // Shift / Multi-select: the files stay picked with the objects; the detail shows the objects now.
+    if (!add) pickedFiles.clear();
+    openPath = null;
   });
   saveBtn.addEventListener('click', () => void save());
 
@@ -4638,11 +5095,18 @@ function mountLibrary(root    , deps             )              {
   }
 
   function render() {
+    // Multi-select acts on the objects: in the bar while objects are shown.
+    if (objects) {
+      const mb = objects.multiButton();
+      if (!showsObjects()) mb.remove();
+      else if (mb.parentElement !== bar) bar.insertBefore(mb, addBtn);
+    }
     renderChips();
     renderReadFail();
     renderGrid();
     renderDetail();
     notifyPending();
+    sendPick();
   }
 
   // ---------- public ----------
@@ -4703,10 +5167,42 @@ function mountLibrary(root    , deps             )              {
 
   function open(path        ) {
     openPath = path;
+    pickedFiles.clear();
+    pickedFiles.add(path);
     picking = false;
     deleting = false;
+    // One thing open in the Library: a file's detail drops the objects' pick (its tiles would stay orange next to the
+    // open file's: two "picked" at once). On another shelf the file would not be in the grid: show all.
+    if (objects) {
+      objects.showFile(null);
+      objects.clear();
+    }
+    const row = rows.find((r) => r.path === path);
+    if (row && filter.shelf !== 'all' && shelfOfType(row.type) !== filter.shelf) filter.shelf = 'all';
     render();
-    detail.scrollIntoView?.({ block: 'nearest' });
+    // The shell's phone sheet draws the detail at its top, under the head (CSS `order`, plan 1): renderDetail scrolls
+    // the sheet up to it so its head (the Scene | Library switch) stays in sight. Elsewhere the detail is where it was.
+    if (!still && getComputedStyle(detail).order === '0') detail.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  /** "Show just these objects": the Library narrowed to the objects that use `path` (the detail's button, the tile's menu). */
+  function showUsers(path        ) {
+    if (!objects) return deps.showObjects?.({ file: path });
+    openPath = null;
+    pickedFiles.clear();
+    // On the objects' shelf or All (Sound / Other would hide them); the files step aside while the band shows.
+    if (!showsObjects()) filter.shelf = 'all';
+    objects.showFile(path);
+    objects.clear();
+    render();
+  }
+
+  /** "Replace…" from the tile's menu (context menu, 2026-10-18): the file's detail with its picker open, in view. */
+  function replace(path        ) {
+    open(path);
+    picking = true;
+    render();
+    detail.querySelector('.gsl-replace')?.scrollIntoView?.({ block: 'nearest' });
   }
 
   function renderAssetsOf(into    , key        ) {
@@ -4731,12 +5227,15 @@ function mountLibrary(root    , deps             )              {
   }
 
   // The last saved decisions: from the shell (restore) or read here.
-  const restore = (j         ) => {
+  const restore = (j         , s          = j) => {
     state = stateFromFile(j);
-    saved = stateFromFile(j);
+    saved = stateFromFile(s);
     render();
   };
-  if (deps.initial !== undefined) restore(deps.initial);
+  if (deps.initial !== undefined) {
+    restore(deps.initial, deps.initialSaved !== undefined ? deps.initialSaved : deps.initial);
+    if (deps.initialSaved !== undefined) notifyPending();
+  }
   else {
     render();
     void deps.host.load('library').then(restore).catch(() => undefined);
@@ -4747,7 +5246,48 @@ function mountLibrary(root    , deps             )              {
     save,
     markSaved,
     pending: () => pendingCount(state, saved),
+    savedResult: () => buildLibraryJson(saved, rows),
     open,
+    showUsers,
+    replace,
+    revealDetail: () => {
+      render();
+      if (detail.hidden) return;
+      // Phone: the detail heads the sheet (CSS order): the sheet's top. PC: its own column, into view.
+      if (getComputedStyle(detail).order !== '0') wrap.scrollTo?.({ top: 0 });
+      else detail.scrollIntoView?.({ block: 'nearest' });
+    },
+    showPick() {
+      openPath = null;
+      pickedFiles.clear();
+      picking = false;
+      deleting = false;
+      objects?.showFile(null);
+      // The objects sit on All and on the game's 3D / 2D only; a search that hides the pick is cleared too.
+      if (!showsObjects()) filter.shelf = 'all';
+      const sel = (objects?.detail()?.key || '').split(',').filter(Boolean);
+      if (filter.q && sel.length && !objects .tiles(filter.q.trim().toLowerCase()).tiles.some((t) => sel.includes(t.dataset.key ))) {
+        filter.q = '';
+        search.value = '';
+      }
+      render();
+      // The picked tile in view (it may be far down a long grid), without scrolling the page sideways.
+      const tile = sel.length ? grid.querySelector             ('.lib-object.gsl-open') : null;
+      if (tile) tile.scrollIntoView?.({ block: 'nearest' });
+      if (getComputedStyle(detail).order !== '0') wrap.scrollTo?.({ top: 0 });
+    },
+    pickedFiles: () => [...pickedFiles],
+    holdStill: (fn            ) => {
+      still = true;
+      try {
+        fn();
+      } finally {
+        still = false;
+      }
+    },
+    redraw: () => render(),
+    filtersEl: chips,
+    headEl,
     assetsOf: (key) => assetsOfKey(rows, key),
     renderAssetsOf,
     rows: () => rows,
@@ -4756,10 +5296,13 @@ function mountLibrary(root    , deps             )              {
       audio.pause();
       if (workTick) window.clearInterval(workTick);
       wrap.remove();
+      // The shell may have moved the filters into its left column.
+      chips.remove();
     },
   };
 }
 
+__def(__exports, "DRAG_FILE", () => DRAG_FILE);
 __def(__exports, "mountLibrary", () => mountLibrary);
 };
 __defs[12] = function (__exports) {
@@ -4834,7 +5377,7 @@ __defs[13] = function (__exports) {
 
                                                                                       
 const { mountLibrary } = __require(11);
-                                              
+                                                           
 const { assetsOfKey, buildRows, normalizeList } = __require(5);
                                              
 const { t } = __require(7);
@@ -4843,9 +5386,21 @@ const { displayName } = __require(12);
 
 let panel                     = null;
 let restored                           ;
+/**
+ * The decisions of a panel that closed with unsaved swaps / added files: `now` (what the person chose) and
+ * `saved` (the last saved file). Leaving Assets unmounts the panel; without this, dirty() said 0, the shell's
+ * Save (⌘S on the Scene) skipped library.json and the swap never reached the AI (e2e-save 2026-10-18: Lantern
+ * Cove sail → sail-tanbark, saved from the Scene: only placement.json was handed over). null = nothing kept.
+ */
+let kept                                                         = null;
 let offs                    = [];
 /** A file to open once the library panel is mounted (pressed from the placement side). */
 let pendingOpen                = null;
+/**
+ * What the Library shows (All / 3D / 2D / Sound / Other and the search), kept across re-mounts: a change of
+ * language or layout mounts a new panel, and the Library should not jump back to All.
+ */
+const view              = { shelf: 'all', q: '' };
 /** Files the person asked the AI to delete in this session (the whole list goes with every request). */
 const askedDelete = new Set        ();
 
@@ -4886,7 +5441,7 @@ function baseOf(gameUrl        )         {
 
 const libraryTool            = {
   id: 'library',
-  label: { en: 'Assets', ja: '素材' },
+  label: { en: 'Library', ja: 'ライブラリ' },
 
   restore(json) {
     restored = json;
@@ -4898,7 +5453,8 @@ const libraryTool            = {
       host: ctx.host,
       base: () => base,
       lang: ctx.lang,
-      initial: restored === undefined ? undefined : restored,
+      initial: kept ? kept.now : restored === undefined ? undefined : restored,
+      initialSaved: kept ? kept.saved : undefined,
       requestAssets: () => ask                                                          (
         ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
       preview: async (url, to) => {
@@ -4908,6 +5464,10 @@ const libraryTool            = {
       },
       selectObject: (key) => ctx.selectObject(key),
       selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects (keys) : undefined,
+      showObjects: ctx.showObjects ? (o) => ctx.showObjects (o) : undefined,
+      objects: ctx.objects,
+      files: ctx.files,
+      view,
       nameOf: (key) => {
         const it = ctx.items().find((i) => i.key === key);
         return it ? displayName(it, (k) => ctx.t(k)) : key;
@@ -4957,22 +5517,76 @@ const libraryTool            = {
   unmount() {
     for (const off of offs) off();
     offs = [];
+    const now = panel && panel.pending() > 0 ? panel.result() : null;
+    kept = panel && now ? { now, saved: panel.savedResult(), pending: panel.pending() } : null;
     panel?.destroy();
     panel = null;
   },
 
   dirty() {
-    return panel?.pending() ?? 0;
+    return panel ? panel.pending() : kept?.pending ?? 0;
   },
 
   result() {
-    return panel ? panel.result() : null;
+    return panel ? panel.result() : kept?.now ?? null;
   },
 
   saved() {
-    panel?.markSaved();
+    if (panel) panel.markSaved();
+    // Saved while closed: what was kept is the saved file now (the next mount reads it as saved).
+    else if (kept) restored = kept.now;
+    kept = null;
   },
 };
+
+/**
+ * The mounted panel's filters and head (the shell moves them: the filters into its left column on PC, its
+ * Objects | Assets switch into the head on a phone). null while Assets is not open.
+ */
+function libraryParts()                                                     {
+  return panel ? { filters: panel.filtersEl, head: panel.headEl } : null;
+}
+
+/** Draw the open Library again (the shell's selection or object list changed). No-op while it is not open. */
+function libraryRedraw()       {
+  panel?.redraw();
+}
+
+/** What the Library shows now ('all' | '3d' | '2d' | 'sound' | 'other'), e.g. for the shell's tests and ⌘K. */
+function libraryShelf()                       {
+  return view.shelf;
+}
+
+/**
+ * Every object's files at once, for the Objects shelf ("planks.jpg" under each object, "A file" / "Drawn in code"):
+ * object key → folder paths. From the open panel's rows when it has them, else read once here (the folder and one
+ * question to the game, as filesOfObject does for one object). Never throws: no answer = an empty map.
+ */
+async function filesOfObjects(ctx              )                                 {
+  let rows              ;
+  try {
+    if (panel && panel.rows().length) rows = panel.rows();
+    else {
+      const [files, game, open] = await Promise.all([
+        ctx.host.listAssets(),
+        ask                                                          (ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
+        ctx.host.open(),
+      ]);
+      rows = buildRows({ ...normalizeList(files), ...game, base: baseOf(open.gameUrl) });
+    }
+  } catch {
+    return new Map();
+  }
+  const out = new Map                  ();
+  for (const r of rows) {
+    for (const u of r.usedBy) {
+      const list = out.get(u.key) || [];
+      if (!list.includes(r.path)) list.push(r.path);
+      out.set(u.key, list);
+    }
+  }
+  return out;
+}
 
 /** One file an object uses, for the scene card's "Assets: tree.png" line. */
                              
@@ -5004,6 +5618,40 @@ async function filesOfObject(key        , ctx              )                    
     return [];
   }
   return list.map((r) => ({ path: r.path, name: r.path.slice(r.path.lastIndexOf('/') + 1), src: r.type === 'image' && r.exists ? ctx.host.assetUrl(r.path) : undefined }));
+}
+
+/**
+ * A file tile's menu (context menu, 2026-10-18): how many objects use it ("Show just these objects" is dimmed at 0), or
+ * null when the Library is not open or the file is not listed.
+ */
+function libraryFile(path        )                                            {
+  const row = panel?.rows().find((r) => r.path === path);
+  return row ? { users: new Set(row.usedBy.map((u) => u.key)).size, exists: row.exists } : null;
+}
+
+/** Run `fn` (the pick before a tile's menu) without the Library scrolling to the new detail. */
+function libraryHoldStill(fn            )       {
+  if (panel) panel.holdStill(fn);
+  else fn();
+}
+
+/** The Scene's "Show in Library →": the picked objects' detail in the open Library (no-op while it is closed). */
+function libraryShowPick()       {
+  panel?.showPick();
+}
+
+/** The files picked in the open Library (none while it is closed). */
+function libraryPickedFiles()           {
+  return panel ? panel.pickedFiles() : [];
+}
+
+/** What a Library tile's menu does, on the open panel (no-op while it is closed). */
+function libraryAct(what                                         , path = '')       {
+  if (!panel) return;
+  if (what === 'open') panel.open(path);
+  else if (what === 'users') panel.showUsers(path);
+  else if (what === 'replace') panel.replace(path);
+  else panel.revealDetail();
 }
 
 /** Switch to Assets with one file's detail open (from the scene card). */
@@ -5082,11 +5730,447 @@ async function renderFilesOfObject(el             , key        , ctx            
 
 __def(__exports, "baseOf", () => baseOf);
 __def(__exports, "libraryTool", () => libraryTool);
+__def(__exports, "libraryParts", () => libraryParts);
+__def(__exports, "libraryRedraw", () => libraryRedraw);
+__def(__exports, "libraryShelf", () => libraryShelf);
+__def(__exports, "filesOfObjects", () => filesOfObjects);
 __def(__exports, "filesOfObject", () => filesOfObject);
+__def(__exports, "libraryFile", () => libraryFile);
+__def(__exports, "libraryHoldStill", () => libraryHoldStill);
+__def(__exports, "libraryShowPick", () => libraryShowPick);
+__def(__exports, "libraryPickedFiles", () => libraryPickedFiles);
+__def(__exports, "libraryAct", () => libraryAct);
 __def(__exports, "openAsset", () => openAsset);
 __def(__exports, "renderFilesOfObject", () => renderFilesOfObject);
 };
 __defs[14] = function (__exports) {
+'use strict';
+// dom.ts
+
+// Tiny DOM helper. Text always goes through textContent: object names and
+// file names come from the game and the folder and are untrusted.
+                                                             
+
+function h                                       (
+  tag   ,
+  props                          = {},
+  ...children         
+)                           {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (v === undefined || v === null || v === false) continue;
+    if (k === 'class') el.className = String(v);
+    else if (k === 'text') el.textContent = String(v);
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v                 );
+    else if (k === 'dataset') Object.assign(el.dataset, v);
+    else if (k in el && typeof v !== 'string') (el                                      )[k] = v;
+    else el.setAttribute(k, v === true ? '' : String(v));
+  }
+  for (const c of children) {
+    if (c === null || c === undefined || c === false) continue;
+    el.append(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return el;
+}
+
+/** Only PNG/JPEG/WebP data URLs are shown as images (never SVG from the game). */
+function safeImageSrc(src                           )                {
+  return src && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src) ? src : null;
+}
+
+__def(__exports, "h", () => h);
+__def(__exports, "safeImageSrc", () => safeImageSrc);
+};
+__defs[15] = function (__exports) {
+'use strict';
+// thumb-tone.ts
+
+// "Is this list picture almost white?" (polish pass 2026-10-16, play test stumble 9: a white cloud's picture
+// vanished on the light picture tile). The pictures are the objects alone on a see-through background; a light
+// one gets a mid-grey tile (shell.css `.thumb[data-tone=light]`) instead of the usual pale one.
+//
+// WHY measured here and not a fixed darker tile for all: most objects are coloured and read best on the pale tile
+// the rest of the editor uses; only the few near-white ones need help.
+
+/** Average lightness (0..1) of the opaque pixels → light above this. 0.8 = white / pale cream / light grey. */
+const LIGHT_AT = 0.8;
+const cache = new Map                          ();
+
+/** true when the opaque part of the picture is light. Never rejects (false when it cannot tell). */
+function isLightPicture(src        )                   {
+  let p = cache.get(src);
+  if (!p) {
+    p = new Promise         ((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const n = 24;
+          const c = document.createElement('canvas');
+          c.width = c.height = n;
+          const g = c.getContext('2d', { willReadFrequently: true });
+          if (!g) return resolve(false);
+          g.drawImage(img, 0, 0, n, n);
+          const d = g.getImageData(0, 0, n, n).data;
+          let sum = 0;
+          let count = 0;
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3]  < 128) continue;
+            sum += (0.2126 * d[i]  + 0.7152 * d[i + 1]  + 0.0722 * d[i + 2] ) / 255;
+            count++;
+          }
+          resolve(count > 8 && sum / count > LIGHT_AT);
+        } catch {
+          resolve(false);
+        }
+      };
+      img.onerror = () => resolve(false);
+      img.src = src;
+    });
+    if (cache.size > 600) cache.clear();
+    cache.set(src, p);
+  }
+  return p;
+}
+
+/** Mark an <img class="thumb"> light or not once its picture is measured. */
+function toneThumb(img                  , src        )       {
+  void isLightPicture(src).then((light) => {
+    if (img.getAttribute('src') !== src) return; // a newer picture came meanwhile
+    if (light) img.dataset.tone = 'light';
+    else delete img.dataset.tone;
+  });
+}
+
+__def(__exports, "LIGHT_AT", () => LIGHT_AT);
+__def(__exports, "isLightPicture", () => isLightPicture);
+__def(__exports, "toneThumb", () => toneThumb);
+};
+__defs[16] = function (__exports) {
+'use strict';
+// library-objects.ts
+
+// The objects in the Library ("one Library", decided after a try of the editor, 2026-10-18).
+//
+// "Put objects and files all in one library. The left has two things, Scene and Library; inside the Library you
+// narrow it to objects or files." — "Scene is where you work on the game's screen, the Library holds every object and
+// file." Before that (plan 1, earlier the same day) the objects had a shelf of their own ("Objects" with "Scene | Grid")
+// next to the files' shelf ("Assets"): two rows, two shelves, and a switch inside one of them — "I can't tell assets
+// from the scene", "why aren't the objects in the library?".
+//
+// So this file no longer draws a page. It is ShellContext.objects (contract.ts LibraryObjects): the objects' part of
+// the Library's page — their tiles (one per kind group, "pine ×3"), their detail on the right (the file it is drawn with, where it is, Show in game →, Duplicate,
+// Delete) and Multi-select. The Library (tools/library/panel.ts) owns the page: one search, one count, one grid with
+// the files, one row of filters (All / 3D / 2D / Sound / Other: the objects sit under the game's 3D or 2D, a review
+// 2026-10-18; their own Unnamed / Duplicates / made-from filters went then) and one detail at a time.
+//
+// One file, many objects: each object's tile names the file it is drawn with ("planks.jpg", from the game's own
+// assetsOf through the library's rows); the file's tile says "Used by 3". A file's "Show just these objects" narrows
+// the objects to the ones that use it (`showFile`), with a band to undo that.
+//
+// Selection is the editor's one selection (main.ts): a press here picks without moving the camera and without leaving
+// the Library (a try of the editor: "pressing an object in the library should show its detail, not throw me back to the
+// game"); only "Show in game →" (or the Scene row) goes to the game. Duplicate / Delete / ⌘Z / the ask bar work on the
+// pick as they do in the game.
+//
+// Using what is here ("use the Library", a request after a try of the editor, 2026-10-18: "I can look at things in the
+// Library, but it doesn't do anything yet. I want to add things from it to the scene, and point at one and ask the AI
+// 'make this enemy the boss at the climax'"): the detail's "Add to scene" (also the tile's menu, and dragging the tile
+// onto the Scene row) puts a copy in the middle of what the camera sees and shows it picked in the Scene — one undo
+// step, as Duplicate; "Ask your AI…" puts the cursor in the ask box, whose chip already names the pick (the same box
+// as in the Scene). The tiles are draggable for that (application/x-studio-object = the tile's first key).
+// Names and file names are untrusted text: textContent only; pictures are the game's PNG data URLs (safeImageSrc).
+                                                                      
+const { h, safeImageSrc } = __require(14);
+const { displayName } = __require(12);
+const { toneThumb } = __require(15);
+
+                                     
+                                                                 
+                  
+                            
+                    
+                   
+                              
+                                                                                                           
+                                    
+                                                                      
+                                   
+                                      
+             
+                                                                                                                
+                                          
+                                                    
+                
+               
+                 
+                                                                                                                       
+                     
+                                                                               
+                               
+                                                                                                                  
+                                         
+                                            
+                                                                                           
+                  
+                                                                                                                     
+                     
+                                                                                                                 
+                 
+ 
+
+/** The drag type of an object's tile (dropped on the Scene row = "Add to scene"); the data is the tile's first key. */
+const DRAG_OBJECT = 'application/x-studio-object';
+
+                                                            
+                                                                                                                     
+                      
+                                 
+ 
+
+const base = (p        ) => p.slice(p.lastIndexOf('/') + 1);
+
+function createLibraryObjects(d                    )                     {
+  let onlyFile                = null;
+  let uses                               = null;
+  let usesAsked = 0;
+  let pickHook                         = () => undefined;
+  const imgs = new Map                            ();
+  const multiBtn = h('button', { type: 'button', class: 'gsl-btn shelf-multi', dataset: { action: 'shelf-multi' }, onclick: () => d.setMulti(!d.multi()) });
+
+  const thumbImg = (key        ) => {
+    const img = h('img', { class: 'shelf-pic', alt: '', draggable: false });
+    const src = safeImageSrc(d.thumb(key));
+    if (src) (img.src = src), toneThumb(img, src);
+    else img.hidden = true;
+    // Only pictures still on screen are kept (each draw of the grid makes new ones).
+    const arr = (imgs.get(key) || []).filter((i) => i.isConnected);
+    arr.push(img);
+    imgs.set(key, arr);
+    return img;
+  };
+  // The shared start of a group's names ("crate-1", "crate-2" → "crate"): the same as the list's "crate ×4" row.
+  const kindName = (members        ) => {
+    const names = members.map((m) => displayName(m, d.t));
+    let pre = names[0] || '';
+    for (const n of names) while (pre && !n.startsWith(pre)) pre = pre.slice(0, -1);
+    pre = pre.replace(/[\s#:_.-]+$/, '');
+    return pre.length >= 2 ? pre : names[0] || '';
+  };
+  const filesOf = (key        ) => uses?.get(key) || [];
+  const match = (it      , q        )          => {
+    if (onlyFile && !filesOf(it.key).includes(onlyFile)) return false;
+    if (q && !`${displayName(it, d.t)} ${it.label} ${it.key}`.toLowerCase().includes(q)) return false;
+    return true;
+  };
+  const askUses = () => {
+    if (!uses && !usesAsked) refreshUses();
+  };
+
+  function refreshUses() {
+    const ask = ++usesAsked;
+    void d.uses().then((m) => {
+      if (ask !== usesAsked) return;
+      uses = m;
+      d.changed();
+    }, () => undefined);
+  }
+
+  // Pictures for the tiles in view (the list asks for its rows the same way, main.ts requestVisibleThumbs). The
+  // Library's page scrolls, not this part: any scroll in the page looks again.
+  let frame = 0;
+  let shown                = [];
+  const thumbsSoon = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const want           = [];
+      for (const tile of shown) {
+        if (!tile.isConnected) continue;
+        const box = (tile.closest('.gsl') || document.documentElement).getBoundingClientRect();
+        const r = tile.getBoundingClientRect();
+        if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
+        if (!d.thumb(tile.dataset.key )) want.push(tile.dataset.key );
+      }
+      if (want.length) d.wantThumbs(want);
+    });
+  };
+  document.addEventListener('scroll', () => shown.length && thumbsSoon(), { capture: true, passive: true });
+
+  function tiles(q        )                                      {
+    askUses();
+    const items = d.items().filter((it) => match(it, q));
+    const sel = d.selected();
+    const group = d.group();
+    const picked = (k        ) => k === sel || group.includes(k);
+    // One tile per kind ("pine ×3"), like the list: the tile picks the whole group.
+    const groups = new Map                ();
+    for (const it of items) {
+      const g = it.group || `key:${it.key}`;
+      const arr = groups.get(g) || [];
+      arr.push(it);
+      groups.set(g, arr);
+    }
+    const out                = [];
+    for (const [g, members] of groups) {
+      const first = members[0] ;
+      const many = members.length > 1;
+      const keys = members.map((m) => m.key);
+      const on = many ? keys.every(picked) : picked(first.key);
+      const files = [...new Set(keys.flatMap(filesOf))];
+      const meta = h('span', { class: 'gsl-meta' });
+      if (files.length) meta.append(h('span', { class: 'shelf-file', title: files.join('\n'), text: files.slice(0, 2).map(base).join('・') + (files.length > 2 ? ` +${files.length - 2}` : '') }));
+      else if (uses) meta.append(h('span', { class: 'shelf-file code', text: d.t('shelf.fromCode') }));
+      // The small tag in the picture's corner says what the tile is: an object in the game, or a file (panel.ts puts
+      // "File" on the files). Words in grey, not a colour: orange stays "what you picked", violet "the AI".
+      const thumb = h('div', { class: 'gsl-thumb' }, thumbImg(first.key), h('span', { class: 'lib-kind', text: d.t('lib.tagObject') }),
+        many ? h('span', { class: 'shelf-many', text: `×${members.length}` }) : null);
+      const tile = h('div', { class: `gsl-tile lib-object${on ? ' gsl-open' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': String(on),
+        dataset: { key: first.key, kind: 'object', ...(many ? { group: g } : {}) }, title: many ? d.t('ops.selectGroup', { n: members.length }) : displayName(first, d.t) },
+      thumb, h('span', { class: `gsl-name${first.unstable && !many ? ' unnamed' : ''}`, text: many ? kindName(members) : displayName(first, d.t) }), meta);
+      // Drag onto the Scene row (main.ts) = "Add to scene" for this kind. The press itself still picks (click).
+      tile.draggable = true;
+      tile.addEventListener('dragstart', (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData(DRAG_OBJECT, first.key);
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+      const press = (add         ) => {
+        pickHook(add || d.multi());
+        if (add || d.multi()) {
+          if (!many) d.select(first.key, true);
+          else {
+            const now = d.group().length ? d.group() : d.selected() ? [d.selected() ] : [];
+            const next = on ? now.filter((k) => !keys.includes(k)) : [...new Set([...now, ...keys])];
+            if (next.length) d.selectMany(next, next[next.length - 1] );
+            else d.clear();
+          }
+        } else if (many) d.selectMany(keys, keys[0] );
+        else d.select(first.key, false);
+      };
+      tile.addEventListener('click', (e) => press(e.shiftKey));
+      tile.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          press(e.shiftKey);
+        }
+      });
+      out.push(tile);
+    }
+    shown = out;
+    thumbsSoon();
+    return { tiles: out, n: items.length };
+  }
+
+  /** The numbers read the way the card shows them: "X 3.5  Y 0.0  Z 17.0" (3D metres) / "X 120  Y 80" (2D pixels). */
+  const where = (p      ) => {
+    const v = d.dim() === '3d' ? p.p.map((n) => n.toFixed(1)) : p.p.slice(0, 2).map((n) => String(Math.round(n)));
+    return v.map((n, i) => h('span', { class: 'axis' }, h('i', { text: 'XYZ'[i]  }), ` ${n}`));
+  };
+  const size = (p      ) => (Array.isArray(p.s) ? p.s[0] ?? 1 : p.s ?? 1).toFixed(2);
+
+  function detail()                                          {
+    const items = d.items();
+    const keys = (d.group().length ? d.group() : d.selected() ? [d.selected() ] : []).filter((k) => items.some((i) => i.key === k));
+    if (!keys.length) return null;
+    const el = h('div', { class: 'lib-object-detail', dataset: { kind: 'object' } });
+    const members = keys.map((k) => items.find((i) => i.key === k) );
+    const one = members.length === 1 ? members[0]  : null;
+    const close = h('button', { type: 'button', class: 'gsl-btn gsl-close', 'aria-label': d.t('btn.close'), text: '×', onclick: () => d.clear() });
+    const pic = h('div', { class: 'gsl-thumb' }, thumbImg(members[0] .key));
+    const names = members.slice(0, 6).map((m) => displayName(m, d.t)).join(', ') + (members.length > 6 ? ' …' : '');
+    el.append(h('div', { class: 'gsl-dhead' }, pic,
+      h('div', { class: 'gsl-dtitle' }, h('b', { text: one ? displayName(one, d.t) : d.t('ops.many', { n: members.length }) }), h('span', { class: 'gsl-path', text: one ? d.t('shelf.placed') : names })),
+      close));
+    if (one) {
+      const rows = h('dl', { class: 'shelf-rows' });
+      const files = filesOf(one.key);
+      const src = h('dd', {});
+      if (files.length) for (const f of files) src.append(h('button', { type: 'button', class: 'shelf-file to', dataset: { action: 'open-asset', path: f }, title: f, text: `${base(f)} →`, onclick: () => d.openFile(f) }));
+      else if (uses) src.append(h('span', { class: 'muted', text: d.t('shelf.noSource') }));
+      rows.append(h('dt', { text: d.t('shelf.source') }), src);
+      const p = d.pose(one.key);
+      if (p) {
+        rows.append(h('dt', { text: d.t('placement.pos') }), h('dd', { class: 'mono' }, ...where(p)));
+        if (one.rotatable) rows.append(h('dt', { text: d.t('placement.rot') }), h('dd', { class: 'mono', text: `${Math.round(((p.r ?? 0) * 180) / Math.PI)}°` }));
+        if (one.scalable) rows.append(h('dt', { text: d.t('placement.scale') }), h('dd', { class: 'mono', text: size(p) }));
+      }
+      el.append(rows);
+      if (one.unstable) {
+        el.append(h('p', { class: 'shelf-note' }, h('span', { class: 'muted', text: d.t('noname.tag') }), ' ',
+          h('button', { type: 'button', class: 'link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e       ) => {
+            (e.currentTarget                     ).disabled = true;
+            await d.askName([one.key]);
+          } })));
+      }
+    }
+    const locked = members.every((m) => m.movable === false);
+    if (locked) el.append(h('p', { class: 'shelf-note muted', text: d.t('placement.locked') }));
+    // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game. A locked
+    // object can't be copied (the game's settings), so it has no "Add to scene" either.
+    const acts = h('div', { class: 'shelf-acts' });
+    if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
+    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi () }));
+    acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
+    if (!locked) {
+      acts.append(
+        h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'copy' }, text: d.t('ops.copy'), onclick: () => d.copy() }),
+        h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
+    }
+    el.append(acts);
+    return { el, key: keys.join(',') };
+  }
+
+  return {
+    count: () => d.items().length,
+    dim: () => d.dim(),
+    showFile(path) {
+      onlyFile = path;
+    },
+    band() {
+      if (!onlyFile) return null;
+      const n = d.items().filter((it) => filesOf(it.key).includes(onlyFile )).length;
+      // "planks.jpg used by 3 ×": where this narrower view came from, and the way back to all objects.
+      return h('span', { class: 'shelf-band', dataset: { file: onlyFile } },
+        h('b', { text: base(onlyFile) }), h('span', { text: ` ${d.t('shelf.using', { n })}` }),
+        h('button', { type: 'button', class: 'shelf-band-x', title: d.t('shelf.clearFile'), 'aria-label': d.t('shelf.clearFile'), text: '×', onclick: () => {
+          onlyFile = null;
+          d.changed();
+        } }));
+    },
+    tiles,
+    detail,
+    select(key) {
+      pickHook(false);
+      d.select(key, false);
+    },
+    clear: () => d.clear(),
+    multiButton() {
+      multiBtn.textContent = d.multi() ? d.t('ops.multiDone') : d.t('ops.multi');
+      multiBtn.setAttribute('aria-pressed', String(d.multi()));
+      return multiBtn;
+    },
+    onPick(fn) {
+      pickHook = fn;
+    },
+    multi: () => d.multi(),
+    refreshUses,
+    updateThumb(key) {
+      const src = safeImageSrc(d.thumb(key));
+      if (!src) return;
+      for (const img of imgs.get(key) || []) {
+        img.src = src;
+        img.hidden = false;
+        toneThumb(img, src);
+      }
+    },
+  };
+}
+
+__def(__exports, "DRAG_OBJECT", () => DRAG_OBJECT);
+__def(__exports, "createLibraryObjects", () => createLibraryObjects);
+};
+__defs[17] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -5327,7 +6411,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[15] = function (__exports) {
+__defs[18] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -5466,7 +6550,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[16] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -5490,7 +6574,7 @@ __defs[16] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 const { LIMITS } = __require(0);
-const { hasLayer, orderOfLayer } = __require(15);
+const { hasLayer, orderOfLayer } = __require(18);
 
 function roundTo(v        , step        )         {
   return Math.round(v / step) * step;
@@ -5933,45 +7017,7 @@ __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[17] = function (__exports) {
-'use strict';
-// dom.ts
-
-// Tiny DOM helper. Text always goes through textContent: object names and
-// file names come from the game and the folder and are untrusted.
-                                                             
-
-function h                                       (
-  tag   ,
-  props                          = {},
-  ...children         
-)                           {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(props)) {
-    if (v === undefined || v === null || v === false) continue;
-    if (k === 'class') el.className = String(v);
-    else if (k === 'text') el.textContent = String(v);
-    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v                 );
-    else if (k === 'dataset') Object.assign(el.dataset, v);
-    else if (k in el && typeof v !== 'string') (el                                      )[k] = v;
-    else el.setAttribute(k, v === true ? '' : String(v));
-  }
-  for (const c of children) {
-    if (c === null || c === undefined || c === false) continue;
-    el.append(typeof c === 'string' ? document.createTextNode(c) : c);
-  }
-  return el;
-}
-
-/** Only PNG/JPEG/WebP data URLs are shown as images (never SVG from the game). */
-function safeImageSrc(src                           )                {
-  return src && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src) ? src : null;
-}
-
-__def(__exports, "h", () => h);
-__def(__exports, "safeImageSrc", () => safeImageSrc);
-};
-__defs[18] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -5983,7 +7029,12 @@ __defs[18] = function (__exports) {
 
 const en = {
   'app.title': 'Game Studio',
+  // Objects / Assets: the two rows at the top of the left column, each with a grey second word saying what is in it
+  // (plan 1, 2026-10-18: "Scene" read as "a place in the game", and "Assets" alone made the objects look like a kind
+  // of asset; a try on 2026-10-18: "I can't tell the object list from the assets").
   'tool.placement': 'Scene',
+  'tool.placement.sub': 'the game',
+  'tool.library.sub': 'objects & assets',
   'placement.scrub': 'Drag left or right to change it (hold Shift for finer steps). Click to type a number.',
   'placement.unsaved': 'Not saved yet',
   'card.assets': 'Assets',
@@ -6005,7 +7056,7 @@ const en = {
   'undo.remove': 'delete {name}',
   'undo.edit': 'change {name}',
   'undo.n': '{n} objects',
-  'tool.library': 'Assets',
+  'tool.library': 'Library',
   'btn.undo': 'Undo',
   'btn.redo': 'Redo',
   'btn.save': 'Save',
@@ -6220,7 +7271,7 @@ const en = {
   'check.restored': 'An object may have shifted slightly while the editor checked this game.',
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
   'app.brand': 'Studio',
-  'list.title': 'Objects',
+  'list.title': 'In this scene',
   'foot.palette': 'All actions',
   'save.unsavedTip': '{n:1 unsaved change|# unsaved changes}. Save writes placement.json and sends it to your AI, which updates the game’s code',
   'save.savedTip': 'Saved and sent to your AI',
@@ -6236,12 +7287,6 @@ const en = {
   'pal.title': 'Ask your AI or search actions',
   // The ⌘K list's own search field (W1-4): actions, objects, the AI's ideas.
   'pal.search': 'Search actions and objects…',
-  // The web demo (host.offline, W1-6): the line in the ask box's place, and its link.
-  'offline.askLine': 'In Claude Code, your AI makes the changes you type here.',
-  'offline.get': 'Get Game Studio →',
-  // The same on a phone, where the bar holds about 40 characters on one line.
-  'offline.askLine.short': 'Your AI does this in Claude Code.',
-  'offline.get.short': 'Get it →',
   'pal.ask': 'Ask your AI',
   'pal.actions': 'Actions',
   'pal.kumodeck': 'With KUMODeck (optional)',
@@ -6252,11 +7297,15 @@ const en = {
   'pal.ex.night': 'Make it nighttime',
   'pal.ex.name': 'Name the unnamed objects',
   'pal.play': 'Play the game',
-  'pal.assets': 'Open Assets',
-  'pal.scene': 'Back to the scene',
+  'pal.assets': 'Open the Library',
+  'pal.scene': 'Open the Scene',
+  'pal.libraryWords': 'objects assets files',
   'pal.selectAll': 'Select all',
   'pal.home': 'Back to the opening view',
   'pal.home.words': 'start camera reset view home game camera',
+  'pal.cameraUp': 'Camera up',
+  'pal.cameraDown': 'Camera down',
+  'pal.camera.words': 'camera up down raise lower rise height fly elevate view',
   'pal.multi': 'Multi-select',
   'pal.look': 'Editor view…',
   'pal.lang': '日本語で表示',
@@ -6270,6 +7319,74 @@ const en = {
   'ai.tagAdded': 'AI added {n}',
   'ai.tagMoved': 'AI moved {n}',
   'ai.tagChanged': 'AI changed {n}',
+  // The objects in the Library (library-objects.ts, "one Library" 2026-10-18): the same objects as the Scene's list, as
+  // tiles in the Library's one grid next to the assets; "Show in game →" is the way from there to the game.
+  'lib.tagObject': 'Object',
+  'shelf.fromCode': 'Drawn in code',
+  'shelf.using': 'used by {n:1 object|# objects}',
+  'shelf.clearFile': 'Show all objects',
+  'shelf.placed': 'Placed in the game',
+  'shelf.source': 'Asset',
+  'shelf.noSource': 'Drawn in code (no file)',
+  'shelf.showInGame': 'Show in game →',
+  // Keyboard shortcuts (keymap.ts, the ? sheet, tooltips; basics pass 2026-10-18).
+  'keys.title': 'Keyboard shortcuts',
+  'keys.group.edit': 'Edit',
+  'keys.group.tools': 'Tools',
+  'keys.group.view': 'View',
+  'keys.group.layers': 'Draw order',
+  'keys.copy': 'Copy',
+  'keys.paste': 'Paste',
+  'keys.move': 'Move tool',
+  'keys.lift': 'Height tool',
+  'keys.rotate': 'Turn tool',
+  'keys.scale': 'Size tool',
+  'keys.axis': 'Next turn axis',
+  'keys.noTool': 'Put the tool down',
+  'keys.nudge': 'Nudge (Shift: 1 px)',
+  'keys.turnStep': 'Turn 15° left / right',
+  'keys.liftStep': 'Raise / lower',
+  'keys.sizeStep': 'Bigger / smaller',
+  'keys.look': 'Hold and drag to look around',
+  'keys.camera': 'Camera up / down',
+  'keys.fly': 'Fly the camera',
+  'keys.fly.note': 'Nothing selected: W A S D. Something selected: hold the right mouse button too. Shift: faster.',
+  'keys.fly.picked': 'Right button+WASD',
+  'pal.fly.words': 'wasd fly walk move camera forward back left right navigate',
+  'keys.shortcuts': 'Keyboard shortcuts',
+  'keys.foot': 'Shortcuts don’t work while you’re typing in a field.',
+  'keys.nothingUndo': 'Nothing to undo',
+  'keys.nothingRedo': 'Nothing to redo',
+  'keys.copied': 'Copied {name} — {key} to paste',
+  'keys.pasteEmpty': 'Nothing copied yet. Select something and press {key}.',
+  'keys.pasteGone': 'What you copied isn’t in the scene anymore.',
+  // The right-click / long-press menu (context-menu.ts, context-rows.ts; 2026-10-18). Most rows reuse the names above
+  // (ops.copy, keys.copy, btn.undo…): one action, one name everywhere. The Library's rows say what its buttons say.
+  'ctx.menu': 'Menu for {name}',
+  'ctx.menuScene': 'Scene menu',
+  'ctx.rename': 'Rename…',
+  'ctx.renameText': 'Rename it to ',
+  'ctx.nameMany': 'Ask your AI to name them',
+  'ctx.details': 'Details',
+  'ctx.showInGame': 'Show in game',
+  'ctx.showUsers': 'Show just these objects',
+  'ctx.replace': 'Replace…',
+  // Use the Library (2026-10-18): add from it, ask the AI about what is picked there, and the Scene's way back to it.
+  'lib.addToScene': 'Add to scene',
+  'lib.askAi': 'Ask your AI…',
+  'lib.addFileText': 'Add this to the scene',
+  'lib.addFilesText': 'Add these to the scene',
+  'lib.added': 'Added {name} to the scene',
+  'lib.dropScene': 'Drop here to add it to the scene',
+  'ask.files': '{n:1 file|# files}',
+  'ask.picked': '{n} picked',
+  'ask.oneFile': 'Ask your AI about “{name}”…',
+  'ctx.showInLibrary': 'Show in Library',
+  'ctx.showFileInLibrary': 'Show its asset in Library',
+  'card.showInLibrary': 'Show in Library →',
+  'pal.showInLibrary': 'Show in Library →',
+  'pal.showFileInLibrary': 'Show {file} in Library →',
+  'pal.libraryUseWords': 'library find open asset ライブラリ 素材',
 };
 
                            
@@ -6277,6 +7394,8 @@ const en = {
 const ja                               = {
   'app.title': 'ゲームスタジオ',
   'tool.placement': 'シーン',
+  'tool.placement.sub': 'ゲームの画面',
+  'tool.library.sub': '物と素材',
   'placement.scrub': '左右に引くと変わります（Shift で細かく）。クリックで数字を打てます。',
   'placement.unsaved': 'まだ保存していません',
   'card.assets': '素材',
@@ -6298,7 +7417,7 @@ const ja                               = {
   'undo.remove': '{name} を削除',
   'undo.edit': '{name} を変更',
   'undo.n': '{n} 個',
-  'tool.library': '素材',
+  'tool.library': 'ライブラリ',
   'btn.undo': '戻す',
   'btn.redo': '進む',
   'btn.save': '保存',
@@ -6502,7 +7621,7 @@ const ja                               = {
   'check.anchor-follows': 'このゲームでは、まだつまみがオブジェクトに付いてこないことがあります。',
   'check.restored': 'エディタの確認で、オブジェクトが少しずれたかもしれません。',
   'app.brand': 'Studio',
-  'list.title': '物',
+  'list.title': 'このシーンの物',
   'foot.palette': 'すべての操作',
   'save.unsavedTip': 'まだ保存していない変更が {n} 個あります。保存すると placement.json に書いて AI に送り、AI がゲームのコードに反映します',
   'save.savedTip': '保存して AI に送りました',
@@ -6517,10 +7636,6 @@ const ja                               = {
   'ops.manyShort': '{n} 個を選択',
   'pal.title': 'AI に頼むか、操作を探す',
   'pal.search': '操作やオブジェクトを探す…',
-  'offline.askLine': 'Claude Code では、ここに書いた変更を AI が行います。',
-  'offline.get': 'ゲームスタジオを入手 →',
-  'offline.askLine.short': 'Claude Code では AI が行います。',
-  'offline.get.short': '入手 →',
   'pal.ask': 'AI に頼む',
   'pal.actions': '操作',
   'pal.kumodeck': 'KUMODeck で（使わなくても大丈夫）',
@@ -6531,11 +7646,15 @@ const ja                               = {
   'pal.ex.night': '夜にして',
   'pal.ex.name': '名前のない物に名前を付けて',
   'pal.play': '遊んでみる',
-  'pal.assets': '素材を開く',
-  'pal.scene': 'シーンに戻る',
+  'pal.assets': 'ライブラリを開く',
+  'pal.scene': 'シーンを開く',
+  'pal.libraryWords': '物 素材 ファイル',
   'pal.selectAll': '全部選ぶ',
   'pal.home': '開いた時の眺めに戻る',
   'pal.home.words': '最初 視点 カメラ 戻す ホーム',
+  'pal.cameraUp': 'カメラを上げる',
+  'pal.cameraDown': 'カメラを下げる',
+  'pal.camera.words': 'カメラ 上 下 上げる 下げる 上昇 下降 高さ 視点',
   'pal.multi': '複数選択',
   'pal.look': 'エディタの見た目…',
   'pal.lang': 'Show in English',
@@ -6549,7 +7668,68 @@ const ja                               = {
   'ai.tagAdded': 'AI が足した {n} 個',
   'ai.tagMoved': 'AI が動かした {n} 個',
   'ai.tagChanged': 'AI が変えた {n} 個',
+  'lib.tagObject': '物',
+  'shelf.fromCode': 'コードで描いた形',
+  'shelf.using': 'を使っている物 {n}',
+  'shelf.clearFile': 'すべての物を見る',
+  'shelf.placed': 'ゲームに置いた物',
+  'shelf.source': '元の素材',
+  'shelf.noSource': 'コードで描いた形（ファイル無し）',
+  'shelf.showInGame': 'ゲームで見る →',
   'ask.game': 'AI にゲームの直しを頼む…',
+  'keys.title': 'キーボードショートカット',
+  'keys.group.edit': '編集',
+  'keys.group.tools': '道具',
+  'keys.group.view': '表示',
+  'keys.group.layers': '重なり順',
+  'keys.copy': 'コピー',
+  'keys.paste': '貼り付け',
+  'keys.move': '移動の道具',
+  'keys.lift': '高さの道具',
+  'keys.rotate': '回す道具',
+  'keys.scale': '大きさの道具',
+  'keys.axis': '回す軸を切り替える',
+  'keys.noTool': '道具を置く',
+  'keys.nudge': '少しずつ動かす（Shift で 1px）',
+  'keys.turnStep': '15° ずつ左右に回す',
+  'keys.liftStep': '上げる / 下げる',
+  'keys.sizeStep': '大きく / 小さく',
+  'keys.look': '押したまま引くと見回す',
+  'keys.camera': 'カメラを上げる / 下げる',
+  'keys.fly': 'カメラで飛び回る',
+  'keys.fly.note': '何も選んでいない時は W A S D だけ。物を選んでいる時は右ボタンを押したまま。Shift で速く。',
+  'keys.fly.picked': '右ボタン+WASD',
+  'pal.fly.words': 'wasd 飛ぶ 歩く 移動 カメラ 前 後ろ 左 右 視点',
+  'keys.shortcuts': 'キーボードショートカット',
+  'keys.foot': '入力欄で文字を打っている間は、ショートカットは効きません。',
+  'keys.nothingUndo': '戻せる操作はありません',
+  'keys.nothingRedo': 'やり直せる操作はありません',
+  'keys.copied': '{name} をコピーしました — {key} で貼り付け',
+  'keys.pasteEmpty': 'まだ何もコピーしていません。選んで {key} を押してください。',
+  'keys.pasteGone': 'コピーした物は、もうシーンにありません。',
+  'ctx.menu': '{name} のメニュー',
+  'ctx.menuScene': 'シーンのメニュー',
+  'ctx.rename': '名前を付ける…',
+  'ctx.renameText': '名前を変えて: ',
+  'ctx.nameMany': 'AI に名前を付けてもらう',
+  'ctx.details': '詳細',
+  'ctx.showInGame': 'ゲームで見る',
+  'ctx.showUsers': '使っている物だけ見る',
+  'ctx.replace': '差し替え…',
+  'lib.addToScene': 'シーンに足す',
+  'lib.askAi': 'AI に頼む…',
+  'lib.addFileText': 'これをシーンに足して',
+  'lib.addFilesText': 'これらをシーンに足して',
+  'lib.added': '{name} をシーンに足しました',
+  'lib.dropScene': 'ここに落とすとシーンに足します',
+  'ask.files': '素材 {n}',
+  'ask.picked': '選んだ {n}',
+  'ask.oneFile': '「{name}」について AI に頼む…',
+  'ctx.showInLibrary': 'ライブラリで見る',
+  'ctx.showFileInLibrary': '元の素材をライブラリで見る',
+  'card.showInLibrary': 'ライブラリで見る →',
+  'pal.showInLibrary': 'ライブラリで見る →',
+  'pal.showFileInLibrary': '{file} をライブラリで見る →',
 };
 
 const TABLES                                             = { en, ja };
@@ -6587,7 +7767,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[19] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // icons.ts
 
@@ -6661,6 +7841,8 @@ const PATHS                         = {
   plus: 'M10 4.5v11|M4.5 10h11',
   // The plus turned 45°: close a note.
   close: 'M6 6l8 8|M14 6l-8 8',
+  // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
+  keyboard: 'M4.5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 13V7a1.5 1.5 0 0 1 1.5-1.5z|o 6.5 8.5|o 10 8.5|o 13.5 8.5|M7.5 11.75h5',
   swap: 'M4 7h11.5|M12.5 4l3 3-3 3|M16 13H4.5|M7.5 10l-3 3 3 3',
   globe: 'O 10 10 6.5|M3.5 10h13|M10 3.5c-2.2 2.4-2.2 10.6 0 13|M10 3.5c2.2 2.4 2.2 10.6 0 13',
   hand: 'M7 10V5.25a1.25 1.25 0 0 1 2.5 0V9|M9.5 8.5V4.25a1.25 1.25 0 0 1 2.5 0V9|M12 8.75V5.5a1.25 1.25 0 0 1 2.5 0V11a5.5 5.5 0 0 1-5.5 5.5h-.3a4.5 4.5 0 0 1-3.6-1.8L3.3 12.2a1.3 1.3 0 0 1 2-1.6L7 12',
@@ -6750,7 +7932,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[20] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -6770,8 +7952,8 @@ __defs[20] = function (__exports) {
 // - The agent checks with the user before signing in, uploading or changing code.
 // - No prices in the UI (they change); a link to the pricing page instead.
                                                                              
-const { h } = __require(17);
-const { icon } = __require(19);
+const { h } = __require(14);
+const { icon } = __require(21);
 
 /** The only place the KUMODeck site address appears in the shell. */
 const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
@@ -6853,7 +8035,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[21] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -6878,6 +8060,8 @@ const HANDOFF_LIMITS = Object.freeze({
   maxNote: 300,
   maxBytes: 64 * 1024,
   maxFiles: 200, // delete-files: the same limit as POST /next-step
+  maxAssets: 50, // files picked in the Library for an "ask" (the same as objects)
+  maxObjectFiles: 8, // the files one object is drawn with (a model and its textures; more is cut, not refused)
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -6908,6 +8092,10 @@ function oneLine(v, max) {
 }
 
 const isFin = (x) => typeof x === 'number' && Number.isFinite(x);
+
+/** A plain path inside the game folder: no leading "/", no "\\", no "..", no hidden parts (.studio, .git). */
+const isFolderPath = (f) => typeof f === 'string' && f.length > 0 && f.length <= 512 && !f.startsWith('/') && !f.includes('\\')
+  && f.split('/').every((seg) => seg && seg !== '..' && !seg.startsWith('.'));
 const roundTo = (x, step) => Math.round(x * step) / step;
 
 /** A pose as the editor has it right now (may be unsaved); dropped when it is not a sane pose. */
@@ -6948,7 +8136,7 @@ function normalizeRequestInput(input) {
       // in the game folder is the host's check (it has the folder).
       const files = Array.isArray(r.files) ? r.files : [];
       if (!files.length || files.length > HANDOFF_LIMITS.maxFiles) errors.push(`"files" must list 1 to ${HANDOFF_LIMITS.maxFiles} files`);
-      else if (!files.every((f) => typeof f === 'string' && f.length <= 512 && !f.startsWith('/') && !f.includes('\\') && f.split('/').every((seg) => seg && seg !== '..' && !seg.startsWith('.')))) errors.push('"files" must be paths inside the game folder');
+      else if (!files.every(isFolderPath)) errors.push('"files" must be paths inside the game folder');
       else out.files = [...new Set(files)].sort();
     }
   }
@@ -6967,10 +8155,24 @@ function normalizeRequestInput(input) {
         const pose = cleanPose(o.pose);
         if (pose) e.pose = pose;
         if (o.unstable === true) e.unstable = true;
+        // The files it is drawn with ("use the Library", 2026-10-18): a hint for the AI, so a bad entry is dropped,
+        // never an error (the request is the person's words; it must not fail over a file name).
+        if (Array.isArray(o.files)) {
+          const fs = [...new Set(o.files.filter(isFolderPath))].slice(0, HANDOFF_LIMITS.maxObjectFiles);
+          if (fs.length) e.files = fs;
+        }
         out.objects.push(e);
       }
       if (r.objects.length > HANDOFF_LIMITS.maxObjects) out.moreObjects = r.objects.length - HANDOFF_LIMITS.maxObjects;
     }
+  }
+  // "ask" only: files picked in the Library ("use the Library", 2026-10-18). Unlike an object's files these are
+  // what the words are about ("add this to the scene"), so a list that is not plain folder paths is refused.
+  if (r.assets !== undefined && kind === 'ask') {
+    const as = Array.isArray(r.assets) ? r.assets : null;
+    if (!as || as.length > HANDOFF_LIMITS.maxAssets) errors.push(`"assets" must list at most ${HANDOFF_LIMITS.maxAssets} files`);
+    else if (!as.every(isFolderPath)) errors.push('"assets" must be paths inside the game folder');
+    else if (as.length) out.assets = [...new Set(as)];
   }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
@@ -7054,7 +8256,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[22] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -7082,7 +8284,7 @@ __defs[22] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                    
-const { statusCovers } = __require(21);
+const { statusCovers } = __require(23);
 
                                                                                                                                                                          
 
@@ -7195,7 +8397,7 @@ __def(__exports, "aiBusy", () => aiBusy);
 __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 };
-__defs[23] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -7278,7 +8480,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[24] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -7286,9 +8488,9 @@ __defs[24] = function (__exports) {
 // Every change applies at once and is saved to .studio/ui.json (debounced by
 // the caller), so there is no separate Apply/Save step to forget.
                                                     
-const { h } = __require(17);
-const { icon } = __require(19);
-const { DEFAULT_UI, UI_LIMITS } = __require(23);
+const { h } = __require(14);
+const { icon } = __require(21);
+const { DEFAULT_UI, UI_LIMITS } = __require(25);
 
                                
                          
@@ -7371,14 +8573,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[25] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(15);
+const { hasLayer } = __require(18);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -7475,71 +8677,120 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[26] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
-// thumb-tone.ts
+// keymap.ts
 
-// "Is this list picture almost white?" (polish pass 2026-10-16, play test stumble 9: a white cloud's picture
-// vanished on the light picture tile). The pictures are the objects alone on a see-through background; a light
-// one gets a mid-grey tile (shell.css `.thumb[data-tone=light]`) instead of the usual pale one.
+// Every keyboard shortcut of the editor, in ONE table (basics pass, 2026-10-18: "undo, redo… need keyboard
+// shortcuts, and need buttons too" — a request from a try of the editor). The table is what the tooltips, the ⌘K rows and the shortcut sheet
+// (`?`, shortcuts.ts) print, so a key shown anywhere is the key that works. The keys themselves are still read in
+// main.ts `shortcut()` and, while the game frame has focus, in bridge/input.ts (M/H/T/S, 1–4, R, Q/E, arrows…);
+// test/keymap.test.ts keeps this table and those two places saying the same.
 //
-// WHY measured here and not a fixed darker tile for all: most objects are coloured and read best on the pale tile
-// the rest of the editor uses; only the few near-white ones need help.
+// Choices (for people used to other 3D / 2D tools):
+// - ⌘ on Apple keyboards, Ctrl elsewhere; both work on every system (main.ts reads ctrl || meta).
+// - Redo: ⇧⌘Z and ⌘Y (Mac), Ctrl+Y and Ctrl+Shift+Z (Windows). The first one is the one a tooltip shows.
+// - Delete: Delete or Backspace (⌫). Duplicate ⌘D (as Figma / Blender's Shift+D family). Copy / paste ⌘C / ⌘V
+//   (paste = a duplicate of what was copied, next to it).
+// - Tools: the English initials M / H / T / S (since tool modes, 2026-10-18) and 1–4 in the strip's order.
+//   NOT W / E / R (Unity, Maya): E already turns 15° and R picks the next turn axis, and taking them would change
+//   what people here learned in the first wave. Numbers are free and are what many tools use for modes.
+// - W A S D (+ E / Q) fly the 3D camera as in the engines (camera-wasd, 2026-10-18): alone with nothing picked; with a
+//   pick only while the right button is held, so S (Size) and E / Q (turn) keep their meaning (bridge/input.ts).
+// - `?` (Shift+/) opens the sheet; Esc closes it.
+// - None of these act while typing in a field (main.ts): the field keeps its own ⌘Z, ⌘A, ⌘C, ⌘V, Delete.
+//   Only ⌘S (save) and ⌘K (all actions) still work there.
 
-/** Average lightness (0..1) of the opaque pixels → light above this. 0.8 = white / pale cream / light grey. */
-const LIGHT_AT = 0.8;
-const cache = new Map                          ();
+                                                            
 
-/** true when the opaque part of the picture is light. Never rejects (false when it cannot tell). */
-function isLightPicture(src        )                   {
-  let p = cache.get(src);
-  if (!p) {
-    p = new Promise         ((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        try {
-          const n = 24;
-          const c = document.createElement('canvas');
-          c.width = c.height = n;
-          const g = c.getContext('2d', { willReadFrequently: true });
-          if (!g) return resolve(false);
-          g.drawImage(img, 0, 0, n, n);
-          const d = g.getImageData(0, 0, n, n).data;
-          let sum = 0;
-          let count = 0;
-          for (let i = 0; i < d.length; i += 4) {
-            if (d[i + 3]  < 128) continue;
-            sum += (0.2126 * d[i]  + 0.7152 * d[i + 1]  + 0.0722 * d[i + 2] ) / 255;
-            count++;
-          }
-          resolve(count > 8 && sum / count > LIGHT_AT);
-        } catch {
-          resolve(false);
-        }
-      };
-      img.onerror = () => resolve(false);
-      img.src = src;
-    });
-    if (cache.size > 600) cache.clear();
-    cache.set(src, p);
-  }
-  return p;
+                         
+                                                                                                       
+             
+                  
+                                                                                                                  
+                 
+                                                                                
+                 
+                                 
+                    
+                                                                                                              
+                
+ 
+
+const KEYMAP           = [
+  { id: 'undo', group: 'edit', keys: ['⌘Z'], label: 'btn.undo' },
+  { id: 'redo', group: 'edit', keys: ['⇧⌘Z', '⌘Y'], label: 'btn.redo' },
+  { id: 'copy', group: 'edit', keys: ['⌘C'] },
+  { id: 'paste', group: 'edit', keys: ['⌘V'] },
+  { id: 'duplicate', group: 'edit', keys: ['⌘D'], label: 'ops.copy' },
+  { id: 'remove', group: 'edit', keys: ['⌫', 'Delete'], label: 'ops.remove' },
+  { id: 'selectAll', group: 'edit', keys: ['⌘A'], label: 'pal.selectAll' },
+  { id: 'deselect', group: 'edit', keys: ['Esc'], label: 'ops.selectNone' },
+  { id: 'save', group: 'edit', keys: ['⌘S'], label: 'btn.save' },
+  { id: 'move', group: 'tools', keys: ['M', '1'] },
+  { id: 'lift', group: 'tools', keys: ['H', '2'], dim: '3d' },
+  { id: 'rotate', group: 'tools', keys: ['T', '3'] },
+  { id: 'scale', group: 'tools', keys: ['S', '4'] },
+  { id: 'axis', group: 'tools', keys: ['R'], dim: '3d' },
+  { id: 'noTool', group: 'tools', keys: ['Esc'] },
+  { id: 'nudge', group: 'tools', keys: ['←↑↓→', '⇧ ←↑↓→'] },
+  { id: 'turnStep', group: 'tools', keys: ['Q', 'E'] },
+  { id: 'liftStep', group: 'tools', keys: ['PgUp', 'PgDn'], dim: '3d' },
+  { id: 'sizeStep', group: 'tools', keys: ['+', '−'] },
+  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play' },
+  { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
+  { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
+  { id: 'look', group: 'view', keys: ['Space'] },
+  // Camera up / down (camera-up pass, 2026-10-18; merged with basics in integrate1): E / Q with nothing picked, and
+  // Space+E / Q with a pick (plain E / Q turn the pick then — the turnStep row). Written as Space+E / Q here so one
+  // key still does one thing in this table. The name stays short (a longer one, "… (E / Q with nothing picked)", wrapped
+  // to three lines in the sheet); the ⌘K rows show plain E / Q when nothing is picked.
+  { id: 'camera', group: 'view', keys: ['Space+E', 'Space+Q'], dim: '3d' },
+  // Fly (camera-wasd pass, 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"): one row,
+  // the rule under its name (`note`, also the ⌘K row's words): WASD alone with nothing picked; with a pick, hold the
+  // right button (S is the Size tool and E / Q turn then). E / Q fly up / down in the same moments (the camera row).
+  { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note' },
+  { id: 'palette', group: 'view', keys: ['⌘K'], label: 'foot.palette' },
+  { id: 'shortcuts', group: 'view', keys: ['?'] },
+  { id: 'forward', group: 'layers', keys: ['⌘]'], label: 'layer.forward', dim: '2d' },
+  { id: 'backward', group: 'layers', keys: ['⌘['], label: 'layer.backward', dim: '2d' },
+  { id: 'toFront', group: 'layers', keys: ['⇧⌘]'], label: 'layer.toFront', dim: '2d' },
+  { id: 'toBack', group: 'layers', keys: ['⇧⌘['], label: 'layer.toBack', dim: '2d' },
+];
+
+/** ⌘K / Ctrl+K: the Mac spelling as written in KEYMAP, or the Windows / Linux one. */
+function keyText(mac        , onMac         )         {
+  if (onMac) return mac;
+  // Windows order is Ctrl+Shift+Z; the Mac writes ⇧⌘Z.
+  const shift = mac.includes('⇧') && mac !== '⇧ ←↑↓→';
+  let k = mac.replace('⇧', '').replace('⌘', '');
+  if (k === '⌫') k = 'Backspace';
+  const parts = [mac.includes('⌘') ? 'Ctrl' : '', shift ? 'Shift' : '', k].filter(Boolean);
+  return mac === '⇧ ←↑↓→' ? 'Shift ←↑↓→' : parts.join('+');
 }
 
-/** Mark an <img class="thumb"> light or not once its picture is measured. */
-function toneThumb(img                  , src        )       {
-  void isLightPicture(src).then((light) => {
-    if (img.getAttribute('src') !== src) return; // a newer picture came meanwhile
-    if (light) img.dataset.tone = 'light';
-    else delete img.dataset.tone;
-  });
+/** Every way to press `id` on this system ("⇧⌘Z", "⌘Y"), first = the one tooltips show. */
+function keysOf(id        , onMac         )           {
+  const d = KEYMAP.find((k) => k.id === id);
+  if (!d) return [];
+  // On Windows Ctrl+Y is the redo people know first (Office); Ctrl+Shift+Z second.
+  const keys = !onMac && id === 'redo' ? ['⌘Y', '⇧⌘Z'] : !onMac && id === 'remove' ? ['Delete', '⌫'] : d.keys;
+  return keys.map((k) => keyText(k, onMac));
 }
 
-__def(__exports, "LIGHT_AT", () => LIGHT_AT);
-__def(__exports, "isLightPicture", () => isLightPicture);
-__def(__exports, "toneThumb", () => toneThumb);
+/** The key a tooltip or a ⌘K row shows for `id` ("⌘Z", "Ctrl+Y"), or ''. */
+const keyOf = (id        , onMac         )         => keysOf(id, onMac)[0] ?? '';
+
+/** The tooltip line: "Undo: move lighthouse" + two spaces + "⌘Z" (no brackets: the key reads as a key). */
+const tipText = (label        , key        )         => (key ? `${label}  ${key}` : label);
+
+__def(__exports, "KEYMAP", () => KEYMAP);
+__def(__exports, "keyText", () => keyText);
+__def(__exports, "keysOf", () => keysOf);
+__def(__exports, "keyOf", () => keyOf);
+__def(__exports, "tipText", () => tipText);
 };
-__defs[27] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -7570,12 +8821,13 @@ __defs[27] = function (__exports) {
 // presses (in the game and in the list) to add / take out instead of
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
-const { h, safeImageSrc } = __require(17);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(15);
-const { groupLayerPossible, sameKind } = __require(25);
-const { icon, setButton } = __require(19);
+const { h, safeImageSrc } = __require(14);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(18);
+const { groupLayerPossible, sameKind } = __require(27);
+const { icon, setButton } = __require(21);
+const { tipText } = __require(28);
 const { displayName } = __require(12);
-const { toneThumb } = __require(26);
+const { toneThumb } = __require(15);
 
                                      
                                                                  
@@ -7608,8 +8860,15 @@ const { toneThumb } = __require(26);
                                                               
      
                            
-                                                                                                       
-                                                      
+                                                                                                                   
+                                                                       
+     
+                                                                                                               
+                                                                               
+     
+                      
+                                                                                                                
+                         
                                                                   
                                             
      
@@ -7730,13 +8989,14 @@ function createPlacementPanel(d                    )                 {
   askEl.addEventListener('submit', async (e) => {
     e.preventDefault();
     const keys = d.selectedKeys();
+    const files = d.assets?.() || [];
     const text = askInput.value.trim();
     if (!text) {
       askInput.focus();
       return;
     }
     askSend.disabled = true;
-    const ok = await d.ask(keys, text);
+    const ok = await d.ask(keys, text, files);
     askSend.disabled = false;
     if (ok) {
       askInput.value = '';
@@ -7755,21 +9015,27 @@ function createPlacementPanel(d                    )                 {
 
   const renderAsk = () => {
     const keys = d.selectedKeys();
+    const files = d.assets?.() || [];
     const items = d.items();
     const first = items.find((i) => i.key === keys[0]);
-    const k = keys.length ? [...keys].sort().join(',') : null;
+    const k = keys.length || files.length ? [...[...keys].sort(), ...files].join(',') : null;
     // "Sent to your AI" belongs to what it was sent about.
     if (k !== askKey) askNote = '';
     askKey = k;
-    const whole = !keys.length || !first;
-    const ph = whole ? d.t('ask.game') : keys.length > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    const noObj = !keys.length || !first;
+    const whole = noObj && !files.length;
+    const n = (noObj ? 0 : keys.length) + files.length;
+    const ph = whole ? d.t('ask.game') : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
-    const firstName = whole ? '' : displayName(first, d.t);
-    askChip.textContent = whole ? '' : keys.length > 1 ? d.t('ops.manyShort', { n: keys.length }) : firstName;
+    // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
+    const fileName = (p        ) => p.slice(p.lastIndexOf('/') + 1);
+    const firstName = noObj ? (files.length ? fileName(files[0] ) : '') : displayName(first, d.t);
+    askChip.textContent = whole ? '' : n === 1 ? firstName : noObj ? d.t('ask.files', { n }) : files.length ? d.t('ask.picked', { n }) : d.t('ops.manyShort', { n });
+    askChip.title = files.length ? [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files].join('\n') : '';
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
-    askInput.setAttribute('aria-label', whole ? ph : keys.length > 1 ? d.t('ask.many', { n: keys.length }) : d.t('ask.one', { name: firstName }));
+    askInput.setAttribute('aria-label', whole ? ph : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
@@ -7787,9 +9053,12 @@ function createPlacementPanel(d                    )                 {
     // .card-actions (the place the AI-partner card keeps for these buttons) holding the edit-ops row.
     const row = h('div', { class: 'card-actions edit-ops', dataset: { part: 'edit-ops' } });
     const copy = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'copy' }, onclick: () => d.copy() });
-    setButton(copy, 'copy', d.t('ops.copy'), false, `${d.t('ops.copy')} — ${d.t('ops.copyHint')} (${d.shortcutOf('copy')})`);
+    // Tooltip = the name and its key (tooltip.ts sets the key apart); the longer how-to stays for screen readers.
+    setButton(copy, 'copy', d.t('ops.copy'), false, tipText(d.t('ops.copy'), d.shortcutOf('copy')));
+    copy.setAttribute('aria-description', d.t('ops.copyHint'));
     const del = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'remove' }, onclick: () => d.remove() });
-    setButton(del, 'trash', d.t('ops.remove'), false, `${d.t('ops.remove')} — ${d.t('ops.removeHint')} (${d.shortcutOf('remove')})`);
+    setButton(del, 'trash', d.t('ops.remove'), false, tipText(d.t('ops.remove'), d.shortcutOf('remove')));
+    del.setAttribute('aria-description', d.t('ops.removeHint'));
     row.append(copy, del);
     return row;
   };
@@ -7810,7 +9079,7 @@ function createPlacementPanel(d                    )                 {
     const seg = h('div', { class: 'seg layer-seg', role: 'group', 'aria-label': d.t('layer.title') });
     for (const op of ['toBack', 'backward', 'forward', 'toFront']             ) {
       const b = h('button', { type: 'button', class: 'layer-btn', dataset: { action: `layer-${op}` }, disabled: disabled(op), onclick: () => act(op) });
-      setButton(b, op, d.t(`layer.${op}`), false, `${d.t(`layer.${op}`)} (${d.shortcut(op)})`);
+      setButton(b, op, d.t(`layer.${op}`), false, tipText(d.t(`layer.${op}`), d.shortcut(op)));
       seg.append(b);
     }
     return h('div', { class: 'f-row layer-row', dataset: { part: 'layer' } },
@@ -8073,6 +9342,9 @@ function createPlacementPanel(d                    )                 {
         } })));
     }
     if (it.copyOf) body.append(h('p', { class: 'muted copy-note note-line', text: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf }) }));
+    // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
+    // want to go straight to its page in the Library"); its file is the Assets row above.
+    if (d.showInLibrary) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary () }));
     const kl = kindLink(key);
     if (kl) body.append(kl);
     card.append(body);
@@ -8367,7 +9639,7 @@ function createPlacementPanel(d                    )                 {
 
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 };
-__defs[28] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -8403,8 +9675,8 @@ __defs[28] = function (__exports) {
 // loses trust fastest, so the ask box's text is never touched by the ⌘K list now; "Ask your AI: “…”" in that list only
 // moves the words into the ask box (focused, not sent). Typing in the ask box still shows suggestions (the `typed`
 // mode below), and those still read the ask box: there the words were written in it on purpose.
-const { h } = __require(17);
-const { icon } = __require(19);
+const { h } = __require(14);
+const { icon } = __require(21);
 
                                                                         
 
@@ -8673,7 +9945,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[29] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -8769,7 +10041,7 @@ function fitPicture(src        )                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[30] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -8856,7 +10128,586 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[31] = function (__exports) {
+__defs[33] = function (__exports) {
+'use strict';
+// tooltip.ts
+
+// The editor's own tooltip for buttons: the name, and the key in grey after it ("Undo: move lighthouse  ⌘Z").
+// Basics pass, 2026-10-18 (buttons AND shortcuts for the basic actions). WHY not the browser's `title` bubble: it comes after
+// ~1 s, in the system's font, and cannot set the key apart — the key is the part people come to learn. The `title`
+// stays on the button (screen readers, a page without this script); while the mouse is over it the title is
+// lent to this tip and given back on leave, so the two never show at once.
+//
+// Which: every `button[title]` / `summary[title]` of the editor page (the game frame's strip keeps its own titles).
+// The key is what follows the LAST double space of the title (keymap.ts tipText writes it that way).
+// Mouse only: a touch has no hover, and a tip under a finger would cover what it presses.
+// Look: the glass of rule 1 (shell.css), 11 px, one line, 6 px under the button (above it near the bottom edge).
+// Timing: 450 ms the first time, then at once while moving along a bar (the macOS way), gone on press.
+
+const SEL = 'button[title], summary[title]';
+
+function installTooltips(root             )                                    {
+  const el = document.createElement('div');
+  el.className = 'tip';
+  el.setAttribute('role', 'tooltip');
+  el.hidden = true;
+  const text = document.createElement('span');
+  const kbd = document.createElement('kbd');
+  el.append(text, kbd);
+  root.append(el);
+
+  let target                     = null;
+  let timer = 0;
+  // Until this time a new tip shows at once (the last one was just hidden).
+  let warmUntil = 0;
+  const watch = new MutationObserver(() => {
+    // The button was re-rendered while hovered (renderButtons after ⌘Z): take its new title too.
+    if (!target) return;
+    if (target.hasAttribute('title')) lend(target);
+    fill();
+  });
+
+  const lend = (b             ) => {
+    b.dataset.tip = b.getAttribute('title') || '';
+    b.removeAttribute('title');
+  };
+  const giveBack = (b             ) => {
+    if (b.dataset.tip !== undefined && !b.hasAttribute('title')) b.setAttribute('title', b.dataset.tip);
+    delete b.dataset.tip;
+  };
+  function fill() {
+    if (!target) return;
+    const tip = target.dataset.tip || '';
+    const at = tip.lastIndexOf('  ');
+    text.textContent = at > 0 ? tip.slice(0, at) : tip;
+    kbd.textContent = at > 0 ? tip.slice(at + 2) : '';
+    kbd.hidden = !kbd.textContent;
+    if (!el.hidden) place();
+  }
+  function place() {
+    if (!target) return;
+    const r = target.getBoundingClientRect();
+    const w = el.offsetWidth, hh = el.offsetHeight;
+    const x = Math.max(8, Math.min(innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+    const below = r.bottom + 6 + hh <= innerHeight - 8;
+    el.style.left = `${Math.round(x)}px`;
+    el.style.top = `${Math.round(below ? r.bottom + 6 : r.top - 6 - hh)}px`;
+  }
+  function show() {
+    if (!target || !target.isConnected || !target.dataset.tip) return;
+    fill();
+    el.hidden = false;
+    place();
+  }
+  function hide() {
+    clearTimeout(timer);
+    watch.disconnect();
+    if (target) giveBack(target);
+    if (!el.hidden) warmUntil = performance.now() + 600;
+    target = null;
+    el.hidden = true;
+  }
+
+  root.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const b = (e.target                      )?.closest?.(SEL)                      ;
+    const cur = (e.target                      )?.closest?.('[data-tip]')                      ;
+    if (cur && cur === target) return;
+    if (!b || !root.contains(b)) return hide();
+    hide();
+    target = b;
+    lend(b);
+    watch.observe(b, { attributes: true, attributeFilter: ['title'] });
+    if (performance.now() < warmUntil) show();
+    else timer = window.setTimeout(show, 450);
+  });
+  root.addEventListener('pointerout', (e) => {
+    if (!target) return;
+    const to = e.relatedTarget               ;
+    if (to && target.contains(to)) return;
+    hide();
+  });
+  // A press, a key that changes the page, a scroll: the tip goes (it would point at something that moved).
+  root.addEventListener('pointerdown', () => hide(), true);
+  window.addEventListener('scroll', () => hide(), true);
+  window.addEventListener('blur', () => hide());
+  return { el, hide };
+}
+
+__def(__exports, "installTooltips", () => installTooltips);
+};
+__defs[34] = function (__exports) {
+'use strict';
+// shortcuts.ts
+
+// The keyboard shortcut sheet: every key of the editor in one place (basics pass, 2026-10-18). Opened with `?`, from
+// the ⌘K row "Keyboard shortcuts", and closed with Esc, a press outside, or ×. The rows come from keymap.ts, the
+// same table the tooltips and ⌘K print, so the sheet never lists a key that does not work.
+//
+// Look (the design review's measure: the tools quieter than the game): one glass plate
+// over the game, the game dimmed behind it as for ⌘K (one thing to look at), no colour, names in the text grey and
+// keys in the third grey, three columns on a PC (Edit · Tools · View), one on a phone. Only what applies to this game
+// (no Height in 2D, the draw-order keys only in 2D).
+const { h } = __require(14);
+const { icon } = __require(21);
+const { KEYMAP, keysOf } = __require(28);
+
+                                    
+                         
+                 
+                     
+                                                                                      
+                               
+ 
+
+function createShortcutSheet(d                   ) {
+  const el = h('div', { class: 'keys-sheet', role: 'dialog', 'aria-modal': 'true', tabindex: '-1', hidden: true, dataset: { part: 'shortcuts' } });
+  let open = false;
+
+  function render() {
+    const title = h('h2', { id: 'studio-keys-title', text: d.t('keys.title') });
+    el.setAttribute('aria-labelledby', 'studio-keys-title');
+    const close = h('button', { type: 'button', class: 'icon-btn', dataset: { action: 'keys-close' }, 'aria-label': d.t('btn.close'), onclick: () => hide() }, icon('close'));
+    const cols = h('div', { class: 'keys-cols' });
+    const groups             = d.dim() === '2d' ? ['edit', 'tools', 'view', 'layers'] : ['edit', 'tools', 'view'];
+    for (const g of groups) {
+      const dl = h('dl', { class: 'keys-list' });
+      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()))) {
+        const keys = keysOf(k.id, d.mac());
+        dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
+          h('dt', {}, d.t(k.label || `keys.${k.id}`), k.note ? h('span', { class: 'keys-note', text: d.t(k.note) }) : null),
+          h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
+      }
+      // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
+      cols.append(h('section', { class: `keys-group keys-${g}` }, h('h3', { text: d.t(`keys.group.${g}`) }), dl));
+    }
+    el.replaceChildren(h('div', { class: 'keys-head' }, title, close), cols, h('p', { class: 'keys-foot', text: d.t('keys.foot') }));
+  }
+
+  function show() {
+    render();
+    open = true;
+    el.hidden = false;
+    d.changed(true);
+    // Focus on the plate itself (so Esc reaches it and Tab starts inside), not on ×: a key-opened sheet would draw
+    // the focus ring round × in orange, and orange means "what you selected" only (design review, colour rule).
+    el.focus({ preventScroll: true });
+  }
+  function hide() {
+    if (!open) return;
+    open = false;
+    el.hidden = true;
+    d.changed(false);
+  }
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      e.preventDefault();
+      hide();
+    }
+  });
+  return { el, show, hide, toggle: () => (open ? hide() : show()), isOpen: () => open, render: () => open && render() };
+}
+
+__def(__exports, "createShortcutSheet", () => createShortcutSheet);
+};
+__defs[35] = function (__exports) {
+'use strict';
+// context-menu.ts
+
+// The right-click / long-press menu (context menu, 2026-10-18). context-rows.ts decides WHAT it lists per place;
+// this file only draws it, places it at the pointer and runs the keyboard. main.ts opens it from three ways in:
+// a right-click in the editor page (the list's rows, the Library's tiles), a long press there on a phone, and
+// `placement/context` from the game frame (a right-click / long press on the game, bridge/input.ts).
+//
+// Look (the design review's measure: the tools quieter than the game): one small plate of
+// the glass every floating thing is made of (shell.css rule 1), corners that nest (plate = row + padding, rule 3), PC
+// rows 28 high in the text size, phone rows 44 (a finger). No colour: the row under the pointer or the keys is the grey
+// of a hovered ⌘K row; orange stays "what you picked" — the picked object's outline in the game says what the menu is
+// about. The key at the right end in the third grey, as Mac menus print it (keymap.ts, the same text as the tooltips
+// and the ? sheet); phones show no keys (no keyboard).
+//
+// Behaviour (what menus on Mac / Windows do, so nothing has to be learnt):
+// - Opens at the pointer, moved in so it never leaves the window (it opens up / to the left near an edge). From a
+//   finger it opens ABOVE the finger, so the finger does not cover the first row.
+// - A clear layer over the whole editor (the game frame included) catches the next press outside: that press only
+//   closes the menu, it does not also pick or move anything (the game frame cannot tell the editor page about its own
+//   presses, so without the layer a press on the game would leave the menu standing).
+// - Esc, Tab, a resize or leaving the window close it. A scroll by the person cannot happen under it (the layer takes the
+//   wheel and the finger, and closes); a scroll the page makes itself (the Library keeping the pressed tile in place
+//   while a detail opens above it) leaves it open — closing on any scroll shut the menu as it opened (2026-10-18). ↑ ↓ move the highlight (wrapping), Home / End,
+//   Enter / Space run it; any other key closes it and goes on to the editor (⌘Z still undoes).
+// - Dimmed rows stay in place and cannot be chosen (context-rows.ts says why).
+// - The camera never moves for it, and nothing it does sends what the floating panels cover (the strip stays put).
+const { h } = __require(14);
+
+                           
+             
+                
+                                                                                     
+               
+                     
+              
+ 
+                                                 
+
+                                  
+                                           
+                   
+                                                                                 
+                                                      
+ 
+
+                              
+                                                                                          
+                
+                                                           
+                  
+                                                                                                  
+                     
+                                                           
+                 
+ 
+
+/** Where a menu of size w × h opens for a point, inside a window of vw × vh with an 8 px margin (pure; tested). */
+function placeMenu(x        , y        , w        , hgt        , vw        , vh        , touch = false)                                {
+  const m = 8;
+  // A mouse: the corner 2 px off the pointer (a release right after the press must not land on a row). A finger:
+  // above it with room for the fingertip, centred on it.
+  let left = touch ? x - w / 2 : x + 2;
+  let top = touch ? y - hgt - 16 : y + 2;
+  if (!touch && left + w > vw - m) left = x - w - 2;
+  if (!touch && top + hgt > vh - m) top = y - hgt - 2;
+  if (touch && top < m) top = y + 24;
+  left = Math.max(m, Math.min(left, vw - m - w));
+  top = Math.max(m, Math.min(top, vh - m - hgt));
+  return { left: Math.round(left), top: Math.round(top) };
+}
+
+function createContextMenu(d                 ) {
+  const el = h('div', { class: 'ctx-menu', role: 'menu', tabindex: '-1', hidden: true, dataset: { part: 'context-menu' } });
+  // The clear layer that takes the next press outside the menu (see the header). Under the menu, over everything else.
+  const catcher = h('div', { class: 'ctx-catch', hidden: true, 'aria-hidden': 'true' });
+  let items                                                    = [];
+  let at = -1;
+  let open = false;
+  let back                     = null;
+  // Opened at this time (performance.now): a long press opens it before the finger lifts, and the browser may then
+  // fire a click / contextmenu for the same press on what is under the finger.
+  let openedAt = 0;
+
+  const enabled = () => items.map((x, i) => (x.item.disabled ? -1 : i)).filter((i) => i >= 0);
+  const highlight = (i        ) => {
+    at = i;
+    items.forEach((x, j) => x.btn.classList.toggle('on', j === i));
+    if (i >= 0) items[i] .btn.focus({ preventScroll: true });
+    else el.focus({ preventScroll: true });
+  };
+  const move = (dir        ) => {
+    const list = enabled();
+    if (!list.length) return;
+    const pos = list.indexOf(at);
+    highlight(pos < 0 ? (dir > 0 ? list[0]  : list[list.length - 1] ) : list[(pos + dir + list.length) % list.length] );
+  };
+
+  function show(entries             , x        , y        , o             ) {
+    if (open) hide(false);
+    back = document.activeElement instanceof HTMLElement && !el.contains(document.activeElement) ? document.activeElement : null;
+    items = [];
+    at = -1;
+    el.replaceChildren();
+    const phone = d.phone();
+    for (const e of entries) {
+      if ('sep' in e) {
+        el.append(h('div', { class: 'ctx-sep', role: 'separator' }));
+        continue;
+      }
+      const btn = h('button', { type: 'button', class: 'ctx-row', role: 'menuitem', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined },
+        h('span', { class: 'ctx-label', text: e.label }),
+        !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
+      const i = items.length;
+      btn.addEventListener('pointerenter', (ev) => {
+        if ((ev                ).pointerType === 'mouse' && !e.disabled) highlight(i);
+      });
+      btn.addEventListener('click', () => {
+        if (e.disabled) return;
+        hide(false);
+        e.run();
+      });
+      items.push({ item: e, btn });
+      el.append(btn);
+    }
+    el.dataset.place = o.place;
+    if (o.label) el.setAttribute('aria-label', o.label);
+    else el.removeAttribute('aria-label');
+    el.classList.toggle('touch', !!o.touch);
+    // Measured hidden-but-laid-out, then placed: the menu's size depends on its words (two languages, two layouts).
+    el.style.visibility = 'hidden';
+    el.hidden = false;
+    catcher.hidden = false;
+    const r = el.getBoundingClientRect();
+    const p = placeMenu(x, y, r.width, r.height, window.innerWidth, window.innerHeight, o.touch);
+    el.style.left = `${p.left}px`;
+    el.style.top = `${p.top}px`;
+    // It grows from the corner nearest the point (a menu that opened to the left grows to the left).
+    el.style.transformOrigin = `${x < p.left + r.width / 2 ? 'left' : 'right'} ${y < p.top + r.height / 2 ? 'top' : 'bottom'}`;
+    el.style.visibility = '';
+    open = true;
+    openedAt = performance.now();
+    if (o.keyboard) move(1);
+    else highlight(-1);
+    d.changed?.(true, o.place);
+  }
+
+  /** Close. `restore`: give the focus back to where it was (Esc, Tab); a row's action decides the focus itself. */
+  function hide(restore = true) {
+    if (!open) return;
+    open = false;
+    el.hidden = true;
+    catcher.hidden = true;
+    items = [];
+    at = -1;
+    d.changed?.(false, null);
+    if (restore && back?.isConnected) back.focus({ preventScroll: true });
+    back = null;
+  }
+
+  // The keys go to the menu wherever the focus is while it is open (capture, on the page): the focus can be elsewhere —
+  // a press on a row of the list put it there, or the test of 2026-10-18 found Esc with the focus on the page left the
+  // menu standing and dropped the pick behind it instead.
+  document.addEventListener('keydown', (e) => {
+    if (!open) return;
+    // A modifier key alone is not an answer to the menu (⌘ before Z): wait for the key that comes with it.
+    if (e.key === 'Meta' || e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt') return;
+    const k = e.key;
+    if (k === 'ArrowDown' || k === 'ArrowUp') move(k === 'ArrowDown' ? 1 : -1);
+    else if (k === 'Home' || k === 'End') {
+      const list = enabled();
+      if (list.length) highlight(k === 'Home' ? list[0]  : list[list.length - 1] );
+    } else if (k === 'Enter' || k === ' ') {
+      const x = items[at];
+      if (x && !x.item.disabled) {
+        hide(false);
+        x.item.run();
+      }
+    } else if (k === 'Escape' || k === 'Tab') hide(true);
+    else {
+      // Any other key: the menu goes, the key goes on to the editor (window keydown in main.ts).
+      hide(true);
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+  // The press outside: close, and nothing else (no pick, no look-around: the layer is over the game frame too).
+  const outside = (e       ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    hide(true);
+  };
+  catcher.addEventListener('pointerdown', outside);
+  catcher.addEventListener('contextmenu', outside);
+  catcher.addEventListener('wheel', outside, { passive: false });
+  el.addEventListener('contextmenu', (e) => e.preventDefault());
+  window.addEventListener('resize', () => hide(false));
+  window.addEventListener('blur', () => {
+    // The focus going INTO the menu from the game frame blurs nothing here; leaving the window (another app) does.
+    if (open && !document.hasFocus()) hide(false);
+  });
+
+  return {
+    el,
+    catcher,
+    show,
+    hide,
+    isOpen: () => open,
+    /** Opened less than `ms` ago (a long press: the same press's own click / contextmenu that follows). */
+    justOpened: (ms = 700) => open && performance.now() - openedAt < ms,
+  };
+}
+
+__def(__exports, "placeMenu", () => placeMenu);
+__def(__exports, "createContextMenu", () => createContextMenu);
+};
+__defs[36] = function (__exports) {
+'use strict';
+// context-rows.ts
+
+// What the right-click / long-press menu lists, per place (context menu, 2026-10-18 — a request after a try of the editor: "right-click in each
+// place should bring up the menu for it — in the scene, duplicate, delete, that kind of thing"). Pure: no DOM, no
+// state of its own, so test/context-rows.test.ts can say for every place which rows show, in which order, and which
+// are dimmed. main.ts gives the facts (`CtxFacts`) and maps each row's id to the action it already has (the card's
+// Duplicate, ⌘C, ⌘K's rows…): a menu row never does something no other control does.
+//
+// The places:
+//   object   an object in the game, or its row in the scene list — what is picked (several = all of them)
+//   scene    the game where nothing is (or only the ground / background) — the scene as a whole
+//   libObject  an object's tile in the Library
+//   libFile    a file's (asset's) tile in the Library
+//
+// "Use the Library" (2026-10-18): the Library's tiles lead with Add to scene and Ask your AI… (what a Library is for),
+// and the Scene's objects get the way back: Show in Library, and Show its asset in Library when it is drawn with a file.
+// A file's "Add to scene" is a request the AI carries out (it writes the code), so the web demo dims it instead of
+// hiding it (the detail says why); its "Ask your AI…" goes, like every AI row there.
+//
+// Rules, and why:
+// - The names are the ones the rest of the editor uses for the same action (ops.copy "Duplicate", keys.copy "Copy",
+//   btn.undo…), and the key is the keymap.ts id, so the menu prints the key the sheet (?) and the tooltips print.
+// - Rows that cannot act now are DIMMED, not removed (Undo with nothing to undo, Paste with nothing copied): a menu
+//   whose rows come and go has to be read again every time; one that keeps its shape is found by position (Mac menus).
+//   What does not belong to this game at all is left out: the draw-order rows outside 2D layers, "Ask your AI" in the
+//   web demo (no AI behind it: the brief says so, and the demo has no ask box either — main.ts renderAll).
+// - Short. Groups of two to four, a thin line between them; the destructive one (Delete) last in its group, never
+//   first under the pointer.
+                                          
+                                           
+
+                                                                    
+
+                           
+           
+                                                                                     
+                   
+                                                                 
+                   
+                                                                                                                   
+                 
+                  
+                  
+                                                       
+                     
+                                           
+                
+                                                                   
+               
+                   
+                   
+                                                                                                                
+                                             
+                                                                            
+                 
+                                                                                         
+                   
+                                                                                                                     
+                       
+     
+                                                                                                                       
+                                                                                                                   
+                                                                                                    
+     
+                    
+ 
+
+                    
+     
+                 
+                                                                                                    
+                    
+                                                                       
+                   
+                         
+     
+                  
+
+const sep         = { sep: true };
+
+/** Drop separators at the ends and doubled ones (a group can be empty: no AI, no layers). */
+function tidy(rows          )           {
+  const out           = [];
+  for (const r of rows) {
+    if ('sep' in r && (!out.length || 'sep' in out[out.length - 1] )) continue;
+    out.push(r);
+  }
+  while (out.length && 'sep' in out[out.length - 1] ) out.pop();
+  return out;
+}
+
+const LAYER_ROWS                                        = [
+  { op: 'forward', label: 'layer.forward' },
+  { op: 'backward', label: 'layer.backward' },
+  { op: 'toFront', label: 'layer.toFront' },
+  { op: 'toBack', label: 'layer.toBack' },
+];
+
+function contextRows(place          , f          )           {
+  const off = !f.editing;
+  const history           = [
+    { id: 'undo', label: 'btn.undo', key: 'undo', disabled: off || !f.canUndo },
+    { id: 'redo', label: 'btn.redo', key: 'redo', disabled: off || !f.canRedo },
+  ];
+  if (place === 'object') {
+    const locked = off || f.movable === 0;
+    const rows           = [];
+    // The AI first: it is what the editor is for (the ask box is about the pick; this puts the cursor in it).
+    // Naming: a name lives in the game's code, so it is always the AI's job — one press asks for names when the pick
+    // has unnamed objects (the card's "Ask your AI to name it"); one named object gets "Rename…" (its words go into
+    // the ask box, nothing is sent until Enter). Several named objects: no rename (one name for many is not a rename).
+    if (!f.offline) {
+      rows.push({ id: 'ask', label: 'ask.chipOne' });
+      if (f.unnamed > 0) rows.push({ id: 'name', label: f.picked > 1 ? 'ctx.nameMany' : 'ask.name' });
+      else if (f.picked === 1) rows.push({ id: 'rename', label: 'ctx.rename' });
+      rows.push(sep);
+    }
+    rows.push(
+      { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
+      { id: 'copy', label: 'keys.copy', key: 'copy', disabled: locked },
+      { id: 'paste', label: 'keys.paste', key: 'paste', disabled: off || f.clip === 0 },
+      { id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked },
+      sep,
+      { id: 'showInLibrary', label: 'ctx.showInLibrary' },
+    );
+    // A phone keeps the menu short (see `compact`): its file is one press away on the card ("Assets: planks.jpg").
+    if (f.sourceFiles && !f.compact) rows.push({ id: 'showFileInLibrary', label: 'ctx.showFileInLibrary' });
+    if (f.dim === '2d' && f.layers && Object.keys(f.layers).length) {
+      rows.push(sep);
+      for (const l of LAYER_ROWS.filter((x) => !f.compact || x.op === 'toFront' || x.op === 'toBack')) rows.push({ id: `layer-${l.op}`, label: l.label, key: l.op, disabled: off || !f.layers[l.op] });
+    }
+    rows.push(sep, ...history);
+    return tidy(rows);
+  }
+  if (place === 'scene') {
+    const rows           = [];
+    if (!f.offline) rows.push({ id: 'ask', label: 'ask.game' }, sep);
+    rows.push(
+      { id: 'paste', label: 'keys.paste', key: 'paste', disabled: off || f.clip === 0 },
+      { id: 'selectAll', label: 'pal.selectAll', key: 'selectAll', disabled: off || f.items === 0 },
+      { id: 'deselect', label: 'ops.selectNone', key: 'deselect', disabled: !f.anyPicked },
+      sep,
+      { id: 'frame', label: 'btn.frame', key: 'frame', disabled: off },
+      { id: 'home', label: 'pal.home', key: 'home', disabled: off },
+      sep,
+      ...history,
+    );
+    return tidy(rows);
+  }
+  if (place === 'libObject') {
+    const locked = off || f.movable === 0;
+    return tidy([
+      { id: 'addToScene', label: 'lib.addToScene', disabled: locked },
+      ...(f.offline ? [] : [{ id: 'ask', label: 'lib.askAi' }]),
+      sep,
+      { id: 'details', label: 'ctx.details' },
+      { id: 'showInGame', label: 'ctx.showInGame' },
+      sep,
+      { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
+      { id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked },
+    ]);
+  }
+  // libFile
+  return tidy([
+    { id: 'addFile', label: 'lib.addToScene', disabled: f.offline || f.exists === false },
+    ...(f.offline ? [] : [{ id: 'askFile', label: 'lib.askAi' }]),
+    sep,
+    { id: 'details', label: 'ctx.details' },
+    { id: 'showUsers', label: 'ctx.showUsers', disabled: !f.users },
+    sep,
+    { id: 'replace', label: 'ctx.replace' },
+  ]);
+}
+
+__def(__exports, "contextRows", () => contextRows);
+};
+__defs[37] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -8875,25 +10726,32 @@ __defs[31] = function (__exports) {
 const { LOCAL_PATHS, UI, isStudioMessage } = __require(0);
 const { keyStep } = __require(1);
 const { validateLibrary, validatePlacement } = __require(3);
-const { filesOfObject, libraryTool, openAsset } = __require(13);
-const { rulesFor } = __require(14);
-const { samePose } = __require(16);
-const { h, safeImageSrc } = __require(17);
-const { detectLang, setExtraText, translate } = __require(18);
-const { AI_STEPS, NEXT_STEPS, renderNextSteps } = __require(20);
-const { statusCovers } = __require(21);
-const { aiBusy, aiPhase, reloadDecision } = __require(22);
-const { renderSettings } = __require(24);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(23);
-const { dropTarget, hasLayer, layerTarget } = __require(15);
-const { createPlacementPanel } = __require(27);
-const { icon, setButton } = __require(19);
-const { createPalette } = __require(28);
-const { fitPicture } = __require(29);
-const { PlacementModel } = __require(16);
-const { UndoStack, poseChange } = __require(30);
-const { copyKey, groupLayerMoves, sameKind } = __require(25);
+const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } = __require(13);
+const { DRAG_FILE } = __require(11);
+const { createLibraryObjects, DRAG_OBJECT } = __require(16);
+const { rulesFor } = __require(17);
+const { samePose } = __require(19);
+const { h, safeImageSrc } = __require(14);
+const { detectLang, setExtraText, translate } = __require(20);
+const { AI_STEPS, NEXT_STEPS, renderNextSteps } = __require(22);
+const { statusCovers } = __require(23);
+const { aiBusy, aiPhase, reloadDecision } = __require(24);
+const { renderSettings } = __require(26);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(25);
+const { dropTarget, hasLayer, layerTarget } = __require(18);
+const { createPlacementPanel } = __require(29);
+const { icon, setButton } = __require(21);
+const { createPalette } = __require(30);
+const { fitPicture } = __require(31);
+const { PlacementModel } = __require(19);
+const { UndoStack, poseChange } = __require(32);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(27);
 const { displayName } = __require(12);
+const { keyOf, tipText } = __require(28);
+const { installTooltips } = __require(33);
+const { createShortcutSheet } = __require(34);
+const { createContextMenu } = __require(35);
+const { contextRows } = __require(36);
 
                                                                         
 
@@ -8918,6 +10776,11 @@ const store = {
 // ⌘ on Apple keyboards, Ctrl elsewhere (both work on every system).
 /** The strip's tool keys (lower case, as shortcut() reads them) — the same as the game page's (bridge/handles.ts TOOL_KEYS). */
 const STRIP_KEYS                            = { m: 'move', h: 'lift', t: 'rotate', s: 'scale' };
+/** Camera up / down steps, shares of the game's height: ⌘K a tenth, E / Q a twentieth (the same as bridge/input.ts). */
+const RISE_STEP = 0.1;
+const RISE_KEY_STEP = 0.05;
+/** 1–4: the same tools in the 3D strip's order (basics pass, 2026-10-18; bridge/handles.ts TOOL_NUMBERS). 2 is Height: nothing in 2D. */
+const STRIP_NUMBERS                            = { '1': 'move', '2': 'lift', '3': 'rotate', '4': 'scale' };
 const STRIP_ICONS                            = { move: 'toolMove', lift: 'toolLift', rotate: 'toolRotate', scale: 'toolScale' };
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -8932,6 +10795,10 @@ function start(host            ) {
   let bridgeAlive = false;
   let editing = false;
   let dim      = '3d';
+  /** The edit camera can go up / down (core/ready `rise`: 3D adapters with view.rise). */
+  let canRise = false;
+  /** It can fly with W A S D (core/ready `fly`: 3D adapters with view.fly; camera-wasd 2026-10-18). */
+  let canFly = false;
   let adapterInfo = '';
   let items         = [];
   let selected                = null;
@@ -8948,10 +10815,23 @@ function start(host            ) {
   let ghostTold = false;
   // Copies asked for with ⌘D / Copy whose answer (placement/added) has not come yet: those make a new undo step.
   const pendingCopies = new Set        ();
+  // ⌘C remembers the selection here; ⌘V duplicates what is remembered (basics pass, 2026-10-18). Only keys: the
+  // copies are made by the adapter next to the originals, exactly as ⌘D, so paste = "duplicate what I copied".
+  // Not the system clipboard: an object of a running game cannot travel to another app, and a text there would
+  // only surprise. A key whose object is gone by then (deleted, or the AI removed it) is skipped.
+  let clip           = [];
+  // "Use the Library" (2026-10-18). `filePick`: the files picked in the open Library (its panel tells us), named by the
+  // ask box's chip next to the picked objects. `addingToScene`: copies asked for by the Library's "Add to scene", whose
+  // answer (placement/added) brings the Scene up with them picked.
+  let filePick           = [];
+  const addingToScene = new Set        ();
   let check                         = null;
   // ?tool=library opens on the Library (studio.mjs --tool library).
   let tool         = new URLSearchParams(location.search).get('tool') === 'library' ? 'library' : 'placement';
   let page                               = 'tool';
+  // Scene ('placement') and Library ('library') are the left column's two rows ("one Library", a try of the editor, 2026-10-18):
+  // the Scene is the game with its object list; the Library holds every object and every file in one grid
+  // (library-objects.ts + tools/library). Plan 1's third place — the objects' own "Grid" shelf, `objView` — is gone.
   // How the person likes the editor (.studio/ui.json) and what the AI set up
   // for this game (.studio/studio.json, .studio/tools.js).
   let uiPrefs          = { ...DEFAULT_UI, show: { ...DEFAULT_UI.show } };
@@ -9116,8 +10996,11 @@ function start(host            ) {
   // between are a draft only (so closing the tab loses nothing) and are never
   // shown: two different "saved" on one screen read as a contradiction.
   const saveState = h('span', { class: 'save-state', dataset: { part: 'save-state' } });
-  // Undo / redo: phones show Undo here once there is something to undo (no
-  // keyboard there); on PC they are ⌘Z / ⇧⌘Z and rows of the ⌘K list.
+  // Undo / redo: always here, on PC and phone, dimmed while there is nothing to undo / redo (basics pass,
+  // 2026-10-18 — from a try of the editor: "undo and redo are needed: keyboard shortcuts AND buttons"). Before, PC had only ⌘Z and
+  // the ⌘K rows, and phones showed Undo only once there was something to undo (Redo never): a button that comes
+  // and goes moves its neighbours, and a person who does not know ⌘Z had no way to find it. Tooltips name what
+  // they would change and the key ("Undo: move lighthouse  ⌘Z"). Phone: 44 × 44.
   // "✓ Saved" sits right after Save, in the slot Save leaves, and keeps Save's
   // width (renderButtons): nothing next to it moves when Save goes away.
   // WHY (web demo bug, 2026-10-16): it used to sit left of Undo, so on phones
@@ -9125,8 +11008,12 @@ function start(host            ) {
   // tap on "Save" (people tap again when the first one seems to do little)
   // pressed Undo: the object jumped back, "Save · 1" came back, and the next
   // draft write kept the undone place — "saving does not work".
+  // Order since the basics pass: Save / ✓ Saved, then Undo, Redo. The bar's right group is aligned to the right, so
+  // whatever comes and goes must be LEFT of what stays: Save appearing with the first change grows to the left and
+  // Undo / Redo never move (with Undo first, the first change pushed Undo 80 px left under the mouse). And with the
+  // "✓ Saved" slot keeping Save's width, a second tap on Save still lands on Save's place, never on Undo.
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
-    mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }), mk(saveBtns, 'save', () => void handOff()), saveState);
+    mk(saveBtns, 'save', () => void handOff()), saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
   // Is the AI there? Grey until it writes back in this session, green after,
   // violet while it works. (The editor cannot see the AI's window; this is
   // only what the AI told it, so it never claims more.)
@@ -9157,6 +11044,8 @@ function start(host            ) {
   // and back), and "All actions" becomes this "…" (the same ⌘K list, same press). PC keeps its
   // column as it was: .side-head is `display: contents` there and these tools are hidden.
   const sheetMore = h('button', { type: 'button', class: 'icon-btn sheet-more', dataset: { action: 'palette' }, onclick: openPalette }, icon('more'));
+  // (Plan 1's "Grid" button that sat here is gone with the objects' shelf, "one Library" 2026-10-18: Multi-select is
+  // back in the head, the Library is the switch's other side.)
   const headTools = h('div', { class: 'side-head-tools' }, sheetMore);
   const side = h('aside', { class: 'side', dataset: { part: 'side' } }, h('div', { class: 'side-head' }, tabs, headTools), status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
@@ -9164,6 +11053,7 @@ function start(host            ) {
   const sheetBtn = btn('sheet', () => {
     sheetOpen = !sheetOpen;
     page = 'tool';
+    // From the Library the list button brings the Scene's list (the game and its list).
     if (sheetOpen && tool === 'library') tool = 'placement';
     renderAll(true);
   }, { class: 'icon-btn' });
@@ -9176,10 +11066,8 @@ function start(host            ) {
   // step-by-step tour here without asking.
   const playNote = h('p', { class: 'play-note', hidden: true });
   const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
-  const askSlot = h('div', { class: 'ask-slot' });
-  // The web demo's line in the ask box's place (W1-6); its words are set in renderAll (language).
-  const offlineLine = h('p', { class: 'offline-line', dataset: { part: 'offline-line' } }, h('span', { class: 'label' }),
-    host.getUrl ? h('a', { href: host.getUrl, target: '_blank', rel: 'noopener noreferrer' }) : document.createDocumentFragment());
+  // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
+  const askSlot = h('div', { class: 'ask-slot', hidden: !!host.offline });
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
@@ -9188,13 +11076,83 @@ function start(host            ) {
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
+  // Every shortcut in one sheet over the game (? / the ⌘K row), the game dimmed behind it like ⌘K; and the
+  // buttons' own tooltips with their key (basics pass, 2026-10-18).
+  const keysScrim = h('div', { class: 'scrim keys-scrim', hidden: true, onpointerdown: () => keySheet.hide() });
+  let keysFocus                     = null;
+  const keySheet = createShortcutSheet({
+    t: (k) => t(k),
+    mac: isMac,
+    dim: () => dim,
+    changed: (on) => {
+      keysScrim.hidden = !on;
+      app.dataset.keys = on ? 'open' : 'closed';
+      // Back to where the keys were typed (the list, a button), so the next key works there as before.
+      if (on) keysFocus = document.activeElement                      ;
+      else if (keysFocus?.isConnected) keysFocus.focus({ preventScroll: true });
+    },
+  });
+  stage.append(keysScrim, keySheet.el);
+  // The place's menu (right-click / long press; context-menu.ts): over everything, the game frame included.
+  const ctxMenu = createContextMenu({
+    phone: () => phone(),
+    changed: (on, place) => {
+      app.dataset.menu = on ? place || 'open' : 'closed';
+    },
+  });
+  app.append(ctxMenu.catcher, ctxMenu.el);
+  installTooltips(app);
+  // A Library tile dragged onto the Scene row = its "Add to scene" ("use the Library", 2026-10-18). The row is the
+  // drop target because the Library covers the game on PC (the game is not on screen to drop on); while a tile is
+  // dragged the row says so (grey, like a hover: orange stays the pick). Touch has no drag of this kind: the tile's
+  // detail and its long-press menu have the same "Add to scene".
+  const dragType = (e           ) => {
+    const ts = e.dataTransfer?.types || [];
+    return ts.includes(DRAG_OBJECT) ? DRAG_OBJECT : ts.includes(DRAG_FILE) ? DRAG_FILE : null;
+  };
+  const sceneRow = (e       ) => (e.target                  )?.closest?.             ('[data-tool="placement"]') ?? null;
+  document.addEventListener('dragstart', (e) => {
+    if (dragType(e)) app.dataset.drag = 'library';
+  });
+  const dragDone = () => {
+    delete app.dataset.drag;
+    tabs.querySelector('.drop-on')?.classList.remove('drop-on');
+  };
+  document.addEventListener('dragend', dragDone);
+  tabs.addEventListener('dragover', (e) => {
+    const row = sceneRow(e);
+    if (!row || !dragType(e) || !editing) return;
+    e.preventDefault();
+    e.dataTransfer .dropEffect = 'copy';
+    row.classList.add('drop-on');
+    row.title = t('lib.dropScene');
+  });
+  tabs.addEventListener('dragleave', (e) => {
+    const row = sceneRow(e);
+    if (row && !row.contains(e.relatedTarget               )) row.classList.remove('drop-on');
+  });
+  tabs.addEventListener('drop', (e) => {
+    const type = dragType(e);
+    if (!sceneRow(e) || !type) return;
+    e.preventDefault();
+    const v = e.dataTransfer .getData(type);
+    dragDone();
+    if (type === DRAG_OBJECT) {
+      // The dropped tile's kind, picked or not (a drag is about what is in the hand).
+      if (items.some((i) => i.key === v && i.movable !== false)) addToScene([v]);
+    } else if (v) {
+      const p = libraryPickedFiles();
+      fileUse.add?.(p.includes(v) ? p : [v]);
+    }
+  });
   // A click on the bare desk drops the pick, the same as a tap on nothing in the game (bridge/input.ts; a web demo try
   // 2026-10-18: "I want to click an empty spot to deselect, and I can't"). Bare = the surface itself, not a row, a
   // button, the card or a field on it: the 8 px margin round the game plate, the empty part of the list column under
   // the rows, the top bar's empty middle, and the see-through gap between the card and the ask bar (phone; a finger
   // there is mostly moved onto the ask field by the browser, a mouse is not). `click`, not pointerdown: a press that ends somewhere else (a drag out
   // of the list) is not a click on nothing.
-  const BARE = '.shell, .top, .top-right, .side, .side-head, .side-foot, .panel, .placement, .tool-body, .list-scroll, .objects, .stage, .dock, .card-slot';
+  // The Library's own empty space (around and between the tiles) is bare too: the same click drops the objects' pick there.
+  const BARE = '.shell, .top, .top-right, .side, .side-head, .side-foot, .panel, .placement, .tool-body, .list-scroll, .objects, .stage, .dock, .card-slot, .assets-page .gsl, .assets-page .gsl-grid';
   app.addEventListener('click', (e) => {
     const t = e.target                  ;
     if (!t || !t.matches(BARE) || !editing || playing || !(selected || group.length)) return;
@@ -9288,16 +11246,125 @@ function start(host            ) {
       if (!undo.push(poseChange(k, from, pose))) model.moved(k, from);
       applyPose(k, pose);
     },
-    ask: (keys, text) => askAi({ kind: 'ask', text, objects: requestObjects(keys) }),
+    ask: (keys, text, files) => askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}) }),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
-    shortcut: (op) => {
-      // ⌘ on Apple keyboards, Ctrl elsewhere (both work on every system).
-      const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-      const key = op === 'toFront' || op === 'forward' ? ']' : '[';
-      const shift = op === 'toFront' || op === 'toBack';
-      return mac ? `${shift ? '⇧' : ''}⌘${key}` : `Ctrl+${shift ? 'Shift+' : ''}${key}`;
-    },
+    // Only while the Library is on screen: back in the Scene the words are about what is picked there.
+    assets: () => (libraryShown() ? filePick : []),
+    showInLibrary: libraryTool ? () => showInLibrary() : undefined,
+    // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
+    shortcut: (op) => keyOf(op, isMac()),
   });
+
+  // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
+  // Object → files, read once per game page (and again after the object list changes: copies use their original's
+  // files). Cleared in loadGame and on every new object list.
+  let usesP                                        = null;
+  // The last answer of usesP, kept while a new one is read: what requests name as each object's files.
+  let usesNow                               = null;
+  let usesTimer = 0;
+  const readUses = () => (usesP ||= filesOfObjects(ctx).then((m) => {
+    usesNow = m;
+    return m;
+  }));
+  const libraryObjects = createLibraryObjects({
+    t,
+    items: () => items,
+    selected: () => selected,
+    group: () => group,
+    multi: () => multi,
+    setMulti: (on) => setMulti(on),
+    thumb: (k) => thumbs.get(k) || null,
+    wantThumbs: (keys) => {
+      if (!uiPrefs.show.thumbs || playing) return;
+      const ask = keys.filter((k) => !visibleShown.has(k));
+      for (const k of ask) visibleShown.add(k);
+      if (ask.length) send({ type: 'studio:placement/thumbs', keys: ask, size: 96 });
+    },
+    pose: (k) => model.pose(k),
+    dim: () => dim,
+    // No camera move (focus false) and no page switch: the Library stays until "Show in game →" or the Scene row.
+    select: (k, add) => (add ? toggleSelect(k) : selectObject(k)),
+    selectMany: (keys, primary) => selectMany(keys, primary),
+    clear: () => {
+      if (selected || group.length) selectObject(null);
+    },
+    copy: () => copySelection(),
+    remove: () => removeSelection(),
+    showInGame: () => showPickInGame(),
+    openFile: (path) => openAsset(path, ctx),
+    uses: () => readUses(),
+    askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    changed: () => renderShelf(),
+    addToScene: () => addToScene(),
+    // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
+    askAi: host.offline ? undefined : () => focusAsk(),
+  });
+
+  /**
+   * The Library's "Add to scene" (2026-10-18; also its tiles' menu and a tile dropped on the Scene row): one copy of
+   * each picked kind ("pine ×3" adds ONE pine), placed in the middle of what the camera sees (copy `at: 'view'`), then
+   * the Scene with the copies picked — the camera stays (the copy is where it looks). One undo step, like Duplicate.
+   * Locked objects are left out (targets()).
+   */
+  function addToScene(keys = targets()) {
+    if (!keys.length || !editing) return;
+    const seen = new Set        ();
+    const one = keys.filter((k) => {
+      const g = items.find((i) => i.key === k)?.group || `key:${k}`;
+      if (seen.has(g)) return false;
+      seen.add(g);
+      return true;
+    });
+    // The Scene first, so the bridge knows what the game frame really shows when it places the copy: a phone's
+    // Library sheet covered most of it (its inset), and "the middle of what is seen" was then a strip of sky (the
+    // first phone run, 2026-10-18, put the copy off screen). core/ui (renderAll → sendInset) goes before the copy.
+    if (tool !== 'placement' || page !== 'tool' || (phone() && sheetOpen)) {
+      tool = 'placement';
+      page = 'tool';
+      if (phone()) sheetOpen = false;
+      renderAll(true);
+    }
+    for (const k of copySelection(one, 'view')) addingToScene.add(k);
+  }
+
+  /** The Scene's "Show in Library →" (card, menu, ⌘K): the Library with the pick's detail, the camera untouched. */
+  function showInLibrary() {
+    if (!libraryTool) return;
+    switchTool('library');
+    libraryShowPick();
+  }
+
+  // The Library's files as things to use (contract LibraryFileUse). "Add to scene" on a file is the AI's work (a new
+  // object is code): the ask box gets the words with the files' chip, and Enter sends them — the same box, the same
+  // key as every other request. The web demo has no AI: no add (the Library dims it and says why), no ask.
+  const fileUse                 = {
+    picked: (paths) => {
+      filePick = paths.slice();
+      placementPanel.renderAsk();
+    },
+    add: host.offline ? undefined : (paths) => {
+      filePick = paths.slice();
+      focusAsk(t(paths.length > 1 ? 'lib.addFilesText' : 'lib.addFileText'));
+    },
+    ask: host.offline ? undefined : (paths) => {
+      filePick = paths.slice();
+      focusAsk();
+    },
+  };
+  /** The Library → the game with the pick ("Show in game →" on its detail, and its tiles' menus). */
+  function showPickInGame() {
+    tool = 'placement';
+    page = 'tool';
+    if (phone()) sheetOpen = false;
+    renderAll(true);
+    // Now the game is on screen: bring the selection into view (a slide only, never a new camera angle; W1).
+    send({ type: 'studio:placement/select', key: selected, focus: true, keys: group.length > 1 ? group.slice() : undefined });
+  }
+  /** The Library is on screen (it hides the game: no blind key moves there). */
+  const libraryShown = () => tool === 'library' && page === 'tool' && !playing;
+  const renderShelf = () => {
+    if (tool === 'library') libraryRedraw();
+  };
 
   /**
    * Change the draw order of one object (2D layers): one setPose with a new
@@ -9390,32 +11457,58 @@ function start(host            ) {
     }
     if (uiPrefs.show.next) for (const id of AI_STEPS) rows.push({ id: `step-${id}`, section: 'ask', label: t(`next.${id}`), icon: 'spark', words: t(`next.${id}.desc`), data: { step: id }, run: () => openNext(id) });
     // Actions, with their keys.
-    const mod = isMac() ? '⌘' : 'Ctrl+';
+    const mac = isMac();
     const act = (id        , label        , ic        , run            , hint         , words         ) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), `${mod}S`, 'save 保存');
+    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), keyOf('save', mac), 'save 保存');
     act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', togglePlay, 'P', t('btn.play'));
     if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
-    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, t('tool.library'));
-    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, `${mod}Z`, describe(undo.peekUndo()));
-    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, isMac() ? '⇧⌘Z' : 'Ctrl+Y', describe(undo.peekRedo()));
+    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
+    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
     if (keys.length && editing) {
-      act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'));
-      act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'));
+      act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
+      act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'), 'delete remove 削除');
+      // Copy / paste have no button of their own: Duplicate on the card is the same thing in one press. Here so the
+      // keys can be found by searching "copy" / "paste".
+      act('clip-copy', t('keys.copy'), 'copy', clipCopy, keyOf('copy', mac), 'copy コピー');
     }
+    if (clip.length && editing) act('paste', t('keys.paste'), 'copy', clipPaste, keyOf('paste', mac), 'paste 貼り付け');
+    if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
+    // The pick in the Library, and its file there ("use the Library", 2026-10-18); in the Library, Add to scene.
+    if (keys.length && libraryTool && !libraryShown()) {
+      act('show-in-library', t('pal.showInLibrary'), 'grid', () => showInLibrary(), undefined, t('pal.libraryUseWords'));
+      const src = keys.length === 1 ? usesNow?.get(keys[0] ) || [] : [];
+      if (src[0]) act('show-file-in-library', t('pal.showFileInLibrary', { file: src[0].slice(src[0].lastIndexOf('/') + 1) }), 'grid', () => openAsset(src[0] , ctx), undefined, t('pal.libraryUseWords'));
+    }
+    if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
     // The strip's tools (with something picked): the chosen one is marked with a check, its key on the right.
     if (keys.length && editing) {
       for (const k of (dim === '3d' ? ['move', 'lift', 'rotate', 'scale'] : ['move', 'rotate', 'scale'])               ) {
         const key = Object.keys(STRIP_KEYS).find((c) => STRIP_KEYS[c] === k) .toUpperCase();
-        act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, t('pal.tool.words'));
+        act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, `${t('pal.tool.words')} ${keyOf(k, mac)}`);
       }
     }
     if (uiPrefs.show.frame) act('frame', t('btn.frame'), 'frame', () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }), 'F');
     // Back to the picture the editor opened on (3D: the game's own camera, polish pass) after looking around or
     // after the first pick's glide; one press, any time (speed pass, 2026-10-17). Always listed: 2D opens on "all".
-    if (editing) act('home', t('pal.home'), 'opening', () => goHome(), isMac() ? '⇧F' : 'Shift+F', t('pal.home.words'));
+    if (editing) act('home', t('pal.home'), 'opening', () => goHome(), keyOf('home', mac), t('pal.home.words'));
+    // Camera up / down (play test 2026-10-18): the one place their words and keys are written (the ↑↓ buttons on the
+    // game carry the same as tooltips). E / Q with nothing picked; with something picked E / Q turn it, so Space+E / Q.
+    if (editing && canRise) {
+      const pre = keys.length ? 'Space+' : '';
+      act('camera-up', t('pal.cameraUp'), 'chevronUp', () => riseCamera(RISE_STEP), pre + 'E', t('pal.camera.words'));
+      act('camera-down', t('pal.cameraDown'), 'chevronDown', () => riseCamera(-RISE_STEP), pre + 'Q', t('pal.camera.words'));
+    }
+    // Fly (W A S D; camera-wasd 2026-10-18): a row so "wasd" / "fly" finds the rule. Its key says when (as Camera up's
+    // Space+E): WASD with nothing picked, the right button + WASD with a pick. Run = the ? sheet, whose row carries the
+    // same rule in words (keys.fly.note — the one place it is written). Not on a phone (no keyboard there; the row
+    // only explains keys). Its id is not camera-* so the Camera up / down rows stay a pair (studio-camera-up looks them up).
+    if (editing && canFly && !phone()) act('fly', t('keys.fly'), 'keyboard', () => keySheet.show(), keys.length ? t('keys.fly.picked') : 'WASD', `${t('keys.fly.note')} ${t('pal.fly.words')}`);
     if (items.length) act('select-all', t('pal.selectAll'), 'hand', () => selectMany(items.map((i) => i.key), selected ?? items[0] .key), shortcutText('all'));
     act('multi', multi ? t('ops.multiDone') : t('pal.multi'), 'hand', () => setMulti(!multi), undefined, t('ops.multi'));
+    // "Show all" of the keys: the one sheet with every shortcut (also the ? key).
+    act('shortcuts', t('keys.title'), 'keyboard', () => keySheet.show(), '?', 'keyboard shortcuts keys help hotkeys ショートカット キー 一覧');
     act('settings', t('pal.look'), 'look', () => openSettings(), undefined, `${t('btn.settings')} ${t('ui.theme')} ${t('ui.lang')}`);
     act('lang', t('pal.lang'), 'globe', () => setLang(lang === 'en' ? 'ja' : 'en'), undefined, 'language 言葉 English 日本語');
     if (uiPrefs.show.next) act('next', t('pal.ideas'), 'spark', () => openNext(), undefined, t('btn.next'));
@@ -9438,6 +11531,198 @@ function start(host            ) {
     }
     return rows;
   }
+
+  // ----- the place's menu: right-click, or a long press on a phone (context menu, 2026-10-18) -----
+  // context-rows.ts says what each place lists; context-menu.ts draws it. Here: which place was pressed, picking it
+  // first when it was not picked (as other 3D / 2D tools do — never moving the camera), and what each row does. Every
+  // row is an action the editor already has (the card's Duplicate, ⌘C, ⌘K's rows…), so its key and its undo are the same.
+
+  /** The keys a press on this list row / Library tile is about: the row's object, or every member of a "name ×N" row. */
+  function keysOfEl(el             )           {
+    const g = el.dataset.group;
+    if (g) return items.filter((i) => (i.group || `key:${i.key}`) === g).map((i) => i.key);
+    return el.dataset.key && items.some((i) => i.key === el.dataset.key) ? [el.dataset.key] : [];
+  }
+  /** Pick `keys` unless they are all picked already (then the whole selection stays, as a right-click in other tools). */
+  function pickForMenu(keys          ) {
+    const now = group.length ? group : selected ? [selected] : [];
+    if (!keys.length || keys.every((k) => now.includes(k))) return;
+    // No camera move (focus false), in the list and in the Library alike.
+    if (keys.length === 1) selectObject(keys[0] );
+    else selectMany(keys, keys[0] );
+  }
+  /** The ask box with the cursor in it (the menus' "Ask your AI…"); `text` is put in first, never sent. */
+  function focusAsk(text         ) {
+    if (host.offline) return;
+    if (phone() && sheetOpen) {
+      sheetOpen = false;
+      renderAll(true);
+    }
+    placementPanel.renderAsk();
+    if (text !== undefined) {
+      askInput.value = text;
+      askInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    askInput.focus({ preventScroll: true });
+    const end = askInput.value.length;
+    askInput.setSelectionRange?.(end, end);
+  }
+
+  /** Open the menu of `place` at the page point (x, y). The pick is already what the menu is about. */
+  function openMenu(place          , x        , y        , o                                                         = {}) {
+    if (playing && place !== 'libFile') return;
+    const mac = isMac();
+    const picked = group.length ? group.slice() : selected ? [selected] : [];
+    const its = picked.map((k) => items.find((i) => i.key === k)).filter((i)            => !!i);
+    const movable = targets();
+    // 2D draw order: which moves can still happen (the card's Layer buttons ask the same question).
+    let layers                                               ;
+    if (dim === '2d' && its.some((i) => hasLayer(i))) {
+      layers = {};
+      for (const op of ['forward', 'backward', 'toFront', 'toBack']             ) {
+        layers[op] = its.length > 1 ? groupLayerPossible(items, picked, op) : its[0] .movable !== false && layerTarget(items, its[0] .key, op) !== null;
+      }
+    }
+    const file = place === 'libFile' && o.path ? libraryFile(o.path) : null;
+    // The one picked object's files (Show its asset in Library): the objects' files as last read (usesNow).
+    const src = its.length === 1 ? usesNow?.get(its[0] .key) || [] : [];
+    const rows = contextRows(place, {
+      dim, offline: !!host.offline, editing: editing && !playing,
+      picked: its.length, movable: movable.length, unnamed: its.filter((i) => i.unstable).length, anyPicked: picked.length > 0,
+      items: items.length, clip: clip.filter((c) => items.some((i) => i.key === c)).length,
+      canUndo: undo.canUndo, canRedo: undo.canRedo, layers, users: file?.users ?? 0, exists: file?.exists, sourceFiles: src.length, compact: phone(),
+    });
+    // A file's menu works on the picked files when the pressed one is among them ("Add 3 to scene"), else on it alone.
+    const files = () => {
+      const p = libraryPickedFiles();
+      return o.path && p.includes(o.path) ? p : o.path ? [o.path] : [];
+    };
+    const name = its.length > 1 ? t('ops.manyShort', { n: its.length }) : its[0] ? displayName(its[0], t) : '';
+    const run                             = {
+      ask: () => focusAsk(),
+      name: () => void askAi({ kind: 'name', text: '', objects: requestObjects(its.filter((i) => i.unstable).map((i) => i.key)) }),
+      rename: () => focusAsk(t('ctx.renameText')),
+      duplicate: () => copySelection(),
+      copy: () => clipCopy(),
+      paste: () => clipPaste(),
+      remove: () => removeSelection(),
+      undo: () => doUndo(),
+      redo: () => doRedo(),
+      selectAll: () => items.length && selectMany(items.map((i) => i.key), selected ?? items[0] .key),
+      deselect: () => selectObject(null),
+      frame: () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }),
+      home: () => goHome(),
+      details: () => libraryAct(place === 'libFile' ? 'open' : 'detail', o.path),
+      showInGame: () => showPickInGame(),
+      showUsers: () => libraryAct('users', o.path),
+      replace: () => libraryAct('replace', o.path),
+      addToScene: () => addToScene(),
+      addFile: () => fileUse.add?.(files()),
+      askFile: () => fileUse.ask?.(files()),
+      showInLibrary: () => showInLibrary(),
+      showFileInLibrary: () => src[0] && openAsset(src[0], ctx),
+    };
+    for (const op of ['forward', 'backward', 'toFront', 'toBack']             ) {
+      run[`layer-${op}`] = () => (group.length > 1 ? reorderGroup(op) : selected && reorder(selected, op));
+    }
+    const entries              = rows.map((r) => ('sep' in r ? r : {
+      id: r.id,
+      // The scene's "Ask your AI" says what it is about: the game, or the pick when something is picked.
+      label: r.id === 'ask' && place === 'scene' && picked.length ? t('ask.chipOne') : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label),
+      key: r.key ? keyOf(r.key, mac) : '',
+      disabled: r.disabled,
+      run: run[r.id] ?? (() => undefined),
+    }));
+    if (!entries.length) return;
+    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+  }
+
+  /** What a press at this element of the editor page opens: a list row, a Library tile, or the list's empty part. */
+  function menuFor(target                )                                              {
+    if (!target || !editing && tool !== 'library') return null;
+    const row = target.closest             ('.objects .obj[data-key]');
+    if (row && placementPanel.el.contains(row)) return { place: 'object', el: row };
+    const tile = target.closest             ('.assets-page .lib-object[data-key]');
+    if (tile) return { place: 'libObject', el: tile };
+    const file = target.closest             ('.assets-page .gsl-tile[data-kind="file"][data-path]');
+    if (file) return { place: 'libFile', el: file };
+    // The list's empty part (under the rows) is the scene, as the game's empty part is.
+    const list = target.closest             ('.list-scroll');
+    if (list && tool === 'placement' && page === 'tool' && placementPanel.el.contains(list)) return { place: 'scene', el: list };
+    return null;
+  }
+  /** Pick what the pressed element stands for (unless it is picked), then open its menu. */
+  function menuAt(m                                      , x        , y        , o                                          = {}) {
+    // In the Library the pick shows its detail without scrolling the page to it (a phone sheet jumped to its top
+    // under the finger); the menu's "Details" brings it into view.
+    if (m.place === 'object') pickForMenu(keysOfEl(m.el));
+    else if (m.place === 'libObject') libraryHoldStill(() => pickForMenu(keysOfEl(m.el)));
+    let path                    ;
+    if (m.place === 'libFile') {
+      path = m.el.dataset.path ;
+      // A file is "picked" by opening its detail (one thing open in the Library at a time).
+      libraryHoldStill(() => libraryAct('open', path));
+    }
+    openMenu(m.place, x, y, { ...o, path });
+  }
+
+  // The browser's own right-click menu never shows in the editor (it offered Back / Reload / Inspect over the game's
+  // tools), except in a field, where Cut / Copy / Paste / spelling belong to the text.
+  document.addEventListener('contextmenu', (e) => {
+    const t = e.target                      ;
+    if (t?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+    e.preventDefault();
+    cancelPress();
+    // The same press's contextmenu after a long press opened the menu already (Android sends one).
+    if (ctxMenu.justOpened() || ctxMenu.el.contains(t)) return;
+    // Shift+F10 / the menu key: no pointer (0, 0 or no pointer type); the menu opens at the element.
+    const keyboard = (e                ).pointerType === '' || (!e.clientX && !e.clientY);
+    const m = menuFor(t);
+    if (!m) {
+      // The menu key with the focus on no row (a button, the page): the pick's menu, or the scene's, over the game.
+      if (keyboard && editing && !playing && !libraryShown()) {
+        const g = iframe.getBoundingClientRect();
+        openMenu(selected || group.length ? 'object' : 'scene', g.left + g.width / 2, g.top + g.height / 2, { keyboard });
+      }
+      return;
+    }
+    const r = m.el.getBoundingClientRect();
+    menuAt(m, keyboard ? r.left + 12 : e.clientX, keyboard ? r.bottom : e.clientY, { keyboard });
+  }, true);
+  // The click that ends a long press (and the Mac's Control-click) must not also press the row under the finger.
+  document.addEventListener('click', (e) => {
+    if (ctxMenu.justOpened() && !ctxMenu.el.contains(e.target        )) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  }, true);
+  // A long press on a phone (touch / pen; the mouse has its right button): UI.longPressMs held still on a row or tile.
+  // The 2D list's drag grip, a "×N" row's ▸ and a sound's ▶ keep their own presses.
+  let press                                                                                                      = null;
+  function cancelPress() {
+    if (press) clearTimeout(press.timer);
+    press = null;
+  }
+  document.addEventListener('pointerdown', (e) => {
+    cancelPress();
+    if (e.pointerType === 'mouse' || !e.isPrimary) return;
+    const t = e.target                  ;
+    if (t?.closest?.('.grip, .expand, .gsl-play, input, textarea, select')) return;
+    const m = menuFor(t);
+    if (!m || m.place === 'scene') return;
+    const at = { id: e.pointerId, x: e.clientX, y: e.clientY, m };
+    press = { ...at, timer: window.setTimeout(() => {
+      press = null;
+      menuAt(at.m, at.x, at.y, { touch: true });
+    }, UI.longPressMs) };
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    if (press && e.pointerId === press.id && Math.hypot(e.clientX - press.x, e.clientY - press.y) > UI.tapSlopPx) cancelPress();
+  }, true);
+  for (const ev of ['pointerup', 'pointercancel']         ) document.addEventListener(ev, (e) => {
+    if (press && e.pointerId === press.id) cancelPress();
+  }, true);
+  document.addEventListener('scroll', () => cancelPress(), { capture: true, passive: true });
 
   /**
    * The game's rules for one object (.studio/studio.json), in short words for
@@ -9477,10 +11762,22 @@ function start(host            ) {
 
   // ----- several at once, copy, delete (CONTRACT.md §1.8) -----
   function shortcutText(what                           )         {
-    if (what === 'remove') return isMac() ? '⌫' : 'Delete';
-    const k = what === 'copy' ? 'D' : 'A';
-    return isMac() ? `⌘${k}` : `Ctrl+${k}`;
+    return keyOf(what === 'copy' ? 'duplicate' : what === 'all' ? 'selectAll' : 'remove', isMac());
   }
+  function clipCopy() {
+    clip = targets();
+    if (clip.length) showToast(t('keys.copied', { name: namesOf(clip), key: keyOf('paste', isMac()) }), 2500);
+  }
+  function clipPaste() {
+    const keys = clip.filter((c) => items.some((i) => i.key === c && i.movable !== false));
+    if (keys.length) copySelection(keys);
+    else showToast(t(clip.length ? 'keys.pasteGone' : 'keys.pasteEmpty', { key: keyOf('copy', isMac()) }), 2500);
+  }
+  /** "lighthouse" or "3 objects", for the short notes (copied…). */
+  const namesOf = (keys          ) => {
+    const it = keys.length === 1 ? items.find((i) => i.key === keys[0]) : undefined;
+    return it ? displayName(it, t) : t('undo.n', { n: keys.length });
+  };
   /** What the actions work on: the selection (locked objects left out). */
   const targets = () => (group.length ? group : selected ? [selected] : [])
     .filter((k) => items.find((i) => i.key === k)?.movable !== false);
@@ -9489,6 +11786,7 @@ function start(host            ) {
     send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
+    renderShelf();
     sendInset();
     emit('selected', selected);
   }
@@ -9511,14 +11809,18 @@ function start(host            ) {
     multi = on;
     send({ type: 'studio:placement/multi', on });
     if (tool === 'placement' && page === 'tool') placementPanel.render();
+    renderShelf();
   }
 
   /** Every key in use, so a new copy never takes one (deleted copies included: redo brings them back). */
   const takenKeys = () => new Set([...items.map((i) => i.key), ...model.copiesEver()]);
 
-  function copySelection() {
-    const keys = targets();
-    if (!keys.length || !editing) return;
+  /**
+   * Duplicate `keys` (the selection for ⌘D / the card's Duplicate; what ⌘C remembered for ⌘V). `at: 'view'`: in the
+   * middle of what the camera sees (the Library's "Add to scene"). Returns the new copies' keys.
+   */
+  function copySelection(keys = targets(), at         )           {
+    if (!keys.length || !editing) return [];
     const taken = takenKeys();
     const reqs = keys.map((from) => {
       const it = items.find((i) => i.key === from);
@@ -9527,7 +11829,8 @@ function start(host            ) {
       pendingCopies.add(key);
       return { key, from };
     });
-    send({ type: 'studio:placement/copy', items: reqs });
+    send({ type: 'studio:placement/copy', items: reqs, ...(at ? { at } : {}) });
+    return reqs.map((r) => r.key);
   }
 
   function removeSelection() {
@@ -9596,21 +11899,25 @@ function start(host            ) {
       return () => set.delete(cb                              );
     },
     items: () => items,
+    // The Library → the game ("Show in game →"): the Scene with the object picked.
     selectObject: (k) => {
       switchTool('placement');
       selectObject(k, true);
     },
-    // Assets → Scene: "In the scene: 2" selects every object that uses the file.
+    // The Library → the game: a file's "Show in game →" picks every object that uses the file.
     selectObjects: (keys) => {
       switchTool('placement');
       const known = keys.filter((k) => items.some((i) => i.key === k));
       if (known.length === 1) selectObject(known[0] , true);
       else if (known.length) selectMany(known, known[0] );
     },
+    // The objects, for the Library's one grid (no `showObjects`: the Library narrows to a file's objects itself).
+    objects: libraryObjects,
     switchTool: (id) => switchTool(id),
     changed: () => renderButtons(),
     phone,
     ask: (r) => askAi(r),
+    files: fileUse,
   };
   const tools                                     = {};
   if (libraryTool) tools.library = libraryTool;
@@ -9649,8 +11956,16 @@ function start(host            ) {
       return;
     }
     tool = id;
-    // Phone: Assets is its own sheet; the scene list closes behind it.
-    if (phone()) sheetOpen = id === 'placement' ? sheetOpen : false;
+    // Files picked in the Library belong to that visit: the next one starts with none (its panel tells us again).
+    filePick = [];
+    // Phone: the Library is its own sheet; the scene list closes behind it. The Scene from the Library sheet (its
+    // head's switch) opens the Scene's list sheet over the game.
+    if (phone()) sheetOpen = id === 'placement';
+    // The objects' files may have changed while the Library was away (copies, the AI's change): read them again.
+    if (id === 'library') {
+      usesP = null;
+      libraryObjects.refreshUses();
+    }
     renderAll(true);
   }
 
@@ -9734,7 +12049,9 @@ function start(host            ) {
   function requestObjects(keys          ) {
     return keys.map((k) => {
       const it = items.find((i) => i.key === k);
-      return { key: k, label: it?.label, pose: model.pose(k), unstable: it?.unstable || undefined };
+      // The files it is drawn with (the Library's "Asset" row), so "make this enemy the boss" names its model too.
+      const files = usesNow?.get(k);
+      return { key: k, label: it?.label, pose: model.pose(k), unstable: it?.unstable || undefined, ...(files?.length ? { files: files.slice() } : {}) };
     });
   }
 
@@ -9761,6 +12078,13 @@ function start(host            ) {
 
   /** Hand a request to the AI through the host. Never assumes local files: the host decides where it goes. */
   async function askAi(r                                  )                   {
+    // Each object's files go with it (requestObjects). Not read yet (the Library was never opened in this game page):
+    // read them now, but never hold the request up for more than a second — the words matter, the files are a hint.
+    if (r.objects?.length && !usesNow && !host.offline) {
+      await Promise.race([readUses().catch(() => null), new Promise((ok) => window.setTimeout(ok, 1000))]);
+      const keys = r.objects.map((o) => o.key);
+      r = { ...r, objects: requestObjects(keys) };
+    }
     const view = r.kind === 'ask' ? askView() : undefined;
     const res = await host.request({ ...r, lang, dim, unsaved: dirtyCount() || undefined, ...(view ? { view } : {}) }).catch((e) => ({ ok: false, error: (e         ).message, id: undefined, at: undefined }                                                                                                                ));
     if (!res.ok) {
@@ -9966,6 +12290,7 @@ function start(host            ) {
     // The card first, then the selection: "bring into view" must already know what the card covers.
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
+    renderShelf();
     sendInset();
     send({ type: 'studio:placement/select', key, focus });
   }
@@ -10084,6 +12409,8 @@ function start(host            ) {
         break;
       case 'studio:core/ready':
         dim = m.dim;
+        canRise = !!m.rise;
+        canFly = !!m.fly;
         adapterInfo = `${m.kind}${m.version ? ' ' + m.version : ''}`;
         editing = m.editing;
         phase = 'ready';
@@ -10172,6 +12499,15 @@ function start(host            ) {
         }
         items = m.items;
         itemsSeen = true;
+        // New objects (copies, the AI's change): their files are read again for the Library (or when it opens next).
+        usesP = null;
+        if (libraryShown()) libraryObjects.refreshUses();
+        // Elsewhere too, a moment later (copies and the AI's change come in bursts): the Scene's menu offers "Show its
+        // asset in Library" and every request names each object's files, both from usesNow.
+        else {
+          clearTimeout(usesTimer);
+          usesTimer = window.setTimeout(() => void readUses().catch(() => undefined), 1200);
+        }
         if (aiMarksMsg.keys.length) send({ type: 'studio:placement/marks', ...aiMarksMsg });
         const apply = model.setItems(items, dim);
         // Continue from the last save: push saved poses the game does not show.
@@ -10204,7 +12540,13 @@ function start(host            ) {
       case 'studio:placement/selected':
         selected = m.key;
         group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
-        if (tool !== 'placement') switchTool('placement');
+        // With the Library on screen the game is hidden, so this is only the game's echo of a pick made in the
+        // Library: stay there (going to the Scene here was the try's "pressing an object throws me back to the
+        // game", 10/18). A pick made in the game itself (the Scene) still lands on the Scene.
+        if (libraryShown()) {
+          placementPanel.renderAsk();
+          renderShelf();
+        } else if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
         break;
@@ -10240,6 +12582,19 @@ function start(host            ) {
           showToast(t('copy.ghost'), 6000);
         }
         if (m.failed.length) showToast(t('copy.failed', { n: m.failed.length }));
+        // The Library's "Add to scene": now the Scene, with the copies picked (the bridge picks them; its
+        // placement/selected comes next and lands on the Scene). The camera stays: the copies are where it looks.
+        const added = m.items.filter((a) => addingToScene.delete(a.key));
+        for (const k of m.failed) addingToScene.delete(k);
+        if (added.length) {
+          if (tool !== 'placement' || page !== 'tool') {
+            tool = 'placement';
+            page = 'tool';
+            if (phone()) sheetOpen = false;
+            renderAll(true);
+          }
+          showToast(t('lib.added', { name: namesOf(added.map((a) => a.key)) }), 2500);
+        }
         renderButtons();
         break;
       }
@@ -10249,6 +12604,15 @@ function start(host            ) {
       case 'studio:placement/menu':
         stripMenu = !!m.open;
         break;
+      case 'studio:placement/context': {
+        // A right-click / long press on the game (bridge/input.ts): the pick is already what it is about (the bridge
+        // picked an object that was not picked, and its placement/selected came first). The point is the game page's.
+        if (!editing || playing || libraryShown()) break;
+        const r = iframe.getBoundingClientRect();
+        cancelPress();
+        openMenu(m.key ? 'object' : 'scene', r.left + m.x, r.top + m.y, { touch: m.touch });
+        break;
+      }
       case 'studio:placement/thumb':
         if (m.src) {
           // Cropped to the object first (thumb-fit.ts, W1-11): the lighthouse filled its tile instead of being an "i".
@@ -10259,6 +12623,7 @@ function start(host            ) {
             if (thumbAsked.get(key) !== raw) return;
             thumbs.set(key, src);
             placementPanel.updateThumb(key);
+            libraryObjects.updateThumb(key);
           });
         }
         break;
@@ -10505,6 +12870,10 @@ function start(host            ) {
     bridgeAlive = false;
     gameError = null;
     filesCache.clear();
+    usesP = null;
+    if (!soft) usesNow = null;
+    filePick = [];
+    addingToScene.clear();
     editing = false;
     // A soft reload keeps the list, the selection and the pictures on screen
     // until the new game answers (no flash of an empty list).
@@ -10538,6 +12907,11 @@ function start(host            ) {
   function shortcut(e                                                                                   )          {
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
+    // The shortcut sheet: Esc or ? again closes it first (from the game frame too).
+    if (keySheet.isOpen() && !mod && (k === 'escape' || k === '?')) {
+      keySheet.hide();
+      return true;
+    }
     if (mod && k === 'z') {
       if (e.shift) doRedo();
       else doUndo();
@@ -10559,6 +12933,18 @@ function start(host            ) {
     // ⌘D copy (also stops the browser's "bookmark this page"), ⌘A select all.
     if (mod && k === 'd' && !e.shift) {
       if (editing) copySelection();
+      return true;
+    }
+    // ⌘C / ⌘V: copy the selection, paste = duplicates of it next to the originals (see `clip`). A text selected on
+    // the page (a name on the card, the AI's line) keeps the browser's own copy.
+    if (mod && k === 'c' && !e.shift) {
+      if (!editing || !targets().length || (!e.fromGame && String(window.getSelection?.() || ''))) return false;
+      clipCopy();
+      return true;
+    }
+    if (mod && k === 'v' && !e.shift) {
+      if (!editing) return false;
+      clipPaste();
       return true;
     }
     if (mod && k === 'a' && editing && tool === 'placement') {
@@ -10602,14 +12988,30 @@ function start(host            ) {
       else switchTool(tool);
       return true;
     }
+    // The menu key / Shift+F10 pressed in the game frame (the bridge keeps the browser's own menu there): the menu of
+    // the pick, or of the scene, in the middle of the game. In the editor page the browser sends `contextmenu` itself.
+    if (e.fromGame && !mod && editing && !playing && (k === 'contextmenu' || (k === 'f10' && e.shift))) {
+      const r = iframe.getBoundingClientRect();
+      openMenu(selected || group.length ? 'object' : 'scene', r.left + r.width / 2, r.top + r.height / 2, { keyboard: true });
+      return true;
+    }
+    // ?: every shortcut in one sheet (Shift+/ on US keyboards; the key reads '?' on every layout that has it).
+    if (!mod && k === '?') {
+      keySheet.show();
+      return true;
+    }
     if (e.fromGame || mod) return false; // the bridge already handled steps/escape
+    // The Library hides the game: keys that move or turn the selection there (arrows, R, M / H / T / S) would
+    // change an object nobody can see. Escape still drops the selection (below); Delete and ⌘D / ⌘Z work as on the
+    // detail's buttons. (Before "one Library" the Assets page let arrows move the hidden pick.)
+    const blind = libraryShown();
     // R: the next turn axis (3D; the game frame handles it itself when it has focus).
-    if (k === 'r' && !e.shift && selected && editing && dim === '3d') {
+    if (k === 'r' && !e.shift && selected && editing && dim === '3d' && !blind) {
       send({ type: 'studio:placement/axis', axis: 'next' });
       return true;
     }
     // M / H / T / S: the strip's tools (the game frame handles them itself when it has focus).
-    const strip = !e.shift && selected && editing ? STRIP_KEYS[k] : undefined;
+    const strip = !e.shift && selected && editing && !blind ? (STRIP_KEYS[k] ?? STRIP_NUMBERS[k]) : undefined;
     if (strip && !(strip === 'lift' && dim !== '3d')) {
       setStripTool(strip);
       return true;
@@ -10621,7 +13023,7 @@ function start(host            ) {
       else selectObject(null);
       return true;
     }
-    if (!selected || !editing) return false;
+    if (!selected || !editing || blind) return false;
     const s = keyStep(e.key, e.shift, dim);
     if (!s) return false;
     send({ type: 'studio:placement/step', key: selected, ...s, hold: false, keys: group.length > 1 ? group.slice() : undefined });
@@ -10641,6 +13043,8 @@ function start(host            ) {
     stripTool = k;
     send({ type: 'studio:placement/tool', tool: k });
   }
+  /** Camera up (> 0) / down by this share of the game's height (input.ts has the same steps for the game's own keys). */
+  const riseCamera = (by        ) => send({ type: 'studio:core/view', view: { action: 'rise', by } });
   // Space held with the shell focused: a drag in the game looks around even with a tool chosen.
   let spaceDown = false;
   const spaceLook = (on         ) => {
@@ -10648,23 +13052,82 @@ function start(host            ) {
     spaceDown = on;
     send({ type: 'studio:placement/look', on });
   };
+  // Fly keys held with the editor page focused (camera-wasd 2026-10-18; bridge/input.ts has the rules and the motion):
+  // W A S D with nothing picked, E / Q with nothing picked or Space held. The whole held set goes to the game each
+  // time it changes; the game moves the camera every frame until it gets [].
+  const FLY_CODES                         = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyE: 'e', KeyQ: 'q' };
+  const flyKeys = new Set        ();
+  let flyShift = false;
+  const flySend = () => send({ type: 'studio:core/fly', keys: [...flyKeys], fast: flyShift });
+  const flyClear = () => {
+    if (!flyKeys.size) return;
+    flyKeys.clear();
+    flySend();
+  };
   window.addEventListener('keyup', (e) => {
     if (e.key === ' ') spaceLook(false);
+    const fk = FLY_CODES[e.code];
+    if (fk && flyKeys.delete(fk)) {
+      flyShift = e.shiftKey;
+      flySend();
+    } else if (e.key === 'Shift' && flyKeys.size) {
+      flyShift = false;
+      flySend();
+    }
   });
-  window.addEventListener('blur', () => spaceLook(false));
+  window.addEventListener('blur', () => {
+    spaceLook(false);
+    flyClear();
+  });
 
   window.addEventListener('keydown', (e) => {
     const tag = (e.target                      )?.tagName;
     const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
     if (typing && !(e.ctrlKey || e.metaKey)) return;
+    // Typing in a field (the ask box, ⌘K's search, a number on the card, a rename): the field keeps ⌘Z, ⌘A, ⌘C, ⌘V,
+    // ⌘X, ⌘Y and Delete for its own text (basics pass, 2026-10-18 — ⌘A used to select every object instead of the
+    // words). Only ⌘S (save) and ⌘K (all actions) still reach the editor; ⌘D only stops the browser's bookmark.
+    if (typing) {
+      const k = e.key.toLowerCase();
+      if (k === 'd') e.preventDefault();
+      if (k !== 's' && k !== 'k') return;
+    }
     // Space on a focused button presses it; only take Space when nothing that types or presses has focus.
     if (e.key === ' ' && editing && !e.ctrlKey && !e.metaKey && !(e.target                      )?.closest?.('button, a, [role=option], [role=button]')) {
       spaceLook(true);
       e.preventDefault();
       return;
     }
-    if (typing && e.key.toLowerCase() === 'z') return; // native undo inside the field
-    if (e.repeat && selected) {
+    const kl = e.key.toLowerCase();
+    // Fly (W A S D, E / Q; nothing picked, or Space+E / Q): held keys go to the game, which moves while they are down.
+    // ⌘ / Ctrl / ⌥ = a shortcut instead (and a Mac drops keyups while ⌘ is down, so the held ones stop here). Not
+    // while the Library hides the game (integrate1: the Library's rule, no blind key moves there).
+    const fk = FLY_CODES[e.code];
+    if (canFly && (e.ctrlKey || e.metaKey || e.altKey)) flyClear();
+    else if (canFly && !typing && !e.isComposing && editing && !playing && !libraryShown() && (e.key === 'Shift' ? flyKeys.size > 0 : !!fk)) {
+      if (e.key === 'Shift') {
+        flyShift = true;
+        flySend();
+        return;
+      }
+      if (flyKeys.has(fk ) || !selected || ((fk === 'e' || fk === 'q') && spaceDown)) {
+        if (!flyKeys.has(fk )) {
+          flyKeys.add(fk );
+          flyShift = e.shiftKey;
+          flySend();
+        }
+        e.preventDefault();
+        return;
+      }
+    }
+    // E / Q steps for adapters that can rise but not fly (before camera-wasd, every 3D one): camera up / down, as in
+    // the game (nothing picked, or Space held).
+    if (!typing && (kl === 'e' || kl === 'q') && editing && canRise && !canFly && !libraryShown() && !e.ctrlKey && !e.metaKey && !e.altKey && (!selected || spaceDown)) {
+      riseCamera((kl === 'e' ? 1 : -1) * (e.shiftKey ? RISE_KEY_STEP / 5 : RISE_KEY_STEP));
+      e.preventDefault();
+      return;
+    }
+    if (e.repeat && selected && !libraryShown()) {
       const s = keyStep(e.key, e.shiftKey, dim);
       if (s && !e.ctrlKey && !e.metaKey) {
         send({ type: 'studio:placement/step', key: selected, ...s, hold: true, keys: group.length > 1 ? group.slice() : undefined });
@@ -10723,19 +13186,20 @@ function start(host            ) {
   let saveSlotW = 0;
   function renderButtons() {
     const n = dirtyCount();
-    // Undo / redo say what they would change ("Undo: move house (⌘Z)").
-    const mod = isMac() ? '⌘' : 'Ctrl+';
+    // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
+    // apart). With nothing to undo they stay where they are, dimmed, and say so ("Nothing to undo  ⌘Z").
+    const mac = isMac();
     const nextUndo = describe(undo.peekUndo());
     const nextRedo = describe(undo.peekRedo());
     unsavedKeys = model.changedKeys();
     placementPanel.markRows();
     for (const b of undoBtns) {
-      setButton(b, 'undo', t('btn.undo'), false, `${t('btn.undo')}${nextUndo ? ': ' + nextUndo : ''} (${mod}Z)`);
+      setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
       // While playing, undo/redo would change a game the person cannot see as edited.
       b.disabled = playing || !undo.canUndo;
     }
     for (const b of redoBtns) {
-      setButton(b, 'redo', t('btn.redo'), false, `${t('btn.redo')}${nextRedo ? ': ' + nextRedo : ''} (${isMac() ? '⇧⌘Z' : 'Ctrl+Y'})`);
+      setButton(b, 'redo', t('btn.redo'), false, tipText(nextRedo ? `${t('btn.redo')}: ${nextRedo}` : t('keys.nothingRedo'), keyOf('redo', mac)));
       b.disabled = playing || !undo.canRedo;
     }
     // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
@@ -10749,13 +13213,13 @@ function start(host            ) {
     saveState.style.minWidth = saveSlotW ? `${saveSlotW}px` : '';
     for (const b of saveBtns) {
       // "Save · 3": only while there is something not saved.
-      setButton(b, null, t('btn.save'), true, `${t('save.unsavedTip', { n })} (${mod}S)`);
+      setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
       if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
       b.hidden = n === 0 || playing;
       b.dataset.unsaved = String(n);
     }
     for (const b of playBtns) {
-      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, `${playing ? t('btn.edit') : t('btn.play')} (P)`);
+      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
       if (!phone()) b.append(h('kbd', { text: 'P' }));
     }
     keepSoon();
@@ -10776,22 +13240,28 @@ function start(host            ) {
   let lastPage = '';
   function renderAll(remount = false) {
     document.documentElement.lang = lang;
+    keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
     app.dataset.sheet = sheetOpen ? 'open' : 'closed';
     app.dataset.view = tool; // not data-tool: the Scene / Assets rows carry data-tool
     app.dataset.page = page;
+    // The Library takes the game's place: the card steps away.
+    app.dataset.shelf = tool === 'library' ? 'on' : 'off';
     // ▣ Studio / <the game> / <where you are>.
     (header.querySelector('.title')               ).textContent = gameName || t('app.title');
     (header.querySelector('.app')               ).textContent = t('app.brand');
     (header.querySelector('.here')               ).textContent = page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : t('tool.' + tool);
     (header.querySelector('.adapter')               ).textContent = adapterInfo;
     langBtn.textContent = t('btn.lang');
-    // Scene / Assets: two rows, a 16 px icon, the name, the count.
+    // Scene / Library: two rows, a 16 px icon, the name, a grey word for what is in it (PC: "the game" / "objects &
+    // assets"; the phone's switch has no room for it). Only the Library has a count — everything in it; the Scene's
+    // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library']            ) {
-      const n = id === 'placement' ? items.length : libraryCount;
+      const n = id === 'placement' ? 0 : items.length + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
-        icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), n ? h('span', { class: 'n', text: String(n) }) : null));
+        icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), h('span', { class: 'sub', text: t(`tool.${id}.sub`) }),
+        n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label')               ).textContent = t('foot.palette');
     sheetMore.setAttribute('aria-label', t('foot.palette'));
@@ -10810,16 +13280,12 @@ function start(host            ) {
     renderButtons();
     renderPeer();
     // The ask box lives in the bar at the bottom of the game whatever the tool or page.
-    // The web demo (no AI behind it, host.offline) shows one grey line in its place instead (design review wave 1, W1-6 / N2,
-    // 2026-10-17): the most visible part of the screen was a box that did nothing when used.
-    if (host.offline) {
-      // One line (the review): a phone's bar fits about 40 characters, so it gets the short words.
-      const short = phone();
-      (offlineLine.querySelector('.label')               ).textContent = (short ? t('offline.askLine.short') : t('offline.askLine')) + (host.getUrl ? ' ' : '');
-      const get = offlineLine.querySelector('a');
-      if (get) get.textContent = short ? t('offline.get.short') : t('offline.get');
-      if (offlineLine.parentElement !== askSlot) askSlot.replaceChildren(offlineLine);
-    } else if (placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // The web demo (no AI behind it, host.offline) has no ask box (design review wave 1, W1-6 / N2, 2026-10-17: the most
+    // visible part of the screen was a box that did nothing when used) and nothing in its place. W1-6 first put one grey
+    // line there, "In Claude Code, your AI makes the changes you type here. Get Game Studio →"; it was taken out after a try
+    // on 2026-10-18 ("what is this for? I'm already using Game Studio — get what?"). The demo's top line alone says it
+    // isn't connected to an AI (src/hosts/browser/text.ts). Don't put a pitch or a link back down here without asking.
+    if (!host.offline && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();
@@ -10840,6 +13306,13 @@ function start(host            ) {
     }
     mountTool();
     assetsPage.hidden = tool !== 'library' || playing;
+    // The Scene | Library switch: the left column on PC; on a phone, the head of the sheet that is open (the list
+    // sheet's, or the Library's: it has no list sheet under it).
+    const lib = tool === 'library' ? libraryParts() : null;
+    const tabsHome = phone() && page === 'tool' && lib ? lib.head : null;
+    if (tabsHome) {
+      if (tabs.parentElement !== tabsHome) tabsHome.prepend(tabs);
+    } else if (tabs.parentElement !== side.firstElementChild) (side.firstElementChild               ).prepend(tabs);
     // The left column: the Look page, the Ideas page, or the scene list.
     if (page === 'settings') {
       renderSettings(toolEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
@@ -10852,10 +13325,21 @@ function start(host            ) {
         nextOpen = id;
         renderAll();
       });
+    } else if (!phone() && lib) {
+      // The Library is open: the left column holds its filters and nothing else. The object list is not here next to
+      // the grid, so a click in the column never leaves the Library for the game (the bug found in a try on 10/18).
+      const f = lib.filters;
+      // The list stays in the page, hidden (not shown, not pressable): its pictures and marks are ready when the game
+      // view comes back, and scripts (.studio/ui/, the tests) that wait for its rows keep working.
+      placementPanel.el.hidden = true;
+      if (toolEl.firstChild !== f || toolEl.lastChild !== placementPanel.el || toolEl.childNodes.length !== 2) toolEl.replaceChildren(f, placementPanel.el);
+      placementPanel.render();
     } else {
+      placementPanel.el.hidden = false;
       if (toolEl.firstChild !== placementPanel.el || toolEl.childNodes.length !== 1) toolEl.replaceChildren(placementPanel.el);
       placementPanel.render();
     }
+    renderShelf();
     // Rows may have come into view without a scroll (a kind opened, the sheet opened).
     thumbsSoon(false);
     sendInset();
@@ -11017,7 +13501,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[32] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -11104,7 +13588,10 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
     },
     async listAssets() {
       const r = await call                                                                        ('GET', 'assets');
-      const files = (r.assets || []).map((a) => ({ ...a, type: TYPES.includes(a.type) ? a.type : 'other' })             );
+      // The local server says "audio" for sounds (src/server/assets.mjs); the contract says "sound". Mapping it to
+      // "other" put every mp3 under Other in the Library's filters (found with All / 3D / 2D / Sound / Other, 2026-10-18).
+      const typeOf = (t        ) => (t === 'audio' ? 'sound' : TYPES.includes(t             ) ? (t             ) : 'other');
+      const files = (r.assets || []).map((a) => ({ ...a, type: typeOf(a.type) })             );
       const missing               = (r.missing || []).map((m) => ({ path: m.ref, refsInCode: m.in || [] }));
       return { files, missing };
     },
@@ -11181,19 +13668,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[33] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(31);
-const { createLocalHost } = __require(32);
+const { start } = __require(37);
+const { createLocalHost } = __require(38);
 
 start(createLocalHost());
 
 
 };
-__require(33);
+__require(39);
 })();

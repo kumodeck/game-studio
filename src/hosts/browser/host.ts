@@ -29,9 +29,6 @@ import { validateLibrary, validatePlacement } from '../../schema/index.ts';
 import type { KvStore } from './store.ts';
 
 
-/** Where to get Game Studio, for the line that stands in for the ask box (W1-6). The only copy of this address in the demo. */
-export const GET_STUDIO_URL = 'https://github.com/kumodeck/game-studio#readme';
-
 /** One sample in studio/games.json (written by scripts/build-web-demo.mjs). */
 export interface DemoGame {
   id: string;
@@ -83,8 +80,6 @@ export async function createBrowserHost(game: DemoGame, gamesDir: string, store:
 
   return {
     offline: true,
-    // The one place the demo names where to get the studio (W1-6): the public install page.
-    getUrl: GET_STUDIO_URL,
     async open() {
       return { gameUrl: new URL(enc(game.entry), base).href, origin: location.origin, title: game.title };
     },

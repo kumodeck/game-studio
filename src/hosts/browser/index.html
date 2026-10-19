@@ -3,74 +3,183 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>Game Studio demo</title>
-  <!-- The web demo's first page: pick a sample, then the editor opens it (studio/?game=<id>).
-       Built into the output folder by scripts/build-web-demo.mjs; the list comes from studio/games.json. -->
+  <title>KUMODeck Game Studio</title>
+  <!-- The web demo's front page (2026-10-19: "the studio screen goes inside the demo site's front page").
+       What Game Studio is, the one install line, then the editor itself in a frame (studio/?game=<id>&embed=1) with the
+       two samples to switch between, three things it does, and KUMODeck as an option. It replaced the sample list
+       (2026-10-16..18); "Open full size" and the phone's cards open the same editor page without the frame.
+       Behavior: lp.js. Words: strings.js. Built into the output folder by scripts/build-web-demo.mjs. -->
   <style>
-    :root { --bg: #f4f3f0; --card: #fff; --text: #1d1d1f; --text-2: #6e6e73; --line: rgba(0,0,0,.08); --accent: #ff6a2b; color-scheme: light dark; }
+    :root {
+      --bg: #fbfbfa; --card: #fff; --sunk: #f3f2ef; --text: #18181b; --text-2: #6b6b70; --line: rgba(0,0,0,.08);
+      --accent: #ff6a2b; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 40px rgba(0,0,0,.08); color-scheme: light dark;
+    }
     @media (prefers-color-scheme: dark) {
-      :root { --bg: #161617; --card: #232325; --text: #f5f5f7; --text-2: #a1a1a6; --line: rgba(255,255,255,.1); }
+      :root { --bg: #111113; --card: #1a1a1c; --sunk: #19191b; --text: #f2f2f3; --text-2: #9d9da3; --line: rgba(255,255,255,.09);
+        --shadow: 0 1px 2px rgba(0,0,0,.3), 0 12px 40px rgba(0,0,0,.45); }
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; }
-    /* padding-left: room for the "Test" chip KUMODeck's test version keeps at the top-left (see demo.css). */
-    .line { height: 24px; display: flex; align-items: center; padding: 0 12px 0 48px; font-size: 12px; font-weight: 500; color: var(--text-2); border-bottom: 1px solid var(--line); }
-    main { max-width: 720px; margin: 0 auto; padding: 32px 16px 48px; }
-    h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -.01em; }
-    p.lead { margin: 0 0 28px; color: var(--text-2); }
-    .list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-    a.card { display: block; overflow: hidden; border-radius: 18px; background: var(--card); color: inherit; text-decoration: none;
-      border: 1px solid var(--line); transition: transform .15s ease, border-color .15s ease; -webkit-tap-highlight-color: transparent; }
-    /* The starter's thumb.png is 640x400 (16:10); the box keeps that shape before it loads, so the list does not jump. */
-    a.card img { display: block; width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--line); }
-    a.card .text { display: block; padding: 14px 18px 16px; }
-    a.card:hover, a.card:focus-visible { border-color: var(--accent); transform: translateY(-1px); outline: none; }
-    .kind { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-    .name { display: block; font-size: 18px; font-weight: 600; margin: 8px 0 2px; }
-    .desc { color: var(--text-2); font-size: 14px; }
-    footer { margin-top: 32px; color: var(--text-2); font-size: 13px; }
+    html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; -webkit-text-size-adjust: 100%; }
+    a { color: inherit; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+    /* padding-top: room for the "Test" chip KUMODeck's test version keeps at the top-left (4 px in, 16 px high). */
+    header.top { display: flex; align-items: center; justify-content: space-between; padding-top: 24px; padding-bottom: 8px; }
+    .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; text-decoration: none; letter-spacing: -.01em; }
+    .brand img { width: 22px; height: 22px; display: block; }
+    .top a.gh { font-size: 14px; color: var(--text-2); text-decoration: none; }
+    .top a.gh:hover { color: var(--text); }
+
+    .hero { padding-top: 72px; padding-bottom: 56px; }
+    h1 { font-size: 52px; line-height: 1.06; letter-spacing: -.025em; font-weight: 650; margin: 0; max-width: 15em; text-wrap: balance; }
+    .lead { margin: 20px 0 0; max-width: 34em; font-size: 18px; color: var(--text-2); text-wrap: pretty; }
+    .install { margin-top: 36px; max-width: 1000px; } /* the whole line in one row at 1280 (it is ~110 characters) */
+    .install-label { font-size: 13px; font-weight: 500; color: var(--text-2); margin-bottom: 8px; }
+    .cmd { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+    .cmd code { flex: 1; min-width: 0; padding: 13px 16px; font: 13px/1.5 ui-monospace, "SF Mono", Menlo, monospace; overflow-x: auto; white-space: nowrap; }
+    .cmd button { flex: none; border: 0; border-left: 1px solid var(--line); background: transparent; color: var(--text); font: 600 13px system-ui, sans-serif; padding: 0 18px; cursor: pointer; min-width: 92px; }
+    .cmd button:hover { background: var(--sunk); }
+    .cmd button.done { color: var(--accent); }
+    .note { margin: 10px 0 0; font-size: 13px; color: var(--text-2); }
+    .note a { color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; margin-left: 4px; }
+    .note a:hover, .note a:focus-visible { text-decoration: underline; }
+
+    .try { padding-bottom: 72px; }
+    .try-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+    h2 { font-size: 22px; letter-spacing: -.01em; margin: 0; font-weight: 600; }
+    .try-lead { margin: 4px 0 0; color: var(--text-2); font-size: 14px; }
+    /* The two samples. PC: a small switch over the frame. Phone: cards that open the editor (see the media query). */
+    .samples { display: flex; gap: 6px; padding: 4px; border-radius: 12px; background: var(--sunk); border: 1px solid var(--line); }
+    a.sample { display: flex; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; border-radius: 9px; text-decoration: none; color: var(--text-2);
+      font-size: 14px; font-weight: 500; -webkit-tap-highlight-color: transparent; }
+    a.sample img { width: 44px; height: 28px; border-radius: 5px; object-fit: cover; display: block; background: var(--line); }
+    a.sample[aria-selected=true] { background: var(--card); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+    a.sample:hover { color: var(--text); }
+    a.sample:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .kind { font-size: 10px; font-weight: 700; letter-spacing: .05em; color: var(--accent); }
+    .sample .desc, .sample .tap { display: none; }
+
+    /* The frame. Its height: the screen less room for the heading above and the line below, between 520 and 760 px,
+       so the whole editor (Scene on the left, Save at the top) is in view once it is scrolled to. */
+    .stage { position: relative; height: clamp(520px, calc(100vh - 150px), 760px); border-radius: 14px; overflow: hidden;
+      background: var(--sunk); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .stage > img.poster { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: saturate(.9); transition: opacity .4s ease; }
+    .stage .loading { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 7px 14px; border-radius: 999px;
+      background: rgba(17,17,17,.72); color: #fff; font-size: 13px; transition: opacity .3s ease; }
+    .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; opacity: 0; transition: opacity .4s ease; background: var(--sunk); }
+    .stage.ready iframe { opacity: 1; }
+    .stage.ready > img.poster, .stage.ready .loading { opacity: 0; pointer-events: none; }
+    /* "Click to use": over the editor until it is clicked, so the wheel and the keys still move the page (lp.js). Clear,
+       with its words only while the mouse is over it: the editor is what there is to see. */
+    .shield { position: absolute; inset: 0; width: 100%; border: 0; margin: 0; padding: 0; background: transparent; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; font: inherit; color: inherit; }
+    .shield span { padding: 8px 16px; border-radius: 999px; background: rgba(17,17,17,.78); color: #fff; font-size: 14px; font-weight: 500;
+      opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; }
+    .shield:hover span, .shield:focus-visible span { opacity: 1; transform: none; }
+    .shield:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 14px; }
+    .stage.active .shield { display: none; }
+    .stage.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+    .stage-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
+    .hint::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); opacity: .5; margin-right: 8px; vertical-align: 1px; }
+    .stage.active + .stage-foot .hint::before { background: var(--accent); opacity: 1; }
+    .stage-foot a { color: var(--text); font-weight: 500; text-decoration: none; white-space: nowrap; }
+    .stage-foot a:hover { text-decoration: underline; }
+    .phone-only { display: none; }
+
+    .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 40px; padding-top: 8px; padding-bottom: 24px; border-top: 1px solid var(--line); }
+    .features > div { padding-top: 28px; }
+    h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.005em; }
+    .features p, .kd p { margin: 0; color: var(--text-2); font-size: 14px; text-wrap: pretty; }
+    .engines { margin: 8px 0 0; padding-bottom: 56px; font-size: 14px; color: var(--text-2); }
+    .kd { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 20px 24px; border-radius: 14px; border: 1px solid var(--line); background: var(--card); }
+    .kd a { color: var(--accent); font-weight: 600; font-size: 14px; text-decoration: none; white-space: nowrap; }
+    .kd a:hover { text-decoration: underline; }
+    footer.wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--line); padding-bottom: 48px; color: var(--text-2); font-size: 13px; }
+    footer a { text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    /* Phones (narrower than 768 px): no frame. The 3D sample takes about 26 s to settle on a phone, and a frame the
+       page scrolls past would fight the thumb; each sample is a card that opens the editor on its own page instead. */
+    @media (max-width: 767.98px) {
+      .wrap { padding: 0 16px; }
+      .hero { padding-top: 40px; padding-bottom: 40px; }
+      h1 { font-size: 34px; }
+      .lead { font-size: 16px; }
+      .cmd { flex-direction: column; }
+      .cmd code { white-space: normal; overflow-wrap: anywhere; }
+      .cmd button { border-left: 0; border-top: 1px solid var(--line); padding: 11px; }
+      .try-head { display: block; }
+      .stage, .stage-foot, .try-lead.pc-only { display: none; }
+      .phone-only { display: block; }
+      .samples { display: grid; grid-template-columns: 1fr; gap: 12px; padding: 0; margin-top: 16px; background: none; border: 0; }
+      a.sample { display: block; padding: 0; border-radius: 16px; overflow: hidden; background: var(--card); border: 1px solid var(--line); color: var(--text); }
+      a.sample[aria-selected=true] { box-shadow: none; }
+      a.sample img { width: 100%; height: auto; aspect-ratio: 16 / 10; border-radius: 0; }
+      .sample .text { display: block; padding: 12px 16px 14px; }
+      .sample .name { display: block; font-size: 17px; font-weight: 600; margin-top: 2px; }
+      .sample .desc { display: block; color: var(--text-2); font-size: 14px; margin-top: 2px; }
+      .sample .tap { display: block; margin-top: 10px; color: var(--accent); font-weight: 600; font-size: 14px; }
+      .try { padding-bottom: 48px; }
+      .line { margin: 14px 0 0; font-size: 12px; color: var(--text-2); }
+      .features { grid-template-columns: 1fr; gap: 0; }
+      .kd { display: block; }
+      .kd a { display: inline-block; margin-top: 10px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before { transition: none !important; } }
   </style>
 </head>
 <body>
-  <div class="line" id="line">Demo · saves stay in this browser only</div>
+  <header class="wrap top">
+    <a class="brand" href="./"><img src="favicon.svg" alt="" width="22" height="22" /><span id="brand">Game Studio</span></a>
+    <a class="gh" id="gh" target="_blank" rel="noopener">GitHub</a>
+  </header>
   <main>
-    <h1 id="title">Game Studio</h1>
-    <p class="lead" id="lead">Move, turn and resize the things in a game, right in your browser. Pick a sample.</p>
-    <div class="list" id="list"></div>
-    <footer id="foot">Nothing is sent anywhere: what you change stays in this browser. This demo is not connected to an AI.</footer>
+    <section class="wrap hero">
+      <h1 id="title">Turn your Claude or Codex into a game studio.</h1>
+      <p class="lead" id="lead"></p>
+      <div class="install">
+        <div class="install-label" id="installLabel"></div>
+        <div class="cmd"><code id="cmd"></code><button type="button" id="copy"></button></div>
+        <p class="note"><span id="installNote"></span><a id="repo" target="_blank" rel="noopener"></a></p>
+      </div>
+    </section>
+    <section class="wrap try" id="try">
+      <div class="try-head">
+        <div>
+          <h2 id="tryTitle"></h2>
+          <p class="try-lead pc-only" id="tryLead"></p>
+          <p class="try-lead phone-only" id="phoneNote"></p>
+        </div>
+        <nav class="samples" id="samples" role="tablist"></nav>
+      </div>
+      <div class="stage" id="stage">
+        <img class="poster" id="poster" alt="" />
+        <div class="loading" id="loading"></div>
+        <button type="button" class="shield" id="shield"><span id="shieldText"></span></button>
+      </div>
+      <div class="stage-foot">
+        <span class="hint" id="hint" aria-live="polite"></span>
+        <a id="full"></a>
+      </div>
+      <p class="line phone-only" id="line"></p>
+    </section>
+    <section class="wrap">
+      <div class="features">
+        <div><h3 id="f1Title"></h3><p id="f1"></p></div>
+        <div><h3 id="f2Title"></h3><p id="f2"></p></div>
+        <div><h3 id="f3Title"></h3><p id="f3"></p></div>
+      </div>
+      <p class="engines" id="engines"></p>
+      <div class="kd">
+        <div><h3 id="kdTitle"></h3><p id="kd"></p></div>
+        <a id="kdLink" target="_blank" rel="noopener"></a>
+      </div>
+    </section>
   </main>
+  <footer class="wrap">
+    <span id="foot"></span>
+    <span>KUMODeck · <a id="license" target="_blank" rel="noopener"></a> · <a href="mailto:support@kumodeck.com">support@kumodeck.com</a></span>
+  </footer>
   <script src="strings.js"></script>
-  <script>
-    // Japanese when the browser prefers it (or ?lang=ja), like the editor. Words: strings.js.
-    (function () {
-      var q = new URLSearchParams(location.search).get('lang');
-      var ja = q ? q === 'ja' : /^ja/i.test(navigator.language || '');
-      var T = window.DEMO_LIST_TEXT[ja ? 'ja' : 'en'];
-      if (ja) document.documentElement.lang = 'ja';
-      ['line', 'title', 'lead', 'foot'].forEach(function (id) { document.getElementById(id).textContent = T[id]; });
-      var list = document.getElementById('list');
-      fetch('studio/games.json', { cache: 'no-cache' }).then(function (r) { return r.json(); }).then(function (m) {
-        m.games.forEach(function (g) {
-          var a = document.createElement('a');
-          a.className = 'card';
-          a.href = 'studio/?game=' + encodeURIComponent(g.id) + (q ? '&lang=' + encodeURIComponent(q) : '');
-          a.dataset.game = g.id;
-          var kind = document.createElement('span'); kind.className = 'kind'; kind.textContent = g.dim.toUpperCase();
-          var name = document.createElement('span'); name.className = 'name'; name.textContent = g.title;
-          // English: the starter's own line (starter.json "blurb", in games.json); other languages: strings.js.
-          var desc = document.createElement('span'); desc.className = 'desc'; desc.textContent = (ja && T[g.id]) || g.blurb || T[g.id] || T.open;
-          if (g.thumb) {
-            var img = document.createElement('img');
-            img.src = g.thumb; img.alt = ''; img.width = 640; img.height = 400; img.decoding = 'async';
-            a.append(img);
-          }
-          var text = document.createElement('span'); text.className = 'text';
-          text.append(kind, name, desc);
-          a.append(text);
-          list.append(a);
-        });
-      }, function () { list.textContent = T.error; });
-    })();
-  </script>
+  <script src="lp.js"></script>
 </body>
 </html>

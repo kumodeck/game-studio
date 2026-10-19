@@ -345,10 +345,11 @@ export function startBridge(opts: BridgeOptions): void {
     const found = editor.driven;
     Object.defineProperty(api, '_debug', {
       value: Object.freeze({ anchor: (k: string) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k: string) => found.foot?.(k) ?? null,
+        middle: (k: string) => found.middle?.(k) ?? null,
         under: (x: number, y: number) => { try { return found.pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
       enumerable: false,
     });
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false });
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
     for (const m of queue.splice(0)) editor.handle(m);
   });
 }

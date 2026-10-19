@@ -237,6 +237,9 @@ the editor offers all three with every adapter.
   it a little to the side (the width of what was copied, on screen), or —
   for a copy of a copy — at the same spacing again, so pressing Copy again
   lays out an even row. It answers `placement/added` and selects the copies.
+  `at: 'view'` (the Library's **Add to scene**, 2026-10-18) puts the copies in
+  the middle of what the camera sees instead (the free part of the frame, on
+  the original's ground in 3D); the shell then shows the Scene with them picked.
 - **Delete** (Delete / Backspace, the card's Delete button):
   `placement/remove`; undo sends `placement/restore`.
 - Adapters MAY implement `clone(key, newKey)`, `remove(key)` and
@@ -302,12 +305,13 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
 | | `placement/tool` | `{ tool }`: the strip's chosen tool changed in the game (a strip button, M / H / T / S, Escape) |
 | | `placement/menu` | `{ open }`: the strip's choices (the ▾ on turn / size) opened or closed in the game |
+| | `placement/context` | `{ key, x, y, touch }`: a right-click (Mac: also Control-click) or a long press on the game: the editor page opens the menu for that place. `key` = the object under it (null = nothing / only the ground); an object not picked yet was picked first, without moving the camera |
 | | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
 | | `library/previewed` | `{ url, ok }` |
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
-| | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
+| | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
 | | `core/lang` | UI language for handle labels |
 | | `placement/list` · `select` · `pose` · `step` | see types (`select` and `step` take `keys` for several, §1.8) |
 | | `placement/thumbs` | `{ keys, size }`: draw these list pictures. One queue in the bridge, drawn one at a time; a new request's keys go to the **front** (the shell asks for the rows in view each time the list scrolls, so with hundreds of objects what you see is drawn next) |
@@ -339,7 +343,8 @@ Input rules the bridge implements (shared by every adapter):
 | Choose a tool | A click on a strip button (move · height · turn · size), or **M · H · T · S**, or ⌘K. The button stays pressed until another tool is chosen; a click on the pressed move / height button puts it down; Escape puts any tool down (a second Escape drops the pick) | A tap on a strip button |
 | Use the chosen tool | **Drag anywhere** on the game (on the object, beside it, on the sky): it acts on what is picked. A readout next to the strip says by how much ("Turn 32°", "Size ×1.40") | One-finger drag anywhere |
 | Move | Move tool: the object follows the drag. With no tool chosen: drag the **picked** object. Arrow keys | The same with a finger |
-| Rotate | Turn tool: drag sideways (0.57° per px, 15° steps within ±3° of the drag's total, Shift = free) / Q, E. 3D: around the middle of the object's box, on the chosen axis — choosing the turn tool (and a click on it when chosen, or R) shows Turn (y) / Tip forward (x) / Tip sideways (z) (`adapter.turn`, `Pose.t`); several objects turn upright only | The same |
+| Rotate | Turn tool: drag sideways (0.57° per px, 15° steps within ±3° of the drag's total, Shift = free) / Q, E. 3D: around the middle of the object's box, on the chosen axis — choosing the turn tool (and a click on it when chosen, or R) shows Turn (y) / Tip forward (x) / Tip sideways (z) (`adapter.turn`, `Pose.t`) | The same |
+| Turn several | Turn tool; its ▾ (or a long press) shows the axes (3D: Turn / Tilt forward / Tilt sideways, R = next) and, under them, Together (the whole arrangement turns round the middle of the selection: of the objects' boxes in 3D, `adapter.middle`) / Each in place (each turns on its own spot, round the middle of its box in 3D). 2D has one axis, so only Together / Each in place | The same |
 | Resize several | Size tool; choosing it with several picked (and a click on it when chosen) shows Together (the gaps grow too) / Each in place. Both keep each object's foot (the bottom middle of its box: `adapter.foot` in 3D, the screen box in 2D) on the ground | The same |
 | Height (3D) | Height tool: drag up or down (the object follows the pointer's height) / PageUp, PageDown | The same |
 | Scale | Size tool: drag right or up = bigger, left or down = smaller (×2 per ~140 px) / +, − | The same |
@@ -347,6 +352,19 @@ Input rules the bridge implements (shared by every adapter):
 | Look around (3D) / pan (2D) | With no tool chosen (or nothing picked): drag anywhere else, **including on objects that are not picked**, and on very large picked ones (their on-screen part 60 % of the window or more: a ground). **With a tool chosen**: ⌥ Option-drag (orbit), right / middle drag (pan), or hold Space and drag | Two fingers (pan and pinch); one finger only when no tool is chosen |
 | Pan | Middle drag, right drag, Shift+drag starting on an object, two-finger trackpad scroll | Two-finger drag |
 | Zoom | Wheel / trackpad pinch (towards the pointer) | Pinch |
+| Fly (3D) | **W / S** forward / back along the line of sight, **A / D** left / right, **E / Q** up / down, **Shift** ×3 — smooth while held, stops on release, at a speed taken from the scene's size (`view.fly`; a small room and Lantern Cove feel the same). With **nothing picked**: the keys alone. With **something picked**: only while the **right button** is held (S stays the Size tool, E / Q still turn it), as in Unity / Unreal / Godot; a right-drag then turns the view where the camera stands (`view.look`) instead of panning, and its release opens no menu. Not while typing in a field; never by itself. `?` sheet: "Fly the camera  WASD" with that rule under it; ⌘K "Fly the camera" (WASD / Right button+WASD) | — |
+| Camera up / down (3D) | The ↑↓ buttons in the game's bottom-right corner: click = one step (a tenth of the game's height), hold = keeps going, drag up / down on them = follows the drag. **E / Q** with nothing picked, or with Space held / during a right, middle or ⌥ drag (with something picked and no look-around, Q / E still turn it). ⌘K "Camera up" / "Camera down". The camera goes straight up or down and keeps looking the same way (`view.rise`); never by itself | The same buttons: tap, hold, or drag a finger up / down on them |
+
+WHY camera up / down (play test 2026-10-18: "I can't raise the camera; it's
+needed"): orbit turns round a point, pan slides over the ground at the same
+height and zoom moves along the line of sight, so there was no way to just go
+up over a wall or down to the water. Buttons on the game, because a key is
+found only by people who already know it and a phone has none; E / Q because
+3D tools (Unity, Unreal, Godot) fly up / down with them while the right
+button is held — and Q / E already turn a picked object here, so they are the
+camera's only when nothing is picked or while looking around. Not two
+fingers: two fingers already pan and pinch, and a vertical two-finger drag
+is panning forward. 2D views only pan and zoom: no buttons there.
 
 WHY tools are chosen, not held (play test, 2026-10-16): the strip
 used to work as four handles — press a button and drag while holding it —
@@ -501,7 +519,10 @@ a bonus that wakes an agent that happens to be watching.
   A stored request (`StudioRequest`) has `version: 1`, `id`, `kind`, `at`
   (ISO, the host's clock), `text` (one line, ≤ 500 characters), and as fitting
   `objects` (`key`, `label`, the `pose` in the editor at that moment — it may
-  be unsaved —, `unstable`), `step`, `lang`, `dim`, `unsaved` (changes not
+  be unsaved —, `unstable`, and `files`: the asset files it is drawn with, when
+  the editor knows them), `assets` (`ask`: files picked in the Library that the
+  words are about — "Add this to the scene" asks for a new object made from
+  them; plain folder paths, ≤ 50), `step`, `lang`, `dim`, `unsaved` (changes not
   saved yet), `view` (`ask`, 3D: the camera's `eye` and `target` when they
   asked, so new things land in sight), `files` (what it is about: `placement.json`,
   `.studio/next-step.md`, …; for `delete-files`, `.studio/next-step.md` then
@@ -641,7 +662,11 @@ Paths are folder-relative with forward slashes, no `..`.
 A tool plugs into the shell with `ShellTool` (`mount`, `unmount`, `dirty`,
 `result`, `saved`, `restore`) and gets a `ShellContext` (host, language,
 messages, items, `selectObject`, the optional `selectObjects` for several at
-once, `switchTool`, `changed`, `phone`). The shell
+once, the optional `objects` (`LibraryObjects`: the objects' tiles, filters and detail, so the Library shows
+objects and assets in one grid — "one Library", 2026-10-18), the older optional `showObjects` (plan 1's Objects
+shelf; a shell that gives `objects` leaves it out), the optional `files` (`LibraryFileUse`: the files picked in the
+Library go to the ask box's chip; a file's "Add to scene" / "Ask your AI…" draft a request there — "use the Library",
+2026-10-18), `switchTool`, `changed`, `phone`). The shell
 owns the game frame, selection, undo/redo for placement, keeping and handing
 over the results (the draft, Save) and the ⌘K list with the next steps. Tools render with `textContent` only for anything that
 came from the game or the folder (names, file names); SVG only through

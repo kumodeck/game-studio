@@ -55,13 +55,35 @@
 //   sit under the whole group and move / turn / resize all of it (group.ts).
 //   WHY not a plain drag for the box: a plain drag has always looked around,
 //   on objects and next to them, and that must keep working the same.
-import { UI, type BridgeToShell, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
+// - Camera up / down (3D, play test 2026-10-18; rise.ts says why and how it is
+//   found): the ↑↓ buttons (a click = a step, held = keeps going, dragged =
+//   follows the drag) and E / Q when nothing is picked or while looking
+//   around. A press on the buttons is never a tap on "nothing": the pick stays.
+// - Fly (3D, camera-wasd pass 2026-10-18 — "anyone who has used a 3D game engine moves the camera with WASD too"):
+//   W / S forward / back along the line of sight, A / D left / right, E / Q straight up / down, Shift ×3 — smooth
+//   while held, stopped on release (each frame, core.time.raf), at a speed the adapter takes from the scene's size
+//   (adapters/three/camera.js fly). When: with nothing picked always (W A S D have no other job then: the tool keys
+//   need a pick); with something picked only while the right button is held (Unity / Unreal / Godot's fly mode),
+//   because then S is the Size tool and E / Q turn the pick — those keep their meaning without the right button.
+//   E / Q also fly while looking around in the other ways (Space held, a middle / ⌥ drag), as before. Holding the
+//   right button and pressing a fly key turns that drag into a fly-through look (view.look: the view turns where
+//   the camera stands, as in the engines) instead of a pan, and its release opens no menu. Keys pressed in the
+//   editor page come as studio:core/fly (shell/main.ts decides there). Never by itself: no key, no move.
+// - The place's menu (context menu, 2026-10-18; a request after a try of the editor: "right-click in each place should bring up the menu for it —
+//   in the scene, duplicate, delete, that kind of thing"): a right-click that did not travel (Mac: also Control-click),
+//   or a touch held still for LONG_PRESS_MS away from the strip's buttons, sends placement/context; the editor page
+//   draws the menu (shell/context-menu.ts). An object under it that is not picked yet is picked first (select(),
+//   never focus: the camera stays where it is), as other 3D / 2D tools do; one already in the selection keeps the
+//   whole selection. Nothing under it (or only the ground) keeps the pick: the menu then has Deselect. A right DRAG
+//   still pans (the menu waits for the release, as in Blender / Unity), so the press never moves the view by itself.
+import { UI, type BridgeToShell, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
 import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
 import type { EditsAdapter } from '../core/edits.ts';
+import { createRiseButtons, type RiseDir } from './rise.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
 
 export interface InputDeps {
@@ -96,6 +118,8 @@ export interface InputHandle {
   closeMenu(): void;
   /** Space held in the shell: a drag looks around even with a tool chosen. */
   setLook(on: boolean): void;
+  /** The fly keys held in the shell (studio:core/fly): the camera flies while any is held, [] stops. */
+  setFly(keys: FlyKey[], fast: boolean): void;
   setTheme(theme: 'dark' | 'light'): void;
   /** Outline what the AI's last change touched, in its colour, with one tag. */
   setAiMarks(keys: string[], label: string | null): void;
@@ -113,6 +137,10 @@ interface Ptr {
   shift: boolean;
   /** Option / Alt at the press: look around instead of using the tool. */
   alt: boolean;
+  /** A right-click (or the Mac's Control-click): its release without travel opens the place's menu, not a tap. */
+  menu?: boolean;
+  /** A fly key was used while this (right) button was held: its drag looks where the camera stands, its release opens no menu. */
+  flew?: boolean;
 }
 
 /** What the current single-pointer gesture does. */
@@ -124,6 +152,8 @@ type Mode =
   | { kind: 'group'; handle: HandleKind; session: GroupSession; x0: number; y0: number; data: Record<string, number>; anywhere?: boolean }
   | { kind: 'box' }
   | { kind: 'pinch'; dist: number; cx: number; cy: number }
+  // The camera up / down buttons: `dir` pressed at `t0`; `follow` once the press travelled (it then follows the drag).
+  | { kind: 'rise'; dir: RiseDir; t0: number; follow: boolean }
   | { kind: 'tool' }
   | { kind: 'none' };
 
@@ -140,8 +170,42 @@ const HUGE_ON_SCREEN = 0.6;
 /**
  * A press held this long on the turn / size button (without moving) opens its choices, like the ▾ (tool options,
  * play test 2026-10-18). 450 ms: past a tap (~100-200 ms) and a hesitant press-then-drag, short of iOS's 500 ms callout.
+ * The same length opens the place's menu on a touch held anywhere else on the game (context menu, 2026-10-18): one
+ * long press, one feel; the two never meet (the strip's is on its buttons only, the menu's never starts on them).
  */
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = UI.longPressMs;
+/** Control-click is the Mac's right-click (one-button mice, trackpads without two-finger click set up). */
+const MAC = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
+/**
+ * Camera up / down (rise.ts), as shares of the game's height: a click on ↑ / ↓ moves a tenth (big enough to see,
+ * small enough to aim: ~10 clicks lift the view by a whole screen); E / Q a twentieth per press — key repeat
+ * (~30 / s) then gives ~1.5 screens a second; Shift = a fifth of that (as Shift = fine for the other keys).
+ */
+const RISE_STEP = 0.1;
+const RISE_KEY_STEP = 0.05;
+/** Held this long on ↑ / ↓ without moving, the camera keeps going at RISE_HOLD_PER_S screens a second until let go. */
+const RISE_HOLD_MS = 350;
+const RISE_HOLD_PER_S = 0.6;
+/**
+ * Fly keys (see the header) by KeyboardEvent.code, the key's PLACE: WASD stays under the left hand on AZERTY / QWERTZ
+ * as in the engines. (E / Q were read by e.key before; on QWERTY that is the same.) `[right, up, forward]`.
+ */
+const FLY_DIRS: Record<FlyKey, [number, number, number]> = { w: [0, 0, 1], s: [0, 0, -1], a: [-1, 0, 0], d: [1, 0, 0], e: [0, 1, 0], q: [0, -1, 0] };
+const FLY_CODES: Record<string, FlyKey> = { KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyE: 'e', KeyQ: 'q' };
+/** Shift while flying: ×3 (engines' "fast"; Shift = fine for the step keys, but flying slower than this is never wanted). */
+const FLY_FAST = 3;
+/**
+ * A fresh press moves this many seconds' worth at once, then the hold goes on smoothly: a tap still moves visibly.
+ * 0.06 s ≈ the E / Q step before flying (RISE_KEY_STEP, a twentieth of the view), so a tap of E feels as it did.
+ */
+const FLY_KICK_S = 0.06;
+
+/** A field of the page's own (the game's inputs, a contenteditable): its keys are typing, never flying. */
+function typingIn(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el || typeof el.tagName !== 'string') return false;
+  return el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || !!el.isContentEditable;
+}
 
 function wrap(a: number): number {
   while (a <= -Math.PI) a += 2 * Math.PI;
@@ -153,7 +217,7 @@ const samePose = (a: Pose, b: Pose) => JSON.stringify(a) === JSON.stringify(b);
 const sizeOf = (p: Pose) => Math.abs((Array.isArray(p.s) ? p.s[0] : p.s) ?? 1) || 1;
 
 export function attachInput(deps: InputDeps): InputHandle {
-  const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits } = deps;
+  const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits, core } = deps;
   const toolEvent = (type: 'down' | 'move' | 'up', p: Ptr) => ({ type, x: p.x, y: p.y, pointerType: p.type, shift: p.shift });
   const doc = win.document;
   const ptrs = new Map<number, Ptr>();
@@ -161,6 +225,96 @@ export function attachInput(deps: InputDeps): InputHandle {
   let lastTap: { x: number; y: number; key: string | null } | null = null;
   let lang: Lang = 'en';
   const handles: Handles = createHandles(doc, adapter.dim === '3d' && !!adapter.nudgeY);
+  // Camera up / down: 3D adapters with view.rise only (2D has no height to go up: its view only pans and zooms).
+  const riseUi = adapter.dim === '3d' && adapter.view.rise ? createRiseButtons(doc) : null;
+  const riseLabels = () => riseUi?.setLabels(lang, !!state.selected);
+  riseLabels();
+  /** Camera up (dy > 0) / down by dy px; the view state goes to the shell when the gesture or key ends. */
+  const riseBy = (dy: number) => {
+    if (!adapter.view.rise || !dy) return;
+    adapter.view.rise(dy);
+    markDirty();
+  };
+  // Held ↑ / ↓: keeps going every frame after RISE_HOLD_MS (stops by itself once the gesture is no longer 'rise').
+  // core.time.raf, not win.requestAnimationFrame: while editing the game's frames are frozen, and the page's rAF is
+  // the game's (core/time.ts) — the first try used it and a held ↑ moved one step only (2026-10-18).
+  let riseFrame = 0;
+  let riseLast = 0;
+  const riseHold = (now: number) => {
+    riseFrame = 0;
+    if (mode.kind !== 'rise' || mode.follow) return;
+    if (now - mode.t0 >= RISE_HOLD_MS) {
+      const dt = Math.min(0.1, (now - Math.max(riseLast, mode.t0 + RISE_HOLD_MS)) / 1000);
+      riseBy((mode.dir === 'up' ? 1 : -1) * RISE_HOLD_PER_S * dt * win.innerHeight);
+      riseLast = now;
+    }
+    riseFrame = core.time.raf(riseHold);
+  };
+  const riseEnd = () => {
+    if (riseFrame) core.time.cancelRaf(riseFrame);
+    riseFrame = 0;
+    riseUi?.setActive(null);
+    post({ type: 'studio:core/view-state', state: adapter.view.state() });
+  };
+  // Fly (see the header): keys held in the game page / in the shell, Shift for each, and the frame that moves.
+  const flyHeld = new Set<FlyKey>();
+  let flyFast = false;
+  let shellFly: FlyKey[] = [];
+  let shellFast = false;
+  let flyFrame = 0;
+  let flyLast = 0;
+  let flyMoved = false;
+  const canFly = () => adapter.dim === '3d' && !!adapter.view.fly;
+  const rightHeld = () => [...ptrs.values()].some((p) => p.type === 'mouse' && p.button === 2);
+  /** May this key fly now? W A S D: nothing picked, or the right button held. E / Q: also while looking around (as before). */
+  const flyOk = (k: FlyKey) =>
+    !state.selected || rightHeld() || ((k === 'e' || k === 'q') && (spaceHeld || mode.kind === 'look' || [...ptrs.values()].some(looksAround)));
+  /** Move by `dt` seconds of every key that may fly now; true when something moved. */
+  const flyBy = (keys: Iterable<FlyKey>, dt: number, fast: boolean, all = false) => {
+    let r = 0, u = 0, f = 0;
+    for (const k of keys) {
+      if (!all && !flyOk(k)) continue;
+      const d = FLY_DIRS[k];
+      r += d[0];
+      u += d[1];
+      f += d[2];
+    }
+    if (!r && !u && !f) return false;
+    const m = dt * (fast ? FLY_FAST : 1);
+    adapter.view.fly!(r * m, u * m, f * m);
+    // The right-drag under way turns where the camera stands from now on (onMove) and opens no menu (onUp).
+    for (const p of ptrs.values()) if (p.type === 'mouse' && p.button === 2) p.flew = true;
+    flyMoved = true;
+    markDirty();
+    return true;
+  };
+  const flyStep = (now: number) => {
+    flyFrame = 0;
+    if (!flyHeld.size && !shellFly.length) {
+      flyStop();
+      return;
+    }
+    const dt = Math.min(0.1, (now - flyLast) / 1000);
+    flyLast = now;
+    if (dt > 0) {
+      flyBy(flyHeld, dt, flyFast);
+      flyBy(shellFly, dt, shellFast, true);
+    }
+    flyFrame = core.time.raf(flyStep);
+  };
+  const flyStart = () => {
+    if (flyFrame) return;
+    flyLast = win.performance.now();
+    flyFrame = core.time.raf(flyStep);
+  };
+  /** Every key let go (or the page lost them): stop, and tell the shell where the view ended (kept across reloads). */
+  const flyStop = () => {
+    if (flyFrame) core.time.cancelRaf(flyFrame);
+    flyFrame = 0;
+    if (flyMoved) post({ type: 'studio:core/view-state', state: adapter.view.state() });
+    flyMoved = false;
+  };
+  const flyKeyOf = (e: KeyboardEvent): FlyKey | null => FLY_CODES[e.code] ?? (e.code ? null : (FLY_CODES[`Key${e.key.toUpperCase()}`] ?? null));
   // A press on the picked object: a drag from it moves it (see the header).
   let grabStart = false;
   // The chosen strip tool (stays until another is chosen or Escape), and a press that will use it.
@@ -208,15 +362,18 @@ export function attachInput(deps: InputDeps): InputHandle {
     return picked.some((i) => i.scalable);
   };
   /**
-   * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D, one object (canTurn). Size: several
-   * picked. 2D has no turn choices, so its turn button has no ▾ (tool options, 2026-10-18).
+   * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D (the axes, canTurn), or several picked
+   * (together / each in place, 2D too: multi rotate, play test 2026-10-18 — before, several turned "together" upright
+   * only and a 2D turn button had no ▾). Size: several picked (tool options, 2026-10-18).
    */
   const hasChoices = (kind: 'axis' | 'scale') =>
-    kind === 'axis' ? canTurn() && toolApplies('rotate') : state.group.length > 1 && toolApplies('scale');
+    kind === 'axis' ? (canTurn() || state.group.length > 1) && toolApplies('rotate') : state.group.length > 1 && toolApplies('scale');
   /** Open (`kind`) or close (null) the strip's choices, and tell the editor page so a press or Escape there closes them. */
   const menu = (kind: 'axis' | 'scale' | null) => {
     const was = handles.menuOpen();
-    handles.menu(kind, kind === 'axis' ? state.axis : kind === 'scale' ? state.scaleMode : '', lang);
+    // The turn button's choices: the axes (3D) and, with several picked, together / each in place under them.
+    const turnRows = { axes: canTurn(), way: state.group.length > 1 ? state.turnMode : null };
+    handles.menu(kind, kind === 'axis' ? state.axis : kind === 'scale' ? state.scaleMode : '', lang, turnRows);
     const now = handles.menuOpen();
     if (!!was !== !!now) post({ type: 'studio:placement/menu', open: !!now });
   };
@@ -237,8 +394,10 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
   /** The press looks around even with a tool chosen: Option, a right / middle button, or Space held. */
   const looksAround = (p: Ptr) => p.type === 'mouse' && (p.button !== 0 || p.alt || spaceHeld);
-  // 3D turns around three axes (adapter.turn); groups still turn upright only.
-  const canTurn = () => adapter.dim === '3d' && !!adapter.turn && state.group.length <= 1;
+  // 3D turns around three axes (adapter.turn). Groups too since 2026-10-18 (multi rotate; upright only before).
+  const canTurn = () => adapter.dim === '3d' && !!adapter.turn;
+  /** How the group turns now (the turn button's choices). */
+  const turnWay = () => ({ axis: canTurn() ? state.axis : ('y' as TurnAxis), mode: state.turnMode });
   let axisShown: TurnAxis | null = null;
   const showAxis = () => {
     const ax: TurnAxis = canTurn() ? state.axis : 'y';
@@ -321,7 +480,7 @@ export function attachInput(deps: InputDeps): InputHandle {
         let d = (p.x - m.x0) * TURN_PER_PX;
         const t = Math.round(d / SNAP) * SNAP;
         if (!p.shift && Math.abs(t - d) <= SNAP_WINDOW) d = t;
-        groupRotate(adapter, adapter.dim, s, d);
+        groupRotate(adapter, adapter.dim, s, d, turnWay());
       } else groupScale(adapter, adapter.dim, s, Math.exp((p.x - m.x0 - (p.y - m.y0)) * SIZE_PER_PX), state.scaleMode);
     } else if (m.handle === 'move') groupMove(adapter, adapter.dim, s, p.x - m.x0, p.y - m.y0);
     else if (m.handle === 'rotate' && ga) {
@@ -334,7 +493,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       // 15° steps within ±3° unless Shift, like one object.
       const t = Math.round(d / SNAP) * SNAP;
       if (!p.shift && Math.abs(t - d) <= SNAP_WINDOW) d = t;
-      groupRotate(adapter, adapter.dim, s, d);
+      groupRotate(adapter, adapter.dim, s, d, turnWay());
     } else if (m.handle === 'scale') {
       const dist = Math.max(8, Math.hypot(p.x - s.center[0], p.y - s.center[1]));
       groupScale(adapter, adapter.dim, s, dist / data.dist!, state.scaleMode);
@@ -348,7 +507,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     markDirty();
     post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle });
     const from = s.from.get(s.primary), now = adapter.anchor(s.primary)?.pose;
-    if (from && now) handles.readout(readout(m.handle, from, now, 'y'));
+    if (from && now) handles.readout(readout(m.handle, from, now, canTurn() ? state.axis : 'y'));
   };
 
   const startHandle = (handle: HandleKind, p: Ptr, anywhere = false): Mode => {
@@ -545,6 +704,34 @@ export function attachInput(deps: InputDeps): InputHandle {
     select(key);
   };
 
+  /**
+   * The place's menu at the pointer (see the header): pick what is under it if it is not picked yet (no camera move),
+   * then ask the editor page to draw the menu. The strip's own choices close first (one menu at a time).
+   */
+  const contextAt = (p: Ptr) => {
+    if (handles.menuOpen()) menu(null);
+    const key = tappable(p, p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null;
+    const picked = state.group.length > 1 ? state.group : state.selected ? [state.selected] : [];
+    if (key && !picked.includes(key)) select(key);
+    // The next plain tap on the same spot should not walk to the object behind (that is for a second LEFT press).
+    lastTap = null;
+    post({ type: 'studio:placement/context', key, x: p.x, y: p.y, touch: p.type !== 'mouse' });
+  };
+  // The touch held still for the menu (LONG_PRESS_MS): armed when a plain press starts, checked when it fires.
+  let menuTimer = 0;
+  const armMenuPress = (id: number) => {
+    win.clearTimeout(menuTimer);
+    menuTimer = win.setTimeout(() => {
+      const p = ptrs.get(id);
+      if (!p || ptrs.size !== 1 || mode.kind !== 'pending') return;
+      if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
+      // Forget the pointer: its release must not also be read as a tap (which would pick or drop the pick again).
+      ptrs.delete(id);
+      mode = { kind: 'none' };
+      contextAt(p);
+    }, LONG_PRESS_MS);
+  };
+
   /** Box selection: every listed object whose pivot is inside the band joins the selection. */
   let band: { x: number; y: number; w: number; h: number } | null = null;
   const finishBox = () => {
@@ -606,7 +793,8 @@ export function attachInput(deps: InputDeps): InputHandle {
     ptrs.delete(e.pointerId);
     // A new touch while nothing is down: clear leftovers from lost releases.
     if (e.pointerType !== 'mouse' && e.isPrimary) ptrs.clear();
-    const p: Ptr = { id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, shift: e.shiftKey, alt: e.altKey };
+    const p: Ptr = { id: e.pointerId, type: e.pointerType, x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button, shift: e.shiftKey, alt: e.altKey,
+      menu: e.pointerType === 'mouse' && (e.button === 2 || (MAC && e.button === 0 && e.ctrlKey && !e.metaKey)) };
     ptrs.set(e.pointerId, p);
     try {
       (e.target as Element).setPointerCapture?.(e.pointerId);
@@ -614,12 +802,27 @@ export function attachInput(deps: InputDeps): InputHandle {
       /* element may not accept capture (e.g. document) */
     }
     if (ptrs.size === 2) {
+      win.clearTimeout(menuTimer);
       // Second finger: whatever the first was doing turns into pinch/pan.
       if (mode.kind === 'handle' || mode.kind === 'group') endGesture();
+      if (mode.kind === 'rise') riseEnd();
       mode = { kind: 'pinch', ...twoFingers() };
       return;
     }
     if (ptrs.size > 2) return;
+    // Camera up / down: one step now, more while held (riseHold), or the drag's travel (onMove). Before the strip and
+    // the tool: these buttons belong to the view, whatever is picked or chosen.
+    const rd = riseUi?.fromEvent(e);
+    if (rd) {
+      if (handles.menuOpen()) menu(null);
+      const t0 = win.performance.now();
+      mode = { kind: 'rise', dir: rd, t0, follow: false };
+      riseLast = 0;
+      riseUi!.setActive(rd);
+      riseBy((rd === 'up' ? 1 : -1) * RISE_STEP * win.innerHeight);
+      if (!riseFrame) riseFrame = core.time.raf(riseHold);
+      return;
+    }
     // The ▾ in the turn / size button's corner: open (or close) its choices; the tool stays as it was.
     const more = moreFromEvent(e);
     if (more && state.selected && hasChoices(more)) {
@@ -633,12 +836,15 @@ export function attachInput(deps: InputDeps): InputHandle {
     const choice = choiceFromEvent(e);
     if (choice) {
       if (choice.kind === 'axis') setAxis(choice.id as TurnAxis);
-      else {
+      else if (choice.kind === 'turn') {
+        state.turnMode = choice.id === 'inplace' ? 'inplace' : 'spread';
+        handles.setTurnMode(state.turnMode);
+      } else {
         state.scaleMode = choice.id === 'inplace' ? 'inplace' : 'spread';
         handles.setScaleMode(state.scaleMode);
       }
       menu(null);
-      const k: HandleKind = choice.kind === 'axis' ? 'rotate' : 'scale';
+      const k: HandleKind = choice.kind === 'scale' ? 'scale' : 'rotate';
       if (tool !== k) chooseTool(k, 'menu');
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
@@ -664,11 +870,14 @@ export function attachInput(deps: InputDeps): InputHandle {
       markDirty();
       return;
     }
-    boxStart = boxable(p);
+    // The Mac's Control-click is a right-click here: never a box, a tool drag or a grab (a drag from it looks around).
+    boxStart = !p.menu && boxable(p);
     // A chosen tool that can act on the pick: a drag from here uses it (Shift at the press still draws a box from an empty spot).
-    toolStart = !boxStart && !!tool && !!state.selected && !looksAround(p) && toolApplies(tool);
-    grabStart = !boxStart && !toolStart && grabbable(p);
+    toolStart = !p.menu && !boxStart && !!tool && !!state.selected && !looksAround(p) && toolApplies(tool);
+    grabStart = !p.menu && !boxStart && !toolStart && grabbable(p);
     mode = { kind: 'pending' };
+    // A finger (or pen) held still here opens the place's menu. Not with a game tool (it took the press above).
+    if (p.type !== 'mouse' && ptrs.size === 1) armMenuPress(p.id);
   };
 
   const onMove = (e: PointerEvent) => {
@@ -690,6 +899,12 @@ export function attachInput(deps: InputDeps): InputHandle {
       adapter.view.pan(t.cx - mode.cx, t.cy - mode.cy);
       mode = { kind: 'pinch', ...t };
       markDirty();
+      return;
+    }
+    if (mode.kind === 'rise') {
+      // Dragged on ↑ / ↓: from the slop on, the camera follows the drag (up = up, the whole travel), held-repeat stops.
+      if (!mode.follow && Math.abs(p.y - p.sy) > UI.tapSlopPx) mode.follow = true;
+      if (mode.follow) riseBy(-dy);
       return;
     }
     // A tool dragged anywhere reads the pointer shifted onto the object's point (see the start above).
@@ -748,11 +963,13 @@ export function attachInput(deps: InputDeps): InputHandle {
       // Pan: middle or right button, Shift, or (2D) any drag. 3D left drag orbits.
       // (3D right drag used to orbit too; it pans now, like most 3D editors,
       // since Shift+drag from an empty spot became the box selection.)
-      const pan = adapter.dim === '2d' || p.button === 1 || p.button === 2 || p.shift || !adapter.view.orbit;
+      const pan = adapter.dim === '2d' || p.button === 1 || p.button === 2 || p.menu || p.shift || !adapter.view.orbit;
       mode = { kind: 'look', pan };
     }
     if (mode.kind === 'look') {
-      if (mode.pan) adapter.view.pan(dx, dy);
+      // A right-drag while flying looks where the camera stands (the engines' fly mode; see the header).
+      if (p.flew && adapter.view.look) adapter.view.look(dx, dy);
+      else if (mode.pan) adapter.view.pan(dx, dy);
       else adapter.view.orbit!(dx, dy);
       markDirty();
     }
@@ -761,10 +978,22 @@ export function attachInput(deps: InputDeps): InputHandle {
   const onUp = (e: PointerEvent) => {
     block(e);
     win.clearTimeout(pressTimer);
+    win.clearTimeout(menuTimer);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
     ptrs.delete(e.pointerId);
-    if (mode.kind === 'pending' && e.type === 'pointerup') tap(p);
+    if (mode.kind === 'rise') {
+      riseEnd();
+      mode = { kind: 'none' };
+      return;
+    }
+    // A right-click (no travel): the place's menu instead of a tap (it picks only what is not picked yet).
+    if (mode.kind === 'pending' && e.type === 'pointerup') {
+      // A right press that flew (WASD held with it) was the engines' fly mode, not a click: no menu.
+      if (p.menu) {
+        if (!p.flew) contextAt(p);
+      } else tap(p);
+    }
     if (mode.kind === 'look' || mode.kind === 'pending') {
       post({ type: 'studio:core/view-state', state: adapter.view.state() });
       mode = { kind: 'none' };
@@ -777,7 +1006,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       }
     } else if (mode.kind === 'handle' || mode.kind === 'group') {
       // A tap (no drag) on a strip button CHOOSES its tool (tool modes, see the header). On the chosen one
-      // again: the others put the tool down; the turn button (3D, one object) and the size button (several)
+      // again: the others put the tool down; the turn button (3D, or several) and the size button (several)
       // open / close their choices — an unadvertised shortcut only since 2026-10-18 (the ▾ and the long press
       // are the way in; a second press is not something people try, play test 2026-10-18).
       const tap = !mode.anywhere && Math.hypot(p.x - p.sx, p.y - p.sy) <= UI.tapSlopPx;
@@ -785,7 +1014,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       const single = mode.kind === 'handle';
       endGesture();
       if (tap) {
-        const choices = (which === 'rotate' && single && hasChoices('axis')) || (which === 'scale' && !single && hasChoices('scale'));
+        const choices = (which === 'rotate' && hasChoices('axis')) || (which === 'scale' && !single && hasChoices('scale'));
         if (which !== tool) chooseTool(which, 'strip');
         else if (choices) toggleMenu(which === 'rotate' ? 'axis' : 'scale');
         else chooseTool(null, 'strip');
@@ -819,8 +1048,25 @@ export function attachInput(deps: InputDeps): InputHandle {
     // Shortcuts that belong to the shell (undo, redo, save, escape...) are
     // forwarded so they work wherever focus is.
     post({ type: 'studio:core/key', key: e.key, code: e.code, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey });
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    flyFast = e.shiftKey;
+    // ⌘ / Ctrl / ⌥ with a fly key is a shortcut, not flying; and a Mac sends no keyup for keys let go while ⌘ is
+    // down, so whatever was held stops here rather than flying on by itself.
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      flyHeld.clear();
+      return;
+    }
     const key = state.selected;
+    // Fly (see the header): before the tool keys (S = Size with a pick) and the turn keys (E / Q), which keep their
+    // meaning unless flying is allowed now. Not while typing in one of the game's own fields, nor composing (IME).
+    const fk = canFly() && !e.isComposing && !typingIn(e.target) ? flyKeyOf(e) : null;
+    if (fk && (flyHeld.has(fk) || flyOk(fk))) {
+      if (!flyHeld.has(fk)) {
+        flyHeld.add(fk);
+        if (!e.repeat) flyBy([fk], FLY_KICK_S, e.shiftKey);
+      }
+      flyStart();
+      return;
+    }
     if (e.key === ' ') {
       spaceHeld = true;
       return;
@@ -837,10 +1083,19 @@ export function attachInput(deps: InputDeps): InputHandle {
       chooseTool(tk, 'key');
       return;
     }
-    // R: the next turn axis (3D, one object picked), with the choices shown for a moment of feedback.
+    // R: the next turn axis (3D, one or several picked), with the choices shown for a moment of feedback.
     if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
       setAxis('next');
       if (!handles.menuOpen()) menu('axis');
+      return;
+    }
+    // E / Q: camera up / down with nothing picked (they have no other job then) or while looking around (Space held,
+    // a right / middle / ⌥ drag) — the 3D tools' habit. With something picked otherwise they still turn it (keyStep).
+    const kl = e.key.toLowerCase();
+    // Adapters without fly (rise only) keep the steps.
+    if ((kl === 'e' || kl === 'q') && !canFly() && adapter.view.rise && (!key || spaceHeld || mode.kind === 'look' || [...ptrs.values()].some(looksAround))) {
+      riseBy((kl === 'e' ? 1 : -1) * (e.shiftKey ? RISE_KEY_STEP / 5 : RISE_KEY_STEP) * win.innerHeight);
+      post({ type: 'studio:core/view-state', state: adapter.view.state() });
       return;
     }
     if (!key) return;
@@ -850,10 +1105,15 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.key === ' ') spaceHeld = false;
+    flyFast = e.shiftKey;
+    const fk = flyKeyOf(e);
+    if (fk) flyHeld.delete(fk);
   };
 
   const onBlur = () => {
     spaceHeld = false;
+    // The keyups go elsewhere now: stop flying (the next frame sees no key).
+    flyHeld.clear();
     // Do NOT clear pointers here (see the header comment). Only stop showing
     // a pressed handle; the gesture itself continues if the finger is down.
     handles.setActive(mode.kind === 'handle' || mode.kind === 'group' ? mode.handle : null);
@@ -983,7 +1243,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     drawGhosts();
     showAxis();
     // The ▾ on the turn / size buttons: only while they have choices (it sits inside the button: the strip never moves).
-    handles.setOptions({ axis: hasChoices('axis'), scale: hasChoices('scale') }, lang);
+    handles.setOptions({ axis: hasChoices('axis'), scale: hasChoices('scale'), axes: canTurn(), several: state.group.length > 1 }, lang);
     const key = state.selected;
     // The AI's marks first (under your own): what is picked is drawn in your colour only.
     const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
@@ -1013,6 +1273,7 @@ export function attachInput(deps: InputDeps): InputHandle {
   return {
     frame: place,
     selectionChanged() {
+      riseLabels();
       if (handles.menuOpen()) menu(null);
       armed = false;
       hoverIn = false;
@@ -1033,15 +1294,28 @@ export function attachInput(deps: InputDeps): InputHandle {
     setLook(on) {
       spaceHeld = !!on;
     },
+    setFly(keys, fast) {
+      if (!canFly()) return;
+      const next = keys.filter((k): k is FlyKey => k in FLY_DIRS);
+      // A key just pressed in the shell moves at once, as in the game page (FLY_KICK_S).
+      const fresh = next.filter((k) => !shellFly.includes(k));
+      shellFly = next;
+      shellFast = !!fast;
+      if (fresh.length) flyBy(fresh, FLY_KICK_S, shellFast, true);
+      if (next.length) flyStart();
+    },
     setHandleSize(px) {
       handles.setSize(px);
+      riseUi?.setSize(px);
       place();
     },
     setTheme(theme) {
       handles.setTheme(theme);
+      riseUi?.setTheme(theme);
     },
     setInset(inset) {
       handles.setInset(inset);
+      riseUi?.setInset(inset);
       place();
     },
     setAiMarks(keys, label) {
@@ -1053,12 +1327,14 @@ export function attachInput(deps: InputDeps): InputHandle {
     setLang(l) {
       lang = l;
       handles.setLabels(HANDLE_LABELS[lang] || HANDLE_LABELS.en);
+      riseLabels();
       axisShown = null;
       showAxis();
     },
     detach() {
       endGesture();
       win.clearTimeout(pressTimer);
+      win.clearTimeout(menuTimer);
       win.removeEventListener('pointerdown', onDown, opts);
       win.removeEventListener('pointermove', onMove, opts);
       win.removeEventListener('pointermove', onHover, opts);
@@ -1072,6 +1348,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       win.clearTimeout(hintTimer);
       for (const t of blocked) win.removeEventListener(t, block, opts);
       handles.destroy();
+      if (riseFrame) core.time.cancelRaf(riseFrame);
+      if (flyFrame) core.time.cancelRaf(flyFrame);
+      riseUi?.destroy();
       doc.documentElement.style.touchAction = prevTouchAction;
     },
   };

@@ -321,8 +321,11 @@ async function run(example, layout) {
     await page.eval(`window.studioShell.actions.frameAll()`);
     await sleep(500);
     if (mobile) {
+      // Multi-select is in "…" (the ⌘K list) on a phone since plan 1 (2026-10-18): the sheet's head has "Grid" in its
+      // place, and shows "Done" only while picking several.
       await openSheet();
-      await press('[data-action=multi]');
+      await press('.sheet-more');
+      await press('.palette [data-action=multi]');
       await closeSheet();
       await pressObject(A);
       await pressObject(B);

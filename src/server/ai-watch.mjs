@@ -69,8 +69,12 @@ export function handoffLine(rec, relPath) {
   }
   const what = v.kind === 'next-step' ? `next-step ${v.step}` : v.kind;
   const objs = Array.isArray(v.objects) ? v.objects : [];
-  const names = objs.slice(0, 4).map((o) => o.label || o.key).join(', ');
-  const more = objs.length > 4 ? ` +${objs.length - 4}` : '';
+  // Files picked in the Library ("use the Library", 2026-10-18) are named after the objects, by their folder path:
+  // the line alone then says what "this" is ("Add this to the scene" (assets/boss.glb)).
+  const assets = Array.isArray(v.assets) ? v.assets : [];
+  const all = [...objs.map((o) => o.label || o.key), ...assets];
+  const names = all.slice(0, 4).join(', ');
+  const more = all.length > 4 ? ` +${all.length - 4}` : '';
   const text = v.text ? ' ' + JSON.stringify(v.text.length > 120 ? v.text.slice(0, 119) + '…' : v.text) : '';
   // An ask with no objects is about the whole game: the line says so.
   const about = names ? ` (${names}${more})` : v.kind === 'ask' ? ' (whole game)' : '';

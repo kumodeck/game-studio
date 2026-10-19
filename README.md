@@ -16,8 +16,8 @@ the right… no, less."
 - **Any web game.** three.js works out of the box. For Phaser, PixiJS, plain canvas or DOM games, your own engine, or a
   Godot web export, your AI reads the game and writes a small adapter from the bundled examples, then the editor
   checks that it works.
-- **Your code stays yours.** The editor never edits your code. Your AI asks you once how to apply changes: load
-  `placement.json` at start-up with one line, or rewrite the numbers in the code.
+- **Your code stays yours.** The editor never edits your code. On your first save, your AI adds one line that loads
+  `placement.json` when the game starts. Want the numbers written into the code instead? Tell your AI.
 
 > **Want more?** Sign in with [KUMODeck](https://kumodeck.com) to make images and 3D models with AI, paid with
 > KUMODeck credits. Your AI can also publish your game and add online multiplayer and saves with it. All optional:
@@ -52,12 +52,20 @@ codex plugin marketplace add kumodeck/game-studio && codex plugin add game-studi
 
 (Or inside Codex: `/plugins`, choose **KUMODeck Game Studio**.) Start a new session afterwards.
 
+### Uninstall
+
+**Claude Code:** `claude plugin uninstall game-studio@game-studio && claude plugin marketplace remove game-studio`
+
+**Codex:** `codex plugin remove game-studio@game-studio && codex plugin marketplace remove game-studio`
+
+Your game folder keeps what the editor wrote (`placement.json`, `library.json`, `.studio/`). Delete them if you like.
+
 ## Try it in 5 minutes
 
 No game yet? Open your AI in an **empty folder** and type `/arrange` (Codex: `$arrange`). It asks one question,
 "Want to start from a sample? Pick 3D or 2D," copies a small sample game into the folder and opens the editor. Then: click
 anything and drag it, ask your AI for a change in the box at the bottom ("add 3 more like this"), and click **Save**.
-The editor shows these steps the first time, one line at a time.
+The sample already loads `placement.json`, so your layout is in the game right away.
 
 ## Use it
 
@@ -72,32 +80,41 @@ You can also just say what you want ("I want to fix where the trees are"); the a
 
 1. Your AI checks how the game is built (and writes an adapter if needed), then starts the editor and opens it in your
    browser.
-2. The game fills the window. The editor is three things: the list on the left, a small card over the game's top
-   right corner while something is selected, and one input at the bottom. Two colors mean one thing each: **orange is
-   your hand** (what you selected: its outline, its name tag), **violet is your AI's hand** (what its last change
-   touched).
-   - Click an object to select it, then drag it to move it. The strip under it turns, lifts (3D) and resizes: press a
-     button and drag. In 3D, press the Turn button again (or press R) to turn it in place, tilt it forward, or tilt it
-     sideways (it turns around the middle of the object, so it stays where it is). With several selected, press the Size
-     button to resize them **together** (the gaps grow too) or **each in place**. The card shows its exact numbers (drag a letter left or right, or type).
-   - Duplicate it (Cmd/Ctrl+D) to lay out more of the same, delete what you don't need, or select several
-     (Shift-click, drag a box, or click a "crate ×4" group in the list) to move, turn and resize them together. Undo and redo with Cmd/Ctrl+Z
-     and Shift+Cmd/Ctrl+Z (on a phone, Undo is in the top bar).
+2. The game fills the window. The editor is three things: the column on the left (**Scene** and **Library**), a small
+   card over the game's top right corner while something is selected, and one input at the bottom. Two colors mean one
+   thing each: **orange is your hand** (what you selected: its outline, its name tag), **violet is your AI's hand**
+   (what its last change touched).
+   - Click an object to select it, then drag it to move it. The strip under it moves, lifts (3D), turns and resizes
+     (keys 1–4): press a button and drag. In 3D, the ▾ in the corner of Turn chooses turn in place, tilt forward or tilt
+     sideways (it turns around the middle of the object, so it stays where it is). With several selected, the ▾ on Size
+     resizes them **together** (the gaps grow too) or **each in place**. The card shows its exact numbers (drag a letter
+     left or right, or type).
+   - Duplicate it (Cmd/Ctrl+D, or Cmd/Ctrl+C then Cmd/Ctrl+V) to lay out more of the same, delete what you don't need,
+     or select several (Shift-click, drag a box, or click a "crate ×4" group in the list) to move, turn and resize them
+     together. Undo and Redo are in the top bar (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z).
+   - Right-click anything (long-press on a phone) for what you can do with it right there: Ask your AI…, Rename…,
+     Duplicate, Delete, and more.
+   - In 3D, fly the camera with W A S D (E / Q for up and down) when nothing is selected; with something selected, hold
+     the right mouse button while you press them. The ↑↓ buttons in the corner also raise and lower the camera. Press
+     **?** for every shortcut.
    - The input at the bottom is for your AI: type what you want about what's selected ("add 3 more in a row") or
      about the whole game ("add three lighthouses around the island") and press Enter. You see at once that your AI
      has it (or, if it isn't watching, what to do); a violet light runs round the input while it works, and its
      one-line reply shows right above. When it's done the game updates by itself — no reload — with the camera and
      your selection kept, and only what changed glows violet. Don't like it? **Undo AI change** puts the game back
      in one press (**Redo** brings the change back).
-   - **⌘K / Ctrl+K** is the list of every action (Play, Assets, Show all, Editor view…). Typing a word that
-     names one ("assets", "play") also suggests it; a sentence always goes to your AI.
-   - Switch from **Scene** to **Assets** to see every image, model and sound, which object uses which, which files are
-     unused or missing, and to swap one or add a new one. The two are linked: a selected object's card says which files
-     it is drawn with (press one to open it in Assets), and a file's detail says how many objects use it
-     ("In the scene: 2", press it to select them).
+   - **⌘K / Ctrl+K** is the list of every action (Play, Open the Library, Show all, Editor view…). Typing a word that
+     names one ("library", "play") also suggests it; a sentence always goes to your AI.
+   - Switch from **Scene** to **Library** to see every object and every image, model and sound in one list (All, 3D,
+     2D, Sound, Other): which object uses which file, which files are unused or missing. Swap a file (Replace…), bring in
+     new ones (Add files), or put one in the game: **Add to scene** on an object places a duplicate where you're looking;
+     on a file, it asks your AI to add it. Select something there and the input at the bottom asks your AI about it.
+     The two are linked: a selected object's card has **Show in Library →**, and a file's detail says how many objects
+     use it ("In the scene: 2", press it to select them).
 3. Click **Save** (top bar, "Save · 3" shows how many changes aren't saved yet; Cmd/Ctrl+S) and go back to your AI.
-   Until then your changes are kept as a draft, so closing the tab loses nothing. It reads the files, asks you once how to apply them, and
-   updates the game, and the editor shows the new game by itself. Play it with **Play** (or P).
+   Until then your changes are kept as a draft, so closing the tab loses nothing. Your AI reads the files and updates
+   the game (the first time, it adds the one line that loads `placement.json`), and the editor shows the new game by
+   itself. Play it with **Play** (or P).
 
 On a phone: ask your AI to open the editor "for my phone". It starts with `--lan` and shows a QR code for the same
 Wi-Fi network.
@@ -152,7 +169,7 @@ same keys) and takes the deleted objects out.
 }
 ```
 
-The AI asks you before deleting any file. Clicking **Delete** on an unused file in Assets sends it to your AI
+The AI asks you before deleting any file. Clicking **Delete** on an unused file in the Library sends it to your AI
 the same way; the editor itself never deletes files.
 
 Give important objects a stable name so the editor and your AI always agree on which one is which:
@@ -182,12 +199,12 @@ or connect `https://mcp.kumodeck.com/mcp` as an MCP server, or use the CLI (`npx
 
 ### Make images and 3D models with AI (optional sign-in)
 
-The editor is free and works fully without an account. If you sign in with KUMODeck, the **Assets** page can also make
+The editor is free and works fully without an account. If you sign in with KUMODeck, the **Library** can also make
 an image (textures, backgrounds, skies) or a 3D model from a sentence, paid with your KUMODeck credits at the AI
 provider's price with no markup.
 
 1. Sign in once in a terminal: `npx kumodeck login` (open the link it prints, click Allow).
-2. In the editor: **Assets → Make with AI**. It shows your credits and the price before you click **Make**; if you
+2. In the editor: **Library → Make with AI**. It shows your credits and the price before you click **Make**; if you
    don't have enough, it stops and says so. The first time, you agree to the AI part of the KUMODeck terms (once).
 3. The result is a new file in `assets/` (never overwriting), like **Add files**. Place it, or ask your AI to use it.
 

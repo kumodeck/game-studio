@@ -1043,6 +1043,8 @@ const HANDOFF_LIMITS = Object.freeze({
   maxNote: 300,
   maxBytes: 64 * 1024,
   maxFiles: 200, // delete-files: the same limit as POST /next-step
+  maxAssets: 50, // files picked in the Library for an "ask" (the same as objects)
+  maxObjectFiles: 8, // the files one object is drawn with (a model and its textures; more is cut, not refused)
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -1073,6 +1075,10 @@ function oneLine(v, max) {
 }
 
 const isFin = (x) => typeof x === 'number' && Number.isFinite(x);
+
+/** A plain path inside the game folder: no leading "/", no "\\", no "..", no hidden parts (.studio, .git). */
+const isFolderPath = (f) => typeof f === 'string' && f.length > 0 && f.length <= 512 && !f.startsWith('/') && !f.includes('\\')
+  && f.split('/').every((seg) => seg && seg !== '..' && !seg.startsWith('.'));
 const roundTo = (x, step) => Math.round(x * step) / step;
 
 /** A pose as the editor has it right now (may be unsaved); dropped when it is not a sane pose. */
@@ -1113,7 +1119,7 @@ function normalizeRequestInput(input) {
       // in the game folder is the host's check (it has the folder).
       const files = Array.isArray(r.files) ? r.files : [];
       if (!files.length || files.length > HANDOFF_LIMITS.maxFiles) errors.push(`"files" must list 1 to ${HANDOFF_LIMITS.maxFiles} files`);
-      else if (!files.every((f) => typeof f === 'string' && f.length <= 512 && !f.startsWith('/') && !f.includes('\\') && f.split('/').every((seg) => seg && seg !== '..' && !seg.startsWith('.')))) errors.push('"files" must be paths inside the game folder');
+      else if (!files.every(isFolderPath)) errors.push('"files" must be paths inside the game folder');
       else out.files = [...new Set(files)].sort();
     }
   }
@@ -1132,10 +1138,24 @@ function normalizeRequestInput(input) {
         const pose = cleanPose(o.pose);
         if (pose) e.pose = pose;
         if (o.unstable === true) e.unstable = true;
+        // The files it is drawn with ("use the Library", 2026-10-18): a hint for the AI, so a bad entry is dropped,
+        // never an error (the request is the person's words; it must not fail over a file name).
+        if (Array.isArray(o.files)) {
+          const fs = [...new Set(o.files.filter(isFolderPath))].slice(0, HANDOFF_LIMITS.maxObjectFiles);
+          if (fs.length) e.files = fs;
+        }
         out.objects.push(e);
       }
       if (r.objects.length > HANDOFF_LIMITS.maxObjects) out.moreObjects = r.objects.length - HANDOFF_LIMITS.maxObjects;
     }
+  }
+  // "ask" only: files picked in the Library ("use the Library", 2026-10-18). Unlike an object's files these are
+  // what the words are about ("add this to the scene"), so a list that is not plain folder paths is refused.
+  if (r.assets !== undefined && kind === 'ask') {
+    const as = Array.isArray(r.assets) ? r.assets : null;
+    if (!as || as.length > HANDOFF_LIMITS.maxAssets) errors.push(`"assets" must list at most ${HANDOFF_LIMITS.maxAssets} files`);
+    else if (!as.every(isFolderPath)) errors.push('"assets" must be paths inside the game folder');
+    else if (as.length) out.assets = [...new Set(as)];
   }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
@@ -2224,7 +2244,12 @@ async function undoDir(rootReal, sub = '') {
       if (!st.isDirectory()) throw new Error(`${part} is not a folder`);
     } catch (e) {
       if (e.code !== 'ENOENT') throw e;
-      await fs.mkdir(dir);
+      // Two requests at the same moment (⌘S hands over placement.json and library.json 1 ms apart) both find no
+      // folder; the second mkdir then fails with EEXIST and that request got no undo copy (e2e-save 2026-10-18,
+      // "studio: note no undo … EEXIST"). The folder the other one made is fine, if it is a real folder.
+      await fs.mkdir(dir).catch(async (m) => {
+        if (m.code !== 'EEXIST' || !(await fs.lstat(dir)).isDirectory()) throw m;
+      });
     }
   }
   return dir;
@@ -2447,8 +2472,12 @@ function handoffLine(rec, relPath) {
   }
   const what = v.kind === 'next-step' ? `next-step ${v.step}` : v.kind;
   const objs = Array.isArray(v.objects) ? v.objects : [];
-  const names = objs.slice(0, 4).map((o) => o.label || o.key).join(', ');
-  const more = objs.length > 4 ? ` +${objs.length - 4}` : '';
+  // Files picked in the Library ("use the Library", 2026-10-18) are named after the objects, by their folder path:
+  // the line alone then says what "this" is ("Add this to the scene" (assets/boss.glb)).
+  const assets = Array.isArray(v.assets) ? v.assets : [];
+  const all = [...objs.map((o) => o.label || o.key), ...assets];
+  const names = all.slice(0, 4).join(', ');
+  const more = all.length > 4 ? ` +${all.length - 4}` : '';
   const text = v.text ? ' ' + JSON.stringify(v.text.length > 120 ? v.text.slice(0, 119) + '…' : v.text) : '';
   // An ask with no objects is about the whole game: the line says so.
   const about = names ? ` (${names}${more})` : v.kind === 'ask' ? ' (whole game)' : '';

@@ -10,5 +10,6 @@ page) and talks to the shell with `studio:*` messages. See CONTRACT.md §1–2.
 - `editor.ts` — edit session: messages → adapter, draw loop, key/step runs
 - `input.ts` — gestures (select, Shift/box selection, dragging the picked object, look around, pan, pinch, wheel), the tool strip's chosen tool (a button / M H T S chooses it, then a drag anywhere uses it; Option, right drag, Space or two fingers look around) and the outlines (cached `adapter.silhouette`)
 - `handles.ts` — what is drawn on the game: the tool strip (the chosen tool stays pressed), the readout while a drag works, the first-time "how to look around" line, the orange outline and name tag of the selection, the violet marks of the AI's change, stand-ins, the box
+- `rise.ts` — camera up / down: the ↑↓ buttons in the game's bottom-right corner (3D adapters with `view.rise`); input.ts does their click / hold / drag and the E / Q keys (with `view.fly`, E / Q fly up / down while held, with W A S D: input.ts's header has the rules)
 - `group.ts` — moving, turning and resizing several selected objects together
 - `selfcheck.ts` — adapter self-check

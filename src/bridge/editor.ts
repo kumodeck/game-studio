@@ -5,7 +5,7 @@ import type { BridgeToShell, GameTool, GroupScaleMode, Inset, Item, Lang, Pose, 
 import type { Core } from '../core/index.ts';
 import { withRules, type RulesHolder } from '../core/rules.ts';
 import { withEdits } from '../core/edits.ts';
-import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
+import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift, type GroupSession } from './group.ts';
 import { createToolHost } from './game-tools.ts';
 import { attachInput, type InputHandle } from './input.ts';
 import { runSelfCheck } from './selfcheck.ts';
@@ -44,6 +44,8 @@ export interface EditState {
   axis: TurnAxis;
   /** Several objects: how the size button resizes them (the gaps grow too, or each in place). */
   scaleMode: GroupScaleMode;
+  /** Several objects: how the turn button turns them (together round the middle, or each in place; 2026-10-18). */
+  turnMode: GroupScaleMode;
 }
 
 export function createEditor(deps: EditorDeps): Editor {
@@ -53,7 +55,7 @@ export function createEditor(deps: EditorDeps): Editor {
   // the adapter itself is unaware of both.
   const edits = withEdits(raw);
   const adapter = withRules(edits, deps.rules);
-  const state: EditState = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread' };
+  const state: EditState = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
   let lang: Lang = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -370,7 +372,8 @@ export function createEditor(deps: EditorDeps): Editor {
       groupMove(adapter, adapter.dim, g, run.dx, run.dy);
     } else if (m.op === 'rotate') {
       run.total += m.d || 0;
-      groupRotate(adapter, adapter.dim, g, run.total);
+      // Q / E: upright, as for one object (the axis is the turn tool's), together or each in place as chosen.
+      groupRotate(adapter, adapter.dim, g, run.total, { mode: state.turnMode });
     } else if (m.op === 'scale') {
       run.total *= m.d || 1;
       groupScale(adapter, adapter.dim, g, run.total, state.scaleMode);
@@ -423,8 +426,11 @@ export function createEditor(deps: EditorDeps): Editor {
    * - otherwise: just to the right of the original(s) on screen (a group
    *   keeps its shape: everyone moves the same way).
    * With a `pose` (redo, reopening) the copy goes exactly there.
+   * `at: 'view'` (the Library's "Add to scene", 2026-10-18): the copies go to the middle of the free part of the
+   * frame instead (what the card and the ask bar leave), keeping the group's shape — on the original's ground in
+   * 3D (a drag of the screen box, as the move tool does), so "add a pine" lands where the person is looking.
    */
-  const copy = (reqs: Array<{ key: string; from: string; pose?: Pose }>) => {
+  const copy = (reqs: Array<{ key: string; from: string; pose?: Pose }>, at?: 'view') => {
     const done: Array<{ key: string; from: string; pose: Pose; ghost?: boolean }> = [];
     const failed: string[] = [];
     const before = new Map(adapter.list().map((i) => [i.key, i]));
@@ -441,6 +447,7 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     // Spacing of copies of copies, in parent space.
     const rest: Array<{ key: string; from: string }> = [];
+    if (at === 'view' && fresh.length && toView(fresh)) fresh.length = 0;
     for (const f of fresh) {
       const src = before.get(f.from);
       const orig = src?.copyOf ? before.get(src.copyOf) : undefined;
@@ -466,6 +473,45 @@ export function createEditor(deps: EditorDeps): Editor {
     post({ type: 'studio:placement/added', items: done.filter((d) => d.pose), failed });
     // The copies become the selection, so they can be moved (or copied again) at once.
     if (done.length) selectMany(done.map((d) => d.key), done[done.length - 1]!.key);
+  };
+
+  /**
+   * Put new copies in the middle of the free part of the frame (copy with `at: 'view'`). True when done.
+   * 2D: a screen drag of the group from where the originals' box is drawn to the middle (stage space).
+   * 3D: "on the ground where the camera looks". The middle of the view is often sky or far hills (Lantern Cove opens
+   * on the player's camera, its horizon a little under the middle), so the spot is the first point straight down
+   * from the middle whose ray meets the original's ground (toGround at its height): the lead copy's origin goes
+   * there (the others by the same metres), then — now in front of the camera — a drag of its pivot onto that screen
+   * point, so a long thing (the pier) is placed by its middle, not its origin. WHY: the first try (2026-10-18) only
+   * dragged from the original's screen point to the middle; that ray hit the sky, the drag kept the object where it
+   * was, and the pier copy stayed at the frame's right edge (off screen on a phone). Without toGround, or with no
+   * ground anywhere under the middle: the drag from the originals' box, as in 2D.
+   */
+  const toView = (fresh: Array<{ key: string; from: string }>): boolean => {
+    const keys = fresh.map((f) => f.key);
+    const area = freeArea(inset.top);
+    const tx = (area.x0 + area.x1) / 2, ty = (area.y0 + area.y1) / 2;
+    const g = beginGroup(adapter, keys, keys[0]!);
+    if (!g) return false;
+    const lead = g.from.get(g.primary);
+    if (adapter.dim === '3d' && lead && adapter.toGround) {
+      // From the middle down to 85 % of the free height: 0.5 = the middle itself (a camera looking down at the ground).
+      for (const f of [0.5, 0.58, 0.66, 0.75, 0.85]) {
+        const y = area.y0 + (area.y1 - area.y0) * f;
+        const hit = adapter.toGround(tx, y, lead.p[1] ?? 0);
+        if (!hit) continue;
+        groupShift(adapter, g, [hit[0]! - (lead.p[0] ?? 0), 0, hit[2]! - (lead.p[2] ?? 0)]);
+        const a = adapter.anchor(g.primary);
+        const g2 = a && a.visible ? beginGroup(adapter, keys, g.primary) : null;
+        if (g2 && a) groupMove(adapter, '3d', g2, tx - a.center[0], y - a.center[1]);
+        return true;
+      }
+    }
+    // The originals' box: the copies stand exactly there, but were made this frame (not drawn yet).
+    const ga = groupAnchor(adapter, fresh.map((f) => f.from), fresh[0]!.from);
+    if (!ga || !ga.visible) return false;
+    groupMove(adapter, adapter.dim, g, tx - ga.center[0], ty - ga.center[1]);
+    return true;
   };
 
   const setEditing = (on: boolean, viewState?: unknown) => {
@@ -523,7 +569,7 @@ export function createEditor(deps: EditorDeps): Editor {
         /* the page is usually reloaded after editing anyway */
       }
     }
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing });
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
   };
 
   toolHost = createToolHost({ win, adapter, state, post, select: (k) => select(k), lang: () => lang, markDirty: () => (dirtyFrame = true) });
@@ -575,6 +621,9 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:placement/look':
           input?.setLook(!!msg.on);
           break;
+        case 'studio:core/fly':
+          input?.setFly(Array.isArray(msg.keys) ? msg.keys : [], !!msg.fast);
+          break;
         case 'studio:placement/menu':
           input?.closeMenu();
           break;
@@ -611,6 +660,8 @@ export function createEditor(deps: EditorDeps): Editor {
           else if (v.action === 'zoom') adapter.view.zoom(v.factor);
           else if (v.action === 'orbit') adapter.view.orbit?.(v.dx, v.dy);
           else if (v.action === 'pan') adapter.view.pan(v.dx, v.dy);
+          // Camera up / down from the editor page (⌘K, E / Q there): `by` is a share of the game's height.
+          else if (v.action === 'rise') adapter.view.rise?.(v.by * win.innerHeight);
           else if (v.action === 'restore') adapter.view.restore?.(v.state);
           dirtyFrame = true;
           post({ type: 'studio:core/view-state', state: adapter.view.state() });
@@ -632,7 +683,7 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:placement/copy':
           closeStepRun();
-          copy(msg.items);
+          copy(msg.items, msg.at);
           break;
         case 'studio:placement/remove': {
           closeStepRun();

@@ -189,12 +189,34 @@ export function assetsOfKey(rows: LibraryRow[], key: string): LibraryRow[] {
 export type TypeFilter = AssetType | 'all';
 export type BadgeFilter = Badge | 'all';
 
-/** Filter by type, badge and a case-insensitive name search (matches anywhere in the path). */
-export function filterRows(rows: LibraryRow[], f: { type?: TypeFilter; badge?: BadgeFilter; q?: string }): LibraryRow[] {
+/**
+ * The Library's one row of filters (a review of the editor, 2026-10-18): All / 3D / 2D / Sound / Other. It replaced four groups
+ * (Show: All / Objects / Assets, Made from, Asset type, Use) that nobody could tell apart ("I couldn't make out how
+ * they are split at all. 3D assets, 2D assets, music, other is about enough."). Objects and files share the rows: a
+ * 3D game's objects are 3D, a 2D game's objects are 2D (panel.ts); a file goes by its type (shelfOfType).
+ * Object vs file stays readable on each tile's small tag; used / not used stays on the file's tile and detail.
+ */
+export type Shelf = 'all' | '3d' | '2d' | 'sound' | 'other';
+export const SHELVES: Shelf[] = ['all', '3d', '2d', 'sound', 'other'];
+
+/**
+ * Where a file goes in the filters: 3D models → 3D; images and sprite sheets → 2D; sounds → Sound; the rest (fonts,
+ * JSON, a name in code with no known kind) → Other. A missing file still goes by its name's extension.
+ */
+export function shelfOfType(type: AssetType): Exclude<Shelf, 'all'> {
+  if (type === 'model') return '3d';
+  if (type === 'image' || type === 'atlas') return '2d';
+  if (type === 'sound') return 'sound';
+  return 'other';
+}
+
+/** Filter by type, badge, shelf (All / 3D / 2D / Sound / Other) and a case-insensitive name search (anywhere in the path). */
+export function filterRows(rows: LibraryRow[], f: { type?: TypeFilter; badge?: BadgeFilter; shelf?: Shelf; q?: string }): LibraryRow[] {
   const q = (f.q ?? '').trim().toLowerCase();
   return rows.filter((r) =>
     (!f.type || f.type === 'all' || r.type === f.type)
     && (!f.badge || f.badge === 'all' || r.badge === f.badge)
+    && (!f.shelf || f.shelf === 'all' || shelfOfType(r.type) === f.shelf)
     && (!q || r.path.toLowerCase().includes(q)));
 }
 

@@ -6,8 +6,9 @@
 //
 // Lantern Cove (3D: the lighthouse) and Firefly Ruins (2D: the first object that turns and resizes), PC 1280×800
 // with a mouse and a phone 390×844 with a finger, light and dark:
-// - the ▾ shows where there are choices and nowhere else: 3D turn with one picked; size with several picked;
-//   never on 2D turn (2D turns one way only) and never on size with one picked;
+// - the ▾ shows where there are choices and nowhere else: 3D turn with one picked; turn and size with several
+//   picked (2D too: together / each in place, 2026-10-18); never on 2D turn with one picked (one axis) and never on
+//   size with one picked;
 // - the ▾ sits inside the button (bottom-right corner): the buttons keep their size (44 px on a phone) and the
 //   strip does not move by 1 px while tools are chosen, the choices open and close, a choice is made;
 // - one tap on the turn button only chooses the tool (no choices in the way); one tap on the ▾ opens them;
@@ -230,7 +231,8 @@ async function run(game, layout, theme) {
     const sizeMore = await inStrip('[data-studio-handle=scale] .more');
     assert.ok(sizeMore, 'no ▾ on Size with several picked');
     assert.ok(inCorner(sizeMore, await inStrip('[data-studio-handle=scale]')), 'the size ▾ is not in its button\'s corner');
-    assert.equal(await inStrip('[data-studio-handle=rotate] .more'), null, 'several turn upright only, but Turn has a ▾');
+    // Several: Turn has a ▾ too, 2D included (Together / Each in place; multi rotate 2026-10-18 — test/studio-multi-rotate).
+    assert.ok(await inStrip('[data-studio-handle=rotate] .more'), 'several picked, but Turn has no ▾');
     // The ▾ first, with Size NOT chosen (a press that landed on the button would choose Size, not open).
     await tap(await inStrip('[data-studio-handle=move]'));
     await sleep(250);

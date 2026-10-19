@@ -12,7 +12,7 @@
 
 import type { AssetRef, LoadEntry, ShellContext, ShellTool } from '../../contract.ts';
 import { mountLibrary } from './panel.ts';
-import type { LibraryTool } from './panel.ts';
+import type { LibraryTool, LibraryView } from './panel.ts';
 import { assetsOfKey, buildRows, normalizeList } from './marks.ts';
 import type { LibraryRow } from './marks.ts';
 import { t } from './strings.ts';
@@ -21,9 +21,21 @@ import type { StringKey } from './strings.ts';
 
 let panel: LibraryTool | null = null;
 let restored: object | null | undefined;
+/**
+ * The decisions of a panel that closed with unsaved swaps / added files: `now` (what the person chose) and
+ * `saved` (the last saved file). Leaving Assets unmounts the panel; without this, dirty() said 0, the shell's
+ * Save (⌘S on the Scene) skipped library.json and the swap never reached the AI (e2e-save 2026-10-18: Lantern
+ * Cove sail → sail-tanbark, saved from the Scene: only placement.json was handed over). null = nothing kept.
+ */
+let kept: { now: object; saved: object; pending: number } | null = null;
 let offs: Array<() => void> = [];
 /** A file to open once the library panel is mounted (pressed from the placement side). */
 let pendingOpen: string | null = null;
+/**
+ * What the Library shows (All / 3D / 2D / Sound / Other and the search), kept across re-mounts: a change of
+ * language or layout mounts a new panel, and the Library should not jump back to All.
+ */
+const view: LibraryView = { shelf: 'all', q: '' };
 /** Files the person asked the AI to delete in this session (the whole list goes with every request). */
 const askedDelete = new Set<string>();
 
@@ -64,7 +76,7 @@ export function baseOf(gameUrl: string): string {
 
 export const libraryTool: ShellTool = {
   id: 'library',
-  label: { en: 'Assets', ja: '素材' },
+  label: { en: 'Library', ja: 'ライブラリ' },
 
   restore(json) {
     restored = json;
@@ -76,7 +88,8 @@ export const libraryTool: ShellTool = {
       host: ctx.host,
       base: () => base,
       lang: ctx.lang,
-      initial: restored === undefined ? undefined : restored,
+      initial: kept ? kept.now : restored === undefined ? undefined : restored,
+      initialSaved: kept ? kept.saved : undefined,
       requestAssets: () => ask<{ loads: LoadEntry[]; uses: Record<string, AssetRef[]> }>(
         ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
       preview: async (url, to) => {
@@ -86,6 +99,10 @@ export const libraryTool: ShellTool = {
       },
       selectObject: (key) => ctx.selectObject(key),
       selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects!(keys) : undefined,
+      showObjects: ctx.showObjects ? (o) => ctx.showObjects!(o) : undefined,
+      objects: ctx.objects,
+      files: ctx.files,
+      view,
       nameOf: (key) => {
         const it = ctx.items().find((i) => i.key === key);
         return it ? displayName(it, (k) => ctx.t(k)) : key;
@@ -135,22 +152,76 @@ export const libraryTool: ShellTool = {
   unmount() {
     for (const off of offs) off();
     offs = [];
+    const now = panel && panel.pending() > 0 ? panel.result() : null;
+    kept = panel && now ? { now, saved: panel.savedResult(), pending: panel.pending() } : null;
     panel?.destroy();
     panel = null;
   },
 
   dirty() {
-    return panel?.pending() ?? 0;
+    return panel ? panel.pending() : kept?.pending ?? 0;
   },
 
   result() {
-    return panel ? panel.result() : null;
+    return panel ? panel.result() : kept?.now ?? null;
   },
 
   saved() {
-    panel?.markSaved();
+    if (panel) panel.markSaved();
+    // Saved while closed: what was kept is the saved file now (the next mount reads it as saved).
+    else if (kept) restored = kept.now;
+    kept = null;
   },
 };
+
+/**
+ * The mounted panel's filters and head (the shell moves them: the filters into its left column on PC, its
+ * Objects | Assets switch into the head on a phone). null while Assets is not open.
+ */
+export function libraryParts(): { filters: HTMLElement; head: HTMLElement } | null {
+  return panel ? { filters: panel.filtersEl, head: panel.headEl } : null;
+}
+
+/** Draw the open Library again (the shell's selection or object list changed). No-op while it is not open. */
+export function libraryRedraw(): void {
+  panel?.redraw();
+}
+
+/** What the Library shows now ('all' | '3d' | '2d' | 'sound' | 'other'), e.g. for the shell's tests and ⌘K. */
+export function libraryShelf(): LibraryView['shelf'] {
+  return view.shelf;
+}
+
+/**
+ * Every object's files at once, for the Objects shelf ("planks.jpg" under each object, "A file" / "Drawn in code"):
+ * object key → folder paths. From the open panel's rows when it has them, else read once here (the folder and one
+ * question to the game, as filesOfObject does for one object). Never throws: no answer = an empty map.
+ */
+export async function filesOfObjects(ctx: ShellContext): Promise<Map<string, string[]>> {
+  let rows: LibraryRow[];
+  try {
+    if (panel && panel.rows().length) rows = panel.rows();
+    else {
+      const [files, game, open] = await Promise.all([
+        ctx.host.listAssets(),
+        ask<{ loads: LoadEntry[]; uses: Record<string, AssetRef[]> }>(ctx, () => ctx.send({ type: 'studio:library/assets' }), 'studio:library/assets', () => true, 4000),
+        ctx.host.open(),
+      ]);
+      rows = buildRows({ ...normalizeList(files), ...game, base: baseOf(open.gameUrl) });
+    }
+  } catch {
+    return new Map();
+  }
+  const out = new Map<string, string[]>();
+  for (const r of rows) {
+    for (const u of r.usedBy) {
+      const list = out.get(u.key) || [];
+      if (!list.includes(r.path)) list.push(r.path);
+      out.set(u.key, list);
+    }
+  }
+  return out;
+}
 
 /** One file an object uses, for the scene card's "Assets: tree.png" line. */
 export interface ObjectFile {
@@ -182,6 +253,40 @@ export async function filesOfObject(key: string, ctx: ShellContext): Promise<Obj
     return [];
   }
   return list.map((r) => ({ path: r.path, name: r.path.slice(r.path.lastIndexOf('/') + 1), src: r.type === 'image' && r.exists ? ctx.host.assetUrl(r.path) : undefined }));
+}
+
+/**
+ * A file tile's menu (context menu, 2026-10-18): how many objects use it ("Show just these objects" is dimmed at 0), or
+ * null when the Library is not open or the file is not listed.
+ */
+export function libraryFile(path: string): { users: number; exists: boolean } | null {
+  const row = panel?.rows().find((r) => r.path === path);
+  return row ? { users: new Set(row.usedBy.map((u) => u.key)).size, exists: row.exists } : null;
+}
+
+/** Run `fn` (the pick before a tile's menu) without the Library scrolling to the new detail. */
+export function libraryHoldStill(fn: () => void): void {
+  if (panel) panel.holdStill(fn);
+  else fn();
+}
+
+/** The Scene's "Show in Library →": the picked objects' detail in the open Library (no-op while it is closed). */
+export function libraryShowPick(): void {
+  panel?.showPick();
+}
+
+/** The files picked in the open Library (none while it is closed). */
+export function libraryPickedFiles(): string[] {
+  return panel ? panel.pickedFiles() : [];
+}
+
+/** What a Library tile's menu does, on the open panel (no-op while it is closed). */
+export function libraryAct(what: 'open' | 'users' | 'replace' | 'detail', path = ''): void {
+  if (!panel) return;
+  if (what === 'open') panel.open(path);
+  else if (what === 'users') panel.showUsers(path);
+  else if (what === 'replace') panel.replace(path);
+  else panel.revealDetail();
 }
 
 /** Switch to Assets with one file's detail open (from the scene card). */

@@ -1,0 +1,102 @@
+// Every keyboard shortcut of the editor, in ONE table (basics pass, 2026-10-18: "undo, redo… need keyboard
+// shortcuts, and need buttons too" — a request from a try of the editor). The table is what the tooltips, the ⌘K rows and the shortcut sheet
+// (`?`, shortcuts.ts) print, so a key shown anywhere is the key that works. The keys themselves are still read in
+// main.ts `shortcut()` and, while the game frame has focus, in bridge/input.ts (M/H/T/S, 1–4, R, Q/E, arrows…);
+// test/keymap.test.ts keeps this table and those two places saying the same.
+//
+// Choices (for people used to other 3D / 2D tools):
+// - ⌘ on Apple keyboards, Ctrl elsewhere; both work on every system (main.ts reads ctrl || meta).
+// - Redo: ⇧⌘Z and ⌘Y (Mac), Ctrl+Y and Ctrl+Shift+Z (Windows). The first one is the one a tooltip shows.
+// - Delete: Delete or Backspace (⌫). Duplicate ⌘D (as Figma / Blender's Shift+D family). Copy / paste ⌘C / ⌘V
+//   (paste = a duplicate of what was copied, next to it).
+// - Tools: the English initials M / H / T / S (since tool modes, 2026-10-18) and 1–4 in the strip's order.
+//   NOT W / E / R (Unity, Maya): E already turns 15° and R picks the next turn axis, and taking them would change
+//   what people here learned in the first wave. Numbers are free and are what many tools use for modes.
+// - W A S D (+ E / Q) fly the 3D camera as in the engines (camera-wasd, 2026-10-18): alone with nothing picked; with a
+//   pick only while the right button is held, so S (Size) and E / Q (turn) keep their meaning (bridge/input.ts).
+// - `?` (Shift+/) opens the sheet; Esc closes it.
+// - None of these act while typing in a field (main.ts): the field keeps its own ⌘Z, ⌘A, ⌘C, ⌘V, Delete.
+//   Only ⌘S (save) and ⌘K (all actions) still work there.
+
+export type KeyGroup = 'edit' | 'tools' | 'view' | 'layers';
+
+export interface KeyDef {
+  /** Also the i18n key `keys.<id>` for its name in the sheet (unless `label` names another string). */
+  id: string;
+  group: KeyGroup;
+  /** Each entry is one way to press it, written for a Mac ("⌘Z") — `keyText` turns it into "Ctrl+Z" elsewhere. */
+  keys: string[];
+  /** i18n key for the name, when another string already says it (btn.undo…). */
+  label?: string;
+  /** Only in 3D / only in 2D. */
+  dim?: '2d' | '3d';
+  /** i18n key of a short line under the name in the sheet: WHEN the key works, if that needs saying (fly). */
+  note?: string;
+}
+
+export const KEYMAP: KeyDef[] = [
+  { id: 'undo', group: 'edit', keys: ['⌘Z'], label: 'btn.undo' },
+  { id: 'redo', group: 'edit', keys: ['⇧⌘Z', '⌘Y'], label: 'btn.redo' },
+  { id: 'copy', group: 'edit', keys: ['⌘C'] },
+  { id: 'paste', group: 'edit', keys: ['⌘V'] },
+  { id: 'duplicate', group: 'edit', keys: ['⌘D'], label: 'ops.copy' },
+  { id: 'remove', group: 'edit', keys: ['⌫', 'Delete'], label: 'ops.remove' },
+  { id: 'selectAll', group: 'edit', keys: ['⌘A'], label: 'pal.selectAll' },
+  { id: 'deselect', group: 'edit', keys: ['Esc'], label: 'ops.selectNone' },
+  { id: 'save', group: 'edit', keys: ['⌘S'], label: 'btn.save' },
+  { id: 'move', group: 'tools', keys: ['M', '1'] },
+  { id: 'lift', group: 'tools', keys: ['H', '2'], dim: '3d' },
+  { id: 'rotate', group: 'tools', keys: ['T', '3'] },
+  { id: 'scale', group: 'tools', keys: ['S', '4'] },
+  { id: 'axis', group: 'tools', keys: ['R'], dim: '3d' },
+  { id: 'noTool', group: 'tools', keys: ['Esc'] },
+  { id: 'nudge', group: 'tools', keys: ['←↑↓→', '⇧ ←↑↓→'] },
+  { id: 'turnStep', group: 'tools', keys: ['Q', 'E'] },
+  { id: 'liftStep', group: 'tools', keys: ['PgUp', 'PgDn'], dim: '3d' },
+  { id: 'sizeStep', group: 'tools', keys: ['+', '−'] },
+  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play' },
+  { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
+  { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
+  { id: 'look', group: 'view', keys: ['Space'] },
+  // Camera up / down (camera-up pass, 2026-10-18; merged with basics in integrate1): E / Q with nothing picked, and
+  // Space+E / Q with a pick (plain E / Q turn the pick then — the turnStep row). Written as Space+E / Q here so one
+  // key still does one thing in this table. The name stays short (a longer one, "… (E / Q with nothing picked)", wrapped
+  // to three lines in the sheet); the ⌘K rows show plain E / Q when nothing is picked.
+  { id: 'camera', group: 'view', keys: ['Space+E', 'Space+Q'], dim: '3d' },
+  // Fly (camera-wasd pass, 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"): one row,
+  // the rule under its name (`note`, also the ⌘K row's words): WASD alone with nothing picked; with a pick, hold the
+  // right button (S is the Size tool and E / Q turn then). E / Q fly up / down in the same moments (the camera row).
+  { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note' },
+  { id: 'palette', group: 'view', keys: ['⌘K'], label: 'foot.palette' },
+  { id: 'shortcuts', group: 'view', keys: ['?'] },
+  { id: 'forward', group: 'layers', keys: ['⌘]'], label: 'layer.forward', dim: '2d' },
+  { id: 'backward', group: 'layers', keys: ['⌘['], label: 'layer.backward', dim: '2d' },
+  { id: 'toFront', group: 'layers', keys: ['⇧⌘]'], label: 'layer.toFront', dim: '2d' },
+  { id: 'toBack', group: 'layers', keys: ['⇧⌘['], label: 'layer.toBack', dim: '2d' },
+];
+
+/** ⌘K / Ctrl+K: the Mac spelling as written in KEYMAP, or the Windows / Linux one. */
+export function keyText(mac: string, onMac: boolean): string {
+  if (onMac) return mac;
+  // Windows order is Ctrl+Shift+Z; the Mac writes ⇧⌘Z.
+  const shift = mac.includes('⇧') && mac !== '⇧ ←↑↓→';
+  let k = mac.replace('⇧', '').replace('⌘', '');
+  if (k === '⌫') k = 'Backspace';
+  const parts = [mac.includes('⌘') ? 'Ctrl' : '', shift ? 'Shift' : '', k].filter(Boolean);
+  return mac === '⇧ ←↑↓→' ? 'Shift ←↑↓→' : parts.join('+');
+}
+
+/** Every way to press `id` on this system ("⇧⌘Z", "⌘Y"), first = the one tooltips show. */
+export function keysOf(id: string, onMac: boolean): string[] {
+  const d = KEYMAP.find((k) => k.id === id);
+  if (!d) return [];
+  // On Windows Ctrl+Y is the redo people know first (Office); Ctrl+Shift+Z second.
+  const keys = !onMac && id === 'redo' ? ['⌘Y', '⇧⌘Z'] : !onMac && id === 'remove' ? ['Delete', '⌫'] : d.keys;
+  return keys.map((k) => keyText(k, onMac));
+}
+
+/** The key a tooltip or a ⌘K row shows for `id` ("⌘Z", "Ctrl+Y"), or ''. */
+export const keyOf = (id: string, onMac: boolean): string => keysOf(id, onMac)[0] ?? '';
+
+/** The tooltip line: "Undo: move lighthouse" + two spaces + "⌘Z" (no brackets: the key reads as a key). */
+export const tipText = (label: string, key: string): string => (key ? `${label}  ${key}` : label);

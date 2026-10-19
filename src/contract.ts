@@ -77,7 +77,11 @@ export type TurnAxis = 'y' | 'x' | 'z';
  * middle drag, or Space held; one finger = the tool, two = looking on touch.
  */
 export type StripTool = 'move' | 'rotate' | 'lift' | 'scale';
-/** Resizing several objects: `spread` = the gaps grow too, `inplace` = each grows on its own spot. */
+/**
+ * Resizing or turning several objects: `spread` ("together") = the whole arrangement as one piece (the gaps grow;
+ * the places turn round the middle of the selection), `inplace` ("each in place") = each one on its own spot.
+ * The turn uses the same two words since 2026-10-18 (play test: "no turn options with several picked").
+ */
 export type GroupScaleMode = 'spread' | 'inplace';
 
 /** One movable object as listed by an adapter. */
@@ -261,6 +265,12 @@ export interface StudioAdapter {
    */
   foot?(key: string): number[] | null;
   /**
+   * 3D, optional: the middle of the object's visual box, in its parent's space (the space of `pose.p`). Several
+   * objects tilted "together" turn round the middle of all their boxes (2026-10-18); without it, round the middle
+   * of their origins.
+   */
+  middle?(key: string): number[] | null;
+  /**
    * Optional: the share (0–1) of the game's view the object's on-screen box
    * covers, clipped to the view. Absent = the editor uses `anchor().rect`.
    * 3D adapters give it because a projected box drops the corners behind the
@@ -330,6 +340,23 @@ export interface AdapterView {
   orbit?(dx: number, dy: number): void;
   /** Pan by a screen delta in px. */
   pan(dx: number, dy: number): void;
+  /**
+   * 3D only, optional: the camera straight up (dy > 0) or down by a screen delta in px, looking the same way — the
+   * scene slides down the screen by dy px at the point the camera turns round. pan keeps the height, so without this
+   * there was no way up (play test 2026-10-18). Only on the person's own input (the ↑↓ buttons, E / Q, ⌘K); never by
+   * itself. Adapters without it: the editor shows no camera up / down.
+   */
+  rise?(dy: number): void;
+  /**
+   * 3D only, optional: fly (WASD, camera-wasd pass 2026-10-18 — the habit of every 3D engine). Move the camera by
+   * `right` / `up` / `fwd`, each in seconds of travel at the adapter's normal speed, which it picks from the scene's
+   * size so a small room and a big harbour feel the same (the bridge passes the frame's dt, ×3 with Shift). fwd
+   * follows the line of sight, up is straight up. Only on the person's own keys; never by itself. Adapters without
+   * it: WASD does nothing and E / Q fall back to rise steps.
+   */
+  fly?(right: number, up: number, fwd: number): void;
+  /** 3D only, optional (with fly): turn the view where the camera stands, by a screen delta in px (right-drag while flying). */
+  look?(dx: number, dy: number): void;
   /** Zoom by `factor` (> 1 = closer) around screen point (x, y) if given. */
   zoom(factor: number, x?: number, y?: number): void;
   /** Fit all movable objects in view. */
@@ -713,6 +740,9 @@ export interface SelfCheckResult {
  */
 export const MSG_PREFIX = 'studio:';
 
+/** A fly key (WASD + E / Q up / down), by its place on the keyboard (KeyboardEvent.code minus "Key"), lower case. */
+export type FlyKey = 'w' | 'a' | 's' | 'd' | 'e' | 'q';
+
 export type ViewAction =
   | { action: 'frameAll' }
   /** Back to the view the editor opened on (adapter view.home, else frameAll). */
@@ -721,6 +751,8 @@ export type ViewAction =
   | { action: 'zoom'; factor: number }
   | { action: 'orbit'; dx: number; dy: number }
   | { action: 'pan'; dx: number; dy: number }
+  /** Camera up (`by` > 0) / down by this share of the game's height (⌘K, E / Q in the editor page); 3D with view.rise. */
+  | { action: 'rise'; by: number }
   | { action: 'restore'; state: unknown };
 
 /**
@@ -748,8 +780,11 @@ export type ShellToBridge =
    * Make copies. Without `pose` the bridge places each copy a little to the
    * side (or, for a copy of a copy, at the same spacing again) and answers
    * with placement/added. With `pose` (redo, reopening) it puts it there.
+   * `at: 'view'` (the Library's "Add to scene", 2026-10-18): the copies without a pose go to the middle of what the
+   * person sees instead — the free part of the game (what the card and the ask bar leave), on the original's ground
+   * in 3D — so the new thing is in sight wherever the original stands (a pine far behind the camera).
    */
-  | { type: 'studio:placement/copy'; items: Array<{ key: string; from: string; pose?: Pose }> }
+  | { type: 'studio:placement/copy'; items: Array<{ key: string; from: string; pose?: Pose }>; at?: 'view' }
   /** Delete objects from the picture (undo: placement/restore). */
   | { type: 'studio:placement/remove'; keys: string[] }
   | { type: 'studio:placement/restore'; keys: string[] }
@@ -785,6 +820,12 @@ export type ShellToBridge =
   /** Space is held in the shell: a drag in the game looks around even with a tool chosen. */
   | { type: 'studio:placement/look'; on: boolean }
   /**
+   * The fly keys held in the editor page (W A S D E Q, nothing picked or Space+E / Q; camera-wasd 2026-10-18), all of
+   * them each time one goes down or up — [] stops. The bridge moves the camera every frame while any is held (it
+   * reads the same keys itself while the game frame has focus). `fast`: Shift.
+   */
+  | { type: 'studio:core/fly'; keys: FlyKey[]; fast: boolean }
+  /**
    * Close the strip's choices (turn axis / size mode): a press anywhere in the editor page, or Escape there,
    * while they are open (tool options, 2026-10-18: "click outside or Esc closes it", also outside the game frame).
    */
@@ -801,7 +842,9 @@ export type BridgeToShell =
   | { type: 'studio:core/hello'; contract: number }
   /** Waiting for the first frame / an adapter. `reason` explains a dead end. */
   | { type: 'studio:core/wait'; reason?: 'no-adapter' | 'no-frame' | 'no-objects' }
-  | { type: 'studio:core/ready'; kind: AdapterKind; dim: Dim; version?: string; editing: boolean }
+  /** `rise`: the edit camera can go up / down (3D, adapter view.rise): the editor page lists Camera up / down in ⌘K.
+   *  `fly`: it can fly with WASD (adapter view.fly): the editor page sends studio:core/fly for those keys. */
+  | { type: 'studio:core/ready'; kind: AdapterKind; dim: Dim; version?: string; editing: boolean; rise?: boolean; fly?: boolean }
   | { type: 'studio:core/view-state'; state: unknown }
   | { type: 'studio:core/check'; result: SelfCheckResult }
   /** A key pressed while the game iframe has focus (so shortcuts work everywhere). */
@@ -831,6 +874,13 @@ export type BridgeToShell =
   | { type: 'studio:placement/tool'; tool: StripTool | null }
   /** The strip's choices (the ▾ on turn / size) opened or closed: the editor page closes them on a press or Escape. */
   | { type: 'studio:placement/menu'; open: boolean }
+  /**
+   * A right-click (Mac: also Control-click) or a long press (touch, UI.longPressMs) on the game while editing: the
+   * editor page opens its menu for that place (shell/context-menu.ts). `key` = the object under the pointer (null =
+   * nothing, or only the ground / background); when it was not picked yet, the bridge picked it first — without
+   * moving the camera — and sent `placement/selected` before this. `x` / `y` = the point in the game page's own px.
+   */
+  | { type: 'studio:placement/context'; key: string | null; x: number; y: number; touch: boolean }
   | { type: 'studio:library/assets'; loads: LoadEntry[]; uses: Record<string, AssetRef[]> }
   | { type: 'studio:library/previewed'; url: string; ok: boolean }
   /** Game tools registered by .studio/tools.js. */
@@ -891,6 +941,11 @@ export interface RequestObject {
   /** The pose in the editor at the time of the request (may not be saved yet). */
   pose?: Pose;
   unstable?: boolean;
+  /**
+   * The asset files this object is drawn with (folder paths, the Library's "Asset" row), when the editor knows them
+   * ("use the Library", 2026-10-18): "make this enemy the boss" then tells the AI which model the boss is.
+   */
+  files?: string[];
 }
 
 /** What the shell hands to host.request(). */
@@ -919,6 +974,12 @@ export interface StudioRequestInput {
    * can put new things where the person is looking from the start.
    */
   view?: { eye: [number, number, number]; target: [number, number, number] };
+  /**
+   * "ask" only: asset files picked in the Library that the words are about (folder paths, ≤ 50; "use the Library",
+   * 2026-10-18). With "Add this to the scene" it asks for a new object made from the file, put where `view` looks;
+   * otherwise the file is what "this" means ("use this sound when the door opens").
+   */
+  assets?: string[];
 }
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1041,12 +1102,6 @@ export interface StudioHost {
    * watching.
    */
   readonly offline?: boolean;
-  /**
-   * With `offline`: where to get Game Studio (design review wave 1, W1-6, 2026-10-17). The demo shows no ask box (nobody would
-   * read what is typed there) but one line in its place, "In Claude Code, your AI makes the changes you type here.
-   * Get Game Studio →", linking here. Left out = the line without the link.
-   */
-  readonly getUrl?: string;
   /**
    * Optional KUMODeck sign-in for making pictures and 3D models with AI, paid
    * from the creator's KUMODeck balance (2026-10-16). Only the local server has
@@ -1301,6 +1356,44 @@ export interface ShellTool {
   restore?(json: object | null): void;
 }
 
+/**
+ * The objects as the Library shows them (ShellContext.objects, "one Library" 2026-10-18). The shell owns the
+ * objects and the selection; the Library owns its page (search, the All / Objects / Files filter, the grid, the
+ * detail on the right) and asks this for the objects' part of each. Names are untrusted text: the elements are
+ * built with textContent only.
+ */
+export interface LibraryObjects {
+  /** Every object in the game (counted under "3D" or "2D" in the Library's filters, by dim()). */
+  count(): number;
+  /**
+   * Whether the game's objects are 3D or 2D: the Library's one row of filters (All / 3D / 2D / Sound / Other, a review
+   * 2026-10-18) puts them under that one. Replaced the objects' own filters (Unnamed, Duplicates, made from a file /
+   * drawn in code), which went with the old four groups.
+   */
+  dim(): Dim;
+  /** Only the objects that use this file (a file's "Show just these objects"); null = all. */
+  showFile(path: string | null): void;
+  /** "planks.jpg · used by 3 ×" while narrowed to one file's objects, else null. */
+  band(): HTMLElement | null;
+  /** The tiles for this search and filter (one per kind group, "pine ×3") and how many objects they hold. */
+  tiles(q: string): { tiles: HTMLElement[]; n: number };
+  /** The picked objects' detail and which ones they are (to tell a new pick), or null with nothing picked. */
+  detail(): { el: HTMLElement; key: string } | null;
+  /** Pick one object here (a name in a file's detail), without leaving the Library or moving the camera. */
+  select(key: string): void;
+  /** Drop the pick (a file was opened: one thing open at a time). */
+  clear(): void;
+  /** Multi-select / Done, for the Library's bar. */
+  multiButton(): HTMLElement;
+  /**
+   * Called right before a press on an object tile picks it: the Library closes the file it had open — unless `add`
+   * (Shift, or Multi-select): then the picked files stay picked with the objects ("use the Library", 2026-10-18).
+   */
+  onPick(fn: (add: boolean) => void): void;
+  /** Multi-select is on: a press on a file's tile adds it to the pick too. */
+  multi(): boolean;
+}
+
 export interface ShellContext {
   host: StudioHost;
   lang: Lang;
@@ -1320,6 +1413,19 @@ export interface ShellContext {
    * that uses one asset file.
    */
   selectObjects?(keys: string[]): void;
+  /**
+   * Optional (added 2026-10-18, the Objects shelf): show the objects as a grid instead of the game — `file` = only
+   * the objects that use this asset file, `key` = with this object selected there. Shells without it leave it out
+   * (tools then select in the game with selectObject / selectObjects). The shell of "one Library" (same day, later)
+   * gives `objects` instead and leaves this out: the Library then does both itself, without leaving its page.
+   */
+  showObjects?(o: { file?: string; key?: string }): void;
+  /**
+   * Optional (added 2026-10-18, "one Library"): the objects placed in the game, for the Library to show next to the
+   * files in ONE grid (a try of the editor: "put objects and files in one library; the left has Scene and Library"). Shells
+   * without it leave it out and the Library lists files only, as before.
+   */
+  objects?: LibraryObjects;
   switchTool(id: ToolId): void;
   /** Tell the shell that dirty() changed (re-renders the Save button). */
   changed(): void;
@@ -1331,6 +1437,28 @@ export interface ShellContext {
    * Used by the Library's "Ask my AI to delete it".
    */
   ask(r: Omit<StudioRequestInput, 'lang'>): Promise<boolean>;
+  /**
+   * Optional ("use the Library", 2026-10-18): the Library's files as things to use, not only to look at. Shells
+   * without it leave it out (the Library then has no "Add to scene" / "Ask your AI…" on files).
+   */
+  files?: LibraryFileUse;
+}
+
+/** What the Library does with its files through the shell (ShellContext.files). Paths are folder paths. */
+export interface LibraryFileUse {
+  /**
+   * The files picked in the Library changed (a file's detail opened, or several picked with Shift / Multi-select):
+   * the ask box's chip names them, so the next words are about them.
+   */
+  picked(paths: string[]): void;
+  /**
+   * "Add to scene" on files: a new object can only be made from a file by the AI (it writes the code), so the ask box
+   * gets "Add this to the scene" with the files' chip — nothing is sent until Enter. Absent = no AI behind this host
+   * (the web demo): the button is dimmed and says why.
+   */
+  add?(paths: string[]): void;
+  /** "Ask your AI…" about files: the cursor in the ask box with their chip. Absent = no AI (the web demo). */
+  ask?(paths: string[]): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1403,6 +1531,14 @@ export const UI = {
   /** Long-press on rotate/scale/lift handles repeats; the whole run is one undo step. */
   holdDelayMs: 350,
   holdRepeatMs: 60,
+  /**
+   * A press held this long without moving opens choices: the strip's turn / size options (on their button) and the
+   * menu of the place pressed (anywhere else on the game, the list's rows, the Library's tiles; context menu,
+   * 2026-10-18). One length for both, so a long press feels the same everywhere; they never meet, because the strip's
+   * long press is only on its buttons. 450 ms: past a tap (~100–200 ms) and a hesitant press-then-drag, short of
+   * iOS's 500 ms callout.
+   */
+  longPressMs: 450,
   /** Narrower than this = phone layout (bottom bar instead of right column). */
   phoneMaxWidth: 720,
 } as const;

@@ -10,7 +10,8 @@
 // (src/hosts/browser); no AI is connected.
 //
 // Output:
-//   index.html, strings.js      sample list (src/hosts/browser/index.html) and its words
+//   index.html, lp.js,          the front page (src/hosts/browser/index.html): what Game Studio is, the install
+//   strings.js                  line, the editor itself in a frame with the two samples, and its words
 //   favicon.ico, favicon.svg,   KUMODeck's icon (scripts/web-demo-icon/), linked from both pages
 //   apple-touch-icon.png
 //   thumbs/<id>.png             each starter's thumb.png, for the list
@@ -44,6 +45,16 @@ import { readStarters, starterFiles } from '../src/server/starters.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SRC = join(ROOT, 'src');
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+// Where the front page's "View on GitHub" points (the repository the install line installs from), read from the Claude
+// Code manifest so the address is written in one place only. Same as the readme branch's "Use it on your own game" line
+// (2026-10-19, GTM plan D); the front page replaced that list page and keeps its way on to GitHub.
+const REPO = JSON.parse(readFileSync(join(ROOT, '.claude-plugin/plugin.json'), 'utf8')).repository || null;
+// The one line people paste into their AI: the first code block of INSTALL.md ("For people: … paste this one line"),
+// so the front page never drifts from the install page.
+const INSTALL = (/```\n([^\n]+)\n```/.exec(readFileSync(join(ROOT, 'INSTALL.md'), 'utf8')) || [])[1] || null;
+if (!INSTALL) throw new Error('INSTALL.md has no one-line code block: update build-web-demo.mjs');
+// The front page's "Optional: KUMODeck" note links here (the same address as the README's "Sign in with KUMODeck").
+const KUMODECK = 'https://kumodeck.com';
 const BANNER = `/* KUMODeck Game Studio ${pkg.version} (web demo) — MIT License — built file, edit src/ instead */`;
 
 // The samples = the starters (starters/<id>/starter.json), 3D first, the same list and the same
@@ -118,6 +129,7 @@ write('favicon.ico', icoOf(readFileSync(join(ICON, 'favicon-32.png'))));
 write('favicon.svg', readFileSync(join(ICON, 'favicon.svg')));
 write('apple-touch-icon.png', readFileSync(join(ICON, 'apple-touch-icon.png')));
 write('strings.js', readFileSync(join(SRC, 'hosts/browser/strings.js'), 'utf8'));
+write('lp.js', readFileSync(join(SRC, 'hosts/browser/lp.js'), 'utf8'));
 
 // ---- 2. the samples ----
 const vendorWanted = new Set(); // CDN URLs to copy
@@ -193,7 +205,7 @@ for (const s of SAMPLES) {
     config,
   });
 }
-write('studio/games.json', JSON.stringify({ version: 1, games }, null, 2) + '\n');
+write('studio/games.json', JSON.stringify({ version: 1, repo: REPO, install: INSTALL, kumodeck: KUMODECK, games }, null, 2) + '\n');
 
 // ---- 3. the CDN modules, with every module they import ----
 const done = new Set();
