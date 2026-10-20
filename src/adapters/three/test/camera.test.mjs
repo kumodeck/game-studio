@@ -96,24 +96,28 @@ test('rise moves the camera straight up and down, looking the same way', () => {
 });
 
 // Fly (WASD, camera-wasd 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"): fly moves
-// the camera and its turning point together — forward along the line of sight, right level, up straight up — at a
-// speed taken from the scene, so a small room and a big harbour feel the same; look turns where the camera stands.
+// the camera and its turning point together — forward LEVEL (wasd-level 2026-10-19, a try of the editor: "W/S as level forward /
+// back"; it followed the line of sight before), right level, up straight up — at a speed taken from the scene, so a
+// small room and a big harbour feel the same; look turns where the camera stands.
 const eyeOf = (view) => (view.apply(1.6), view.camera.at.slice());
 const lookOf = (view) => norm(sub(view.camera.looking, view.camera.at));
+/** The level part of a direction, unit length. */
+const levelOf = (d) => norm([d[0], 0, d[2]]);
 
-test('fly: W follows the line of sight, D goes level to the right, E straight up, the view keeps its direction', () => {
+test('fly: W goes level the way the camera faces, D level to the right, E straight up, the view keeps its direction', () => {
   const gc = fakeCamera([0, 6, 20], [0, 1, 0]);
   const view = createEditView(gc);
   view.fromCamera(gc, [0, 0, 0]);
   const s0 = view.state();
   const e0 = eyeOf(view);
-  const dir = lookOf(view);
+  const dir = levelOf(lookOf(view));
   view.fly(0, 0, 1);
   const e1 = eyeOf(view);
   const moved = sub(e1, e0);
   const len = Math.hypot(...moved);
   assert.ok(len > 0.1, `W moved ${len}`);
-  for (let i = 0; i < 3; i++) assert.ok(Math.abs(moved[i] / len - dir[i]) < 1e-9, `W went ${moved}, the view looks ${dir}`);
+  assert.ok(Math.abs(moved[1]) < 1e-9, `W changed the height by ${moved[1]}`);
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(moved[i] / len - dir[i]) < 1e-9, `W went ${moved}, the view faces ${dir}`);
   for (const k of ['yaw', 'pitch', 'distance']) assert.equal(view.state()[k], s0[k], `W changed ${k}`);
   view.fly(0, 0, -1);
   const back = eyeOf(view);
@@ -124,6 +128,32 @@ test('fly: W follows the line of sight, D goes level to the right, E straight up
   view.fly(-1, 1, 0);
   const up = sub(eyeOf(view), e0);
   assert.ok(up[1] > 0.1 && Math.abs(up[0]) < 1e-9 && Math.abs(up[2]) < 1e-9, `E went ${up}`);
+  view.fly(0, -2, 0);
+  const down = sub(eyeOf(view), e0);
+  assert.ok(down[1] < -0.1 && Math.abs(down[0]) < 1e-9 && Math.abs(down[2]) < 1e-9, `Q went ${down}`);
+});
+
+test('fly: looking steeply down (and turned), W / S glide over the ground at the same height, a full step', () => {
+  // Above the scene, looking down ~70° and toward -x+z (not along an axis, so a yaw mix-up would show).
+  const gc = fakeCamera([12, 30, -8], [0, 0, 0]);
+  const view = createEditView(gc);
+  view.fromCamera(gc, [0, 0, 0]);
+  const s0 = view.state();
+  assert.ok(s0.pitch > 60 * Math.PI / 180, `the camera looks down ${s0.pitch} rad`);
+  const e0 = eyeOf(view);
+  const dir = levelOf(lookOf(view));
+  view.fly(0, 0, 1);
+  const moved = sub(eyeOf(view), e0);
+  const len = Math.hypot(...moved);
+  assert.ok(Math.abs(moved[1]) < 1e-9, `W looking down changed the height by ${moved[1]}`);
+  for (let i = 0; i < 3; i++) assert.ok(Math.abs(moved[i] / len - dir[i]) < 1e-9, `W went ${moved}, the view faces ${dir} over the ground`);
+  // A full step: the same distance as D (level sideways), not the cos(pitch) share a look-along W would give.
+  view.fly(0, 0, -1);
+  const e1 = eyeOf(view);
+  view.fly(1, 0, 0);
+  assert.ok(Math.abs(Math.hypot(...sub(eyeOf(view), e1)) - len) < 1e-9, 'W and D are not the same speed');
+  view.fly(-1, 0, -1);
+  assert.ok(Math.abs(eyeOf(view)[1] - e0[1]) < 1e-9, 'S looking down changed the height');
 });
 
 test('fly: the speed follows the scene — the same share of the view per second in a small and a big scene', () => {

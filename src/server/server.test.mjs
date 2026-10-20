@@ -59,7 +59,7 @@ const placement = (objects) => JSON.stringify({ version: 1, tool: 'placement', d
 test('no pass, wrong pass, wrong Host: refused before anything else', async (t) => {
   const s = await start();
   t.after(() => s.srv.close());
-  for (const p of ['/', '/index.html', '/__studio/', '/__studio/api/open', '/__studio/api/assets']) {
+  for (const p of ['/', '/index.html', '/__studio/', '/__studio/api/open', '/__studio/api/assets', '/__studio/api/link']) {
     const r = await s.req('GET', p, { headers: { cookie: '' } });
     assert.equal(r.status, 403, p);
   }
@@ -323,6 +323,18 @@ test('open, range requests and the fallback page', async (t) => {
   assert.equal((await s.req('GET', '/__studio/api/lan-qr.svg')).status, 404); // only with --lan
 });
 
+test('"Open large": the printed link, pass included, only to a page holding the cookie', async (t) => {
+  const s = await start();
+  t.after(() => s.srv.close());
+  const r = await s.req('GET', '/__studio/api/link');
+  assert.equal(r.status, 200);
+  assert.equal(JSON.parse(r.text).url, s.srv.url);
+  // The link opens the editor in a fresh browser (no cookie yet), as the side window's large window does.
+  const fresh = await s.req('GET', new URL(JSON.parse(r.text).url).pathname + new URL(JSON.parse(r.text).url).search, { headers: { cookie: '' } });
+  assert.equal(fresh.status, 302);
+  assert.equal((await s.req('GET', '/__studio/api/link', { headers: { cookie: '' } })).status, 403);
+});
+
 test('--lan mode serves the QR of the editor link', async (t) => {
   const s = await start({ isLan: true });
   t.after(() => s.srv.close());
@@ -490,6 +502,31 @@ test('request: kept as .studio/requests/<id>.json first, then one line', async (
   assert.equal((await listRequests(s.root)).length, 1);
   // Never served to the browser.
   assert.equal((await s.req('GET', `/.studio/requests/${v.id}.json`)).status, 404);
+});
+
+test('request: "play" (asked while playing, §3.5) keeps its picture as .studio/play/<id>.jpg and names it in the record', async (t) => {
+  const s = await start();
+  t.after(() => s.srv.close());
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3, 4]);
+  const body = JSON.stringify({ kind: 'play', text: 'the character vanished here', lang: 'en', dim: '3d',
+    shot: 'data:image/jpeg;base64,' + jpeg.toString('base64'), view: { eye: [0, 2, 5], target: [0, 1, -5] },
+    near: [{ key: 'hero', d: 1.5 }], logs: [{ level: 'error', text: 'TypeError: hero is undefined', ago: 0.4 }] });
+  const r = await s.req('POST', '/__studio/api/request', { body });
+  assert.equal(r.status, 200, r.text);
+  const v = JSON.parse(r.text);
+  assert.match(v.id, /^\d{8}-\d{6}-\d{3}-play-[0-9a-f]{4}$/);
+  const rec = JSON.parse(await fs.readFile(path.join(s.root, '.studio/requests', `${v.id}.json`), 'utf8'));
+  assert.equal(rec.shot, `.studio/play/${v.id}.jpg`, 'the record names the file, not the bytes');
+  assert.deepEqual(await fs.readFile(path.join(s.root, rec.shot)), jpeg);
+  assert.deepEqual(rec.near, [{ key: 'hero', d: 1.5 }]);
+  assert.equal(rec.logs[0].level, 'error');
+  assert.deepEqual(s.lines, [`studio: request play .studio/requests/${v.id}.json "the character vanished here" (while playing, picture .studio/play/${v.id}.jpg, 1 error)`]);
+  // Never served to the browser.
+  assert.equal((await s.req('GET', `/${rec.shot}`)).status, 404);
+  // A picture that is not one is refused, and nothing is kept.
+  const bad = await s.req('POST', '/__studio/api/request', { body: JSON.stringify({ kind: 'play', text: 'x', shot: 'data:text/html;base64,PGgxPg==' }) });
+  assert.equal(bad.status, 422);
+  assert.equal((await listRequests(s.root)).length, 1);
 });
 
 test('request: next steps — KUMODeck ones keep next-step.md and their line, AI ones get a request line', async (t) => {

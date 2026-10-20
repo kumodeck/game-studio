@@ -31,7 +31,7 @@ import {
   RESULT_FILES, resolveInside, mimeOf, injectEditScript, writeResultFile, readResultFile, writeStudioNote, readGameAdapter, readStudioFile, writeStudioFile,
   readStudioFileInfo, writeNextStep, addAsset, httpError,
 } from './files.mjs';
-import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, KUMODECK_STEP_IDS, FILE_STEP_IDS } from '../schema/handoff.mjs';
+import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, KUMODECK_STEP_IDS, FILE_STEP_IDS, HANDOFF_LIMITS } from '../schema/handoff.mjs';
 import { listAssets } from './assets.mjs';
 import { nextStepMarkdown, NEXT_STEP_IDS } from './next-steps.mjs';
 import { encodeQR, qrToSvg } from './qr.mjs';
@@ -190,6 +190,11 @@ async function handleApi(req, res, u, ctx) {
     });
   }
 
+  // The side window's "Open large" (2026-10-19): the printed link, pass included, for the same editor in a big
+  // window. Only to a page that already holds the pass's cookie (every API call is checked for it above), so it
+  // gives nothing new to anyone; it is never logged.
+  if (route === 'link' && m === 'GET') return sendJson(res, 200, { url: ctx.url });
+
   const file = /^files\/(placement|library)$/.exec(route);
   if (file && m === 'GET') {
     const tool = file[1];
@@ -251,7 +256,8 @@ async function handleApi(req, res, u, ctx) {
   // stdout line. The file is the main path (the agent reads every record when the person says
   // "look"); the line is a bonus that wakes an agent that happens to be watching the output.
   if (route === 'request' && m === 'POST') {
-    const body = await readBody(req, 64 * 1024);
+    // 64 KB of words and objects, plus a "play" request's picture (HANDOFF_LIMITS.maxShot, §3.5).
+    const body = await readBody(req, 64 * 1024 + HANDOFF_LIMITS.maxShot);
     let raw;
     try {
       raw = JSON.parse(body.toString('utf8'));
@@ -272,7 +278,15 @@ async function handleApi(req, res, u, ctx) {
       ctx.log(`studio: next-step ${v.step} ${p}`);
       return sendJson(res, 200, { ok: true, id: rec.id, at: rec.at, path: rec.path, undo: rec.undo, ...(await readWatch(ctx.rootReal)) });
     }
-    const rec = await recordRequest(ctx, v);
+    // "play" (asked while playing, §3.5): the picture goes to its own file and the record names it, so the request
+    // stays a small JSON the AI reads whole and opens the picture only when it wants to.
+    let fixedId;
+    if (v.kind === 'play' && v.shot) {
+      fixedId = requestId('play');
+      v.shot = await keepPlayShot(ctx.rootReal, fixedId, v.shot);
+      if (!v.shot) delete v.shot;
+    }
+    const rec = await recordRequest(ctx, v, fixedId);
     // The same line `studio.mjs --watch` prints for it (ai-watch.mjs), so either source reads alike.
     ctx.log(handoffLine(v, rec.path));
     // `watching`: is an AI's watch running right now? The editor says "your AI isn't watching" at
@@ -445,6 +459,34 @@ async function recordRequest(ctx, v, fixedId) {
   const rec = { version: 1, id, at: now.toISOString(), ...v };
   const p = await writeStudioFile(ctx.rootReal, `requests/${id}.json`, JSON.stringify(rec, null, 2) + '\n');
   return { id, at: now.getTime(), path: p, undo };
+}
+
+/** How many pictures of "play" requests to keep in .studio/play/ (the newest; older ones were handled long ago). */
+const PLAY_SHOTS_KEPT = 24;
+
+/**
+ * Write a "play" request's picture to .studio/play/<id>.jpg (or .png) and return that path, or null when it could not
+ * be written (the request is kept anyway: the words and the log still say what happened). Old pictures beyond
+ * PLAY_SHOTS_KEPT are removed, newest kept (ids sort by time).
+ */
+async function keepPlayShot(rootReal, id, dataUrl) {
+  const m = /^data:image\/(jpeg|png);base64,(.*)$/.exec(dataUrl);
+  if (!m) return null;
+  const ext = m[1] === 'png' ? 'png' : 'jpg';
+  let p;
+  try {
+    p = await writeStudioFile(rootReal, `play/${id}.${ext}`, Buffer.from(m[2], 'base64'));
+  } catch {
+    return null;
+  }
+  try {
+    const dir = path.join(rootReal, '.studio', 'play');
+    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-play-[0-9a-f]{4}\.(jpg|png)$/.test(n)).sort();
+    for (const n of names.slice(0, Math.max(0, names.length - PLAY_SHOTS_KEPT))) await fs.rm(path.join(dir, n), { force: true });
+  } catch {
+    /* pruning is tidying only */
+  }
+  return p;
 }
 
 // Names that say nothing about the game: then the folder name is the better title.

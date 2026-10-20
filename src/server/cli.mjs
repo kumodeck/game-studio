@@ -13,7 +13,9 @@
 //   studio: no-game <folder> - ask once …    no index.html: offer a starter (exit 4, see --starter)
 //   studio: started <id> (12 files)          --starter copied a sample game in; "ready" follows
 //   studio: undone .studio/requests/<id>.json "…"   the person pressed "Undo AI change"
-//   studio: watching 0 waiting               --watch started (then one line per request, as above)
+//   studio: watching 2 waiting               --watch started with requests waiting (then one line per request, as
+//                                            above); with none waiting it goes to stderr, so it wakes nobody
+//   studio: watch rest (nothing wrong) - …   --watch ended on time (--for): start it again, tell the person nothing
 //   studio: ready <url> pid <n>              --detach: the editor runs on its own (log in .studio/studio.log)
 //   studio: stopped pid <n> …  /  studio: not running …   --stop
 // Anything meant only for a human (help text, the QR code) goes to stderr.
@@ -32,7 +34,8 @@ import { runViewCheck, runGameShot } from './view-check.mjs';
 import { writeStudioFile } from './files.mjs';
 import { normalizeStatus, isRequestId, AI_STATES } from '../schema/handoff.mjs';
 import { findStarters, pickStarter, copyStarter, noGameLine } from './starters.mjs';
-import { runWatch } from './ai-watch.mjs';
+import { runWatch, AIW_FOR_MIN } from './ai-watch.mjs';
+import { runHook, registerEditor, unregisterEditor } from './ai-wake.mjs';
 import { recordServer, forgetServer, liveServers, stopFolder, detachEditor } from './lifecycle.mjs';
 
 const HELP = `Usage: node studio.mjs <game folder> [options]
@@ -69,14 +72,26 @@ A folder without a game (no index.html):
 For the AI agent (hand-offs, see the arrange skill), then exit:
   --watch          keep running and print one studio: line per new request (the waiting ones
                    first). Run it as your watch (Claude Code: Monitor): while it runs, the
-                   editor shows the person that you are watching (.studio/watch.json)
+                   editor shows the person that you are watching (.studio/watch.json).
+                   Silent while no request comes; ends on its own after 29 minutes with
+                   "studio: watch rest …" (just under Claude Code's Monitor limit of 30)
+    --for <min>      end the watch after <min> minutes instead (0 = never)
   --requests       print the requests waiting in .studio/requests/ (one JSON per line)
+  --hook <kind>    for the plugin's Claude Code hooks, without a folder (the session's folder
+                   comes on stdin): "wait" wakes the AI when a request comes from an editor
+                   started under it (exit 2 + the studio: lines), "prompt" adds the waiting
+                   requests to what the person types next
   --status <state> tell the editor how it is going: received | working | asking | done | failed
                    (asking: you asked the person something in your window; --note is the question)
                    (writes .studio/status.json; the editor shows one short line)
     --request <id>   the latest request this is about (default: the newest waiting one)
     --changed <n>    how many things you changed in the game (shown as "done (n)")
     --note <text>    one short line for the person, in their language
+    asking only (the editor shows them under the question; the person can answer there):
+    --choice <text>  an answer button (up to 4: --choice "Undo it" --choice "Keep it")
+    --about <key>    an object the question is about, lit in the scene (repeat, or key,key)
+    --before <text>  what it is now, and
+    --after <text>   what it would be (one short line each, shown side by side)
                    done / failed also move the waiting requests up to <id> into
                    .studio/requests/done/, so the next --requests shows only new ones
   -h, --help       show this help
@@ -88,6 +103,8 @@ Needs Node.js ${NODE_MIN.join(".")} or later.`;
 export async function main(argv) {
   const args = parseArgs(argv);
   if (args.starters) return listStarters(path.dirname(fileURLToPath(import.meta.url)), args);
+  // The plugin's hooks (ai-wake.mjs): no folder, the session's folder comes on stdin.
+  if (args.hook !== undefined) return runHook(args.hook);
   if (args.help || !args.dir) {
     process.stderr.write(HELP + '\n');
     return args.help ? 0 : 2;
@@ -136,7 +153,9 @@ export async function main(argv) {
 
   if (args.requests) return listRequests(root);
   if (args.watch) {
-    await runWatch(realpathSync(root));
+    // --for: minutes (fractions allowed, for tests); missing or not a number = the default.
+    const forMin = args.for === undefined || !Number.isFinite(args.for) || args.for < 0 ? AIW_FOR_MIN : args.for;
+    await runWatch(realpathSync(root), { forMs: forMin * 60_000 });
     return 0;
   }
   if (args.status !== undefined) return writeStatus(root, args);
@@ -160,6 +179,9 @@ export async function main(argv) {
   // For --stop (and --detach's "already running"): this folder's editors by pid (lifecycle.mjs).
   const rootReal = realpathSync(root);
   await recordServer(rootReal, { url: link, port: srv.port, origin: srv.origin, stopToken: srv.stopToken });
+  // So the plugin's wake hook finds this editor from the AI's session folder (ai-wake.mjs). Best effort: without
+  // it the editor still works, the AI is only reached by its watch or the next thing the person types.
+  await registerEditor(rootReal).catch(() => {});
   process.stderr.write(`Game Studio is open for ${root}\nPress Ctrl+C to stop.\n`);
   if (args.lan) {
     process.stderr.write('\nScan this with a phone on the same Wi-Fi:\n' + qrToTerminal(encodeQR(link)) + '\n\n');
@@ -172,6 +194,7 @@ export async function main(argv) {
     stopping = true;
     await srv.close();
     await forgetServer(rootReal);
+    await unregisterEditor(rootReal);
     process.stdout.write('studio: stopped\n');
     process.exit(0);
   }
@@ -365,6 +388,7 @@ async function writeStatus(root, args) {
   const st = normalizeStatus({
     state: args.status, request, changed: Number.isFinite(args.changed) ? Math.round(args.changed) : undefined,
     note: args.note, at: new Date().toISOString(),
+    choices: args.choices, about: args.about, before: args.before, after: args.after,
   });
   // done / failed: the requests up to this one are handled; move them out of the waiting list.
   if ((args.status === 'done' || args.status === 'failed') && pending.length) {
@@ -396,10 +420,16 @@ function parseArgs(argv) {
     else if (a === '--tool') out.tool = argv[++i];
     else if (a === '--requests') out.requests = true;
     else if (a === '--watch') out.watch = true;
+    else if (a === '--hook') out.hook = argv[++i] || '';
+    else if (a === '--for') out.for = Number(argv[++i]);
     else if (a === '--status') out.status = argv[++i] || '';
     else if (a === '--request') out.request = argv[++i];
     else if (a === '--changed') out.changed = Number(argv[++i]);
     else if (a === '--note') out.note = argv[++i];
+    else if (a === '--choice') (out.choices ||= []).push(argv[++i] || '');
+    else if (a === '--about') (out.about ||= []).push(...String(argv[++i] || '').split(',').map((k) => k.trim()).filter(Boolean));
+    else if (a === '--before') out.before = argv[++i];
+    else if (a === '--after') out.after = argv[++i];
     else if (a === '--starter') out.starter = argv[++i] || '';
     else if (a === '--starters') out.starters = true;
     else if (a === '--starters-dir') out.startersDir = path.resolve(argv[++i] || '.');

@@ -60,7 +60,9 @@
 //   follows the drag) and E / Q when nothing is picked or while looking
 //   around. A press on the buttons is never a tap on "nothing": the pick stays.
 // - Fly (3D, camera-wasd pass 2026-10-18 — "anyone who has used a 3D game engine moves the camera with WASD too"):
-//   W / S forward / back along the line of sight, A / D left / right, E / Q straight up / down, Shift ×3 — smooth
+//   W / S forward / back LEVEL (along the ground the way the camera faces: looking down, the height stays — a try
+//   2026-10-19: "W/S as level forward / back"; it followed the line of sight on 10-18), A / D left / right, E / Q
+//   straight up / down (Unreal's E up / Q down), Shift ×3 — smooth
 //   while held, stopped on release (each frame, core.time.raf), at a speed the adapter takes from the scene's size
 //   (adapters/three/camera.js fly). When: with nothing picked always (W A S D have no other job then: the tool keys
 //   need a pick); with something picked only while the right button is held (Unity / Unreal / Godot's fly mode),
@@ -76,14 +78,20 @@
 //   never focus: the camera stays where it is), as other 3D / 2D tools do; one already in the selection keeps the
 //   whole selection. Nothing under it (or only the ground) keeps the pick: the menu then has Deselect. A right DRAG
 //   still pans (the menu waits for the release, as in Blender / Unity), so the press never moves the view by itself.
-import { UI, type BridgeToShell, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
+// - Snap to surfaces (3D, a try of the editor, 2026-10-19; bridge/snap.ts has the rules): while a move or height drag is under way
+//   the adapter snaps (setSnap on; off when the gesture ends). The height drag stops on the first surface below
+//   (liftDetent); Ctrl or ⌥ held during the drag frees it, and pressing / letting go of them re-reads the drag at
+//   once (no need to move the pointer).
+import { UI, type Anchor, type BridgeToShell, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
-import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
+import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
 import type { EditsAdapter } from '../core/edits.ts';
 import { createRiseButtons, type RiseDir } from './rise.ts';
+import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type DetentState } from './snap.ts';
+import { canLift } from './hold.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
 
 export interface InputDeps {
@@ -123,6 +131,8 @@ export interface InputHandle {
   setTheme(theme: 'dark' | 'light'): void;
   /** Outline what the AI's last change touched, in its colour, with one tag. */
   setAiMarks(keys: string[], label: string | null): void;
+  /** The objects the mouse is over in the editor page (list row, card, ask chip): lit softly in the game. [] = none. */
+  setHover(keys: string[]): void;
   detach(): void;
 }
 
@@ -336,9 +346,10 @@ export function attachInput(deps: InputDeps): InputHandle {
     if (!tool || hintShown || hintSeen()) return;
     hintShown = true;
     const words = TOOL_HINT[lang] || TOOL_HINT.en;
-    const name = (READOUT_WORDS[lang] || READOUT_WORDS.en)[tool];
-    const more = tool === 'rotate' && canTurn() ? (TILT_HINT[lang] || TILT_HINT.en) : '';
-    handles.hint((touchFirst() ? words.touch(name) : words.mouse(name)) + more);
+    const rw = READOUT_WORDS[lang] || READOUT_WORDS.en;
+    // The way the drag works now (a tilt chosen on the ▾ says "tilt forward", not "turn").
+    const name = tool === 'rotate' && canTurn() && state.axis !== 'y' ? rw[state.axis === 'x' ? 'tipX' : 'tipZ'] : rw[tool];
+    handles.hint(touchFirst() ? words.touch(name) : words.mouse(name));
     // Gone after the first drag with the tool (it was read and used), or after 8 s.
     win.clearTimeout(hintTimer);
     hintTimer = win.setTimeout(() => handles.hint(null), 8000);
@@ -357,7 +368,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
     if (!picked.length) return false;
     if (k === 'move') return picked.some((i) => i.movable !== false);
-    if (k === 'lift') return adapter.dim === '3d' && !!adapter.nudgeY && picked.some((i) => i.liftable !== false && i.movable !== false);
+    if (k === 'lift') return adapter.dim === '3d' && !!adapter.nudgeY && picked.some((i) => canLift(i));
     if (k === 'rotate') return picked.some((i) => i.rotatable);
     return picked.some((i) => i.scalable);
   };
@@ -405,6 +416,8 @@ export function attachInput(deps: InputDeps): InputHandle {
     axisShown = ax;
     handles.setAxis(ax, lang);
   };
+  // What was picked when the turn way was last kept (selectionChanged resets the way on another pick).
+  let pickSig = '';
   const setAxis = (ax: TurnAxis | 'next') => {
     const order: TurnAxis[] = ['y', 'x', 'z'];
     state.axis = ax === 'next' ? order[(order.indexOf(state.axis) + 1) % 3]! : ax;
@@ -455,6 +468,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       data.angle = Math.atan2(p.y - ga.center[1], p.x - ga.center[0]);
       data.dist = Math.max(8, Math.hypot(p.x - ga.center[0], p.y - ga.center[1]));
     }
+    snapOn(handle);
+    detent = { through: null };
+    data.breakPx = p.type === 'mouse' ? BREAK_PX : BREAK_PX_TOUCH;
     if (handle === 'lift') {
       // Same probe as one object, on the first member: world units per px.
       const a = adapter.anchor(session.primary);
@@ -473,6 +489,8 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   const moveGroup = (m: Extract<Mode, { kind: 'group' }>, p: Ptr) => {
     const { session: s, data } = m;
+    lastRead = p;
+    if (m.handle === 'move' || m.handle === 'lift') adapter.setSnap?.({ on: true, free, skip: snapKeys() });
     const ga = groupAnchor(adapter, s.keys, s.primary);
     if (m.anywhere && (m.handle === 'rotate' || m.handle === 'scale')) {
       // The chosen tool dragged anywhere: the drag's own travel, from the press.
@@ -501,7 +519,8 @@ export function attachInput(deps: InputDeps): InputHandle {
       const a = adapter.anchor(s.primary);
       if (!a) return;
       const err = a.center[1] - (p.y - data.gap!);
-      const dy = Math.max(-5, Math.min(5, err * data.k!));
+      const keys = s.keys.filter((k) => canLift(s.items.get(k))); // the members groupLift moves (group.ts)
+      const dy = Math.max(-5, Math.min(5, liftWith(keys, err * data.k!, data.k!, data.breakPx!)));
       if (Math.abs(dy) > 1e-6) groupLift(adapter, s, dy);
     }
     markDirty();
@@ -516,7 +535,9 @@ export function attachInput(deps: InputDeps): InputHandle {
     const a = adapter.anchor(key);
     if (!a) return { kind: 'none' };
     const from = a.pose;
-    const data: Record<string, number> = {};
+    const data: Record<string, number> = { breakPx: p.type === 'mouse' ? BREAK_PX : BREAK_PX_TOUCH };
+    snapOn(handle);
+    detent = { through: null };
     if (handle === 'move') {
       if (!adapter.grab(key, p.x, p.y)) return { kind: 'none' };
     } else if (handle === 'rotate') {
@@ -550,6 +571,8 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   const moveHandle = (m: Extract<Mode, { kind: 'handle' }>, p: Ptr) => {
     const { key, data } = m;
+    lastRead = p;
+    if (m.handle === 'move' || m.handle === 'lift') adapter.setSnap?.({ on: true, free, skip: snapKeys() });
     let pose: Pose = m.last;
     if (m.anywhere && m.handle === 'rotate') {
       // Turn by the horizontal travel; 15° steps within ±3° of the gesture's total unless Shift.
@@ -601,7 +624,8 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (!a) return;
       const target = p.y - data.gap!;
       const err = a.center[1] - target; // > 0: object is below where it should be
-      const dy = Math.max(-5, Math.min(5, err * data.k!));
+      // Going down, the bottom stops on the first surface below until the finger is breakPx past it (snap.ts).
+      const dy = Math.max(-5, Math.min(5, liftWith([key], err * data.k!, data.k!, data.breakPx!)));
       if (Math.abs(dy) > 1e-6) pose = adapter.nudgeY!(key, dy);
     }
     m.last = pose;
@@ -635,6 +659,10 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
 
   const endGesture = () => {
+    if (mode.kind === 'handle' || mode.kind === 'group') {
+      adapter.setSnap?.({ on: false });
+      lastRead = null;
+    }
     if (mode.kind === 'handle' || mode.kind === 'group') {
       handles.readout(null);
       if (mode.anywhere) hintUsed();
@@ -758,6 +786,22 @@ export function attachInput(deps: InputDeps): InputHandle {
   let boxStart = false;
   /** Tool dragged anywhere: the offset from the pointer to the object's point at the start. */
   let off = { x: 0, y: 0 };
+  // Snap to surfaces: Ctrl / ⌥ held now (freeHeld), the height drag's stop state, and the last pointer a move / height
+  // drag read (a Ctrl / ⌥ press re-reads it). The keys moving together are never a surface for each other.
+  let free = false;
+  let detent: DetentState = { through: null };
+  let lastRead: Ptr | null = null;
+  const snapKeys = () => (state.group.length > 1 ? state.group.slice() : state.selected ? [state.selected] : []);
+  const snapOn = (handle: HandleKind) => {
+    if (adapter.dim === '3d' && (handle === 'move' || handle === 'lift')) adapter.setSnap?.({ on: true, free, skip: snapKeys() });
+  };
+  /** The height drag's metres for the finger's `want`, with the stop on the surface below (several: the first to touch). */
+  const liftWith = (keys: string[], want: number, k: number, breakPx: number) => {
+    if (free || !adapter.rest) return want;
+    const skip = snapKeys();
+    const r = firstToTouch(keys.map((key) => adapter.rest!(key, skip)));
+    return liftDetent(r, want, k, detent, breakPx);
+  };
 
   /** A plain press (no Shift, not picking several) on the picked object, which can be moved and is not huge. */
   const grabbable = (p: Ptr) => {
@@ -893,6 +937,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     p.x = e.clientX;
     p.y = e.clientY;
     p.shift = e.shiftKey;
+    free = freeHeld(e);
     if (mode.kind === 'pinch' && ptrs.size >= 2) {
       const t = twoFingers();
       if (mode.dist > 0 && t.dist > 0) adapter.view.zoom(t.dist / mode.dist, t.cx, t.cy);
@@ -1043,12 +1088,23 @@ export function attachInput(deps: InputDeps): InputHandle {
     post({ type: 'studio:core/view-state', state: adapter.view.state() });
   };
 
+  /** Ctrl / ⌥ pressed or let go: during a move / height drag, read the drag again the new way at once. */
+  const snapKey = (e: KeyboardEvent) => {
+    const now = freeHeld(e);
+    if (now === free) return;
+    free = now;
+    if (!lastRead || !ptrs.has(lastRead.id)) return;
+    if (mode.kind === 'handle' && (mode.handle === 'move' || mode.handle === 'lift')) moveHandle(mode, lastRead);
+    else if (mode.kind === 'group' && (mode.handle === 'move' || mode.handle === 'lift')) moveGroup(mode, lastRead);
+  };
+
   const onKey = (e: KeyboardEvent) => {
     block(e);
     // Shortcuts that belong to the shell (undo, redo, save, escape...) are
     // forwarded so they work wherever focus is.
     post({ type: 'studio:core/key', key: e.key, code: e.code, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey });
     flyFast = e.shiftKey;
+    snapKey(e);
     // ⌘ / Ctrl / ⌥ with a fly key is a shortcut, not flying; and a Mac sends no keyup for keys let go while ⌘ is
     // down, so whatever was held stops here rather than flying on by itself.
     if (e.ctrlKey || e.metaKey || e.altKey) {
@@ -1105,6 +1161,7 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   const onKeyUp = (e: KeyboardEvent) => {
     if (e.key === ' ') spaceHeld = false;
+    snapKey(e);
     flyFast = e.shiftKey;
     const fk = flyKeyOf(e);
     if (fk) flyHeld.delete(fk);
@@ -1207,10 +1264,11 @@ export function attachInput(deps: InputDeps): InputHandle {
   // The outlines: the shape from adapter.silhouette when it has one (three),
   // drawn again only when something it depends on changed and at most every
   // 40 ms (it costs extra renders); a rounded box per object otherwise.
-  const shapes = { you: { sig: '', at: 0, shape: null as Outline | null }, ai: { sig: '', at: 0, shape: null as Outline | null } };
+  const shapes = { you: { sig: '', at: 0, shape: null as Outline | null }, ai: { sig: '', at: 0, shape: null as Outline | null }, hover: { sig: '', at: 0, shape: null as Outline | null } };
   let aiKeys: string[] = [];
+  let hoverKeys: string[] = [];
   let aiLabel: string | null = null;
-  const shapeOf = (which: 'you' | 'ai', keys: string[], rects: Array<{ x: number; y: number; w: number; h: number }>) => {
+  const shapeOf = (which: 'you' | 'ai' | 'hover', keys: string[], rects: Array<{ x: number; y: number; w: number; h: number }>) => {
     const c = shapes[which];
     if (!adapter.silhouette || !keys.length) {
       c.sig = '';
@@ -1239,6 +1297,34 @@ export function attachInput(deps: InputDeps): InputHandle {
     return out;
   };
 
+  /**
+   * Where the strip goes with several picked (design review 2, item ⑤; asked in review 1 as ③): under the member
+   * nearest the camera among those on screen — 12 px under it, as under one object, centred on the part of it that is
+   * on screen. "On screen" = some of its box is inside the window (a pine half off the left edge counts: the person
+   * sees it). "Nearest" = the lowest bottom edge: on a ground seen from above (every 3D editor view, and 2D's stage)
+   * what is nearer stands lower. With none on screen: no strip (null; handles.place hides it) — a strip under nothing
+   * says nothing.
+   * WHY not the box round all of them (as before): three pines at the frame's left edge put the box's middle on empty
+   * sea in front of the sea-arch, and the strip floated there, under nothing (review 2, photo 04).
+   */
+  const stripAnchor = (keys: string[]): Anchor | null => {
+    const vw = win.innerWidth, vh = win.innerHeight;
+    let best: Anchor | null = null;
+    let bestBottom = -Infinity;
+    for (const k of keys) {
+      const a = adapter.anchor(k);
+      if (!a || !a.visible) continue;
+      const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+      const x0 = Math.max(0, r.x), x1 = Math.min(vw, r.x + r.w), y0 = Math.max(0, r.y), y1 = Math.min(vh, r.y + r.h);
+      if (x1 - x0 < 4 || y1 - y0 < 4) continue;
+      const bottom = r.y + r.h;
+      if (bottom <= bestBottom) continue;
+      bestBottom = bottom;
+      // The part on screen: the strip goes under its middle (handles.place reads center x and the rect's top / bottom).
+      best = { ...a, center: [(x0 + x1) / 2, a.center[1]], rect: { x: x0, y: r.y, w: x1 - x0, h: r.h } };
+    }
+    return best;
+  };
   const place = () => {
     drawGhosts();
     showAxis();
@@ -1249,15 +1335,18 @@ export function attachInput(deps: InputDeps): InputHandle {
     const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
     const aiRects = rectsOf(aiShown);
     handles.ai(shapeOf('ai', aiShown, aiRects), aiRects, aiShown.length ? aiLabel : null);
+    // What the mouse is over in the editor page (a row, the card, the chip): lit softly, under your pick's own mark.
+    const hovered = hoverKeys.filter((k) => state.items.some((i) => i.key === k));
+    const hoverRects = rectsOf(hovered);
+    handles.hover(hovered.length ? shapeOf('hover', hovered, hoverRects) : null, hovered.length ? hoverRects : []);
     if (key && state.group.length > 1) {
       const items = state.items.filter((i) => state.group.includes(i.key));
       const keys = items.map((i) => i.key);
       const rects = rectsOf(keys);
       handles.selection(shapeOf('you', keys, rects), rects, inRects(rects) ? (MANY_LABEL[lang] || MANY_LABEL.en)(items.length) : null);
-      const ga = groupAnchor(adapter, state.group, key);
-      handles.place(ga, items.length ? {
+      handles.place(stripAnchor(keys), items.length ? {
         rotatable: items.some((i) => i.rotatable), scalable: items.some((i) => i.scalable),
-        movable: items.some((i) => i.movable !== false), liftable: items.some((i) => i.liftable !== false && i.movable !== false),
+        movable: items.some((i) => i.movable !== false), liftable: items.some((i) => canLift(i)),
       } : null, adapter.dim);
       return;
     }
@@ -1267,7 +1356,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
     // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
     handles.selection(item ? shapeOf('you', [key!], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
-    handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: item.liftable !== false } : null, adapter.dim);
+    handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: canLift(item) } : null, adapter.dim);
   };
 
   return {
@@ -1275,6 +1364,16 @@ export function attachInput(deps: InputDeps): InputHandle {
     selectionChanged() {
       riseLabels();
       if (handles.menuOpen()) menu(null);
+      // Another pick: the turn tool goes back to its own way, Turn (design review 2, item ③: the lighthouse's Tilt
+      // forward stayed on the three pines picked next — strip picture and readout included — and a drag tilted them).
+      // The same pick told again (a refresh of the list) keeps the chosen way.
+      const sig = `${state.selected ?? ''}|${state.group.join(',')}`;
+      if (sig !== pickSig) {
+        pickSig = sig;
+        if (state.axis !== 'y') setAxis('y');
+        // A new pick lights up once (handles.flash): the moment the eye looks for what it picked.
+        if (state.selected) handles.flash();
+      }
       armed = false;
       hoverIn = false;
       place();
@@ -1322,6 +1421,13 @@ export function attachInput(deps: InputDeps): InputHandle {
       aiKeys = keys.slice();
       aiLabel = label;
       shapes.ai.sig = '';
+      place();
+    },
+    setHover(keys) {
+      if (keys.join('\n') === hoverKeys.join('\n')) return;
+      hoverKeys = keys.slice();
+      shapes.hover.sig = '';
+      shapes.hover.at = 0; // a new row under the mouse draws at once (not after the 40 ms wait)
       place();
     },
     setLang(l) {

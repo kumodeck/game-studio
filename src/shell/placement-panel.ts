@@ -30,7 +30,7 @@ import { hasLayer, layerBlocks, layerTarget, siblingsOf, type LayerOp } from './
 import { groupLayerPossible, sameKind } from './edit-ops.ts';
 import { icon, setButton } from './icons.ts';
 import { tipText } from './keymap.ts';
-import { displayName } from './names.ts';
+import { displayName, isGuessed, nameParts } from './names.ts';
 import { toneThumb } from './thumb-tone.ts';
 
 export interface PlacementPanelDeps {
@@ -67,6 +67,11 @@ export interface PlacementPanelDeps {
   /** Hand the person's words about these objects (and files) to the AI (host.request). Resolves true when kept. */
   ask(keys: string[], text: string, files: string[]): Promise<boolean>;
   /**
+   * The AI asked the person something and waits (2026-10-19): the field answers it ("Answer your AI…", no chip;
+   * `ask` then sends an answer). Absent = never.
+   */
+  answering?(): boolean;
+  /**
    * Files picked in the Library while it is open ("use the Library", 2026-10-18): the chip names them with the
    * objects, and the words are sent about both. Absent / empty = objects only.
    */
@@ -75,6 +80,8 @@ export interface PlacementPanelDeps {
   showInLibrary?(): void;
   /** Ask the AI to name these objects (the "no name" warning). */
   askName(keys: string[]): Promise<boolean>;
+  /** The mouse is over these objects' row, the card or the chip (light them in the game); [] = it left. */
+  hover?(keys: string[]): void;
   /**
    * The asset files this object uses (Scene → Assets link, "Assets:
    * tree.png" on the card). Absent = no Assets tool in this build.
@@ -93,6 +100,8 @@ export interface PlacementPanelDeps {
    * drag is over, record one undo step from `from`.
    */
   scrub?(key: string, pose: Pose, end: boolean, from: Pose): void;
+  /** "Make movable" on a held ground / road / sky (Item.held 'ground', bridge/hold.ts). */
+  unhold?(keys: string[]): void;
 }
 
 export interface PlacementPanel {
@@ -120,9 +129,24 @@ export interface PlacementPanel {
 
 const DEG = 180 / Math.PI;
 
+/**
+ * The ask chip's short form of a shown name: the guessed name's place and count dropped ("Black pillar by the
+ * road (left, 3rd)" → "Black pillar"; the same in Japanese); other names as they are (CSS cuts what is long).
+ */
+export function shortName(name: string): string {
+  const s = nameParts(name).base.replace(/^道路わきの/, '').replace(/ by the road$/, '');
+  return s.trim() || name;
+}
+
 export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const el = h('div', { class: 'placement' });
   const card = h('section', { class: 'card', 'aria-live': 'polite', dataset: { part: 'card' } });
+  // A mouse over the card lights what it is about in the game; over a list row, that row's objects (renderList).
+  const hoverLights = (el: HTMLElement, keys: () => string[]) => {
+    el.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && d.hover?.(keys()));
+    el.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && d.hover?.([]));
+  };
+  hoverLights(card, () => d.group().length > 1 ? d.group() : d.selectedKeys());
   // "102 objects have no name · Name them": the FIRST row of the list, grey, with one text button on the right
   // (supervision 2026-10-17, U4/W1-8: "in the list, its first row, not above it: the list keeps its shape; no yellow,
   // no frame"). It was a foot row of the column ("✦ Ask your AI to name it 102"), which a person with 102 unnamed
@@ -138,26 +162,83 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // a one-line first hint over the ask bar says it once (main.ts), and the
   // editor's colours have one meaning each (orange = you, violet = the AI).
   const listScroll = h('div', { class: 'list-scroll' }, noName, list);
+  // A mouse over a row lights its object (a "name ×N" heading: all of them) in the game; leaving the list puts it out.
+  let hoverRow: Element | null = null;
+  list.addEventListener('pointerover', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const row = (e.target as HTMLElement).closest('li.obj');
+    if (row === hoverRow) return;
+    hoverRow = row;
+    if (!row) return d.hover?.([]);
+    const g = (row as HTMLElement).dataset.group, key = (row as HTMLElement).dataset.key;
+    d.hover?.(g ? d.items().filter((i) => (i.group || `key:${i.key}`) === g).map((i) => i.key) : key ? [key] : []);
+  });
+  list.addEventListener('pointerleave', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    hoverRow = null;
+    d.hover?.([]);
+  });
   el.append(listTools, listScroll);
   let noNameSent = false;
+  // Narrow screens (the side window next to a chat, phones; a try on 2026-10-19 with an AI-written runner): the unnamed
+  // objects fold into this ONE row — "Unnamed objects 36 · Ask AI to name them" — instead of 36 rows that all read
+  // "Unnamed group" under a heading that says the same (the list was nothing but that line; which one is which was
+  // anybody's guess). ▸ opens them, each as a picture and where it stands (x · z), not the same name again; the
+  // picked one shows under the folded row too. PC keeps its rows: its column is tall enough to scroll them.
+  // FOLD_MIN: one or two unnamed objects read fine as rows; the fold is for "nothing but unnamed".
+  const FOLD_MIN = 3;
+  let foldOpen = false;
+  const folding = () => d.phone() && !d.items().some(hasLayer) && d.items().filter((i) => i.unstable).length >= FOLD_MIN;
   const renderNoName = () => {
     const keys = d.items().filter((i) => i.unstable).map((i) => i.key);
     noName.replaceChildren();
     noName.hidden = !keys.length;
+    noName.classList.toggle('fold', folding());
+    // The folded row's picture is its first object's: main.ts asks the game for the pictures of rows with a key.
+    if (folding() && keys.length) noName.dataset.key = keys[0]!;
+    else delete noName.dataset.key;
     if (!keys.length) return;
+    if (folding()) {
+      noName.append(
+        h('button', { type: 'button', class: 'expand', 'aria-expanded': String(foldOpen), 'aria-label': d.t(foldOpen ? 'ops.collapse' : 'ops.expand'), dataset: { action: 'noname-fold' },
+          onclick: () => ((foldOpen = !foldOpen), renderNoName(), renderList()) }, icon('chevronRight')),
+        thumbImg(keys[0]!),
+        h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.fold') }),
+      );
+      if (!noNameSent) noName.append(h('span', { class: 'count n mono', text: String(keys.length) }));
+      if (!noNameSent) noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: async () => {
+        noNameSent = await d.askName(keys);
+        renderNoName();
+      } }, h('span', { text: d.t('noname.askAi') })));
+      return;
+    }
     // Grey words, then one text button. After the press the row says it was asked (and stays until the names land).
     noName.append(h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.row', { n: keys.length }) }));
     if (noNameSent) return;
-    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: async () => {
+    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, title: d.t('noname.whyPlain'), onclick: async () => {
       noNameSent = await d.askName(keys);
       renderNoName();
     } }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
   };
+  // The folded row opens and closes from anywhere on it (its ▸ and "Ask AI to name them" are buttons of their own).
+  noName.addEventListener('click', (e) => {
+    if (!noName.classList.contains('fold') || (e.target as HTMLElement).closest('button')) return;
+    foldOpen = !foldOpen;
+    renderNoName();
+    renderList();
+  });
   const expanded = new Set<string>();
   const thumbs = new Map<string, HTMLImageElement[]>();
   let inputs: Array<{ input: HTMLInputElement; read: (p: Pose) => number; show: (v: number) => string }> = [];
 
-  const thumbImg = (key: string) => {
+  const thumbImg = (key: string): HTMLElement => {
+    // A UI element (UI stage 1): the small drawing of its kind — text, button, picture — instead of a picture of it.
+    // HTML is not in the canvas the pictures are cut from, so the box would stay empty.
+    const it = d.items().find((i) => i.key === key);
+    if (it?.kinds.includes('ui')) {
+      const k = it.kinds.includes('button') ? 'uiButton' : it.kinds.includes('image') ? 'uiImage' : 'uiText';
+      return h('span', { class: 'thumb ui-kind', dataset: { kind: k } }, icon(k));
+    }
     const img = h('img', { class: 'thumb', alt: '', width: 32, height: 32 });
     const src = safeImageSrc(d.thumb(key));
     if (src) (img.src = src), toneThumb(img, src);
@@ -176,6 +257,36 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // (verganti review, 2026-10-16; the request carries no objects).
   let askNote = '';
   let fineOpen = false;
+  // The card minimized to its name (a try of the editor, 2026-10-20: "the card sometimes gets in the way while working; I want a
+  // minimize button"). One line — picture and name — and the same button opens it again. Kept across picks (it is
+  // about the person's way of working, not about one object) and across reloads, in this browser only: a preference
+  // of the hand, not of the game, so it does not go in the game's .studio/ui.json. Storage can be missing or throw
+  // (a private window, blocked site data): then it lasts until the page closes.
+  const MIN_KEY = 'studio.cardMin';
+  let cardMin = false;
+  try {
+    cardMin = localStorage.getItem(MIN_KEY) === '1';
+  } catch {
+    /* no storage: start open */
+  }
+  const minBtn = h('button', { type: 'button', class: 'icon-btn card-min', dataset: { action: 'card-min', part: 'card-min' } });
+  // The arrow points where the card goes: PC's card hangs from the top (folds up ↑, opens ↓); the phone's stands on
+  // the ask bar (folds down ↓, opens ↑).
+  const renderMin = () => {
+    card.dataset.min = cardMin ? 'on' : 'off';
+    const up = d.phone() ? cardMin : !cardMin;
+    setButton(minBtn, up ? 'chevronUp' : 'chevronDown', d.t(cardMin ? 'card.open' : 'card.min'), false);
+    minBtn.setAttribute('aria-expanded', String(!cardMin));
+  };
+  minBtn.addEventListener('click', () => {
+    cardMin = !cardMin;
+    try {
+      localStorage.setItem(MIN_KEY, cardMin ? '1' : '0');
+    } catch {
+      /* no storage: this page only */
+    }
+    renderMin();
+  });
   let cardKey: string | null = null;
   let askKey: string | null = null;
   let lastCard: string | null = null;
@@ -188,6 +299,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // ✦ [chip: what it is about] [field] [send]. The chip (orange: your pick)
   // says what the words will be about before a word is typed.
   const askChip = h('span', { class: 'ask-chip', hidden: true });
+  hoverLights(askChip, () => d.selectedKeys());
   const askEl = h('form', { class: 'ask-box', dataset: { part: 'ask' } }, h('span', { class: 'ask-spark', 'aria-hidden': 'true' }, icon('spark')), askChip, askInput,
     h('kbd', { class: 'ask-kbd', 'aria-hidden': 'true', text: /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K' }), askSend);
   askEl.addEventListener('submit', async (e) => {
@@ -227,16 +339,22 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     if (k !== askKey) askNote = '';
     askKey = k;
     const noObj = !keys.length || !first;
-    const whole = noObj && !files.length;
+    const answer = !!d.answering?.();
+    const whole = (noObj && !files.length) || answer;
     const n = (noObj ? 0 : keys.length) + files.length;
-    const ph = whole ? d.t('ask.game') : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    const ph = answer ? d.t('ask.answer') : whole ? d.t('ask.game') : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
     // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
     const fileName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     const firstName = noObj ? (files.length ? fileName(files[0]!) : '') : displayName(first, d.t);
-    askChip.textContent = whole ? '' : n === 1 ? firstName : noObj ? d.t('ask.files', { n }) : files.length ? d.t('ask.picked', { n }) : d.t('ops.manyShort', { n });
-    askChip.title = files.length ? [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files].join('\n') : '';
+    // The chip stays small (a hands-on try, 2026-10-19: "the object's name in the chat box is in the way" — "Unnamed group"
+    // took half the field). One object: its short name ("Black pillar", without "by the road" and "(left, 3rd)": the card
+    // above says those, and the game lights it); several: only how many ("×4"). The whole names are its tooltip and
+    // the field's label read aloud, so what goes to the AI stays clear; a mouse over it lights them in the game.
+    askChip.textContent = whole ? '' : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
+    const allNames = [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files];
+    askChip.title = whole ? '' : allNames.slice(0, 12).join('\n') + (allNames.length > 12 ? '\n…' : '');
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
     askInput.setAttribute('aria-label', whole ? ph : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
@@ -270,7 +388,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const kindLink = (key: string) => {
     const kind = sameKind(d.items(), key);
     if (kind.length < 2) return null;
-    return h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-kind' }, title: d.t('ops.selectKind', { n: kind.length }),
+    // No title: the link's words are the whole of it (a tooltip of the same words was noise, the second design review ⑪).
+    return h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-kind' },
       text: d.t('ops.selectKind', { n: kind.length }), onclick: () => d.selectMany(kind, key) });
   };
 
@@ -298,11 +417,16 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     return layerRow((op) => !groupLayerPossible(items, keys, op), (op) => d.reorder(keys[0]!, op));
   };
 
-  /** The card's head: picture(s) · name over a grey second line · copy · delete. */
-  const head = (pics: HTMLElement, name: string, sub: string | null, cls = '') =>
+  /**
+   * The card's head: picture(s) · name over a grey second line · copy · delete. `ui` (UI stage 1): an element of the
+   * game's UI layer — a small "UI" tag after the name, and no copy / delete (UI stage 3 places new UI; until then a
+   * copy of a title would be a promise the AI cannot keep from a moved offset alone).
+   */
+  // The minimize button ends every head (one object, several, a UI element), always at its right end.
+  const head = (pics: HTMLElement, name: string, sub: string | null, cls = '', ui = false) =>
     h('div', { class: `card-head ${cls}`.trim() }, pics,
-      h('div', { class: 'head-text' }, h('strong', { text: name }), h('div', { class: 'key', text: sub || '' })),
-      actionRow());
+      h('div', { class: 'head-text' }, h('strong', { text: name }, ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
+      ui ? null : actionRow(), minBtn);
 
   const renderGroupCard = (keys: string[]) => {
     const items = d.items();
@@ -325,6 +449,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const renderCard = () => {
     card.replaceChildren();
     inputs = [];
+    renderMin();
     const key = d.selected();
     const sel = d.group();
     // The card appears with a short rise when the selection changes (not on
@@ -358,15 +483,56 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // Never a tree path (`path:6`) or `tree#2` there: internal words (polish pass, play test stumble 8). The key a
     // person may need (to tell the AI) is a real name, so it shows only when the label differs from a named key.
     const shown = displayName(it, d.t);
-    const h0 = head(thumbImg(key), shown, !it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null);
+    // A guessed name on two lines: what it is, then (grey) which one — "Black pillar by the road" / "left, 3rd". On one line
+    // the 272 px card cut it to "Black pillar by the road (le…", the very part that tells it from the 19 others (2026-10-19).
+    const parts = isGuessed(it) ? nameParts(shown) : { base: shown, where: '' };
+    const h0 = head(thumbImg(key), parts.base, parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', it.kinds.includes('ui'));
+    h0.title = parts.where ? shown : '';
     const sub = h0.querySelector('.key') as HTMLElement;
     card.append(h0);
     const body = h('div', { class: 'card-body' });
     // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
     // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
     // "…" (which still opens the fields). The second line stays empty; whoever needs numbers reads them on a PC.
-    if (d.phone()) sub.textContent = '';
+    if (d.phone() && !parts.where) sub.textContent = '';
     animate();
+    // Held by the editor (bridge/hold.ts; a hands-on try of 2026-10-19, items 4 and 5). A ground / road / sky:
+    // why it does not move, and the one button that frees it (the "one more step" asked for). What the game moves by
+    // itself: the tester's own words for it, so the person knows a new spot will not last before trying one.
+    /** The line on what a name is good for, and the button that asks the AI for one (an object without a name). */
+    const nameNote = () => {
+      // A name is something the AI gives in code. Grey, not yellow: a missing
+      // name is a thing to improve, not a fault.
+      // One line on what a name is good for, then the button (a hands-on try, 2026-10-19: the "Unnamed" pill said what
+      // was missing, not why to fix it). "A guessed name" only when the editor made one up (names.ts), not for a file's.
+      const guessed = isGuessed(it);
+      body.append(h('p', { class: 'warn note-line noname-why', dataset: { part: 'noname-why' } },
+        h('span', { class: 'why-text', text: d.t(guessed ? 'noname.why' : 'noname.whyPlain') }), ' ',
+        h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e: Event) => {
+          const b = e.currentTarget as HTMLButtonElement;
+          b.disabled = true;
+          const ok = await d.askName(d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable));
+          askNote = ok ? d.t('ask.nameSent') : d.t('ask.fail');
+          renderAsk();
+          renderCard();
+        } })));
+    };
+    if (it.held === 'ground') {
+      (h0.querySelector('.card-actions') as HTMLElement).hidden = true;
+      card.append(body);
+      body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: d.t('hold.ground') }));
+      if (d.unhold) body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'unfix' }, text: d.t('hold.free'), onclick: () => d.unhold?.([key]) }));
+      return;
+    }
+    if (it.held === 'game') {
+      card.append(body);
+      body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
+      // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
+      if (it.movable === false) {
+        if (it.unstable) nameNote();
+        return;
+      }
+    }
     // Game rules (.studio/studio.json): a locked object has no strip and no
     // number fields; a kind with a default size gets a one-click reset.
     if (it.movable === false) {
@@ -441,7 +607,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       return h('label', { class: `num${axis ? '' : ' wide'}` }, grab, input);
     };
     const fields = h('div', { class: 'fields' });
-    fields.append(h('span', { class: 'f-l', text: d.t('placement.pos') }));
+    // A UI element's numbers are its offset from where the game's CSS puts it (UI stage 1), in px.
+    fields.append(h('span', { class: 'f-l', text: d.t(it.kinds.includes('ui') ? 'uiLayer.offset' : 'placement.pos') }));
     const posCells = h('div', { class: `f-cells n${axes.length}` });
     // One decimal (W1-11 / D1): "-24.0" fits three to a row of the 272 px card; "-24.00" was cut to "-24.0(".
     const metres = (v: number) => v.toFixed(1);
@@ -531,24 +698,14 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       });
     }
     // 6. Notes: no name, a copy, "all of this kind".
-    if (it.unstable) {
-      // A name is something the AI gives in code. Grey, not yellow: a missing
-      // name is a thing to improve, not a fault.
-      body.append(h('p', { class: 'warn note-line' },
-        h('span', { class: 'pill', title: d.t('placement.unstable'), text: d.t('noname.tag') }), ' ',
-        h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e: Event) => {
-          const b = e.currentTarget as HTMLButtonElement;
-          b.disabled = true;
-          const ok = await d.askName(d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable));
-          askNote = ok ? d.t('ask.nameSent') : d.t('ask.fail');
-          renderAsk();
-          renderCard();
-        } })));
-    }
+    // merge of 2026-10-19: the name line is a function so the card of an object the game moves (held 'game', which ends
+    // early) shows it too — the unnamed pillars of the runner are both at once (fb-names + fb-safe).
+    if (it.unstable) nameNote();
     if (it.copyOf) body.append(h('p', { class: 'muted copy-note note-line', text: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf }) }));
     // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
     // want to go straight to its page in the Library"); its file is the Assets row above.
-    if (d.showInLibrary) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary!() }));
+    // (Not for a UI element: HTML is not a Library object.)
+    if (d.showInLibrary && !it.kinds.includes('ui')) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary!() }));
     const kl = kindLink(key);
     if (kl) body.append(kl);
     card.append(body);
@@ -675,10 +832,21 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // The shared start of the members' names ("crate-1", "crate-2" → "crate"), else the first one's.
   const kindName = (members: Item[]) => {
     const names = members.map((m) => displayName(m, d.t));
+    // Guessed names of one kind share their first part ("Black pillar by the road"): that is the heading.
+    const bases = new Set(members.map((m) => (isGuessed(m) ? nameParts(displayName(m, d.t)).base : '')));
+    if (bases.size === 1 && !bases.has('')) return [...bases][0]!;
     let pre = names[0] || '';
     for (const n of names) while (pre && !n.startsWith(pre)) pre = pre.slice(0, -1);
-    pre = pre.replace(/[\s#:_.-]+$/, '');
+    pre = pre.replace(/[\s#:_.（(-]+$/, '');
     return pre.length >= 2 ? pre : names[0] || '';
+  };
+  // Where a folded unnamed object stands, the clue that tells one from another: 3D "x −2.0 · z −14.0" (the ground's
+  // two axes, the height says little), 2D "x 120 · y 40". "−" not "-" (the numbers on the card read the same way).
+  const whereOf = (key: string) => {
+    const p = d.pose(key)?.p;
+    if (!p) return d.t('noname.tag');
+    const n = (v: number | undefined, digits: number) => (v ?? 0).toFixed(digits).replace('-', '\u2212');
+    return d.dim() === '3d' ? `x ${n(p[0], 1)} · z ${n(p[2], 1)}` : `x ${n(p[0], 0)} · y ${n(p[1], 0)}`;
   };
   const nameOf = (it: Item) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : undefined, text: displayName(it, d.t) });
   // Keep the picked row in view inside the list (PC and phone). Before the
@@ -752,19 +920,34 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     }
     list.classList.remove('by-layer');
     delete list.dataset.order;
+    const sel = d.selected();
+    // Folded unnamed objects (renderNoName): only the picked one, or all of them with ▸ open, as rows of a picture
+    // and a place. Their own name would be the same line again.
+    const fold = folding();
+    if (fold) {
+      for (const it of d.items().filter((i) => i.unstable && (foldOpen || i.key === sel || inGroup(i.key)))) {
+        // Its guessed name when it has one ("Black pillar by the road (left, 3rd)", names.ts, 2026-10-19), else where it stands.
+        const named = isGuessed(it);
+        const sub = h('li', { role: 'option', class: 'obj sub unnamed-row', 'aria-selected': String(it.key === sel || inGroup(it.key)), dataset: { key: it.key }, title: named ? whereOf(it.key) : displayName(it, d.t) },
+          thumbImg(it.key), named ? h('span', { class: 'name unnamed', text: displayName(it, d.t) }) : h('span', { class: 'name where mono', text: whereOf(it.key) }), it.copyOf ? copyTag(it) : null);
+        sub.addEventListener('click', (e) => d.select(it.key, e.shiftKey));
+        list.append(sub);
+      }
+    }
     const groups = new Map<string, Item[]>();
     for (const it of d.items()) {
+      if (fold && it.unstable) continue;
       const g = it.group || `key:${it.key}`;
       const arr = groups.get(g) || [];
       arr.push(it);
       groups.set(g, arr);
     }
-    const sel = d.selected();
     for (const [g, members] of groups) {
       const first = members[0]!;
       const many = members.length > 1;
       const open = expanded.has(g) || (many && members.some((m) => m.key === sel || inGroup(m.key)));
       const allIn = many && members.every((m) => d.group().includes(m.key));
+      const heading = many ? kindName(members) : '';
       // A "name ×N" heading: pressing it selects the whole group (move, turn,
       // copy or delete all of them); the ▸ / ▾ button only opens or closes it.
       const toggle = many ? h('button', {
@@ -782,7 +965,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         thumbImg(first.key),
         // `group` is an id (often a texture URL), not a name: show the first object's label.
         // A group is named by its kind ("crate ×4" → "crate"), not by its first member.
-        many ? h('span', { class: 'name', text: kindName(members) }) : nameOf(first),
+        many ? h('span', { class: 'name', text: heading }) : nameOf(first),
         many ? h('span', { class: 'count n mono', text: String(members.length) }) : null,
         !many && first.unstable ? noNamePill(first) : null,
         !many && first.copyOf ? copyTag(first) : null,
@@ -798,8 +981,11 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       list.append(row);
       if (many && open) {
         for (const m of members) {
+          // Under a heading of guessed names, only which one ("left, 3rd"): the heading says what they are.
+          const mp = isGuessed(m) ? nameParts(displayName(m, d.t)) : null;
+          const label = mp && mp.where && mp.base === heading ? h('span', { class: 'name unnamed', title: displayName(m, d.t), text: mp.where }) : nameOf(m);
           const sub = h('li', { role: 'option', class: 'obj sub', 'aria-selected': String(m.key === sel || inGroup(m.key)), dataset: { key: m.key } },
-            nameOf(m), m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null);
+            label, m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null);
           sub.addEventListener('click', (e) => {
             e.stopPropagation();
             d.select(m.key, e.shiftKey);
@@ -839,4 +1025,26 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       }
     },
   };
+}
+
+/**
+ * The card's line for an object the game changes by itself (Item.held 'game'): the tester's own words when the game
+ * moves it ("This object is moved by the game — its place is not kept when you save", 2026-10-19), else what the game
+ * changes; then what can still be changed, so the person knows what is worth trying.
+ */
+export function heldGameText(it: Pick<Item, 'driven' | 'movable' | 'rotatable' | 'scalable'>, dim: Dim, t: (k: string, v?: Record<string, string | number>) => string): string {
+  const driven = new Set(it.driven ?? []);
+  const parts = (['move', 'lift', 'turn', 'size'] as const).filter((k) => k !== 'lift' || dim === '3d');
+  const words = (ks: readonly string[]) => listOf(ks.map((k) => t(`hold.part.${k}`)), t);
+  const free = parts.filter((k) => !driven.has(k) && (k === 'move' ? it.movable !== false : k === 'turn' ? it.rotatable : k === 'size' ? it.scalable : true));
+  const head = driven.has('move') ? t('hold.game') : t('hold.gameParts', { what: words(parts.filter((k) => driven.has(k))) });
+  // Japanese sentences follow each other without a space.
+  return free.length ? `${head}${head.endsWith('。') ? '' : ' '}${t('hold.still', { what: words(free) })}` : head;
+}
+
+/** "a, b, and c" in English, the list mark in Japanese (i18n hold.and / hold.sep). */
+function listOf(xs: string[], t: (k: string) => string): string {
+  if (xs.length < 2) return xs[0] ?? '';
+  const sep = t('hold.sep');
+  return xs.slice(0, -1).join(sep) + t(xs.length > 2 ? 'hold.and3' : 'hold.and') + xs[xs.length - 1];
 }

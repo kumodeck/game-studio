@@ -57,7 +57,8 @@ const IN = {
 };
 const j = async (page, expr) => JSON.parse((await page.eval(expr)) || 'null');
 // "Save · 3": the count of changes not saved (the button is hidden at 0).
-const unsaved = (label) => Number((/(\d+)\s*$/.exec(label) || [])[1] || 0);
+// The last number in the label: it ends with the shortcut now ("Save · 1 ⌘S"), so "digits at the very end" read 0 (e2e-016).
+const unsaved = (label) => Number((/(\d+)\D*$/.exec(label) || [])[1] || 0);
 
 /**
  * The objects each example uses, and how the "AI" writes copies into its code.
@@ -96,7 +97,9 @@ const PLAN = {
     },
   },
   'canvas-stars': {
-    copy: 'star-1', del: 'star-3', pair: ['basket', 'star-2'],
+    // pair: the basket and the rock, which the game leaves still. The stars fall and spin by themselves, so since
+    // 2026-10-19 the editor holds their turn (bridge/hold.ts: a turn the game undoes every frame would not last).
+    copy: 'star-1', del: 'star-3', pair: ['basket', 'path:4'],
     ai(code, file) {
       // The things live in one array: copies become new entries right after their original.
       const lines = code.split('\n');

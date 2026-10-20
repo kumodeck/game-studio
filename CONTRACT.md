@@ -64,6 +64,7 @@ engine calls:
 | `capture?(key, size)` | Optional thumbnail; default crops `bounds()` from the canvas. |
 | `silhouette?(keys)` | Optional: the objects' shape on screen, `{ x, y, w, h, mask }` (viewport CSS px; `mask` a canvas whose alpha is their coverage), for the outline round the selection. Without it the outline is a rounded box. The Pixi example draws the objects alone on black and on white through the edit view. |
 | `assetsOf?(key)` | Optional: URLs (or `AssetRef`) of files the object uses. |
+| `player?()` | Optional, 3D: where the player's own camera stands (`eye`) and looks (`target`, 10 units ahead) during ▶ Play, and optionally `near` (keys nearest the player, world distances, where in the picture). Sent with a request made while playing (§3.5). Built in for three.js. |
 | `canvas?()` | Optional: the canvas the game draws into (default: the largest). |
 | `order?(key)` / `setOrder?(key, index)` | Optional draw order (layers): `{ parent, index }` = the list the object is drawn in (`stage`, a container's key…) and its place there, 0 = back, every child counted; `setOrder` removes it and inserts it at `index`. Both or neither (§1.7). |
 
@@ -82,6 +83,33 @@ Key points:
   on screen when it returns; the bridge calls it only when the selection or
   the view changed (at most every 40 ms).
 - `begin()` must not change poses; `end()` restores the game's camera/view.
+
+**The UI seat (UI stage 1, 2026-10-19).** Next to the one world adapter the
+bridge may hold one adapter for the game's **UI** — what is drawn over the
+world: a title card, a score, buttons. The editor edits one of the two at a
+time (the shell's World | UI switch, `core/layer`); input, handles and undo
+are the same. A UI adapter is any `Port2D` through `adapterFromPort2D()`,
+with `p` = **CSS px offsets on screen** and no turning (`rotatable: false`):
+
+| UI seat | Who writes it | Answers when |
+|---|---|---|
+| `studio.registerUI(port)` | The AI, per game (later stages: a Phaser HUD scene, a Pixi UI container, a three.js orthographic HUD) | Asked first; the first that answers wins (merging several seats into one list is a later stage) |
+| DOM UI (`src/adapters/ui/`, built in) | — | The page has an element marked `data-studio-key` that the world does not already list |
+
+The DOM UI adapter lists only elements marked `data-studio-key="title-logo"`
+(never "every element"); leaves out `data-studio="false"` (on it or a parent),
+elements not drawn, and elements whose inline `translate` / `scale` the game
+writes itself. It moves and sizes them with the CSS **`translate` / `scale`
+properties only** — never `left`, `top` or `transform` — added to any
+translate / scale the game's stylesheet gives; a size keeps the element's
+middle where it is (the correction is worked out from the box at the time,
+never saved). The maths is the loader's `placeUi()`, shared with the game.
+A game whose world IS the DOM (a port named `dom`, `examples/dom-board`) gets
+no UI adapter: its pieces carry `data-studio-key` as world objects.
+
+**A game with no `data-studio-key` (and no `registerUI`) has no UI seat**: no
+`layers` in `core/ready`, no switch, no `ui` in `placement.json` — the editor
+and the saved bytes are exactly what they were before UI stage 1.
 
 ### 1.2 Poses
 
@@ -104,7 +132,10 @@ Order of preference (first that exists):
 3. `userData.id` / `userData.name`.
 4. Tree path `path:0/3/1` — **unstable** (`unstable: true`): it changes when the
    code changes. Shown with a warning; saving still works, and the skill tells
-   the AI to add a name and save again.
+   the AI to add a name and save again. Such an object is shown by a name the
+   editor guesses from `Item.look` (its world box, middle, main colour, drawn
+   from inside), which the three.js adapter reports: "Black pillar by the road
+   (left, 3rd)", "Road", "Sky" (`src/shell/names.ts`; never "Unnamed group").
 
 Keys must match `KEY_RE` (`/^[A-Za-z0-9_:#.\-\/]{1,80}$/`). Other characters are
 mapped; the original name stays in `label`. `studio: false` (three
@@ -130,6 +161,10 @@ serves for the game:
    starts; it is called again until it returns a port.
 3. After the game's first frame (or `studio.ready()`), game-folder probes are
    asked first, then built-ins. First adapter wins.
+4. UI stage 1 (`findUi`, after the world's): the game's `studio.registerUI()`
+   ports, then the built-in DOM UI (§1.1, the UI seat). The world's choice
+   above is unchanged by it; the two are asked in separate lists, so a UI never
+   takes the world's slot.
 
 The edit script is inert unless the page URL has `?studio=edit` and runs in a
 frame: then it freezes time after the first frame and talks to
@@ -137,7 +172,7 @@ frame: then it freezes time after the first frame and talks to
 
 Global API: `studio.ready()`, `studio.attach({ scene, renderer, camera })`
 (engines without hooks), `studio.registerAdapter(probe)`,
-`studio.register2D(port)`, `studio.core`. Game code calls it as
+`studio.register2D(port)`, `studio.registerUI(port)` (§1.1), `studio.core`. Game code calls it as
 `window.studio?.ready()` so shipped builds without the studio are unaffected.
 
 ### 1.5 Self-check
@@ -189,6 +224,15 @@ Freezing: after the first frame the bridge looks for an adapter with at least
 one object; until there is one it lets the game run (async loading) and looks
 again, for up to ~8 s. `studio.ready()` skips the wait.
 
+The wait is the world's alone: a title shown before the 3D models load does not
+stop it early. A game with no world adapter but a UI (HTML only) stops after
+~1 s. Holding `requestAnimationFrame` does not stop CSS animations (a blinking
+"Press start"): the UI adapter pauses the running `document.getAnimations()`
+while editing and plays them again at the end (`Port2D.pause` / `resume`).
+The built-in three.js adapter hides the game's own DOM next to its canvas while
+editing (it would cover objects) — except elements marked `data-studio-key` and
+boxes holding them, which are the UI layer.
+
 
 `src/core/time.ts` holds back the game's `requestAnimationFrame` callbacks
 while editing. Edit mode always ends with a **reload** of the game (resuming
@@ -225,6 +269,26 @@ without it work as before, and the shell shows no layer controls for them
   in front of them (play test 2026-10-16: a rock sent "to back" went
   behind the ground and vanished).
 - Saved as `order` in placement.json (§4.1), never per object.
+
+### 1.7.1 What the editor holds still (2026-10-19)
+
+A hands-on try lifted a game's road 16 m with one stray Height drag and saved it, and moved pillars that the game
+itself slides along the road every frame (the new place could never last). Since then:
+
+- **3D grounds.** The three.js adapter also sets `Item.backdrop` (no `layer`) on a ground, road, sea or sky: a name
+  that says so, or a box more than 20× a typical object's (more than 6× when flat) — `adapters/three/ground.js`. The
+  editor holds it (`Item.held: 'ground'`): no tool works on it until the person presses **Make movable** on its card
+  or its menu (shell → bridge `studio:placement/unhold { keys }`, for this session).
+- **What the game moves.** Right after the edit view is up, the editor lets the game's own frames run for 0.6 s
+  (its draws stay off the screen; an adapter whose engine holds frames itself implements the optional
+  `StudioAdapter.watch(on)`), compares every pose and puts what moved back where the first frame had it. Those
+  objects get `Item.held: 'game'` and `Item.driven` (`move` = place across the ground, `lift` = height, `turn`,
+  `size`): only what the game changes is off, the rest stays editable, and the card says so.
+- Both are refused in the editor's own adapter layer (`bridge/hold.ts`: grab / drag / nudgeY / rotate / scale), so
+  keys, the ⌘K list and game tools cannot get round it. `setPose` (undo, redo, loading a save) is not held.
+- **Check before saving.** A changed ground (any visible change), or any 3D object moved 5 m up / down, 25 m across or
+  resized 3×, is listed in words before Save hands the file to the AI ("Raised the road 16 m"), with **Put back and
+  save** and **Save anyway** (`shell/safe-save.ts`).
 
 ### 1.8 Copy, delete, several at once
 
@@ -294,12 +358,12 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | bridge → shell | `core/hello` | Edit script loaded (`contract`) |
 | | `core/wait` | Waiting: `no-adapter`, `no-frame`, `no-objects` |
 | | `core/check` | Self-check result |
-| | `core/ready` | Adapter `kind`, `dim`, `version`, `editing` |
+| | `core/ready` | Adapter `kind`, `dim`, `version`, `editing`; UI stage 1: `layers?: ['world', 'ui']` (only for a game with a UI seat — absent, no switch is shown) and `layer` (the one edited now; `kind` / `dim` / `rise` / `fly` are that layer's adapter's: the UI is `dom-ui`, `2d`) |
 | | `core/view-state` | Opaque edit-camera state (the shell keeps it across reloads) |
 | | `core/key` | Key pressed while the game frame has focus |
 | | `core/error` | Adapter threw |
 | | `core/game-error` | `{ message, where? }`: the game's own page threw (edit and Play, first 3 per load); the shell says what to do |
-| | `placement/items` | `Item[]` |
+| | `placement/items` | `Item[]`; `layer?` whose list it is (UI stage 1; absent = the world). When editing starts in a game with a UI, the UI's list is sent once too, so its saved places are kept and shown |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold? }` |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
@@ -311,13 +375,15 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
 | | `library/previewed` | `{ url, ok }` |
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
+| | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
 | | `core/lang` | UI language for handle labels |
-| | `placement/list` · `select` · `pose` · `step` | see types (`select` and `step` take `keys` for several, §1.8) |
+| | `placement/list` · `select` · `pose` · `step` | see types (`select` and `step` take `keys` for several, §1.8; `pose` takes `layer?` to set it on the layer not being edited — the UI's saved places when editing starts) |
 | | `placement/thumbs` | `{ keys, size }`: draw these list pictures. One queue in the bridge, drawn one at a time; a new request's keys go to the **front** (the shell asks for the rows in view each time the list scrolls, so with hundreds of objects what you see is drawn next) |
 | | `placement/multi` · `copy` · `remove` · `restore` | §1.8 |
 | | `placement/axis` | `{ axis }`: the 3D turn axis (`y` / `x` / `z`, or `next` for the R key) |
 | | `placement/marks` | `{ keys, label? }`: what the AI's last change touched (after "Reload the game"), outlined in the AI's colour with one tag |
+| | `placement/hover` | `{ keys }`: the mouse is over these objects' row in the list, the card or the ask chip — lit in your colour, softer than the pick (`[]` = none) |
 | | `placement/tool` | `{ tool: 'move' \| 'lift' \| 'rotate' \| 'scale' \| null }`: choose the strip's tool (the keys and ⌘K when the editor page has focus) |
 | | `placement/look` | `{ on }`: Space is held in the editor page — a drag in the game looks around even with a tool chosen |
 | | `placement/menu` | `{ open: false }`: close the strip's choices (a press or Escape in the editor page while they are open) |
@@ -346,13 +412,15 @@ Input rules the bridge implements (shared by every adapter):
 | Rotate | Turn tool: drag sideways (0.57° per px, 15° steps within ±3° of the drag's total, Shift = free) / Q, E. 3D: around the middle of the object's box, on the chosen axis — choosing the turn tool (and a click on it when chosen, or R) shows Turn (y) / Tip forward (x) / Tip sideways (z) (`adapter.turn`, `Pose.t`) | The same |
 | Turn several | Turn tool; its ▾ (or a long press) shows the axes (3D: Turn / Tilt forward / Tilt sideways, R = next) and, under them, Together (the whole arrangement turns round the middle of the selection: of the objects' boxes in 3D, `adapter.middle`) / Each in place (each turns on its own spot, round the middle of its box in 3D). 2D has one axis, so only Together / Each in place | The same |
 | Resize several | Size tool; choosing it with several picked (and a click on it when chosen) shows Together (the gaps grow too) / Each in place. Both keep each object's foot (the bottom middle of its box: `adapter.foot` in 3D, the screen box in 2D) on the ground | The same |
-| Height (3D) | Height tool: drag up or down (the object follows the pointer's height) / PageUp, PageDown | The same |
+| Height (3D) | Height tool: drag up or down (the object follows the pointer's height) / PageUp, PageDown. **Going down it stops once** with its bottom (the bottom of its box) on the first surface below — the ground, the water, a pier's planks, a crate's lid; pulling on 30 px past it lets it through, and the next surface down stops it again. A PageDown step that would cross a surface ends on it; the next step goes through | The same (44 px past it) |
+| Snap to surfaces (3D) | A move (the Move tool, a drag of the picked object, arrow keys) keeps an object that **stands** on something (its bottom on or in a surface) standing on what is under its foot: up the shore, onto the pier, onto a crate. The ray from the camera through the foot's place on screen picks the surface, as in Unreal / Blender; a wall sends it to the floor at the wall's foot; the sky keeps it flat. On the surface it stood on it keeps its depth (a post 15 cm deep, a barrel floating low); on another one its bottom sits exactly on it. Things in the air (a lamp hung up, a gull) move flat at their height as before. **Hold Ctrl or ⌥ during the drag** to move without snapping (Blender's Ctrl; pressed before the drag, ⌥ still looks around). Surfaces = every visible mesh but the moving ones (the selection), light effects (additive / no depth write) and skinned / instanced meshes; a ground the editor holds still is still a floor. `adapter.rest` / `setSnap` | The same with a finger (no free key) |
+| Drop to floor (3D) | **End** (a Mac laptop: fn →), ⌘K "Drop to floor", the object's right-click menu: the bottom set on the surface under it, as Unreal's End. Several picked: each onto its own floor. `adapter.drop` | The object's menu (long press) |
 | Scale | Size tool: drag right or up = bigger, left or down = smaller (×2 per ~140 px) / +, − | The same |
 | The old way | A drag that starts **on** a strip button still works as before (turn round the object, size from its middle, …) | The same |
 | Look around (3D) / pan (2D) | With no tool chosen (or nothing picked): drag anywhere else, **including on objects that are not picked**, and on very large picked ones (their on-screen part 60 % of the window or more: a ground). **With a tool chosen**: ⌥ Option-drag (orbit), right / middle drag (pan), or hold Space and drag | Two fingers (pan and pinch); one finger only when no tool is chosen |
 | Pan | Middle drag, right drag, Shift+drag starting on an object, two-finger trackpad scroll | Two-finger drag |
 | Zoom | Wheel / trackpad pinch (towards the pointer) | Pinch |
-| Fly (3D) | **W / S** forward / back along the line of sight, **A / D** left / right, **E / Q** up / down, **Shift** ×3 — smooth while held, stops on release, at a speed taken from the scene's size (`view.fly`; a small room and Lantern Cove feel the same). With **nothing picked**: the keys alone. With **something picked**: only while the **right button** is held (S stays the Size tool, E / Q still turn it), as in Unity / Unreal / Godot; a right-drag then turns the view where the camera stands (`view.look`) instead of panning, and its release opens no menu. Not while typing in a field; never by itself. `?` sheet: "Fly the camera  WASD" with that rule under it; ⌘K "Fly the camera" (WASD / Right button+WASD) | — |
+| Fly (3D) | **W / S** forward / back **level** (along the ground the way the camera faces: looking down, the height stays — the line of sight before 2026-10-19), **A / D** left / right, **E / Q** up / down, **Shift** ×3 — smooth while held, stops on release, at a speed taken from the scene's size (`view.fly`; a small room and Lantern Cove feel the same). With **nothing picked**: the keys alone. With **something picked**: only while the **right button** is held (S stays the Size tool, E / Q still turn it), as in Unity / Unreal / Godot; a right-drag then turns the view where the camera stands (`view.look`) instead of panning, and its release opens no menu. Not while typing in a field; never by itself. `?` sheet: "Fly the camera  WASD" with that rule under it; ⌘K "Fly the camera" (WASD / Right button+WASD) | — |
 | Camera up / down (3D) | The ↑↓ buttons in the game's bottom-right corner: click = one step (a tenth of the game's height), hold = keeps going, drag up / down on them = follows the drag. **E / Q** with nothing picked, or with Space held / during a right, middle or ⌥ drag (with something picked and no look-around, Q / E still turn it). ⌘K "Camera up" / "Camera down". The camera goes straight up or down and keeps looking the same way (`view.rise`); never by itself | The same buttons: tap, hold, or drag a finger up / down on them |
 
 WHY camera up / down (play test 2026-10-18: "I can't raise the camera; it's
@@ -445,7 +513,7 @@ except `.studio/adapter.js` through its own route).
 | `GET /__studio/api/assets` | — | `{ assets: AssetFile[], missing: [{ ref, in }], truncated }` |
 | `POST /__studio/api/assets?name=<file name>` | raw bytes | 201 `{ path }` under `assets/`, free name chosen (`-2`, `-3` …) |
 | `POST /__studio/api/next-step` | `{ id }`, or `{ id: "delete-files", files: [paths] }` (existing plain files in the folder, ≤ 200) | `{ ok, path, request }`; writes `.studio/next-step.md` (kept for older shells; the shell now uses `request`) |
-| `POST /__studio/api/request` | `StudioRequestInput` (`step: "delete-files"` also takes `files`, same check as above) | `{ ok, id, at, path, undo, watching, seen? }`; keeps `.studio/requests/<id>.json` (§3.4) after a snapshot of the game's files (`undo: true`); 422 with `details` if invalid |
+| `POST /__studio/api/request` | `StudioRequestInput` (`step: "delete-files"` also takes `files`, same check as above; `kind: "play"` may carry a `shot` data URL, written to `.studio/play/<id>.jpg`, §3.5) | `{ ok, id, at, path, undo, watching, seen? }`; keeps `.studio/requests/<id>.json` (§3.4) after a snapshot of the game's files (`undo: true`); 422 with `details` if invalid |
 | `GET /__studio/api/status` | — | `{ status, time, watching, seen?, code }`: `.studio/status.json` normalised (null when missing or not valid), `time` = when it was written (ms); `watching` / `seen` from `.studio/watch.json`; `code` = signature of the game's files (§3.4) |
 | `POST /__studio/api/undo` | `{ to: <request id>, redo?: true }` | `{ ok, restored, removed, redo, id, at }`: the game's files put back as snapshot `to` has them; `redo` = the snapshot of the files just before (undo `{ to: redo, redo: true }` to put the change back); keeps an `undone` request and prints `studio: undone …`; 404 when there is no such snapshot |
 | `POST /__studio/api/check` | `SelfCheckResult` | 204; failures go to `.studio/check.md` |
@@ -462,11 +530,14 @@ except `.studio/adapter.js` through its own route).
 `studio: ready …`, `studio: saved placement.json (<summary>)`,
 `studio: added <path>`, `studio: next-step <id> <path>`,
 `studio: request <kind>[ <step>] .studio/requests/<id>.json "<words>" (<object names>)`,
+`studio: request play .studio/requests/<id>.json "<words>" (while playing, picture .studio/play/<id>.jpg, <n> errors)` (§3.5),
 `studio: check ok (<kind>)`, `studio: check failed: <ids> (see .studio/check.md)`,
 `studio: unnamed <n> objects without a name: <keys>`,
 `studio: undone .studio/requests/<id>.json "<what happened>"`.
 `studio.mjs <folder> --watch` prints the same request lines (from the files,
-after `studio: watching <n> waiting`).
+after `studio: watching <n> waiting`, which goes to stderr when n is 0), nothing
+else while nobody asks, and ends on its own after 29 minutes (`--for <min>`,
+0 = never) with `studio: watch rest …` (quiet watch, 2026-10-19).
 
 ### 3.3 Cloud (later)
 
@@ -486,6 +557,8 @@ next to a cloud Claude Code session, with no change to the shell):
   MCP tools: list the waiting requests (oldest first), read one, mark
   requests handled, and write the status (`state`, `request`, `changed`,
   `note`). These are the cloud versions of `--requests` / `--status`.
+- Keep a `play` request's picture (§3.5) as a file the agent can open, and put
+  its path in the record's `shot` in place of the data URL.
 - Keep `saved` requests for saves and `.studio/next-step.md`-equivalent steps
   for KUMODeck next steps, exactly as the local host does.
 - `status()` returns `time` from the host's clock (when the status was
@@ -518,7 +591,8 @@ a bonus that wakes an agent that happens to be watching.
   a watching AI is not woken by every drag and starts only on Save.
   A stored request (`StudioRequest`) has `version: 1`, `id`, `kind`, `at`
   (ISO, the host's clock), `text` (one line, ≤ 500 characters), and as fitting
-  `objects` (`key`, `label`, the `pose` in the editor at that moment — it may
+  `objects` (`key`, `label` — for an `unstable` object the name the editor
+  shows, guessed from `Item.look` ("Black pillar by the road (left, 3rd)") —, the `pose` in the editor at that moment — it may
   be unsaved —, `unstable`, and `files`: the asset files it is drawn with, when
   the editor knows them), `assets` (`ask`: files picked in the Library that the
   words are about — "Add this to the scene" asks for a new object made from
@@ -531,8 +605,11 @@ a bonus that wakes an agent that happens to be watching.
   time; nothing from the browser decides a file name.
 - **Status** (AI → editor). The agent keeps one status: `StudioStatus` with
   `state` (`received` | `working` | `asking` | `done` | `failed`; `asking` =
-  the agent waits for the person's answer in its own window, `note` holds the
-  question), and optionally
+  the agent waits for the person's answer, `note` holds the question; with
+  `asking` only, `choices` (≤ 4 answer buttons, ≤ 40 characters each),
+  `about` (≤ 10 object keys the question is about) and `before` / `after`
+  (one line each, both or neither); the person answers in the editor with an
+  `answer` request: `text`, `to` = the request asked about, `question`), and optionally
   `request` (latest id it handled), `handled` (ids), `changed` (how many
   things it changed in the game), `note` (one line for the person, in their
   language), `at`. The shell polls `host.status()` (every 3 s while something
@@ -550,13 +627,27 @@ a bonus that wakes an agent that happens to be watching.
   every kept request (so the editor knows the moment Enter is pressed) and with
   the status. An agent runs the watch only when its environment wakes it on a
   new output line (Claude Code: Monitor); otherwise it uses "look".
+- **The editor wakes the AI** (push to the AI, 2026-10-19; `src/server/ai-wake.mjs`).
+  The Claude Code plugin's hooks run `studio.mjs --hook wait` (Stop and
+  UserPromptSubmit, `async` + `asyncRewake`): it waits for a request the AI has
+  not been shown in an editor under the session's folder (running editors list
+  themselves in `<tmp>/game-studio-<uid>/editors/`), keeps `.studio/wake.json`
+  fresh meanwhile (read as `watching` too), and exits 2 with the request lines,
+  which wakes the AI. `--hook prompt` (UserPromptSubmit) adds waiting requests
+  to whatever the person types. `.studio/told.json` (`{ seen }`) = the last
+  request any watch or hook printed: each request wakes the AI once, and the
+  host returns it as `seen`.
 - The shell's line (`src/shell/ai-flow.ts`) above the input: `sent` (a watch
   runs) → `seen` (it printed the request) → `received` / `working` (the
   agent's note) → `updating` → `done` (the note, what was asked, "3 things
-  changed", **Undo AI change**) or `failed`; `away` at once when no watch
-  runs (what to do: type "look", or `/arrange` in this folder; the request is
-  kept and moving / Save work without the AI). Hosts that cannot tell
-  (`watching` left out) keep "waiting" → after 20 s "type look". A violet light
+  changed", **Undo AI change**) or `failed`; `away` at once when nothing can
+  reach the AI: one calm line ("Your request is in. It goes into the game the
+  next time your AI runs.") and **Call your AI** (copies "look"), never a
+  warning or a command to run. Hosts that cannot tell (`watching` left out)
+  keep "waiting" → after 20 s the same calm line. `asking`: the AI's question
+  with its `choices` as buttons, its `about` objects lit in the scene and
+  `before` → `after` side by side; a button or the ask field sends an
+  `answer` request (`text`, `to`, `question`). A violet light
   runs round the input while the AI has the request. Polled every 0.7 s while
   busy, 1.5 s while waiting, 3 s otherwise.
 - **The game reloads by itself.** The status carries `code`, a signature of
@@ -589,12 +680,72 @@ Local host: requests are `.studio/requests/<id>.json`; the agent moves the
 ones it handled into `.studio/requests/done/`; the status is
 `.studio/status.json`. The agent can use the CLI instead of writing JSON:
 `studio.mjs <folder> --requests` prints the waiting requests (one JSON per
-line); `studio.mjs <folder> --status received|working|done|failed [--request
-<id>] [--changed <n>] [--note <text>]` writes the status, and `done` /
+line); `studio.mjs <folder> --status received|working|asking|done|failed [--request
+<id>] [--changed <n>] [--note <text>]` (asking: `[--choice <text>]… [--about
+<key>]… [--before <text> --after <text>]`) writes the status, and `done` /
 `failed` move the requests up to `<id>` into `done/`.
 
 The shell reaches all of this only through `StudioHost` (`request`, `save`,
 `status`); it never assumes local files or the server's stdout.
+
+### 3.5 Ask while playing (2026-10-20)
+
+In ▶ Play the person can ask their AI without stopping the game: **`` ` ``** (the
+backquote, by its character: left of 1 on a US keyboard, Shift+@ on a Japanese
+one; never with ⌘ / Ctrl / Alt or while the game's own text field has focus)
+or a tap on the small mark in the game's bottom-right corner opens one field
+over the game; Enter sends and closes it; Esc closes it. WHY that key: it is
+the "console" key of PC games, the key players already press to talk to the
+game's makers, and games almost never use it for play; WASD, arrows, Space,
+Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
+
+- **In the game page, not the editor page** (`src/bridge/play-ask.ts`), so it
+  works in full screen: a game that goes full screen shows only its own page.
+  The overlay is a popover (the browser's top layer, shown again on every
+  full-screen change) in a shadow root (the game's CSS cannot reach it). It is
+  the first key listener on the window (installed before the game's code), so
+  the game never sees the keys typed in the field; a press on the overlay stops
+  where it leaves it. A pointer-locked game lets go of the mouse when the field
+  opens. The game keeps running the whole time.
+- **The moment comes with the words.** A `play` request (`StudioRequestInput`):
+  `text`, `shot` (the game's visible canvases drawn where they sit, ≤ 1024 px
+  wide, JPEG; in Play the edit script asks WebGL for `preserveDrawingBuffer` so
+  the last frame can be read), `view` (3D: the player's camera, adapter
+  `player()`: `eye`, `target` 10 units ahead), `near` (≤ 12: 3D nearest in front
+  of the camera or within 3 units, world distances `d`, ground / sea / sky left
+  out; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1),
+  `logs` (≤ 30, oldest first: every console error / warning there is room for,
+  uncaught errors and rejections, plus the last 10 lines of any kind, each with
+  `ago` seconds), `fullscreen`, `size`. Each part is a hint and is dropped when
+  odd (`normalizeRequestInput`), except a `shot` that is not a JPEG / PNG data
+  URL (≤ 1.5 MB), which is refused. The host keeps the picture as a file and
+  names it in the record (local: `.studio/play/<id>.jpg`, newest 24 kept), and
+  prints `studio: request play .studio/requests/<id>.json "<words>" (while
+  playing, picture .studio/play/<id>.jpg, 2 errors)`.
+- **The AI's progress over the game.** One small line at the top
+  (`src/shell/play-ask.ts`, `studio:play/state`): "Your AI is looking" → its
+  `working` note → its `done` note with **Reload**, or its `asking` question
+  with its choices as buttons (an `answer` request, as in §3.4), or "Your AI
+  gets it on its next run" when nothing can reach it. Violet dot, the AI's
+  colour; it pulses while the AI has it. **The game is never reloaded under the
+  player**: `reloadDecision` says no while playing; Reload (or `` ` `` then Enter
+  on the empty field) opens the game again from its new code, still in Play;
+  × keeps playing as it is. The fix is also in the next time Play or Edit opens.
+- Messages: bridge → shell `studio:play/hello` (the game page can take a
+  request), `play/ask`, `play/answer`, `play/reload`; shell → bridge
+  `studio:play/on` (`lang`, the overlay's `words`: the bridge has no strings),
+  `play/state`, `play/sent`. Nothing is shown until `play/on`, which the shell
+  sends only when an AI is behind the host: **the offline web demo shows no
+  field and no mark** (a field that cannot send is a promise the demo can't keep).
+- **What each engine gives.** The words, the picture and the console come from
+  the page and work for every game with a canvas (three.js, Phaser, Pixi,
+  plain canvas, Godot web; a game drawn only in HTML sends no picture). Where
+  the player is and what is near depend on the adapter: three.js (built in)
+  gives the player's camera and what is near it in world units; 2D adapters
+  (Phaser, Pixi, canvas, Godot through a 2D port) give what is on screen
+  through `anchor()`, nearest the middle; an adapter of your own can add
+  `player()` for a 3D engine. A canvas that holds pictures from another site
+  without CORS cannot be read: then no picture, the rest still goes.
 
 ---
 
@@ -640,6 +791,30 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
 - Limits (`LIMITS`): ≤ 500 objects; |value| ≤ 10 000 (3D) / 100 000 px (2D);
   rounded to 1 mm / 0.1 px / 1e-4 rad; keys sorted (same content = same
   bytes); `__proto__`/`constructor`/`prototype` keys rejected; ≤ 64 KB.
+- Optional (UI stage 1, 2026-10-19): the game's UI moved in the editor's UI
+  layer (§1.1), by `data-studio-key`:
+
+  ```json
+  "ui": {
+    "title-card": { "p": [0, -48], "s": 1.2, "label": "Glow Garden" },
+    "score":      { "p": [-12, 8] }
+  },
+  "uiView": [1280, 800]
+  ```
+
+  `p` = `[dx, dy]` CSS px from where the game's own CSS puts the element (the
+  CSS `translate` it gets: `[0, -48]` = 48 px up); `s` = CSS `scale`, absent
+  = 1; `label` = its text (first 40 characters), a clue for the AI. No `was`:
+  the original is always `p [0, 0]`, `s 1`, and the key finds the element.
+  `uiView` = the game's size in CSS px at the save (for turning px into `%` /
+  `vw`); only with a `ui`. `dim` stays the world's (`"2d"` with `objects: {}`
+  for an HTML-only game). Limits: ≤ 200 elements, |p| ≤ 10 000 px, `s`
+  0.1–10, 0.1 px / 1e-4. Both fields are absent when nothing in the UI moved
+  — always for a game without `data-studio-key` — so such files are byte for
+  byte what they were. `studio-placement.js` applies `ui` before `objects`,
+  whatever the world's `dim`, also to marked elements the game adds later
+  (`applyPlacement(document, url)` = the UI only); `report.ui = { applied,
+  missing }`.
 
 ### 4.2 library.json
 

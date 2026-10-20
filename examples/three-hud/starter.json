@@ -1,0 +1,7 @@
+{
+  "title": "Glow Garden",
+  "dim": "3d",
+  "blurb": "A night garden in three.js with an HTML title, Start button and score over it. Press U in the editor to move the UI.",
+  "thumb": "thumb.png",
+  "order": 3
+}

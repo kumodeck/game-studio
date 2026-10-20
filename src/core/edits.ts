@@ -285,6 +285,19 @@ export function withEdits(inner: StudioAdapter): EditsAdapter {
     },
     copies: () => new Map(made),
   };
+  // Snap to surfaces: a stand-in measures and drops as its original does (the same as nudgeY).
+  if (inner.rest) {
+    edits.rest = (key, skip) => {
+      const g = ghostOf(key);
+      return g ? probe(g.src, g.pose, () => inner.rest!(g.src, skip)) : inner.rest!(key, skip);
+    };
+  }
+  if (inner.drop) {
+    edits.drop = (key, skip) => {
+      const g = ghostOf(key);
+      return g ? onGhost(g, () => inner.drop!(g.src, skip)) : inner.drop!(key, skip);
+    };
+  }
   if (inner.nudgeY) {
     edits.nudgeY = (key, dy) => {
       const g = ghostOf(key);

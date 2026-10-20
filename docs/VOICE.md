@@ -59,7 +59,8 @@ Assets strings use the same rule). Japanese has no plural, so the ja table just 
 |---|---|
 | First-time tip | Click an object to select it · ⌘K for all actions |
 | Sent | “Put three lighthouses here” sent to your AI. Waiting for a reply… |
-| Nobody there | Your AI isn’t watching this editor. Type “look” in Claude Code or Codex… |
+| Nobody there | Your request is in. It goes into the game the next time your AI runs. [Call your AI] (never a warning, an app name or a command) |
+| AI asks | Is the second door a real door, or only for looks? [A real door] [Only for looks] (answered right here) |
 | Done (AI's note) | Added 3 lighthouses around the island |
 | Error | The game stopped on an error. Ask your AI to fix it, then reload. |
 | Confirm | You have 2 unsaved changes. Play without saving? |

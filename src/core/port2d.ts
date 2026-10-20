@@ -384,6 +384,20 @@ export function adapterFromPort2D(port: Port2D, _core: Core, win: Window = windo
         view.y = py - cy - view.zoom * (wy - cy);
         applyView();
       },
+      // The opening view (and ⌘K "Back to the opening view"). On a portrait screen — a phone — the game's own picture
+      // (the identity view: exactly what Play shows), else everything in frame as before. WHY (the second design review's
+      // ⑩, 2026-10-19): "everything in frame" on a 390 px wide phone shrank a landscape world to a strip — Firefly Ruins'
+      // urn was 15×21 pt with the top 40 % of the screen empty sky — while the game itself already zooms in on its middle
+      // for a portrait screen. 3D opens on the game's camera the same way (three.js home()).
+      home() {
+        const r = canvasRect();
+        if (r.height > r.width) {
+          view.x = 0;
+          view.y = 0;
+          view.zoom = 1;
+          applyView();
+        } else adapter.view.frameAll();
+      },
       frameAll() {
         const b = allBounds();
         if (!b) return;

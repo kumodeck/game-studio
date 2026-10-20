@@ -363,6 +363,16 @@ export class PlacementModel {
     return this.current.get(key);
   }
 
+  /** The pose of the last save (else the game's own): what "check before saving" compares with (safe-save.ts). */
+  savedPose(key: string): Pose | undefined {
+    return this.saved.get(key);
+  }
+
+  /** The pose the game's own code gives it (`was`): the "now" side of the AI's question about a moved object (ai-ask.ts). */
+  original(key: string): Pose | undefined {
+    return this.was.get(key);
+  }
+
   /** Unsaved changes: moved objects, copies, deletions and reordered lists, one each. */
   dirty(): number {
     let n = 0;

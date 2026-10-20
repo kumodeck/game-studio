@@ -10,15 +10,17 @@
 //      (inside the window), the camera did not move, nothing the floating panels cover changed (the strip stayed);
 //      the keys at the right end are the shortcut table's (PC) and phones show none
 //   2. Esc closes it (PC) / a tap outside closes it and does nothing else (phone): the pick stays, the view stays
-//   3. choosing works: Duplicate makes a copy (one more object), the menu's Undo takes it back; PC: ↓ to Duplicate and
-//      Enter does the same as the mouse
-//   4. on an empty spot of the game: the scene's menu (Paste · Select all · Deselect · Show all · …); Deselect drops
-//      the pick; Select all picks everything
+//   1b. short (design review 2, item ②): PC 7 rows at most in 3D (+ to front / to back in 2D), no Undo / Redo, no Paste
+//      with nothing copied; a phone 5 rows at most, none dimmed, no Duplicate / Copy / Paste / Delete (the card has
+//      them), and the menu ends 8 px above the card and the ask box
+//   3. choosing works (PC): Duplicate makes a copy (one more object); ↓ to Duplicate and Enter does the same as the mouse
+//   4. on an empty spot of the game WITH something picked: the scene's menu, not the pick's (review 2: the sky beside
+//      the lighthouse) — Select all · Deselect · Show all · …, no dimmed row; Deselect drops the pick and is gone from
+//      the menu after it; Select all picks everything
 //   5. on a row of the scene list (PC: the left column; phone: the list sheet): the row's object is picked and the
-//      object's menu opens; 2D (layers) lists the draw-order rows
-//   6. the Library: an object's tile → Add to scene · Ask your AI… · Details · Show in game · Duplicate · Delete; a
-//      file's tile → Add to scene · Ask your AI… · Details · Show just these objects · Replace… ("use the Library",
-//      2026-10-18); "Show just these objects" narrows the Library; "Show in game" goes back
+//      object's menu opens; 2D (layers) lists to front / to back only
+//   6. the Library: an object's tile → Add to scene · Ask your AI… · Show in game · Delete (no Duplicate); a file's
+//      tile → Add to scene · Ask your AI… · Replace… (review 2 ①); "Show in game" goes back
 //   7. the browser's own menu never shows in the editor (contextmenu prevented), except in a text field
 //   8. phone: a long press on the strip's turn button (3D) still opens the strip's choices, not this menu
 // Pictures (--shots <dir>): <game>-<layout>-<theme>-1-object / 2-scene / 3-list / 4-lib-object / 5-lib-file.png
@@ -151,8 +153,21 @@ async function run(game, layout, theme) {
     assert.ok(m, `${tag}: the menu opened on ${g.pick}`);
     assert.equal(m.place, 'object');
     assert.deepEqual(ids(m).slice(0, 2), ['ask', 'rename'], `${tag}: Ask your AI and Rename first`);
-    for (const id of ['duplicate', 'copy', 'paste', 'remove', 'undo', 'redo']) assert.ok(ids(m).includes(id), `${tag}: object menu has ${id} (${ids(m)})`);
-    near(m, px, py, tag);
+    for (const id of ['undo', 'redo', 'paste', 'layer-forward', 'layer-backward']) assert.ok(!ids(m).includes(id), `${tag}: no ${id} (${ids(m)})`);
+    const layerRows = ids(m).filter((i) => i.startsWith('layer-')).length;
+    if (touch) {
+      assert.ok(m.rows.length <= 5, `${tag}: a phone's menu is 5 rows at most (${ids(m)})`);
+      assert.ok(m.rows.every((r) => !r.off), `${tag}: no dimmed row on a phone (${ids(m)})`);
+      for (const id of ['duplicate', 'copy', 'remove']) assert.ok(!ids(m).includes(id), `${tag}: no ${id} on a phone (the card has it)`);
+      // Over neither the card nor the ask box.
+      const floor = await j(`JSON.stringify(Math.min(...[document.querySelector('.card'), document.querySelector('.bar')].filter((e) => e && e.offsetParent).map((e) => e.getBoundingClientRect().top)))`);
+      assert.ok(m.t + m.h <= floor - 8 + 0.5, `${tag}: the menu ends 8 px above the card / ask box (${m.t + m.h} vs ${floor})`);
+    } else {
+      for (const id of ['duplicate', 'copy', 'remove', 'showInLibrary']) assert.ok(ids(m).includes(id), `${tag}: object menu has ${id} (${ids(m)})`);
+      assert.ok(m.rows.length - layerRows <= 7, `${tag}: 7 rows at most (${ids(m)})`);
+      near(m, px, py, tag);
+    }
+    if (game === 'firefly-ruins') assert.ok(layerRows <= 2, `${tag}: to front / to back only`);
     keysShown(m, tag);
     assert.equal(await view(), v0, `${tag}: the camera did not move for the menu`);
     await page.eval(`document.activeElement?.blur?.()`);
@@ -161,7 +176,9 @@ async function run(game, layout, theme) {
 
     // ---- 2. closing: Esc (PC) / a tap outside (phone) — nothing else happens ----
     if (touch) {
-      const [fx, fy] = await j(`(() => { const r = document.querySelector('iframe.game').getBoundingClientRect(); return JSON.stringify([r.left + 20, r.top + 60]); })()`);
+      // Outside the menu: the game's top right (merge of 2026-10-19: with Drop to floor the phone menu has one more row
+      // and opens higher, so the old point — the game's top left — fell on the menu itself).
+      const [fx, fy] = await j(`(() => { const r = document.querySelector('iframe.game').getBoundingClientRect(); return JSON.stringify([r.right - 20, r.top + 60]); })()`);
       await page.tap(fx, fy);
     } else {
       await page.eval(`document.querySelector('.ctx-menu').focus()`);
@@ -180,14 +197,12 @@ async function run(game, layout, theme) {
     const strip1 = await j(`(() => { const e = ${ROOT}.querySelector('.row'); if (!e || !e.getBoundingClientRect().width) return 'null'; const r = e.getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.width, r.height]); })()`);
     assert.ok(strip0 && strip1, `${tag}: the strip is under the pick`);
     assert.ok(strip0.every((v, i) => Math.abs(v - strip1[i]) < 0.5), `${tag}: the strip stayed put when the menu opened (${strip0} → ${strip1})`);
-    await choose('duplicate');
-    await page.waitFor(`studioShell.items().length === ${n0 + 1}`, 5000);
-    await open(px, py);
-    m = await menu();
-    assert.equal(m.rows.find((r) => r.id === 'undo').off, false, `${tag}: Undo is live after the copy`);
-    await choose('undo');
-    await page.waitFor(`studioShell.items().length === ${n0}`, 5000);
     if (!touch) {
+      await choose('duplicate');
+      await page.waitFor(`studioShell.items().length === ${n0 + 1}`, 5000);
+      // Undo is the top bar's (and ⌘Z), not the menu's.
+      await page.eval(`studioShell.actions.undo()`);
+      await page.waitFor(`studioShell.items().length === ${n0}`, 5000);
       await open(px, py);
       for (let i = 0; i < 8 && (await page.eval(`document.activeElement?.dataset?.action`)) !== 'ctx-duplicate'; i++) await key('ArrowDown', 'ArrowDown', 40);
       assert.equal(await page.eval(`document.activeElement?.dataset?.action`), 'ctx-duplicate', `${tag}: ↓ reaches Duplicate`);
@@ -197,9 +212,9 @@ async function run(game, layout, theme) {
       assert.equal(await menu(), null, `${tag}: Enter ran it and closed the menu`);
       await page.eval(`studioShell.actions.undo()`);
       await page.waitFor(`studioShell.items().length === ${n0}`, 5000);
-    }
+    } else await key('Escape', 'Escape', 27);
     assert.equal(await view(), v0, `${tag}: the camera never moved`);
-    ok(`Duplicate and Undo from the menu${touch ? '' : ', ↓ + Enter'}`);
+    ok(touch ? 'the strip stays put under the menu' : 'Duplicate from the menu, ↓ + Enter');
 
     // ---- 4. an empty spot: the scene's menu; Deselect, Select all ----
     const f = await j(`(() => { const r = document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.width, r.height]); })()`);
@@ -212,7 +227,8 @@ async function run(game, layout, theme) {
     m = await menu();
     assert.ok(m, `${tag}: a menu on the empty spot`);
     assert.equal(m.place, 'scene');
-    assert.deepEqual(ids(m), ['ask', 'paste', 'selectAll', 'deselect', 'frame', 'home', 'undo', 'redo'], `${tag}: the scene's rows`);
+    assert.deepEqual(ids(m), ['ask', 'selectAll', 'deselect', 'frame', 'home'], `${tag}: the scene's rows`);
+    assert.ok(m.rows.every((r) => !r.off), `${tag}: no dimmed row in the scene's menu`);
     assert.equal(await selected(), g.pick, `${tag}: a menu on nothing keeps the pick (Deselect is in it)`);
     near(m, spot[0], spot[1], `${tag} scene`);
     await page.eval(`document.activeElement?.blur?.()`);
@@ -220,7 +236,7 @@ async function run(game, layout, theme) {
     await choose('deselect');
     assert.equal(await selected(), null, `${tag}: Deselect from the menu drops the pick`);
     await open(spot[0], spot[1]);
-    assert.equal((await menu()).rows.find((r) => r.id === 'deselect').off, true, `${tag}: Deselect is dimmed with nothing picked`);
+    assert.ok(!ids(await menu()).includes('deselect'), `${tag}: no Deselect with nothing picked`);
     await choose('selectAll');
     assert.ok(await selected(), `${tag}: Select all picked`);
     assert.ok((await picked()) > 1, `${tag}: Select all picked several (${await picked()} rows)`);
@@ -242,7 +258,7 @@ async function run(game, layout, theme) {
     assert.ok(m, `${tag}: a menu on the list row ${rowKey}`);
     assert.equal(m.place, 'object');
     assert.equal(await selected(), rowKey, `${tag}: the row's object was picked first`);
-    if (game === 'firefly-ruins') assert.ok(ids(m).includes('layer-toFront') && ids(m).includes('layer-forward') !== touch, `${tag}: 2D lists the draw-order rows, two on a phone (${ids(m)})`);
+    if (game === 'firefly-ruins') assert.ok((ids(m).includes('layer-toFront') || ids(m).includes('layer-toBack')) && !ids(m).includes('layer-forward'), `${tag}: 2D lists to front / to back only (${ids(m)})`);
     else assert.ok(!ids(m).includes('layer-forward'), `${tag}: 3D has no draw-order rows`);
     assert.equal(await view(), v0, `${tag}: a row's menu did not move the camera`);
     await page.eval(`document.activeElement?.blur?.()`);
@@ -271,7 +287,7 @@ async function run(game, layout, theme) {
     m = await menu();
     assert.ok(m, `${tag}: a menu on the Library's object tile`);
     assert.equal(m.place, 'libObject');
-    assert.deepEqual(ids(m), ['addToScene', 'ask', 'details', 'showInGame', 'duplicate', 'remove']);
+    assert.deepEqual(ids(m), ['addToScene', 'ask', 'showInGame', 'remove']);
     assert.ok(await selected(), `${tag}: the tile's object was picked`);
     assert.ok(await page.eval(`!!document.querySelector('.assets-page .gsl-detail:not([hidden]) .lib-object-detail')`), `${tag}: its detail shows`);
     await page.eval(`document.activeElement?.blur?.()`);
@@ -290,16 +306,12 @@ async function run(game, layout, theme) {
     m = await menu();
     assert.ok(m, `${tag}: a menu on a file tile`);
     assert.equal(m.place, 'libFile');
-    assert.deepEqual(ids(m), ['addFile', 'askFile', 'details', 'showUsers', 'replace']);
+    assert.deepEqual(ids(m), ['addFile', 'askFile', 'replace']);
     assert.ok(await page.eval(`!!document.querySelector('.assets-page .gsl-detail:not([hidden])[data-kind=file]')`), `${tag}: the file's detail opened`);
     await page.eval(`document.activeElement?.blur?.()`);
     await shot('5-lib-file');
-    if (g.file) {
-      assert.equal(m.rows.find((r) => r.id === 'showUsers').off, false, `${tag}: ${g.file} is used, "Show just these objects" is live`);
-      await choose('showUsers');
-      assert.ok(await page.eval(`!!document.querySelector('.assets-page .shelf-band[data-file="${g.file}"]')`), `${tag}: the Library is narrowed to its objects`);
-    } else await choose('replace');
-    if (!g.file) assert.ok(await page.eval(`!!document.querySelector('.assets-page .gsl-picker')`), `${tag}: Replace… opened the picker`);
+    await choose('replace');
+    assert.ok(await page.eval(`!!document.querySelector('.assets-page .gsl-picker')`), `${tag}: Replace… opened the picker`);
     // Show in game from an object tile goes back to the game with the pick.
     at = await tileAt(`.assets-page .lib-object`);
     await sleep(300);

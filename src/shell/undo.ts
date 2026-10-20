@@ -19,6 +19,11 @@ export type Change =
 
 export interface UndoEntry {
   changes: Change[];
+  /**
+   * UI stage 1: 'ui' = a step on the game's UI layer (absent = the world). One history for both layers; undoing a
+   * step of the other layer switches to it first, so what goes back is seen (as Figma does across pages).
+   */
+  layer?: 'ui';
 }
 
 /** The common case: one object moved. */
@@ -29,6 +34,9 @@ export class UndoStack {
   private undone: UndoEntry[] = [];
   private readonly limit: number;
 
+  /** The layer a step belongs to when push() is not told (the shell sets it: the layer being edited). */
+  layerNow: () => 'ui' | undefined = () => undefined;
+
   constructor(limit: number = LIMITS.undoSteps) {
     this.limit = limit;
   }
@@ -37,7 +45,8 @@ export class UndoStack {
   push(e: UndoEntry): boolean {
     const changes = e.changes.filter((c) => c.kind !== 'pose' || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
-    this.done.push({ changes });
+    const layer = e.layer ?? this.layerNow();
+    this.done.push(layer ? { changes, layer } : { changes });
     if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
     this.undone.length = 0;
     return true;

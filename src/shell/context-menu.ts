@@ -50,20 +50,27 @@ export interface OpenOptions {
   keyboard?: boolean;
   /** What it is about, read aloud ("Menu for crate-4"). */
   label?: string;
+  /** Page y the menu's bottom stays 8 px above (a phone's card / ask box); absent = the window's bottom. */
+  floor?: number;
 }
 
-/** Where a menu of size w × h opens for a point, inside a window of vw × vh with an 8 px margin (pure; tested). */
-export function placeMenu(x: number, y: number, w: number, hgt: number, vw: number, vh: number, touch = false): { left: number; top: number } {
+/**
+ * Where a menu of size w × h opens for a point, inside a window of vw × vh with an 8 px margin (pure; tested).
+ * `floor`: the menu's bottom stays 8 px above this y — a phone's card / ask box (design review 2, item ②: a long
+ * press on the game opened the menu over the card and the ask box). Default: the window's bottom.
+ */
+export function placeMenu(x: number, y: number, w: number, hgt: number, vw: number, vh: number, touch = false, floor = vh): { left: number; top: number } {
   const m = 8;
+  const bottom = Math.min(vh, floor);
   // A mouse: the corner 2 px off the pointer (a release right after the press must not land on a row). A finger:
   // above it with room for the fingertip, centred on it.
   let left = touch ? x - w / 2 : x + 2;
   let top = touch ? y - hgt - 16 : y + 2;
   if (!touch && left + w > vw - m) left = x - w - 2;
-  if (!touch && top + hgt > vh - m) top = y - hgt - 2;
+  if (!touch && top + hgt > bottom - m) top = y - hgt - 2;
   if (touch && top < m) top = y + 24;
   left = Math.max(m, Math.min(left, vw - m - w));
-  top = Math.max(m, Math.min(top, vh - m - hgt));
+  top = Math.max(m, Math.min(top, bottom - m - hgt));
   return { left: Math.round(left), top: Math.round(top) };
 }
 
@@ -129,7 +136,7 @@ export function createContextMenu(d: ContextMenuDeps) {
     el.hidden = false;
     catcher.hidden = false;
     const r = el.getBoundingClientRect();
-    const p = placeMenu(x, y, r.width, r.height, window.innerWidth, window.innerHeight, o.touch);
+    const p = placeMenu(x, y, r.width, r.height, window.innerWidth, window.innerHeight, o.touch, o.floor);
     el.style.left = `${p.left}px`;
     el.style.top = `${p.top}px`;
     // It grows from the corner nearest the point (a menu that opened to the left grows to the left).

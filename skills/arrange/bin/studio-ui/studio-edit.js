@@ -267,7 +267,7 @@ __defs[1] = function (__exports) {
       var id = nextId++;
       var nid = nativeRAF(function (ts) {
         live.delete(id);
-        if (state.held) { parked.set(id, cb); return; }
+        if (state.held && !state.watching) { parked.set(id, cb); return; }
         cb(ts);
       });
       live.set(id, nid);
@@ -289,12 +289,27 @@ __defs[1] = function (__exports) {
   function release() {
     if (!state.held) return;
     state.held = false;
+    state.watching = false;
     var cbs = Array.from(parked.values());
     parked.clear();
     // Replay on a real frame so the game sees a fresh timestamp (its clock will report a long delta — games
     // normally clamp dt; the editor reloads the game after saving anyway).
     if (cbs.length && nativeRAF) nativeRAF(function (ts) { for (var i = 0; i < cbs.length; i++) cbs[i](ts); });
     emit('release');
+  }
+
+  /**
+   * Let the game's frame callbacks run while it stays held for drawing (its renders are still skipped, the editor's
+   * picture does not change): the editor watches the first moments of play to find what the game moves by itself
+   * (bridge/observe.ts, a hands-on try of 2026-10-19). Off again = parked as before.
+   */
+  function watch(on) {
+    if (!on) { state.watching = false; return; }
+    if (!state.held || state.watching) return;
+    state.watching = true;
+    var cbs = Array.from(parked.values());
+    parked.clear();
+    if (cbs.length && nativeRAF) nativeRAF(function (ts) { for (var i = 0; i < cbs.length; i++) cbs[i](ts); });
   }
 
   // ------------------------------------------------------------------ 4. load records
@@ -416,6 +431,7 @@ __defs[1] = function (__exports) {
   // Used by the adapter module (same window, loaded later).
   state.hold = hold;
   state.release = release;
+  state.watch = watch;
   state.nativeRAF = nativeRAF;
   state.on = function (fn) { state.listeners.push(fn); };
   state.kindOf = kindOf;
@@ -977,18 +993,51 @@ function rayObjectHit(ray, object) {
   return best;
 }
 
-/** Screen box of ONE mesh's own geometry box (not its children), in ndc like screenRect, or null. */
-function meshScreenRect(mesh, viewProj) {
-  const b = localBox(mesh);
-  if (!b) return null;
+/**
+ * Screen box (ndc, NOT clipped to the canvas) of world boxes' corners, for pickNear's distance and size. Like
+ * screenShare, a box edge that runs behind the camera is cut just in front of it instead of dropping the corners
+ * behind (screenRect does that): the cut points land far outside the canvas, so a ground running on under the camera
+ * comes out as big as it is.
+ * WHY (glow-camera pass 2026-10-20): with corners dropped, a 400 m ground seen from inside came out as its far strip,
+ * a band 1 px high near the horizon — "size" ≈ 0, so under the finger the ground scored 0.25 and beat every lantern
+ * (≈ 10) standing on it: a tap on a lantern picked the ground, i.e. nothing. It showed when Glow Garden's ground grew
+ * to the horizon (studio-ui-layer: no world object under the UI any more); any game whose ground or sea runs under the
+ * camera had the same order. Unclipped on purpose: clipping to the canvas would shrink things that stand partly off
+ * screen and change which of them wins (W1 merge, 2026-10-17).
+ */
+function cutRect(boxes, viewProj) {
   let r = null;
-  for (const c of boxCorners(b[0], b[1])) {
-    const q = project(viewProj, applyM4(mesh.matrixWorld.elements, c));
-    if (q[3] <= 0) continue;
+  const add = (q) => {
     if (!r) r = [q[0], q[1], q[0], q[1]];
     else (r[0] = Math.min(r[0], q[0])), (r[1] = Math.min(r[1], q[1])), (r[2] = Math.max(r[2], q[0])), (r[3] = Math.max(r[3], q[1]));
+  };
+  for (const ps of boxes) {
+    const qs = ps.map((p) => project(viewProj, p));
+    for (const q of qs) if (q[3] > NEAR_W) add(q);
+    for (let i = 0; i < ps.length; i++) {
+      for (let j = i + 1; j < ps.length; j++) {
+        const wi = qs[i][3], wj = qs[j][3];
+        if ((wi > NEAR_W) === (wj > NEAR_W)) continue;
+        const t = (wi - NEAR_W) / (wi - wj);
+        add(project(viewProj, v.add(ps[i], v.scale(v.sub(ps[j], ps[i]), t))));
+      }
+    }
   }
   return r;
+}
+/** The world corners of one mesh's own geometry box, or null. */
+function meshCorners(mesh) {
+  const b = localBox(mesh);
+  return b ? boxCorners(b[0], b[1]).map((c) => applyM4(mesh.matrixWorld.elements, c)) : null;
+}
+/** pickNear's screen box of a subtree (cutRect over each mesh's box), or null. */
+function objectCutRect(object, viewProj) {
+  return cutRect(meshesOf(object).map(meshCorners).filter(Boolean), viewProj);
+}
+/** pickNear's screen box of ONE mesh's own geometry box (not its children), or null. */
+function meshScreenRect(mesh, viewProj) {
+  const ps = meshCorners(mesh);
+  return ps ? cutRect([ps], viewProj) : null;
 }
 
 /** Ring fractions of the radius and rays per ring for nearMiss(): 3 × 12 = 36 rays at most, only for an object
@@ -1031,7 +1080,7 @@ function pickNear(cands, camera, viewProj, ndcX, ndcY, radiusPx, size) {
   }
   const rows = [];
   for (const c of cands) {
-    const r = screenRect(c.object, viewProj);
+    const r = objectCutRect(c.object, viewProj);
     if (!r) continue;
     const [x0, y1] = toPx(r[0], r[1]);
     const [x1, y0] = toPx(r[2], r[3]);
@@ -1118,7 +1167,7 @@ __defs[5] = function (__exports) {
  *                  never changes; dy = 1 is one view height at the target (the scene slides down the screen by its
  *                  full height). The one way to change height — pan keeps it, orbit turns round it, zoom slides along
  *                  the line of sight (camera up / down, play test 2026-10-18: "I can't raise the camera; it's needed").
- *   fly(r, u, f):  WASD — the camera and its turning point together, scaled to the scene (see fly)
+ *   fly(r, u, f):  WASD — the camera and its turning point together, scaled to the scene; W / S level (see fly)
  *   look(dx, dy):  turn where the camera stands (right-drag while flying); orbit turns round the point in front
  *   zoom(f, x, y): f > 1 moves closer; the point under (x, y) stays under the cursor (the camera slides along the line
  *                  through that point — exact for perspective)
@@ -1219,19 +1268,26 @@ function createEditView(gameCamera) {
     /**
      * Fly (WASD, camera-wasd pass 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"):
      * move the camera and the point it turns round together by `right` / `up` / `fwd`, each in seconds of travel at
-     * the normal speed (the bridge passes the frame's dt; Shift multiplies it). fwd follows the line of sight, so W
-     * dives where you look, as in Unity / Unreal / Godot; up is straight up (the same as rise), right is level.
+     * the normal speed (the bridge passes the frame's dt; Shift multiplies it).
+     * fwd is LEVEL (wasd-level pass 2026-10-19, from a try of the editor: "W/S as level forward / back looks better"): along the
+     * ground the way the camera faces, so looking down at the harbour W glides over it at the same height instead of
+     * diving into the water. The height changes only with up (E / Q, straight up / down — the same as rise). This is
+     * Blender's Walk with gravity and Godot's "Fully Axis-Locked" freelook; Unreal / Unity / Godot's default fly
+     * follows the line of sight instead (which is what this did on 2026-10-18 — we chose level because an editor
+     * camera here mostly looks down on a level, and diving lost the scene).
+     * right is level too (as before). Looking straight down never happens (pitch ≤ 85°), so the level direction is
+     * always defined by yaw.
      * Speed: FLY_PER_S of the distance to the turning point, kept within 0.25–2 scene radii — the view crosses
      * about the same share of the screen per second in a small room and on Lantern Cove, slows down close to a
-     * small prop, and never crawls (or races) when zoomed very far in (or out). The height keeps rise's bound;
-     * sideways has none, as pan (engines let you fly anywhere, under the ground too).
+     * small prop, and never crawls (or races) when zoomed very far in (or out). The same speed level or not: W at a
+     * steep look-down moves a full step over the ground (the old look-along W moved only cos(pitch) of it).
+     * The height keeps rise's bound; sideways has none, as pan (engines let you fly anywhere, under the ground too).
      */
     fly(right, up, fwd) {
       const sp = FLY_PER_S * Math.min(Math.max(st.distance, st.radius * 0.25), st.radius * 2);
-      const cp = Math.cos(st.pitch);
-      const look = [-cp * Math.sin(st.yaw), -Math.sin(st.pitch), -cp * Math.cos(st.yaw)];
+      const ahead = [-Math.sin(st.yaw), 0, -Math.cos(st.yaw)]; // level, the way the camera faces (as pan's fwd)
       const side = [Math.cos(st.yaw), 0, -Math.sin(st.yaw)];
-      st.target = v.add(st.target, v.scale(v.add(v.add(v.scale(side, right), [0, up, 0]), v.scale(look, fwd)), sp));
+      st.target = v.add(st.target, v.scale(v.add(v.add(v.scale(side, right), [0, up, 0]), v.scale(ahead, fwd)), sp));
       const lim = Math.max(60, st.radius * 8);
       st.target[1] = Math.min(lim, Math.max(-lim, st.target[1]));
     },
@@ -1656,6 +1712,297 @@ __def(__exports, "focusSphere", () => focusSphere);
 };
 __defs[9] = function (__exports) {
 'use strict';
+// ../adapters/three/surface.js
+
+/**
+ * Surfaces to set things on: ray casts against the scene's own meshes (the ground, a pier's planks, a crate's lid),
+ * for the "snap to surfaces" moves (a request after a try of the editor, 2026-10-19: "in Unreal, an object moved up or down stops once when it
+ * meets the ground or another thing — I want to set things down exactly on the ground; that feature is needed").
+ * adapter.js uses it for three things: the height drag stops on the first surface below (bridge/snap.ts holds the
+ * rule), a move keeps the object standing on whatever is under it, and "Drop to floor" (End) sets it on the surface
+ * below. No three.js import (as pick.js): plain arrays, the scene's own matrices.
+ *
+ * What counts as a surface:
+ * - every visible mesh in the scene, listed or not (a ground the game marks userData.studio = false, a ground the
+ *   editor holds still — the "safe edit" pass — are still floors: they only cannot be moved);
+ * - but not: the moving objects themselves and their children (`skip`), skinned meshes (their positions are the bind
+ *   pose, not what is drawn), instanced / batched meshes (one geometry drawn in many places), lines, points, sprites,
+ *   wireframes, and see-through light effects — additive blending, transparent with no depth write, or nearly clear
+ *   (Lantern Cove's lighthouse beam is two additive cards: a barrel must not land on a ray of light). Water drawn as a
+ *   transparent plane that writes depth (Lantern Cove's sea) does count: a barrel set on the sea sits on the water.
+ * - Only the side of a face that looks at the ray (a FrontSide face hit from behind is the inside of a solid, e.g. a
+ *   ray that starts inside a pier post), and for "something to stand on" only faces turned up: normal y ≥ `minUp`
+ *   (0.5 = slopes up to 60°; a wall is not a floor).
+ *
+ * Speed: Lantern Cove's terrain is 106 k triangles, and the move asks once per pointer move. Each mesh's triangles
+ * are copied into world space once and sorted into a grid of xz cells (meshes of GRID_MIN_TRIS or more); a vertical
+ * ray reads one cell, a slanted one the cells under its path. The copy is kept until the mesh, its geometry or its
+ * matrix changes (WeakMap per mesh), so a dragged crate is re-copied while it moves (small) and the terrain never is.
+ */
+const { rayBox, rayTriangle, v } = __require(3);
+
+/** Meshes with at least this many triangles get a grid; smaller ones are tested whole (a crate: 12). */
+const GRID_MIN_TRIS = 2000;
+/** Most cells per side of a grid (64² = 4096 cells; ~26 triangles per cell for the terrain). */
+const GRID_MAX = 64;
+/** Rays that would visit more cells than this (a ray grazing a huge sea) test the whole mesh instead. */
+const MAX_STEPS = 512;
+
+const FRONT = 0;
+const BACK = 1;
+const ADDITIVE = 2; // THREE.AdditiveBlending
+
+/** Can this material be stood on? (see the header: light effects and wireframes cannot). */
+function solidMaterial(m) {
+  if (!m || m.visible === false || m.wireframe) return false;
+  if (m.blending === ADDITIVE) return false;
+  if (m.transparent && (m.depthWrite === false || (typeof m.opacity === 'number' && m.opacity < 0.3))) return false;
+  return true;
+}
+
+/**
+ * The meshes things can be set on, minus `skip` (a Set of Object3D: their whole subtrees are left out).
+ * @returns {object[]} meshes, matrices as they are now (call scene.updateMatrixWorld first)
+ */
+function surfaceMeshes(scene, skip) {
+  const out = [];
+  const walk = (o) => {
+    if (!o.visible || (skip && skip.has(o))) return;
+    if (o.isMesh && !o.isSkinnedMesh && !o.isInstancedMesh && !o.isBatchedMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      if (mats.some(solidMaterial)) out.push(o);
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(scene);
+  return out;
+}
+
+/** Side of a mesh's (first) material: 0 front, 1 back, 2 double. */
+function sideOf(mesh) {
+  const m = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+  return m && typeof m.side === 'number' ? m.side : FRONT;
+}
+
+/** The world-space triangles (and grid) of one mesh, cached while nothing about it changes. */
+const cache = new WeakMap();
+function sameMatrix(a, b) {
+  for (let i = 0; i < 16; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+function trianglesOf(mesh) {
+  const g = mesh.geometry;
+  const pos = g.attributes.position;
+  const index = g.index;
+  const e = mesh.matrixWorld.elements;
+  const c = cache.get(mesh);
+  if (c && c.geo === g && c.pv === pos.version && c.iv === (index ? index.version : -1) && sameMatrix(c.m, e)) return c;
+  const start = Math.max(0, (g.drawRange && g.drawRange.start) || 0);
+  const total = index ? index.count : pos.count;
+  const end = Math.min(total, start + (g.drawRange && isFinite(g.drawRange.count) ? g.drawRange.count : total));
+  const n = Math.max(0, Math.floor((end - start) / 3));
+  const tri = new Float64Array(n * 9);
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  for (let t = 0; t < n; t++) {
+    for (let k = 0; k < 3; k++) {
+      const i = start + t * 3 + k;
+      const vi = index ? index.getX(i) : i;
+      const x = pos.getX(vi), y = pos.getY(vi), z = pos.getZ(vi);
+      const w = e[3] * x + e[7] * y + e[11] * z + e[15] || 1;
+      const wx = (e[0] * x + e[4] * y + e[8] * z + e[12]) / w;
+      const wy = (e[1] * x + e[5] * y + e[9] * z + e[13]) / w;
+      const wz = (e[2] * x + e[6] * y + e[10] * z + e[14]) / w;
+      const o = t * 9 + k * 3;
+      tri[o] = wx; tri[o + 1] = wy; tri[o + 2] = wz;
+      if (wx < min[0]) min[0] = wx; if (wx > max[0]) max[0] = wx;
+      if (wy < min[1]) min[1] = wy; if (wy > max[1]) max[1] = wy;
+      if (wz < min[2]) min[2] = wz; if (wz > max[2]) max[2] = wz;
+    }
+  }
+  const out = { geo: g, pv: pos.version, iv: index ? index.version : -1, m: e.slice(), tri, n, min, max, grid: null };
+  if (n >= GRID_MIN_TRIS && isFinite(min[0])) out.grid = buildGrid(out);
+  cache.set(mesh, out);
+  return out;
+}
+
+/** xz grid: each cell lists the triangles whose xz box overlaps it. */
+function buildGrid(T) {
+  const N = Math.max(1, Math.min(GRID_MAX, Math.ceil(Math.sqrt(T.n / 8))));
+  const sx = Math.max(1e-9, (T.max[0] - T.min[0]) / N);
+  const sz = Math.max(1e-9, (T.max[2] - T.min[2]) / N);
+  const cells = Array.from({ length: N * N }, () => []);
+  const cx = (x) => Math.min(N - 1, Math.max(0, Math.floor((x - T.min[0]) / sx)));
+  const cz = (z) => Math.min(N - 1, Math.max(0, Math.floor((z - T.min[2]) / sz)));
+  for (let t = 0; t < T.n; t++) {
+    const o = t * 9;
+    const x0 = cx(Math.min(T.tri[o], T.tri[o + 3], T.tri[o + 6])), x1 = cx(Math.max(T.tri[o], T.tri[o + 3], T.tri[o + 6]));
+    const z0 = cz(Math.min(T.tri[o + 2], T.tri[o + 5], T.tri[o + 8])), z1 = cz(Math.max(T.tri[o + 2], T.tri[o + 5], T.tri[o + 8]));
+    for (let i = x0; i <= x1; i++) for (let j = z0; j <= z1; j++) cells[j * N + i].push(t);
+  }
+  return { N, sx, sz, cells, cx, cz };
+}
+
+/** Triangle indices to test for this ray (all of them without a grid; else the cells under its path). */
+function candidates(T, ray) {
+  if (!T.grid) return null;
+  const G = T.grid;
+  const span = rayBox(ray, T.min, T.max);
+  if (span === null) return [];
+  const h = Math.hypot(ray.d[0], ray.d[2]);
+  const at = (t) => [ray.o[0] + ray.d[0] * t, ray.o[2] + ray.d[2] * t];
+  const seen = new Set();
+  const add = (p) => seen.add(G.cz(p[1]) * G.N + G.cx(p[0]));
+  if (h < 1e-6) add(at(span));
+  else {
+    // Where the ray leaves the box: the far crossing of the xz slab (the ray box test only gives the near one).
+    let t1 = Infinity;
+    for (const i of [0, 2]) {
+      if (Math.abs(ray.d[i]) < 1e-12) continue;
+      const a = (T.min[i] - ray.o[i]) / ray.d[i], b = (T.max[i] - ray.o[i]) / ray.d[i];
+      t1 = Math.min(t1, Math.max(a, b));
+    }
+    if (ray.d[1] < -1e-12) t1 = Math.min(t1, (T.min[1] - ray.o[1]) / ray.d[1]);
+    else if (ray.d[1] > 1e-12) t1 = Math.min(t1, (T.max[1] - ray.o[1]) / ray.d[1]);
+    const step = (0.5 * Math.min(G.sx, G.sz)) / h;
+    if (!isFinite(t1) || (t1 - span) / step > MAX_STEPS) return null;
+    for (let t = span; t <= t1 + step; t += step) add(at(Math.min(t, t1)));
+  }
+  const out = new Set();
+  for (const c of seen) for (const t of G.cells[c]) out.add(t);
+  return out;
+}
+
+/**
+ * The nearest surface the ray meets: { t, point, normal } (normal turned toward the ray), or null.
+ * `ray` = { o, d } with d of length 1 (t is then metres). `minUp`: only faces whose normal y is at least this
+ * (0.5 = something to stand on; -1 = any face, a wall too). `maxT`: ignore hits farther than this.
+ */
+function castSurface(ray, meshes, { minUp = 0.5, maxT = Infinity } = {}) {
+  let best = null;
+  const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0];
+  for (const mesh of meshes) {
+    const T = trianglesOf(mesh);
+    if (!T.n || rayBox(ray, T.min, T.max) === null) continue;
+    const side = sideOf(mesh);
+    const list = candidates(T, ray);
+    const test = (t) => {
+      const o = t * 9;
+      a[0] = T.tri[o]; a[1] = T.tri[o + 1]; a[2] = T.tri[o + 2];
+      b[0] = T.tri[o + 3]; b[1] = T.tri[o + 4]; b[2] = T.tri[o + 5];
+      c[0] = T.tri[o + 6]; c[1] = T.tri[o + 7]; c[2] = T.tri[o + 8];
+      const d = rayTriangle(ray.o, ray.d, a, b, c);
+      if (d === null || d > maxT || (best && d >= best.t)) return;
+      let n = v.cross(v.sub(b, a), v.sub(c, a));
+      const len = v.len(n);
+      if (!(len > 0)) return;
+      n = v.scale(n, 1 / len);
+      const facing = v.dot(n, ray.d) < 0; // the front of the face looks at the ray
+      if (facing ? side === BACK : side === FRONT) return; // the hidden side of a one-sided face
+      if (!facing) n = v.scale(n, -1);
+      if (n[1] < minUp) return;
+      best = { t: d, point: v.add(ray.o, v.scale(ray.d, d)), normal: n, mesh };
+    };
+    if (list) for (const t of list) test(t);
+    else for (let t = 0; t < T.n; t++) test(t);
+  }
+  return best;
+}
+
+/**
+ * The highest surface under a box, looking down from `fromY` (world; adapter.js: the top of the box): five vertical rays, the box's middle and four
+ * points halfway to its corners. The highest hit wins: an object half over a pier's edge rests on the pier, and on a
+ * slope it rests on the uphill side instead of sinking into it. null = nothing below.
+ */
+function surfaceBelow(box, fromY, meshes) {
+  const hit = surfaceBelowHit(box, fromY, meshes);
+  return hit ? hit.y : null;
+}
+
+/** surfaceBelow with the mesh that holds the object up: { y, mesh } or null. */
+function surfaceBelowHit(box, fromY, meshes) {
+  const cx = (box.min[0] + box.max[0]) / 2, cz = (box.min[2] + box.max[2]) / 2;
+  const hx = (box.max[0] - box.min[0]) / 4, hz = (box.max[2] - box.min[2]) / 4;
+  let top = null;
+  for (const [x, z] of [[cx, cz], [cx - hx, cz - hz], [cx + hx, cz - hz], [cx - hx, cz + hz], [cx + hx, cz + hz]]) {
+    const hit = castSurface({ o: [x, fromY, z], d: [0, -1, 0] }, meshes, { minUp: 0.5 });
+    if (hit && (top === null || hit.point[1] > top.y)) top = { y: hit.point[1], mesh: hit.mesh };
+  }
+  return top;
+}
+
+__def(__exports, "surfaceMeshes", () => surfaceMeshes);
+__def(__exports, "castSurface", () => castSurface);
+__def(__exports, "surfaceBelow", () => surfaceBelow);
+__def(__exports, "surfaceBelowHit", () => surfaceBelowHit);
+};
+__defs[10] = function (__exports) {
+'use strict';
+// ../adapters/three/ground.js
+
+/**
+ * Which listed 3D objects are the ground, a road, the sea or the sky (Item.backdrop in 3D). Pure maths on world boxes
+ * { min: [x,y,z], max: [x,y,z] } and names, so it can be tested without WebGL (test/hold.test.ts).
+ *
+ * WHY (a hands-on try of 2026-10-19, item 4): "just trying things out, the road (the ground) ended up 16 m up, and
+ * I could save it like that". 2D already keeps its ground / background at the back (core/port2d.ts backdropRun);
+ * 3D had nothing, so the road was one list pick and one Height drag away from flying. The editor holds what this
+ * finds still (bridge/hold.ts) until the person presses "Make movable".
+ *
+ * A listed object is a ground / sky when:
+ * - its name's last word says so (groundName: ground, road, sea, sky, and the same words in Japanese), whatever its size; or
+ * - its box is far bigger than a typical object's: more than 20× (a sky dome, a sea), or more than 6× and flat (a
+ *   ground plane, a long road). The same two rules focus.js sceneSphere uses to leave such boxes out of "frame all",
+ *   so what the camera ignores and what the editor holds are the same things.
+ * Never every object (a scene of only big things is all "things" the person may want to place), and the size rules
+ * need at least three objects (two boxes say nothing about what is typical).
+ */
+const { sphereOf } = __require(8);
+
+/**
+ * The name's LAST word says ground / road / sea / sky ("ground", "main-road", "Sky_01", "oceanFloor"): an English
+ * compound is named by its last word, so "sea-stack" (a rock), "road-sign" and "skyline" are things, not grounds.
+ * WHY not core/port2d.ts BACKDROP_NAME as it is: it matches a ground word anywhere, which in 2D only decides draw
+ * order at the very back of a list; here it held Lantern Cove's sea stacks still (found by test/web-demo-move,
+ * 2026-10-19). Japanese names: the same words as 2D (a whole name, or ending in sea / sky).
+ */
+const GROUND_WORDS = new Set(['ground', 'floor', 'terrain', 'background', 'backdrop', 'bg', 'sky', 'skybox', 'skydome', 'road', 'street', 'sea', 'ocean', 'water']);
+const JA_GROUND = /^(地面|背景|床|地形|道路|水面)$|地面$|道路$|海$|空$/;
+function groundName(label) {
+  const words = String(label || '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9\u3040-\u30ff\u4e00-\u9fff]+/).filter((w) => w && !/^\d+$/.test(w));
+  const last = words[words.length - 1] || '';
+  return GROUND_WORDS.has(last) || JA_GROUND.test(last);
+}
+
+/**
+ * @param {Array<{ key: string, label?: string, named?: boolean, box: { min: number[], max: number[] } | null }>} list
+ *   `named` = the label is the game's own name (an unnamed object's label is its key, which says nothing)
+ * @returns {Set<string>} the keys of the grounds / skies
+ */
+function groundKeys(list) {
+  const out = new Set();
+  const sized = list.filter((e) => e.box);
+  const radii = sized.map((e) => sphereOf(e.box).r).sort((a, b) => a - b);
+  const typical = radii[Math.floor(radii.length / 2)] || 1;
+  for (const e of list) {
+    if (e.named !== false && groundName(e.label)) {
+      out.add(e.key);
+      continue;
+    }
+    if (!e.box || sized.length < 3) continue;
+    const b = e.box;
+    const r = sphereOf(b).r;
+    const flat = b.max[1] - b.min[1] < 0.05 * Math.max(b.max[0] - b.min[0], b.max[2] - b.min[2]);
+    if (r > typical * 20 || (flat && r > typical * 6)) out.add(e.key);
+  }
+  return out.size >= list.length ? new Set() : out;
+}
+
+__def(__exports, "groundName", () => groundName);
+__def(__exports, "groundKeys", () => groundKeys);
+};
+__defs[11] = function (__exports) {
+'use strict';
 // ../adapters/three/adapter.js
 
 /**
@@ -1679,6 +2026,8 @@ const { createEditView, yawOfCamera } = __require(5);
 const { captureObject } = __require(6);
 const { assetsOf: assetsOfImpl } = __require(7);
 const { focusSphere, sceneSphere } = __require(8);
+const { castSurface, surfaceBelowHit, surfaceMeshes } = __require(9);
+const { groundKeys } = __require(10);
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
@@ -1727,6 +2076,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
   let editing = false;
   let view = null;
   let dirty = true;
+  let watchSnap = null; // transforms kept while the editor watches the game play (watch)
   let loopGen = 0; // each begin() starts a new paint loop; an old loop sees a stale generation and stops
   let lastCount = -1;
   let cands = [];
@@ -1745,6 +2095,11 @@ function createThreeAdapter({ scene, renderer, camera }) {
   let atHome = false;
   let glide = 0;
   let fogRef = 10;
+  // Snap to surfaces (surface.js, bridge/snap.ts; a try of the editor, 2026-10-19). `on`: the bridge turns it on for the length of
+  // a person's move (a drag, an arrow key) and off after, so every other caller of drag() — the copies' placement,
+  // the AI's changes, a placement file — moves exactly as before. `free`: Ctrl / ⌥ held right now (no snapping until
+  // let go). `skip`: the keys moving together (the selection): never a surface for each other.
+  let snap = { on: false, free: false, skip: [] };
   const leaveHome = () => { atHome = false; glide = 0; };
   /**
    * Move the edit camera from view state `from` to `to` in 0.6 s (ease in-out), starting at `from`. Any look-around
@@ -1856,6 +2211,41 @@ function createThreeAdapter({ scene, renderer, camera }) {
     o.position.copy(vec);
     o.updateMatrixWorld(true);
   }
+  /** The objects that are never a surface for `o`: itself (its subtree), and the other moving objects. */
+  function skipFor(o, keys) {
+    const out = new Set([o]);
+    for (const k of keys || snap.skip) {
+      const x = objectOf(k);
+      if (x) out.add(x);
+    }
+    return out;
+  }
+  /**
+   * World heights of the object's bottom (its box) and of the highest surface under it, looking down from the top of
+   * its box: a thing sunk into the ground or the water still finds the surface it stands in (Lantern Cove's props
+   * stand 15 cm deep; its barrel floats with its middle under the water — the first version looked down from the
+   * box's middle and found the sea floor 4 m down instead of the sea). null: no box.
+   */
+  function restOf(o, keys) {
+    scene.updateMatrixWorld(true);
+    const b = worldBox(o);
+    if (!b) return null;
+    const meshes = surfaceMeshes(scene, skipFor(o, keys));
+    const hit = surfaceBelowHit(b, b.max[1] + 1e-4, meshes);
+    return { bottom: b.min[1], below: hit ? hit.y : null, on: hit ? hit.mesh : null, box: b, meshes };
+  }
+  /**
+   * Is the object standing on that surface (so a move keeps it standing on what is under it)? Its bottom within
+   * 3 cm (or 3 % of its height) above the surface, or sunk into it (any depth: the surface is under its top — a
+   * floating barrel is half under the water). A lamp hung in the air, a gull, a thing lifted on purpose: not
+   * standing — those move flat at their height, as before.
+   */
+  function standing(r) {
+    if (!r || r.below === null) return false;
+    const h = Math.max(1e-3, r.box.max[1] - r.box.min[1]);
+    return r.bottom - r.below <= Math.max(0.03, 0.03 * h);
+  }
+
   function kindsOf(o) {
     const loaded = boot.urlOf.has(o) || boot.guessOf.has(o) || (o.geometry && (boot.urlOf.has(o.geometry) || boot.guessOf.has(o.geometry)));
     if (loaded) return ['model', 'object'];
@@ -1871,6 +2261,31 @@ function createThreeAdapter({ scene, renderer, camera }) {
     const mat = Array.isArray(m.material) ? m.material[0] : m.material;
     return `shape:${m.geometry.uuid.slice(0, 8)}:${mat ? mat.uuid.slice(0, 8) : ''}`;
   }
+  /**
+   * What an unnamed object looks like, for the name the editor guesses (Item.look; a hands-on try, 2026-10-19: a pillar
+   * built as `new Group()` of a black box and a pink lid read "Unnamed group" on the card and in the ask bar, and its
+   * thumbnail did not say "pillar"). `size` / `c` = the world box (all meshes), `color` = the main part's colour: the
+   * mesh with the largest box (the black body, not the thin pink lid), `inside` = drawn from the inside (BackSide: a sky
+   * dome). Only for objects without a name: a named one is called by its name. At most 64 meshes are looked at.
+   */
+  function lookOf(o) {
+    const b = worldBox(o);
+    if (!b) return undefined;
+    let main = null, best = -1, n = 0;
+    o.traverse((x) => {
+      if (!x.isMesh || n++ >= 64) return;
+      const mb = worldBox(x);
+      // Box "volume" with a floor on each side, so a flat plane (0 thick) still counts by its area.
+      const v = mb ? [0, 1, 2].reduce((acc, i) => acc * Math.max(1e-3, mb.max[i] - mb.min[i]), 1) : 0;
+      if (v > best) (best = v), (main = x);
+    });
+    const mat = main && (Array.isArray(main.material) ? main.material[0] : main.material);
+    const r3 = (v) => Math.round(v * 1000) / 1000;
+    const look = { size: [0, 1, 2].map((i) => r3(b.max[i] - b.min[i])), c: [0, 1, 2].map((i) => r3((b.max[i] + b.min[i]) / 2)) };
+    if (mat && mat.color && typeof mat.color.getHexString === 'function') look.color = `#${mat.color.getHexString()}`;
+    if (mat && mat.side === 1) look.inside = true; // THREE.BackSide
+    return look;
+  }
   function item(c) {
     const o = c.object;
     const pose = poseOf(o);
@@ -1880,6 +2295,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
       kinds: kindsOf(o),
       group: groupOf(c),
       unstable: c.unstable || undefined,
+      look: c.unstable ? lookOf(o) : undefined,
       rotatable: rotatable(o),
       scalable: scalable(o),
       pos: pose.p,
@@ -1892,6 +2308,44 @@ function createThreeAdapter({ scene, renderer, camera }) {
   boot.on((type) => { if (editing && (type === 'game-render-skipped' || type === 'load')) dirty = true; });
   const emit = (type, detail) => listeners.forEach((fn) => { try { fn(type, detail); } catch (e) { console.warn(e); } });
   const touch = () => { dirty = true; };
+
+  /**
+   * The move on surfaces (snap on, the object standing): the ray from the camera through the foot's screen point
+   * finds where the foot goes — the nearest face it meets, as Unreal's surface snapping and Blender's Face Project
+   * place things under the cursor. A face to stand on (normal up): there. A wall: the floor at its foot (a ray
+   * straight down from just in front of it). Nothing (the sky): flat at the height it has. The bottom keeps the gap
+   * it had at the grab (`g.stand`: a post sunk 15 cm stays 15 cm deep, a barrel keeps its float) while it is over
+   * the surface it stood on (`g.on`, the same mesh); on another surface its bottom sits exactly on it (a gap above
+   * kept, a sink not: the barrel floating half under the water, dragged onto the pier, stands ON the planks — keeping
+   * its 43 cm float there sank it into them).
+   */
+  function dragOnSurface(o, g, ndcX, ndcY) {
+    scene.updateMatrixWorld(true);
+    const b = worldBox(o);
+    if (!b) return poseOf(o);
+    const ray = rayFromCamera(view.camera, ndcX + g.foot[0], ndcY + g.foot[1]);
+    const meshes = surfaceMeshes(scene, skipFor(o));
+    const hit = castSurface(ray, meshes, { minUp: -1 });
+    let to = null;
+    let hitMesh = null;
+    if (hit && hit.normal[1] >= 0.5) (to = hit.point), (hitMesh = hit.mesh);
+    else if (hit) {
+      const back = [hit.point[0] - ray.d[0] * 0.05, hit.point[1] - ray.d[1] * 0.05, hit.point[2] - ray.d[2] * 0.05];
+      const down = castSurface({ o: back, d: [0, -1, 0] }, meshes, { minUp: 0.5 });
+      if (down) (to = down.point), (hitMesh = down.mesh);
+    }
+    let bottom;
+    if (to) bottom = to[1] + (hitMesh === g.on ? g.stand : Math.max(0, g.stand));
+    else {
+      to = rayPlaneY(ray, b.min[1]);
+      if (!to) return poseOf(o); // pointing at the sky above the horizon: stay
+      bottom = b.min[1];
+    }
+    const w = worldOrigin(o);
+    setWorldPosition(o, [w[0] + to[0] - (b.min[0] + b.max[0]) / 2, w[1] + bottom - b.min[1], w[2] + to[2] - (b.min[2] + b.max[2]) / 2]);
+    touch();
+    return poseOf(o);
+  }
 
   // ---------------------------------------------------------------- drawing while editing
   function draw() {
@@ -1949,11 +2403,17 @@ function createThreeAdapter({ scene, renderer, camera }) {
     }
   }
 
-  /** Hide the game's own DOM (HUD, menus, touch sticks) next to the canvas while editing — it would cover objects. */
+  /**
+   * Hide the game's own DOM (HUD, menus, touch sticks) next to the canvas while editing — it would cover objects.
+   * Not the UI the game marked with data-studio-key (or a box holding it): that is the editor's UI layer (UI stage 1,
+   * 2026-10-19), shown — faded while the world is edited (bridge/editor.ts paintLayers). A game without the mark
+   * hides exactly what it did before.
+   */
   function hideOverlays() {
     for (let el = canvas; el && el.parentElement; el = el.parentElement) {
       for (const sib of el.parentElement.children) {
         if (sib === el || sib.hasAttribute('data-studio-keep') || /^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(sib.tagName)) continue;
+        if (sib.matches('[data-studio-key]') || sib.querySelector('[data-studio-key]')) continue;
         restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
         sib.style.setProperty('visibility', 'hidden', 'important');
       }
@@ -1977,7 +2437,10 @@ function createThreeAdapter({ scene, renderer, camera }) {
 
     list() {
       scene.updateMatrixWorld(true);
-      return refresh().map(item);
+      const cs = refresh();
+      // Ground / road / sea / sky (ground.js): the editor holds these still until "Make movable" (bridge/hold.ts).
+      const grounds = groundKeys(cs.map((c) => ({ key: c.key, label: c.label, named: c.source !== 'path', box: worldBox(c.object) })));
+      return cs.map((c) => (grounds.has(c.key) ? { ...item(c), backdrop: true } : item(c)));
     },
 
     begin() {
@@ -2003,6 +2466,37 @@ function createThreeAdapter({ scene, renderer, camera }) {
       boot.nativeRAF(() => loop(gen));
       draw();
       return adapter.list();
+    },
+
+    /**
+     * bridge/observe.ts: the game's own frames run (its draws stay held) while the editor watches. Off again puts
+     * EVERY transform of the scene (and the game's camera) back as it was, not only the listed objects': the parts
+     * the list does not show move too — a lighthouse's turning beam stayed turned and caught taps meant for the sky,
+     * and a camera that sways moved the opening view (studio-deselect / web-demo-move, 2026-10-19).
+     */
+    watch(on) {
+      if (on) {
+        watchSnap = [];
+        // The Euler angles, not the quaternion (the same lesson as boot.js snapLayout): copying a quaternion makes three
+        // re-derive the angles, and a boat turned 115° came back as (180°, 65°, 180°) — the same turn, but read as
+        // "tilted upside down" with r = 65°. Then "Put back and save" (safe-save) or an undo set r alone and left the
+        // 180° tilt, and Lantern Cove's sailboat was saved turned 49° from where it was (e2e-016, 2026-10-20).
+        const keep = (o) => watchSnap.push([o, o.position.clone(), o.rotation.clone(), o.scale.clone(), o.visible]);
+        scene.traverse(keep);
+        const gc = gameCamera();
+        if (gc && !gc.parent) keep(gc);
+      } else if (watchSnap) {
+        for (const [o, p, e, s, v] of watchSnap) {
+          o.position.copy(p);
+          o.rotation.copy(e); // also updates the quaternion (three keeps them in sync)
+          o.scale.copy(s);
+          o.visible = v;
+        }
+        watchSnap = null;
+        scene.updateMatrixWorld(true);
+        touch();
+      }
+      if (boot.watch) boot.watch(!!on);
     },
 
     end() {
@@ -2067,15 +2561,36 @@ function createThreeAdapter({ scene, renderer, camera }) {
       };
     },
 
-    /** Start a move: the press point is caught on the horizontal plane at the pivot height; drag() keeps that offset. */
-    grab(key, ndcX, ndcY) {
+    /**
+     * Start a move: the press point is caught on the horizontal plane at the pivot height; drag() keeps that offset.
+     * With snapping on and the object standing on something (standing()), the move instead follows the surface under
+     * its foot (see drag); `keep` = { gap, on }, the standing measured at the first grab of this drag (a switch to free
+     * and back re-grabs, and by then the object may hang over the water).
+     */
+    grab(key, ndcX, ndcY, keep) {
       const o = objectOf(key);
       if (!o || !view) return false;
       syncView();
       const pivot = pivotOf(o);
       const hit = rayPlaneY(rayFromCamera(view.camera, ndcX, ndcY), pivot[1]);
       if (!hit) return false;
-      grabs.set(key, { y: pivot[1], off: [hit[0] - pivot[0], hit[2] - pivot[2]] });
+      const g = { y: pivot[1], off: [hit[0] - pivot[0], hit[2] - pivot[2]], mode: 'plane', stand: keep && keep.gap, on: keep && keep.on };
+      if (snap.on && keep === undefined) {
+        const r = restOf(o);
+        g.stand = standing(r) ? r.bottom - r.below : null;
+        g.on = r ? r.on : null;
+      }
+      if (snap.on && !snap.free && g.stand !== undefined && g.stand !== null) {
+        // The foot (bottom middle of the box) on screen, as an offset from the press: the ray through it finds the
+        // surface the foot goes to, and the object stays under the pointer the way it was grabbed.
+        // The foot is where the object meets what it stands on (bottom − gap), not the box's bottom: a sea stack sunk
+        // 4 m into the water had its bottom's ray meet the water well in front of it, so each ↓ step flung it toward
+        // the camera until it filled the view and could no longer be picked (test/web-demo-lp, merge of 2026-10-19).
+        const b = worldBox(o);
+        const f = project(viewProjOf(view.camera), [(b.min[0] + b.max[0]) / 2, b.min[1] - g.stand, (b.min[2] + b.max[2]) / 2]);
+        if (f[3] > 0) Object.assign(g, { mode: 'snap', foot: [f[0] - ndcX, f[1] - ndcY] });
+      }
+      grabs.set(key, g);
       return true;
     },
 
@@ -2084,13 +2599,50 @@ function createThreeAdapter({ scene, renderer, camera }) {
       if (!o || !view) return null;
       if (!grabs.has(key) && !adapter.grab(key, ndcX, ndcY)) return poseOf(o);
       syncView();
-      const g = grabs.get(key);
+      let g = grabs.get(key);
+      // Ctrl / ⌥ pressed or let go during the drag: grab again where the pointer is, the other way.
+      const want = snap.on && !snap.free && g.stand !== null && g.stand !== undefined ? 'snap' : 'plane';
+      if (want !== g.mode) {
+        if (!adapter.grab(key, ndcX, ndcY, { gap: g.stand, on: g.on })) return poseOf(o);
+        g = grabs.get(key);
+      }
+      if (g.mode === 'snap') return dragOnSurface(o, g, ndcX, ndcY);
       const hit = rayPlaneY(rayFromCamera(view.camera, ndcX, ndcY), g.y);
       if (!hit) return poseOf(o); // pointing at the sky: keep the object where it is
       const w = worldOrigin(o);
       setWorldPosition(o, [hit[0] - g.off[0], w[1], hit[2] - g.off[1]]);
       touch();
       return poseOf(o);
+    },
+
+    /** World heights of the bottom and of the surface under it (bridge/snap.ts's Rest), or null. */
+    rest(key, skip) {
+      const o = objectOf(key);
+      if (!o) return null;
+      const r = restOf(o, skip);
+      return r ? { bottom: r.bottom, below: r.below } : null;
+    },
+
+    /**
+     * Drop to floor (End, as Unreal's End): the bottom of the box set on the highest surface under it. Nothing
+     * under it (below the ground, over the void): stays. `skip`: keys that are not floors (the others dropped with it).
+     */
+    drop(key, skip) {
+      const o = objectOf(key);
+      if (!o) return null;
+      const r = restOf(o, skip);
+      if (r && r.below !== null && Math.abs(r.below - r.bottom) > 1e-6) {
+        const w = worldOrigin(o);
+        setWorldPosition(o, [w[0], w[1] + r.below - r.bottom, w[2]]);
+        grabs.delete(key);
+        touch();
+      }
+      return poseOf(o);
+    },
+
+    /** Snapping for the moves that follow (see `snap` above): { on, free, skip }. */
+    setSnap(s) {
+      snap = { on: !!(s && s.on), free: !!(s && s.free), skip: (s && Array.isArray(s.skip) ? s.skip : []).slice() };
     },
 
     release(key) {
@@ -2387,6 +2939,52 @@ function createThreeAdapter({ scene, renderer, camera }) {
       return true;
     },
 
+    /**
+     * Ask while playing (CONTRACT.md §3.5): where the game's own camera (the player's view, never the edit camera)
+     * stands and looks now. `target` = 10 units ahead along its view: a point to say "in front of you", not a hit test.
+     */
+    player() {
+      const cam = gameCamera();
+      if (!cam || !cam.matrixWorld) return null;
+      cam.updateMatrixWorld?.(true);
+      const e = cam.matrixWorld.elements;
+      const f = [-e[8], -e[9], -e[10]]; // a camera looks along its own -z
+      const n = Math.hypot(f[0], f[1], f[2]) || 1;
+      const eye = [e[12], e[13], e[14]];
+      if (!eye.every(Number.isFinite)) return null;
+      const dir = [f[0] / n, f[1] / n, f[2] / n];
+      // What is near, measured in WORLD space with the game camera (the poses in list() are the parents' local
+      // space): in front of the camera or within 3 units of it (the player's own character often stands right there,
+      // or just behind a third-person camera), nearest first. `screen` = where it is in the picture (0–1). The
+      // ground / sea / sky are left out: they are "near" everything.
+      scene.updateMatrixWorld(true);
+      const cs = refresh();
+      const grounds = groundKeys(cs.map((c) => ({ key: c.key, label: c.label, named: c.source !== 'path', box: worldBox(c.object) })));
+      let vp = null;
+      try {
+        vp = viewProjOf(cam);
+      } catch {
+        vp = null;
+      }
+      const near = [];
+      for (const c of cs) {
+        if (grounds.has(c.key) || !c.object || !c.object.matrixWorld) continue;
+        const w = c.object.matrixWorld.elements;
+        const v = [w[12] - eye[0], w[13] - eye[1], w[14] - eye[2]];
+        const d = Math.hypot(v[0], v[1], v[2]);
+        const ahead = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2];
+        if (!Number.isFinite(d) || (ahead < 0 && d > 3)) continue;
+        const it = { key: c.key, label: c.label, d };
+        if (vp) {
+          const q = project(vp, [w[12], w[13], w[14]]);
+          if (q[3] > 0 && Math.abs(q[0]) <= 1.2 && Math.abs(q[1]) <= 1.2) it.screen = [(q[0] + 1) / 2, (1 - q[1]) / 2];
+        }
+        near.push(it);
+      }
+      near.sort((a, b) => a.d - b.d);
+      return { eye, target: [eye[0] + dir[0] * 10, eye[1] + dir[1] * 10, eye[2] + dir[2] * 10], near: near.slice(0, 12) };
+    },
+
     /** The Object3D behind a key (for tests and the placement loader). */
     objectOf,
 
@@ -2519,7 +3117,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
 __def(__exports, "whenThreeReady", () => whenThreeReady);
 __def(__exports, "createThreeAdapter", () => createThreeAdapter);
 };
-__defs[10] = function (__exports) {
+__defs[12] = function (__exports) {
 'use strict';
 // ../adapters/three/index.ts
 
@@ -2538,7 +3136,7 @@ __defs[10] = function (__exports) {
 // adapter knows the canvas rectangle. Converting here keeps adapter.js and its
 // own tests unchanged; folding the conversion into adapter.js later is fine.
                                                                      
-const { createThreeAdapter } = __require(9);
+const { createThreeAdapter } = __require(11);
 const { project, rayFromCamera, rayPlaneY, viewProjOf } = __require(3);
 
                      
@@ -2567,6 +3165,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
     list: () => raw.list(),
     begin: () => raw.begin(),
     end: () => raw.end(),
+    watch: (on) => raw.watch(on),
     // adapter.js repaints from its own loop whenever something changed.
     render: () => {},
     pickNear: (x, y, radius) => raw.pickNear(...ndc(x, y), radius),
@@ -2599,6 +3198,10 @@ function fitThreeAdapter(raw     , canvas                   )                {
     coverage: (key) => raw.coverage(key),
     scale: (key, f) => pose(key, raw.scale(key, f)),
     nudgeY: (key, dy) => pose(key, raw.nudgeY(key, dy)),
+    // Snap to surfaces (surface.js, bridge/snap.ts): heights are world metres, as nudgeY moves by.
+    rest: (key, skip) => raw.rest(key, skip),
+    drop: (key, skip) => pose(key, raw.drop(key, skip)),
+    setSnap: (s) => raw.setSnap(s),
     setPose: (key, p) => raw.setPose(key, p),
     capture: (key, o) => raw.capture(key, o),
     silhouette: (keys) => raw.silhouette(keys),
@@ -2606,6 +3209,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
     remove: (key) => raw.remove(key),
     putBack: (key) => raw.putBack(key),
     assetsOf: (key) => raw.assetsOf(key),
+    player: () => raw.player(),
     // For game tools: the edit camera's ray onto a horizontal plane, and the
     // way back. Only while editing (the edit camera exists then).
     toGround(x, y, groundY = 0) {
@@ -2680,7 +3284,7 @@ const threeProbe               = {
 __def(__exports, "fitThreeAdapter", () => fitThreeAdapter);
 __def(__exports, "threeProbe", () => threeProbe);
 };
-__defs[11] = function (__exports) {
+__defs[13] = function (__exports) {
 'use strict';
 // ../contract.ts
 
@@ -2714,6 +3318,12 @@ const CONTRACT_VERSION = 1;
  */
                                  
                                              
+/**
+ * What the editor moves right now (UI stage 1, 2026-10-19; CONTRACT.md §1.1): the game's world (three.js / 2D
+ * objects, as always) or its UI (HTML elements marked data-studio-key, later also UI drawn in a canvas). One at a
+ * time; the top bar switches. Not the same as Item.layer (a 2D draw-order list).
+ */
+                                       
 
 /**
  * Pose of one movable object, in the object's PARENT space (what you would
@@ -2807,8 +3417,26 @@ const CONTRACT_VERSION = 1;
                                                                               
                                                                            
                                                                     
+                                                                                                                
+                                                                                                                     
+                                                                                                        
      
                      
+     
+                                                                                                       
+                                                                                                                
+                                                                                                                        
+                                                                                                                 
+                                                                                                           
+                                                                                                                     
+                                                                  
+     
+                           
+     
+                                                                                                                
+                                          
+     
+                                                    
      
                                                                              
                                                                              
@@ -2820,8 +3448,25 @@ const CONTRACT_VERSION = 1;
                         
      
                   
+     
+                                                                              
+                                                                            
+                                                                         
+                                                                           
+                                                                          
+                                                                               
+     
+                  
                                      
              
+ 
+
+/** Item.look: what an unnamed object looks like (src/shell/names.ts turns it into words). */
+                           
+                 
+               
+                 
+                   
  
 
 /**
@@ -2907,6 +3552,13 @@ const CONTRACT_VERSION = 1;
                                                                 
               
      
+                                                                                                                
+                                                                                                               
+                                                                                                                   
+                                                                
+     
+                            
+     
                                                                        
                                                             
      
@@ -2967,6 +3619,21 @@ const CONTRACT_VERSION = 1;
                                         
                                                             
                                          
+     
+                                                                                                                     
+                                                                                                                 
+                                                                                                                
+                                                                                               
+     
+                                                                                       
+                                                                                                                      
+                                            
+     
+                                                                                                                   
+                                                                                                                    
+                                                                                                             
+     
+                                                                      
                                                                                        
                                                 
      
@@ -3019,6 +3686,19 @@ const CONTRACT_VERSION = 1;
                                 
                                                                         
                                  
+
+                                                           
+     
+                                                                                                                    
+                                                                                                                     
+                                                                                                                 
+                                                                                                                   
+                       
+     
+                                                                               
+                                                                                                                      
+                                                    
+                                                                                                 
  
 
                               
@@ -3037,7 +3717,8 @@ const CONTRACT_VERSION = 1;
                                                                                                                   
                                                                                                                      
                                                                                                                 
-                                                                                                                   
+                                                                                                                   
+                                                                                                                                               
                                                              
      
                                                      
@@ -3127,6 +3808,13 @@ const CONTRACT_VERSION = 1;
                                                                                   
                                              
                                                                             
+                                                         
+     
+                                                                                                                     
+                                                                                                                     
+                                                                                                               
+                                                                                    
+     
                                                          
                                                                               
                     
@@ -3444,9 +4132,11 @@ const MSG_PREFIX = 'studio:';
 /**
  * Viewport px the shell's floating panels cover on each side. `rightTo`: the
  * right inset only reaches down to this y (the card is in the top right
- * corner; below it the game is free to the edge).
+ * corner; below it the game is free to the edge). `camera: false`: hide the
+ * camera up / down buttons for now (a phone with the card, a sheet or a menu
+ * up — the second design review's ⑧, 2026-10-19); absent = shown.
  */
-                                                                                                     
+                                                                                                                       
 
 /** shell -> bridge */
                            
@@ -3474,14 +4164,17 @@ const MSG_PREFIX = 'studio:';
                                                                    
                                                        
                                                         
-                                                              
+                                                                                                                      
+                                                                                 
+                                                                                                                        
+                                                       
      
                                                                                
                                                                                
                                                                               
                                       
      
-                                                                                                                                                                   
+                                                                                                                                                                            
                                                                      
                                      
                                                                       
@@ -3499,6 +4192,11 @@ const MSG_PREFIX = 'studio:';
                                                                                 
      
                                                                       
+     
+                                                                                                                         
+                                                                                                             
+     
+                                                      
                                                                                        
                                                               
                                                                                                    
@@ -3520,7 +4218,51 @@ const MSG_PREFIX = 'studio:';
                                                               
                                                                                 
                                    
-                                                 
+                                                
+     
+                                                                                                                  
+                                                                                                                      
+     
+                                                   
+     
+                                                                                                                    
+                                                                                                                                      
+                                                                                                                     
+                                                                                  
+     
+                                                
+     
+                                                                                                                     
+                                                                                                                   
+                                
+     
+                                                                         
+                                                                                                                    
+                                                         
+                                                                                     
+                                              
+
+/**
+ * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
+ * asking = it has a question (`choices` as buttons); fixed / failed = its reply (`text`), `reload` = the game's
+ * files changed since this game was opened, so Reload shows the fix; kept = nothing can reach the AI right now.
+ */
+                           
+                                                                       
+               
+                                                     
+                 
+                     
+                   
+ 
+
+/** One line of the game's console the bridge kept for a play request (§3.5). */
+                          
+                                  
+               
+                                                                    
+              
+ 
 
 /** bridge -> shell */
                            
@@ -3530,7 +4272,15 @@ const MSG_PREFIX = 'studio:';
                                                                                    
                                                                                                                      
                                                                                                               
-                                                                                                                                 
+                                                                                                                                
+                                                                                                                  
+                     
+         
+                                                                                                                  
+                                                                                                                   
+                                                                                       
+         
+                                               
                                                       
                                                           
                                                                                       
@@ -3538,7 +4288,8 @@ const MSG_PREFIX = 'studio:';
                                                   
                                                                                                                
                                                                        
-                                                     
+                                                                                      
+                                                                        
                                                                                            
      
                                                                           
@@ -3572,7 +4323,32 @@ const MSG_PREFIX = 'studio:';
                                                    
                                                        
                                                                              
-                                                                              
+                                                                             
+                                                                                                                            
+                                 
+     
+                                                                                                                      
+                                                                                                                  
+                                                                                                                   
+                                                                                                                  
+     
+                                                                                                                                       
+                                                                                          
+                                                                               
+                                                
+                                                                                         
+                                   
+
+/** Something near the player when they asked while playing (§3.5). */
+                           
+              
+                 
+              
+                                                           
+             
+                                                                                       
+                            
+ 
 
                                                           
 
@@ -3619,7 +4395,7 @@ function isStudioMessage(x         )                     {
 // (local: .studio/status.json). Normalised by src/schema/handoff.mjs.
 // ---------------------------------------------------------------------------
 
-                                                                       
+                                                                                           
 
                                 
               
@@ -3636,8 +4412,17 @@ function isStudioMessage(x         )                     {
 
 /** What the shell hands to host.request(). */
                                      
-                                                                                                                
-                                     
+     
+                                                                                                            
+                                                                                                                 
+                                                                                                                   
+                                                                              
+     
+                                                         
+                                                                               
+              
+                                                                                            
+                    
                                                                        
                
                                                                                                                     
@@ -3653,7 +4438,7 @@ function isStudioMessage(x         )                     {
      
                    
      
-                                                                                                                   
+                                                                                                                                                                                
                                                                                                          
                                                                                                                  
                                                                                                                  
@@ -3666,6 +4451,23 @@ function isStudioMessage(x         )                     {
                                                                                     
      
                     
+     
+                                                                                                                    
+                                                                                                 
+     
+               
+     
+                                                                                                                    
+                                                                                          
+     
+                
+                                                                                                                  
+                   
+                                                              
+                    
+                                                                                           
+                       
+                          
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -3698,6 +4500,16 @@ function isStudioMessage(x         )                     {
                    
                                                           
                 
+     
+                                                                                                                 
+                                                                                                                    
+     
+                     
+                                                                                                      
+                   
+                                                                                                                            
+                  
+                 
               
  
 
@@ -3780,6 +4592,13 @@ function isStudioMessage(x         )                     {
                                                                                 
                                                                                           
                                           
+     
+                                                                                                           
+                                                                                                                         
+                                                                                                              
+                                                      
+     
+                                       
      
                                                                     
                                                                             
@@ -3912,6 +4731,8 @@ function isStudioMessage(x         )                     {
                          
                
                   
+                                                                                                                 
+                              
                             
             
                  
@@ -3970,6 +4791,23 @@ const RESULT_FILES                         = {
                        
      
                            
+     
+                                                                                                                     
+                                                                                                                   
+                                                                                          
+     
+                                        
+                                                                                                             
+                            
+ 
+
+                                   
+                                                                                                                           
+                      
+                                 
+             
+                                                                                     
+                 
  
 
                                               
@@ -4167,6 +5005,11 @@ const LIMITS = {
   maxUnused: 2000,
   maxAssetBytes: 100 * 1024 * 1024,
   undoSteps: 200,
+  /** placement.json `ui` (UI stage 1): elements, |p| in CSS px, and the scale range (src/schema keeps the same values). */
+  maxUi: 200,
+  maxUiCoord: 10_000,
+  minUiScale: 0.1,
+  maxUiScale: 10,
 }         ;
 
 /** Allowed characters of an object key. Names with other characters are mapped; the original stays in `label`. */
@@ -4268,7 +5111,7 @@ __def(__exports, "IGNORED_DIRS", () => IGNORED_DIRS);
 __def(__exports, "UI", () => UI);
 __def(__exports, "LOCAL_PATHS", () => LOCAL_PATHS);
 };
-__defs[12] = function (__exports) {
+__defs[14] = function (__exports) {
 'use strict';
 // ../core/loads.ts
 
@@ -4401,7 +5244,7 @@ function installLoads(win                             = window)          {
 
 __def(__exports, "installLoads", () => installLoads);
 };
-__defs[13] = function (__exports) {
+__defs[15] = function (__exports) {
 'use strict';
 // ../core/time.ts
 
@@ -4573,15 +5416,15 @@ function installTime(opts             )                  {
 
 __def(__exports, "installTime", () => installTime);
 };
-__defs[14] = function (__exports) {
+__defs[16] = function (__exports) {
 'use strict';
 // ../core/index.ts
 
 // src/core: shared services inside the game page (time control, load log).
 // Installed by the edit script before any game code runs.
                                                   
-const { installLoads } = __require(12);
-const { installTime } = __require(13);
+const { installLoads } = __require(14);
+const { installTime } = __require(15);
 
                                            
                         
@@ -4593,7 +5436,7 @@ function installCore(opts             )       {
 
 __def(__exports, "installCore", () => installCore);
 };
-__defs[15] = function (__exports) {
+__defs[17] = function (__exports) {
 'use strict';
 // ../core/port2d.ts
 
@@ -4607,7 +5450,7 @@ __defs[15] = function (__exports) {
 // direct engine calls (read/write x, y, rotation, scale; report a screen
 // rectangle), which an AI can write correctly from one example and which the
 // self-check can verify.
-const { LIMITS } = __require(11);
+const { LIMITS } = __require(13);
                                        
 
                                                             
@@ -4983,6 +5826,20 @@ function adapterFromPort2D(port        , _core      , win         = window)     
         view.y = py - cy - view.zoom * (wy - cy);
         applyView();
       },
+      // The opening view (and ⌘K "Back to the opening view"). On a portrait screen — a phone — the game's own picture
+      // (the identity view: exactly what Play shows), else everything in frame as before. WHY (the second design review's
+      // ⑩, 2026-10-19): "everything in frame" on a 390 px wide phone shrank a landscape world to a strip — Firefly Ruins'
+      // urn was 15×21 pt with the top 40 % of the screen empty sky — while the game itself already zooms in on its middle
+      // for a portrait screen. 3D opens on the game's camera the same way (three.js home()).
+      home() {
+        const r = canvasRect();
+        if (r.height > r.width) {
+          view.x = 0;
+          view.y = 0;
+          view.zoom = 1;
+          applyView();
+        } else adapter.view.frameAll();
+      },
       frameAll() {
         const b = allBounds();
         if (!b) return;
@@ -5063,7 +5920,488 @@ __def(__exports, "BACKDROP_NAME", () => BACKDROP_NAME);
 __def(__exports, "backdropRun", () => backdropRun);
 __def(__exports, "adapterFromPort2D", () => adapterFromPort2D);
 };
-__defs[16] = function (__exports) {
+__defs[18] = function (__exports) {
+'use strict';
+// ../loader/studio-placement.js
+
+// studio-placement.js: apply placement.json to a running game (three.js or PixiJS) and to its HTML UI.
+//
+//   import { applyPlacement } from './studio-placement.js';
+//   const report = await applyPlacement(scene, './placement.json'); // three: the Scene; Pixi: app.stage
+//   // report = { applied: ['tree-01'], missing: ['old-rock'], unstable: ['path:0/3/1'], skipped: [] }
+//   await applyPlacement(document, './placement.json');             // a game with no world (HTML only): the UI only
+//
+// `ui` (UI stage 1, 2026-10-19): HTML elements marked data-studio-key="title-logo" that were moved / resized in the
+// editor's UI layer. Each gets the CSS `translate` / `scale` properties (offset in CSS px from where the game's own
+// CSS puts it); left / top / transform are never touched, so a title centred with transform: translate(-50%, -50%)
+// stays centred. A translate / scale the game's stylesheet already gives is kept (the offset is added to it). Applied
+// before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
+// with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
+//
+// Call it once after the world is built and BEFORE physics bodies are created: an engine that
+// copies body positions into objects every frame would otherwise move them back.
+//
+// This file is copied into the user's game, so it is small, has no imports, and never throws for
+// a bad or missing file: a game must keep running even if placement.json is broken. Unknown keys
+// and bad values are skipped with one console.warn line. (The strict check lives in the editor and
+// the server, which refuse to write a bad file in the first place.)
+//
+// Finding the object for a key follows the editor's key rules, in this order:
+//   studioKey mark     three: object.userData.studioKey, Pixi: object.studioKey
+//   "path:0/3/1"       child indexes from the root (unstable: changes when code reorders objects)
+//   name / name#2      three: object.name, Pixi: object.label; "#2" = the second such object
+//   userData id/name   three only: object.userData.id or object.userData.name
+// `order` (2D only): draw orders changed in the editor, per parent, keys back -> front. PixiJS
+// draws children in array order, so they are put back in that order, in the places they already
+// take (a background that is not listed stays where it is). Keys are resolved first, and keys that
+// depend on the tree order (path:…, name#2) are stamped as studioKey, so the editor still finds
+// every object under the same key after the reorder.
+// Names are compared after the same clean-up the editor applies to make a key (characters outside
+// A-Z a-z 0-9 _ : # . - / become "_", at most 80 characters).
+
+const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
+const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
+
+/**
+ * @param {object} root  three.js Scene/Object3D or PixiJS Container (app.stage)
+ * @param {string | object} [source]  URL of placement.json (default './placement.json') or its parsed content
+ * @returns {Promise<{ applied: string[], missing: string[], unstable: string[], skipped: string[] }>}
+ */
+async function applyPlacement(root, source = './placement.json') {
+  const report = { applied: [], missing: [], unstable: [], skipped: [] };
+  let data = source;
+  if (typeof source === 'string') {
+    try {
+      const res = await fetch(source, { cache: 'no-cache' });
+      if (!res.ok) return report; // no file yet: nothing to apply
+      data = await res.json();
+    } catch (e) {
+      warn('could not read ' + source + ' (' + e.message + ')');
+      return report;
+    }
+  }
+  const three = !!(root && root.isObject3D);
+  const dim = three ? '3d' : '2d';
+  if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
+    warn('not a placement file');
+    return report;
+  }
+  if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
+  if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
+  if (data.dim !== dim) {
+    warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
+    return report;
+  }
+  const n = three ? 3 : 2;
+  for (const key of Object.keys(data.objects)) {
+    const e = data.objects[key];
+    if (e && e.unstable) report.unstable.push(key);
+    const obj = findByKey(root, key, three);
+    if (!obj) report.missing.push(key);
+    else if (put(obj, e, n, three)) report.applied.push(key);
+    else report.skipped.push(key);
+  }
+  // Copies made in the editor (`added`, in the order they were made) that the code does not make yet: a clone of
+  // the original (`from`) under the new key, at the saved pose (polish pass 2026-10-16). WHY: before, a copy lived
+  // only in this file until the AI wrote it into the code, so it vanished in Play ("Copy is broken"). A clone looks
+  // right but does not act (a boat that floats, a coin that spins) until the AI adds it to the code; a key the game
+  // already has is skipped (the AI did). Deleted objects (`removed`) are hidden while they still stand where they
+  // were (`was.p`), so a path key that now names another object leaves that one alone.
+  for (const a of Array.isArray(data.added) ? data.added : []) {
+    if (!a || typeof a.key !== 'string' || findByKey(root, a.key, three)) continue;
+    const src = typeof a.from === 'string' && findByKey(root, a.from, three);
+    const c = src && src.parent && copyOf(src, three);
+    if (!c || !put(c, a, n, three)) {
+      report.missing.push(a.key);
+      continue;
+    }
+    if (three) (c.userData.studioKey = a.key), src.parent.add(c);
+    else (c.studioKey = a.key), src.parent.addChildAt(c, src.parent.getChildIndex(src) + 1);
+    report.applied.push(a.key);
+  }
+  for (const r of Array.isArray(data.removed) ? data.removed : []) {
+    const o = r && typeof r.key === 'string' && findByKey(root, r.key, three);
+    const w = o && r.was && r.was.p;
+    if (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);
+  }
+  if (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);
+  if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
+  if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
+  return report;
+}
+
+function applyUi(doc, ui) {
+  const out = { applied: [], missing: [] };
+  const put = (el) => {
+    const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
+    if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
+    if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+  };
+  doc.querySelectorAll('[data-studio-key]').forEach(put);
+  for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
+  // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver((list) => {
+      for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) {
+        if (n.dataset.studioKey) put(n);
+        n.querySelectorAll('[data-studio-key]').forEach(put);
+      }
+    }).observe(doc.documentElement, { childList: true, subtree: true });
+  }
+  return out;
+}
+
+// Per element: the translate / scale its stylesheet gives (read once, before anything is added) and the offset now.
+const UI_STATE = Symbol.for('game-studio.ui');
+
+/**
+ * Put a UI element `p` = [dx, dy] CSS px from where the game's CSS puts it, at scale `s` (1 = as the game draws it).
+ * Shared with the editor's UI layer (src/adapters/ui), so the editor and the game agree to the pixel. false = the
+ * game itself writes an inline translate / scale on this element (it moves it): left alone.
+ * The size keeps the element's middle where it is: CSS `scale` grows the box around its transform-origin, and a title
+ * centred with transform: translate(-50%, -50%) has its box shifted away from that origin, so it would walk. The
+ * correction is worked out here, from the box as it is now, and never saved: `p` stays "how far the middle moved",
+ * right on any window size. A ResizeObserver works it out again when the box changes (a hidden screen shown later,
+ * a window resized), only for elements with a size of their own (s ≠ 1).
+ */
+function placeUi(el, p, s) {
+  let st = el[UI_STATE];
+  if (!st) {
+    if (el.style.translate || el.style.scale) return false;
+    const cs = getComputedStyle(el);
+    st = el[UI_STATE] = { t: cssParts(cs.translate), s: cssParts(cs.scale), p: [0, 0], v: 1 };
+  }
+  st.p = [p[0], p[1]];
+  st.v = s;
+  const t = st.t, b = st.s ? st.s.map((x) => parseFloat(x) / (x.endsWith('%') ? 100 : 1)) : [1];
+  const bx = b[0], by = b[1] === undefined ? bx : b[1];
+  let x = p[0], y = p[1];
+  if (s !== 1) {
+    const cs = getComputedStyle(el);
+    const m = /^matrix(3d)?\(([^)]+)\)/.exec(cs.transform);
+    const v = m ? m[2].split(',').map(Number) : null;
+    const [a, bb, c, d, e, f] = !v ? [1, 0, 0, 1, 0, 0] : m[1] ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;
+    const o = (cs.transformOrigin || '').split(' ').map(parseFloat);
+    const ux = (el.offsetWidth || 0) / 2 - (o[0] || 0), uy = (el.offsetHeight || 0) / 2 - (o[1] || 0);
+    if (el.offsetWidth !== undefined && (m || cs.transform === 'none')) {
+      x -= (s - 1) * bx * (a * ux + c * uy + e);
+      y -= (s - 1) * by * (bb * ux + d * uy + f);
+    }
+    if (!st.ro && typeof ResizeObserver === 'function') (st.ro = new ResizeObserver(() => placeUi(el, st.p, st.v))).observe(el);
+  }
+  const none = !x && !y && s === 1;
+  el.style.translate = none ? '' : t ? `calc(${t[0]} + ${x}px) calc(${t[1] || '0px'} + ${y}px)${t[2] ? ' ' + t[2] : ''}` : `${x}px ${y}px`;
+  el.style.scale = s === 1 ? '' : st.s ? `${bx * s} ${by * s}${b[2] === undefined ? '' : ' ' + b[2]}` : String(s);
+  return true;
+}
+
+/** The offset placeUi() last gave (p [0, 0], s 1 for an element it never touched). */
+function uiOffset(el) {
+  const st = el[UI_STATE];
+  return st ? { p: st.p.slice(), s: st.v } : { p: [0, 0], s: 1 };
+}
+
+// "none" → null; "-50% 0px" / "calc(-50% + 4px) 2px" → its space-separated values (spaces inside one level of () kept).
+function cssParts(v) {
+  return !v || v === 'none' ? null : v.match(/(?:[^\s(]|\([^)]*\))+/g);
+}
+
+/** Apply one entry's p / r / t / s to obj; false (nothing changed) when a value is bad. */
+function put(obj, e, n, three) {
+  const p = e && e.p;
+  const s = e && e.s;
+  const okP = p === undefined || (Array.isArray(p) && p.length === n && p.every(isNum));
+  const okR = e && (e.r === undefined || isNum(e.r)) && (e.t === undefined || (three && Array.isArray(e.t) && e.t.length === 2 && e.t.every(isNum)));
+  const okS = s === undefined || (isNum(s) && s !== 0) || (Array.isArray(s) && s.length === n && s.every(isNum));
+  if (!okP || !okR || !okS) return false;
+  if (p) obj.position.set(p[0], p[1], p[2]);
+  if (e.r !== undefined) {
+    if (three) obj.rotation.y = e.r;
+    else obj.rotation = e.r;
+  }
+  // 3D tilt (tipped forward / sideways in the editor): rotation.x and rotation.z, in the object's own Euler order.
+  if (three && e.t !== undefined) {
+    obj.rotation.x = e.t[0];
+    obj.rotation.z = e.t[1];
+  }
+  if (s !== undefined) {
+    if (Array.isArray(s)) obj.scale.set(s[0], s[1], s[2]);
+    else if (three) obj.scale.setScalar(s);
+    else obj.scale.set(s, s);
+  }
+  return true;
+}
+
+/** A copy that draws the same thing: three's clone (shares geometry and materials); Pixi: clone(), or a new sprite of the same texture. */
+function copyOf(o, three) {
+  try {
+    if (three || typeof o.clone === 'function') return o.clone();
+    return o.texture ? new o.constructor(o.texture) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function applyOrder(root, order, report) {
+  const lists = [];
+  for (const g of order) {
+    const objs = g && Array.isArray(g.keys) ? g.keys.map((k) => [k, findByKey(root, k, false)]).filter((x) => x[1]) : [];
+    const parent = objs.length && objs[0][1].parent;
+    const mine = objs.filter((x) => x[1].parent === parent);
+    if (parent && mine.length > 1) lists.push([parent, mine]);
+  }
+  for (const [, mine] of lists) for (const [k, o] of mine) if (!o.studioKey && (k.startsWith('path:') || k.includes('#'))) o.studioKey = k;
+  for (const [parent, mine] of lists) {
+    const slots = mine.map((x) => parent.getChildIndex(x[1])).sort((a, b) => a - b);
+    for (const [, o] of mine) parent.removeChild(o);
+    mine.forEach((x, i) => parent.addChildAt(x[1], slots[i]));
+  }
+  if (lists.length) report.applied.push('order');
+}
+
+/** Find the object for one key under root (exported for tests and for code that wants to check keys). */
+function findByKey(root, key, three = !!(root && root.isObject3D)) {
+  // The mark first, even for path keys: applyOrder stamps path keys as marks before reordering.
+  const mark = (o) => (three ? o.userData && o.userData.studioKey : o.studioKey);
+  let found = null;
+  walk(root, (o) => {
+    if (!found && mark(o) === key) found = o;
+    return !found;
+  });
+  if (found) return found;
+  if (key.startsWith('path:')) {
+    let o = root;
+    for (const i of key.slice(5).split('/')) {
+      o = o && o.children && o.children[Number(i)];
+      if (!o || !/^\d+$/.test(i)) return null;
+    }
+    return o;
+  }
+
+  // name#k: the k-th object with that name, counting only the outermost ones (a group named "tree"
+  // that holds a mesh also named "tree" counts once, like the editor's "meaningful top node").
+  const m = /^(.*)#(\d+)$/.exec(key);
+  const name = m ? m[1] : key;
+  let want = m ? Number(m[2]) : 1;
+  walk(root, (o) => {
+    if (found) return false;
+    // Pixi: an object with a studioKey is known by that key, not its label (as in the editor).
+    if (cleanName(three ? o.name : o.studioKey ? '' : o.label) === name) {
+      if (--want === 0) found = o;
+      return 'skip';
+    }
+    return true;
+  });
+  if (found || !three) return found;
+  walk(root, (o) => {
+    const u = o.userData;
+    if (!found && u && (String(u.id) === key || cleanName(u.name) === key)) found = o;
+    return !found;
+  });
+  return found;
+}
+
+// Depth-first, pre-order, root excluded. visit() returns false to stop, 'skip' to not descend.
+function walk(root, visit) {
+  const stack = (root.children || []).slice().reverse();
+  while (stack.length) {
+    const o = stack.pop();
+    const r = visit(o);
+    if (r === false) return;
+    if (r !== 'skip' && o.children) for (let i = o.children.length - 1; i >= 0; i--) stack.push(o.children[i]);
+  }
+}
+
+function isNum(v) {
+  return typeof v === 'number' && isFinite(v);
+}
+
+function warn(msg) {
+  console.warn('[studio] placement.json: ' + msg);
+}
+
+__def(__exports, "applyPlacement", () => applyPlacement);
+__def(__exports, "placeUi", () => placeUi);
+__def(__exports, "uiOffset", () => uiOffset);
+__def(__exports, "findByKey", () => findByKey);
+};
+__defs[19] = function (__exports) {
+'use strict';
+// ../adapters/ui/adapter.js
+
+// The built-in DOM UI port (UI stage 1, 2026-10-19): the game's HTML UI — a title card, a score, a button — as a
+// Port2D, so the editor's UI layer moves and resizes it with the same handles, finger maths and undo as a 2D game.
+//
+// Only elements the game marked with data-studio-key="title-logo" are listed (never "every div": a page has
+// hundreds, and the AI must find each one again in the code by that key). Left out: data-studio="false" (on the
+// element or a parent), elements not drawn (display: none, not in the page), and elements the game itself gives an
+// inline translate / scale (it moves them; the editor would fight it — the AI wraps them in a box, SKILL.md §5).
+//
+// Position and size go through the CSS `translate` / `scale` properties, never left / top / transform: a title
+// centred with transform: translate(-50%, -50%) (Lantern Cove's .hint does this) stays centred, the game's layout is
+// untouched, and taking the values away puts the element back exactly. The maths lives in the loader (placeUi):
+// the editor and the game place the element the same way, to the pixel.
+//
+// Pose: p = [dx, dy] CSS px from where the game's CSS puts it, s = scale (1 = as drawn), r is always 0 (no turning
+// UI in stage 1: rotatable false). parentToScreen maps that offset space to the screen: origin = where the middle
+// of the element would be at offset 0, one offset px = k screen px (k = the zoom of the parent, e.g. a HUD scaled to
+// fit the window).
+const { placeUi, uiOffset } = __require(18);
+
+const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
+/** Scale bounds of a UI element: the same as placement.json `ui` (src/schema LIMITS.minUiScale / maxUiScale). */
+const MIN_S = 0.1, MAX_S = 10;
+
+/**
+ * @param {Window} win the game page
+ * @param {{ skip?: () => Set<string> }} [opts] keys another layer owns (the world's list: a DOM board game's pieces
+ *   carry data-studio-key too, and they stay world objects)
+ */
+function createUiPort(win, opts = {}) {
+  const doc = win.document;
+  const told = new Set();
+  const all = (key) => Array.from(doc.querySelectorAll('[data-studio-key]')).filter((el) => el.dataset.studioKey === key);
+  const first = (key) => all(key).find((el) => el.getClientRects().length) || null;
+  const usable = (el) => {
+    const key = el.dataset.studioKey;
+    if (!KEY.test(key) || el.closest('[data-studio="false"]')) return false;
+    if (!el.getClientRects().length) return false;
+    // The game writes its own inline translate / scale here (and placeUi never touched it): leave it to the game.
+    if ((el.style.translate || el.style.scale) && !placedBefore(el)) {
+      if (!told.has(key)) {
+        told.add(key);
+        console.info(`[studio] UI "${key}" is moved by the game itself (inline translate / scale): not listed. Wrap it in a box and mark the box.`);
+      }
+      return false;
+    }
+    return true;
+  };
+  const placedBefore = (el) => el[Symbol.for('game-studio.ui')] !== undefined;
+  const label = (el) => {
+    const t = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    return (t || el.getAttribute('aria-label') || el.getAttribute('alt') || el.dataset.studioKey).slice(0, 40);
+  };
+  const kind = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'button' || el.getAttribute('role') === 'button' || (tag === 'input' && /^(button|submit|reset)$/.test(el.type))) return 'button';
+    if (tag === 'img' || tag === 'svg' || tag === 'picture' || tag === 'canvas' || tag === 'video') return 'image';
+    return 'text';
+  };
+  // CSS animations (a blinking "Press start") keep running while the game's frames are held: paused while editing,
+  // played again at the end (only the ones this paused).
+  let paused = [];
+
+  return {
+    name: 'dom-ui',
+    objects() {
+      const skip = opts.skip ? opts.skip() : null;
+      const seen = new Set();
+      const out = [];
+      for (const el of Array.from(doc.querySelectorAll('[data-studio-key]'))) {
+        const key = el.dataset.studioKey;
+        if (seen.has(key) || (skip && skip.has(key)) || !usable(el)) continue;
+        seen.add(key);
+        out.push({ key, label: label(el), kinds: ['ui', kind(el)], rotatable: false });
+      }
+      return out;
+    },
+    get(key) {
+      const el = first(key);
+      if (!el) return null;
+      const o = uiOffset(el);
+      return { p: o.p, r: 0, s: o.s };
+    },
+    set(key, pose) {
+      const raw = Array.isArray(pose.s) ? pose.s[0] : pose.s;
+      const s = Math.min(MAX_S, Math.max(MIN_S, typeof raw === 'number' && Number.isFinite(raw) ? raw : uiOffset(first(key) || doc.body).s));
+      const p = [Number(pose.p[0]) || 0, Number(pose.p[1]) || 0];
+      for (const el of all(key)) placeUi(el, p, s);
+    },
+    parentToScreen(key) {
+      const el = first(key);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const par = el.offsetParent || el.parentElement;
+      let k = 1;
+      if (par && par.offsetWidth) {
+        const pr = par.getBoundingClientRect();
+        k = pr.width / par.offsetWidth;
+      }
+      if (!Number.isFinite(k) || k <= 0) k = 1;
+      const o = uiOffset(el);
+      return [k, 0, 0, k, r.left + r.width / 2 - k * o.p[0], r.top + r.height / 2 - k * o.p[1]];
+    },
+    bounds(key) {
+      const el = first(key);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    },
+    // The page draws a DOM change itself.
+    render() {},
+    // No canvas: the 2D base's canvas crop is skipped (the list shows a kind icon, not a thumbnail).
+    canvas: () => null,
+    capture: async () => null,
+    pause() {
+      try {
+        paused = doc.getAnimations().filter((a) => a.playState === 'running');
+        for (const a of paused) a.pause();
+      } catch {
+        paused = [];
+      }
+    },
+    resume() {
+      for (const a of paused) {
+        try {
+          a.play();
+        } catch {
+          /* gone with its element */
+        }
+      }
+      paused = [];
+    },
+  };
+}
+
+__def(__exports, "createUiPort", () => createUiPort);
+};
+__defs[20] = function (__exports) {
+'use strict';
+// ../adapters/ui/index.ts
+
+// The built-in DOM UI adapter as the bridge sees it (UI stage 1, 2026-10-19): the port in adapter.js through the
+// same 2D base as every 2D game (adapterFromPort2D: picking, finger offset, handles, undo-exact setPose). Kind
+// 'dom-ui'; no turning (the port lists every element rotatable: false). Resizing keeps the element's middle where it
+// is — done where the element is placed (the loader's placeUi, shared with the game), not here, so the saved offset
+// means the same on every window size. (A first version corrected the resize gesture here and saved the correction in
+// `p`: reopened in a window of another size, a title centred with translate(-50%, -50%) and grown to 121 % came back
+// 7.6 px off — its box had another height there. test/studio-ui-layer.browser.mjs keeps it.)
+// The UI seat (CONTRACT.md §1.1): the bridge asks the game's own studio.registerUI() ports first, then this one.
+                                                               
+                                                
+const { adapterFromPort2D } = __require(17);
+const { createUiPort } = __require(19);
+
+/** A UI-seat adapter from any Port2D (the built-in DOM one, or a game's registerUI port). */
+function uiAdapterFromPort(port        , core      , win        )                {
+  return adapterFromPort2D(port, core, win);
+}
+
+/**
+ * The built-in DOM UI adapter, or null when the page has no usable [data-studio-key] (then the bridge and the editor
+ * behave exactly as before UI stage 1). `skip`: keys the world adapter already lists (a DOM board game's pieces).
+ */
+function findDomUi(core      , win        , skip                    )                       {
+  if (!win.document.querySelector('[data-studio-key]')) return null;
+  const port = createUiPort(win, { skip })          ;
+  if (!port.objects().length) return null;
+  return uiAdapterFromPort(port, core, win);
+}
+
+__def(__exports, "uiAdapterFromPort", () => uiAdapterFromPort);
+__def(__exports, "findDomUi", () => findDomUi);
+};
+__defs[21] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -5075,7 +6413,7 @@ __defs[16] = function (__exports) {
 // after an adapter is found the bridge runs a few cheap tests on one object,
 // puts it back exactly, and reports which promise is broken. The shell shows
 // the result; the host hands it to the AI (local: .studio/check.md).
-const { KEY_RE } = __require(11);
+const { KEY_RE } = __require(13);
                                              
 
                                                
@@ -5209,8 +6547,17 @@ async function runSelfCheck(adapter                      , core      , win      
   checks.push({ id: 'keys-valid', ok: bad.length === 0, detail: bad.length ? `bad or duplicate keys: ${bad.slice(0, 5).map((b) => JSON.stringify(b.key)).join(', ')}` : undefined });
 
   // Pick an object that is on screen and not huge (a ground plane moved by a
-  // few px may not change a 32×32 fingerprint in a meaningful way).
-  const sample = items.find((it) => {
+  // few px may not change a 32×32 fingerprint in a meaningful way). On screen =
+  // its centre inside the window: `visible` alone also allows a margin of a
+  // screen round it, and a 2D game opened on its own picture on a phone (port2d
+  // home(), the second design review's ⑩, 2026-10-19) has objects just off the
+  // edge — Firefly Ruins' bell — whose move draws nothing, so the check failed
+  // on our own sample. Objects with the centre off screen are the fallback.
+  const inView = (it                        ) => {
+    const a = adapter.anchor(it.key);
+    return !!a && a.visible && a.size > 4 && a.center[0] >= 0 && a.center[1] >= 0 && a.center[0] <= win.innerWidth && a.center[1] <= win.innerHeight;
+  };
+  const sample = items.find(inView) || items.find((it) => {
     const a = adapter.anchor(it.key);
     return a && a.visible && a.size > 4;
   }) || items[0];
@@ -5296,7 +6643,7 @@ function fmt(p                      )         {
 __def(__exports, "mainCanvas", () => mainCanvas);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[17] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -5471,7 +6818,11 @@ function withRules(inner               , holder             )                {
     drag(key, x, y) {
       const r = ruleOf(key);
       if (!r || r.locked) return current(key) ;
-      return fix(key, inner.drag(key, x, y), true);
+      const before = r.lockHeight ? current(key) : null;
+      let after = inner.drag(key, x, y);
+      // Snap to surfaces (bridge/snap.ts) moves the height with the ground under it: not for a height the game holds.
+      if (before && after.p[1] !== before.p[1]) after = inner.setPose(key, { ...after, p: [after.p[0] , before.p[1] , after.p[2] ] }) || after;
+      return fix(key, after, true);
     },
     rotate(key, d) {
       const r = ruleOf(key);
@@ -5521,6 +6872,15 @@ function withRules(inner               , holder             )                {
     },
     view: inner.view,
   };
+  if (inner.drop) {
+    // Drop to floor (End) changes the height only: blocked where the height is (locked, lockHeight).
+    ruled.drop = (key, skip) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || r.lockHeight) return before ;
+      return fix(key, inner.drop (key, skip), true);
+    };
+  }
   if (inner.nudgeY) {
     ruled.nudgeY = (key, dy) => {
       const r = ruleOf(key);
@@ -5537,7 +6897,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[18] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -5828,6 +7188,19 @@ function withEdits(inner               )               {
     },
     copies: () => new Map(made),
   };
+  // Snap to surfaces: a stand-in measures and drops as its original does (the same as nudgeY).
+  if (inner.rest) {
+    edits.rest = (key, skip) => {
+      const g = ghostOf(key);
+      return g ? probe(g.src, g.pose, () => inner.rest (g.src, skip)) : inner.rest (key, skip);
+    };
+  }
+  if (inner.drop) {
+    edits.drop = (key, skip) => {
+      const g = ghostOf(key);
+      return g ? onGhost(g, () => inner.drop (g.src, skip)) : inner.drop (key, skip);
+    };
+  }
   if (inner.nudgeY) {
     edits.nudgeY = (key, dy) => {
       const g = ghostOf(key);
@@ -5839,7 +7212,119 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[19] = function (__exports) {
+__defs[24] = function (__exports) {
+'use strict';
+// hold.ts
+
+// Objects the editor holds still (Item.held), as one more StudioAdapter layer like the game rules (core/rules.ts).
+//
+// WHY (a hands-on try of 2026-10-19, items 4 and 5):
+// - "Just trying things out, the road (the ground) ended up 16 m up, and I could save it like that." A 3D ground,
+//   road or sky (Item.backdrop, adapters/three/ground.js) is held from the start: no tool works on it until the
+//   person presses "Make movable" on its card or its menu — one more step, on purpose (`freed`).
+// - "This game moves the pillars toward you every frame and puts them back at random, so a place I set is not
+//   kept." What the game changed during the first moments of play (bridge/observe.ts) is held as 'game': only that
+//   part is off (the game would undo it every frame) — its place, its height, its turn or its size — and the rest
+//   stays editable: the values that last, as suggested in that try.
+//
+// WHY a layer and not only flags: the flags hide the tool strip's buttons, but steps also come from keys, the ⌘K
+// list and game tools. Refusing grab / drag / nudgeY / rotate / scale here covers every way in at once. setPose
+// stays open: undo, redo and loading a saved file must restore poses exactly (the same rule as core/rules.ts).
+// The AI can always move a held object in the code; this only keeps a stray drag from doing it.
+                                                                     
+
+/** What the game itself changed while the editor watched (observe.ts): place (3D x / z), height (3D y), turn, size. */
+                         
+                
+                
+                
+                
+ 
+
+/**
+ * The Height tool can act on it. Before 2026-10-19 that was "liftable and movable" everywhere (a locked object has
+ * neither); a pillar the game slides along the road is not movable but keeps its height, so held 'game' looks at
+ * `liftable` alone. Everything else keeps the old rule.
+ */
+const canLift = (i                                                         )          => !!i && i.liftable !== false && (i.movable !== false || i.held === 'game');
+
+                            
+                                                                            
+                     
+                                                                      
+                              
+                                                                                                                         
+                       
+ 
+
+const createHoldState = ()            => ({ freed: new Set(), driven: new Map(), placing: new Set() });
+
+/** The item as the editor shows it: `held` set, and the tools it cannot take turned off. */
+function holdItem(it      , s           , dim     )       {
+  // A copy of something the game moves (⌘D, paste, Add to scene) is held like its original (e2e-016, 2026-10-20): a
+  // pillar's copy was free to place, then the AI added it to the game's pillars and the game moved it every frame,
+  // so the place set in the editor did not stick — the very thing the original's note warns about.
+  // While the editor puts a fresh copy beside its original (`placing`) it is not held, or the copy of a falling star
+  // stayed exactly on the star (studio-edit-ops canvas-stars).
+  const d = s.driven.get(it.key) ?? (it.copyOf && !s.placing?.has(it.key) ? s.driven.get(it.copyOf) : undefined);
+  // The game's own motion wins over "ground": a road the game scrolls is not kept where it is put either.
+  if (d && (d.move || d.lift || d.turn || d.size)) {
+    return {
+      ...it,
+      held: 'game',
+      driven: (['move', 'lift', 'turn', 'size']         ).filter((k) => d[k]),
+      movable: it.movable !== false && !d.move,
+      liftable: it.liftable !== false && it.movable !== false && !d.lift,
+      rotatable: it.rotatable && !d.turn,
+      scalable: it.scalable && !d.size,
+    };
+  }
+  // 3D only: in 2D the ground already cannot be dragged (input.ts grabbable) and a 2D backdrop is about draw order.
+  if (dim === '3d' && it.backdrop && !s.freed.has(it.key)) {
+    return { ...it, held: 'ground', movable: false, liftable: false, rotatable: false, scalable: false };
+  }
+  return it;
+}
+
+/** The layer: list()/begin() carry `held`; edits of what is held do nothing (they return the current pose). */
+function withHold(inner               , s           )                {
+  let cache = new Map              ();
+  const decorate = (list        ) => {
+    const out = list.map((i) => holdItem(i, s, inner.dim));
+    cache = new Map(out.map((i) => [i.key, i]));
+    return out;
+  };
+  const itemOf = (key        ) => cache.get(key) ?? decorate(inner.list()).find((i) => i.key === key);
+  const now = (key        )       => inner.anchor(key)?.pose ?? itemOf(key)?.pose ?? { p: [0, 0, 0] };
+  const held                = {
+    ...inner,
+    list: () => decorate(inner.list()),
+    begin: () => decorate(inner.begin()),
+    grab: (key, x, y) => (itemOf(key)?.movable === false ? false : inner.grab(key, x, y)),
+    drag: (key, x, y) => (itemOf(key)?.movable === false ? now(key) : inner.drag(key, x, y)),
+    rotate: (key, d) => (itemOf(key)?.rotatable === false ? now(key) : inner.rotate(key, d)),
+    scale: (key, f) => (itemOf(key)?.scalable === false ? now(key) : inner.scale(key, f)),
+  };
+  if (inner.nudgeY) {
+    const nudge = inner.nudgeY.bind(inner);
+    held.nudgeY = (key, dy) => (canLift(itemOf(key)) ? nudge(key, dy) : now(key));
+  }
+  // Drop to floor (End, snap to surfaces 2026-10-19) changes the height only, so it follows the Height tool's rule:
+  // a held ground is not dropped onto whatever lies under it, a pillar the game slides still can be. Merged with
+  // the hold layer when the branches were merged (2026-10-19) — without this the spread above let End move a held road.
+  if (inner.drop) {
+    const drop = inner.drop.bind(inner);
+    held.drop = (key, skip) => (canLift(itemOf(key)) ? drop(key, skip) : now(key));
+  }
+  return held;
+}
+
+__def(__exports, "canLift", () => canLift);
+__def(__exports, "createHoldState", () => createHoldState);
+__def(__exports, "holdItem", () => holdItem);
+__def(__exports, "withHold", () => withHold);
+};
+__defs[25] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -5867,6 +7352,7 @@ __defs[19] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
+const { canLift } = __require(24);
 
                                
                  
@@ -6218,7 +7704,7 @@ function groupScale(adapter               , dim             , s              , f
 /** 3D: raise / lower every member that may move up and down, by `dy` (incremental). */
 function groupLift(adapter               , s              , dy        )       {
   if (!adapter.nudgeY) return;
-  for (const k of s.keys) if (movable(s, k) && s.items.get(k)?.liftable !== false) adapter.nudgeY(k, dy);
+  for (const k of s.keys) if (canLift(s.items.get(k))) adapter.nudgeY(k, dy);
 }
 
 /** Current poses of the members (after a step), with `from` when asked for. */
@@ -6240,7 +7726,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[20] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -6252,7 +7738,7 @@ __defs[20] = function (__exports) {
 // points and back, draw on an overlay canvas, and say "my data changed".
 // While a tool is on, pointer presses go to it first (after the handles);
 // whatever it does not use still looks around / selects as usual.
-const { TOOL_ID_RE } = __require(11);
+const { TOOL_ID_RE } = __require(13);
                                              
 
                                
@@ -6462,7 +7948,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[21] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -6475,7 +7961,8 @@ __defs[21] = function (__exports) {
 /**
  * Keyboard steps on the selected object. Screen-relative so they feel the
  * same in 2D and 3D: arrows move 10 px on screen (Shift: 1 px), Q/E rotate
- * 15° (Shift: 1°), PageUp/PageDown raise/lower (3D), +/- scale by 10%.
+ * 15° (Shift: 1°), PageUp/PageDown raise/lower (3D), +/- scale by 10%,
+ * End drops onto the surface below (3D; Unreal's End, "snap to floor" — bridge/snap.ts; a Mac laptop: fn + →).
  */
 function keyStep(key        , shift         , dim             )                {
   const px = shift ? 1 : 10;
@@ -6499,6 +7986,8 @@ function keyStep(key        , shift         , dim             )                {
       return dim === '3d' ? { op: 'lift', d: shift ? 0.01 : 0.1 } : null;
     case 'PageDown':
       return dim === '3d' ? { op: 'lift', d: shift ? -0.01 : -0.1 } : null;
+    case 'End':
+      return dim === '3d' ? { op: 'drop' } : null;
     case '+':
     case '=':
       return { op: 'scale', d: shift ? 1.01 : 1.1 };
@@ -6512,7 +8001,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[22] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -6551,7 +8040,7 @@ __defs[22] = function (__exports) {
 // a box: a box is wider than the object and overlaps its neighbours, so "which
 // one is picked?" was answered by guessing. Adapters that cannot draw objects
 // alone get a rounded box (6 px corners, the radius of every control).
-const { UI } = __require(11);
+const { UI } = __require(13);
 
                                    
 
@@ -6572,22 +8061,15 @@ const READOUT_WORDS                                                             
   ja: { move: '移動', rotate: '回す', lift: '高さ', scale: '大きさ', tipX: '前後に倒す', tipZ: '左右に倒す' },
 };
 /**
- * The one line shown the first time a tool is chosen (then never again on
- * this computer): what a drag does now and how to look around instead.
- * Mac 3D tools' habits: Option-drag orbits, right / middle drag pans, Space
- * held = the hand; on touch one finger is the tool, two fingers look.
+ * The one line shown the first time a tool is chosen (then never again on this computer): what a drag does now and
+ * how to stop. 40 characters at most (design review 2, item ③): it was 101 — "Drag anywhere: Turn · Look around:
+ * ⌥-drag, right-drag, or hold Space · Esc: no tool · Tilt: ▾ on Turn" — and its ▾ came out as "•" in the font. How to
+ * look around is in the ? sheet (shell/shortcuts.ts); the ▾ says itself that the tilts are behind it. On touch the
+ * two-finger look stays: a phone has no ? sheet. `tool` is the readout word ("Turn", "Tilt forward").
  */
 const TOOL_HINT                                                                                     = {
-  en: { mouse: (t) => `Drag anywhere: ${t} · Look around: ⌥-drag, right-drag, or hold Space · Esc: no tool`, touch: (t) => `One finger: ${t} · Two fingers: look around` },
-  ja: { mouse: (t) => `どこでも引く: ${t} ・ 見回す: ⌥ か右ボタンで引く、Space を押しながら ・ Esc: 道具をやめる`, touch: (t) => `1 本指: ${t} ・ 2 本指: 見回す` },
-};
-/**
- * Added to the turn tool's first-time line in 3D: where the tilts are. Was "Press Turn again to tilt" (polish pass
- * 2026-10-16); play test 2026-10-18: "nobody presses a button twice" — the tilts are behind the ▾ on the button now.
- */
-const TILT_HINT                       = {
-  en: ' · Tilt: ▾ on Turn',
-  ja: ' ・ 倒すのは「回す」の ▾ から',
+  en: { mouse: (t) => `Drag to ${t.toLowerCase()} · Esc to stop`, touch: (t) => `Drag to ${t.toLowerCase()} · 2 fingers: look` },
+  ja: { mouse: (t) => `引いて${t} ・ Esc でやめる`, touch: (t) => `引いて${t} ・ 2 本指で見回す` },
 };
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 const MORE_LABELS                                                 = {
@@ -6700,6 +8182,10 @@ const ICONS                             = {
                                                                             
                                                                                   
                                                                      
+                                                                                                                       
+                                                    
+                                                                                             
+                
      
                                                                     
                                                                          
@@ -6751,7 +8237,9 @@ button { position: relative; pointer-events: auto; width: var(--h, ${UI.handlePx
 button:hover { color: #f5f5f7; background: rgba(255,255,255,.07); }
 /* No tool chosen: move is what dragging the object does, shown lightly as "the one at rest". A chosen tool is .on (ink). */
 button.rest { color: #f5f5f7; background: rgba(255,255,255,.12); }
-button:active, button.on { color: #1c1c1e; background: #f5f5f7; cursor: grabbing; transition-duration: 0s; }
+/* The chosen tool: the phone strip's grey ground (design review 2, item ③), not a filled ink square — the square was the
+   loudest thing on the game after the object itself (review 2, photo 03; the light editor's was black). */
+button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cursor: grabbing; transition-duration: 0s; }
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
 button[hidden] { display: none; }
 /* Touch: past 44 px for the finger, whatever the drawn size. */
@@ -6762,6 +8250,17 @@ svg * { vector-effect: non-scaling-stroke; }
 /* Outlines: a canvas per shape, a rounded box when there is no shape. */
 .ol { position: absolute; pointer-events: none; }
 .box { position: absolute; border: 1.5px solid var(--c); border-radius: 6px; box-sizing: border-box; pointer-events: none; }
+/* Your pick, strongly (a hands-on try, 2026-10-19, item 3: "make what I picked stand out in the scene"; one of 20 black
+   pillars had a thin orange line and the eye kept losing it). A 3 px line with an orange glow round it, the object
+   lightly tinted (ring(): tint), and once on a new pick a brighter glow that settles in .6 s. The hover light is the
+   same in a softer dose. Boxes (adapters without a shape) get the same, as a box. */
+.layer.sel .ol { filter: drop-shadow(0 0 6px rgba(255,107,26,.6)); }
+.layer.sel .box { border-width: 3px; background: rgba(255,107,26,.12); box-shadow: 0 0 10px rgba(255,107,26,.55); }
+.layer.sel.flash .ol, .layer.sel.flash .box { animation: pick-flash .6s cubic-bezier(.2,.8,.2,1); }
+@keyframes pick-flash { from { filter: drop-shadow(0 0 16px rgba(255,107,26,1)) brightness(1.25); } }
+.layer.hover .ol { filter: drop-shadow(0 0 5px rgba(255,107,26,.45)); }
+.layer.hover .box { border-width: 2px; background: rgba(255,107,26,.08); box-shadow: 0 0 8px rgba(255,107,26,.4); }
+@media (prefers-reduced-motion: reduce) { .layer.sel.flash .ol, .layer.sel.flash .box { animation: none; } }
 /* Name tags: the only filled colour on the game (your hand / the AI's hand), round-ended so they read as labels. */
 .tag { position: absolute; display: none; height: 22px; padding: 0 9px; border-radius: 999px; align-items: center; gap: 4px; color: #fff; white-space: nowrap; font-weight: 600;
   transform: translate(-50%, -100%); box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 4px 12px rgba(0,0,0,.18); max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
@@ -6770,23 +8269,28 @@ svg * { vector-effect: non-scaling-stroke; }
 /* Stand-in copy: see-through picture of the original, dashed edge ("dashed = not real yet"). */
 .ghost { position: absolute; opacity: .6; outline: 1.5px dashed rgba(255,255,255,.9); border-radius: 4px; pointer-events: none; background-size: 100% 100%; }
 .band { position: absolute; border: 1px solid ${YOU}; border-radius: 2px; background: rgba(255,107,26,.1); display: none; pointer-events: none; }
-/* The choices over the strip: big buttons, a picture over a short word. */
-.menu { position: absolute; display: none; gap: 2px; padding: 6px; border-radius: 18px; transform: translateX(-50%);
+/* The choices over the strip (design review 2, item ③): ONE row as high as the strip, its buttons the strip's own size,
+   pictures only — the words are the tooltip and the label read aloud (the readout and the hint line name the way while
+   it works). Before: big buttons with a picture over a word, twice the strip's width (265 px over a 125 px strip),
+   the chosen one a black square, "Tilt sideways" wrapping on a phone. The chosen way: the strip's grey ground. */
+.menu { position: absolute; display: none; gap: 2px; padding: 4px; border-radius: 12px; transform: translateX(-50%);
   background: rgba(28, 28, 30, .86); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.09), 0 1px 1px rgba(0,0,0,.2), 0 10px 32px rgba(0,0,0,.36);
   backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 @keyframes rise { from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(.985); } }
-.menu button { width: auto; min-width: 76px; height: auto; padding: 8px 10px 6px; display: grid; gap: 4px; justify-items: center; cursor: pointer;
-  font: 600 11px/1.2 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; color: #a1a1a6; border-radius: 12px; }
-.menu button svg { width: 24px; height: 24px; }
-/* The chosen way: ink, not orange (orange is the picked object, on the game). */
-.menu button.chosen { color: #1c1c1e; background: #f5f5f7; box-shadow: none; }
-@media (pointer: coarse) { .menu button { min-width: 88px; min-height: 64px; } }
-/* Two rows (3D, several picked): the axes, a hairline, then Together / Each in place — the size menu's words and
-   order (multi rotate, 2026-10-18). Each row centred, the menu as wide as the wider row. */
-.menu.rows { flex-direction: column; align-items: center; }
+.menu button { cursor: pointer; }
+.menu button span { display: none; }
+.menu button.chosen { color: #f5f5f7; background: rgba(255,255,255,.16); box-shadow: none; }
+/* 3D with several picked: the axes, a hairline, then Together / Each in place — side by side in the one row. */
 .menu .mrow { display: flex; gap: 2px; }
-.menu .msep { align-self: stretch; height: .5px; margin: 4px 6px; background: rgba(255,255,255,.14); }
+.menu .msep { align-self: stretch; width: .5px; margin: 4px 3px; background: rgba(255,255,255,.14); }
 .root.light .menu .msep { background: rgba(0,0,0,.1); }
+.menu.big { gap: 0; padding: 2px; border-radius: 14px; background: rgba(42, 42, 46, .92); box-shadow: 0 0 0 1px rgba(255,255,255,.08);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.menu.big .mrow { gap: 0; }
+.menu.big button { border-radius: 12px; }
+.menu.big button.chosen { background: rgba(255,255,255,.10); }
+.root.light .menu.big { background: rgba(255,255,255,.92); box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.root.light .menu.big button.chosen { background: rgba(0,0,0,.08); }
 /* The ▾ (tool options, play test 2026-10-18): "this button has choices", in the button's bottom-right corner, inside
    it — so the strip is not one px taller or wider and does not move when it appears (W1-2). The mark is 7×4 in the
    button's own colour, faint at rest, full on hover (PC: the hover says "there is more here"); its press area is the
@@ -6804,11 +8308,11 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 /* Light editor: the light glass, the same two colours. */
 .root.light .menu, .root.light .row { backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
 .root.light .menu button { color: #6e6e73; }
-.root.light .menu button.chosen { color: #fff; background: #1d1d1f; }
+.root.light .menu button.chosen { color: #1d1d1f; background: rgba(0,0,0,.08); }
 .root.light button { color: #6e6e73; }
 .root.light button:hover { color: #1d1d1f; background: rgba(0,0,0,.045); }
 .root.light button.rest { color: #1d1d1f; background: rgba(0,0,0,.075); }
-.root.light button:active, .root.light button.on { color: #fff; background: #1d1d1f; }
+.root.light button:active, .root.light button.on { color: #1d1d1f; background: rgba(0,0,0,.08); }
 /* The readout while a drag works, and the first-time hint line: the same glass, the small size, tabular digits (rule 4). */
 .chip, .hint { position: absolute; display: none; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; white-space: nowrap;
   font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #f5f5f7;
@@ -6817,7 +8321,8 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 .chip { transform: translateY(-50%); }
 .hint { height: 32px; padding: 0 14px; font-weight: 400; transform: translateX(-50%); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 .root.light .chip, .root.light .hint { color: #1d1d1f; backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
-@media (pointer: coarse) { .hint { height: 36px; font-size: 13px; } }
+/* A finger: clear of the camera's ↑ ↓ at the bottom right (44 wide + 12 margin on each side, review 2 item ③). */
+@media (pointer: coarse) { .hint { height: 36px; font-size: 13px; max-width: calc(100vw - 128px); } }
 @media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
 /* The finger-sized strip (buttons 44 px: phones and the side window; .big = 40 px and up), design review wave 1 (W1-2 / N4,
    2026-10-17): 48 high (44 + 2 in), no gaps between buttons, 14 corners, a light plate — white 92 % with a 12 px blur
@@ -6835,8 +8340,18 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 `;
 
 let scratch                           = null;
-/** Draw a 2 px ring just outside the mask's shape, in `color`, on a faint dark halo. */
-function ring(doc          , el                   , o         , color        ) {
+/** How a ring is drawn: `line` px wide (2 = the AI's), `tint` = the share of `color` laid over the object (0 = none). */
+                            
+               
+               
+ 
+const RING_AI            = { line: 2, tint: 0 };
+// 3 px and a 16 % tint: strong enough to find one black pillar among twenty (a hands-on try, 2026-10-19) and still the
+// game's own colours underneath. Hover: the same line in the softer 2 px with half the tint (the canvas is drawn at 70 %).
+const RING_YOU            = { line: 3, tint: 0.16 };
+const RING_HOVER            = { line: 2, tint: 0.1 };
+/** Draw a ring just outside the mask's shape, in `color`, on a faint dark halo (and a tint over the shape: `style`). */
+function ring(doc          , el                   , o         , color        , style            = RING_AI) {
   const dpr = doc.defaultView?.devicePixelRatio || 1;
   const W = Math.max(1, Math.ceil(o.w * dpr));
   const H = Math.max(1, Math.ceil(o.h * dpr));
@@ -6858,7 +8373,7 @@ function ring(doc          , el                   , o         , color        ) {
       g.drawImage(o.mask, Math.cos(a) * px, Math.sin(a) * px, W, H);
     }
   };
-  stamp(3 * dpr);
+  stamp((style.line + 1) * dpr);
   g.globalCompositeOperation = 'source-in';
   g.fillStyle = 'rgba(0, 0, 0, .28)';
   g.fillRect(0, 0, W, H);
@@ -6869,7 +8384,7 @@ function ring(doc          , el                   , o         , color        ) {
   line.height = H;
   const lg = line.getContext('2d');
   if (lg) {
-    const t = 2 * dpr;
+    const t = style.line * dpr;
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
       lg.drawImage(o.mask, Math.cos(a) * t, Math.sin(a) * t, W, H);
@@ -6880,11 +8395,29 @@ function ring(doc          , el                   , o         , color        ) {
   }
   g.globalCompositeOperation = 'source-over';
   g.drawImage(line, 0, 0);
-  // Keep only the ring: the object itself stays exactly as the game draws it.
+  // Keep only the ring: the object itself stays exactly as the game draws it — except your pick and the hover, which
+  // get a light tint of the colour over the shape (2026-10-19: the ring alone round a small far object was lost).
   g.globalCompositeOperation = 'destination-out';
   g.drawImage(o.mask, 0, 0, W, H);
+  if (style.tint > 0) {
+    const fill = (tintCanvas ||= doc.createElement('canvas'));
+    fill.width = W;
+    fill.height = H;
+    const fg = fill.getContext('2d');
+    if (fg) {
+      fg.drawImage(o.mask, 0, 0, W, H);
+      fg.globalCompositeOperation = 'source-in';
+      fg.fillStyle = color;
+      fg.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = style.tint;
+      g.drawImage(fill, 0, 0);
+      g.globalAlpha = 1;
+    }
+  }
   g.globalCompositeOperation = 'source-over';
 }
+let tintCanvas                           = null;
 
 function createHandles(doc          , hasLift         )          {
   const host = doc.createElement('div');
@@ -6925,6 +8458,11 @@ function createHandles(doc          , hasLift         )          {
   const ghostLayer = doc.createElement('div');
   const aiLayer = doc.createElement('div');
   const selLayer = doc.createElement('div');
+  const hoverLayer = doc.createElement('div');
+  aiLayer.className = 'layer ai';
+  selLayer.className = 'layer sel';
+  hoverLayer.className = 'layer hover';
+  hoverLayer.style.opacity = '.7';
   const youTag = doc.createElement('div');
   youTag.className = 'tag you';
   const aiTag = doc.createElement('div');
@@ -7022,7 +8560,7 @@ function createHandles(doc          , hasLift         )          {
     menuEl.style.left = `${x}px`;
     menuEl.style.top = `${y}px`;
   };
-  root.append(ghostLayer, aiLayer, selLayer, aiTag, youTag, row, menuEl, chip, hintEl, band);
+  root.append(ghostLayer, aiLayer, hoverLayer, selLayer, aiTag, youTag, row, menuEl, chip, hintEl, band);
   shadow.append(style, root);
   (doc.body || doc.documentElement).appendChild(host);
 
@@ -7031,7 +8569,7 @@ function createHandles(doc          , hasLift         )          {
   let inset        = { top: 0, right: 0, bottom: 0, left: 0 };
 
   /** Fill a layer with the shape's ring, or with one box per rect; returns the box round all of it. */
-  const outline = (layer             , shape                , rects        , color        )              => {
+  const outline = (layer             , shape                , rects        , color        , style            )              => {
     if (shape) {
       let c = layer.firstElementChild                            ;
       if (!c || c.tagName !== 'CANVAS' || layer.children.length !== 1) {
@@ -7040,7 +8578,10 @@ function createHandles(doc          , hasLift         )          {
         c.className = 'ol';
         layer.append(c);
       }
-      ring(doc, c, shape, color);
+      // No tint over something that fills much of the view (the sky dome, the ground): the whole game turned orange
+      // when the mouse passed the sky's row (2026-10-19 photos). The ring and glow still say which.
+      const big = shape.w * shape.h > 0.3 * win.innerWidth * win.innerHeight;
+      ring(doc, c, shape, color, style && big ? { ...style, tint: 0 } : style);
       // The shape's own box (the mask has a few px of room round it).
       return { x: shape.x + 4, y: shape.y + 4, w: Math.max(0, shape.w - 8), h: Math.max(0, shape.h - 8) };
     }
@@ -7216,7 +8757,8 @@ function createHandles(doc          , hasLift         )          {
           b.setAttribute('role', 'menuitemradio');
           b.setAttribute('aria-checked', String(id === cur));
           if (id === cur) b.classList.add('chosen');
-          b.title = words[id] [1];
+          b.title = `${words[id] [0]} — ${words[id] [1]}`;
+          b.setAttribute('aria-label', words[id] [0]);
           b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[id]}</svg>`; // static markup only
           const t = doc.createElement('span');
           t.textContent = words[id] [0];
@@ -7228,7 +8770,7 @@ function createHandles(doc          , hasLift         )          {
       const way = kind === 'axis' && turn ? turn.way : null;
       const wayIcons = { spread: turnWayIcon('spread'), inplace: TURN_WAY_ICONS.inplace };
       // One row as before (one object in 3D, the size button, 2D's turn with several); two rows in 3D with several.
-      menuEl.classList.toggle('rows', axes && !!way);
+      menuEl.classList.toggle('big', size >= 40);
       if (kind === 'scale') choices(menuEl, 'scale', SCALE_WORDS[lang] || SCALE_WORDS.en, SCALE_ICONS, current);
       else if (axes && way) {
         const top = doc.createElement('div'), sep = doc.createElement('div'), bottom = doc.createElement('div');
@@ -7280,7 +8822,15 @@ function createHandles(doc          , hasLift         )          {
       }
     },
     selection(shape, rects, tag) {
-      tagAt(youTag, outline(selLayer, shape, rects, YOU), tag);
+      tagAt(youTag, outline(selLayer, shape, rects, YOU, RING_YOU), tag);
+    },
+    hover(shape, rects) {
+      outline(hoverLayer, shape, rects, YOU, RING_HOVER);
+    },
+    flash() {
+      selLayer.classList.remove('flash');
+      void selLayer.offsetWidth; // restart the animation
+      selLayer.classList.add('flash');
     },
     ai(shape, rects, tag) {
       tagAt(aiTag, outline(aiLayer, shape, rects, AI), tag, true);
@@ -7359,7 +8909,6 @@ __def(__exports, "toolFromKey", () => toolFromKey);
 __def(__exports, "HANDLE_LABELS", () => HANDLE_LABELS);
 __def(__exports, "READOUT_WORDS", () => READOUT_WORDS);
 __def(__exports, "TOOL_HINT", () => TOOL_HINT);
-__def(__exports, "TILT_HINT", () => TILT_HINT);
 __def(__exports, "MORE_LABELS", () => MORE_LABELS);
 __def(__exports, "AXIS_WORDS", () => AXIS_WORDS);
 __def(__exports, "SCALE_WORDS", () => SCALE_WORDS);
@@ -7370,7 +8919,7 @@ __def(__exports, "moreFromEvent", () => moreFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[23] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -7394,7 +8943,7 @@ __defs[23] = function (__exports) {
 // keys; and two fingers already pan and pinch, so a two-finger "up" would take panning forward away.
 // WHY its own small shadow root (not in handles.ts with the strip): the strip follows the picked object and is
 // gone with nothing picked; these stay in one corner, always. Same glass, same sizes, same theme as the strip.
-const { UI } = __require(11);
+const { UI } = __require(13);
 
                                     
 
@@ -7495,6 +9044,8 @@ function createRiseButtons(doc          )              {
     },
     setInset(i) {
       inset = i;
+      // The shell says when the buttons stand in the way (a phone's card, sheet or menu up): gone until it says again.
+      box.style.display = i.camera === false ? 'none' : '';
       position();
     },
     setTheme(theme) {
@@ -7526,7 +9077,108 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[24] = function (__exports) {
+__defs[30] = function (__exports) {
+'use strict';
+// snap.ts
+
+// Snap to surfaces, the rules the bridge applies on top of the adapter's measures (3D; a request after a try of the editor, 2026-10-19: "in Unreal,
+// an object moved up or down stops once when it meets the ground or another thing — I want to set things down
+// exactly on the ground"). Pure: no DOM, no adapter, so test/snap.test.ts can say how each case ends.
+//
+// The three moves (adapters/three/surface.js finds the surfaces; the adapter does the move itself):
+// - Height (the H tool, its drag): going down, the object's bottom stops on the first surface below it (the ground,
+//   a pier's planks, a crate's lid). Pulling on past it by BREAK_PX (a mouse) / BREAK_PX_TOUCH (a finger) lets it go
+//   through — under the water, into the ground — and the next surface down stops it again. Going up never stops (a
+//   thing under a table is lifted out through it, as in the engines). `liftDetent` below.
+// - PgDn (one step down): a step that would cross a surface ends on it; the next step from there goes through
+//   (`stepDetent`). The step is the detent's "pull harder".
+// - Move and Drop to floor (End) live in the adapter (adapter.js drag / drop): they need the ray casts every time.
+// - Hold Ctrl or ⌥ / Alt while dragging: no snapping for as long as it is held (`freeHeld`). Blender's habit (its
+//   manual: snapping is toggled "more temporarily by holding Ctrl"); ⌥ as well because Ctrl-click is the Mac's right
+//   click and people reach for Option there. Pressed BEFORE the press, ⌥ still looks around (input.ts): it frees the
+//   snap only once the drag is under way.
+// WHY a detent (stop, then go on) and not a hard floor: things sometimes belong half in the ground (a post, a rock
+// sunk in sand, a barrel floating low), and a floor you cannot pass would need a second key to get there.
+
+/** Extra pull past a surface, in screen px, before the height drag lets go of it (a mouse; ~a fingertip for touch). */
+const BREAK_PX = 30;
+const BREAK_PX_TOUCH = 44;
+/** Metres: closer than this counts as "on" the surface (the bottom sits on it; float noise on a 100 m scene stays under). */
+const ON_EPS = 0.005;
+
+/** World heights of the object's bottom and of the highest surface under it (null: nothing below), as adapter.rest gives them. */
+                       
+                 
+                       
+ 
+
+/** State kept for one height drag: the surface pulled through (null: none), so it does not catch again. */
+                              
+                         
+ 
+
+/**
+ * The height drag's move, with the stop: `want` = the metres up (> 0) / down (< 0) the finger asks for now, from
+ * where the object is; `k` = metres per screen px at the object (> 0). Returns the metres to move.
+ * - want ≥ 0, or nothing below: as asked.
+ * - the bottom already under the surface (sunk, or pulled through it before): as asked — the surface is not
+ *   between the object and where it goes.
+ * - the move would cross the surface: stop on it, until the finger is BREAK_PX past it; then let go (st.through)
+ *   and move as asked.
+ * - back above a surface it was pulled through: that surface catches again (st.through is cleared).
+ */
+function liftDetent(r             , want        , k        , st             , breakPx = BREAK_PX)         {
+  if (!r) return want;
+  if (st.through !== null && r.bottom > st.through + ON_EPS) st.through = null;
+  if (want >= 0 || r.below === null) return want;
+  const s = r.below;
+  if (st.through !== null && s >= st.through - ON_EPS) return want;
+  if (r.bottom < s - ON_EPS) return want;
+  const land = s - r.bottom; // ≤ ~0: the move that sets the bottom on the surface
+  if (want >= land) return want; // stays above it
+  const pastPx = (land - want) / Math.max(1e-9, k);
+  if (pastPx < breakPx) return land;
+  st.through = s;
+  return want;
+}
+
+/**
+ * One PgDn step (`d` < 0 metres) with the stop: a step that would carry the bottom from above the surface to under
+ * it ends on the surface; from on it (within ON_EPS) the step goes through. Up steps as asked.
+ */
+function stepDetent(r             , d        )         {
+  if (!r || r.below === null || d >= 0) return d;
+  const s = r.below;
+  if (r.bottom > s + ON_EPS && r.bottom + d < s) return s - r.bottom;
+  return d;
+}
+
+/** Is the "no snapping" key held (Ctrl, or ⌥ / Alt)? Read from the pointer / key event. */
+const freeHeld = (e                                         )          => !!(e.ctrlKey || e.altKey);
+
+/**
+ * Several objects moved up / down together (a group's height drag, PgDn / End with several picked): the one that meets
+ * its surface first decides — the smallest gap between a bottom and the surface under it, among those on or above
+ * theirs. The group then stops as one piece, its arrangement kept. null: none has a surface under it.
+ */
+function firstToTouch(rests                                )              {
+  let best              = null;
+  for (const r of rests) {
+    if (!r || r.below === null || r.bottom < r.below - ON_EPS) continue;
+    if (!best || r.bottom - r.below < best.bottom - best.below ) best = r;
+  }
+  return best;
+}
+
+__def(__exports, "BREAK_PX", () => BREAK_PX);
+__def(__exports, "BREAK_PX_TOUCH", () => BREAK_PX_TOUCH);
+__def(__exports, "ON_EPS", () => ON_EPS);
+__def(__exports, "liftDetent", () => liftDetent);
+__def(__exports, "stepDetent", () => stepDetent);
+__def(__exports, "freeHeld", () => freeHeld);
+__def(__exports, "firstToTouch", () => firstToTouch);
+};
+__defs[31] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -7592,7 +9244,9 @@ __defs[24] = function (__exports) {
 //   follows the drag) and E / Q when nothing is picked or while looking
 //   around. A press on the buttons is never a tap on "nothing": the pick stays.
 // - Fly (3D, camera-wasd pass 2026-10-18 — "anyone who has used a 3D game engine moves the camera with WASD too"):
-//   W / S forward / back along the line of sight, A / D left / right, E / Q straight up / down, Shift ×3 — smooth
+//   W / S forward / back LEVEL (along the ground the way the camera faces: looking down, the height stays — a try
+//   2026-10-19: "W/S as level forward / back"; it followed the line of sight on 10-18), A / D left / right, E / Q
+//   straight up / down (Unreal's E up / Q down), Shift ×3 — smooth
 //   while held, stopped on release (each frame, core.time.raf), at a speed the adapter takes from the scene's size
 //   (adapters/three/camera.js fly). When: with nothing picked always (W A S D have no other job then: the tool keys
 //   need a pick); with something picked only while the right button is held (Unity / Unreal / Godot's fly mode),
@@ -7608,15 +9262,21 @@ __defs[24] = function (__exports) {
 //   never focus: the camera stays where it is), as other 3D / 2D tools do; one already in the selection keeps the
 //   whole selection. Nothing under it (or only the ground) keeps the pick: the menu then has Deselect. A right DRAG
 //   still pans (the menu waits for the release, as in Blender / Unity), so the press never moves the view by itself.
-const { UI } = __require(11);
+// - Snap to surfaces (3D, a try of the editor, 2026-10-19; bridge/snap.ts has the rules): while a move or height drag is under way
+//   the adapter snaps (setSnap on; off when the gesture ends). The height drag stops on the first surface below
+//   (liftDetent); Ctrl or ⌥ held during the drag frees it, and pressing / letting go of them re-reads the drag at
+//   once (no need to move the pointer).
+const { UI } = __require(13);
                                              
-const { keyStep } = __require(21);
+const { keyStep } = __require(27);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TILT_HINT, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(22);
+const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(28);
                                                      
-const { createRiseButtons } = __require(23);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(19);
+const { createRiseButtons } = __require(29);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(30);
+const { canLift } = __require(24);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(25);
 
                             
                          
@@ -7655,6 +9315,8 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                           
                                                                                 
                                                          
+                                                                                                                        
+                                 
                  
  
 
@@ -7868,9 +9530,10 @@ function attachInput(deps           )              {
     if (!tool || hintShown || hintSeen()) return;
     hintShown = true;
     const words = TOOL_HINT[lang] || TOOL_HINT.en;
-    const name = (READOUT_WORDS[lang] || READOUT_WORDS.en)[tool];
-    const more = tool === 'rotate' && canTurn() ? (TILT_HINT[lang] || TILT_HINT.en) : '';
-    handles.hint((touchFirst() ? words.touch(name) : words.mouse(name)) + more);
+    const rw = READOUT_WORDS[lang] || READOUT_WORDS.en;
+    // The way the drag works now (a tilt chosen on the ▾ says "tilt forward", not "turn").
+    const name = tool === 'rotate' && canTurn() && state.axis !== 'y' ? rw[state.axis === 'x' ? 'tipX' : 'tipZ'] : rw[tool];
+    handles.hint(touchFirst() ? words.touch(name) : words.mouse(name));
     // Gone after the first drag with the tool (it was read and used), or after 8 s.
     win.clearTimeout(hintTimer);
     hintTimer = win.setTimeout(() => handles.hint(null), 8000);
@@ -7889,7 +9552,7 @@ function attachInput(deps           )              {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
     if (!picked.length) return false;
     if (k === 'move') return picked.some((i) => i.movable !== false);
-    if (k === 'lift') return adapter.dim === '3d' && !!adapter.nudgeY && picked.some((i) => i.liftable !== false && i.movable !== false);
+    if (k === 'lift') return adapter.dim === '3d' && !!adapter.nudgeY && picked.some((i) => canLift(i));
     if (k === 'rotate') return picked.some((i) => i.rotatable);
     return picked.some((i) => i.scalable);
   };
@@ -7937,6 +9600,8 @@ function attachInput(deps           )              {
     axisShown = ax;
     handles.setAxis(ax, lang);
   };
+  // What was picked when the turn way was last kept (selectionChanged resets the way on another pick).
+  let pickSig = '';
   const setAxis = (ax                   ) => {
     const order             = ['y', 'x', 'z'];
     state.axis = ax === 'next' ? order[(order.indexOf(state.axis) + 1) % 3]  : ax;
@@ -7987,6 +9652,9 @@ function attachInput(deps           )              {
       data.angle = Math.atan2(p.y - ga.center[1], p.x - ga.center[0]);
       data.dist = Math.max(8, Math.hypot(p.x - ga.center[0], p.y - ga.center[1]));
     }
+    snapOn(handle);
+    detent = { through: null };
+    data.breakPx = p.type === 'mouse' ? BREAK_PX : BREAK_PX_TOUCH;
     if (handle === 'lift') {
       // Same probe as one object, on the first member: world units per px.
       const a = adapter.anchor(session.primary);
@@ -8005,6 +9673,8 @@ function attachInput(deps           )              {
 
   const moveGroup = (m                                  , p     ) => {
     const { session: s, data } = m;
+    lastRead = p;
+    if (m.handle === 'move' || m.handle === 'lift') adapter.setSnap?.({ on: true, free, skip: snapKeys() });
     const ga = groupAnchor(adapter, s.keys, s.primary);
     if (m.anywhere && (m.handle === 'rotate' || m.handle === 'scale')) {
       // The chosen tool dragged anywhere: the drag's own travel, from the press.
@@ -8033,7 +9703,8 @@ function attachInput(deps           )              {
       const a = adapter.anchor(s.primary);
       if (!a) return;
       const err = a.center[1] - (p.y - data.gap );
-      const dy = Math.max(-5, Math.min(5, err * data.k ));
+      const keys = s.keys.filter((k) => canLift(s.items.get(k))); // the members groupLift moves (group.ts)
+      const dy = Math.max(-5, Math.min(5, liftWith(keys, err * data.k , data.k , data.breakPx )));
       if (Math.abs(dy) > 1e-6) groupLift(adapter, s, dy);
     }
     markDirty();
@@ -8048,7 +9719,9 @@ function attachInput(deps           )              {
     const a = adapter.anchor(key);
     if (!a) return { kind: 'none' };
     const from = a.pose;
-    const data                         = {};
+    const data                         = { breakPx: p.type === 'mouse' ? BREAK_PX : BREAK_PX_TOUCH };
+    snapOn(handle);
+    detent = { through: null };
     if (handle === 'move') {
       if (!adapter.grab(key, p.x, p.y)) return { kind: 'none' };
     } else if (handle === 'rotate') {
@@ -8082,6 +9755,8 @@ function attachInput(deps           )              {
 
   const moveHandle = (m                                   , p     ) => {
     const { key, data } = m;
+    lastRead = p;
+    if (m.handle === 'move' || m.handle === 'lift') adapter.setSnap?.({ on: true, free, skip: snapKeys() });
     let pose       = m.last;
     if (m.anywhere && m.handle === 'rotate') {
       // Turn by the horizontal travel; 15° steps within ±3° of the gesture's total unless Shift.
@@ -8133,7 +9808,8 @@ function attachInput(deps           )              {
       if (!a) return;
       const target = p.y - data.gap ;
       const err = a.center[1] - target; // > 0: object is below where it should be
-      const dy = Math.max(-5, Math.min(5, err * data.k ));
+      // Going down, the bottom stops on the first surface below until the finger is breakPx past it (snap.ts).
+      const dy = Math.max(-5, Math.min(5, liftWith([key], err * data.k , data.k , data.breakPx )));
       if (Math.abs(dy) > 1e-6) pose = adapter.nudgeY (key, dy);
     }
     m.last = pose;
@@ -8167,6 +9843,10 @@ function attachInput(deps           )              {
   };
 
   const endGesture = () => {
+    if (mode.kind === 'handle' || mode.kind === 'group') {
+      adapter.setSnap?.({ on: false });
+      lastRead = null;
+    }
     if (mode.kind === 'handle' || mode.kind === 'group') {
       handles.readout(null);
       if (mode.anywhere) hintUsed();
@@ -8290,6 +9970,22 @@ function attachInput(deps           )              {
   let boxStart = false;
   /** Tool dragged anywhere: the offset from the pointer to the object's point at the start. */
   let off = { x: 0, y: 0 };
+  // Snap to surfaces: Ctrl / ⌥ held now (freeHeld), the height drag's stop state, and the last pointer a move / height
+  // drag read (a Ctrl / ⌥ press re-reads it). The keys moving together are never a surface for each other.
+  let free = false;
+  let detent              = { through: null };
+  let lastRead             = null;
+  const snapKeys = () => (state.group.length > 1 ? state.group.slice() : state.selected ? [state.selected] : []);
+  const snapOn = (handle            ) => {
+    if (adapter.dim === '3d' && (handle === 'move' || handle === 'lift')) adapter.setSnap?.({ on: true, free, skip: snapKeys() });
+  };
+  /** The height drag's metres for the finger's `want`, with the stop on the surface below (several: the first to touch). */
+  const liftWith = (keys          , want        , k        , breakPx        ) => {
+    if (free || !adapter.rest) return want;
+    const skip = snapKeys();
+    const r = firstToTouch(keys.map((key) => adapter.rest (key, skip)));
+    return liftDetent(r, want, k, detent, breakPx);
+  };
 
   /** A plain press (no Shift, not picking several) on the picked object, which can be moved and is not huge. */
   const grabbable = (p     ) => {
@@ -8425,6 +10121,7 @@ function attachInput(deps           )              {
     p.x = e.clientX;
     p.y = e.clientY;
     p.shift = e.shiftKey;
+    free = freeHeld(e);
     if (mode.kind === 'pinch' && ptrs.size >= 2) {
       const t = twoFingers();
       if (mode.dist > 0 && t.dist > 0) adapter.view.zoom(t.dist / mode.dist, t.cx, t.cy);
@@ -8575,12 +10272,23 @@ function attachInput(deps           )              {
     post({ type: 'studio:core/view-state', state: adapter.view.state() });
   };
 
+  /** Ctrl / ⌥ pressed or let go: during a move / height drag, read the drag again the new way at once. */
+  const snapKey = (e               ) => {
+    const now = freeHeld(e);
+    if (now === free) return;
+    free = now;
+    if (!lastRead || !ptrs.has(lastRead.id)) return;
+    if (mode.kind === 'handle' && (mode.handle === 'move' || mode.handle === 'lift')) moveHandle(mode, lastRead);
+    else if (mode.kind === 'group' && (mode.handle === 'move' || mode.handle === 'lift')) moveGroup(mode, lastRead);
+  };
+
   const onKey = (e               ) => {
     block(e);
     // Shortcuts that belong to the shell (undo, redo, save, escape...) are
     // forwarded so they work wherever focus is.
     post({ type: 'studio:core/key', key: e.key, code: e.code, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, alt: e.altKey });
     flyFast = e.shiftKey;
+    snapKey(e);
     // ⌘ / Ctrl / ⌥ with a fly key is a shortcut, not flying; and a Mac sends no keyup for keys let go while ⌘ is
     // down, so whatever was held stops here rather than flying on by itself.
     if (e.ctrlKey || e.metaKey || e.altKey) {
@@ -8637,6 +10345,7 @@ function attachInput(deps           )              {
 
   const onKeyUp = (e               ) => {
     if (e.key === ' ') spaceHeld = false;
+    snapKey(e);
     flyFast = e.shiftKey;
     const fk = flyKeyOf(e);
     if (fk) flyHeld.delete(fk);
@@ -8739,10 +10448,11 @@ function attachInput(deps           )              {
   // The outlines: the shape from adapter.silhouette when it has one (three),
   // drawn again only when something it depends on changed and at most every
   // 40 ms (it costs extra renders); a rounded box per object otherwise.
-  const shapes = { you: { sig: '', at: 0, shape: null                   }, ai: { sig: '', at: 0, shape: null                   } };
+  const shapes = { you: { sig: '', at: 0, shape: null                   }, ai: { sig: '', at: 0, shape: null                   }, hover: { sig: '', at: 0, shape: null                   } };
   let aiKeys           = [];
+  let hoverKeys           = [];
   let aiLabel                = null;
-  const shapeOf = (which              , keys          , rects                                                       ) => {
+  const shapeOf = (which                        , keys          , rects                                                       ) => {
     const c = shapes[which];
     if (!adapter.silhouette || !keys.length) {
       c.sig = '';
@@ -8771,6 +10481,34 @@ function attachInput(deps           )              {
     return out;
   };
 
+  /**
+   * Where the strip goes with several picked (design review 2, item ⑤; asked in review 1 as ③): under the member
+   * nearest the camera among those on screen — 12 px under it, as under one object, centred on the part of it that is
+   * on screen. "On screen" = some of its box is inside the window (a pine half off the left edge counts: the person
+   * sees it). "Nearest" = the lowest bottom edge: on a ground seen from above (every 3D editor view, and 2D's stage)
+   * what is nearer stands lower. With none on screen: no strip (null; handles.place hides it) — a strip under nothing
+   * says nothing.
+   * WHY not the box round all of them (as before): three pines at the frame's left edge put the box's middle on empty
+   * sea in front of the sea-arch, and the strip floated there, under nothing (review 2, photo 04).
+   */
+  const stripAnchor = (keys          )                => {
+    const vw = win.innerWidth, vh = win.innerHeight;
+    let best                = null;
+    let bestBottom = -Infinity;
+    for (const k of keys) {
+      const a = adapter.anchor(k);
+      if (!a || !a.visible) continue;
+      const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+      const x0 = Math.max(0, r.x), x1 = Math.min(vw, r.x + r.w), y0 = Math.max(0, r.y), y1 = Math.min(vh, r.y + r.h);
+      if (x1 - x0 < 4 || y1 - y0 < 4) continue;
+      const bottom = r.y + r.h;
+      if (bottom <= bestBottom) continue;
+      bestBottom = bottom;
+      // The part on screen: the strip goes under its middle (handles.place reads center x and the rect's top / bottom).
+      best = { ...a, center: [(x0 + x1) / 2, a.center[1]], rect: { x: x0, y: r.y, w: x1 - x0, h: r.h } };
+    }
+    return best;
+  };
   const place = () => {
     drawGhosts();
     showAxis();
@@ -8781,15 +10519,18 @@ function attachInput(deps           )              {
     const aiShown = aiKeys.filter((k) => !(key && (state.group.includes(k) || k === key)) && state.items.some((i) => i.key === k));
     const aiRects = rectsOf(aiShown);
     handles.ai(shapeOf('ai', aiShown, aiRects), aiRects, aiShown.length ? aiLabel : null);
+    // What the mouse is over in the editor page (a row, the card, the chip): lit softly, under your pick's own mark.
+    const hovered = hoverKeys.filter((k) => state.items.some((i) => i.key === k));
+    const hoverRects = rectsOf(hovered);
+    handles.hover(hovered.length ? shapeOf('hover', hovered, hoverRects) : null, hovered.length ? hoverRects : []);
     if (key && state.group.length > 1) {
       const items = state.items.filter((i) => state.group.includes(i.key));
       const keys = items.map((i) => i.key);
       const rects = rectsOf(keys);
       handles.selection(shapeOf('you', keys, rects), rects, inRects(rects) ? (MANY_LABEL[lang] || MANY_LABEL.en)(items.length) : null);
-      const ga = groupAnchor(adapter, state.group, key);
-      handles.place(ga, items.length ? {
+      handles.place(stripAnchor(keys), items.length ? {
         rotatable: items.some((i) => i.rotatable), scalable: items.some((i) => i.scalable),
-        movable: items.some((i) => i.movable !== false), liftable: items.some((i) => i.liftable !== false && i.movable !== false),
+        movable: items.some((i) => i.movable !== false), liftable: items.some((i) => canLift(i)),
       } : null, adapter.dim);
       return;
     }
@@ -8799,7 +10540,7 @@ function attachInput(deps           )              {
     // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
     // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
     handles.selection(item ? shapeOf('you', [key ], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
-    handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: item.liftable !== false } : null, adapter.dim);
+    handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: canLift(item) } : null, adapter.dim);
   };
 
   return {
@@ -8807,6 +10548,16 @@ function attachInput(deps           )              {
     selectionChanged() {
       riseLabels();
       if (handles.menuOpen()) menu(null);
+      // Another pick: the turn tool goes back to its own way, Turn (design review 2, item ③: the lighthouse's Tilt
+      // forward stayed on the three pines picked next — strip picture and readout included — and a drag tilted them).
+      // The same pick told again (a refresh of the list) keeps the chosen way.
+      const sig = `${state.selected ?? ''}|${state.group.join(',')}`;
+      if (sig !== pickSig) {
+        pickSig = sig;
+        if (state.axis !== 'y') setAxis('y');
+        // A new pick lights up once (handles.flash): the moment the eye looks for what it picked.
+        if (state.selected) handles.flash();
+      }
       armed = false;
       hoverIn = false;
       place();
@@ -8856,6 +10607,13 @@ function attachInput(deps           )              {
       shapes.ai.sig = '';
       place();
     },
+    setHover(keys) {
+      if (keys.join('\n') === hoverKeys.join('\n')) return;
+      hoverKeys = keys.slice();
+      shapes.hover.sig = '';
+      shapes.hover.at = 0; // a new row under the mouse draws at once (not after the 40 ms wait)
+      place();
+    },
     setLang(l) {
       lang = l;
       handles.setLabels(HANDLE_LABELS[lang] || HANDLE_LABELS.en);
@@ -8890,25 +10648,91 @@ function attachInput(deps           )              {
 
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[25] = function (__exports) {
+__defs[32] = function (__exports) {
+'use strict';
+// observe.ts
+
+// Watch the game play for a moment when editing starts, to find what it moves by itself (Item.held 'game').
+//
+// WHY (a hands-on try of 2026-10-19, item 5): "the pillars of this game flow toward you every frame and are put
+// back far away, at a random place each time. So if I move one in the editor and save, that place is not kept."
+// Nothing told them. Asked for: "before editing starts, run the game a little, find the objects whose position the
+// game changes by itself, and say so on them" — this file is the finding; hold.ts holds them; the card says why.
+//
+// How: the editor freezes the game after its first frame (core/time.ts). Right after the edit view is up, the
+// editor lets the game's own frames run for WATCH_MS (its draws stay held by the adapter, so the picture does not
+// jump), freezes it again, compares every listed pose, and puts the moved objects back where the first frame had
+// them (setPose, exact) — the scene the person edits is still the game's first picture.
+// WHY not before the edit view: the first picture would then not be the game's first frame any more, and every
+// test and reload that opens on it would move. WHY 0.6 s: a runner at 20 m/s moves a pillar 12 m, a slow bobbing
+// coin a few cm; a game that only moves things after a key press or a timer is not caught (nothing to say then).
+                                                      
+                                        
+
+const WATCH_MS = 600;
+
+/** Smallest change that counts: 1 mm / 0.5 px, about 0.06°, 0.1 % of the size. Below that is float noise. */
+const EPS = { p3: 1e-3, p2: 0.5, r: 1e-3, s: 1e-3 };
+
+const scaleOf = (p      ) => (Array.isArray(p.s) ? p.s : [p.s ?? 1, p.s ?? 1, p.s ?? 1]);
+const turnOf = (p      ) => [p.r ?? 0, ...(p.t ?? [0, 0])];
+const angleGap = (a        , b        ) => {
+  const d = Math.abs((((a - b) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI));
+  return Math.min(d, 2 * Math.PI - d);
+};
+
+/** What changed for each key listed both times. Objects that came or went in between are left out. */
+function drivenBetween(before        , after        , dim     )                      {
+  const was = new Map(before.map((i) => [i.key, i.pose]         ));
+  const out = new Map                ();
+  for (const it of after) {
+    const a = was.get(it.key);
+    const b = it.pose;
+    if (!a || !b) continue;
+    const eps = dim === '3d' ? EPS.p3 : EPS.p2;
+    const gap = (i        ) => Math.abs((a.p[i] ?? 0) - (b.p[i] ?? a.p[i] ?? 0)) > eps;
+    // 3D: across the ground (x, z) apart from the height (y): a boat that bobs keeps the place it is given.
+    const move = dim === '3d' ? gap(0) || gap(2) : gap(0) || gap(1);
+    const lift = dim === '3d' && gap(1);
+    const ta = turnOf(a), tb = turnOf(b);
+    const turn = ta.some((v, i) => angleGap(v, tb[i] ) > EPS.r);
+    const sa = scaleOf(a), sb = scaleOf(b);
+    const size = sa.some((v, i) => Math.abs(v - sb[i] ) > EPS.s * Math.max(1, Math.abs(v)));
+    if (move || lift || turn || size) out.set(it.key, { move, lift, turn, size });
+  }
+  return out;
+}
+
+__def(__exports, "WATCH_MS", () => WATCH_MS);
+__def(__exports, "drivenBetween", () => drivenBetween);
+};
+__defs[33] = function (__exports) {
 'use strict';
 // editor.ts
 
 // Edit session inside the game page: applies shell messages to the adapter,
 // runs the studio's own draw loop while the game is frozen, and reports
 // changes back. Pointer gestures and handles are attached by input.ts.
-                                                                                                                                               
+                                                                                                                                                          
                                              
-const { withRules } = __require(17);
-const { withEdits } = __require(18);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(19);
-const { createToolHost } = __require(20);
-const { attachInput } = __require(24);
-const { runSelfCheck } = __require(16);
+const { withRules } = __require(22);
+const { withEdits } = __require(23);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(25);
+const { createToolHost } = __require(26);
+const { attachInput } = __require(31);
+const { firstToTouch, stepDetent } = __require(30);
+const { createHoldState, withHold } = __require(24);
+const { drivenBetween, WATCH_MS } = __require(32);
+const { runSelfCheck } = __require(21);
 
                              
-                                                                         
-                         
+                                                                                                                     
+                                
+     
+                                                                                                                 
+                                                        
+     
+                            
                                                                                         
                      
                                                                                  
@@ -8922,8 +10746,12 @@ const { runSelfCheck } = __require(16);
                                    
                                                                               
                                     
-                                                                                                           
-                        
+                                                                                                                                    
+                                 
+                                             
+                     
+                                                                                                                     
+                   
  
 
 /** Shared state between the editor and the input layer. */
@@ -8945,12 +10773,44 @@ const { runSelfCheck } = __require(16);
  
 
 function createEditor(deps            )         {
-  const { core, win, post } = deps;
-  const raw = deps.adapter;
-  // Every edit goes through the copy/delete layer and the game rules layer;
-  // the adapter itself is unaware of both.
-  const edits = withEdits(raw);
-  const adapter = withRules(edits, deps.rules);
+  const { core, win } = deps;
+  // Every edit goes through the copy/delete layer, the game rules layer and what the editor holds still (the ground,
+  // what the game moves itself: hold.ts); the adapter itself is unaware of all three.
+  // UI stage 1 (2026-10-19): one such stack per layer — the world's, and the UI's (no game rules: .studio/studio.json
+  // speaks of world objects; no hold either: grounds and the game's own motion are world things) — and `raw` /
+  // `edits` / `adapter` are the current layer's. Everything below reads those three names when it runs, so switching
+  // layers (setLayer) is: input off, swap the three, input on. One layer at a time keeps input.ts / handles.ts as they
+  // are (the design's "switch, don't merge" for stages 1–3).
+  // merge of 2026-10-19: the hold layer (fb-safe) sits on top of the world's stack only; the watch of the game
+  // (watchGame) reads and puts back the world's `ruled`, whichever layer is being edited.
+                                                                                                                        
+  const hold = createHoldState();
+  const stackOf = (a               , rules             , held         )        => {
+    const e = withEdits(a);
+    const ruled = withRules(e, rules);
+    return { raw: a, edits: e, ruled, driven: held ? withHold(ruled, hold) : ruled };
+  };
+  const world               = deps.adapter ? stackOf(deps.adapter, deps.rules, true) : null;
+  const uiStack               = deps.ui ? stackOf(deps.ui, { config: null, ext: [] }, false) : null;
+  let layer            = world ? 'world' : 'ui';
+  const first = (world || uiStack) ;
+  let raw = first.raw;
+  let edits = first.edits;
+  let adapter = first.driven;
+  // The world's edit camera while the UI is edited (the UI has no camera: the world shows the player's view then).
+  let worldView          = undefined;
+  // While the game is watched (watchGame): the last pose the editor itself gave each world object (a saved placement
+  // re-applied, a drag), so those are neither taken for the game's motion nor undone when the watch ends.
+  let watchBase                           = null;
+  const watchSet = new Set        (); // the keys the editor posed during the watch: put back after watch(false)
+  const post = (msg               ) => {
+    // Only the world's moves: a UI key posed meanwhile is not a world object to put back (merge of 2026-10-19).
+    if (watchBase && layer === 'world') {
+      if (msg.type === 'studio:placement/moved') (watchBase.set(msg.key, msg.pose), watchSet.add(msg.key));
+      else if (msg.type === 'studio:placement/moved-group') for (const m of msg.poses) (watchBase.set(m.key, m.pose), watchSet.add(m.key));
+    }
+    deps.post(msg);
+  };
   const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
   let lang       = 'en';
   let loopId = 0;
@@ -8962,6 +10822,9 @@ function createEditor(deps            )         {
   let inset        = { top: 0, right: 0, bottom: 0, left: 0 };
   let theme                   = 'dark';
   let aiMarks                                           = { keys: [], label: null };
+  // The game's UI shown (faded) while the world is edited: the shell's eye button (core/ui-peek). Off = hidden, the
+  // default every time the editor opens (paintLayers).
+  let uiPeek = false;
   // Step runs (keyboard/button repeats) fold into one undo step: remember the
   // pose before the run and close it when a non-hold step arrives or after a
   // quiet gap.
@@ -8974,7 +10837,46 @@ function createEditor(deps            )         {
       post({ type: 'studio:core/error', message: `list() failed: ${(e         ).message}` });
       state.items = [];
     }
-    post({ type: 'studio:placement/items', items: state.items });
+    post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
+  };
+  /** placement/items' `layer`, only for a game that has a UI (otherwise the message is what it always was). */
+  const itemsLayer = ()                        => (uiStack ? { layer } : {});
+  /** The view state goes to the shell (kept for the next reload) only for the world: the UI has no camera. */
+  const postView = () => {
+    if (layer === 'world') post({ type: 'studio:core/view-state', state: adapter.view.state() });
+  };
+  const ready = () => {
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
+      drop: adapter.dim === '3d' && !!adapter.drop,
+      ...(uiStack ? { layers: (world ? ['world', 'ui'] : ['ui'])               , layer } : {}) });
+  };
+  /**
+   * Which layer can be touched, by brightness alone (design §2.3 ③): editing the UI dims the world 15 %; editing the
+   * world HIDES the UI (a try of the editor, 2026-10-20, "the UI is always there, in the way": the title, the Start button and the
+   * score sat over the trees and lanterns, faded to half, hard to see past and to click past). The shell's eye button
+   * (⇧U, core/ui-peek) shows it again faded to half, as before. Hidden or faded, the UI takes no pointer then
+   * (`pointer-events: none` on it and inside it), so a click on a title selects the tree behind it and the game's
+   * buttons show no hover. A style sheet in the game page while editing, gone at the end (Play shows the game as it
+   * is). `filter`, not `opacity` / `visibility`: it multiplies with the game's own opacity (a hidden overlay at 0
+   * stays hidden) and a child's own `visibility: visible` cannot bring it back. Only when the game has both layers.
+   */
+  const paintLayers = () => {
+    if (!uiStack || !world) return;
+    const doc = win.document;
+    let el = doc.getElementById('studio-edit-layer')                           ;
+    if (!state.editing) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      el = doc.createElement('style');
+      el.id = 'studio-edit-layer';
+      (doc.head || doc.documentElement).appendChild(el);
+    }
+    const top = '[data-studio-key]:not([data-studio-key] [data-studio-key])';
+    el.textContent = layer === 'ui'
+      ? 'canvas:not([data-studio-key]){filter:brightness(.85)}'
+      : `${top}{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *{pointer-events:none!important}`;
   };
 
   const frame = () => {
@@ -8984,6 +10886,8 @@ function createEditor(deps            )         {
     // the picture correct when an engine re-uploads textures lazily.
     try {
       adapter.render();
+      // On the UI layer the world still needs drawing (a 2D world draws only when asked while time is frozen).
+      if (world && adapter !== world.driven) world.driven.render();
     } catch {
       /* keep the loop alive; the error was reported when it first happened */
     }
@@ -9150,11 +11054,11 @@ function createEditor(deps            )         {
       // Rare (a list pick of something behind you); it frames the object like before.
       adapter.view.focus(key);
       slideIntoFree(key);
-      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      postView();
       return;
     }
     if (!adapter.view.restore) {
-      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      postView();
       return; // no way back to the start: the slide happens at once
     }
     // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
@@ -9171,7 +11075,7 @@ function createEditor(deps            )         {
       if (t < 1) core.time.raf(tick);
       else {
         panGlide = 0;
-        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+        postView();
       }
     };
     core.time.raf(tick);
@@ -9242,11 +11146,11 @@ function createEditor(deps            )         {
     const { key, from, op, group } = stepRun;
     stepRun = null;
     if (group) {
-      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, group, true), end: true, press: op          , hold: true });
+      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, group, true), end: true, press: pressOf(op), hold: true });
       return;
     }
     const pose = poseOf(key);
-    if (pose) post({ type: 'studio:placement/moved', key, pose, end: true, from, press: op          , hold: true });
+    if (pose) post({ type: 'studio:placement/moved', key, pose, end: true, from, press: pressOf(op), hold: true });
   };
 
   /**
@@ -9262,10 +11166,15 @@ function createEditor(deps            )         {
     }
     const g = run.group ;
     if (m.op === 'move') {
-      // Arrow keys move by screen px: the same as dragging the move handle by that much.
+      // Arrow keys move by screen px: the same as dragging the move handle by that much (on surfaces too, snap.ts).
       run.dx += m.dx || 0;
       run.dy += m.dy || 0;
+      adapter.setSnap?.({ on: true, skip: keys });
       groupMove(adapter, adapter.dim, g, run.dx, run.dy);
+      adapter.setSnap?.({ on: false });
+    } else if (m.op === 'drop') {
+      // End with several picked: each onto the surface under it, as Unreal's End does (the others are not floors).
+      for (const k of g.keys) adapter.drop?.(k, keys);
     } else if (m.op === 'rotate') {
       run.total += m.d || 0;
       // Q / E: upright, as for one object (the axis is the turn tool's), together or each in place as chosen.
@@ -9273,17 +11182,24 @@ function createEditor(deps            )         {
     } else if (m.op === 'scale') {
       run.total *= m.d || 1;
       groupScale(adapter, adapter.dim, g, run.total, state.scaleMode);
-    } else if (m.op === 'lift') groupLift(adapter, g, m.d || 0);
+    } else if (m.op === 'lift') {
+      // PgDn: the step ends on the surface the first member meets (snap.ts stepDetent).
+      const d = adapter.rest ? stepDetent(firstToTouch(g.keys.map((k) => adapter.rest (k, keys))), m.d || 0) : m.d || 0;
+      groupLift(adapter, g, d);
+    }
     dirtyFrame = true;
     if (m.hold) {
       stepRun = run;
       win.clearTimeout(run.timer);
       run.timer = win.setTimeout(closeStepRun, 400);
-      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, false), press: m.op, hold: true });
+      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, false), press: pressOf(m.op), hold: true });
     } else {
-      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, true), end: true, press: m.op });
+      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, true), end: true, press: pressOf(m.op) });
     }
   };
+
+  /** The handle a step counts as for the shell (Drop to floor changes the height: the Height handle's). */
+  const pressOf = (op        ) => (op === 'drop' ? 'lift' : op)                                        ;
 
   const step = (m                                                           ) => {
     const keys = m.keys && m.keys.length > 1 ? m.keys : null;
@@ -9299,18 +11215,24 @@ function createEditor(deps            )         {
       const a = adapter.anchor(m.key);
       if (!a) return;
       const [x, y] = a.center;
+      adapter.setSnap?.({ on: true, skip: [m.key] });
       if (adapter.grab(m.key, x, y)) pose = adapter.drag(m.key, x + (m.dx || 0), y + (m.dy || 0));
+      adapter.setSnap?.({ on: false });
     } else if (m.op === 'rotate') pose = adapter.rotate(m.key, m.d || 0);
     else if (m.op === 'scale') pose = adapter.scale(m.key, m.d || 1);
-    else if (m.op === 'lift' && adapter.nudgeY) pose = adapter.nudgeY(m.key, m.d || 0);
+    else if (m.op === 'lift' && adapter.nudgeY) {
+      // PgDn: a step that would cross the surface below ends on it; the next goes through (snap.ts stepDetent).
+      const d = adapter.rest ? stepDetent(adapter.rest(m.key, [m.key]), m.d || 0) : m.d || 0;
+      pose = adapter.nudgeY(m.key, d);
+    } else if (m.op === 'drop' && adapter.drop) pose = adapter.drop(m.key, [m.key]);
     dirtyFrame = true;
     if (m.hold) {
       if (!stepRun) stepRun = { key: m.key, from, op: m.op, timer: 0, total: 0, dx: 0, dy: 0 };
       win.clearTimeout(stepRun.timer);
       stepRun.timer = win.setTimeout(closeStepRun, 400);
-      post({ type: 'studio:placement/moved', key: m.key, pose, press: m.op, hold: true });
+      post({ type: 'studio:placement/moved', key: m.key, pose, press: pressOf(m.op), hold: true });
     } else {
-      post({ type: 'studio:placement/moved', key: m.key, pose, end: true, from, press: m.op });
+      post({ type: 'studio:placement/moved', key: m.key, pose, end: true, from, press: pressOf(m.op) });
     }
   };
 
@@ -9359,9 +11281,16 @@ function createEditor(deps            )         {
       const sources = rest.map((f) => f.from);
       const ga = groupAnchor(adapter, sources, sources[0] );
       const dx = ga && ga.rect ? Math.max(24, Math.min(400, ga.rect.w + 12)) : 40;
-      const g = beginGroup(adapter, rest.map((f) => f.key), rest[0] .key);
-      // 3D: groupMove moves the first copy on the ground and the others by the same metres.
-      if (g) groupMove(adapter, adapter.dim, g, dx, 0);
+      // A copy of what the game moves is held like its original (hold.ts), but this first step beside it is the
+      // editor's own: let it through, then hold it.
+      for (const f of rest) hold.placing.add(f.key);
+      try {
+        const g = beginGroup(adapter, rest.map((f) => f.key), rest[0] .key);
+        // 3D: groupMove moves the first copy on the ground and the others by the same metres.
+        if (g) groupMove(adapter, adapter.dim, g, dx, 0);
+      } finally {
+        hold.placing.clear();
+      }
     }
     for (const d of done) d.pose = adapter.anchor(d.key)?.pose ?? d.pose;
     dirtyFrame = true;
@@ -9372,42 +11301,150 @@ function createEditor(deps            )         {
   };
 
   /**
-   * Put new copies in the middle of the free part of the frame (copy with `at: 'view'`). True when done.
-   * 2D: a screen drag of the group from where the originals' box is drawn to the middle (stage space).
-   * 3D: "on the ground where the camera looks". The middle of the view is often sky or far hills (Lantern Cove opens
-   * on the player's camera, its horizon a little under the middle), so the spot is the first point straight down
-   * from the middle whose ray meets the original's ground (toGround at its height): the lead copy's origin goes
-   * there (the others by the same metres), then — now in front of the camera — a drag of its pivot onto that screen
-   * point, so a long thing (the pier) is placed by its middle, not its origin. WHY: the first try (2026-10-18) only
-   * dragged from the original's screen point to the middle; that ray hit the sky, the drag kept the object where it
-   * was, and the pier copy stayed at the frame's right edge (off screen on a phone). Without toGround, or with no
-   * ground anywhere under the middle: the drag from the originals' box, as in 2D.
+   * Place the Library's "Add to scene" copies (copy with `at: 'view'`) where they can be seen whole. True when done.
+   * The rule (design review 2, 2026-10-19, item ①): the copy keeps the original's size and must show inside the middle
+   * 60 % of the frame, no taller than 35 % of it — never "in front of the camera, covering the view".
+   * 1. Beside the original, one of its widths over (toward the middle of the frame, else the other side), when the
+   *    original is on screen: the person sees the new one next to the one they know.
+   * 2. Otherwise (the original off screen, or both sides fail the rule): the middle of what the camera sees, at about
+   *    the original's distance. 3D: points on the original's ground down the middle line of the free area (toGround);
+   *    of the ones that pass the rule, the one whose screen height is nearest the original's (= the same distance).
+   *    2D: the middle of the free area (a 2D copy's size does not depend on where it stands).
+   * 3. Nothing passes (a giant object, no ground under the middle): the candidate that shows smallest.
+   * WHY: the first version (2026-10-18) always went to "the ground below the middle"; in Lantern Cove that ground is
+   * right under a low camera, and the sea-stack copy stood in front of it, covering ~45 % of the view and the
+   * lighthouse, with its strip off screen (review 2, photo 11).
    */
   const toView = (fresh                                      )          => {
     const keys = fresh.map((f) => f.key);
-    const area = freeArea(inset.top);
-    const tx = (area.x0 + area.x1) / 2, ty = (area.y0 + area.y1) / 2;
     const g = beginGroup(adapter, keys, keys[0] );
     if (!g) return false;
+    // The copies stand exactly where the originals are (made this frame): the originals' box is theirs.
+    const ga = groupAnchor(adapter, fresh.map((f) => f.from), fresh[0] .from);
+    const W = win.innerWidth, H = win.innerHeight;
+    const shown = () => {
+      const a = groupAnchor(adapter, keys, g.primary);
+      return a && a.visible && a.rect ? a.rect : null;
+    };
+    // The rule above: height ≤ 35 % of the frame, middle inside the middle 60 % (20 %–80 % both ways).
+    const passes = (r                                                       ) => !!r && r.h <= H * 0.35 + 0.5
+      && r.x + r.w / 2 >= W * 0.2 && r.x + r.w / 2 <= W * 0.8 && r.y + r.h / 2 >= H * 0.2 && r.y + r.h / 2 <= H * 0.8;
+    const h0 = ga?.rect?.h ?? 0;
+    // Tried placements: how to put the group there again, and its screen box there.
+    const tried                                                                                       = [];
+    const attempt = (put            ) => {
+      put();
+      const r = shown();
+      tried.push({ put, r });
+      return passes(r);
+    };
+    // 1. Beside the original.
+    const W0 = ga?.rect?.w ?? 0;
+    if (ga && ga.visible && ga.rect && W0 > 0) {
+      const toMiddle = ga.center[0] <= W / 2 ? 1 : -1;
+      const gap = Math.max(8, W0 * 0.1);
+      for (const dir of [toMiddle, -toMiddle]) {
+        if (attempt(() => groupMove(adapter, adapter.dim, g, dir * (W0 + gap), 0))) return true;
+      }
+    }
+    // 2. The middle of the view at about the original's distance.
+    const area = freeArea(inset.top);
+    const tx = (area.x0 + area.x1) / 2, ty = (area.y0 + area.y1) / 2;
     const lead = g.from.get(g.primary);
+    const good                                                                                = [];
     if (adapter.dim === '3d' && lead && adapter.toGround) {
-      // From the middle down to 85 % of the free height: 0.5 = the middle itself (a camera looking down at the ground).
-      for (const f of [0.5, 0.58, 0.66, 0.75, 0.85]) {
+      for (let f = 0.3; f <= 0.901; f += 0.05) {
         const y = area.y0 + (area.y1 - area.y0) * f;
         const hit = adapter.toGround(tx, y, lead.p[1] ?? 0);
         if (!hit) continue;
-        groupShift(adapter, g, [hit[0]  - (lead.p[0] ?? 0), 0, hit[2]  - (lead.p[2] ?? 0)]);
-        const a = adapter.anchor(g.primary);
-        const g2 = a && a.visible ? beginGroup(adapter, keys, g.primary) : null;
-        if (g2 && a) groupMove(adapter, '3d', g2, tx - a.center[0], y - a.center[1]);
-        return true;
+        const put = () => {
+          groupShift(adapter, g, [hit[0]  - (lead.p[0] ?? 0), 0, hit[2]  - (lead.p[2] ?? 0)]);
+          // Now in front of the camera: its pivot onto the screen point, so a long thing is placed by its middle.
+          const a = adapter.anchor(g.primary);
+          const g2 = a && a.visible ? beginGroup(adapter, keys, g.primary) : null;
+          if (g2 && a) groupMove(adapter, '3d', g2, tx - a.center[0], y - a.center[1]);
+        };
+        if (attempt(put)) good.push({ put, r: tried[tried.length - 1] .r  });
       }
+    } else if (ga) {
+      const put = () => groupMove(adapter, adapter.dim, g, tx - ga.center[0], ty - ga.center[1]);
+      if (attempt(put)) good.push({ put, r: tried[tried.length - 1] .r  });
     }
-    // The originals' box: the copies stand exactly there, but were made this frame (not drawn yet).
-    const ga = groupAnchor(adapter, fresh.map((f) => f.from), fresh[0] .from);
-    if (!ga || !ga.visible) return false;
-    groupMove(adapter, adapter.dim, g, tx - ga.center[0], ty - ga.center[1]);
+    if (good.length) {
+      good.sort((a, b) => Math.abs(a.r.h - h0) - Math.abs(b.r.h - h0));
+      good[0] .put();
+      return true;
+    }
+    // 3. Nothing passed: the smallest one seen (a visible one first).
+    const seen = tried.filter((x) => x.r).sort((a, b) => a.r .h - b.r .h);
+    if (!seen.length) return false;
+    seen[0] .put();
     return true;
+  };
+
+  /**
+   * Once, right after the edit view is up: let the game's own frames run for WATCH_MS, find what it moved by itself
+   * (observe.ts), put those back where the first frame had them, and hold them (hold.ts: "the game moves this").
+   * Not skipped when core.time counted no game frame: a three.js game's frames are held by the adapter's own boot.js
+   * (raw.watch), not by core.time, so that count stays 0 there (found on the runner of that try, 2026-10-19).
+   */
+  let watched = false;
+  const watchGame = async () => {
+    if (watched) return;
+    watched = true;
+    // The world's objects only (UI stage 1 merged in, 2026-10-19): a game with only a UI has nothing to watch.
+    if (!world) return;
+    const { raw, ruled } = world;
+    let before        ;
+    try {
+      before = ruled.list();
+    } catch {
+      return;
+    }
+    watchBase = new Map(before.map((i) => [i.key, i.pose]         ));
+    core.time.thaw();
+    raw.watch?.(true);
+    await new Promise((r) => win.setTimeout(r, WATCH_MS));
+    const base = watchBase;
+    watchBase = null;
+    // Left editing meanwhile (Play): the game runs on as it should; nothing to put back.
+    if (!state.editing) {
+      raw.watch?.(false);
+      return;
+    }
+    core.time.freeze();
+    // Read what moved BEFORE watch(false): an adapter may put its whole scene back then (three.js does).
+    let after         = [];
+    try {
+      after = ruled.list();
+    } catch {
+      /* nothing found: the scene is put back below all the same */
+    }
+    raw.watch?.(false);
+    const was = after.map((i) => ({ ...i, pose: base.get(i.key) ?? i.pose }));
+    hold.driven = drivenBetween(was, after, world.driven.dim);
+    // What the game moved, and what the editor posed meanwhile (a saved layout re-applied, an early drag), which an
+    // adapter's watch(false) may have put back to the first frame with the rest of the scene.
+    for (const k of new Set([...hold.driven.keys(), ...watchSet])) {
+      const p = base.get(k);
+      if (p) ruled.setPose(k, p);
+    }
+    watchSet.clear();
+    if (!hold.driven.size) return;
+    dirtyFrame = true;
+    // The UI being edited by then (a reload that asked for it): the world's list, now with `held`, goes out marked as
+    // the world's, the way setEditing sends the other layer's list.
+    if (layer !== 'world') {
+      try {
+        post({ type: 'studio:placement/items', items: world.driven.list(), layer: 'world' });
+      } catch {
+        /* listed when switched to */
+      }
+      return;
+    }
+    refreshItems();
+    postSelected();
+    input?.selectionChanged();
   };
 
   const setEditing = (on         , viewState          ) => {
@@ -9429,18 +11466,32 @@ function createEditor(deps            )         {
         // Tell the shell the first view too (not only after the person moves the camera): a reload
         // after the AI's change then opens on the same view, even when the AI's new objects would
         // make "frame all" choose another one (AI feel, 2026-10-16).
-        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+        postView();
+      }
+      // The other layer starts too (UI: its CSS animations pause), but stays out of reach until switched to.
+      for (const o of others()) {
+        try {
+          o.driven.begin();
+        } catch (e) {
+          post({ type: 'studio:core/error', message: `begin() failed: ${(e         ).message}` });
+        }
       }
       state.editing = true;
-      post({ type: 'studio:placement/items', items: state.items });
-      input = attachInput({ adapter, edits, core, win, post, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true) });
+      post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
+      // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
+      // even when the person never switches to the UI.
+      for (const o of others()) {
+        try {
+          post({ type: 'studio:placement/items', items: o.driven.list(), layer: o === uiStack ? 'ui' : 'world' });
+        } catch {
+          /* listed when switched to */
+        }
+      }
+      attach();
       toolHost.announce();
-      if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
-      input.setInset(inset);
-      input.setTheme(theme);
-      if (aiMarks.keys.length) input.setAiMarks(aiMarks.keys, aiMarks.label);
-      input.setLang(lang);
+      paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
+      const watching = watchGame();
       if (!checked) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
@@ -9448,9 +11499,14 @@ function createEditor(deps            )         {
         // After the list and the first picture have painted (speed pass, 2026-10-17): the check draws twice and reads
         // the canvas back, which waits for the GPU to finish. Run at once, on a slow GPU it held the first paint of
         // the list by about a second (Lantern Cove in the play test's software GL).
-        void nextTurn()
+        // After the watch too (watchGame): the check moves an object and reads it back, which the game's own motion
+        // would spoil while it runs.
+        // The adapter of the layer edited first (the world's; a reload asking for the UI switches a moment later).
+        const checkOn = raw;
+        void watching
           .then(nextTurn)
-          .then(() => runSelfCheck(raw, core, win))
+          .then(nextTurn)
+          .then(() => runSelfCheck(checkOn, core, win))
           .then((result) => post({ type: 'studio:core/check', result }));
       }
     } else {
@@ -9459,20 +11515,93 @@ function createEditor(deps            )         {
       input?.detach();
       input = null;
       state.editing = false;
-      try {
-        adapter.end();
-      } catch {
-        /* the page is usually reloaded after editing anyway */
+      for (const a of [adapter, ...others().map((o) => o.driven)]) {
+        try {
+          a.end();
+        } catch {
+          /* the page is usually reloaded after editing anyway */
+        }
       }
+      paintLayers();
     }
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
+    ready();
+  };
+  /** The layers other than the current one (UI stage 1; none for a game without a UI). */
+  const others = () => [world, uiStack].filter((x)             => !!x && x.driven !== adapter);
+  /** Input on the current layer's adapter, with the shell's settings. */
+  const attach = () => {
+    // The input posts view-state itself (wheel, look-around): on the UI layer that is the 2D base's unused view, which
+    // must not replace the world camera the shell keeps for the next reload.
+    const inPost = (m               ) => {
+      if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
+    };
+    input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true) });
+    if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
+    input.setInset(inset);
+    input.setTheme(theme);
+    if (aiMarks.keys.length) input.setAiMarks(aiMarks.keys, aiMarks.label);
+    input.setLang(lang);
+  };
+  // A core/layer that came before editing started (the shell sends it right after core/edit on a reload).
+  let wantLayer                   = null;
+  /**
+   * Switch what is edited (core/layer, UI stage 1; design §2.2): 1. drop the pick and the input, 2. swap the adapter
+   * stack, 3. input again, 4. tell the shell (core/ready with `layer`, then that layer's list). The world's edit
+   * camera goes to the game's own view while the UI is edited (the UI sits on the player's picture) and comes back
+   * after.
+   */
+  const setLayer = (to           ) => {
+    const next = to === 'ui' ? uiStack : world;
+    if (!next) return;
+    if (!state.editing) {
+      wantLayer = to;
+      return;
+    }
+    if (next.driven === adapter) {
+      ready();
+      refreshItems();
+      return;
+    }
+    closeStepRun();
+    toolHost.activate(null);
+    panGlide = 0;
+    listPick = null;
+    state.selected = null;
+    state.group = [];
+    input?.detach();
+    input = null;
+    if (world) {
+      if (to === 'ui') {
+        worldView = world.driven.view.state();
+        if (world.driven.view.home) world.driven.view.home();
+      } else if (worldView !== undefined && world.driven.view.restore) world.driven.view.restore(worldView);
+    }
+    layer = to;
+    raw = next.raw;
+    edits = next.edits;
+    adapter = next.driven;
+    try {
+      state.items = adapter.list();
+    } catch {
+      state.items = [];
+    }
+    attach();
+    paintLayers();
+    dirtyFrame = true;
+    ready();
+    post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
+    postSelected();
   };
 
   toolHost = createToolHost({ win, adapter, state, post, select: (k) => select(k), lang: () => lang, markDirty: () => (dirtyFrame = true) });
   toolHost.register(deps.tools);
 
   return {
-    driven: adapter,
+    get driven() {
+      return adapter;
+    },
+    layer: () => layer,
+    announce: ready,
     addTools(list) {
       toolHost.register(list);
       if (state.editing) toolHost.announce();
@@ -9528,6 +11657,10 @@ function createEditor(deps            )         {
           input?.setAiMarks(aiMarks.keys, aiMarks.label);
           dirtyFrame = true;
           break;
+        case 'studio:placement/hover':
+          input?.setHover(Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : []);
+          dirtyFrame = true;
+          break;
         case 'studio:tool/activate':
           toolHost.activate(msg.id);
           dirtyFrame = true;
@@ -9543,6 +11676,19 @@ function createEditor(deps            )         {
           break;
         case 'studio:core/edit':
           setEditing(msg.on, msg.viewState);
+          if (msg.on && wantLayer) {
+            const w = wantLayer;
+            wantLayer = null;
+            setLayer(w);
+          }
+          break;
+        case 'studio:core/layer':
+          if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
+          break;
+        case 'studio:core/ui-peek':
+          uiPeek = !!msg.on;
+          paintLayers();
+          dirtyFrame = true;
           break;
         case 'studio:core/view': {
           const v = msg.view;
@@ -9560,7 +11706,7 @@ function createEditor(deps            )         {
           else if (v.action === 'rise') adapter.view.rise?.(v.by * win.innerHeight);
           else if (v.action === 'restore') adapter.view.restore?.(v.state);
           dirtyFrame = true;
-          post({ type: 'studio:core/view-state', state: adapter.view.state() });
+          postView();
           break;
         }
         case 'studio:core/lang':
@@ -9600,6 +11746,14 @@ function createEditor(deps            )         {
           refreshItems();
           break;
         case 'studio:placement/pose': {
+          // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
+          // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.
+          const other = msg.layer && msg.layer !== layer ? (msg.layer === 'ui' ? uiStack : world) : null;
+          if (other) {
+            other.driven.setPose(msg.key, msg.pose);
+            dirtyFrame = true;
+            break;
+          }
           closeStepRun();
           const zBefore = msg.pose.z !== undefined ? poseOf(msg.key)?.z : undefined;
           const pose = adapter.setPose(msg.key, msg.pose);
@@ -9613,6 +11767,13 @@ function createEditor(deps            )         {
         }
         case 'studio:placement/step':
           if (state.editing) step(msg);
+          break;
+        case 'studio:placement/unhold':
+          // "Make movable" on a held ground (hold.ts): the tools work on it again, for this session.
+          for (const k of msg.keys) hold.freed.add(k);
+          refreshItems();
+          postSelected();
+          input?.selectionChanged();
           break;
         case 'studio:placement/thumbs': {
           // One queue, drawn one at a time; the newest request goes FIRST (tool-modes pass, 10/16). The shell
@@ -9651,7 +11812,616 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[26] = function (__exports) {
+__defs[34] = function (__exports) {
+'use strict';
+// play-ask.ts
+
+// Ask your AI while you play (CONTRACT.md §3.5, 2026-10-20: "develop while you play, full screen").
+//
+// The person is in ▶ Play, something goes wrong ("the character vanished when I stopped here"), and they press ` (or
+// the small mark in the corner), type it and press Enter. The game does not stop: the field sits over it, takes the
+// keys only while it has focus, and closes on Enter. What came with the words is the MOMENT, gathered here in the
+// game page because only the page has it: a picture of the game, where the player's camera was, what was near it,
+// and the console (errors, warnings, the last lines). The editor page keeps it as a "play" request and the AI's
+// progress comes back as one small line at the top ("Your AI is looking" → "Fixing it" → "Fixed · Reload").
+//
+// WHY in the game page and not the editor page: full screen. A game that goes full screen (its own button, F11 does
+// not count) shows only its own page, so anything drawn by the editor around the frame is gone. The overlay is a
+// popover (the browser's top layer), shown again whenever full screen changes, so it draws over a full-screen canvas
+// too. It lives in a shadow root so the game's CSS cannot reach it and its CSS cannot reach the game.
+//
+// WHY ` (the backquote): it is the "console" key of PC games — the key players already press to talk to the game's
+// makers — and almost no game uses it for play (WASD, arrows, Space, Enter, Shift, E, R, Q, Tab, Esc and the numbers
+// all are; "/" opens chat in many). Enter, R or a letter would fight the game. On a Japanese keyboard ` is Shift+@;
+// the corner mark is there for every keyboard and for touch.
+//
+// Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
+                                                                                                                             
+const { isStudioMessage } = __require(13);
+
+                                 
+                                  
+                       
+                                                                                                         
+                               
+ 
+
+// ---------------------------------------------------------------------------
+// The console, kept from the first line (pure parts exported for test/play-ask.test.ts)
+// ---------------------------------------------------------------------------
+
+                           
+                          
+               
+                              
+            
+ 
+
+/** How many lines of each kind go with a request: every error / warning there is room for, plus the last few lines. */
+const LOG_ERRORS = 20;
+const LOG_TAIL = 10;
+const LOG_KEEP = 200;
+
+/** One console call as one line: strings as they are, errors by their message (first line of the stack), objects as JSON. */
+function logText(args           )         {
+  return args.map((a) => {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error) return a.stack ? a.stack.split('\n').slice(0, 2).join(' ') : `${a.name}: ${a.message}`;
+    try {
+      const s = JSON.stringify(a);
+      return s === undefined ? String(a) : s;
+    } catch {
+      return String(a);
+    }
+  }).join(' ').replace(/\s+/g, ' ').trim().slice(0, 300);
+}
+
+/**
+ * What of the console goes with a request: the last LOG_ERRORS errors and warnings and the last LOG_TAIL lines of any
+ * kind, oldest first, each with how long before the request it was written. A game that logs every frame would
+ * otherwise push the one error that matters out of the picture.
+ */
+function pickLogs(all            , now        )            {
+  const keep = new Set          ();
+  const bad = all.filter((e) => e.level !== 'log');
+  for (const e of bad.slice(-LOG_ERRORS)) keep.add(e);
+  for (const e of all.slice(-LOG_TAIL)) keep.add(e);
+  return all.filter((e) => keep.has(e)).map((e) => ({ level: e.level, text: e.text, ago: Math.max(0, Math.round((now - e.t) / 100) / 10) }));
+}
+
+/**
+ * Is this key press "ask my AI"? The backquote with no modifier (Shift allowed: it IS the backquote on a Japanese
+ * keyboard), never while the game's own text field has focus (a chat box, a name entry).
+ */
+function isAskKey(e                                                                                                , typing         )          {
+  if (typing || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return false;
+  // By the character, not the physical key: on a US keyboard that is the key left of 1, on a Japanese one Shift+@
+  // (whose physical "Backquote" key is the half-width / full-width key there, and Shift+` on a US keyboard is ~).
+  return e.key === '`';
+}
+
+/**
+ * 2D: what is on screen, nearest the middle first (`screen` 0–1 in the page). The player is usually there in a game
+ * that follows them; in one that does not, these are still the things in the picture.
+ */
+function near2D(items                                                                 , centerOf                                          , w        , h        , max = 12)             {
+  const out                                  = [];
+  for (const it of items) {
+    const c = centerOf(it.key);
+    if (!c || !Number.isFinite(c[0]) || !Number.isFinite(c[1]) || c[0] < 0 || c[1] < 0 || c[0] > w || c[1] > h) continue;
+    const e                           = { key: it.key, screen: [c[0] / w, c[1] / h], m: Math.hypot(c[0] - w / 2, c[1] - h / 2) };
+    if (it.label) e.label = it.label;
+    if (it.pose) e.pose = it.pose;
+    out.push(e);
+  }
+  out.sort((a, b) => a.m - b.m);
+  return out.slice(0, max).map(({ m: _m, ...e }) => e);
+}
+
+// ---------------------------------------------------------------------------
+// The picture
+// ---------------------------------------------------------------------------
+
+/** Widest picture sent (px). Enough to read a sign in the game; a 1024 px JPEG is ~100-250 KB. */
+const SHOT_W = 1024;
+
+/**
+ * The game as the player sees it: every visible canvas drawn where it sits on the page (a game with a UI canvas over
+ * the 3D one gets both), scaled to SHOT_W at most, as a JPEG. null when there is no canvas (a game made of HTML) or
+ * the browser refuses (a canvas with pictures from another site cannot be read).
+ */
+function shoot(win                            )                {
+  const vw = win.innerWidth, vh = win.innerHeight;
+  if (!vw || !vh) return null;
+  const k = Math.min(1, SHOT_W / vw);
+  const out = win.document.createElement('canvas');
+  out.width = Math.round(vw * k);
+  out.height = Math.round(vh * k);
+  const g = out.getContext('2d');
+  if (!g) return null;
+  g.fillStyle = '#000';
+  g.fillRect(0, 0, out.width, out.height);
+  let drawn = 0;
+  for (const c of Array.from(win.document.querySelectorAll('canvas'))) {
+    const r = c.getBoundingClientRect();
+    if (r.width < 8 || r.height < 8 || r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) continue;
+    const cs = win.getComputedStyle(c);
+    if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
+    try {
+      g.drawImage(c, r.left * k, r.top * k, r.width * k, r.height * k);
+      drawn++;
+    } catch {
+      /* this one cannot be read; the others still can */
+    }
+  }
+  if (!drawn) return null;
+  try {
+    return out.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A WebGL canvas forgets its picture right after each frame is shown, so reading it later (when Enter is pressed)
+ * gives black. Asking for `preserveDrawingBuffer` keeps the last frame readable. Only in ▶ Play inside the editor
+ * (this module never runs elsewhere), where a picture is worth the small cost (the first try left the engine's own
+ * `false` alone and every three.js picture came out black, 2026-10-20).
+ */
+function keepWebGLPictures(win                            ) {
+  const proto = win.HTMLCanvasElement && win.HTMLCanvasElement.prototype;
+  if (!proto || (proto.getContext                              ).__studioPlay) return;
+  const orig = proto.getContext;
+  const wrapped = function (                         type        , attrs                          ) {
+    if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
+      // Always on: three.js (and most engines) pass `preserveDrawingBuffer: false` explicitly, as their default.
+      attrs = { ...(attrs || {}), preserveDrawingBuffer: true };
+    }
+    return (orig                                                       ).call(this, type, attrs);
+  }                                                        ;
+  wrapped.__studioPlay = true;
+  proto.getContext = wrapped;
+}
+
+// ---------------------------------------------------------------------------
+// The overlay
+// ---------------------------------------------------------------------------
+
+// Violet is the AI's colour everywhere in the editor (#8b7cff, CONTRACT.md §2); nothing else here is coloured.
+const CSS = `
+:host { all: initial; }
+.wrap { position: fixed; inset: 0; pointer-events: none; font: 500 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #f4f4f6; -webkit-font-smoothing: antialiased; }
+.glass { background: rgba(18, 18, 24, .84); -webkit-backdrop-filter: blur(14px) saturate(1.2); backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255,255,255,.10); box-shadow: 0 8px 30px rgba(0,0,0,.35); }
+.mark { position: absolute; right: 14px; bottom: 14px; pointer-events: auto; display: flex; align-items: center; gap: 8px;
+  height: 32px; padding: 0 12px 0 10px; border-radius: 16px; cursor: pointer; color: inherit; font: inherit;
+  transition: opacity .3s, padding .3s; opacity: .92; }
+.mark:hover { opacity: 1; }
+.mark .word { white-space: nowrap; }
+.mark.small .word { display: none; }
+.mark.small { padding: 0 10px; }
+kbd { font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 6px; border-radius: 5px;
+  background: rgba(255,255,255,.12); color: #f4f4f6; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #8b7cff; flex: none; box-shadow: 0 0 0 3px rgba(139,124,255,.22); }
+.busy .dot { animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(139,124,255,.0); opacity: .55; } }
+.bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
+  pointer-events: auto; border-radius: 14px; padding: 8px 8px 8px 14px; display: flex; align-items: center; gap: 10px;
+  border-color: rgba(139,124,255,.55); box-shadow: 0 0 0 3px rgba(139,124,255,.18), 0 10px 34px rgba(0,0,0,.4); }
+.bar input { all: unset; flex: 1; min-width: 0; font: 500 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; padding: 6px 0; }
+.bar input::placeholder { color: rgba(255,255,255,.5); }
+.bar .hint { color: rgba(255,255,255,.55); font-size: 12px; white-space: nowrap; }
+button.b { all: unset; cursor: pointer; pointer-events: auto; padding: 6px 11px; border-radius: 9px; font-weight: 600; white-space: nowrap;
+  background: rgba(255,255,255,.10); color: #f4f4f6; }
+button.b:hover { background: rgba(255,255,255,.18); }
+button.b.primary { background: #8b7cff; color: #fff; }
+button.b.primary:hover { background: #9a8dff; }
+button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
+.line { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); max-width: calc(100% - 32px); pointer-events: auto;
+  border-radius: 14px; padding: 8px 10px 8px 14px; display: flex; align-items: center; gap: 10px; }
+.line .say { display: flex; flex-direction: column; min-width: 0; }
+.line .head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.line .sub { color: rgba(255,255,255,.55); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.line .acts { display: flex; gap: 6px; flex: none; }
+.x { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: rgba(255,255,255,.6); font-size: 15px; }
+.x:hover { background: rgba(255,255,255,.12); color: #fff; }
+.choices { display: flex; gap: 6px; flex-wrap: wrap; }
+[hidden] { display: none !important; }
+@media (max-width: 520px) {
+  .line { top: 10px; padding: 7px 8px 7px 12px; }
+  .bar { bottom: 12px; }
+  .bar .hint { display: none; }
+}
+/* Touch: no key to show, and a mark a finger can hit (44 px, UI.handlePxPhone). */
+@media (pointer: coarse) {
+  kbd { display: none; }
+  .mark { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; }
+  .mark.small { padding: 0 17px; }
+}
+@media (prefers-reduced-motion: reduce) { .busy .dot { animation: none; } }
+`;
+
+                                    
+
+function startPlayAsk(o                )       {
+  const { win, parentOrigin } = o;
+  const doc = win.document;
+  keepWebGLPictures(win);
+
+  // ----- the console, from the first line the game writes -----
+  const logs             = [];
+  const keepLog = (level                   , args           ) => {
+    const text = logText(args);
+    if (!text || text.startsWith('[studio]')) return; // the editor's own lines are not the game's
+    logs.push({ level, text, t: win.performance.now() });
+    if (logs.length > LOG_KEEP) logs.splice(0, logs.length - LOG_KEEP);
+  };
+  const con = win.console                                                        ;
+  for (const [name, level] of [['error', 'error'], ['warn', 'warn'], ['log', 'log'], ['info', 'log']]         ) {
+    const orig = con[name];
+    if (typeof orig !== 'function') continue;
+    con[name] = function (...args           ) {
+      try {
+        keepLog(level, args);
+      } catch {
+        /* never break the game's logging */
+      }
+      return orig.apply(this, args);
+    };
+  }
+  win.addEventListener('error', (e            ) => {
+    if (!e.message) return;
+    const file = e.filename ? e.filename.split(/[?#]/)[0] .split('/').pop() : '';
+    keepLog('error', [`${e.message}${file ? ` (${file}${e.lineno ? ':' + e.lineno : ''})` : ''}`]);
+  });
+  win.addEventListener('unhandledrejection', (e                       ) => {
+    const r = e.reason                                    ;
+    keepLog('error', ['Unhandled rejection: ' + (r && typeof r.message === 'string' ? r.message : String(e.reason))]);
+  });
+
+  const post = (m               ) => {
+    try {
+      win.parent.postMessage(m, parentOrigin);
+    } catch {
+      /* parent gone */
+    }
+  };
+
+  // ----- the overlay, built when the editor says an AI can get the request -----
+  let words               = null;
+  let host                     = null;
+  let root                    = null;
+  let mark                   , bar             , input                  , hint             , line             ;
+  let state                  = null;
+  let barOpen = false;
+  let sending = false;
+  let sendFailed = false;
+  let dismissed = '';
+  const w = (k        ) => (words && words[k]) || '';
+
+  const el =                                        (tag   , cls        , text         ) => {
+    const e = doc.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+
+  /** Over everything, full screen too: the top layer. Shown again after each full-screen change so it is on top. */
+  const lift = () => {
+    if (!host) return;
+    const p = host                                                                        ;
+    if (typeof p.showPopover === 'function') {
+      try {
+        if (host.matches(':popover-open')) p.hidePopover ();
+        p.showPopover();
+        return;
+      } catch {
+        /* not in the document yet, or popovers off */
+      }
+    }
+    // No popover support: inside the full-screen element when it can hold children (a canvas cannot).
+    const fs = doc.fullscreenElement;
+    const into = fs && fs.tagName !== 'CANVAS' && fs.tagName !== 'VIDEO' ? fs : doc.body || doc.documentElement;
+    if (host.parentNode !== into) into.appendChild(host);
+  };
+
+  function build() {
+    if (host) return;
+    host = doc.createElement('game-studio-play');
+    host.setAttribute('popover', 'manual');
+    // The popover's own box: invisible and click-through; only the parts inside take the pointer.
+    host.style.cssText = 'all:initial;position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647;';
+    root = host.attachShadow({ mode: 'open' });
+    const style = el('style', '');
+    style.textContent = CSS;
+    const wrap = el('div', 'wrap');
+    mark = el('button', 'mark glass')                     ;
+    mark.type = 'button';
+    mark.dataset.part = 'play-ask-mark';
+    mark.append(el('span', 'dot'), el('span', 'word', w('ask')), el('kbd', '', '`'));
+    mark.title = w('askTip');
+    mark.setAttribute('aria-label', w('askTip'));
+    mark.addEventListener('click', () => openBar());
+    bar = el('div', 'bar glass');
+    bar.dataset.part = 'play-ask-bar';
+    bar.hidden = true;
+    input = el('input', '')                    ;
+    input.type = 'text';
+    input.maxLength = 500;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('enterkeyhint', 'send');
+    hint = el('span', 'hint');
+    const close = el('button', 'x', '×')                     ;
+    close.type = 'button';
+    close.title = w('close');
+    close.setAttribute('aria-label', w('close'));
+    close.addEventListener('click', () => closeBar());
+    bar.append(el('span', 'dot'), input, hint, close);
+    line = el('div', 'line glass');
+    line.dataset.part = 'play-ask-line';
+    line.hidden = true;
+    line.setAttribute('role', 'status');
+    line.setAttribute('aria-live', 'polite');
+    wrap.append(mark, line, bar);
+    root.append(style, wrap);
+    // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
+    // it leaves the overlay, so the overlay's own buttons still get it; a game listening in the capture phase on the
+    // window would still see it (rare).
+    for (const type of ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchend', 'wheel', 'contextmenu']         ) {
+      host.addEventListener(type, (e) => e.stopPropagation());
+    }
+    (doc.body || doc.documentElement).appendChild(host);
+    lift();
+    // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
+    win.setTimeout(() => mark.classList.add('small'), 5000);
+    render();
+  }
+
+  const isOurs = (e       ) => !!host && e.composedPath().includes(host);
+  const gameTyping = () => {
+    const a = doc.activeElement                      ;
+    return !!a && a !== host && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+  };
+
+  // Registered now, before any game code: the first listener on the window in the capture phase, so the game never
+  // sees a key meant for the field (its own listeners on window / document come after this one).
+  for (const type of ['keydown', 'keyup', 'keypress']         ) {
+    win.addEventListener(type, (e               ) => {
+      if (!words) return;
+      if (isOurs(e)) {
+        // The field's keys are handled here and go no further: stopping them at the window in the capture phase is
+        // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
+        // and Escape are read here. Letters still type (nothing prevents their default).
+        e.stopImmediatePropagation();
+        if (type === 'keydown') fieldKey(e);
+        return;
+      }
+      if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        openBar();
+      } else if (type !== 'keydown' && e.key === '`' && !gameTyping()) {
+        e.stopImmediatePropagation();
+      }
+    }, true);
+  }
+  function fieldKey(e               ) {
+    if (e.target !== host || !root || root.activeElement !== input) return;
+    sendFailed = false;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeBar();
+    } else if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      void submit();
+    }
+  }
+  doc.addEventListener('fullscreenchange', () => lift());
+  doc.addEventListener('webkitfullscreenchange', () => lift());
+
+  function openBar() {
+    if (!host) return;
+    barOpen = true;
+    // Pointer-locked games (first person) hold the mouse; let go so the person can type and click.
+    try {
+      if (doc.pointerLockElement) doc.exitPointerLock();
+    } catch {
+      /* nothing locked */
+    }
+    render();
+    input.focus({ preventScroll: true });
+  }
+  function closeBar() {
+    barOpen = false;
+    input.value = '';
+    input.blur();
+    render();
+    // Back to the game: its canvas takes the keys again.
+    try {
+      win.focus();
+    } catch {
+      /* fine */
+    }
+  }
+
+  /** The state's line in reply to Enter on an empty field: a fix to load (Reload), or nothing to do. */
+  async function submit() {
+    const text = input.value.trim();
+    if (!text) {
+      if (state && state.state === 'fixed' && state.reload) {
+        closeBar();
+        post({ type: 'studio:play/reload' });
+      }
+      return;
+    }
+    if (sending) return;
+    if (state && state.state === 'asking') {
+      sending = true;
+      post({ type: 'studio:play/answer', text });
+      return;
+    }
+    sending = true;
+    render();
+    post(await moment(text));
+  }
+
+  /** The words and the moment: picture, player's camera, what is near, the console. Each part is optional. */
+  async function moment(text        )                         {
+    const now = win.performance.now();
+    // The picture without the field over it (the field is DOM, the picture is the canvas: it never shows anyway).
+    const shot = shoot(win) || undefined;
+    let view                                                                                 ;
+    let near                        ;
+    const a = findAdapter();
+    if (a) {
+      try {
+        const items = a.list();
+        const byKey = new Map(items.map((i) => [i.key, i]));
+        const p = a.dim === '3d' && a.player ? a.player() : null;
+        if (p) {
+          view = { eye: p.eye, target: p.target };
+          if (p.near) {
+            near = p.near.map((n) => {
+              const it = byKey.get(n.key);
+              const e           = { key: n.key, d: n.d };
+              const label = n.label || it?.label;
+              if (label) e.label = label;
+              if (it?.pose) e.pose = it.pose;
+              if (n.screen) e.screen = n.screen;
+              return e;
+            });
+          }
+        } else if (a.dim === '2d') {
+          near = near2D(items, (k) => {
+            const an = a.anchor(k);
+            return an ? an.center : null;
+          }, win.innerWidth, win.innerHeight);
+        }
+      } catch (e) {
+        keepLog('warn', ['[game-studio] could not read the scene for the request: ' + String((e         )?.message || e)]);
+      }
+    }
+    const out                = { type: 'studio:play/ask', text, size: [win.innerWidth, win.innerHeight] };
+    if (shot) out.shot = shot;
+    if (view) out.view = view;
+    if (near && near.length) out.near = near;
+    const l = pickLogs(logs, now);
+    if (l.length) out.logs = l;
+    if (doc.fullscreenElement) out.fullscreen = true;
+    return out;
+  }
+
+  let adapter                       = null;
+  function findAdapter()                       {
+    if (adapter) return adapter;
+    for (const p of o.probes()) {
+      try {
+        const a = p.found();
+        if (a) return (adapter = a);
+      } catch {
+        /* the next one */
+      }
+    }
+    return null;
+  }
+
+  // ----- drawing: the corner mark, the field, the line -----
+  function render() {
+    if (!host) return;
+    const s = state;
+    const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
+    mark.classList.toggle('busy', busy);
+    mark.hidden = barOpen;
+    bar.hidden = !barOpen;
+    bar.classList.toggle('busy', sending);
+    input.disabled = sending;
+    const asking = !!s && s.state === 'asking';
+    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : asking ? w('answerPlaceholder') : w('placeholder');
+    hint.textContent = s && s.state === 'fixed' && s.reload ? w('enterReloads') : '';
+    hint.hidden = !hint.textContent;
+
+    line.replaceChildren();
+    const sig = s ? JSON.stringify(s) : '';
+    line.hidden = !s || sig === dismissed;
+    if (!s || line.hidden) return;
+    line.classList.toggle('busy', busy);
+    const say = el('div', 'say');
+    say.append(el('span', 'head', s.text));
+    if (s.asked) say.append(el('span', 'sub', s.asked));
+    line.append(el('span', 'dot'), say);
+    line.title = s.asked ? `${s.text} — ${s.asked}` : s.text;
+    const acts = el('div', 'acts');
+    if (s.state === 'asking' && s.choices && s.choices.length) {
+      const row = el('div', 'choices');
+      s.choices.forEach((c, i) => {
+        const b = el('button', i === 0 ? 'b primary' : 'b', c)                     ;
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          sending = true;
+          render();
+          post({ type: 'studio:play/answer', text: c });
+        });
+        row.append(b);
+      });
+      acts.append(row);
+    }
+    if (s.state === 'fixed' && s.reload) {
+      const b = el('button', 'b primary', w('reload'))                     ;
+      b.type = 'button';
+      b.dataset.action = 'play-reload';
+      b.title = w('reloadTip');
+      b.addEventListener('click', () => post({ type: 'studio:play/reload' }));
+      acts.append(b);
+    }
+    if (s.state === 'fixed' || s.state === 'failed' || s.state === 'kept') {
+      // "Keep playing": the line goes; the fix waits for Reload (or for the next time the game opens).
+      const x = el('button', 'x', '×')                     ;
+      x.type = 'button';
+      x.title = w('keep');
+      x.setAttribute('aria-label', w('keep'));
+      x.addEventListener('click', () => {
+        dismissed = sig;
+        render();
+      });
+      acts.append(x);
+    }
+    if (acts.childNodes.length) line.append(acts);
+  }
+
+  win.addEventListener('message', (ev              ) => {
+    if (ev.source !== win.parent || ev.origin !== parentOrigin || !isStudioMessage(ev.data)) return;
+    const m = ev.data                 ;
+    if (m.type === 'studio:play/on') {
+      words = m.words;
+      if (doc.body) build();
+      else doc.addEventListener('DOMContentLoaded', build, { once: true });
+    } else if (m.type === 'studio:play/state') {
+      state = m.state;
+      render();
+    } else if (m.type === 'studio:play/sent') {
+      sending = false;
+      sendFailed = !m.ok;
+      if (m.ok) closeBar();
+      else {
+        render();
+        input.focus({ preventScroll: true });
+      }
+    }
+  });
+  post({ type: 'studio:play/hello' });
+}
+
+__def(__exports, "LOG_ERRORS", () => LOG_ERRORS);
+__def(__exports, "LOG_TAIL", () => LOG_TAIL);
+__def(__exports, "logText", () => logText);
+__def(__exports, "pickLogs", () => pickLogs);
+__def(__exports, "isAskKey", () => isAskKey);
+__def(__exports, "near2D", () => near2D);
+__def(__exports, "startPlayAsk", () => startPlayAsk);
+};
+__defs[35] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -9661,11 +12431,13 @@ __defs[26] = function (__exports) {
 // adapter self-check, and translates between the shell's messages and the
 // adapter. Pointer input and handles live in input.ts / handles.ts; this file
 // only wires them up.
-const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(11);
-const { installCore } = __require(14);
-const { adapterFromPort2D } = __require(15);
-const { runSelfCheck } = __require(16);
-const { createEditor } = __require(25);
+const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(13);
+const { installCore } = __require(16);
+const { adapterFromPort2D } = __require(17);
+const { findDomUi, uiAdapterFromPort } = __require(20);
+const { runSelfCheck } = __require(21);
+const { createEditor } = __require(33);
+const { startPlayAsk } = __require(34);
                                                     
 
                                 
@@ -9701,6 +12473,10 @@ function startBridge(opts               )       {
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.
   const gameProbes                 = [];
+  // The UI seat (UI stage 1, CONTRACT.md §1.1): ports the game registered with studio.registerUI(), asked before the
+  // built-in DOM UI adapter. A separate list from the world's probes, so a UI never competes with three.js or the
+  // game's own adapter for the one world slot.
+  const uiPorts                                                                   = [];
   // .studio/tools.js (loaded before the game) may call studio.extend() before
   // the editor exists; keep what it gave and hand it over when editing starts.
   const rules              = { config: null, ext: [] };
@@ -9737,6 +12513,9 @@ function startBridge(opts               )       {
           return built;
         },
       });
+    },
+    registerUI(port) {
+      uiPorts.push({ get: typeof port === 'function' ? port : () => port, built: null });
     },
     core,
     extend(ext               ) {
@@ -9903,13 +12682,18 @@ function startBridge(opts               )       {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'core', 'extend']         ) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend']         ) prior[k] = api[k];
     api.ready = prior.ready              ;
     api.attach = prior.attach                                        ;
   }
 
   if (inFrame) watchGameErrors();
-  if (!edit && inFrame) void showFileEditsInPlay();
+  // ▶ Play inside the editor: ask your AI without stopping (play-ask.ts, §3.5). Installed now, before the game's code,
+  // so the console is kept from its first line and the ask key is the first listener on the window.
+  if (!edit && inFrame) {
+    void showFileEditsInPlay();
+    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins] });
+  }
   if (!edit || !inFrame) return;
 
   const post = (msg               ) => {
@@ -9949,6 +12733,37 @@ function startBridge(opts               )       {
     }
     return null;
   };
+  /**
+   * The UI layer's adapter (UI stage 1), or null — then everything below runs exactly as before. Order: the game's
+   * registerUI() ports, then the built-in DOM UI (elements marked data-studio-key). Not for a game whose world IS
+   * the DOM (a port named 'dom', examples/dom-board): its pieces carry data-studio-key as world objects, and they
+   * stay there; elements the world already lists are skipped for any game.
+   */
+  const findUi = (world                      )                       => {
+    for (const u of uiPorts) {
+      try {
+        if (u.built) return u.built;
+        const p = u.get();
+        if (p) return (u.built = uiAdapterFromPort(p, core, win));
+      } catch (e) {
+        console.warn('[studio] UI port failed:', e);
+      }
+    }
+    if (world && world.kind === 'dom') return null;
+    try {
+      const skip = () => {
+        try {
+          return new Set(world ? world.list().map((i) => i.key) : []);
+        } catch {
+          return new Set        ();
+        }
+      };
+      return findDomUi(core, win, skip);
+    } catch (e) {
+      console.warn('[studio] DOM UI adapter failed:', e);
+      return null;
+    }
+  };
 
   core.time.firstFrame().then(async () => {
     // Engines often build the scene a little after their first frame (async
@@ -9965,21 +12780,26 @@ function startBridge(opts               )       {
       }
     };
     let adapter = findAdapter();
+    // The wait is the world's alone (a title shown before the 3D models load must not stop it early). One
+    // exception (UI stage 1): no world adapter at all but a UI — an HTML-only game — stops after ~1 s instead of 8.
+    let uiOnly                       = null;
     for (let i = 0; !hasObjects(adapter) && !core.time.readyCalled && i < 55; i++) {
+      if (!adapter && i >= 6 && (uiOnly = findUi(null))) break;
       post({ type: 'studio:core/wait', reason: adapter ? 'no-objects' : 'no-adapter' });
       core.time.thaw();
       await new Promise((r) => win.setTimeout(r, 150));
       adapter = findAdapter();
     }
     core.time.freeze();
-    if (!adapter) {
+    const ui = adapter ? findUi(adapter) : uiOnly || findUi(null);
+    if (!adapter && !ui) {
       // Report "no adapter" now; a found adapter is checked by the editor
       // right after begin(), when 3D adapters have their edit camera.
       post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, core, win, post, rules, tools: pendingTools.splice(0) });
+    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0) });
     editorRef = editor;
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.
@@ -9987,14 +12807,19 @@ function startBridge(opts               )       {
     // under(x, y): the object right under a point of the game (radius 0: no finger slack), or null. Tests use it to
     // choose something to tap that nothing stands in front of (W1 merge 2026-10-17: in test/web-demo the earlier
     // visits' saves had moved a sailboat in front of the small sea stack, and the tap rightly picked the boat).
-    const found = editor.driven;
+    // The layer being edited now (UI stage 1: `layer()` says which; the world's unless switched).
+    const ed = editor;
+    const found = () => ed.driven;
     Object.defineProperty(api, '_debug', {
-      value: Object.freeze({ anchor: (k        ) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k        ) => found.foot?.(k) ?? null,
-        middle: (k        ) => found.middle?.(k) ?? null,
-        under: (x        , y        ) => { try { return found.pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
+      value: Object.freeze({ anchor: (k        ) => found().anchor(k), list: () => found().list(), view: () => found().view.state(), foot: (k        ) => found().foot?.(k) ?? null,
+        middle: (k        ) => found().middle?.(k) ?? null, layer: () => ed.layer(),
+        // Snap to surfaces (test/studio-snap-surface.browser.mjs): bottom / surface heights, and a scene point on screen.
+        rest: (k        ) => found().rest?.(k) ?? null, toScreen: (p          ) => found().toScreen?.(p) ?? null,
+        under: (x        , y        ) => { try { return found().pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
       enumerable: false,
     });
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
+    // core/ready (with `drop` for snap to surfaces, and the layers for UI stage 1): editor.ts ready().
+    editor.announce();
     for (const m of queue.splice(0)) editor.handle(m);
   });
 }
@@ -10002,7 +12827,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[27] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -10020,12 +12845,12 @@ __require(0);
 // boot.js (classic, side effects only) must run before everything else of
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
-const { threeProbe } = __require(10);
-const { startBridge } = __require(26);
+const { threeProbe } = __require(12);
+const { startBridge } = __require(35);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(27);
+__require(36);
 })();

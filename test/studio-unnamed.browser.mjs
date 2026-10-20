@@ -7,7 +7,8 @@
 //   1. the barn is ONE object (key path:2: the light is child 0, the ground 1), not its parts
 //   2. a click / tap on the barn selects the whole barn, and dragging it moves the barn
 //   3. nowhere on screen (text, tooltips, labels) is there a `path:` key
-//   4. the first row of the object list is the grey "N objects have no name" row with "Name them"
+//   4. the first row of the object list is the grey "N objects have no name" row with "Name them" (narrow: the same
+//      row folds them all, "Unnamed objects N · Ask AI to name them", side window 10/19)
 //
 //   node test/studio-unnamed.browser.mjs [--shots <dir>]
 // Exit 1 on failure.
@@ -96,7 +97,8 @@ try {
       try {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
         await page.goto(srv.url);
-        await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${WIN}.__gameStudio?._debug`, 30000);
+        // (Narrow: the unnamed objects are one folded row, not .obj rows, until one is picked.)
+        await page.waitFor(`document.querySelectorAll('.obj, .noname:not([hidden])').length > 0 && !!${WIN}.__gameStudio?._debug`, 30000);
         await sleep(800);
         // 1. The barn is one object.
         const keys = await page.eval(`studioShell.items().map((i) => i.key)`);
@@ -108,10 +110,11 @@ try {
           const btn = f && f.querySelector('[data-action=ask-name-all]'); const cs = f && getComputedStyle(f);
           return JSON.stringify({ cls: f && f.className, hidden: !f || f.hidden || !f.offsetParent, text: f && f.innerText, btn: btn && btn.innerText,
             border: cs && cs.borderTopWidth, bg: cs && cs.backgroundColor, before: !!(f && f.nextElementSibling && f.nextElementSibling.matches('.objects')) }); })()`));
-        assert.equal(row.cls, 'noname', `${tag}: the list's first row is the no-name row`);
+        // Narrow screens fold them into that row (side window 10/19): "▸ Unnamed objects N · Ask AI to name them".
+        assert.equal(row.cls, sz.touch ? 'noname fold' : 'noname', `${tag}: the list's first row is the no-name row`);
         assert.equal(row.hidden, false, `${tag}: the no-name row shows`);
-        assert.match(row.text, new RegExp(`^${keys.length} objects have no name`), `${tag}: "${row.text}"`);
-        assert.equal(row.btn, 'Name them');
+        assert.match(row.text, sz.touch ? new RegExp(`^Unnamed objects\\s+${keys.length}`) : new RegExp(`^${keys.length} objects have no name`), `${tag}: "${row.text}"`);
+        assert.equal(row.btn, sz.touch ? 'Ask AI to name them' : 'Name them');
         assert.equal(row.border, '0px', `${tag}: no frame`);
         assert.ok(/rgba\(0, 0, 0, 0\)|transparent/.test(row.bg), `${tag}: no fill (${row.bg})`);
         if (SHOTS) writeFileSync(join(SHOTS, `unnamed-${tag}-list.png`), await page.screenshot());

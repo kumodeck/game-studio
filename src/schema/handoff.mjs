@@ -21,12 +21,25 @@ export const HANDOFF_LIMITS = Object.freeze({
   maxFiles: 200, // delete-files: the same limit as POST /next-step
   maxAssets: 50, // files picked in the Library for an "ask" (the same as objects)
   maxObjectFiles: 8, // the files one object is drawn with (a model and its textures; more is cut, not refused)
+  maxChoices: 4, // answer buttons under an `asking` question: more than four is a form, not a question
+  maxChoice: 40, // one button's words ("Undo it", "Keep it as it is")
+  maxAbout: 10, // objects a question is about (lit in the scene)
+  maxCompare: 80, // one side of "before → after" under a question
+  // "play" (asked while playing, 2026-10-20): the moment that comes with the words.
+  maxShot: 1536 * 1024, // the picture as a data URL; a 1024 px JPEG is ~100-250 KB, a PNG of a busy scene more
+  maxLogs: 30, // console lines: every error / warning plus the last few lines; more is noise the AI has to skip
+  maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
+  maxNear: 12, // things near the player: enough to name "this one", few enough to read
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
 // Save, 'undone' when the person pressed "Undo AI change" and the host put the game's files back
 // (AI feel, 2026-10-16), so the agent does not build on code that is gone.
-export const REQUEST_KINDS = Object.freeze(['ask', 'name', 'next-step', 'saved', 'undone']);
+// 'answer' (2026-10-19, hands-on test): the person's answer to the AI's `asking` question, given in the
+// editor (a choice button or their own words in the ask field) instead of in the AI's window.
+// 'play' (2026-10-20, "fix it while I play"): the person asked from inside ▶ Play — their words plus the moment (a
+// picture of the game, the player's camera, what was near, the console's errors and last lines). Same flow as 'ask'.
+export const REQUEST_KINDS = Object.freeze(['ask', 'name', 'next-step', 'saved', 'undone', 'answer', 'play']);
 /** Next steps that stay inside this game (no service involved), shown first on the next-steps page. */
 export const AI_STEP_IDS = Object.freeze(['fit', 'look', 'tool']);
 /** Next steps that use KUMODeck (the server also writes .studio/next-step.md for these). */
@@ -82,10 +95,17 @@ export function normalizeRequestInput(input) {
   if (!r) return { ok: false, errors: ['request must be a JSON object'] };
   const kind = r.kind;
   // 'saved' records are written by the host itself when a result file is saved, never sent.
-  if (kind !== 'ask' && kind !== 'name' && kind !== 'next-step') errors.push('kind must be "ask", "name" or "next-step"');
+  if (kind !== 'ask' && kind !== 'name' && kind !== 'next-step' && kind !== 'answer' && kind !== 'play') errors.push('kind must be "ask", "name", "next-step", "answer" or "play"');
   const text = oneLine(r.text, HANDOFF_LIMITS.maxText);
-  if (kind === 'ask' && !text) errors.push('an "ask" request needs the person\'s words in "text"');
+  if ((kind === 'ask' || kind === 'answer' || kind === 'play') && !text) errors.push(`an "${kind}" request needs the person's words in "text"`);
   const out = { kind, text };
+  // "answer": which request the question was about (`to`, the status's request) and the question itself, so the
+  // AI reading the record alone knows what "Keep it" answers. Both are hints: dropped, never an error, when odd.
+  if (kind === 'answer') {
+    if (isRequestId(r.to)) out.to = r.to;
+    const q = oneLine(r.question, HANDOFF_LIMITS.maxNote);
+    if (q) out.question = q;
+  }
   if (kind === 'next-step') {
     const known = [...AI_STEP_IDS, ...KUMODECK_STEP_IDS, ...FILE_STEP_IDS];
     if (!known.includes(r.step)) errors.push(`unknown step (known: ${known.join(', ')})`);
@@ -140,13 +160,61 @@ export function normalizeRequestInput(input) {
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
   if (Number.isInteger(r.unsaved) && r.unsaved > 0) out.unsaved = Math.min(r.unsaved, 100000);
   if (r.dim === '2d' || r.dim === '3d') out.dim = r.dim;
+  // UI stage 1: the objects are HTML UI elements (data-studio-key). Anything else: left out (= the world, as before).
+  if (r.layer === 'ui') out.layer = 'ui';
   // "ask" only: the camera when they asked (contract StudioRequestInput.view). Dropped, never an error, when it is
   // not two points: it is a hint for placing new things, the request works without it.
   const pt = (a) => Array.isArray(a) && a.length === 3 && a.every((x) => isFin(x) && Math.abs(x) < 1e7);
-  if (kind === 'ask' && r.view && pt(r.view.eye) && pt(r.view.target)) {
+  if ((kind === 'ask' || kind === 'play') && r.view && pt(r.view.eye) && pt(r.view.target)) {
     out.view = { eye: r.view.eye.map((x) => roundTo(x, 1000)), target: r.view.target.map((x) => roundTo(x, 1000)) };
   }
+  if (kind === 'play') Object.assign(out, playMoment(r, errors));
   return errors.length ? { ok: false, errors } : { ok: true, value: out };
+}
+
+/**
+ * "play": the moment that comes with the words (contract §3.5). Everything here is a hint the bridge gathered, so a
+ * bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).
+ * `shot` stays a data URL here; the host turns it into a file and puts the file's path in its place.
+ */
+function playMoment(r, errors) {
+  const out = {};
+  if (r.shot !== undefined) {
+    const ok = typeof r.shot === 'string' && r.shot.length <= HANDOFF_LIMITS.maxShot && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(r.shot);
+    if (!ok) errors.push(`"shot" must be a JPEG or PNG data URL of at most ${HANDOFF_LIMITS.maxShot} characters`);
+    else out.shot = r.shot;
+  }
+  if (Array.isArray(r.logs)) {
+    const logs = [];
+    for (const l of r.logs.slice(-HANDOFF_LIMITS.maxLogs)) {
+      if (!l || typeof l !== 'object') continue;
+      const level = l.level === 'error' || l.level === 'warn' ? l.level : 'log';
+      const t = oneLine(l.text, HANDOFF_LIMITS.maxLog);
+      if (!t) continue;
+      const e = { level, text: t };
+      if (isFin(l.ago) && l.ago >= 0) e.ago = roundTo(Math.min(l.ago, 86400), 10);
+      logs.push(e);
+    }
+    if (logs.length) out.logs = logs;
+  }
+  if (Array.isArray(r.near)) {
+    const near = [];
+    for (const o of r.near.slice(0, HANDOFF_LIMITS.maxNear)) {
+      if (!o || typeof o !== 'object' || typeof o.key !== 'string' || !KEY_OK.test(o.key)) continue;
+      const e = { key: o.key };
+      const label = oneLine(o.label, HANDOFF_LIMITS.maxLabel);
+      if (label && label !== o.key) e.label = label;
+      const pose = cleanPose(o.pose);
+      if (pose) e.pose = pose;
+      if (isFin(o.d) && o.d >= 0) e.d = roundTo(o.d, 100);
+      if (Array.isArray(o.screen) && o.screen.length === 2 && o.screen.every((v) => isFin(v) && v > -1 && v < 2)) e.screen = o.screen.map((v) => roundTo(v, 1000));
+      near.push(e);
+    }
+    if (near.length) out.near = near;
+  }
+  if (r.fullscreen === true) out.fullscreen = true;
+  if (Array.isArray(r.size) && r.size.length === 2 && r.size.every((v) => Number.isInteger(v) && v > 0 && v < 100000)) out.size = r.size.slice();
+  return out;
 }
 
 /**
@@ -182,6 +250,25 @@ export function normalizeStatus(raw) {
   if (Number.isInteger(raw.changed) && raw.changed >= 0) out.changed = Math.min(raw.changed, 100000);
   const note = oneLine(raw.note, HANDOFF_LIMITS.maxNote);
   if (note) out.note = note;
+  // `asking` only (2026-10-19): the answers the person can press in the editor, the objects the question is about
+  // (lit in the scene) and what changes ("before" / "after", one short line each). All optional: a question with
+  // none of them still shows, with the ask field to answer in.
+  if (raw.state === 'asking') {
+    if (Array.isArray(raw.choices)) {
+      const cs = [...new Set(raw.choices.map((c) => oneLine(c, HANDOFF_LIMITS.maxChoice)).filter(Boolean))].slice(0, HANDOFF_LIMITS.maxChoices);
+      if (cs.length) out.choices = cs;
+    }
+    if (Array.isArray(raw.about)) {
+      const ks = [...new Set(raw.about.filter((k) => typeof k === 'string' && KEY_OK.test(k)))].slice(0, HANDOFF_LIMITS.maxAbout);
+      if (ks.length) out.about = ks;
+    }
+    const before = oneLine(raw.before, HANDOFF_LIMITS.maxCompare);
+    const after = oneLine(raw.after, HANDOFF_LIMITS.maxCompare);
+    if (before && after) {
+      out.before = before;
+      out.after = after;
+    }
+  }
   if (typeof raw.at === 'string' && !Number.isNaN(Date.parse(raw.at))) out.at = new Date(Date.parse(raw.at)).toISOString();
   return out;
 }

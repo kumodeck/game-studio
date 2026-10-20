@@ -15,10 +15,10 @@
 //      files; another shelf holds only its files; a second press goes back to All; "All" brings everything back —
 //      every press in the left column keeps the Library (the 10/18 bug). Used / unused stays on the file tiles.
 //   4. a press on an object's tile picks it (real input): still the Library, its detail on the right (Show in game →,
-//      Duplicate, Delete), the camera did not move, keys don't move the hidden object; Duplicate + ⌘Z; Escape drops it
+//      Delete; no Duplicate since review 2 ①), the camera did not move, keys don't move the hidden object; Escape drops it
 //   5. the object's file ("planks.jpg →") opens the file's detail in the Library (one detail at a time: the pick goes)
-//   6. a file's detail names the objects that use it; "Show just these objects" narrows the Library to them
-//      ("planks.jpg used by 3 ×"), still no game; a name there opens that object's detail, still the Library
+//   6. a file's detail names the objects that use it as chips, and has no "Show just these objects" / "Show in game →" /
+//      "Mentioned in" (review 2 ①); a chip opens that object's detail, still the Library
 //   7. (PC) the last row is not cut: scrolled to the end, the last tile's name is seen above the AI bar
 //   8. "Show in game →": the Scene, the game back, the pick kept
 // Pictures (--shots <dir>): <game>-<size>-<theme>-1-scene / 2-library-all / 3-library-<3d|2d> (the game's shelf) /
@@ -152,8 +152,9 @@ try {
           // Objects first, then the files, in the same grid.
           const order = await J(`[...document.querySelector('.assets-page .gsl-grid').children].map((t) => t.dataset.kind || '')`);
           assert.ok(order.lastIndexOf('object') < order.indexOf('file'), `${tag}: objects first, then the files (${order.join(',')})`);
-          const tags = await J(`[...document.querySelectorAll('.assets-page .gsl-grid > .gsl-tile')].map((t) => t.dataset.kind + ':' + (t.querySelector('.lib-kind')?.textContent || ''))`);
-          assert.ok(tags.every((x) => /:.+/.test(x)), `${tag}: every tile is tagged (${tags.join(', ')})`);
+          // No "Object" / "Asset" tag on the tiles and no "Drawn in code" (the second design review's ⑦, 2026-10-19).
+          const tags = await J(`[...document.querySelectorAll('.assets-page .gsl-grid > .gsl-tile .lib-kind, .assets-page .gsl-grid > .gsl-tile .shelf-file.code')].length`);
+          assert.equal(tags, 0, `${tag}: no tile carries an Object / Asset tag or "Drawn in code"`);
           assert.equal(rows[1][3], String(n + fileTiles.length), `${tag}: the Library counts objects + assets`);
           step(`Library: ${objTiles.length} object tiles + ${fileTiles.length} assets`);
           await page.waitFor(`document.querySelectorAll('.assets-page .lib-object .shelf-file').length > 0`, 15000);
@@ -219,6 +220,8 @@ try {
             assert.equal(await poseOf(), p0, `${tag}: keys in the Library leave the object where it is`);
           }
           await shot('4-object-detail');
+          // No Duplicate in the Library (review 2 ①: it did what Add to scene does). The block below stays for an old build.
+          assert.equal(await page.eval(visible('.gsl-detail [data-action=copy]')), false, `${tag}: no Duplicate in the object's detail`);
           if (await page.eval(visible('.gsl-detail [data-action=copy]'))) {
             await press('.gsl-detail [data-action=copy]');
             await page.waitFor(`studioShell.items().length > ${n}`, 8000).catch(() => {});
@@ -246,7 +249,7 @@ try {
           assert.equal(await selected(), null, `${tag}: one detail at a time (the pick went)`);
           step(`${pickKey}'s file → its detail in the Library`);
 
-          // 6. A file objects use: its detail, "Show just these objects", a name.
+          // 6. A file objects use: its detail (three buttons and the chips), a chip.
           const uses = await J(`[...document.querySelectorAll('.assets-page .gsl-tile[data-kind=file]')].map((t) => [t.dataset.path, t.querySelector('.gsl-uses')?.textContent || '']).filter((x) => x[1])`);
           assert.ok(uses.length, `${tag}: files say how many objects use them`);
           const file = g.shared && uses.some(([p]) => p === g.shared) ? g.shared : uses.sort((a, b) => (parseInt(b[1].replace(/\D+/g, ' ').trim()) || 0) - (parseInt(a[1].replace(/\D+/g, ' ').trim()) || 0))[0][0];
@@ -254,22 +257,13 @@ try {
           await page.waitFor(`!!document.querySelector('.gsl-in-scene h4')`, 5000);
           const users = await J(`[...document.querySelectorAll('.gsl-in-scene .gsl-key')].map((k) => k.dataset.key)`);
           await shot('6-asset-detail');
-          await press('.gsl-in-scene [data-action=asset-show-users]');
-          await page.waitFor(visible('.assets-page .shelf-band'), 10000);
-          assert.ok(await libOn(), `${tag}: "Show just these objects" stays in the Library`);
-          if (!narrow) assert.equal(await gameOn(), false, `${tag}: and off the game`);
-          const shown = await J(`[...document.querySelectorAll('.assets-page .lib-object')].flatMap((t) => { const g = t.dataset.group; return g ? studioShell.items().filter((i) => (i.group || 'key:' + i.key) === g).map((i) => i.key) : [t.dataset.key]; })`);
-          assert.deepEqual([...new Set(shown)].sort(), [...new Set(users)].sort(), `${tag}: narrowed to the objects using ${file}`);
-          assert.equal((await tilesOf('file')).length, 0, `${tag}: only those objects`);
-          step(`"Show just these objects" for ${file}: ${shown.join(', ')}`);
-          // (Narrow: the filters are at the top of the sheet; a person scrolls up to them.)
-          const toTop = () => page.eval(`(() => { for (const e of document.querySelectorAll('.assets-page .gsl, .assets-page .gsl-grid')) e.scrollTop = 0; })()`).then(() => sleep(250));
-          await toTop();
-          await press('.shelf-band .shelf-band-x');
-          await toTop();
-          assert.equal((await tilesOf('object')).length, objTiles.length, `${tag}: the band's × shows all objects again`);
-          await press('.shelf-filters [data-shelf=all]');
-          await press(`.assets-page .gsl-tile[data-path="${file}"]`);
+          // Design review 2, item ①: a file's detail is Add to scene · Ask your AI… · Replace… and the chips of the objects
+          // that use it — no "Show just these objects", no "Show in game →", no "Mentioned in".
+          const fileActs = await J(`[...document.querySelectorAll('.gsl-detail[data-kind=file] button')].filter((b) => b.offsetParent && !b.classList.contains('gsl-key') && !b.closest('.gsl-picker')).map((b) => b.dataset.action || b.className)`);
+          for (const gone of ['asset-show-users', 'asset-select-users']) assert.ok(!fileActs.includes(gone), `${tag}: no ${gone} in the file's detail (${fileActs})`);
+          assert.ok(!(await page.eval(`[...document.querySelectorAll('.gsl-detail[data-kind=file] h4')].some((e) => /Mentioned in|コード/.test(e.textContent))`)), `${tag}: no "Mentioned in"`);
+          assert.ok(users.length, `${tag}: the chips of the objects using ${file}`);
+          step(`${file}'s detail: ${fileActs.join(' · ')} + ${users.length} chips`);
           await page.waitFor(`!!document.querySelector('.gsl-in-scene .gsl-key')`, 5000);
           await press('.gsl-in-scene .gsl-key');
           await page.waitFor(visible('.gsl-detail[data-kind=object]'), 10000);

@@ -22,6 +22,7 @@
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
 import type { Anchor, GroupScaleMode, Item, Pose, StudioAdapter, TurnAxis } from '../contract.ts';
+import { canLift } from './hold.ts';
 
 export interface GroupSession {
   keys: string[];
@@ -373,7 +374,7 @@ export function groupScale(adapter: StudioAdapter, dim: '2d' | '3d', s: GroupSes
 /** 3D: raise / lower every member that may move up and down, by `dy` (incremental). */
 export function groupLift(adapter: StudioAdapter, s: GroupSession, dy: number): void {
   if (!adapter.nudgeY) return;
-  for (const k of s.keys) if (movable(s, k) && s.items.get(k)?.liftable !== false) adapter.nudgeY(k, dy);
+  for (const k of s.keys) if (canLift(s.items.get(k))) adapter.nudgeY(k, dy);
 }
 
 /** Current poses of the members (after a step), with `from` when asked for. */

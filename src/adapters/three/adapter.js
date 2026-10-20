@@ -19,6 +19,8 @@ import { createEditView, yawOfCamera } from './camera.js';
 import { captureObject } from './capture.js';
 import { assetsOf as assetsOfImpl } from './assets.js';
 import { focusSphere, sceneSphere } from './focus.js';
+import { castSurface, surfaceBelowHit, surfaceMeshes } from './surface.js';
+import { groundKeys } from './ground.js';
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
@@ -67,6 +69,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   let editing = false;
   let view = null;
   let dirty = true;
+  let watchSnap = null; // transforms kept while the editor watches the game play (watch)
   let loopGen = 0; // each begin() starts a new paint loop; an old loop sees a stale generation and stops
   let lastCount = -1;
   let cands = [];
@@ -85,6 +88,11 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   let atHome = false;
   let glide = 0;
   let fogRef = 10;
+  // Snap to surfaces (surface.js, bridge/snap.ts; a try of the editor, 2026-10-19). `on`: the bridge turns it on for the length of
+  // a person's move (a drag, an arrow key) and off after, so every other caller of drag() — the copies' placement,
+  // the AI's changes, a placement file — moves exactly as before. `free`: Ctrl / ⌥ held right now (no snapping until
+  // let go). `skip`: the keys moving together (the selection): never a surface for each other.
+  let snap = { on: false, free: false, skip: [] };
   const leaveHome = () => { atHome = false; glide = 0; };
   /**
    * Move the edit camera from view state `from` to `to` in 0.6 s (ease in-out), starting at `from`. Any look-around
@@ -196,6 +204,41 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     o.position.copy(vec);
     o.updateMatrixWorld(true);
   }
+  /** The objects that are never a surface for `o`: itself (its subtree), and the other moving objects. */
+  function skipFor(o, keys) {
+    const out = new Set([o]);
+    for (const k of keys || snap.skip) {
+      const x = objectOf(k);
+      if (x) out.add(x);
+    }
+    return out;
+  }
+  /**
+   * World heights of the object's bottom (its box) and of the highest surface under it, looking down from the top of
+   * its box: a thing sunk into the ground or the water still finds the surface it stands in (Lantern Cove's props
+   * stand 15 cm deep; its barrel floats with its middle under the water — the first version looked down from the
+   * box's middle and found the sea floor 4 m down instead of the sea). null: no box.
+   */
+  function restOf(o, keys) {
+    scene.updateMatrixWorld(true);
+    const b = worldBox(o);
+    if (!b) return null;
+    const meshes = surfaceMeshes(scene, skipFor(o, keys));
+    const hit = surfaceBelowHit(b, b.max[1] + 1e-4, meshes);
+    return { bottom: b.min[1], below: hit ? hit.y : null, on: hit ? hit.mesh : null, box: b, meshes };
+  }
+  /**
+   * Is the object standing on that surface (so a move keeps it standing on what is under it)? Its bottom within
+   * 3 cm (or 3 % of its height) above the surface, or sunk into it (any depth: the surface is under its top — a
+   * floating barrel is half under the water). A lamp hung in the air, a gull, a thing lifted on purpose: not
+   * standing — those move flat at their height, as before.
+   */
+  function standing(r) {
+    if (!r || r.below === null) return false;
+    const h = Math.max(1e-3, r.box.max[1] - r.box.min[1]);
+    return r.bottom - r.below <= Math.max(0.03, 0.03 * h);
+  }
+
   function kindsOf(o) {
     const loaded = boot.urlOf.has(o) || boot.guessOf.has(o) || (o.geometry && (boot.urlOf.has(o.geometry) || boot.guessOf.has(o.geometry)));
     if (loaded) return ['model', 'object'];
@@ -211,6 +254,31 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     const mat = Array.isArray(m.material) ? m.material[0] : m.material;
     return `shape:${m.geometry.uuid.slice(0, 8)}:${mat ? mat.uuid.slice(0, 8) : ''}`;
   }
+  /**
+   * What an unnamed object looks like, for the name the editor guesses (Item.look; a hands-on try, 2026-10-19: a pillar
+   * built as `new Group()` of a black box and a pink lid read "Unnamed group" on the card and in the ask bar, and its
+   * thumbnail did not say "pillar"). `size` / `c` = the world box (all meshes), `color` = the main part's colour: the
+   * mesh with the largest box (the black body, not the thin pink lid), `inside` = drawn from the inside (BackSide: a sky
+   * dome). Only for objects without a name: a named one is called by its name. At most 64 meshes are looked at.
+   */
+  function lookOf(o) {
+    const b = worldBox(o);
+    if (!b) return undefined;
+    let main = null, best = -1, n = 0;
+    o.traverse((x) => {
+      if (!x.isMesh || n++ >= 64) return;
+      const mb = worldBox(x);
+      // Box "volume" with a floor on each side, so a flat plane (0 thick) still counts by its area.
+      const v = mb ? [0, 1, 2].reduce((acc, i) => acc * Math.max(1e-3, mb.max[i] - mb.min[i]), 1) : 0;
+      if (v > best) (best = v), (main = x);
+    });
+    const mat = main && (Array.isArray(main.material) ? main.material[0] : main.material);
+    const r3 = (v) => Math.round(v * 1000) / 1000;
+    const look = { size: [0, 1, 2].map((i) => r3(b.max[i] - b.min[i])), c: [0, 1, 2].map((i) => r3((b.max[i] + b.min[i]) / 2)) };
+    if (mat && mat.color && typeof mat.color.getHexString === 'function') look.color = `#${mat.color.getHexString()}`;
+    if (mat && mat.side === 1) look.inside = true; // THREE.BackSide
+    return look;
+  }
   function item(c) {
     const o = c.object;
     const pose = poseOf(o);
@@ -220,6 +288,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       kinds: kindsOf(o),
       group: groupOf(c),
       unstable: c.unstable || undefined,
+      look: c.unstable ? lookOf(o) : undefined,
       rotatable: rotatable(o),
       scalable: scalable(o),
       pos: pose.p,
@@ -232,6 +301,44 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   boot.on((type) => { if (editing && (type === 'game-render-skipped' || type === 'load')) dirty = true; });
   const emit = (type, detail) => listeners.forEach((fn) => { try { fn(type, detail); } catch (e) { console.warn(e); } });
   const touch = () => { dirty = true; };
+
+  /**
+   * The move on surfaces (snap on, the object standing): the ray from the camera through the foot's screen point
+   * finds where the foot goes — the nearest face it meets, as Unreal's surface snapping and Blender's Face Project
+   * place things under the cursor. A face to stand on (normal up): there. A wall: the floor at its foot (a ray
+   * straight down from just in front of it). Nothing (the sky): flat at the height it has. The bottom keeps the gap
+   * it had at the grab (`g.stand`: a post sunk 15 cm stays 15 cm deep, a barrel keeps its float) while it is over
+   * the surface it stood on (`g.on`, the same mesh); on another surface its bottom sits exactly on it (a gap above
+   * kept, a sink not: the barrel floating half under the water, dragged onto the pier, stands ON the planks — keeping
+   * its 43 cm float there sank it into them).
+   */
+  function dragOnSurface(o, g, ndcX, ndcY) {
+    scene.updateMatrixWorld(true);
+    const b = worldBox(o);
+    if (!b) return poseOf(o);
+    const ray = rayFromCamera(view.camera, ndcX + g.foot[0], ndcY + g.foot[1]);
+    const meshes = surfaceMeshes(scene, skipFor(o));
+    const hit = castSurface(ray, meshes, { minUp: -1 });
+    let to = null;
+    let hitMesh = null;
+    if (hit && hit.normal[1] >= 0.5) (to = hit.point), (hitMesh = hit.mesh);
+    else if (hit) {
+      const back = [hit.point[0] - ray.d[0] * 0.05, hit.point[1] - ray.d[1] * 0.05, hit.point[2] - ray.d[2] * 0.05];
+      const down = castSurface({ o: back, d: [0, -1, 0] }, meshes, { minUp: 0.5 });
+      if (down) (to = down.point), (hitMesh = down.mesh);
+    }
+    let bottom;
+    if (to) bottom = to[1] + (hitMesh === g.on ? g.stand : Math.max(0, g.stand));
+    else {
+      to = rayPlaneY(ray, b.min[1]);
+      if (!to) return poseOf(o); // pointing at the sky above the horizon: stay
+      bottom = b.min[1];
+    }
+    const w = worldOrigin(o);
+    setWorldPosition(o, [w[0] + to[0] - (b.min[0] + b.max[0]) / 2, w[1] + bottom - b.min[1], w[2] + to[2] - (b.min[2] + b.max[2]) / 2]);
+    touch();
+    return poseOf(o);
+  }
 
   // ---------------------------------------------------------------- drawing while editing
   function draw() {
@@ -289,11 +396,17 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     }
   }
 
-  /** Hide the game's own DOM (HUD, menus, touch sticks) next to the canvas while editing — it would cover objects. */
+  /**
+   * Hide the game's own DOM (HUD, menus, touch sticks) next to the canvas while editing — it would cover objects.
+   * Not the UI the game marked with data-studio-key (or a box holding it): that is the editor's UI layer (UI stage 1,
+   * 2026-10-19), shown — faded while the world is edited (bridge/editor.ts paintLayers). A game without the mark
+   * hides exactly what it did before.
+   */
   function hideOverlays() {
     for (let el = canvas; el && el.parentElement; el = el.parentElement) {
       for (const sib of el.parentElement.children) {
         if (sib === el || sib.hasAttribute('data-studio-keep') || /^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(sib.tagName)) continue;
+        if (sib.matches('[data-studio-key]') || sib.querySelector('[data-studio-key]')) continue;
         restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
         sib.style.setProperty('visibility', 'hidden', 'important');
       }
@@ -317,7 +430,10 @@ export function createThreeAdapter({ scene, renderer, camera }) {
 
     list() {
       scene.updateMatrixWorld(true);
-      return refresh().map(item);
+      const cs = refresh();
+      // Ground / road / sea / sky (ground.js): the editor holds these still until "Make movable" (bridge/hold.ts).
+      const grounds = groundKeys(cs.map((c) => ({ key: c.key, label: c.label, named: c.source !== 'path', box: worldBox(c.object) })));
+      return cs.map((c) => (grounds.has(c.key) ? { ...item(c), backdrop: true } : item(c)));
     },
 
     begin() {
@@ -343,6 +459,37 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       boot.nativeRAF(() => loop(gen));
       draw();
       return adapter.list();
+    },
+
+    /**
+     * bridge/observe.ts: the game's own frames run (its draws stay held) while the editor watches. Off again puts
+     * EVERY transform of the scene (and the game's camera) back as it was, not only the listed objects': the parts
+     * the list does not show move too — a lighthouse's turning beam stayed turned and caught taps meant for the sky,
+     * and a camera that sways moved the opening view (studio-deselect / web-demo-move, 2026-10-19).
+     */
+    watch(on) {
+      if (on) {
+        watchSnap = [];
+        // The Euler angles, not the quaternion (the same lesson as boot.js snapLayout): copying a quaternion makes three
+        // re-derive the angles, and a boat turned 115° came back as (180°, 65°, 180°) — the same turn, but read as
+        // "tilted upside down" with r = 65°. Then "Put back and save" (safe-save) or an undo set r alone and left the
+        // 180° tilt, and Lantern Cove's sailboat was saved turned 49° from where it was (e2e-016, 2026-10-20).
+        const keep = (o) => watchSnap.push([o, o.position.clone(), o.rotation.clone(), o.scale.clone(), o.visible]);
+        scene.traverse(keep);
+        const gc = gameCamera();
+        if (gc && !gc.parent) keep(gc);
+      } else if (watchSnap) {
+        for (const [o, p, e, s, v] of watchSnap) {
+          o.position.copy(p);
+          o.rotation.copy(e); // also updates the quaternion (three keeps them in sync)
+          o.scale.copy(s);
+          o.visible = v;
+        }
+        watchSnap = null;
+        scene.updateMatrixWorld(true);
+        touch();
+      }
+      if (boot.watch) boot.watch(!!on);
     },
 
     end() {
@@ -407,15 +554,36 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       };
     },
 
-    /** Start a move: the press point is caught on the horizontal plane at the pivot height; drag() keeps that offset. */
-    grab(key, ndcX, ndcY) {
+    /**
+     * Start a move: the press point is caught on the horizontal plane at the pivot height; drag() keeps that offset.
+     * With snapping on and the object standing on something (standing()), the move instead follows the surface under
+     * its foot (see drag); `keep` = { gap, on }, the standing measured at the first grab of this drag (a switch to free
+     * and back re-grabs, and by then the object may hang over the water).
+     */
+    grab(key, ndcX, ndcY, keep) {
       const o = objectOf(key);
       if (!o || !view) return false;
       syncView();
       const pivot = pivotOf(o);
       const hit = rayPlaneY(rayFromCamera(view.camera, ndcX, ndcY), pivot[1]);
       if (!hit) return false;
-      grabs.set(key, { y: pivot[1], off: [hit[0] - pivot[0], hit[2] - pivot[2]] });
+      const g = { y: pivot[1], off: [hit[0] - pivot[0], hit[2] - pivot[2]], mode: 'plane', stand: keep && keep.gap, on: keep && keep.on };
+      if (snap.on && keep === undefined) {
+        const r = restOf(o);
+        g.stand = standing(r) ? r.bottom - r.below : null;
+        g.on = r ? r.on : null;
+      }
+      if (snap.on && !snap.free && g.stand !== undefined && g.stand !== null) {
+        // The foot (bottom middle of the box) on screen, as an offset from the press: the ray through it finds the
+        // surface the foot goes to, and the object stays under the pointer the way it was grabbed.
+        // The foot is where the object meets what it stands on (bottom − gap), not the box's bottom: a sea stack sunk
+        // 4 m into the water had its bottom's ray meet the water well in front of it, so each ↓ step flung it toward
+        // the camera until it filled the view and could no longer be picked (test/web-demo-lp, merge of 2026-10-19).
+        const b = worldBox(o);
+        const f = project(viewProjOf(view.camera), [(b.min[0] + b.max[0]) / 2, b.min[1] - g.stand, (b.min[2] + b.max[2]) / 2]);
+        if (f[3] > 0) Object.assign(g, { mode: 'snap', foot: [f[0] - ndcX, f[1] - ndcY] });
+      }
+      grabs.set(key, g);
       return true;
     },
 
@@ -424,13 +592,50 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       if (!o || !view) return null;
       if (!grabs.has(key) && !adapter.grab(key, ndcX, ndcY)) return poseOf(o);
       syncView();
-      const g = grabs.get(key);
+      let g = grabs.get(key);
+      // Ctrl / ⌥ pressed or let go during the drag: grab again where the pointer is, the other way.
+      const want = snap.on && !snap.free && g.stand !== null && g.stand !== undefined ? 'snap' : 'plane';
+      if (want !== g.mode) {
+        if (!adapter.grab(key, ndcX, ndcY, { gap: g.stand, on: g.on })) return poseOf(o);
+        g = grabs.get(key);
+      }
+      if (g.mode === 'snap') return dragOnSurface(o, g, ndcX, ndcY);
       const hit = rayPlaneY(rayFromCamera(view.camera, ndcX, ndcY), g.y);
       if (!hit) return poseOf(o); // pointing at the sky: keep the object where it is
       const w = worldOrigin(o);
       setWorldPosition(o, [hit[0] - g.off[0], w[1], hit[2] - g.off[1]]);
       touch();
       return poseOf(o);
+    },
+
+    /** World heights of the bottom and of the surface under it (bridge/snap.ts's Rest), or null. */
+    rest(key, skip) {
+      const o = objectOf(key);
+      if (!o) return null;
+      const r = restOf(o, skip);
+      return r ? { bottom: r.bottom, below: r.below } : null;
+    },
+
+    /**
+     * Drop to floor (End, as Unreal's End): the bottom of the box set on the highest surface under it. Nothing
+     * under it (below the ground, over the void): stays. `skip`: keys that are not floors (the others dropped with it).
+     */
+    drop(key, skip) {
+      const o = objectOf(key);
+      if (!o) return null;
+      const r = restOf(o, skip);
+      if (r && r.below !== null && Math.abs(r.below - r.bottom) > 1e-6) {
+        const w = worldOrigin(o);
+        setWorldPosition(o, [w[0], w[1] + r.below - r.bottom, w[2]]);
+        grabs.delete(key);
+        touch();
+      }
+      return poseOf(o);
+    },
+
+    /** Snapping for the moves that follow (see `snap` above): { on, free, skip }. */
+    setSnap(s) {
+      snap = { on: !!(s && s.on), free: !!(s && s.free), skip: (s && Array.isArray(s.skip) ? s.skip : []).slice() };
     },
 
     release(key) {
@@ -725,6 +930,52 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       refresh();
       touch();
       return true;
+    },
+
+    /**
+     * Ask while playing (CONTRACT.md §3.5): where the game's own camera (the player's view, never the edit camera)
+     * stands and looks now. `target` = 10 units ahead along its view: a point to say "in front of you", not a hit test.
+     */
+    player() {
+      const cam = gameCamera();
+      if (!cam || !cam.matrixWorld) return null;
+      cam.updateMatrixWorld?.(true);
+      const e = cam.matrixWorld.elements;
+      const f = [-e[8], -e[9], -e[10]]; // a camera looks along its own -z
+      const n = Math.hypot(f[0], f[1], f[2]) || 1;
+      const eye = [e[12], e[13], e[14]];
+      if (!eye.every(Number.isFinite)) return null;
+      const dir = [f[0] / n, f[1] / n, f[2] / n];
+      // What is near, measured in WORLD space with the game camera (the poses in list() are the parents' local
+      // space): in front of the camera or within 3 units of it (the player's own character often stands right there,
+      // or just behind a third-person camera), nearest first. `screen` = where it is in the picture (0–1). The
+      // ground / sea / sky are left out: they are "near" everything.
+      scene.updateMatrixWorld(true);
+      const cs = refresh();
+      const grounds = groundKeys(cs.map((c) => ({ key: c.key, label: c.label, named: c.source !== 'path', box: worldBox(c.object) })));
+      let vp = null;
+      try {
+        vp = viewProjOf(cam);
+      } catch {
+        vp = null;
+      }
+      const near = [];
+      for (const c of cs) {
+        if (grounds.has(c.key) || !c.object || !c.object.matrixWorld) continue;
+        const w = c.object.matrixWorld.elements;
+        const v = [w[12] - eye[0], w[13] - eye[1], w[14] - eye[2]];
+        const d = Math.hypot(v[0], v[1], v[2]);
+        const ahead = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2];
+        if (!Number.isFinite(d) || (ahead < 0 && d > 3)) continue;
+        const it = { key: c.key, label: c.label, d };
+        if (vp) {
+          const q = project(vp, [w[12], w[13], w[14]]);
+          if (q[3] > 0 && Math.abs(q[0]) <= 1.2 && Math.abs(q[1]) <= 1.2) it.screen = [(q[0] + 1) / 2, (1 - q[1]) / 2];
+        }
+        near.push(it);
+      }
+      near.sort((a, b) => a.d - b.d);
+      return { eye, target: [eye[0] + dir[0] * 10, eye[1] + dir[1] * 10, eye[2] + dir[2] * 10], near: near.slice(0, 12) };
     },
 
     /** The Object3D behind a key (for tests and the placement loader). */

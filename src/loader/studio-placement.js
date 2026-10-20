@@ -1,8 +1,16 @@
-// studio-placement.js: apply placement.json to a running game (three.js or PixiJS).
+// studio-placement.js: apply placement.json to a running game (three.js or PixiJS) and to its HTML UI.
 //
 //   import { applyPlacement } from './studio-placement.js';
 //   const report = await applyPlacement(scene, './placement.json'); // three: the Scene; Pixi: app.stage
 //   // report = { applied: ['tree-01'], missing: ['old-rock'], unstable: ['path:0/3/1'], skipped: [] }
+//   await applyPlacement(document, './placement.json');             // a game with no world (HTML only): the UI only
+//
+// `ui` (UI stage 1, 2026-10-19): HTML elements marked data-studio-key="title-logo" that were moved / resized in the
+// editor's UI layer. Each gets the CSS `translate` / `scale` properties (offset in CSS px from where the game's own
+// CSS puts it); left / top / transform are never touched, so a title centred with transform: translate(-50%, -50%)
+// stays centred. A translate / scale the game's stylesheet already gives is kept (the offset is added to it). Applied
+// before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
+// with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
 //
 // Call it once after the world is built and BEFORE physics bodies are created: an engine that
 // copies body positions into objects every frame would otherwise move them back.
@@ -52,6 +60,8 @@ export async function applyPlacement(root, source = './placement.json') {
     warn('not a placement file');
     return report;
   }
+  if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
+  if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
     warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
     return report;
@@ -92,6 +102,82 @@ export async function applyPlacement(root, source = './placement.json') {
   if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
   if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
   return report;
+}
+
+function applyUi(doc, ui) {
+  const out = { applied: [], missing: [] };
+  const put = (el) => {
+    const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
+    if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
+    if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+  };
+  doc.querySelectorAll('[data-studio-key]').forEach(put);
+  for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
+  // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver((list) => {
+      for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) {
+        if (n.dataset.studioKey) put(n);
+        n.querySelectorAll('[data-studio-key]').forEach(put);
+      }
+    }).observe(doc.documentElement, { childList: true, subtree: true });
+  }
+  return out;
+}
+
+// Per element: the translate / scale its stylesheet gives (read once, before anything is added) and the offset now.
+const UI_STATE = Symbol.for('game-studio.ui');
+
+/**
+ * Put a UI element `p` = [dx, dy] CSS px from where the game's CSS puts it, at scale `s` (1 = as the game draws it).
+ * Shared with the editor's UI layer (src/adapters/ui), so the editor and the game agree to the pixel. false = the
+ * game itself writes an inline translate / scale on this element (it moves it): left alone.
+ * The size keeps the element's middle where it is: CSS `scale` grows the box around its transform-origin, and a title
+ * centred with transform: translate(-50%, -50%) has its box shifted away from that origin, so it would walk. The
+ * correction is worked out here, from the box as it is now, and never saved: `p` stays "how far the middle moved",
+ * right on any window size. A ResizeObserver works it out again when the box changes (a hidden screen shown later,
+ * a window resized), only for elements with a size of their own (s ≠ 1).
+ */
+export function placeUi(el, p, s) {
+  let st = el[UI_STATE];
+  if (!st) {
+    if (el.style.translate || el.style.scale) return false;
+    const cs = getComputedStyle(el);
+    st = el[UI_STATE] = { t: cssParts(cs.translate), s: cssParts(cs.scale), p: [0, 0], v: 1 };
+  }
+  st.p = [p[0], p[1]];
+  st.v = s;
+  const t = st.t, b = st.s ? st.s.map((x) => parseFloat(x) / (x.endsWith('%') ? 100 : 1)) : [1];
+  const bx = b[0], by = b[1] === undefined ? bx : b[1];
+  let x = p[0], y = p[1];
+  if (s !== 1) {
+    const cs = getComputedStyle(el);
+    const m = /^matrix(3d)?\(([^)]+)\)/.exec(cs.transform);
+    const v = m ? m[2].split(',').map(Number) : null;
+    const [a, bb, c, d, e, f] = !v ? [1, 0, 0, 1, 0, 0] : m[1] ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;
+    const o = (cs.transformOrigin || '').split(' ').map(parseFloat);
+    const ux = (el.offsetWidth || 0) / 2 - (o[0] || 0), uy = (el.offsetHeight || 0) / 2 - (o[1] || 0);
+    if (el.offsetWidth !== undefined && (m || cs.transform === 'none')) {
+      x -= (s - 1) * bx * (a * ux + c * uy + e);
+      y -= (s - 1) * by * (bb * ux + d * uy + f);
+    }
+    if (!st.ro && typeof ResizeObserver === 'function') (st.ro = new ResizeObserver(() => placeUi(el, st.p, st.v))).observe(el);
+  }
+  const none = !x && !y && s === 1;
+  el.style.translate = none ? '' : t ? `calc(${t[0]} + ${x}px) calc(${t[1] || '0px'} + ${y}px)${t[2] ? ' ' + t[2] : ''}` : `${x}px ${y}px`;
+  el.style.scale = s === 1 ? '' : st.s ? `${bx * s} ${by * s}${b[2] === undefined ? '' : ' ' + b[2]}` : String(s);
+  return true;
+}
+
+/** The offset placeUi() last gave (p [0, 0], s 1 for an element it never touched). */
+export function uiOffset(el) {
+  const st = el[UI_STATE];
+  return st ? { p: st.p.slice(), s: st.v } : { p: [0, 0], s: 1 };
+}
+
+// "none" → null; "-50% 0px" / "calc(-50% + 4px) 2px" → its space-separated values (spaces inside one level of () kept).
+function cssParts(v) {
+  return !v || v === 'none' ? null : v.match(/(?:[^\s(]|\([^)]*\))+/g);
 }
 
 /** Apply one entry's p / r / t / s to obj; false (nothing changed) when a value is bad. */

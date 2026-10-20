@@ -8,8 +8,8 @@
 // Checks (three-crates, PC 1280 mouse and phone 390 touch):
 // 1. The input is for writing to the AI: pressing it does not open the ⌘K list; typing a word that
 //    names an action ("assets") shows only those suggestions, a sentence closes them; ⌘K opens all.
-// 2. Nobody watching: Enter → within 2 s the line says the AI isn't watching and what to do
-//    (no 20 s wait), and nothing is lost.
+// 2. Nothing can reach the AI: Enter → within 2 s one calm line (the request is in, it goes in the next time the AI
+//    runs) and one "Call your AI" button — no "isn't watching", no app names, no /arrange (hands-on test 2026-10-19).
 // 3. The agent starts (as after "look" or /arrange): the waiting request is picked up, the line
 //    goes "has it" → the AI's own words, and the violet light runs round the input meanwhile.
 // 4. The agent writes the code in two steps: the game does NOT reload half-way; after "done" it
@@ -17,14 +17,15 @@
 //    the camera and the selection kept; only the new crates are marked violet.
 // 5. "Undo AI change": one press, the files are back and the crates are gone; Redo brings them back.
 // 6. With the agent watching, a second request shows "has it" within ~1 s of Enter.
-// 7. The agent asks something in its own window (`--status asking`): the line says "Your AI has a question" with the
-//    question under it, the dot still, no running light (dogfood 2026-10-17, U2).
+// 7. The agent asks something (`--status asking` with choices and the object it is about): the question with its
+//    buttons and now → after, the object lit in the scene, the ask field says "Answer your AI…", the dot still, no
+//    running light; pressing a button sends an `answer` request back (hands-on test 2026-10-19).
 // --film: the whole flow on one game (default lantern-cove) as an mp4 (screencast → ffmpeg):
 //   the agent watching from the start, the sentence typed, Enter, the light, the change appearing
 //   with only the new things glowing, Undo, Redo. With --away the agent starts only after the person
 //   has seen "Your AI isn't watching" (the way back from a dead end).
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -157,7 +158,7 @@ async function run(layout) {
     await type(page, LANG === 'ja' ? '素材' : 'assets');
     await page.waitFor(`${IN.palette} === 'suggest'`, 3000);
     const sugg = await j(page, `JSON.stringify([...document.querySelectorAll('.palette .p-row')].map((r) => r.textContent))`);
-    assert.ok(sugg.some((s) => /Open Assets|素材を開く/.test(s)), `"assets" should suggest Open Assets: ${sugg}`);
+    assert.ok(sugg.some((s) => /Open Assets|Open the Library|素材を開く|ライブラリを開く/.test(s)), `"assets" should suggest the Library: ${sugg}`);
     assert.ok(!sugg.some((s) => /Make it night|夜/.test(s)), `suggestions only, not the AI examples: ${sugg}`);
     assert.equal(await page.eval(`!!document.querySelector('.scrim:not([hidden])')`), false, 'suggestions must not dim the game');
     await shot('typed-assets');
@@ -197,14 +198,14 @@ async function run(layout) {
     await page.waitFor(`document.querySelector('.ai-line').classList.contains('away')`, 2000);
     times.away = Date.now() - t0;
     const away = await j(page, IN.line);
-    assert.match(away.text, /isn’t watching|見ていません/);
-    assert.match(away.text, /look|見て/);
-    assert.match(away.text, /\/arrange/);
+    assert.match(away.text, /Your request is in|依頼は届いています/);
+    assert.doesNotMatch(away.text, /isn’t watching|見ていません|\/arrange|Claude Code|Codex/, 'no plumbing, no command to run');
+    assert.equal(await page.eval(`!!document.querySelector('.ai-line [data-action=ai-call]')`), true, 'one "Call your AI" button');
     assert.equal(away.peer, 'idle');
     assert.notEqual(away.ai, 'busy', 'no light while nobody will answer');
     assert.equal(await page.eval(IN.palette), 'closed', 'Enter on a sentence must send it, not run an action');
     await shot('away');
-    ok(`nobody watching: said in ${times.away} ms, with what to do`);
+    ok(`nothing reaches the AI: one calm line in ${times.away} ms, with "Call your AI"`);
 
     // ---- 3–4. the agent starts; received → working; no reload until done; then by itself ----
     await page.eval(SAMPLER);
@@ -286,18 +287,52 @@ async function run(layout) {
 
     // ---- 7. the AI asks in its own window (dogfood 2026-10-17, U2): the editor says so, with the question ----
     const q = 'Is the second door a real door, or only for looks?';
-    writeFileSync(join(root, '.studio/status.json'), JSON.stringify({ version: 1, state: 'asking', note: q, at: new Date().toISOString() }) + '\n');
+    const askedId = readdirSync(join(root, '.studio/requests/done')).filter((n) => n.endsWith('.json')).sort().pop()?.slice(0, -5);
+    writeFileSync(join(root, '.studio/status.json'), JSON.stringify({ version: 1, state: 'asking', note: q, request: askedId,
+      choices: ['A real door', 'Only for looks'], about: ['crate-1'], before: 'A door you walk through', after: 'A picture of a door', at: new Date().toISOString() }) + '\n');
     await page.waitFor(`document.querySelector('.ai-line').classList.contains('asking')`, 4000);
     const asking = JSON.parse(await page.eval(`(() => { const l = document.querySelector('.ai-line');
+      const tagEl = document.querySelector('iframe').contentWindow.document.querySelector('[data-studio-ui]')?.shadowRoot?.querySelector('.tag.ai');
+      const tag = tagEl ? tagEl.style.display + ' ' + tagEl.textContent : 'none';
       return JSON.stringify({ head: l.querySelector('.ai-head')?.textContent, sub: l.querySelector('.ai-sub')?.textContent,
+        choices: [...l.querySelectorAll('[data-action=ai-answer]')].map((b) => b.textContent),
+        compare: l.querySelector('[data-part=ai-compare]')?.textContent || '', show: !!l.querySelector('[data-action=ai-ask-show]'), tag,
+        placeholder: document.querySelector('.ask-input').placeholder,
         dot: getComputedStyle(l, '::before').animationName, ai: document.querySelector('.shell').dataset.ai, hidden: l.hidden }); })()`));
     assert.equal(asking.hidden, false);
-    assert.equal(asking.head, LANG === 'ja' ? 'AI から質問があります — Claude Code で答えてください。' : 'Your AI has a question — answer it in Claude Code.');
-    assert.equal(asking.sub, q, 'the question is the line under it');
+    assert.equal(asking.head, q, 'the question first');
+    assert.equal(asking.sub, LANG === 'ja' ? 'AI から質問です' : 'Your AI has a question');
+    assert.doesNotMatch(asking.head + asking.sub, /Claude Code/, 'no "answer it in another window"');
+    assert.deepEqual(asking.choices, ['A real door', 'Only for looks']);
+    assert.match(asking.compare, /A door you walk through.*A picture of a door/);
+    assert.equal(asking.show, true, '"Show it in the scene"');
+    // Lit in the game with its tag; when it is the selected object, the selection outline already shows it (the bridge
+    // draws one outline per object).
+    const selNow = await j(page, IN.selected);
+    if (!selNow.includes('crate-1')) assert.match(asking.tag, /^flex .*(asking about this|聞いているのはこれ)/, 'the object it is about is lit in the game, with its tag');
+    assert.equal(asking.placeholder, LANG === 'ja' ? 'AI に答える…' : 'Answer your AI…');
     assert.equal(asking.dot, 'none', 'the violet dot does not blink');
     assert.notEqual(asking.ai, 'busy', 'no running light: the person acts now');
     await shot('asking');
-    ok('asking: the question shows, the dot is still');
+    // A button answers: the answer goes back to the AI as a request (its watch prints a `studio: answer` line).
+    const before = new Set(readdirSync(join(root, '.studio/requests')));
+    await page.eval(IN.click('.ai-line [data-action=ai-answer]'));
+    await page.waitFor(`!document.querySelector('.ai-line').classList.contains('asking')`, 3000);
+    let ans = null;
+    for (let i = 0; i < 20 && !ans; i++) {
+      const n = readdirSync(join(root, '.studio/requests')).find((f) => f.endsWith('.json') && !before.has(f));
+      if (n) ans = JSON.parse(readFileSync(join(root, '.studio/requests', n), 'utf8'));
+      else await sleep(100);
+    }
+    assert.ok(ans, 'an answer request was kept');
+    assert.equal(ans.kind, 'answer');
+    assert.equal(ans.text, 'A real door');
+    assert.equal(ans.question, q);
+    if (askedId) assert.equal(ans.to, askedId);
+    assert.deepEqual(ans.objects.map((o) => o.key), ['crate-1']);
+    assert.notEqual(await page.eval(`document.querySelector('.ask-input').placeholder`), asking.placeholder, 'the field asks again');
+    await shot('answered');
+    ok('asking: answered in the editor (buttons, now → after, the object lit); the answer reached the AI');
     return times;
   } finally {
     await agent?.stop();

@@ -140,8 +140,20 @@ async function run(game, layout, theme) {
     await sleep(1200);
     assert.equal(await selected(), 'lighthouse');
     same(v0, await view(), 'picking');
-    assert.equal((await button('up')).title, 'Camera up (Space+E)');
-    await shot('1-before');
+    // Phone: the ↑↓ step aside while the card is up (the second design review's ⑧, 2026-10-19), and come back with
+    // nothing picked; the presses below are made with nothing picked there.
+    const PICK = mobile ? null : 'lighthouse';
+    if (mobile) {
+      assert.equal(await button('up'), null, 'phone: ↑↓ shown while the card is up');
+      await shot('1-before');
+      await page.eval(`window.studioShell.actions.select(null)`);
+      await sleep(800);
+      assert.ok(await button('up'), 'phone: no ↑↓ after the pick was dropped');
+      ok('phone: ↑↓ hidden while the card is up, back with nothing picked');
+    } else {
+      assert.equal((await button('up')).title, 'Camera up (Space+E)');
+      await shot('1-before');
+    }
 
     // A click / tap on ↑ and ↓: one step each way, only the height.
     let a = await view();
@@ -149,7 +161,7 @@ async function run(game, layout, theme) {
     await sleep(300);
     let b = await view();
     const step = rose(a, b, 1, '↑');
-    assert.equal(await selected(), 'lighthouse', '↑ dropped the pick');
+    assert.equal(await selected(), PICK, '↑ dropped the pick');
     await tap(await button('down'));
     await sleep(300);
     rose(b, await view(), -1, '↓');
@@ -174,7 +186,7 @@ async function run(game, layout, theme) {
     await drag(u.x, u.y, u.x, u.y - 160);
     await sleep(300);
     rose(b, await view(), 1, 'dragging up on ↑');
-    assert.equal(await selected(), 'lighthouse', 'dragging on the buttons dropped the pick');
+    assert.equal(await selected(), PICK, 'dragging on the buttons dropped the pick');
     ok('dragging on the buttons follows the drag');
 
     if (!mobile) {
@@ -226,7 +238,7 @@ async function run(game, layout, theme) {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'k', code: 'KeyK', windowsVirtualKeyCode: 75, modifiers: 2 });
     await page.waitFor(`!!document.querySelector('#studio-palette:not([hidden])')`, 3000);
     const rows = await j(`JSON.stringify([...document.querySelectorAll('#studio-palette [data-action^=camera-]')].map((r) => r.textContent.trim()))`);
-    assert.deepEqual(rows, ['Camera upSpace+E', 'Camera downSpace+Q']);
+    assert.deepEqual(rows, mobile ? ['Camera upE', 'Camera downQ'] : ['Camera upSpace+E', 'Camera downSpace+Q']);
     a = await view();
     await page.eval(`document.querySelector('#studio-palette [data-action=camera-up]').click()`);
     await sleep(400);
@@ -240,7 +252,7 @@ async function run(game, layout, theme) {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'F', code: 'KeyF', windowsVirtualKeyCode: 70, modifiers: 8 });
     await sleep(1500);
     assert.ok(Math.abs((await view()).target[1] - v0.target[1]) < 1e-6, '⇧F did not bring the opening view back');
-    if ((await selected()) !== 'lighthouse') {
+    if (!mobile && (await selected()) !== 'lighthouse') {
       await page.eval(`window.studioShell.actions.select('lighthouse')`);
       await sleep(800);
     }
@@ -249,7 +261,7 @@ async function run(game, layout, theme) {
       await sleep(200);
     }
     await sleep(600);
-    assert.equal(await selected(), 'lighthouse', 'the pick was lost on the way');
+    assert.equal(await selected(), PICK, 'the pick was lost on the way');
     await shot('2-after-up');
     ok('photos');
   } catch (e) {

@@ -167,12 +167,10 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
       const on = many ? keys.every(picked) : picked(first.key);
       const files = [...new Set(keys.flatMap(filesOf))];
       const meta = h('span', { class: 'gsl-meta' });
+      // The line under the name: the file it is drawn with, or nothing. (No grey "Drawn in code" and no "Object" tag in
+      // the picture's corner since the second design review's ⑦, 2026-10-19: twelve tiles said the same two things.)
       if (files.length) meta.append(h('span', { class: 'shelf-file', title: files.join('\n'), text: files.slice(0, 2).map(base).join('・') + (files.length > 2 ? ` +${files.length - 2}` : '') }));
-      else if (uses) meta.append(h('span', { class: 'shelf-file code', text: d.t('shelf.fromCode') }));
-      // The small tag in the picture's corner says what the tile is: an object in the game, or a file (panel.ts puts
-      // "File" on the files). Words in grey, not a colour: orange stays "what you picked", violet "the AI".
-      const thumb = h('div', { class: 'gsl-thumb' }, thumbImg(first.key), h('span', { class: 'lib-kind', text: d.t('lib.tagObject') }),
-        many ? h('span', { class: 'shelf-many', text: `×${members.length}` }) : null);
+      const thumb = h('div', { class: 'gsl-thumb' }, thumbImg(first.key), many ? h('span', { class: 'shelf-many', text: `×${members.length}` }) : null);
       const tile = h('div', { class: `gsl-tile lib-object${on ? ' gsl-open' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': String(on),
         dataset: { key: first.key, kind: 'object', ...(many ? { group: g } : {}) }, title: many ? d.t('ops.selectGroup', { n: members.length }) : displayName(first, d.t) },
       thumb, h('span', { class: `gsl-name${first.unstable && !many ? ' unnamed' : ''}`, text: many ? kindName(members) : displayName(first, d.t) }), meta);
@@ -255,17 +253,15 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
     }
     const locked = members.every((m) => m.movable === false);
     if (locked) el.append(h('p', { class: 'shelf-note muted', text: d.t('placement.locked') }));
-    // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game. A locked
-    // object can't be copied (the game's settings), so it has no "Add to scene" either.
+    // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game, then
+    // Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
+    // the Library it did exactly what "Add to scene" does, and nobody could tell the two apart; the scene's Duplicate is
+    // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
     const acts = h('div', { class: 'shelf-acts' });
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi!() }));
     acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
-    if (!locked) {
-      acts.append(
-        h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'copy' }, text: d.t('ops.copy'), onclick: () => d.copy() }),
-        h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
-    }
+    if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);
     return { el, key: keys.join(',') };
   }

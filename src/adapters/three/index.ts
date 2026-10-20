@@ -42,6 +42,7 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     list: () => raw.list(),
     begin: () => raw.begin(),
     end: () => raw.end(),
+    watch: (on) => raw.watch(on),
     // adapter.js repaints from its own loop whenever something changed.
     render: () => {},
     pickNear: (x, y, radius) => raw.pickNear(...ndc(x, y), radius),
@@ -74,6 +75,10 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     coverage: (key) => raw.coverage(key),
     scale: (key, f) => pose(key, raw.scale(key, f)),
     nudgeY: (key, dy) => pose(key, raw.nudgeY(key, dy)),
+    // Snap to surfaces (surface.js, bridge/snap.ts): heights are world metres, as nudgeY moves by.
+    rest: (key, skip) => raw.rest(key, skip),
+    drop: (key, skip) => pose(key, raw.drop(key, skip)),
+    setSnap: (s) => raw.setSnap(s),
     setPose: (key, p) => raw.setPose(key, p),
     capture: (key, o) => raw.capture(key, o),
     silhouette: (keys) => raw.silhouette(keys),
@@ -81,6 +86,7 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     remove: (key) => raw.remove(key),
     putBack: (key) => raw.putBack(key),
     assetsOf: (key) => raw.assetsOf(key),
+    player: () => raw.player(),
     // For game tools: the edit camera's ray onto a horizontal plane, and the
     // way back. Only while editing (the edit camera exists then).
     toGround(x, y, groundY = 0) {

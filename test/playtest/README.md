@@ -49,6 +49,7 @@ writes about 6 MB.
 - `user.mjs` - the newcomer's steps in one browser (and starting the editor)
 - `recorder.mjs` - screencast frames → mp4, screenshots, the wait clock
 - `report.mjs` - report.md
+- `realplay.mjs` - ask your AI while playing (CONTRACT.md §3.5) with a real Claude Code: one session makes a small three.js game with one bug on purpose (`--make-only`), a fresh one waits for requests; a headless Chrome plays, walks to the place, stops, presses ` and asks; records the line over the game, Reload, and whether the bug is gone after it (report, pictures, video, the diff).
 - `realagent.mjs` - the same first minutes with a real Claude Code / Codex: `/arrange` → 3D → ask in English → Save →
   Undo AI change, timed, with the whole conversation (`transcript.md`)
 - `agents.mjs` - runs Claude Code (one stream-json conversation, so its watch can wake it) and Codex (`exec` /

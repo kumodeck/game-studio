@@ -54,22 +54,15 @@ export const READOUT_WORDS: Record<Lang, Record<HandleKind | 'tipX' | 'tipZ', st
   ja: { move: '移動', rotate: '回す', lift: '高さ', scale: '大きさ', tipX: '前後に倒す', tipZ: '左右に倒す' },
 };
 /**
- * The one line shown the first time a tool is chosen (then never again on
- * this computer): what a drag does now and how to look around instead.
- * Mac 3D tools' habits: Option-drag orbits, right / middle drag pans, Space
- * held = the hand; on touch one finger is the tool, two fingers look.
+ * The one line shown the first time a tool is chosen (then never again on this computer): what a drag does now and
+ * how to stop. 40 characters at most (design review 2, item ③): it was 101 — "Drag anywhere: Turn · Look around:
+ * ⌥-drag, right-drag, or hold Space · Esc: no tool · Tilt: ▾ on Turn" — and its ▾ came out as "•" in the font. How to
+ * look around is in the ? sheet (shell/shortcuts.ts); the ▾ says itself that the tilts are behind it. On touch the
+ * two-finger look stays: a phone has no ? sheet. `tool` is the readout word ("Turn", "Tilt forward").
  */
 export const TOOL_HINT: Record<Lang, { mouse: (tool: string) => string; touch: (tool: string) => string }> = {
-  en: { mouse: (t) => `Drag anywhere: ${t} · Look around: ⌥-drag, right-drag, or hold Space · Esc: no tool`, touch: (t) => `One finger: ${t} · Two fingers: look around` },
-  ja: { mouse: (t) => `どこでも引く: ${t} ・ 見回す: ⌥ か右ボタンで引く、Space を押しながら ・ Esc: 道具をやめる`, touch: (t) => `1 本指: ${t} ・ 2 本指: 見回す` },
-};
-/**
- * Added to the turn tool's first-time line in 3D: where the tilts are. Was "Press Turn again to tilt" (polish pass
- * 2026-10-16); play test 2026-10-18: "nobody presses a button twice" — the tilts are behind the ▾ on the button now.
- */
-export const TILT_HINT: Record<Lang, string> = {
-  en: ' · Tilt: ▾ on Turn',
-  ja: ' ・ 倒すのは「回す」の ▾ から',
+  en: { mouse: (t) => `Drag to ${t.toLowerCase()} · Esc to stop`, touch: (t) => `Drag to ${t.toLowerCase()} · 2 fingers: look` },
+  ja: { mouse: (t) => `引いて${t} ・ Esc でやめる`, touch: (t) => `引いて${t} ・ 2 本指で見回す` },
 };
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 export const MORE_LABELS: Record<Lang, Record<'axis' | 'scale', string>> = {
@@ -182,6 +175,10 @@ export interface Handles {
   selection(shape: Outline | null, rects: Rect[], tag: string | null): void;
   /** What the AI's last change touched: same kind of outline, violet, one tag. */
   ai(shape: Outline | null, rects: Rect[], tag: string | null): void;
+  /** What the mouse is over in the editor page (a list row, the card, the ask chip): a softer light in your colour. */
+  hover(shape: Outline | null, rects: Rect[]): void;
+  /** A new pick: its mark lights up once, then settles (the moment the eye looks for it). */
+  flash(): void;
   /**
    * Stand-in copies (adapters without clone(), CONTRACT.md §1.8): a
    * see-through picture of the original at each copy's place. `src` is a
@@ -233,7 +230,9 @@ button { position: relative; pointer-events: auto; width: var(--h, ${UI.handlePx
 button:hover { color: #f5f5f7; background: rgba(255,255,255,.07); }
 /* No tool chosen: move is what dragging the object does, shown lightly as "the one at rest". A chosen tool is .on (ink). */
 button.rest { color: #f5f5f7; background: rgba(255,255,255,.12); }
-button:active, button.on { color: #1c1c1e; background: #f5f5f7; cursor: grabbing; transition-duration: 0s; }
+/* The chosen tool: the phone strip's grey ground (design review 2, item ③), not a filled ink square — the square was the
+   loudest thing on the game after the object itself (review 2, photo 03; the light editor's was black). */
+button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cursor: grabbing; transition-duration: 0s; }
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
 button[hidden] { display: none; }
 /* Touch: past 44 px for the finger, whatever the drawn size. */
@@ -244,6 +243,17 @@ svg * { vector-effect: non-scaling-stroke; }
 /* Outlines: a canvas per shape, a rounded box when there is no shape. */
 .ol { position: absolute; pointer-events: none; }
 .box { position: absolute; border: 1.5px solid var(--c); border-radius: 6px; box-sizing: border-box; pointer-events: none; }
+/* Your pick, strongly (a hands-on try, 2026-10-19, item 3: "make what I picked stand out in the scene"; one of 20 black
+   pillars had a thin orange line and the eye kept losing it). A 3 px line with an orange glow round it, the object
+   lightly tinted (ring(): tint), and once on a new pick a brighter glow that settles in .6 s. The hover light is the
+   same in a softer dose. Boxes (adapters without a shape) get the same, as a box. */
+.layer.sel .ol { filter: drop-shadow(0 0 6px rgba(255,107,26,.6)); }
+.layer.sel .box { border-width: 3px; background: rgba(255,107,26,.12); box-shadow: 0 0 10px rgba(255,107,26,.55); }
+.layer.sel.flash .ol, .layer.sel.flash .box { animation: pick-flash .6s cubic-bezier(.2,.8,.2,1); }
+@keyframes pick-flash { from { filter: drop-shadow(0 0 16px rgba(255,107,26,1)) brightness(1.25); } }
+.layer.hover .ol { filter: drop-shadow(0 0 5px rgba(255,107,26,.45)); }
+.layer.hover .box { border-width: 2px; background: rgba(255,107,26,.08); box-shadow: 0 0 8px rgba(255,107,26,.4); }
+@media (prefers-reduced-motion: reduce) { .layer.sel.flash .ol, .layer.sel.flash .box { animation: none; } }
 /* Name tags: the only filled colour on the game (your hand / the AI's hand), round-ended so they read as labels. */
 .tag { position: absolute; display: none; height: 22px; padding: 0 9px; border-radius: 999px; align-items: center; gap: 4px; color: #fff; white-space: nowrap; font-weight: 600;
   transform: translate(-50%, -100%); box-shadow: 0 1px 2px rgba(0,0,0,.2), 0 4px 12px rgba(0,0,0,.18); max-width: 60vw; overflow: hidden; text-overflow: ellipsis; }
@@ -252,23 +262,28 @@ svg * { vector-effect: non-scaling-stroke; }
 /* Stand-in copy: see-through picture of the original, dashed edge ("dashed = not real yet"). */
 .ghost { position: absolute; opacity: .6; outline: 1.5px dashed rgba(255,255,255,.9); border-radius: 4px; pointer-events: none; background-size: 100% 100%; }
 .band { position: absolute; border: 1px solid ${YOU}; border-radius: 2px; background: rgba(255,107,26,.1); display: none; pointer-events: none; }
-/* The choices over the strip: big buttons, a picture over a short word. */
-.menu { position: absolute; display: none; gap: 2px; padding: 6px; border-radius: 18px; transform: translateX(-50%);
+/* The choices over the strip (design review 2, item ③): ONE row as high as the strip, its buttons the strip's own size,
+   pictures only — the words are the tooltip and the label read aloud (the readout and the hint line name the way while
+   it works). Before: big buttons with a picture over a word, twice the strip's width (265 px over a 125 px strip),
+   the chosen one a black square, "Tilt sideways" wrapping on a phone. The chosen way: the strip's grey ground. */
+.menu { position: absolute; display: none; gap: 2px; padding: 4px; border-radius: 12px; transform: translateX(-50%);
   background: rgba(28, 28, 30, .86); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.09), 0 1px 1px rgba(0,0,0,.2), 0 10px 32px rgba(0,0,0,.36);
   backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 @keyframes rise { from { opacity: 0; transform: translateX(-50%) translateY(6px) scale(.985); } }
-.menu button { width: auto; min-width: 76px; height: auto; padding: 8px 10px 6px; display: grid; gap: 4px; justify-items: center; cursor: pointer;
-  font: 600 11px/1.2 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; color: #a1a1a6; border-radius: 12px; }
-.menu button svg { width: 24px; height: 24px; }
-/* The chosen way: ink, not orange (orange is the picked object, on the game). */
-.menu button.chosen { color: #1c1c1e; background: #f5f5f7; box-shadow: none; }
-@media (pointer: coarse) { .menu button { min-width: 88px; min-height: 64px; } }
-/* Two rows (3D, several picked): the axes, a hairline, then Together / Each in place — the size menu's words and
-   order (multi rotate, 2026-10-18). Each row centred, the menu as wide as the wider row. */
-.menu.rows { flex-direction: column; align-items: center; }
+.menu button { cursor: pointer; }
+.menu button span { display: none; }
+.menu button.chosen { color: #f5f5f7; background: rgba(255,255,255,.16); box-shadow: none; }
+/* 3D with several picked: the axes, a hairline, then Together / Each in place — side by side in the one row. */
 .menu .mrow { display: flex; gap: 2px; }
-.menu .msep { align-self: stretch; height: .5px; margin: 4px 6px; background: rgba(255,255,255,.14); }
+.menu .msep { align-self: stretch; width: .5px; margin: 4px 3px; background: rgba(255,255,255,.14); }
 .root.light .menu .msep { background: rgba(0,0,0,.1); }
+.menu.big { gap: 0; padding: 2px; border-radius: 14px; background: rgba(42, 42, 46, .92); box-shadow: 0 0 0 1px rgba(255,255,255,.08);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.menu.big .mrow { gap: 0; }
+.menu.big button { border-radius: 12px; }
+.menu.big button.chosen { background: rgba(255,255,255,.10); }
+.root.light .menu.big { background: rgba(255,255,255,.92); box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.root.light .menu.big button.chosen { background: rgba(0,0,0,.08); }
 /* The ▾ (tool options, play test 2026-10-18): "this button has choices", in the button's bottom-right corner, inside
    it — so the strip is not one px taller or wider and does not move when it appears (W1-2). The mark is 7×4 in the
    button's own colour, faint at rest, full on hover (PC: the hover says "there is more here"); its press area is the
@@ -286,11 +301,11 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 /* Light editor: the light glass, the same two colours. */
 .root.light .menu, .root.light .row { backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
 .root.light .menu button { color: #6e6e73; }
-.root.light .menu button.chosen { color: #fff; background: #1d1d1f; }
+.root.light .menu button.chosen { color: #1d1d1f; background: rgba(0,0,0,.08); }
 .root.light button { color: #6e6e73; }
 .root.light button:hover { color: #1d1d1f; background: rgba(0,0,0,.045); }
 .root.light button.rest { color: #1d1d1f; background: rgba(0,0,0,.075); }
-.root.light button:active, .root.light button.on { color: #fff; background: #1d1d1f; }
+.root.light button:active, .root.light button.on { color: #1d1d1f; background: rgba(0,0,0,.08); }
 /* The readout while a drag works, and the first-time hint line: the same glass, the small size, tabular digits (rule 4). */
 .chip, .hint { position: absolute; display: none; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px; white-space: nowrap;
   font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #f5f5f7;
@@ -299,7 +314,8 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 .chip { transform: translateY(-50%); }
 .hint { height: 32px; padding: 0 14px; font-weight: 400; transform: translateX(-50%); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 .root.light .chip, .root.light .hint { color: #1d1d1f; backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
-@media (pointer: coarse) { .hint { height: 36px; font-size: 13px; } }
+/* A finger: clear of the camera's ↑ ↓ at the bottom right (44 wide + 12 margin on each side, review 2 item ③). */
+@media (pointer: coarse) { .hint { height: 36px; font-size: 13px; max-width: calc(100vw - 128px); } }
 @media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
 /* The finger-sized strip (buttons 44 px: phones and the side window; .big = 40 px and up), design review wave 1 (W1-2 / N4,
    2026-10-17): 48 high (44 + 2 in), no gaps between buttons, 14 corners, a light plate — white 92 % with a 12 px blur
@@ -317,8 +333,18 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 `;
 
 let scratch: HTMLCanvasElement | null = null;
-/** Draw a 2 px ring just outside the mask's shape, in `color`, on a faint dark halo. */
-function ring(doc: Document, el: HTMLCanvasElement, o: Outline, color: string) {
+/** How a ring is drawn: `line` px wide (2 = the AI's), `tint` = the share of `color` laid over the object (0 = none). */
+export interface RingStyle {
+  line: number;
+  tint: number;
+}
+const RING_AI: RingStyle = { line: 2, tint: 0 };
+// 3 px and a 16 % tint: strong enough to find one black pillar among twenty (a hands-on try, 2026-10-19) and still the
+// game's own colours underneath. Hover: the same line in the softer 2 px with half the tint (the canvas is drawn at 70 %).
+const RING_YOU: RingStyle = { line: 3, tint: 0.16 };
+const RING_HOVER: RingStyle = { line: 2, tint: 0.1 };
+/** Draw a ring just outside the mask's shape, in `color`, on a faint dark halo (and a tint over the shape: `style`). */
+function ring(doc: Document, el: HTMLCanvasElement, o: Outline, color: string, style: RingStyle = RING_AI) {
   const dpr = doc.defaultView?.devicePixelRatio || 1;
   const W = Math.max(1, Math.ceil(o.w * dpr));
   const H = Math.max(1, Math.ceil(o.h * dpr));
@@ -340,7 +366,7 @@ function ring(doc: Document, el: HTMLCanvasElement, o: Outline, color: string) {
       g.drawImage(o.mask, Math.cos(a) * px, Math.sin(a) * px, W, H);
     }
   };
-  stamp(3 * dpr);
+  stamp((style.line + 1) * dpr);
   g.globalCompositeOperation = 'source-in';
   g.fillStyle = 'rgba(0, 0, 0, .28)';
   g.fillRect(0, 0, W, H);
@@ -351,7 +377,7 @@ function ring(doc: Document, el: HTMLCanvasElement, o: Outline, color: string) {
   line.height = H;
   const lg = line.getContext('2d');
   if (lg) {
-    const t = 2 * dpr;
+    const t = style.line * dpr;
     for (let i = 0; i < 16; i++) {
       const a = (i / 16) * Math.PI * 2;
       lg.drawImage(o.mask, Math.cos(a) * t, Math.sin(a) * t, W, H);
@@ -362,11 +388,29 @@ function ring(doc: Document, el: HTMLCanvasElement, o: Outline, color: string) {
   }
   g.globalCompositeOperation = 'source-over';
   g.drawImage(line, 0, 0);
-  // Keep only the ring: the object itself stays exactly as the game draws it.
+  // Keep only the ring: the object itself stays exactly as the game draws it — except your pick and the hover, which
+  // get a light tint of the colour over the shape (2026-10-19: the ring alone round a small far object was lost).
   g.globalCompositeOperation = 'destination-out';
   g.drawImage(o.mask, 0, 0, W, H);
+  if (style.tint > 0) {
+    const fill = (tintCanvas ||= doc.createElement('canvas'));
+    fill.width = W;
+    fill.height = H;
+    const fg = fill.getContext('2d');
+    if (fg) {
+      fg.drawImage(o.mask, 0, 0, W, H);
+      fg.globalCompositeOperation = 'source-in';
+      fg.fillStyle = color;
+      fg.fillRect(0, 0, W, H);
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = style.tint;
+      g.drawImage(fill, 0, 0);
+      g.globalAlpha = 1;
+    }
+  }
   g.globalCompositeOperation = 'source-over';
 }
+let tintCanvas: HTMLCanvasElement | null = null;
 
 export function createHandles(doc: Document, hasLift: boolean): Handles {
   const host = doc.createElement('div');
@@ -407,6 +451,11 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   const ghostLayer = doc.createElement('div');
   const aiLayer = doc.createElement('div');
   const selLayer = doc.createElement('div');
+  const hoverLayer = doc.createElement('div');
+  aiLayer.className = 'layer ai';
+  selLayer.className = 'layer sel';
+  hoverLayer.className = 'layer hover';
+  hoverLayer.style.opacity = '.7';
   const youTag = doc.createElement('div');
   youTag.className = 'tag you';
   const aiTag = doc.createElement('div');
@@ -504,7 +553,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     menuEl.style.left = `${x}px`;
     menuEl.style.top = `${y}px`;
   };
-  root.append(ghostLayer, aiLayer, selLayer, aiTag, youTag, row, menuEl, chip, hintEl, band);
+  root.append(ghostLayer, aiLayer, hoverLayer, selLayer, aiTag, youTag, row, menuEl, chip, hintEl, band);
   shadow.append(style, root);
   (doc.body || doc.documentElement).appendChild(host);
 
@@ -513,7 +562,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   let inset: Inset = { top: 0, right: 0, bottom: 0, left: 0 };
 
   /** Fill a layer with the shape's ring, or with one box per rect; returns the box round all of it. */
-  const outline = (layer: HTMLElement, shape: Outline | null, rects: Rect[], color: string): Rect | null => {
+  const outline = (layer: HTMLElement, shape: Outline | null, rects: Rect[], color: string, style?: RingStyle): Rect | null => {
     if (shape) {
       let c = layer.firstElementChild as HTMLCanvasElement | null;
       if (!c || c.tagName !== 'CANVAS' || layer.children.length !== 1) {
@@ -522,7 +571,10 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
         c.className = 'ol';
         layer.append(c);
       }
-      ring(doc, c, shape, color);
+      // No tint over something that fills much of the view (the sky dome, the ground): the whole game turned orange
+      // when the mouse passed the sky's row (2026-10-19 photos). The ring and glow still say which.
+      const big = shape.w * shape.h > 0.3 * win.innerWidth * win.innerHeight;
+      ring(doc, c, shape, color, style && big ? { ...style, tint: 0 } : style);
       // The shape's own box (the mask has a few px of room round it).
       return { x: shape.x + 4, y: shape.y + 4, w: Math.max(0, shape.w - 8), h: Math.max(0, shape.h - 8) };
     }
@@ -698,7 +750,8 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
           b.setAttribute('role', 'menuitemradio');
           b.setAttribute('aria-checked', String(id === cur));
           if (id === cur) b.classList.add('chosen');
-          b.title = words[id]![1];
+          b.title = `${words[id]![0]} — ${words[id]![1]}`;
+          b.setAttribute('aria-label', words[id]![0]);
           b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[id]}</svg>`; // static markup only
           const t = doc.createElement('span');
           t.textContent = words[id]![0];
@@ -710,7 +763,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       const way = kind === 'axis' && turn ? turn.way : null;
       const wayIcons = { spread: turnWayIcon('spread'), inplace: TURN_WAY_ICONS.inplace };
       // One row as before (one object in 3D, the size button, 2D's turn with several); two rows in 3D with several.
-      menuEl.classList.toggle('rows', axes && !!way);
+      menuEl.classList.toggle('big', size >= 40);
       if (kind === 'scale') choices(menuEl, 'scale', SCALE_WORDS[lang] || SCALE_WORDS.en, SCALE_ICONS, current);
       else if (axes && way) {
         const top = doc.createElement('div'), sep = doc.createElement('div'), bottom = doc.createElement('div');
@@ -762,7 +815,15 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       }
     },
     selection(shape, rects, tag) {
-      tagAt(youTag, outline(selLayer, shape, rects, YOU), tag);
+      tagAt(youTag, outline(selLayer, shape, rects, YOU, RING_YOU), tag);
+    },
+    hover(shape, rects) {
+      outline(hoverLayer, shape, rects, YOU, RING_HOVER);
+    },
+    flash() {
+      selLayer.classList.remove('flash');
+      void selLayer.offsetWidth; // restart the animation
+      selLayer.classList.add('flash');
     },
     ai(shape, rects, tag) {
       tagAt(aiTag, outline(aiLayer, shape, rects, AI), tag, true);

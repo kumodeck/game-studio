@@ -19,8 +19,10 @@ import {
 } from '../contract.ts';
 import { installCore, type Core } from '../core/index.ts';
 import { adapterFromPort2D } from '../core/port2d.ts';
+import { findDomUi, uiAdapterFromPort } from '../adapters/ui/index.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
+import { startPlayAsk } from './play-ask.ts';
 import type { RulesHolder } from '../core/rules.ts';
 
 export interface BridgeOptions {
@@ -56,6 +58,10 @@ export function startBridge(opts: BridgeOptions): void {
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.
   const gameProbes: AdapterProbe[] = [];
+  // The UI seat (UI stage 1, CONTRACT.md §1.1): ports the game registered with studio.registerUI(), asked before the
+  // built-in DOM UI adapter. A separate list from the world's probes, so a UI never competes with three.js or the
+  // game's own adapter for the one world slot.
+  const uiPorts: Array<{ get: () => Port2D | null; built: StudioAdapter | null }> = [];
   // .studio/tools.js (loaded before the game) may call studio.extend() before
   // the editor exists; keep what it gave and hand it over when editing starts.
   const rules: RulesHolder = { config: null, ext: [] };
@@ -92,6 +98,9 @@ export function startBridge(opts: BridgeOptions): void {
           return built;
         },
       });
+    },
+    registerUI(port) {
+      uiPorts.push({ get: typeof port === 'function' ? port : () => port, built: null });
     },
     core,
     extend(ext: GameExtension) {
@@ -258,13 +267,18 @@ export function startBridge(opts: BridgeOptions): void {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'core', 'extend'] as const) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend'] as const) prior[k] = api[k];
     api.ready = prior.ready as () => void;
     api.attach = prior.attach as (o: Record<string, unknown>) => void;
   }
 
   if (inFrame) watchGameErrors();
-  if (!edit && inFrame) void showFileEditsInPlay();
+  // ▶ Play inside the editor: ask your AI without stopping (play-ask.ts, §3.5). Installed now, before the game's code,
+  // so the console is kept from its first line and the ask key is the first listener on the window.
+  if (!edit && inFrame) {
+    void showFileEditsInPlay();
+    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins] });
+  }
   if (!edit || !inFrame) return;
 
   const post = (msg: BridgeToShell) => {
@@ -304,6 +318,37 @@ export function startBridge(opts: BridgeOptions): void {
     }
     return null;
   };
+  /**
+   * The UI layer's adapter (UI stage 1), or null — then everything below runs exactly as before. Order: the game's
+   * registerUI() ports, then the built-in DOM UI (elements marked data-studio-key). Not for a game whose world IS
+   * the DOM (a port named 'dom', examples/dom-board): its pieces carry data-studio-key as world objects, and they
+   * stay there; elements the world already lists are skipped for any game.
+   */
+  const findUi = (world: StudioAdapter | null): StudioAdapter | null => {
+    for (const u of uiPorts) {
+      try {
+        if (u.built) return u.built;
+        const p = u.get();
+        if (p) return (u.built = uiAdapterFromPort(p, core, win));
+      } catch (e) {
+        console.warn('[studio] UI port failed:', e);
+      }
+    }
+    if (world && world.kind === 'dom') return null;
+    try {
+      const skip = () => {
+        try {
+          return new Set(world ? world.list().map((i) => i.key) : []);
+        } catch {
+          return new Set<string>();
+        }
+      };
+      return findDomUi(core, win, skip);
+    } catch (e) {
+      console.warn('[studio] DOM UI adapter failed:', e);
+      return null;
+    }
+  };
 
   core.time.firstFrame().then(async () => {
     // Engines often build the scene a little after their first frame (async
@@ -320,21 +365,26 @@ export function startBridge(opts: BridgeOptions): void {
       }
     };
     let adapter = findAdapter();
+    // The wait is the world's alone (a title shown before the 3D models load must not stop it early). One
+    // exception (UI stage 1): no world adapter at all but a UI — an HTML-only game — stops after ~1 s instead of 8.
+    let uiOnly: StudioAdapter | null = null;
     for (let i = 0; !hasObjects(adapter) && !core.time.readyCalled && i < 55; i++) {
+      if (!adapter && i >= 6 && (uiOnly = findUi(null))) break;
       post({ type: 'studio:core/wait', reason: adapter ? 'no-objects' : 'no-adapter' });
       core.time.thaw();
       await new Promise((r) => win.setTimeout(r, 150));
       adapter = findAdapter();
     }
     core.time.freeze();
-    if (!adapter) {
+    const ui = adapter ? findUi(adapter) : uiOnly || findUi(null);
+    if (!adapter && !ui) {
       // Report "no adapter" now; a found adapter is checked by the editor
       // right after begin(), when 3D adapters have their edit camera.
       post({ type: 'studio:core/check', result: await runSelfCheck(null, core, win) });
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, core, win, post, rules, tools: pendingTools.splice(0) });
+    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0) });
     editorRef = editor;
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.
@@ -342,14 +392,19 @@ export function startBridge(opts: BridgeOptions): void {
     // under(x, y): the object right under a point of the game (radius 0: no finger slack), or null. Tests use it to
     // choose something to tap that nothing stands in front of (W1 merge 2026-10-17: in test/web-demo the earlier
     // visits' saves had moved a sailboat in front of the small sea stack, and the tap rightly picked the boat).
-    const found = editor.driven;
+    // The layer being edited now (UI stage 1: `layer()` says which; the world's unless switched).
+    const ed = editor;
+    const found = () => ed.driven;
     Object.defineProperty(api, '_debug', {
-      value: Object.freeze({ anchor: (k: string) => found.anchor(k), list: () => found.list(), view: () => found.view.state(), foot: (k: string) => found.foot?.(k) ?? null,
-        middle: (k: string) => found.middle?.(k) ?? null,
-        under: (x: number, y: number) => { try { return found.pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
+      value: Object.freeze({ anchor: (k: string) => found().anchor(k), list: () => found().list(), view: () => found().view.state(), foot: (k: string) => found().foot?.(k) ?? null,
+        middle: (k: string) => found().middle?.(k) ?? null, layer: () => ed.layer(),
+        // Snap to surfaces (test/studio-snap-surface.browser.mjs): bottom / surface heights, and a scene point on screen.
+        rest: (k: string) => found().rest?.(k) ?? null, toScreen: (p: number[]) => found().toScreen?.(p) ?? null,
+        under: (x: number, y: number) => { try { return found().pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
       enumerable: false,
     });
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: false, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
+    // core/ready (with `drop` for snap to surfaces, and the layers for UI stage 1): editor.ts ready().
+    editor.announce();
     for (const m of queue.splice(0)) editor.handle(m);
   });
 }

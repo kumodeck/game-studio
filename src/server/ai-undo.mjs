@@ -206,7 +206,9 @@ async function ensureParents(rootReal, rel) {
       if (!st.isDirectory()) return null;
     } catch (e) {
       if (e.code !== 'ENOENT') return null;
-      await fs.mkdir(dir);
+      // Made at the same moment by another copy (the race of e2e-016, files.mjs ensureRealDir): a real folder is fine.
+      const made = await fs.mkdir(dir).then(() => true, async (m) => m.code === 'EEXIST' && (await fs.lstat(dir)).isDirectory());
+      if (!made) return null;
     }
   }
   return dir;

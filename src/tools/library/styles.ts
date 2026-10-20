@@ -23,6 +23,7 @@ padding:10px;background:var(--gsl-bg);color:var(--gsl-fg);font:13px/1.4 system-u
 .gsl-btn:disabled{opacity:.5;cursor:default}
 .gsl-primary{background:var(--gsl-accent);border-color:var(--gsl-accent);color:#fff}
 .gsl-chips{display:flex;gap:6px;flex-wrap:wrap}
+.gsl-more,.gsl-more-menu{display:none}
 .gsl-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--gsl-line);border-radius:999px;background:var(--gsl-card);color:inherit;font:inherit;cursor:pointer}
 .gsl-chip[aria-pressed=true]{border-color:var(--gsl-accent);box-shadow:inset 0 0 0 1px var(--gsl-accent)}
 .gsl-chip b{font-variant-numeric:tabular-nums}

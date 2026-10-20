@@ -41,12 +41,14 @@ app.stage.addChild(backdrop.back, backdrop.bank, ...objects.back, backdrop.shaft
 await applyPlacement(app.stage, './placement.json');
 
 // ------------------------------------------------------------------ fit the 1280×800 world to any window
-// Landscape: the whole world, centred. Portrait phones: zoom in on the middle (the gate, the head, the lantern)
+// Landscape: the whole world, centred. Portrait phones: zoom in on the middle (the gate, the urn, the lantern)
 // and put the waterline a little below the middle, so the reflection has room.
 function fit() {
   const w = app.screen.width, h = app.screen.height;
   let s = Math.min(w / W, h / H);
-  if (w < h) s = Math.max(s, w / (W * 0.55));
+  // 0.5 = half the world's width across a portrait screen (the gate, the urn, the pillars, the lantern), so the urn is
+  // 30 pt or more on a 390 pt phone (the second design review's ⑩, 2026-10-19; 0.55 left it 29 pt wide).
+  if (w < h) s = Math.max(s, w / (W * 0.5));
   const x = (w - W * s) / 2, y = w < h ? h * 0.56 - WATER * s : (h - H * s) / 2;
   app.stage.scale.set(s);
   app.stage.position.set(x, y);

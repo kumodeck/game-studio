@@ -16,12 +16,14 @@ import {
   isStudioMessage,
   type BridgeToShell,
   type Dim,
+  type EditLayer,
   type FlyKey,
   type GameConfig,
   type Inset,
   type GameToolInfo,
   type Item,
   type Lang,
+  type PlacementFile,
   type Pose,
   type SelfCheckResult,
   type ShellContext,
@@ -46,9 +48,11 @@ import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
 import { h, safeImageSrc } from './dom.ts';
 import { detectLang, setExtraText, translate } from './i18n.ts';
-import { AI_STEPS, NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
+import { NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
 import { statusCovers } from '../schema/handoff.mjs';
 import { aiBusy, aiPhase, reloadDecision, type AiPhase } from './ai-flow.ts';
+import { askView as questionView } from './ai-ask.ts';
+import { playLine, playWords } from './play-ask.ts';
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
@@ -59,12 +63,15 @@ import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, type Change, type UndoEntry } from './undo.ts';
 import { copyKey, groupLayerMoves, groupLayerPossible, sameKind } from './edit-ops.ts';
-import { displayName } from './names.ts';
+import { displayName, forgetNames, noteItems, useNameLang } from './names.ts';
 import { keyOf, tipText } from './keymap.ts';
 import { installTooltips } from './tooltip.ts';
 import { createShortcutSheet } from './shortcuts.ts';
 import { createContextMenu, type MenuEntry } from './context-menu.ts';
 import { contextRows, type CtxPlace } from './context-rows.ts';
+import { bigChanges, createSafeSave } from './safe-save.ts';
+import { createLayerSwitch } from './layer-switch.ts';
+import { uiAsPlacement, uiEntries, withUi } from './ui-layer.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
 
@@ -99,6 +106,7 @@ const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userA
 
 export function start(host: StudioHost) {
   let lang: Lang = detectLang(location.search, navigator.language || 'en');
+  useNameLang(() => lang);
   const t = (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
 
   // ----- state -----
@@ -108,8 +116,27 @@ export function start(host: StudioHost) {
   let bridgeAlive = false;
   let editing = false;
   let dim: Dim = '3d';
+  // UI stage 1 (2026-10-19): the game's layers when it has a UI (core/ready `layers`; null = no UI — the editor is
+  // exactly as before), the one edited now, and the world's own dim (`dim` is the edited layer's: '2d' on the UI).
+  // `worldItems` / `uiItems`: each layer's last list (`items` is the edited one's). `uiSeen`: the UI's list came at
+  // least once; until then the saved file's `ui` (`fileUi`) is written back as it was (fileNow).
+  let editLayers: EditLayer[] | null = null;
+  let editLayer: EditLayer = 'world';
+  let worldDim: Dim = '3d';
+  let worldItems: Item[] = [];
+  let uiItems: Item[] = [];
+  let uiSeen = false;
+  let fileUi: PlacementFile['ui'];
+  // The game's UI shown (faded) while the world is edited: the eye next to World | UI, ⇧U, ⌘K (layer-switch.ts).
+  // Hidden by default (a try of the editor, 2026-10-20, "the UI is always there, in the way"); kept for this visit only, so every
+  // opening starts with the world clear. A new game page (reload, Play and back) starts hidden in the bridge, so
+  // core/ready sends it again when on.
+  let uiPeek = false;
+  let fileUiView: PlacementFile['uiView'];
   /** The edit camera can go up / down (core/ready `rise`: 3D adapters with view.rise). */
   let canRise = false;
+  // Drop to floor (End): the 3D adapter can set things on the surface below (snap to surfaces, 2026-10-19).
+  let canDrop = false;
   /** It can fly with W A S D (core/ready `fly`: 3D adapters with view.fly; camera-wasd 2026-10-18). */
   let canFly = false;
   let adapterInfo = '';
@@ -164,8 +191,13 @@ export function start(host: StudioHost) {
   const thumbs = new Map<string, string>();
   // The last raw picture the game sent per object (before cropping, thumb-fit.ts).
   const thumbAsked = new Map<string, string>();
-  const model = new PlacementModel();
+  // One model per layer (ui-layer.ts says why the UI's is a PlacementModel too); `model` is the edited layer's, so
+  // every move, undo and card below works on whichever layer is on.
+  const worldModel = new PlacementModel();
+  const uiModel = new PlacementModel();
+  let model = worldModel;
   const undo = new UndoStack();
+  undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
   const listeners = new Map<string, Set<(m: BridgeToShell) => void>>();
   let placementRestored = false;
   // itemsSeen: the game has answered with its object list at least once. Before
@@ -228,6 +260,9 @@ export function start(host: StudioHost) {
   let aiMarks = new Map<string, 'moved' | 'added'>();
   // The marks as sent to the game (again on every edit start: a reload makes a new game page).
   let aiMarksMsg: { keys: string[]; label?: string } = { keys: [] };
+  // What was last sent as marks (sendMarks), and whether the line showed the AI's question (the ask field answers it).
+  let askLit = '';
+  let wasAsking = false;
   let aiGone = 0;
   // Files per object for the card's "Assets: …" line, asked once per game load.
   const filesCache = new Map<string, Promise<Array<{ path: string; name: string; src?: string }>>>();
@@ -314,27 +349,69 @@ export function start(host: StudioHost) {
   // the ⌘K rows, and phones showed Undo only once there was something to undo (Redo never): a button that comes
   // and goes moves its neighbours, and a person who does not know ⌘Z had no way to find it. Tooltips name what
   // they would change and the key ("Undo: move lighthouse  ⌘Z"). Phone: 44 × 44.
-  // "✓ Saved" sits right after Save, in the slot Save leaves, and keeps Save's
-  // width (renderButtons): nothing next to it moves when Save goes away.
-  // WHY (web demo bug, 2026-10-16): it used to sit left of Undo, so on phones
-  // Save vanished and Undo slid right into the spot under the finger. A second
-  // tap on "Save" (people tap again when the first one seems to do little)
-  // pressed Undo: the object jumped back, "Save · 1" came back, and the next
-  // draft write kept the undone place — "saving does not work".
-  // Order since the basics pass: Save / ✓ Saved, then Undo, Redo. The bar's right group is aligned to the right, so
-  // whatever comes and goes must be LEFT of what stays: Save appearing with the first change grows to the left and
-  // Undo / Redo never move (with Undo first, the first change pushed Undo 80 px left under the mouse). And with the
-  // "✓ Saved" slot keeping Save's width, a second tap on Save still lands on Save's place, never on Undo.
+  // "✓ Saved" sits LEFT of Undo / Redo: the bar's right group is aligned to the right, so whatever comes and goes
+  // must be left of what stays (with Undo first, the first change pushed Undo 80 px left under the mouse).
+  // History: Save itself was here until 2026-10-20 (it moved into the game, saveFab below). A web demo bug of
+  // 2026-10-16 is why nothing may slide under the finger after Save: Save vanished, Undo slid into its spot, and a
+  // second tap on "Save" pressed Undo — "saving does not work". The Save in the game keeps its place for a moment
+  // after the press for the same reason (FAB_DONE_MS).
+  // Save in the game (a try of the editor, 2026-10-20: "people won't notice they have to press Save — show a Save button in the
+  // game view once something changed, bottom right, in a colour that stands out"). It was a quiet grey "Save · 3" in
+  // the top bar, beside Undo: out of the eye's way while the hand is on the game. Now there is ONE Save, the one in
+  // the game (a second one up top said the same thing twice); the top bar keeps only "✓ Saved" after it.
+  //   - shown only while something is not saved: "Save · 3  ⌘S"; pressing it = Save as before (handOff: the big
+  //     changes said in words first, then placement.json to the AI); in the web demo the same (saved in the browser);
+  //   - colour: the SOLID (white on dark, black on light — Play's and send's), not a new hue. Orange is the pick and
+  //     violet the AI (shell.css rule 2); a blue or green Save would be a third meaning to learn. The solid is the
+  //     strongest contrast the editor has, and over a game it reads at once in both themes;
+  //   - place: PC — the ask bar's row, at the game's right edge (the dock keeps room for it on both sides, shell.css,
+  //     so the bar never moves when it comes); the camera ↑↓ sit above that row. Phone / side window — the right
+  //     edge, just over whatever covers the game's foot (the bar, the card, the list sheet), and the camera ↑↓ go
+  //     above it (sendInset);
+  //   - pressed: "✓ Saved" in its place for a moment (FAB_DONE_MS), then gone. A second tap (people tap again when
+  //     the first seems to do little) lands on it, not on the game under it.
+  const saveFab = mk(saveBtns, 'save', () => {
+    if (saveFab.dataset.state === 'done') return;
+    void handOff();
+  }, { class: 'save-fab', hidden: true, dataset: { action: 'save', part: 'save-fab' } });
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
-    mk(saveBtns, 'save', () => void handOff()), saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
+    saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
   // Is the AI there? Grey until it writes back in this session, green after,
   // violet while it works. (The editor cannot see the AI's window; this is
   // only what the AI told it, so it never claims more.)
   const peer = h('span', { class: 'peer', dataset: { part: 'peer' } }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
   // Play is the only white button on screen, so it is never looked for.
   const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  // The side window next to a chat (a try on 2026-10-19: "it's hard to use from the sidebar"): one quiet icon at the right of
+  // the top bar opens this same editor in a large window — the link with its pass (host.largeLink: the server's pass
+  // is a cookie of THIS browser, a bare location.href in another browser got "Missing pass"), plus this page's own
+  // query (?ui=off …). Asking the AI and saving work there as here: it is the same server and folder. Shown only in
+  // the side window (shell.css [data-fit="side"]): a phone has no larger window, a PC already is one.
+  // The link is fetched on the press and handed straight to window.open (the press's activation lasts the fetch);
+  // nothing keeps it. A window that could not open → the link is copied, and one line says so.
+  const openLarge = async () => {
+    const link = (host.largeLink ? await host.largeLink().catch(() => null) : null) || location.href;
+    const u = new URL(link, location.href);
+    for (const [k, v] of new URLSearchParams(location.search)) if (k !== 't' && !u.searchParams.has(k)) u.searchParams.set(k, v);
+    const w = window.open(u.href, '_blank');
+    if (w) {
+      try {
+        w.opener = null;
+      } catch {
+        /* another origin's window: nothing to cut */
+      }
+      showToast(t('large.opened'), 5000);
+      return;
+    }
+    const copied = await navigator.clipboard?.writeText(u.href).then(() => true, () => false);
+    showToast(t(copied ? 'large.copied' : 'large.failed'), 6000);
+  };
+  const largeBtn = btn('open-large', () => void openLarge(), { class: 'icon-btn large-btn' });
   // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, host.offline ? null : peer, topActions));
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, host.offline ? null : peer, largeBtn, topActions));
+  // World | UI (UI stage 1, layer-switch.ts): the top bar's middle on PC, over the game on a phone (renderAll).
+  const layerSwitch = createLayerSwitch((l) => setEditLayer(l), () => setUiPeek(!uiPeek));
+  layerSwitch.el.hidden = true;
   // The column's foot: "✦ Ask your AI to name them  1" and "⌘K All actions".
   const noNameSlot = h('div', { class: 'noname-slot' });
   // Phone: the sheet closes so the ⌘K list rises from the ask bar alone.
@@ -360,7 +437,63 @@ export function start(host: StudioHost) {
   // (Plan 1's "Grid" button that sat here is gone with the objects' shelf, "one Library" 2026-10-18: Multi-select is
   // back in the head, the Library is the switch's other side.)
   const headTools = h('div', { class: 'side-head-tools' }, sheetMore);
-  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, h('div', { class: 'side-head' }, tabs, headTools), status, panel,
+  // The side window's list sheet opens LOW — about four rows, the game keeps at least half the window above it
+  // (a try on 2026-10-19: the game was the top quarter, the picked object a speck) — and this grip at its top pulls it up
+  // (and back down) for a longer list. A click on it switches between low and tall. Phones keep their sheet as it
+  // was (shell.css shows the grip only for [data-fit="side"]; the phone draws the same bar as .side::before).
+  // The height lives in --studio-sheet-h on the shell; the new inset is sent when the drag ends, so the view slides
+  // the picked object over the sheet once, not on every pixel of the drag.
+  const sheetGrip = h('div', { class: 'sheet-grip', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', dataset: { action: 'sheet-grip' } });
+  {
+    let from: { y: number; h: number; id: number; moved: boolean } | null = null;
+    const tall = () => Math.round(window.innerHeight * 0.72);
+    const setH = (px: number | null) => {
+      if (px === null) {
+        app.style.removeProperty('--studio-sheet-h');
+        delete app.dataset.pull;
+      } else {
+        app.style.setProperty('--studio-sheet-h', `${Math.round(px)}px`);
+        app.dataset.pull = 'up';
+      }
+    };
+    sheetGrip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      from = { y: e.clientY, h: side.offsetHeight, id: e.pointerId, moved: false };
+      sheetGrip.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    sheetGrip.addEventListener('pointermove', (e) => {
+      if (!from || e.pointerId !== from.id) return;
+      const dy = from.y - e.clientY;
+      if (!from.moved && Math.abs(dy) < 4) return;
+      from.moved = true;
+      // (CSS clamps it: never under the low sheet, never over the top bar.)
+      setH(from.h + dy);
+    });
+    const end = (e: PointerEvent) => {
+      if (!from || e.pointerId !== from.id) return;
+      const f = from;
+      from = null;
+      if (!f.moved) setH(app.dataset.pull === 'up' ? null : tall());
+      // Dragged down to the low sheet (CSS held it there): the low sheet again, which follows the window's size.
+      else if (side.offsetHeight > parseFloat(app.style.getPropertyValue('--studio-sheet-h')) + 2) setH(null);
+      requestAnimationFrame(() => {
+        sendInset();
+        thumbsSoon(false);
+      });
+    };
+    sheetGrip.addEventListener('pointerup', end);
+    sheetGrip.addEventListener('pointercancel', end);
+    sheetGrip.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      setH(e.key === 'ArrowDown' || (e.key !== 'ArrowUp' && app.dataset.pull === 'up') ? null : tall());
+      requestAnimationFrame(() => sendInset());
+    });
+  }
+  // (Named: the grip is the column's first child now, and renderAll puts the Scene | Library switch back in here.)
+  const sideHead = h('div', { class: 'side-head' }, tabs, headTools);
+  const side = h('aside', { class: 'side', dataset: { part: 'side' } }, sheetGrip, sideHead, status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
   // Phone: the list opens from the ask bar's left end, as a sheet from the bottom.
   const sheetBtn = btn('sheet', () => {
@@ -385,7 +518,7 @@ export function start(host: StudioHost) {
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
   const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, saveFab);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
@@ -397,6 +530,7 @@ export function start(host: StudioHost) {
     t: (k) => t(k),
     mac: isMac,
     dim: () => dim,
+    hasUi: () => !!editLayers && editLayers.length > 1,
     changed: (on) => {
       keysScrim.hidden = !on;
       app.dataset.keys = on ? 'open' : 'closed';
@@ -411,6 +545,8 @@ export function start(host: StudioHost) {
     phone: () => phone(),
     changed: (on, place) => {
       app.dataset.menu = on ? place || 'open' : 'closed';
+      // The phone's camera ↑↓ step aside while a menu is up (sendInset).
+      sendInset();
     },
   });
   app.append(ctxMenu.catcher, ctxMenu.el);
@@ -452,7 +588,7 @@ export function start(host: StudioHost) {
     dragDone();
     if (type === DRAG_OBJECT) {
       // The dropped tile's kind, picked or not (a drag is about what is in the hand).
-      if (items.some((i) => i.key === v && i.movable !== false)) addToScene([v]);
+      if (items.some((i) => i.key === v && copyable(i))) addToScene([v]);
     } else if (v) {
       const p = libraryPickedFiles();
       fileUse.add?.(p.includes(v) ? p : [v]);
@@ -479,9 +615,16 @@ export function start(host: StudioHost) {
   new MutationObserver(updateCaption).observe(caption, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
 
   const phone = () => window.innerWidth <= UI.phoneMaxWidth;
+  // The side window next to a chat (the Claude app's browser pane, ~360–480 wide): the phone layout, but a desktop
+  // window driven by a mouse, under the chat app's own toolbar at its foot. Told from a phone by the pointer, not
+  // the size (a 400×900 pane and a 390×844 phone are the same size). It gets the mouse's sizes (rows 32, strip 28
+  // instead of a finger's 44), a lower list sheet the game keeps half the window over, a grip to pull the sheet up,
+  // its 48 px foot left to the chat app's toolbar, and "Open large" (a try on 2026-10-19).
+  const sideWin = () => phone() && !!window.matchMedia?.('(pointer: fine)').matches;
   // Strip button size sent to the game: the person's choice, but never below
   // 44 px on a phone (a 28 px button is right for a mouse, small for a finger).
-  const handlePx = () => (phone() ? Math.max(UI.handlePxPhone, uiPrefs.handleSize) : uiPrefs.handleSize);
+  // The side window keeps the mouse's size (its strip and ↑↓ took a finger's 44 px over a game 400 px wide).
+  const handlePx = () => (phone() && !sideWin() ? Math.max(UI.handlePxPhone, uiPrefs.handleSize) : uiPrefs.handleSize);
   // What the floating panels cover, so the tool strip and "bring into view" stay clear of them.
   let insetSent = '';
   const sendInset = () => {
@@ -498,8 +641,36 @@ export function start(host: StudioHost) {
     }
     // A phone's list sheet, and its Assets sheet, cover the lower part of the game.
     // (Its final height, not its rect: it may still be sliding up.)
-    if (phone() && (sheetOpen || page !== 'tool') && !playing) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - (window.innerHeight - side.offsetHeight) + 8));
+    // (The sheet's own gap to the window's foot: 8, 48 in the side window.)
+    const sideFoot = parseFloat(getComputedStyle(side).bottom) || 8;
+    if (phone() && (sheetOpen || page !== 'tool') && !playing) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - (window.innerHeight - sideFoot - side.offsetHeight) + 8));
     if (phone() && tool === 'library' && !assetsPage.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - assetsPage.getBoundingClientRect().top));
+    // Phone: the camera's ↑↓ only with nothing else up (the second design review's ⑧, 2026-10-19). With the card, a
+    // sheet (the list, the Library, Look / Ideas) or a menu up they were a third thing stacked at the foot: the tool's
+    // hint line cut ↑, the card pushed them 72 px up, and they floated over the Library. Gone then, back after; PC keeps
+    // them (a 28 px box in the corner that nothing covers).
+    if (phone()) {
+      const cardUp = !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl);
+      const sheetUp = (sheetOpen || page !== 'tool') && !playing;
+      const libraryUp = tool === 'library' && !assetsPage.hidden;
+      const menuUp = !!app.dataset.menu && app.dataset.menu !== 'closed';
+      if (cardUp || sheetUp || libraryUp || menuUp) inset.camera = false;
+    }
+    // The Save in the game (saveFab), phone / side window: right over what covers the game's foot — the dock (the
+    // bar, the card and the AI's line over it), the list sheet, the Library — 8 px above the highest of them (CSS
+    // reads --fab-bottom). And the camera ↑↓, in the same corner, go above it while it shows (it comes with the
+    // first change, mostly with the card up, when the ↑↓ are away anyway). PC: CSS alone (the ask bar's row).
+    if (phone()) {
+      let foot = !dock.hidden && dock.offsetParent ? dock.getBoundingClientRect().top : sr.bottom;
+      if ((sheetOpen || page !== 'tool') && !playing) foot = Math.min(foot, window.innerHeight - sideFoot - side.offsetHeight);
+      if (tool === 'library' && !assetsPage.hidden) foot = Math.min(foot, assetsPage.getBoundingClientRect().top);
+      const fb = `${Math.max(8, Math.round(sr.bottom - foot + 8))}px`;
+      // Not while it says "✓ Saved": the AI's line ("saved…") rises in the dock right after the press and would carry
+      // the button up from under the finger, and a second tap would land on what slid into its place (the web demo's
+      // test caught the card's "…" there). It stays put for that moment, then goes.
+      if (saveFab.dataset.state !== 'done' && app.style.getPropertyValue('--fab-bottom') !== fb) app.style.setProperty('--fab-bottom', fb);
+      if (!saveFab.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - foot + 8 + (saveFab.offsetHeight || 44) + 8));
+    }
     const card = placementPanel.cardEl;
     if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
       const cr = card.getBoundingClientRect();
@@ -517,6 +688,8 @@ export function start(host: StudioHost) {
   // ----- tools -----
   const placementPanel = createPlacementPanel({
     t,
+    // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
+    hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
     items: () => items,
     selected: () => selected,
     pose: (k) => model.pose(k),
@@ -559,11 +732,14 @@ export function start(host: StudioHost) {
       if (!undo.push(poseChange(k, from, pose))) model.moved(k, from);
       applyPose(k, pose);
     },
-    ask: (keys, text, files) => askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}) }),
+    // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
+    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}) })),
+    answering: () => answering(),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
     assets: () => (libraryShown() ? filePick : []),
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
+    unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
   });
@@ -733,6 +909,11 @@ export function start(host: StudioHost) {
 
   // ----- the ⌘K list (palette.ts) -----
   const askInput = placementPanel.askEl.querySelector('input') as HTMLInputElement;
+  // A short notice shown in the field's place (showToast). Typing (or a click into the field) ends it at once.
+  const askNews = h('span', { class: 'ask-news', role: 'status', 'aria-live': 'polite', hidden: true });
+  askInput.addEventListener('input', hideNews);
+  askInput.addEventListener('focus', hideNews);
+  new ResizeObserver(() => placeNews()).observe(askInput);
   const palette = createPalette({
     t,
     input: askInput,
@@ -750,35 +931,16 @@ export function start(host: StudioHost) {
   function paletteRows(): PaletteRow[] {
     const rows: PaletteRow[] = [];
     const keys = group.length > 1 ? group.slice() : selected ? [selected] : [];
-    const first = items.find((i) => i.key === keys[0]);
-    const about = keys.length > 1 ? t('ops.manyShort', { n: keys.length }) : first && displayName(first, t);
-    // Ask your AI: examples for what is picked, then the AI's own steps.
-    const ask = (text: string) => () => void askAi({ kind: 'ask', text, objects: requestObjects(keys) }).then((ok) => ok && placementPanel.renderAsk());
-    if (about) {
-      for (const ex of ['pal.ex.row', 'pal.ex.glow']) {
-        const text = t(ex, { name: about });
-        rows.push({ id: ex, section: 'ask', label: text, icon: 'spark', run: ask(text) });
-      }
-    } else {
-      const text = t('pal.ex.night');
-      rows.push({ id: 'pal.ex.night', section: 'ask', label: text, icon: 'spark', run: ask(text) });
-    }
-    const unnamed = items.filter((i) => i.unstable).map((i) => i.key);
-    if (unnamed.length) {
-      rows.push({ id: 'name', section: 'ask', label: t('pal.ex.name'), icon: 'spark', hint: String(unnamed.length), data: { action: 'pal-name' },
-        run: () => void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) });
-    }
-    if (uiPrefs.show.next) for (const id of AI_STEPS) rows.push({ id: `step-${id}`, section: 'ask', label: t(`next.${id}`), icon: 'spark', words: t(`next.${id}.desc`), data: { step: id }, run: () => openNext(id) });
+    // ⌘K / "…" opens on the game's own actions (design review 2, item ④ — asked for in review 1 too): Play, then what
+    // works on the pick (Duplicate, Delete, Copy, Show in Library). Gone from its top: the made-up sentences "Add 3
+    // more of … in a row" / "Make … glow" (the AI is reached by typing: then the first row is "Ask your AI: “…”", see
+    // palette.ts) and "Fit the editor / Change how the editor looks / Add a tool" (they live on the Ideas page,
+    // "Ideas for your AI…" below). Asking to name the unnamed objects stays — a real action — after the actions.
     // Actions, with their keys.
     const mac = isMac();
     const act = (id: string, label: string, ic: string, run: () => void, hint?: string, words?: string) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), keyOf('save', mac), 'save 保存');
     act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', togglePlay, 'P', t('btn.play'));
-    if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
-    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
-    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
-    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
     if (keys.length && editing) {
       act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
       act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'), 'delete remove 削除');
@@ -787,13 +949,24 @@ export function start(host: StudioHost) {
       act('clip-copy', t('keys.copy'), 'copy', clipCopy, keyOf('copy', mac), 'copy コピー');
     }
     if (clip.length && editing) act('paste', t('keys.paste'), 'copy', clipPaste, keyOf('paste', mac), 'paste 貼り付け');
-    if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
     // The pick in the Library, and its file there ("use the Library", 2026-10-18); in the Library, Add to scene.
     if (keys.length && libraryTool && !libraryShown()) {
       act('show-in-library', t('pal.showInLibrary'), 'grid', () => showInLibrary(), undefined, t('pal.libraryUseWords'));
       const src = keys.length === 1 ? usesNow?.get(keys[0]!) || [] : [];
       if (src[0]) act('show-file-in-library', t('pal.showFileInLibrary', { file: src[0].slice(src[0].lastIndexOf('/') + 1) }), 'grid', () => openAsset(src[0]!, ctx), undefined, t('pal.libraryUseWords'));
     }
+    if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), keyOf('save', mac), 'save 保存');
+    if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
+    else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
+    // World ⇄ UI (UI stage 1): only in a game with both.
+    if (editLayers && editLayers.length > 1 && editing && !playing) {
+      const to: EditLayer = editLayer === 'ui' ? 'world' : 'ui';
+      act('edit-layer', t(`uiLayer.pal.${to}`), to === 'ui' ? 'uiLayer' : 'cube', () => setEditLayer(to), keyOf('layer', mac), 'ui hud title layer world UI ワールド 画面');
+      if (editLayer === 'world') act('ui-peek', t(uiPeek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show'), uiPeek ? 'eyeOff' : 'eye', () => setUiPeek(!uiPeek), keyOf('uiPeek', mac), 'ui hud show hide peek eye 見る 隠す 表示');
+    }
+    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
+    if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
     if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
     // The strip's tools (with something picked): the chosen one is marked with a check, its key on the right.
     if (keys.length && editing) {
@@ -802,6 +975,8 @@ export function start(host: StudioHost) {
         act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, `${t('pal.tool.words')} ${keyOf(k, mac)}`);
       }
     }
+    // Drop to floor (End; snap to surfaces, 2026-10-19): what is picked, set on the surface under it.
+    if (keys.length && editing && dim === '3d' && canDrop) act('drop', t('keys.drop'), 'chevronDown', () => dropToFloor(), keyOf('drop', mac), t('pal.drop.words'));
     if (uiPrefs.show.frame) act('frame', t('btn.frame'), 'frame', () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }), 'F');
     // Back to the picture the editor opened on (3D: the game's own camera, polish pass) after looking around or
     // after the first pick's glide; one press, any time (speed pass, 2026-10-17). Always listed: 2D opens on "all".
@@ -825,6 +1000,14 @@ export function start(host: StudioHost) {
     act('settings', t('pal.look'), 'look', () => openSettings(), undefined, `${t('btn.settings')} ${t('ui.theme')} ${t('ui.lang')}`);
     act('lang', t('pal.lang'), 'globe', () => setLang(lang === 'en' ? 'ja' : 'en'), undefined, 'language 言葉 English 日本語');
     if (uiPrefs.show.next) act('next', t('pal.ideas'), 'spark', () => openNext(), undefined, t('btn.next'));
+    // Ask your AI to name what has no name (a real request, after the actions; review 2 ④).
+    const unnamed = items.filter((i) => i.unstable).map((i) => i.key);
+    if (unnamed.length) {
+      rows.push({ id: 'name', section: 'ask', label: t('pal.ex.name'), icon: 'spark', hint: String(unnamed.length), data: { action: 'pal-name' },
+        run: () => void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) });
+    }
+    // A phone's "All actions" prints no keys (no keyboard there; review 2 ④). Counts stay.
+    if (phone()) for (const r of rows) if (r.section === 'actions') r.hint = undefined;
     // With KUMODeck (optional): the same steps as the Ideas page.
     if (uiPrefs.show.next) for (const id of NEXT_STEPS) rows.push({ id: `step-${id}`, section: 'kumodeck', label: t(`next.${id}`), icon: 'arrowUp', words: t(`next.${id}.desc`), data: { step: id }, run: () => openNext(id) });
     // In the scene: found by name (only when typing).
@@ -897,13 +1080,14 @@ export function start(host: StudioHost) {
       }
     }
     const file = place === 'libFile' && o.path ? libraryFile(o.path) : null;
-    // The one picked object's files (Show its asset in Library): the objects' files as last read (usesNow).
-    const src = its.length === 1 ? usesNow?.get(its[0]!.key) || [] : [];
     const rows = contextRows(place, {
       dim, offline: !!host.offline, editing: editing && !playing,
-      picked: its.length, movable: movable.length, unnamed: its.filter((i) => i.unstable).length, anyPicked: picked.length > 0,
+      picked: its.length, movable: movable.length, unnamed: its.filter((i) => i.unstable).length, held: its.filter((i) => i.held === 'ground').length, anyPicked: picked.length > 0,
       items: items.length, clip: clip.filter((c) => items.some((i) => i.key === c)).length,
-      canUndo: undo.canUndo, canRedo: undo.canRedo, layers, users: file?.users ?? 0, exists: file?.exists, sourceFiles: src.length, compact: phone(),
+      canUndo: undo.canUndo, canRedo: undo.canRedo, layers, users: file?.users ?? 0, exists: file?.exists, compact: phone(),
+      // Drop follows the Height tool's rule (bridge/hold.ts canLift): a held ground no, a pillar the game slides yes.
+      droppable: dim === '3d' && canDrop ? its.filter((i) => i.liftable !== false && (i.movable !== false || i.held === 'game')).length : undefined,
+      ui: editLayer === 'ui' || undefined,
     });
     // A file's menu works on the picked files when the pressed one is among them ("Add 3 to scene"), else on it alone.
     const files = () => {
@@ -919,21 +1103,18 @@ export function start(host: StudioHost) {
       copy: () => clipCopy(),
       paste: () => clipPaste(),
       remove: () => removeSelection(),
-      undo: () => doUndo(),
-      redo: () => doRedo(),
       selectAll: () => items.length && selectMany(items.map((i) => i.key), selected ?? items[0]!.key),
       deselect: () => selectObject(null),
       frame: () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }),
       home: () => goHome(),
-      details: () => libraryAct(place === 'libFile' ? 'open' : 'detail', o.path),
       showInGame: () => showPickInGame(),
-      showUsers: () => libraryAct('users', o.path),
       replace: () => libraryAct('replace', o.path),
       addToScene: () => addToScene(),
       addFile: () => fileUse.add?.(files()),
       askFile: () => fileUse.ask?.(files()),
       showInLibrary: () => showInLibrary(),
-      showFileInLibrary: () => src[0] && openAsset(src[0], ctx),
+      drop: () => dropToFloor(),
+      unhold: () => send({ type: 'studio:placement/unhold', keys: its.filter((i) => i.held === 'ground').map((i) => i.key) }),
     };
     for (const op of ['forward', 'backward', 'toFront', 'toBack'] as LayerOp[]) {
       run[`layer-${op}`] = () => (group.length > 1 ? reorderGroup(op) : selected && reorder(selected, op));
@@ -947,7 +1128,15 @@ export function start(host: StudioHost) {
       run: run[r.id] ?? (() => undefined),
     }));
     if (!entries.length) return;
-    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+    // A phone: the menu never covers the card or the ask box (review 2 ②): its bottom stays 8 px above the higher of
+    // the two (the card sits on the ask bar when something is picked).
+    let floor: number | undefined;
+    if (phone()) {
+      const card = placementPanel.cardEl;
+      const tops = [bar, card.hidden || !card.isConnected ? null : card].filter((e): e is HTMLElement => !!e && !!e.offsetParent).map((e) => e.getBoundingClientRect().top).filter((v) => v > 0);
+      if (tops.length) floor = Math.min(...tops);
+    }
+    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, floor, label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
   }
 
   /** What a press at this element of the editor page opens: a list row, a Library tile, or the list's empty part. */
@@ -1082,7 +1271,7 @@ export function start(host: StudioHost) {
     if (clip.length) showToast(t('keys.copied', { name: namesOf(clip), key: keyOf('paste', isMac()) }), 2500);
   }
   function clipPaste() {
-    const keys = clip.filter((c) => items.some((i) => i.key === c && i.movable !== false));
+    const keys = clip.filter((c) => items.some((i) => i.key === c && copyable(i)));
     if (keys.length) copySelection(keys);
     else showToast(t(clip.length ? 'keys.pasteGone' : 'keys.pasteEmpty', { key: keyOf('copy', isMac()) }), 2500);
   }
@@ -1092,8 +1281,15 @@ export function start(host: StudioHost) {
     return it ? displayName(it, t) : t('undo.n', { n: keys.length });
   };
   /** What the actions work on: the selection (locked objects left out). */
+  /**
+   * Can be copied / deleted / pasted: not locked by the game's rules. An object the game moves by itself (Item.held
+   * 'game', bridge/hold.ts) has no move tool but is still a thing to copy or delete (a hands-on try, 2026-10-19).
+   */
+  function copyable(i: Item | undefined): boolean {
+    return !!i && (i.movable !== false || i.held === 'game');
+  }
   const targets = () => (group.length ? group : selected ? [selected] : [])
-    .filter((k) => items.find((i) => i.key === k)?.movable !== false);
+    .filter((k) => copyable(items.find((i) => i.key === k)));
 
   function sendSelection(focus = false) {
     send({ type: 'studio:placement/select', key: selected, focus, keys: group.length > 1 ? group.slice() : undefined });
@@ -1133,7 +1329,8 @@ export function start(host: StudioHost) {
    * middle of what the camera sees (the Library's "Add to scene"). Returns the new copies' keys.
    */
   function copySelection(keys = targets(), at?: 'view'): string[] {
-    if (!keys.length || !editing) return [];
+    // The UI layer moves and resizes only (UI stage 1; new UI is placed in stage 3).
+    if (!keys.length || !editing || editLayer === 'ui') return [];
     const taken = takenKeys();
     const reqs = keys.map((from) => {
       const it = items.find((i) => i.key === from);
@@ -1148,7 +1345,7 @@ export function start(host: StudioHost) {
 
   function removeSelection() {
     const keys = targets();
-    if (!keys.length || !editing) return;
+    if (!keys.length || !editing || editLayer === 'ui') return;
     for (const k of keys) model.remove(k);
     undo.push({ changes: keys.map((k) => ({ kind: 'remove', key: k })) });
     group = [];
@@ -1160,6 +1357,10 @@ export function start(host: StudioHost) {
 
   /** Apply one undo entry backwards (undo) or forwards (redo). */
   function applyEntry(e: UndoEntry, dir: 'undo' | 'redo') {
+    // A step of the other layer (UI stage 1): that layer first, so what goes back is seen. The bridge takes the
+    // switch before the poses that follow (messages keep their order).
+    const want: EditLayer = e.layer === 'ui' ? 'ui' : 'world';
+    if (editLayers && want !== editLayer) setEditLayer(want);
     const list = dir === 'undo' ? e.changes.slice().reverse() : e.changes;
     const copies: Array<{ key: string; from: string; pose: Pose }> = [];
     const removes: string[] = [];
@@ -1263,6 +1464,8 @@ export function start(host: StudioHost) {
   }
 
   function switchTool(id: ToolId) {
+    // The Library is the world's objects and files: opening it from the UI layer goes back to the world (UI stage 1).
+    if (id === 'library' && editLayer === 'ui') setEditLayer('world');
     page = 'tool';
     if (id === tool && (mounted || id === 'placement')) {
       renderAll();
@@ -1364,7 +1567,11 @@ export function start(host: StudioHost) {
       const it = items.find((i) => i.key === k);
       // The files it is drawn with (the Library's "Asset" row), so "make this enemy the boss" names its model too.
       const files = usesNow?.get(k);
-      return { key: k, label: it?.label, pose: model.pose(k), unstable: it?.unstable || undefined, ...(files?.length ? { files: files.slice() } : {}) };
+      // An unnamed object's label is its tree path ("path:7"): send the name the person sees instead (names.ts, guessed
+      // from its shape, colour and place, "Black pillar by the road (left, 3rd)"), the AI's hint for the name to give it
+      // and the words the person will use for it (a hands-on try, 2026-10-19).
+      const label = it?.unstable ? displayName(it, t) : it?.label;
+      return { key: k, label, pose: model.pose(k), unstable: it?.unstable || undefined, ...(files?.length ? { files: files.slice() } : {}) };
     });
   }
 
@@ -1398,14 +1605,50 @@ export function start(host: StudioHost) {
       const keys = r.objects.map((o) => o.key);
       r = { ...r, objects: requestObjects(keys) };
     }
-    const view = r.kind === 'ask' ? askView() : undefined;
-    const res = await host.request({ ...r, lang, dim, unsaved: dirtyCount() || undefined, ...(view ? { view } : {}) }).catch((e) => ({ ok: false, error: (e as Error).message, id: undefined, at: undefined } as { ok: boolean; error?: string; id?: string; at?: number; watching?: boolean; seen?: string; undo?: boolean }));
+    const view = r.kind === 'ask' && editLayer === 'world' ? askView() : undefined;
+    const res = await host.request({ ...r, lang, dim: worldDim, unsaved: dirtyCount() || undefined, ...(view ? { view } : {}), ...(editLayer === 'ui' && r.objects?.length ? { layer: 'ui' as const } : {}) }).catch((e) => ({ ok: false, error: (e as Error).message, id: undefined, at: undefined } as { ok: boolean; error?: string; id?: string; at?: number; watching?: boolean; seen?: string; undo?: boolean }));
     if (!res.ok) {
       showToast(t('ask.fail'));
       return false;
     }
-    handedOver(r.kind, res.id, res.at, r.kind === 'ask' ? r.text : undefined, res);
+    handedOver(r.kind, res.id, res.at, r.kind === 'ask' || r.kind === 'answer' || r.kind === 'play' ? r.text : undefined, res);
     return true;
+  }
+
+  /** The AI asked something and waits: the ask field and the line's buttons answer it. */
+  function answering(): boolean {
+    return !host.offline && currentPhase() === 'asking';
+  }
+
+  /** The person's answer to the AI's question (a choice button or their own words), as a request like any other. */
+  function answerAi(text: string): Promise<boolean> {
+    const st = aiStatus;
+    const about = (st?.about ?? []).filter((k) => items.some((i) => i.key === k));
+    return askAi({ kind: 'answer', text, ...(st?.request ? { to: st.request } : {}), ...(st?.note ? { question: st.note } : {}),
+      ...(about.length ? { objects: requestObjects(about) } : {}) });
+  }
+
+  /**
+   * "Call your AI": the one thing to do when a request could not wake the AI (Codex, a closed session). Copies the
+   * one word the skill knows ("look", or its translation in ja) to paste in the AI's chat; no command, no app names.
+   */
+  async function callAi() {
+    const word = t('ai.callText');
+    const ok = await (navigator.clipboard?.writeText(word).then(() => true, () => false) ?? Promise.resolve(false));
+    showToast(ok ? t('ai.called') : t('ai.callFail'));
+  }
+
+  // The objects the AI's question is about glow in the scene (instead of the AI's change marks) while it asks.
+  function marksNow(): { keys: string[]; label?: string } {
+    const v = currentPhase() === 'asking' ? aiStatus?.about?.filter((k) => items.some((i) => i.key === k)) : undefined;
+    return v?.length ? { keys: v, label: t('ai.askTag') } : aiMarksMsg;
+  }
+  function sendMarks(force = false) {
+    const m = marksNow();
+    const sig = JSON.stringify(m);
+    if (!force && sig === askLit) return;
+    askLit = sig;
+    send({ type: 'studio:placement/marks', ...m });
   }
 
   function handedOver(kind: NonNullable<typeof pending>['kind'], id?: string, at?: number, text?: string, info?: { watching?: boolean; seen?: string; undo?: boolean }) {
@@ -1422,7 +1665,7 @@ export function start(host: StudioHost) {
       aiMarks = new Map();
       placementPanel.markRows();
       aiMarksMsg = { keys: [] };
-      send({ type: 'studio:placement/marks', keys: [] });
+      sendMarks(true);
     }
     // Offline host (browser-only demo): nobody picks the request up, so the line
     // keeps the person's whole request (cut by CSS, full text on hover) instead of 40 characters.
@@ -1459,18 +1702,42 @@ export function start(host: StudioHost) {
     if (ph === 'waiting' && pending) {
       // Hosts that cannot tell whether an AI watches (and the offline demo): the old line.
       aiLine.append(h('span', { class: 'ai-text', text: pending.text ? t('ai.waitingAsk', { text: pending.text }) : pending.kind === 'saved' ? t('ai.waitingSaved') : t('ai.waiting', { what: t(`ai.what.${pending.kind}`) }) }));
-    } else if (ph === 'nudge') {
-      aiLine.append(h('span', { class: 'ai-text', text: t('ai.nudge') }));
     } else if (ph === 'sent' || ph === 'seen') {
       two(t(ph === 'seen' ? 'ai.seen' : 'ai.sent'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
-    } else if (ph === 'away') {
-      // Nobody watches: say so at once, the one thing to do, and that nothing is lost (play test: 21 s, then a dead end).
-      two(t('ai.away'), t('ai.awaySub'));
+    } else if (ph === 'away' || ph === 'nudge') {
+      // The request could not wake the AI right now (hands-on test 2026-10-19). Not a warning and not the
+      // AI's plumbing ("isn't watching", "/arrange", "Claude Code or Codex"): one calm line that it is kept and goes in
+      // by itself, and one button if they want it sooner. In Claude Code the plugin's hooks wake the AI, so this is
+      // rare there (ai-wake.mjs).
+      two(t('ai.nudge'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
+      link('ai-call', 'spark', t('ai.call'), () => void callAi(), t('ai.callTip'));
     } else if (ph === 'received' || ph === 'working') {
       two(note ? `${note.replace(/[.…]+$/, '')}…` : t(`ai.${ph}`), covered ? asked : '');
     } else if (ph === 'asking') {
-      // The AI waits for an answer in its own window (dogfood U2): say so, and its question (two lines at most).
-      two(t('ai.asking'), note || '');
+      // The AI's question, answered here (hands-on test 2026-10-19; ai-ask.ts): the question, what it is
+      // about lit in the scene, now → after side by side, its answers as buttons; the ask field takes their own words.
+      const v = questionView(aiStatus, (k) => ({ was: model.original(k), now: model.pose(k) }), dim, { turn: t('ai.cmp.turn'), size: t('ai.cmp.size') });
+      two(note || t('ai.asking'), note ? t('ai.asking') : t('ai.askingSub'));
+      const lit = v ? v.about.filter((k) => items.some((i) => i.key === k)) : [];
+      if (v?.compare) {
+        aiLine.append(h('div', { class: 'ai-compare', dataset: { part: 'ai-compare' } },
+          h('span', { class: 'was' }, h('span', { class: 'k', text: t('ai.before') }), h('span', { class: 'v', text: v.compare.before })),
+          h('span', { class: 'arrow', 'aria-hidden': 'true', text: '→' }),
+          h('span', { class: 'now' }, h('span', { class: 'k', text: t('ai.after') }), h('span', { class: 'v', text: v.compare.after }))));
+      }
+      // The answers, then "Show it in the scene" at the end of the same row (on its own row it took a whole line in the
+      // side window and on a phone).
+      const row = h('div', { class: 'ai-choices', role: 'group', 'aria-label': t('ai.asking') },
+        ...(v?.choices ?? []).map((c, i) => h('button', { type: 'button', class: i === 0 ? 'choice primary' : 'choice', dataset: { action: 'ai-answer' }, onclick: () => void answerAi(c) }, c)));
+      if (lit.length) {
+        row.append(h('button', { type: 'button', class: 'choice icon-only', dataset: { action: 'ai-ask-show' }, title: t('ai.askShow'), 'aria-label': t('ai.askShow'),
+          onclick: () => {
+            switchTool('placement');
+            if (lit.length === 1) selectObject(lit[0]!, true);
+            else selectMany(lit, lit[0]!);
+          } }, icon('eye')));
+      }
+      if (row.childNodes.length) aiLine.append(row);
     } else if (ph === 'updating') {
       two(note || t('ai.updating'), t('ai.updating'));
     } else if (ph === 'done' || ph === 'failed') {
@@ -1508,9 +1775,40 @@ export function start(host: StudioHost) {
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
+    sendMarks();
+    // The ask field becomes the answer field while the AI asks (and goes back after).
+    if ((ph === 'asking') !== wasAsking) {
+      wasAsking = ph === 'asking';
+      placementPanel.renderAsk();
+    }
     renderPeer();
     // The whole line on hover (it is cut to one line).
     aiLine.title = aiLine.hidden ? '' : aiLine.textContent || '';
+    sendPlayLine();
+  }
+
+  // ----- ask while playing (§3.5; bridge/play-ask.ts draws it in the game page, full screen too) -----
+  // `playSince`: when this Play began; only a request made since then has a line over the game (an earlier "done"
+  // from the editor is not news to someone playing). `playSig`: the last line sent, so a poll that changes nothing
+  // sends nothing.
+  let playSince = 0;
+  let playSig = '';
+  function postGame(m: ShellToBridge) {
+    try {
+      iframe.contentWindow?.postMessage(m, gameOrigin);
+    } catch {
+      /* the frame is changing */
+    }
+  }
+  function sendPlayLine(force = false) {
+    if (!playing || host.offline) return;
+    const mine = !!pending && pending.sent >= playSince;
+    const v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
+      codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, t }) : null;
+    const sig = JSON.stringify(v);
+    if (!force && sig === playSig) return;
+    playSig = sig;
+    postGame({ type: 'studio:play/state', state: v });
   }
 
   /**
@@ -1590,6 +1888,30 @@ export function start(host: StudioHost) {
     iframe.contentWindow.postMessage(m, gameOrigin);
   }
 
+  /** Edit the world or the UI (UI stage 1): the bridge swaps the adapter and answers with that layer's list. */
+  function setEditLayer(l: EditLayer) {
+    if (!editLayers || !editLayers.includes(l) || l === editLayer || playing) return;
+    useLayer(l);
+    send({ type: 'studio:core/layer', layer: l });
+    renderAll();
+  }
+  /** Show / hide the game's UI while the world is edited (the bridge's style sheet; nothing saved). */
+  function setUiPeek(on: boolean) {
+    if (!editLayers || editLayers.length < 2) return;
+    uiPeek = on;
+    send({ type: 'studio:core/ui-peek', on });
+    renderAll();
+  }
+  /** The shell's side of a switch: that layer's model and list, nothing picked, no tool chosen. */
+  function useLayer(l: EditLayer) {
+    editLayer = l;
+    model = l === 'ui' ? uiModel : worldModel;
+    items = l === 'ui' ? uiItems : worldItems;
+    selected = null;
+    group = [];
+    stripTool = null;
+  }
+
   function applyPose(key: string, pose: Pose) {
     model.moved(key, pose);
     send({ type: 'studio:placement/pose', key, pose });
@@ -1640,7 +1962,7 @@ export function start(host: StudioHost) {
     const box = (placementPanel.el.closest('.panel') as HTMLElement | null)?.getBoundingClientRect();
     if (!box || !box.height) return;
     const keys: string[] = [];
-    for (const row of placementPanel.el.querySelectorAll<HTMLElement>('.obj[data-key]')) {
+    for (const row of placementPanel.el.querySelectorAll<HTMLElement>('.obj[data-key], .noname[data-key]')) {
       const r = row.getBoundingClientRect();
       if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
       const k = row.dataset.key!;
@@ -1720,10 +2042,21 @@ export function start(host: StudioHost) {
         if (swapping && !m.result.ok) finishSwap();
         renderStatus();
         break;
-      case 'studio:core/ready':
+      case 'studio:core/ready': {
+        // UI stage 1: which layers the game has (none listed = no UI: as before) and which one the bridge edits now.
+        // A new game page (a reload, Play and back) always starts on the world.
+        editLayers = m.layers && m.layers.length ? m.layers.slice() : null;
+        const lay: EditLayer = m.layer === 'ui' && editLayers ? 'ui' : 'world';
+        if (lay !== editLayer) useLayer(lay);
+        if (lay === 'world') worldDim = m.dim;
+        // A game that is all HTML (a UI and no world): the file says 2d with no objects (ui-layer.ts).
+        if (editLayers && !editLayers.includes('world')) worldDim = worldModel.dim = '2d';
         dim = m.dim;
         canRise = !!m.rise;
         canFly = !!m.fly;
+        canDrop = !!m.drop;
+        // A new game page starts with its UI hidden over the world: say so again when it was shown (setUiPeek).
+        if (uiPeek && editLayers && editLayers.length > 1) send({ type: 'studio:core/ui-peek', on: true });
         adapterInfo = `${m.kind}${m.version ? ' ' + m.version : ''}`;
         editing = m.editing;
         phase = 'ready';
@@ -1745,6 +2078,7 @@ export function start(host: StudioHost) {
         }
         renderAll();
         break;
+      }
       case 'studio:tool/list':
         gameTools = m.tools;
         for (const g of gameTools) {
@@ -1773,12 +2107,55 @@ export function start(host: StudioHost) {
         // Say what to do, not only what broke (polish pass 2026-10-16). Long enough to read.
         showToast(t('status.adapterError', { msg: m.message }), 8000);
         break;
+      // Ask while playing (§3.5): the game page can take a request; say whether an AI can get one (never offline).
+      case 'studio:play/hello':
+        if (playing && !host.offline) {
+          postGame({ type: 'studio:play/on', lang, words: playWords(t) });
+          sendPlayLine(true);
+        }
+        break;
+      case 'studio:play/ask':
+        if (playing && !host.offline) {
+          void askAi({ kind: 'play', text: m.text, ...(m.shot ? { shot: m.shot } : {}), ...(m.view ? { view: m.view } : {}), ...(m.near ? { near: m.near } : {}),
+            ...(m.logs ? { logs: m.logs } : {}), ...(m.fullscreen ? { fullscreen: true } : {}), ...(m.size ? { size: m.size } : {}) })
+            .then((ok) => postGame({ type: 'studio:play/sent', ok }));
+        }
+        break;
+      case 'studio:play/answer':
+        if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
+        break;
+      case 'studio:play/reload':
+        // The person chose to see the fix: the game opens again from its new code, still in Play.
+        if (playing) loadGame();
+        break;
       case 'studio:core/game-error':
         if (!gameError) gameError = { message: m.message, where: m.where };
         if (playing) showToast(t('status.gameErrorToast', { msg: m.message }), 8000);
         renderStatus();
         break;
       case 'studio:placement/items': {
+        // UI stage 1: the UI layer's list feeds its own model; nothing of the world's below (the AI's marks, copies,
+        // the frame swap) is about it. Its saved places go to the UI layer by name, whichever layer is on.
+        if (m.layer === 'ui') {
+          uiSeen = true;
+          uiItems = m.items;
+          for (const a of uiModel.setItems(m.items, '2d')) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'ui' });
+          if (editLayer === 'ui') {
+            items = m.items;
+            itemsSeen = true;
+            if (selected && !items.some((i) => i.key === selected)) selected = null;
+            group = group.filter((k) => items.some((i) => i.key === k));
+            renderAll();
+          }
+          break;
+        }
+        worldItems = m.items;
+        // The world's list while the shell has just switched to the UI (sent before the bridge got the switch): kept
+        // in the world's model only.
+        if (editLayer === 'ui') {
+          for (const a of worldModel.setItems(m.items, worldDim)) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'world' });
+          break;
+        }
         // First list after "Reload the game" (AI done): what moved or is new
         // compared with what was on screen before the reload. Raw adapter
         // poses (the game's code as the AI left it), before the model's.
@@ -1812,6 +2189,8 @@ export function start(host: StudioHost) {
         }
         items = m.items;
         itemsSeen = true;
+        // The guessed names of unnamed objects (names.ts) read from this list.
+        noteItems(items);
         // New objects (copies, the AI's change): their files are read again for the Library (or when it opens next).
         usesP = null;
         if (libraryShown()) libraryObjects.refreshUses();
@@ -1821,8 +2200,8 @@ export function start(host: StudioHost) {
           clearTimeout(usesTimer);
           usesTimer = window.setTimeout(() => void readUses().catch(() => undefined), 1200);
         }
-        if (aiMarksMsg.keys.length) send({ type: 'studio:placement/marks', ...aiMarksMsg });
-        const apply = model.setItems(items, dim);
+        if (marksNow().keys.length) sendMarks(true);
+        const apply = worldModel.setItems(items, worldDim);
         // Continue from the last save: push saved poses the game does not show.
         if (!placementRestored || apply.length) {
           placementRestored = true;
@@ -1955,7 +2334,15 @@ export function start(host: StudioHost) {
     renderButtons();
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
-  const dirtyCount = () => model.dirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
+  /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty();
+  /**
+   * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
+   * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
+   */
+  const fileNow = (): PlacementFile => withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
+    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null);
+  const dirtyCount = () => placementDirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
 
   // ----- the draft and Save (rebrand 2026-10-16, play test the same day) -----
   // Every change is written to placement.json (and library.json) as a DRAFT,
@@ -1978,7 +2365,7 @@ export function start(host: StudioHost) {
   const sigOf = (v: unknown) => JSON.stringify(v);
   const unwritten = () => {
     // The same test as keepNow(): nothing changed since the page opened = nothing to write.
-    if ((model.dirty() > 0 || written.placement !== undefined) && sigOf(model.result()) !== written.placement) return true;
+    if ((placementDirty() > 0 || written.placement !== undefined) && sigOf(fileNow()) !== written.placement) return true;
     return Object.values(tools).some((tl) => tl && tl.dirty() > 0 && sigOf(tl.result()) !== written[tl.id]);
   };
   function keepSoon() {
@@ -1992,8 +2379,8 @@ export function start(host: StudioHost) {
     if (keeping) await keeping;
     keeping = (async () => {
       const jobs: Array<Promise<string | null>> = [];
-      const file = model.result();
-      if ((model.dirty() > 0 || written.placement !== undefined) && sigOf(file) !== written.placement) {
+      const file = fileNow();
+      if ((placementDirty() > 0 || written.placement !== undefined) && sigOf(file) !== written.placement) {
         const v = validatePlacement(file);
         if (!v.ok) {
           showToast(t('save.fail', { error: v.errors.join('; ') }));
@@ -2034,24 +2421,51 @@ export function start(host: StudioHost) {
     if (unwritten()) void keepNow();
   });
 
+  let safeSave: ReturnType<typeof createSafeSave> | null = null;
   /** Save (⌘S): the files with a `saved` request, handed to the AI. */
   async function handOff() {
+    // Big changes to big things are said in words first (safe-save.ts; the road of that try that went up 16 m).
+    // The world's objects, whichever layer is edited (merge of 2026-10-19: with UI stage 1 `model` / `items` / `dim` are
+    // the edited layer's, and a road raised before switching to the UI must still be told).
+    const big = bigChanges(worldItems, worldModel.changedKeys(), (k) => worldModel.savedPose(k), (k) => worldModel.pose(k), worldDim, t, (it) => displayName(it, t));
+    if (big.length) {
+      const a = await (safeSave ||= createSafeSave({ mount: stage, t })).ask(big);
+      if (a === 'cancel') return;
+      if (a === 'putBack') {
+        const onWorld = editLayer === 'world';
+        // A world step pushed while the UI is edited: the one history marks it as the world's (undo.ts layerNow).
+        const layerNow = undo.layerNow;
+        undo.layerNow = () => undefined;
+        try {
+          for (const k of new Set(big.map((b) => b.key))) {
+            const from = worldModel.pose(k), to = worldModel.savedPose(k);
+            if (!from || !to || !undo.push(poseChange(k, from, to))) continue;
+            if (onWorld) applyPose(k, to);
+            else (worldModel.moved(k, to), send({ type: 'studio:placement/pose', key: k, pose: to, layer: 'world' }));
+          }
+        } finally {
+          undo.layerNow = layerNow;
+        }
+        renderButtons();
+      }
+    }
     clearTimeout(keepTimer);
     if (keeping) await keeping;
     const jobs: Array<Promise<string | null>> = [];
     let placementHanded = false;
-    if (model.dirty() > 0 || placementRestored) {
-      const file = model.result();
+    if (placementDirty() > 0 || placementRestored) {
+      const file = fileNow();
       const v = validatePlacement(file);
       if (!v.ok) {
         showToast(t('save.fail', { error: v.errors.join('; ') }));
         return;
       }
-      if (model.dirty() > 0) {
+      if (placementDirty() > 0) {
         const sig = sigOf(file);
         jobs.push(host.save('placement', v.value).then((r) => {
           if (!r.ok) return r.error || 'placement';
-          model.markSaved();
+          worldModel.markSaved();
+          uiModel.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -2101,7 +2515,10 @@ export function start(host: StudioHost) {
     // (the Library, a game tool's data) gets the toast, in the same words.
     if (errors.length) showToast(t('save.fail', { error: errors.join('; ') }), 3500);
     else if (!placementHanded && jobs.length) showToast(t('save.ok', { file: 'placement.json' }), 6000);
-    if (!errors.length && jobs.length) savedOnce = true;
+    if (!errors.length && jobs.length) {
+      savedOnce = true;
+      fabDoneUntil = Date.now() + FAB_DONE_MS;
+    }
     if (!errors.length) emit('saved', null);
     renderButtons();
   }
@@ -2120,6 +2537,7 @@ export function start(host: StudioHost) {
     if (!playing) await keepNow();
     if (swapping) finishSwap();
     playing = !playing;
+    if (playing) playSince = Date.now();
     palette.close();
     loadGame();
   }
@@ -2140,7 +2558,7 @@ export function start(host: StudioHost) {
       aiBase = null;
       setAiMarks(new Map());
     } else {
-      aiBefore = why === 'ai' && aiBase ? aiBase : new Map(items.map((i) => [i.key, structuredClone(model.pose(i.key) || i.pose)]));
+      aiBefore = why === 'ai' && aiBase ? aiBase : new Map(worldItems.map((i) => [i.key, structuredClone(worldModel.pose(i.key) || i.pose)]));
       aiBase = why === 'ai' && aiBusy(currentPhase()) ? aiBefore : null;
     }
     if (why === 'ai' && changeFrom) {
@@ -2176,11 +2594,13 @@ export function start(host: StudioHost) {
     const added = list.filter(([, v]) => v === 'added').length;
     const label = !list.length ? undefined : added === list.length ? t('ai.tagAdded', { n: added }) : added === 0 ? t('ai.tagMoved', { n: list.length }) : t('ai.tagChanged', { n: list.length });
     aiMarksMsg = { keys: list.map(([k]) => k), label };
-    send({ type: 'studio:placement/marks', ...aiMarksMsg });
+    sendMarks(true);
   }
 
   function loadGame(soft = false) {
     bridgeAlive = false;
+    // Unnamed objects are named again from where they stand in the new game (names.ts).
+    forgetNames();
     gameError = null;
     filesCache.clear();
     usesP = null;
@@ -2280,6 +2700,16 @@ export function start(host: StudioHost) {
     }
     // P plays / goes back to editing, F shows the whole scene (single keys,
     // never while typing: the keydown handler below lets fields keep them).
+    // U: World ⇄ UI (UI stage 1), only in a game with both layers.
+    if (!mod && k === 'u' && !e.shift && editing && editLayers && editLayers.length > 1) {
+      setEditLayer(editLayer === 'ui' ? 'world' : 'ui');
+      return true;
+    }
+    // ⇧U: the game's UI shown / hidden over the world (only while the world is edited: on the UI it is always shown).
+    if (!mod && k === 'u' && e.shift && editing && !playing && editLayer === 'world' && editLayers && editLayers.length > 1) {
+      setUiPeek(!uiPeek);
+      return true;
+    }
     if (!mod && k === 'p' && !e.shift) {
       void togglePlay();
       return true;
@@ -2341,6 +2771,12 @@ export function start(host: StudioHost) {
     if (!s) return false;
     send({ type: 'studio:placement/step', key: selected, ...s, hold: false, keys: group.length > 1 ? group.slice() : undefined });
     return true;
+  }
+
+  /** Drop to floor (End, ⌘K, the place's menu): the step the End key sends, for what is picked. */
+  function dropToFloor() {
+    if (!selected || !editing || !canDrop) return;
+    send({ type: 'studio:placement/step', key: selected, op: 'drop', hold: false, keys: group.length > 1 ? group.slice() : undefined });
   }
 
   function closeStripMenu() {
@@ -2453,12 +2889,52 @@ export function start(host: StudioHost) {
 
   // Save gets 6 s: its message says what to do next (go back to the AI), which
   // takes longer to read than a plain "done".
+  //
+  // A notice that fits on one line goes INSIDE the ask bar, where its placeholder is ("Added sea-stack-2 to the scene"),
+  // not on a plate stacked over it (the second design review's ⑧, 2026-10-19: on a phone the foot then held the plate,
+  // the card and the bar; PC the same). Only while the field is empty and not being typed in, and while the bar is on
+  // screen; anything longer (an error, Save's "what next") or a bar in use keeps the news plate above it, as before.
   function showToast(text: string, ms = 3500) {
     toast = text;
+    clearTimeout(toastTimer);
+    hideNews();
+    if (newsInBar(text)) {
+      toastEl.classList.remove('on');
+      toastTimer = window.setTimeout(hideNews, ms);
+      return;
+    }
     toastEl.textContent = toast;
     toastEl.classList.add('on');
-    clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toastEl.classList.remove('on'), ms);
+  }
+  // Over the field itself (left of the send button, right of the chip): the same box the placeholder fills. From the
+  // boxes on screen, not offsetLeft (on a phone the field and the notice are placed against different parents), and
+  // again whenever the field changes size: the chip of the new pick is filled in just after the notice comes up.
+  function placeNews() {
+    if (askNews.hidden) return;
+    const ir = askInput.getBoundingClientRect();
+    const pr = (askNews.offsetParent as HTMLElement | null)?.getBoundingClientRect();
+    askNews.style.left = `${Math.round(ir.left - (pr?.left ?? 0))}px`;
+    askNews.style.width = `${Math.round(ir.width)}px`;
+  }
+  function hideNews() {
+    if (askNews.hidden) return;
+    askNews.hidden = true;
+    placementPanel.askEl.classList.remove('has-news');
+  }
+  function newsInBar(text: string): boolean {
+    const box = placementPanel.askEl;
+    if (!box.isConnected || !box.offsetParent || askSlot.hidden || askInput.value || document.activeElement === askInput) return false;
+    if (askNews.parentElement !== box) box.append(askNews);
+    askNews.textContent = text;
+    askNews.hidden = false;
+    placeNews();
+    if (askNews.scrollWidth > askInput.offsetWidth + 1) {
+      askNews.hidden = true;
+      return false;
+    }
+    box.classList.add('has-news');
+    return true;
   }
 
   // ----- render -----
@@ -2496,7 +2972,10 @@ export function start(host: StudioHost) {
     app.dataset.playing = playing ? 'on' : 'off';
   }
 
-  let saveSlotW = 0;
+  // The Save in the game says "✓ Saved" this long after a press that went through, then goes (see saveFab).
+  const FAB_DONE_MS = 1200;
+  let fabDoneUntil = 0;
+  let fabTimer = 0;
   function renderButtons() {
     const n = dirtyCount();
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
@@ -2517,20 +2996,30 @@ export function start(host: StudioHost) {
     }
     // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
     if (n > 0) savedOnce = false;
-    // Save's width while it is still on screen: "✓ Saved" takes the same room (see the footer).
-    const shownSave = saveBtns.find((b) => !b.hidden && b.offsetWidth > 0);
-    if (shownSave) saveSlotW = shownSave.offsetWidth;
     saveState.replaceChildren(icon('check'), h('span', { text: t('btn.saved') }));
     saveState.title = t('save.savedTip');
     saveState.hidden = !savedOnce || n > 0 || playing;
-    saveState.style.minWidth = saveSlotW ? `${saveSlotW}px` : '';
+    const done = n === 0 && Date.now() < fabDoneUntil;
+    const wasShown = !saveFab.hidden;
     for (const b of saveBtns) {
-      // "Save · 3": only while there is something not saved.
-      setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
-      if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
-      b.hidden = n === 0 || playing;
+      // "Save · 3  ⌘S": only while there is something not saved (or "✓ Saved" for a moment after the press).
+      if (done) setButton(b, 'check', t('btn.saved'), true, t('save.savedTip'));
+      else {
+        setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
+        if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
+        // The key on the button itself (PC and the side window: a keyboard is there); a phone has none.
+        if (!phone() || sideWin()) b.append(h('kbd', { text: mac ? '⌘S' : 'Ctrl S' }));
+      }
+      b.dataset.state = done ? 'done' : '';
+      b.hidden = (n === 0 && !done) || playing;
       b.dataset.unsaved = String(n);
     }
+    if (done) {
+      clearTimeout(fabTimer);
+      fabTimer = window.setTimeout(() => renderButtons(), fabDoneUntil - Date.now() + 20);
+    }
+    // Shown or gone: the camera ↑↓ make room above it on a phone (sendInset).
+    if (wasShown === saveFab.hidden) sendInset();
     for (const b of playBtns) {
       setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
       if (!phone()) b.append(h('kbd', { text: 'P' }));
@@ -2555,15 +3044,30 @@ export function start(host: StudioHost) {
     document.documentElement.lang = lang;
     keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
+    app.dataset.fit = sideWin() ? 'side' : 'full';
+    setButton(largeBtn, 'openLarge', t('large.open'), false, t('large.tip'));
+    sheetGrip.setAttribute('aria-label', t('sheet.grip'));
+    sheetGrip.title = t('sheet.grip');
     app.dataset.sheet = sheetOpen ? 'open' : 'closed';
     app.dataset.view = tool; // not data-tool: the Scene / Assets rows carry data-tool
     app.dataset.page = page;
     // The Library takes the game's place: the card steps away.
     app.dataset.shelf = tool === 'library' ? 'on' : 'off';
-    // ▣ Studio / <the game> / <where you are>.
+    // ▣ Studio / <the game> / <where you are>. While playing that is "Playing", not "Scene" (the second design review's
+    // ⑪, 2026-10-19: the bar said Scene over a game you could not edit).
     (header.querySelector('.title') as HTMLElement).textContent = gameName || t('app.title');
     (header.querySelector('.app') as HTMLElement).textContent = t('app.brand');
-    (header.querySelector('.here') as HTMLElement).textContent = page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : t('tool.' + tool);
+    const sceneWord = (id: ToolId) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
+    (header.querySelector('.here') as HTMLElement).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
+    // World | UI (UI stage 1): only for a game with both layers, while the game is being edited in the Scene.
+    app.dataset.editLayer = editLayer;
+    const showSwitch = !!editLayers && editLayers.length > 1 && editing && !playing && tool === 'placement' && page === 'tool';
+    layerSwitch.el.hidden = !showSwitch;
+    if (showSwitch) {
+      layerSwitch.render(editLayer, phone(), t, keyOf('layer', isMac()), uiPeek, keyOf('uiPeek', isMac()));
+      const home = phone() ? stage : header;
+      if (layerSwitch.el.parentElement !== home) home.append(layerSwitch.el);
+    }
     (header.querySelector('.adapter') as HTMLElement).textContent = adapterInfo;
     langBtn.textContent = t('btn.lang');
     // Scene / Library: two rows, a 16 px icon, the name, a grey word for what is in it (PC: "the game" / "objects &
@@ -2571,9 +3075,10 @@ export function start(host: StudioHost) {
     // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library'] as ToolId[]) {
-      const n = id === 'placement' ? 0 : items.length + libraryCount;
+      // The Library holds the world's objects (the UI's HTML elements are not Library objects).
+      const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
-        icon(id === 'placement' ? 'cube' : 'grid'), h('span', { class: 'label', text: t('tool.' + id) }), h('span', { class: 'sub', text: t(`tool.${id}.sub`) }),
+        icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }), h('span', { class: 'sub', text: id === 'placement' && editLayer === 'ui' ? t('uiLayer.sub') : t(`tool.${id}.sub`) }),
         n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label') as HTMLElement).textContent = t('foot.palette');
@@ -2625,7 +3130,7 @@ export function start(host: StudioHost) {
     const tabsHome = phone() && page === 'tool' && lib ? lib.head : null;
     if (tabsHome) {
       if (tabs.parentElement !== tabsHome) tabsHome.prepend(tabs);
-    } else if (tabs.parentElement !== side.firstElementChild) (side.firstElementChild as HTMLElement).prepend(tabs);
+    } else if (tabs.parentElement !== sideHead) sideHead.prepend(tabs);
     // The left column: the Look page, the Ideas page, or the scene list.
     if (page === 'settings') {
       renderSettings(toolEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
@@ -2658,10 +3163,10 @@ export function start(host: StudioHost) {
     sendInset();
   }
 
-  let lastLayout = phone();
+  let lastLayout = `${phone()}${sideWin()}`;
   window.addEventListener('resize', () => {
-    if (phone() !== lastLayout) {
-      lastLayout = phone();
+    if (`${phone()}${sideWin()}` !== lastLayout) {
+      lastLayout = `${phone()}${sideWin()}`;
       renderAll(true);
     }
   });
@@ -2721,6 +3226,10 @@ export function start(host: StudioHost) {
     t: (key) => t(key),
     lang: () => lang,
     items: () => items,
+    nameOf: (k) => {
+      const it = items.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    },
     selected: () => selected,
     actions: {
       undo: () => doUndo(),
@@ -2797,7 +3306,11 @@ export function start(host: StudioHost) {
         renderAll();
       }
       const v = placement ? validatePlacement(placement) : null;
-      model.restore(v && v.ok ? v.value : null);
+      const saved = v && v.ok ? v.value : null;
+      worldModel.restore(saved);
+      uiModel.restore(uiAsPlacement(saved));
+      fileUi = saved?.ui;
+      fileUiView = saved?.uiView;
       if (tools.library?.restore) tools.library.restore(await host.load('library').catch(() => null));
       // The left column's "Assets  4".
       void host.listAssets().then((r) => {

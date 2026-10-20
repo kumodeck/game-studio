@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Build the browser-only web demo of Game Studio into ONE static folder.
 //
-//   node scripts/build-web-demo.mjs --out <dir> [--cache <dir>]
+//   node scripts/build-web-demo.mjs --out <dir> [--cache <dir>] [--also <sample dir> …]
+//
+// --also (UI stage 1, 2026-10-19): add a sample folder that has a starter.json (e.g. examples/three-hud, the
+// UI-layer sample) after the starters, for a try-out build. Without it the demo is exactly the starters, as before.
 //
 // Why (decided 2026-10-16, step 1 of 2): open a URL on KUMODeck
 // hosting from any device and try the editor on sample games. The folder is
@@ -64,6 +67,14 @@ const BANNER = `/* KUMODeck Game Studio ${pkg.version} (web demo) — MIT Licens
 // gets exactly what `--starter` copies (no starter.json / thumb.png / README.md in the game).
 const SAMPLES = await readStarters(join(ROOT, 'starters'));
 if (SAMPLES.length < 2) throw new Error(`expected the two starters in starters/, found ${SAMPLES.map((s) => s.id).join(', ') || 'none'}`);
+for (let i = 2; i < process.argv.length; i++) {
+  if (process.argv[i] !== '--also' || !process.argv[i + 1]) continue;
+  const dir = resolve(process.argv[i + 1]);
+  const s = (await readStarters(dirname(dir))).find((x) => x.dir === dir);
+  if (!s) throw new Error(`--also ${process.argv[i + 1]}: not a sample (needs index.html and starter.json)`);
+  if (SAMPLES.some((x) => x.id === s.id)) throw new Error(`--also ${process.argv[i + 1]}: a sample "${s.id}" is already there`);
+  SAMPLES.push(s);
+}
 const CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/((?:@[^/]+\/)?[^/@]+@[^/]+)\/(.*)$/;
 
 function arg(name, fallback) {

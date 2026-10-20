@@ -274,13 +274,19 @@ async function run(browser, game, size, tag) {
       // Not one that covers most of the screen (an earlier visit moved the sea stack right up to the camera): a drag
       // on that looks around by design (input.ts grabbable, 60 % of the window on screen).
       if ((x1 - x0) * (y1 - y0) >= 0.6 * f.width * f.height) return 'null';
+      const others = new Set(${DBG}.list().filter((i) => !i.backdrop && i.key !== ${JSON.stringify(k)}).map((i) => i.key));
       pts.push([a.center[0], a.center[1]]);
       if (!${middleOnly}) for (let i = 0; i <= 8; i++) for (let jj = 0; jj <= 8; jj++) pts.push([x0 + ((x1 - x0) * i) / 8, y0 + ((y1 - y0) * jj) / 8]);
       pts.sort((p, q) => Math.hypot(p[0] - a.center[0], p[1] - a.center[1]) - Math.hypot(q[0] - a.center[0], q[1] - a.center[1]));
       for (const [x, y] of pts) {
         if (x < 0 || y < 0 || x > f.width || y > f.height) continue;
         if (document.elementFromPoint(f.left + x, f.top + y) !== ${FRAME}) continue;
-        if (${DBG}.under(x, y) === ${JSON.stringify(k)}) return JSON.stringify({ x: f.left + x, y: f.top + y });
+        if (${DBG}.under(x, y) !== ${JSON.stringify(k)}) continue;
+        // A finger picks within about 10 px: no other thing that close (merge of 2026-10-19: after the PC visit
+        // saved the sea stack behind a sailboat, the phone's tap on the stack's edge took the boat).
+        const near = [[12, 0], [-12, 0], [0, 12], [0, -12], [9, 9], [-9, 9], [9, -9], [-9, -9]].map(([u, v]) => ${DBG}.under(x + u, y + v));
+        if (near.some((n) => n && n !== ${JSON.stringify(k)} && others.has(n))) continue;
+        return JSON.stringify({ x: f.left + x, y: f.top + y });
       }
       return 'null'; })()`);
     // The same object as on an earlier visit when it is still on screen (a saved, moved rock can stand in
@@ -326,6 +332,9 @@ async function run(browser, game, size, tag) {
       for (const fx of [0.15, 0.35, 0.5, 0.65, 0.85]) for (const fy of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) {
         const c = { x: f.left + f.width * fx, y: f.top + f.height * fy };
         if (!(await page.eval(`document.elementFromPoint(${c.x}, ${c.y}) === ${FRAME}`))) continue;
+        // Not on the editor's own buttons inside the game (the tool strip, the camera ↑↓: shadow roots marked
+        // data-studio-ui): a press there is that button (merge of 2026-10-19: at 430 the farthest spot fell on the strip).
+        if (await page.eval(`(() => { const f = ${FRAME}.getBoundingClientRect(); const e = ${FRAME}.contentDocument.elementFromPoint(${c.x} - f.left, ${c.y} - f.top); return !!e?.closest?.('[data-studio-ui]'); })()`)) continue;
         // Not on any object either (a press on another object is about that object): on a second visit the
         // saved, bigger rock covered the spot the first visit used.
         const onSome = await page.eval(`(() => { const f = ${FRAME}.getBoundingClientRect(); return ${DBG}.list().some((i) => { const a = ${DBG}.anchor(i.key);
@@ -364,13 +373,25 @@ async function run(browser, game, size, tag) {
     const sv = await j(IN.button('[data-action=save]'));
     assert.ok(sv, 'no Save button on screen');
     await touch(sv);
+    // A big move (25 m sideways, 5 m up or down, 3× the size: shell/safe-save.ts, fb-safe 2026-10-19) is told before
+    // it is saved; the PC drag flings the sea stack ~40 m, so the sheet comes; then "Save
+    // anyway", as a person who meant it would (merge of 2026-10-19: the two branches met here).
+    const sheetUp = `(() => { const e = document.querySelector('[data-part=safe-save]'); return !!e && !e.hidden; })()`;
+    await page.waitFor(`${sheetUp} || (${IN.aiLine}).includes(${JSON.stringify(WORDS.saved)})`, 5000).catch(() => {});
+    const sheet = await page.eval(sheetUp);
+    if (sheet) {
+      const go = await j(IN.button('[data-action=safe-save]'));
+      assert.ok(go, 'the check before saving has no "Save anyway" on screen');
+      await touch(go);
+    }
     await page.waitFor(`(${IN.aiLine}).includes(${JSON.stringify(WORDS.saved)})`, 5000);
     assert.equal(unsaved(await page.eval(IN.saveLabel)), 0);
     await sleep(300);
     // The second press on the same spot (people tap again when the first seems to do little):
-    // "✓ Saved" is there now, and nothing else may have slid under the finger.
-    const under = await page.eval(`(() => { const e = document.elementFromPoint(${sv.x}, ${sv.y}); return (e?.closest('[data-action],[data-part]')?.dataset.action || e?.closest('[data-part]')?.dataset.part || e?.tagName || '') + ''; })()`);
-    assert.equal(under, 'save-state', `after Save the spot of Save shows "${under}", not "✓ Saved"`);
+    // "✓ Saved" is there now, and nothing else may have slid under the finger. Since 2026-10-20 Save is in the game
+    // (main.ts saveFab): the same button says "✓ Saved" for a moment in the same place, and a press on it does nothing.
+    const under = await page.eval(`(() => { const e = document.elementFromPoint(${sv.x}, ${sv.y}); const b = e?.closest('[data-action],[data-part]'); return (b?.dataset.action === 'save' ? 'save:' + (b.dataset.state || '') : b?.dataset.action || e?.closest('[data-part]')?.dataset.part || e?.tagName || '') + ''; })()`);
+    assert.equal(under, 'save:done', `after Save the spot of Save shows "${under}", not "✓ Saved"`);
     await touch(sv);
     await sleep(700);
     const kept = await poseOf(key);
@@ -407,6 +428,8 @@ async function run(browser, game, size, tag) {
     const f1 = await page.eval(frames);
     assert.ok(f1 > f0, `Play is frozen: ${f0} → ${f1} frames in 2.5 s`);
     let playNote = `${((f1 - f0) / 2.5).toFixed(1)} fps here`;
+    // Ask while playing (§3.5) needs an AI behind the host: the try-out shows no field and no mark in Play.
+    assert.equal(await page.eval(`!!${FRAME}.contentDocument.querySelector('game-studio-play')`), false, 'the try-out shows the ask-while-playing mark');
     if (game === 'lantern-cove') {
       // The saved place in the game itself (not the editor's copy): the rocks and the lighthouse stand still in Play.
       const inPlay = await j(`(() => { let o = null; ${FRAME}.contentWindow.__cove.scene.traverse((x) => { if (!o && (x.userData?.studioKey === ${JSON.stringify(key)} || x.name === ${JSON.stringify(key)})) o = x; });

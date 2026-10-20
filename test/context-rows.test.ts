@@ -17,82 +17,89 @@ const base: CtxFacts = {
 const ids = (rows: CtxRow[]) => rows.map((r) => ('sep' in r ? '—' : r.id));
 const row = (rows: CtxRow[], id: string) => rows.find((r) => !('sep' in r) && r.id === id) as Exclude<CtxRow, { sep: true }> | undefined;
 
-test('an object in the scene: ask, rename, duplicate / copy / paste / delete, undo / redo', () => {
+test('an object in the scene (PC): ask, rename, duplicate / copy / delete, show in Library — 7 rows at most, no undo / redo', () => {
   const rows = contextRows('object', base);
-  assert.deepEqual(ids(rows), ['ask', 'rename', '—', 'duplicate', 'copy', 'paste', 'remove', '—', 'showInLibrary', '—', 'undo', 'redo']);
-  assert.equal(row(rows, 'paste')!.disabled, true, 'nothing copied yet: Paste is dimmed, not gone');
-  assert.equal(row(rows, 'redo')!.disabled, true);
-  assert.equal(row(rows, 'undo')!.disabled, false);
+  assert.deepEqual(ids(rows), ['ask', 'rename', '—', 'duplicate', 'copy', 'remove', '—', 'showInLibrary']);
+  assert.ok(!row(rows, 'paste'), 'nothing copied: no Paste row (not a dimmed one)');
   assert.equal(row(rows, 'duplicate')!.disabled, false);
+  const withClip = contextRows('object', { ...base, clip: 1 });
+  assert.deepEqual(ids(withClip), ['ask', 'rename', '—', 'duplicate', 'copy', 'paste', 'remove', '—', 'showInLibrary']);
+  assert.ok(withClip.filter((r) => !('sep' in r)).length <= 7, 'review 2 ②: 7 rows at most');
+  for (const id of ['undo', 'redo', 'showFileInLibrary']) assert.ok(!ids(contextRows('object', { ...base, clip: 1, sourceFiles: 1 })).includes(id), id);
 });
 
 test('several picked: the same rows (they act on all), no Rename; unnamed ones get "name them"', () => {
-  assert.deepEqual(ids(contextRows('object', { ...base, picked: 3, movable: 3 })), ['ask', '—', 'duplicate', 'copy', 'paste', 'remove', '—', 'showInLibrary', '—', 'undo', 'redo']);
+  assert.deepEqual(ids(contextRows('object', { ...base, picked: 3, movable: 3 })), ['ask', '—', 'duplicate', 'copy', 'remove', '—', 'showInLibrary']);
   const named = contextRows('object', { ...base, picked: 3, movable: 3, unnamed: 2 });
   assert.equal(row(named, 'name')!.label, 'ctx.nameMany');
   assert.equal(row(contextRows('object', { ...base, unnamed: 1 }), 'name')!.label, 'ask.name');
 });
 
-test('locked objects (the game\'s rules): duplicate, copy and delete are dimmed', () => {
+test('locked objects (the game\'s rules): duplicate, copy and delete are dimmed on a PC', () => {
   const rows = contextRows('object', { ...base, movable: 0 });
   for (const id of ['duplicate', 'copy', 'remove']) assert.equal(row(rows, id)!.disabled, true, id);
 });
 
-test('the web demo (no AI behind it) has no "Ask your AI" and no naming, and no empty group left behind', () => {
-  const obj = contextRows('object', { ...base, offline: true, unnamed: 1 });
-  assert.deepEqual(ids(obj), ['duplicate', 'copy', 'paste', 'remove', '—', 'showInLibrary', '—', 'undo', 'redo']);
-  const scene = contextRows('scene', { ...base, offline: true });
-  assert.equal(ids(scene)[0], 'paste');
-  assert.ok(!ids(scene).includes('ask'));
-});
-
-test('2D with draw order: the four layer moves, dimmed when the pick cannot go that way', () => {
-  const rows = contextRows('object', { ...base, dim: '2d', layers: { forward: true, backward: false, toFront: true, toBack: false } });
-  assert.deepEqual(ids(rows), ['ask', 'rename', '—', 'duplicate', 'copy', 'paste', 'remove', '—', 'showInLibrary', '—', 'layer-forward', 'layer-backward', 'layer-toFront', 'layer-toBack', '—', 'undo', 'redo']);
-  assert.equal(row(rows, 'layer-backward')!.disabled, true);
-  assert.equal(row(rows, 'layer-toFront')!.key, 'toFront');
-  // A phone keeps the two big moves (the card's Layer row has the one-step ones).
-  assert.deepEqual(ids(contextRows('object', { ...base, dim: '2d', compact: true, layers: { forward: true, backward: true, toFront: true, toBack: true } })).filter((i) => i.startsWith('layer')), ['layer-toFront', 'layer-toBack']);
-  // 3D never lists them.
-  assert.ok(!ids(contextRows('object', { ...base, layers: { forward: true } })).includes('layer-forward'));
-});
-
-test('nothing under the pointer: paste, select all, deselect, show all, opening view, undo / redo', () => {
-  const rows = contextRows('scene', { ...base, clip: 2 });
-  assert.deepEqual(ids(rows), ['ask', '—', 'paste', 'selectAll', 'deselect', '—', 'frame', 'home', '—', 'undo', 'redo']);
-  assert.equal(row(rows, 'paste')!.disabled, false);
-  assert.equal(row(rows, 'deselect')!.disabled, false);
-  assert.equal(row(contextRows('scene', { ...base, anyPicked: false }), 'deselect')!.disabled, true);
-  assert.equal(row(contextRows('scene', { ...base, items: 0 }), 'selectAll')!.disabled, true);
-  assert.equal(row(rows, 'ask')!.label, 'ask.game');
-});
-
-test('while the game is not editable (loading): every row that changes the scene is dimmed', () => {
-  for (const r of contextRows('object', { ...base, editing: false, clip: 1 })) {
-    // Asking and the way to the Library change nothing in the scene: they stay.
-    if (!('sep' in r) && !['ask', 'rename', 'showInLibrary', 'showFileInLibrary'].includes(r.id)) assert.equal(r.disabled, true, r.id);
+test('a phone: 5 rows at most, none dimmed — ask, rename, show in Library, (2D) to front / to back', () => {
+  const phone = { ...base, compact: true, clip: 2 };
+  assert.deepEqual(ids(contextRows('object', phone)), ['ask', 'rename', '—', 'showInLibrary']);
+  const two = contextRows('object', { ...phone, dim: '2d', layers: { forward: true, backward: true, toFront: true, toBack: true } });
+  assert.deepEqual(ids(two), ['ask', 'rename', '—', 'showInLibrary', '—', 'layer-toFront', 'layer-toBack']);
+  // At the front already: "to front" is left out, not dimmed.
+  assert.deepEqual(ids(contextRows('object', { ...phone, dim: '2d', layers: { forward: false, backward: true, toFront: false, toBack: true } })).filter((i) => i.startsWith('layer')), ['layer-toBack']);
+  for (const f of [phone, { ...phone, movable: 0 }, { ...phone, editing: false }, { ...phone, dim: '2d' as const, layers: { toFront: true, toBack: true } }]) {
+    for (const p of ['object', 'scene'] as const) {
+      const rs = contextRows(p, f).filter((r) => !('sep' in r));
+      assert.ok(rs.length <= 5, `${p}: ${rs.length} rows`);
+      assert.ok(rs.every((r) => !('sep' in r) && !r.disabled), `${p}: a dimmed row`);
+    }
   }
 });
 
-test('the Library: an object has Add to scene, Ask your AI, Details, Show in game, Duplicate, Delete; a file has Add to scene, Ask your AI, Details, Show just these objects, Replace', () => {
-  assert.deepEqual(ids(contextRows('libObject', base)), ['addToScene', 'ask', '—', 'details', 'showInGame', '—', 'duplicate', 'remove']);
-  assert.equal(row(contextRows('libObject', { ...base, movable: 0 }), 'addToScene')!.disabled, true, 'a locked object cannot be copied');
-  const file = contextRows('libFile', { ...base, users: 0, exists: true });
-  assert.deepEqual(ids(file), ['addFile', 'askFile', '—', 'details', 'showUsers', '—', 'replace']);
-  assert.equal(row(file, 'addFile')!.disabled, false);
-  assert.equal(row(contextRows('libFile', { ...base, exists: false }), 'addFile')!.disabled, true, 'a missing file cannot be added');
-  assert.equal(row(file, 'showUsers')!.disabled, true, 'no object uses it');
-  assert.equal(row(contextRows('libFile', { ...base, users: 3 }), 'showUsers')!.disabled, false);
+test('the web demo (no AI behind it) has no "Ask your AI" and no naming, and no empty group left behind', () => {
+  const obj = contextRows('object', { ...base, offline: true, unnamed: 1 });
+  assert.deepEqual(ids(obj), ['duplicate', 'copy', 'remove', '—', 'showInLibrary']);
+  const scene = contextRows('scene', { ...base, offline: true });
+  assert.equal(ids(scene)[0], 'selectAll');
+  assert.ok(!ids(scene).includes('ask'));
 });
 
-test('use the Library: the Scene\'s object has Show in Library, and Show its asset in Library when it is drawn with a file (not on a phone)', () => {
-  assert.deepEqual(ids(contextRows('object', { ...base, sourceFiles: 1 })).slice(8, 11), ['showInLibrary', 'showFileInLibrary', '—']);
-  assert.ok(!ids(contextRows('object', { ...base, sourceFiles: 0 })).includes('showFileInLibrary'), 'drawn in code: no file to show');
-  assert.ok(!ids(contextRows('object', { ...base, sourceFiles: 2, compact: true })).includes('showFileInLibrary'), 'a phone keeps the menu short');
+test('2D with draw order: to front / to back only (one step is ⌘] ⌘[ and the card), dimmed on a PC when it cannot go', () => {
+  const rows = contextRows('object', { ...base, dim: '2d', layers: { forward: true, backward: false, toFront: true, toBack: false } });
+  assert.deepEqual(ids(rows), ['ask', 'rename', '—', 'duplicate', 'copy', 'remove', '—', 'showInLibrary', '—', 'layer-toFront', 'layer-toBack']);
+  assert.equal(row(rows, 'layer-toBack')!.disabled, true);
+  assert.equal(row(rows, 'layer-toFront')!.key, 'toFront');
+  // 3D never lists them.
+  assert.ok(!ids(contextRows('object', { ...base, layers: { toFront: true } })).includes('layer-toFront'));
+});
+
+test('nothing under the pointer: only rows that can act — paste, select all, deselect, show all, opening view', () => {
+  const rows = contextRows('scene', { ...base, clip: 2 });
+  assert.deepEqual(ids(rows), ['ask', '—', 'paste', 'selectAll', 'deselect', '—', 'frame', 'home']);
+  assert.ok(rows.every((r) => 'sep' in r || !r.disabled), 'no dimmed rows');
+  assert.deepEqual(ids(contextRows('scene', { ...base, anyPicked: false })), ['ask', '—', 'selectAll', '—', 'frame', 'home'], 'Deselect only while something is picked; Paste only with something copied');
+  assert.ok(!ids(contextRows('scene', { ...base, items: 0 })).includes('selectAll'));
+  assert.equal(row(rows, 'ask')!.label, 'ask.game');
+});
+
+test('while the game is not editable (loading): nothing that changes the scene can be chosen', () => {
+  for (const r of [...contextRows('object', { ...base, editing: false, clip: 1 }), ...contextRows('scene', { ...base, editing: false, clip: 1 })]) {
+    // Asking, the way to the Library and Deselect change nothing in the scene: they stay.
+    if (!('sep' in r) && !['ask', 'rename', 'showInLibrary', 'deselect'].includes(r.id)) assert.equal(r.disabled, true, r.id);
+  }
+});
+
+test('the Library: an object has Add to scene, Ask your AI, Show in game, Delete (no Duplicate); a file has Add to scene, Ask your AI, Replace', () => {
+  assert.deepEqual(ids(contextRows('libObject', base)), ['addToScene', 'ask', '—', 'showInGame', 'remove']);
+  assert.equal(row(contextRows('libObject', { ...base, movable: 0 }), 'addToScene')!.disabled, true, 'a locked object cannot be copied');
+  const file = contextRows('libFile', { ...base, users: 0, exists: true });
+  assert.deepEqual(ids(file), ['addFile', 'askFile', '—', 'replace']);
+  assert.equal(row(file, 'addFile')!.disabled, false);
+  assert.equal(row(contextRows('libFile', { ...base, exists: false }), 'addFile')!.disabled, true, 'a missing file cannot be added');
   // The web demo: no AI rows; a file's Add to scene stays, dimmed (the detail says why).
-  assert.deepEqual(ids(contextRows('libObject', { ...base, offline: true })), ['addToScene', '—', 'details', 'showInGame', '—', 'duplicate', 'remove']);
+  assert.deepEqual(ids(contextRows('libObject', { ...base, offline: true })), ['addToScene', '—', 'showInGame', 'remove']);
   const demo = contextRows('libFile', { ...base, offline: true, exists: true });
-  assert.deepEqual(ids(demo), ['addFile', '—', 'details', 'showUsers', '—', 'replace']);
+  assert.deepEqual(ids(demo), ['addFile', '—', 'replace']);
   assert.equal(row(demo, 'addFile')!.disabled, true);
 });
 
@@ -111,8 +118,7 @@ test('every row has words in English and Japanese, and every key is a row of the
   }
   // The same words as the buttons / sheet for the same action.
   assert.equal(translate('en', 'ops.copy'), 'Duplicate');
-  assert.equal(translate('ja', 'ctx.showUsers'), '使っている物だけ見る');
-  assert.equal(translate('ja', 'ctx.replace'), '差し替え…');
+    assert.equal(translate('ja', 'ctx.replace'), '差し替え…');
 });
 
 test('the menu opens at the pointer and moves in at the window edges', () => {
@@ -125,4 +131,12 @@ test('the menu opens at the pointer and moves in at the window edges', () => {
   assert.deepEqual(placeMenu(10, 100, 224, 300, 390, 844, true), { left: 8, top: 124 });
   // Taller than the window: pinned to the margin.
   assert.equal(placeMenu(100, 100, 200, 900, 1280, 800).top, 8);
+});
+
+test('a phone: the menu opened by a finger stays 8 px above the card / ask box (review 2 ②)', () => {
+  // A finger low on the game, the card's top at 600: the menu ends at 592 at the latest.
+  const p = placeMenu(195, 640, 224, 230, 390, 844, true, 600);
+  assert.ok(p.top + 230 <= 592, `bottom ${p.top + 230}`);
+  // No floor: the window's bottom, as before.
+  assert.deepEqual(placeMenu(195, 600, 224, 300, 390, 844, true), { left: 83, top: 284 });
 });

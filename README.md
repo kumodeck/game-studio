@@ -94,8 +94,9 @@ You can also just say what you want ("I want to fix where the trees are"); the a
      together. Undo and Redo are in the top bar (Cmd/Ctrl+Z, Shift+Cmd/Ctrl+Z).
    - Right-click anything (long-press on a phone) for what you can do with it right there: Ask your AI…, Rename…,
      Duplicate, Delete, and more.
-   - In 3D, fly the camera with W A S D (E / Q for up and down) when nothing is selected; with something selected, hold
-     the right mouse button while you press them. The ↑↓ buttons in the corner also raise and lower the camera. Press
+   - In 3D, fly the camera with W A S D (E / Q for up and down, Shift for faster) when nothing is selected; with
+     something selected, hold the right mouse button while you press them. W / S stay level: looking down, you glide
+     forward over the scene at the same height. The ↑↓ buttons in the corner also raise and lower the camera. Press
      **?** for every shortcut.
    - The input at the bottom is for your AI: type what you want about what's selected ("add 3 more in a row") or
      about the whole game ("add three lighthouses around the island") and press Enter. You see at once that your AI
@@ -115,6 +116,12 @@ You can also just say what you want ("I want to fix where the trees are"); the a
    Until then your changes are kept as a draft, so closing the tab loses nothing. Your AI reads the files and updates
    the game (the first time, it adds the one line that loads `placement.json`), and the editor shows the new game by
    itself. Play it with **Play** (or P).
+4. **Ask while you play.** In Play, something's off ("when I stop here the character vanishes")? Press **`** (the key
+   left of 1; Shift+@ on a Japanese keyboard) or tap the small mark in the corner, type it and press Enter. The game
+   keeps running, full screen too. Your AI gets your words with that moment: a picture of the game, where your camera
+   was, what was near you, and the console's errors and last lines. A small line at the top says what it's doing
+   ("Your AI is looking" → "Fixing it" → its reply). The game never reloads under you: press **Reload** (or **`** then
+   Enter) when you want the fix, or keep playing. If your AI asks something, the answers show up as buttons right there.
 
 On a phone: ask your AI to open the editor "for my phone". It starts with `--lan` and shows a QR code for the same
 Wi-Fi network.
@@ -122,6 +129,18 @@ Wi-Fi network.
 There is one skill, `arrange`, shared by both agents. Claude Code offers it as the `/arrange` command (also
 `/game-studio:arrange`); Codex plugins do not add slash commands, so in Codex you mention the skill (`$arrange`) or
 use plain words.
+
+### What comes with a request made while playing
+
+| Engine | Words, picture, console | Where you were | What was near |
+|---|---|---|---|
+| three.js (built in) | Yes | Your camera (position and direction) | Nearest in front of you, in meters, and where each is in the picture |
+| Phaser, PixiJS, plain canvas, Godot web export | Yes | — | What's on screen, nearest the middle first (through the adapter) |
+| HTML-only games | Words and console (no canvas, no picture) | — | Through the adapter, if any |
+
+The picture is saved next to the request as `.studio/play/<id>.jpg` (the newest 24 are kept). An adapter for another 3D
+engine can add `player()` to send the camera too (`CONTRACT.md` §3.5). The browser-only try-out has no AI behind it, so
+it shows no field in Play.
 
 ## Make it fit
 

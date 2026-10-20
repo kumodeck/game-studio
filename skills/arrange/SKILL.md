@@ -171,7 +171,8 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
   3. Tell the person: "The editor is open next to this chat." and what to do, in one line ("Click an object and
      drag it. When you're done, click **Save**."; for a sample, the line from §0 step 3 instead). Don't print the
      URL unless they ask for it. If the pane is hidden or not open, add: "Press ⌘⇧B to show it (Ctrl+Shift+B on
-     Windows)."
+     Windows)." If they say the pane is too narrow: "The ↗ button at the top right of the editor opens it in a large
+     window." (the same editor, pass included; asking you and Save work there the same way).
   4. If `preview_start` returns any error (the site isn't approved, the pane can't be reached) or the person
      declines the site, don't retry: give the URL as usual, "Open this link in your browser: <url>". Nothing else
      opened it, because of `--no-open`.
@@ -205,13 +206,20 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
 | `studio: request next-step fit` / `look` / `tool` | An in-game idea, with the user's words | §3.1, then §8 (fit, tool) or §9 (look) |
 | `studio: saved .studio/data/<tool>.json` | A game tool you wrote (§8) saved its data | Read that file and apply it like placement.json (a loader, without asking, §4) |
 | `studio: undone` | The person pressed **Undo AI change**: the editor already put the game's files back as they were before your last change | §3.1 (`undone`): do not redo it |
-| `studio: watching <n> waiting` | Your watch (`--watch`, below) started; the waiting requests follow, one line each | Handle them in order. `0 waiting`: say nothing |
+| `studio: watching <n> waiting` | Your watch (`--watch`, below) started with requests waiting; they follow, one line each (with none waiting it prints nothing) | Handle them in order |
+| `studio: watch rest …` | Your watch ended on time (after 29 minutes), nothing is wrong | Start the same watch again at once (below). Say nothing |
+| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it | §3.1 (`play`): fix it without stopping their game |
+| `studio: answer` | The person answered your `asking` question in the editor (a button or their own words; the question and the request it is about follow) | §3.1 (`answer`): go on with that answer |
+| `studio: from the Game Studio editor …` | The plugin's hook woke you (below, "Woken by the editor"): the lines under it are requests, same words as above, each ending with the game folder in `[…]` | Handle them in order (§3.1), like watch lines |
 
 - How to wait depends on your environment. The main path works everywhere; the watch is what makes it feel
   instant, so use it whenever your environment can wake you on a new output line:
   - **Main path (every environment):** start the server with `--detach` (above), take the URL from its
-    `studio: ready` line, and tell the user: "When you've saved or asked for something in the editor, come back here and type *look*."
-    When they say "look" (or "saved", "done", the same in their language), **read every waiting request** (§3.1) and handle them in order.
+    `studio: ready` line. In Claude Code you say nothing about it (the hooks below bring their requests to you). Elsewhere
+    tell the user once: "If the editor shows **Call your AI**, paste what it copies here (*look*)."
+    When they say "look" (or "saved", "done", the same in their language), **read every waiting request** (§3.1)
+    and handle them in order. *look* is the one word: never tell the person to run `/arrange` again or name another app
+    to make you see a request.
     The editor also writes `placement.json` / `library.json` as a draft while the user works, without a request: if
     they say the layout is ready but no `saved` request is waiting (they reopened the editor, or did not press Save),
     read `placement.json` anyway and apply it (§4).
@@ -222,25 +230,42 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
     node <this skill's folder>/bin/studio.mjs <game folder> --watch
     ```
 
-    In Claude Code, run it with the Monitor tool (the command itself, not `tail -f` on the log). It prints one
-    `studio:` line per request (the waiting ones first, after `studio: watching <n> waiting`), with the same words
+    In Claude Code, run it with the Monitor tool (the command itself, not `tail -f` on the log) and
+    **`timeout_ms: 1800000`** (30 minutes, Monitor's longest; the default is 5). It prints one
+    `studio:` line per request (the waiting ones first, after `studio: watching <n> waiting`; nothing while none), with the same words
     as the table above, and **while it runs the editor shows the person that you are watching**: their request says
-    "Your AI has it" the moment they press Enter, and the input glows while you work. When it is not running, the
-    editor says at once "Your AI isn't watching" and tells them to type "look" here — so never leave a stale watch
-    claiming you are there. Watches end on their own (often after 5–30 minutes, or when the session is idle for
-    long): **start it again** whenever you notice it ended. Whatever you missed while it was down is still in
-    `.studio/requests/` (it prints those first when it starts).
+    "Your AI has it" the moment they press Enter, and the input glows while you work. When nothing can reach you, the
+    editor says calmly that the request is kept and goes in the next time you run, with a **Call your AI** button that
+    copies *look* — so never leave a stale watch claiming you are there. It prints nothing while no request comes, and ends on its own after 29 minutes
+    with `studio: watch rest …` (Monitor would stop it at 30 anyway; it can also end when the session is idle
+    for long, or Monitor says it expired). **Whenever it ends, start the same watch again, silently**: no
+    message, no "I started watching again", no "no requests yet" — a restart is not news, and every line you
+    write fills the person's chat; end that turn with no text at all. One watch at a time: the rest line and
+    "stream ended" are the same ending, so start one new watch for it, not two. Speak only when a request line
+    comes (§3.1) or the watch fails (it ends at once with an error exit code, twice in a row: say so once and
+    use the main path). Whatever you missed while it was down is still in `.studio/requests/` (it prints those
+    first when it starts).
+  - **Woken by the editor (Claude Code with this plugin, nothing to start):** the plugin's hooks run
+    `studio.mjs --hook wait` whenever you finish a turn or the person types. It waits in the background for a new request
+    in any editor under this session's folder and wakes you with a message that starts with
+    `studio: from the Game Studio editor …` followed by the request lines (even when you were idle and your watch had
+    ended); while it waits, the editor tells the person you'll get it. A request that came while you were busy wakes
+    you the moment you stop. And whatever the person types next ("hi", "go on"), waiting requests come with it
+    (`--hook prompt`). Handle these lines exactly like watch lines: `received`, `working`, `done` (§3.1). Each request
+    is shown to you once (by the watch or by a hook, `.studio/told.json`); one you saw and left stays in
+    `--requests`. Keep the watch too: it is the fastest while you are idle. The hooks are the reason the person never
+    has to go to your window to make you see a request.
   - **Do not run `--watch` if nothing would wake you on its lines** (for example in Codex, or any agent that only
     reads output when it runs its next command): the editor would tell the person you are watching when you are
-    not. Use the main path; the editor then says right away to come back and type "look".
+    not. Use the main path; the editor then shows its calm line and **Call your AI** (it copies *look*).
 - Keep the server running while the user works; they can save several times. Each save (and each draft write in
   between) rewrites the whole file.
   Stop the server when the user says they are finished: `studio.mjs <game folder> --stop`, never by name.
 - `.studio/` holds the adapter (keep it, commit it with the game) and hand-off notes (`check.md`, `next-step.md`,
-  `view-check.md` and `view-check/`, `shot/`, `requests/`, `status.json`, `watch.json`, `server.json`, logs; not game data) and
+  `view-check.md` and `view-check/`, `shot/`, `requests/`, `play/` (pictures of requests made while playing), `status.json`, `watch.json`, `server.json`, logs; not game data) and
   `undo/` (copies of the game's files from before each request, for **Undo AI change**; the newest 12 are kept). If
   the game has a `.gitignore`, add `.studio/*.md`, `.studio/*.log`, `.studio/view-check/`, `.studio/shot/`,
-  `.studio/requests/`, `.studio/status.json`, `.studio/watch.json`, `.studio/server.json` and `.studio/undo/` to it.
+  `.studio/requests/`, `.studio/play/`, `.studio/status.json`, `.studio/watch.json`, `.studio/server.json` and `.studio/undo/` to it.
 
 ### 3.1 Requests from the editor, and telling the editor how it is going
 
@@ -254,8 +279,10 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
 | `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
-| `name` | Give these `objects` (no name, `path:` keys) a name | Add a mark to each in the code (§5), choosing names from what they are; say which names you chose |
+| `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
+| `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
+| `play` | They asked **while playing** (▶ Play in the editor, often full screen) and are still playing. `text` = what they saw ("when I stop here the character vanishes": *here* is the moment below). `shot` = a picture of the game at that moment (`.studio/play/<id>.jpg`: **open it**). 3D: `view` = the player's own camera (`eye`, `target` 10 units ahead). `near` = what was near (3D: nearest in front of the camera, `d` in world units; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1 from the top left). `logs` = the game's console: errors and warnings (`level`), uncaught errors, the last lines, `ago` seconds before they asked. `fullscreen`, `size` | §3.1.1 |
 | `undone` | They pressed **Undo AI change** (or **Redo**, said in `text`). The editor already put the game's files back; `files` lists what changed | Do **not** redo it or "fix" it. Forget the undone change (the code is as it was before it); say one line in your window and mark it handled: `--status done --request <id> --note "Okay, it's back to how it was"` (Redo: `"Okay, your change is back"`) |
 
 Tell the editor how it is going, so the user sees it there without switching windows. **Every request, every time,
@@ -267,7 +294,8 @@ node <…>/bin/studio.mjs <game folder> --status working --request <id> --note "
 #   … change the code, then look at the game (§3.3) …
 node <…>/bin/studio.mjs <game folder> --status done --request <id> --changed 3 --note "Added 3 lighthouses around the island"  # 3. last
 node <…>/bin/studio.mjs <game folder> --status failed --request <id> --note "Couldn't find the barrel in the code"            # instead of 3
-node <…>/bin/studio.mjs <game folder> --status asking --request <id> --note "Is the second door a real door, or only for looks?"  # when you must ask
+node <…>/bin/studio.mjs <game folder> --status asking --request <id> --note "Is the second door a real door, or only for looks?" \
+  --choice "A real door" --choice "Only for looks" --about door-2                                  # when you must ask
 ```
 
 1. `received` right away, before you think about the change: the person sees "Your AI has it" and the violet light.
@@ -283,10 +311,16 @@ node <…>/bin/studio.mjs <game folder> --status asking --request <id> --note "I
    With several requests waiting, finish one (its file changes, then `done`) before you touch the code for the next:
    **Undo AI change** puts back everything changed since the request it belongs to, so work for a later request done
    early is undone with it (a save and "add 2 rocks" handled in one go: undoing the save also took the rocks away).
-5. `asking` **before** you ask the person anything in your own window and wait for the answer: `--note` is the
-   question, in one line. The editor shows "Your AI has a question" with it, so the person in the editor knows to
-   answer you; otherwise it keeps saying "Your AI has it" while you wait. After the answer, go on with `working` and
-   `done`. Ask only what the code and this skill cannot decide (§4: the first save never needs a question).
+5. `asking` **before** you ask the person anything and wait for the answer: `--note` is the question, in one line.
+   **The person answers in the editor**, where they are: give the answers as buttons, `--choice "Undo it" --choice
+   "Keep it"` (2 to 4, a few words each, the one you recommend first), say what it is about with `--about <key>`
+   (repeat for several; the editor lights those objects in the scene), and, when the question is about a change, what
+   it is now and what it would be with `--before "On the road" --after "16 m up"` (one short line each, shown side by
+   side; with one `--about` object you moved and no `--before`, the editor shows its numbers itself). The person can
+   also type their own answer in the editor's ask field. Their answer comes as an `answer` request (a `studio: answer`
+   line, or the hook wakes you). Ask the same question in your own window too, in one line, and take whichever answer
+   comes first. After the answer, go on with `working` and `done`. Ask only what the code and this skill cannot decide
+   (§4: the first save never needs a question).
 
 Keep notes to one short line (under ~60 characters shows in full on a phone). `done` and `failed` move the handled
 requests into `.studio/requests/done/` (only up to `--request <id>` when you give one), so the next `--requests`
@@ -309,6 +343,7 @@ contractions. Name the thing, not a feeling. Say what happened, then what to do 
 | `done` note after the first save (§4) | "Added a loader (1 line). Your layout is in." | "Applied via the loader approach." |
 | In your window after the first save | "Added a loader (1 line) that reads placement.json when the game starts, so your layout is in. Want the numbers written into the code instead? Say so." | A list of options with pros and cons |
 | `asking` note (the question) | "Is the second door a real door, or only for looks?" | "Clarification required." |
+| `--choice` (answer buttons) | "Undo it" / "Keep it" | "Yes" / "No" (say what each one does) |
 
 Say "select" (not "pick"), "duplicate" for the editor's copy action, and "type *look*" (not "say look").
 
@@ -317,6 +352,32 @@ After your `done`, the person sees **Undo AI change**: one press puts every file
 (files you created are removed; the person's `placement.json` / `library.json` are left alone), the game reloads, and
 you get an `undone` request (table above). **Redo** puts your change back the same way. You never need to undo your
 own change by hand when they press it; if they instead ask you in words to undo something, do it in the code as usual.
+
+### 3.1.1 Asked while playing (`play`): fix it without stopping their game
+
+The person is in the middle of a run and kept playing after pressing Enter. They see your progress in one small line
+over the game: `received` shows "Your AI is looking", your `working` note replaces it, and your `done` note shows with
+a **Reload** button. **The editor never reloads the game under them**: they choose when (Reload, or keep playing and
+get the fix the next time the game opens). So:
+
+1. `--status received --request <id>` at once, then read the whole record and **open the picture** (`shot`) before you
+   guess: "here" and "this" in their words are what the picture, `view` and `near` show. The `logs` often name the
+   cause (an error a second before they asked); a warning the game wrote about the thing they describe is a lead.
+2. `--status working --note "<what you're fixing, a few words>"` (it is read over a running game: under ~40
+   characters).
+3. Find the cause in the code and fix **the cause**, the smallest change that does it. Don't restart, rebuild or
+   reformat the game, don't change controls or the level they are playing, don't move things (that is the editor's
+   job), and don't add debugging overlays. A fix that needs the game's state from their run (they are 3 levels in) is
+   still a code change; they reload when they're ready.
+4. Look at the game (§3.3) when the fix is visual and you can make it happen in a shot; otherwise reason from the code
+   and the log, and say in your note what to try ("Fixed: stand on the pad again after Reload").
+5. `--status done --request <id> --changed 0 --note "<what you fixed>"` after your last file write: the note is what
+   they read next to **Reload** ("The hero no longer vanishes on the pad"). Can't tell the cause, or the fix would
+   change how the game plays? `--status asking` with `--choice` buttons (they answer over the game, as an `answer`
+   request), or `failed` with one line on what you need ("Couldn't make it vanish: where were you standing?").
+
+Never rely on their run to check: the game in their window keeps their state and won't change until they press
+Reload. In your own window, one or two lines: what was wrong and what you changed.
 
 ### 3.2 Objects without a name: offer once, at the start
 
@@ -387,6 +448,8 @@ for example "Reload the game: the rock should be left of the house, and the seco
   [`references/layer-order.md`](references/layer-order.md).
 - `added` and `removed` (optional): objects the user **copied** or **deleted** in the editor. They always need code
   changes, whichever way below the user chose: see "Copies and deletions" after the two ways.
+- `ui` and `uiView` (optional): the game's **HTML UI** (title, score, buttons) the user moved or resized in the
+  editor's UI layer. See "The UI (`ui`)" after "Copies and deletions".
 
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
@@ -500,6 +563,48 @@ Delete each removed object:
    match `added[].key`; if a deleted object is back, the code still creates it. Fix and check again.
 3. Tell the user in one or two sentences what you added and removed.
 
+### The UI (`ui`)
+
+The editor has a second layer, **UI**, for HTML over the game: elements the code marked with `data-studio-key` (§5).
+What the user moved there is saved by that key:
+
+```json
+"ui": {
+  "title-card": { "p": [0, -48], "s": 1.2, "label": "Glow Garden" },
+  "score":      { "p": [-12, 8] }
+},
+"uiView": [1280, 800]
+```
+
+- `p` = `[dx, dy]` in CSS px **from where the game's own CSS puts the element** (`[0, -48]` = 48 px up). `s` = its
+  scale (absent = 1); the editor keeps the element's middle where it was when it grows, so `p` is how far the middle
+  moved. `label` = its text, a clue only: find the element by `data-studio-key="title-card"`.
+- `uiView` = the game's size in CSS px when it was saved. Use it when the CSS places the element in `%` / `vw` / `vh`
+  (48 px of an 800 px high game = 6vh).
+- No `was`: the original is always `[0, 0]`, scale 1.
+
+**With the loader (Way 1)** there is nothing to do: `applyPlacement(scene, …)` applies `ui` too (before the world,
+also to marked elements the game adds later, such as a game-over screen). A game with **no world** (HTML only) calls
+`await applyPlacement(document, './placement.json')`. Without the loader yet, add it (Way 1) as for objects.
+
+**Writing it into the code (Way 2)**, per key:
+
+1. Find the element with `data-studio-key="<key>"` and the CSS rule that places it.
+2. Add `translate: <dx>px <dy>px;` (and `scale: <s>;`) to that rule — or add `dx` / `dy` to its `left` / `top`
+   numbers when they are plain px, whichever reads better in that code. If the CSS already has a `translate`, add the
+   numbers to it (`translate: calc(-50% + 12px) -48px`).
+3. **Never change its `transform`** for this: a title centred with `transform: translate(-50%, -50%)` would jump.
+   `translate` / `scale` are separate CSS properties that add to it.
+4. A size (`s`) grows the element around its middle in the editor. In CSS, `scale` grows it around its
+   `transform-origin`, so: no `transform` on it → `scale: <s>;` alone is right; centred with
+   `transform: translate(-50%, -50%)` → also add `transform-origin: 0 0;` (that point is its middle then); any other
+   transform → keep this key on the loader, or check the result in the game (§3.3) before you report.
+5. Remove that key from `ui` (and `uiView` when `ui` is empty). The loader would otherwise apply the offset a second
+   time on top of `left` / `top` numbers you changed.
+
+Check after applying: reload the game **without the editor** (or Play) and compare with what the user saw; then open
+the editor, press **U** (World | UI) and see that Save shows no unsaved count.
+
 ### Godot
 
 Use **Way 2** on the Godot project, not on the web export: the values live in the scene files (`.tscn`) as
@@ -541,6 +646,26 @@ the user to open the editor and save once more so the next file uses the new key
 - To tell the library exactly which file a 3D object comes from, set `userData.studioAsset = 'assets/tree.glb'`
   (PixiJS `obj.studioAsset`; your adapter's `assetsOf()`). Without it, models are matched by load order and shown as a
   guess.
+
+### The UI's marks (`data-studio-key` on HTML)
+
+In a three.js or canvas game, HTML over the game (a title card, the score, a Start button) becomes movable in the
+editor's **UI** layer when it carries `data-studio-key`:
+
+```html
+<div class="title-card" data-studio-key="title-card">…</div>
+<div class="score" data-studio-key="score">Score <b id="score">0</b></div>
+<button class="start" data-studio-key="start-button">Start</button>
+```
+
+- Mark only the UI the user wants to move, each **on the box that moves** (the title card, not its `<h1>` and `<p>`
+  one by one; not a full-screen wrapper). Names: lower case and hyphens, what it is in the game.
+- A game with no mark is edited exactly as before (no UI layer). When the user asks to arrange the UI, or the first
+  `/arrange` of a game with HTML over the game, offer once to add the marks (as for unnamed objects, §3.2).
+- An element whose `translate` / `scale` the game's code sets itself (an animation library) is not listed: mark a
+  wrapper box around it instead.
+- Do not mix with a DOM board game's pieces (`examples/dom-board`): there `data-studio-key` marks world objects and
+  the UI layer is off. `data-studio="false"` keeps an element out.
 
 ## 6. Read library.json and apply it
 

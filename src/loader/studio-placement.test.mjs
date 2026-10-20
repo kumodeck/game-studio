@@ -201,6 +201,7 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
   });
 }
 
-test('the built loader is under 6 KB', () => {
-  assert.ok(readFileSync(BUILT).length < 6 * 1024);
+// 9 KB since UI stage 1 (the `ui` part, 2026-10-19; was 6). The same limit as src/server/build.mjs LOADER_LIMIT.
+test('the built loader is under 9 KB', () => {
+  assert.ok(readFileSync(BUILT).length < 9 * 1024);
 });

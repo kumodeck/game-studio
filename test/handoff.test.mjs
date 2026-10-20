@@ -129,3 +129,35 @@ test('focus: a single object still gets a sane frame', () => {
   const f = focusSphere(box([0, 0, 0], 1), [], [0, 0, 0]);
   assert.ok(f.radius >= 0.5 && f.radius <= 2, `radius ${f.radius}`);
 });
+
+// The AI's question answered in the editor (hands-on test 2026-10-19).
+test('asking: choices, the objects it is about and now → after are kept; only for asking, cut to size', () => {
+  const st = normalizeStatus({
+    state: 'asking', request: '20261019-101500-000-saved-0a0a', note: 'The game moves this pillar every frame. Keep your spot anyway?',
+    choices: ['Undo it', 'Keep it', 'Keep it', '', 'Ask me later', 'Four', 'Five'], about: ['pillar-3', 'not a key', 'pillar-3'], before: 'z -10', after: 'z -4',
+  });
+  assert.deepEqual(st.choices, ['Undo it', 'Keep it', 'Ask me later', 'Four']);
+  assert.deepEqual(st.about, ['pillar-3']);
+  assert.equal(st.before, 'z -10');
+  assert.equal(st.after, 'z -4');
+  // One side alone says nothing: both or neither.
+  assert.equal(normalizeStatus({ state: 'asking', before: 'z -10' }).before, undefined);
+  // Not on other states (a "done" with buttons would be a question nobody waits for).
+  const done = normalizeStatus({ state: 'done', choices: ['a'], about: ['x'], before: 'a', after: 'b' });
+  assert.equal(done.choices, undefined);
+  assert.equal(done.about, undefined);
+  assert.equal(normalizeStatus({ state: 'asking', choices: ['x'.repeat(90)] }).choices[0].length, 40);
+});
+
+test('answer: the person\'s words, what it answers (to, question); its line names both', () => {
+  const r = normalizeRequestInput({ kind: 'answer', text: 'Keep it', to: '20261019-101500-000-saved-0a0a', question: 'Keep your spot anyway?', objects: [{ key: 'pillar-3' }] });
+  assert.ok(r.ok);
+  assert.deepEqual(r.value, { kind: 'answer', text: 'Keep it', to: '20261019-101500-000-saved-0a0a', question: 'Keep your spot anyway?', objects: [{ key: 'pillar-3' }] });
+  assert.equal(normalizeRequestInput({ kind: 'answer', text: '' }).ok, false, 'an answer needs words');
+  // A bad `to` is a hint lost, not a lost answer.
+  assert.deepEqual(normalizeRequestInput({ kind: 'answer', text: 'Yes', to: '../x' }).value, { kind: 'answer', text: 'Yes' });
+  assert.equal(
+    handoffLine({ kind: 'answer', text: 'Keep it', to: '20261019-101500-000-saved-0a0a', question: 'Keep your spot anyway?' }, '.studio/requests/a.json'),
+    'studio: answer .studio/requests/a.json "Keep it" to "Keep your spot anyway?" (request 20261019-101500-000-saved-0a0a)',
+  );
+});

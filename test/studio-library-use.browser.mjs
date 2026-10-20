@@ -241,7 +241,11 @@ async function runLocal(g, sz, theme) {
   if (g.dim === '3d') assert.ok(add.view?.eye && add.view?.target, `${tag}: 3D: where the camera looks, for placing it`);
   step(`file ${g.file}: draft “${W.addFile}” → Enter → ${add.id} (assets ${JSON.stringify(add.assets)})`);
   // Two files with Multi-select: the chip counts them.
-  await press('.assets-page [data-action=shelf-multi]');
+  // (Phone: Multi-select is in the "+" next to the search, the second design review's ⑦; its "Done" comes back next to it.)
+  if (sz.touch) {
+    await press('.assets-page [data-action=library-more]');
+    await press('.assets-page [data-action=more-shelf-multi]');
+  } else await press('.assets-page [data-action=shelf-multi]');
   await press(`.assets-page .gsl-tile[data-kind=file][data-path="${g.second}"]`);
   assert.equal(await chip(), W.files2, `${tag}: two files picked → "${W.files2}"`);
   assert.equal(await page.eval(`document.querySelectorAll('.assets-page .gsl-tile.gsl-open[data-kind=file]').length`), 2, `${tag}: both tiles marked as picked`);
@@ -332,7 +336,8 @@ async function runLocal(g, sz, theme) {
   if (!(await page.eval(`!document.querySelector('.ctx-menu').hidden`)) && process.env.STUDIO_DEBUG_SHOTS) writeFileSync(join(process.env.STUDIO_DEBUG_SHOTS, `${tag}-no-menu.png`), await page.screenshot());
   const menu = await J(`[...document.querySelectorAll('.ctx-menu:not([hidden]) .ctx-row')].map((e) => e.dataset.action.replace(/^ctx-/, ''))`);
   assert.ok(menu.includes('showInLibrary'), `${tag}: the object's menu has Show in Library (${JSON.stringify(menu)})`);
-  if (!sz.touch) assert.ok(menu.includes('showFileInLibrary'), `${tag}: and Show its asset in Library`);
+  // Its file is on the card ("Assets: planks.jpg") and in ⌘K; the menu keeps to 7 rows since design review 2 (②).
+  assert.ok(!menu.includes('showFileInLibrary'), `${tag}: no "Show its asset in Library" row in the menu`);
   await key('Escape');
   step(`⌘K and the menu: ${JSON.stringify(menu.filter((m) => /Library/.test(m)))}`);
   await page.close();

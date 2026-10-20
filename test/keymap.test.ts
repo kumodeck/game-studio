@@ -47,8 +47,10 @@ test('every shortcut has a name in English and Japanese', () => {
 test('no single key does two things', () => {
   const seen = new Map<string, string>();
   for (const k of KEYMAP) for (const key of k.keys) {
-    // Esc is one key in three steps (menu → tool → selection), listed twice on purpose.
-    if (key === 'Esc') continue;
+    // Esc is one key in three steps (menu → tool → selection), listed twice on purpose. E / Q too, since the second
+    // design review (⑪, 2026-10-19): they turn what is picked (turnStep) and move the camera up / down with nothing
+    // picked (camera, whose note names Space+E / Space+Q for the picked case) — the sheet writes both, as they work.
+    if (key === 'Esc' || ((key === 'E' || key === 'Q') && ['turnStep', 'camera'].includes(k.id))) continue;
     assert.ok(!seen.has(key), `${key}: ${seen.get(key)} and ${k.id}`);
     seen.set(key, k.id);
   }
@@ -84,8 +86,11 @@ test('the fly row: WASD in 3D only, its rule in both languages, read where the k
   assert.deepEqual(d.keys, ['WASD']);
   assert.equal(d.dim, '3d');
   assert.equal(d.note, 'keys.fly.note');
-  assert.match(translate('en', 'keys.fly.note'), /right mouse button/);
+  assert.match(translate('en', 'keys.fly.note'), /right button/);
   assert.match(translate('ja', 'keys.fly.note'), /右ボタン/);
+  // W / S go level (wasd-level 2026-10-19): the note says so, in both languages.
+  assert.match(translate('en', 'keys.fly.note'), /level/);
+  assert.match(translate('ja', 'keys.fly.note'), /水平/);
   const input = readFileSync(new URL('../src/bridge/input.ts', import.meta.url), 'utf8');
   const main = readFileSync(new URL('../src/shell/main.ts', import.meta.url), 'utf8');
   for (const src of [input, main]) assert.ok(src.includes("{ KeyW: 'w', KeyA: 'a', KeyS: 's', KeyD: 'd', KeyE: 'e', KeyQ: 'q' }"), 'fly keys by code');

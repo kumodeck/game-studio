@@ -27,10 +27,11 @@ Games whose start layout needs async work call `studio.waitForReady()` early and
 ## Files
 
 - `boot.js` — discovery, rAF holder, camera tracking, load records (runs before the game)
-- `adapter.js` — the adapter: list, begin/end, pickNear, anchor, grab/drag, rotate, scale, nudgeY, setPose, capture, assetsOf, view
+- `adapter.js` — the adapter: list, begin/end, pickNear, anchor, grab/drag (on surfaces while snapping), rotate, scale, nudgeY, rest / drop / setSnap, setPose, capture, assetsOf, view
 - `keys.js` — which objects are movable and their keys (pure; shared with the placement loader)
 - `apply.js` — apply a placement.json to a scene (the three.js half of the loader)
 - `pick.js` — bounds, ray casts, pickNear ordering rules
+- `surface.js` — surfaces to set things on (snap to surfaces: the ground, a pier's planks; light effects and the moving objects left out), world-space triangles in an xz grid so a 100 k-triangle terrain answers a ray per pointer move
 - `camera.js` — the edit camera (orbit / pan / zoom / rise = straight up or down / fly = WASD, scaled to the scene / look = turn in place / frame)
 - `focus.js` — what the edit camera frames: the object and its neighbours when picked from the list, the play area for frameAll (pure maths)
 - `capture.js` — one-object thumbnails that bypass the game's render hooks

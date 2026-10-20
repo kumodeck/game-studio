@@ -1,6 +1,7 @@
 // Words of the browser-only demo (English and Japanese, like the shell).
 //
-// `banner` is the one line at the top of every demo page, and the only place the editor says the demo
+// `banner` is the one line at the top of every demo page (`bannerShort` is the same line on a phone, where the long
+// one wrapped to two lines — the second design review's ⑪, 2026-10-19), and the only place the editor says the demo
 // is a demo with no AI behind it (2026-10-18: the line in the ask box's place, "… Get Game Studio →", was
 // taken out — the person is already using Game Studio). Plain words, no pitch. The rest replace
 // shell strings (i18n.ts keys, through setExtraText) that would promise an AI
@@ -14,6 +15,7 @@ import type { Lang } from '../../contract.ts';
 export const DEMO_TEXT: Record<Lang, Record<string, string>> = {
   en: {
     'demo.banner': 'Demo · Not connected to an AI · Saves stay in this browser',
+    'demo.bannerShort': 'Demo · No AI · Saved in this browser',
     'demo.samples': 'Samples',
     'demo.memory': 'This browser can’t save here. Your changes are lost when you close the page.',
     'demo.missing': 'We couldn’t find that sample. Choose one from the list.',
@@ -26,6 +28,7 @@ export const DEMO_TEXT: Record<Lang, Record<string, string>> = {
   },
   ja: {
     'demo.banner': '試し版・AI にはつながっていません・保存はこのブラウザの中だけ',
+    'demo.bannerShort': '試し版・AI なし・保存はこのブラウザだけ',
     'demo.samples': '見本',
     'demo.memory': 'このブラウザでは保存できません。ページを閉じると変更は消えます。',
     'demo.missing': 'その見本はありません。一覧から選んでください。',

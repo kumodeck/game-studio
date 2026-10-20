@@ -1,18 +1,26 @@
 // Edit session inside the game page: applies shell messages to the adapter,
 // runs the studio's own draw loop while the game is frozen, and reports
 // changes back. Pointer gestures and handles are attached by input.ts.
-import type { BridgeToShell, GameTool, GroupScaleMode, Inset, Item, Lang, Pose, ShellToBridge, StudioAdapter, TurnAxis } from '../contract.ts';
+import type { BridgeToShell, EditLayer, GameTool, GroupScaleMode, Inset, Item, Lang, Pose, ShellToBridge, StudioAdapter, TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import { withRules, type RulesHolder } from '../core/rules.ts';
 import { withEdits } from '../core/edits.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift, type GroupSession } from './group.ts';
 import { createToolHost } from './game-tools.ts';
 import { attachInput, type InputHandle } from './input.ts';
+import { firstToTouch, stepDetent } from './snap.ts';
+import { createHoldState, withHold } from './hold.ts';
+import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck } from './selfcheck.ts';
 
 export interface EditorDeps {
-  /** The adapter as found (self-check runs on it, before game rules). */
-  adapter: StudioAdapter;
+  /** The world's adapter as found (self-check runs on it, before game rules); null = an HTML-only game (UI only). */
+  adapter: StudioAdapter | null;
+  /**
+   * UI stage 1: the UI layer's adapter (bridge findUi), or null/absent — then the editor is exactly what it was:
+   * one adapter, no core/ready `layers`, no core/layer.
+   */
+  ui?: StudioAdapter | null;
   /** Game rules (.studio/studio.json via the shell) and .studio/tools.js extensions. */
   rules: RulesHolder;
   /** Game tools registered so far (more may arrive later through register()). */
@@ -26,8 +34,12 @@ export interface Editor {
   handle(msg: ShellToBridge): void;
   /** Tools registered after the editor started (late studio.extend calls). */
   addTools(tools: GameTool[]): void;
-  /** The adapter as the editor drives it (copies/deletions and game rules applied), for the debug peek. */
-  driven: StudioAdapter;
+  /** The adapter as the editor drives it now (copies/deletions and game rules applied; the current layer's), for the debug peek. */
+  readonly driven: StudioAdapter;
+  /** The layer being edited (UI stage 1). */
+  layer(): EditLayer;
+  /** Tell the shell which adapter it is talking to (core/ready), as the bridge does once when the editor is made. */
+  announce(): void;
 }
 
 /** Shared state between the editor and the input layer. */
@@ -49,12 +61,44 @@ export interface EditState {
 }
 
 export function createEditor(deps: EditorDeps): Editor {
-  const { core, win, post } = deps;
-  const raw = deps.adapter;
-  // Every edit goes through the copy/delete layer and the game rules layer;
-  // the adapter itself is unaware of both.
-  const edits = withEdits(raw);
-  const adapter = withRules(edits, deps.rules);
+  const { core, win } = deps;
+  // Every edit goes through the copy/delete layer, the game rules layer and what the editor holds still (the ground,
+  // what the game moves itself: hold.ts); the adapter itself is unaware of all three.
+  // UI stage 1 (2026-10-19): one such stack per layer — the world's, and the UI's (no game rules: .studio/studio.json
+  // speaks of world objects; no hold either: grounds and the game's own motion are world things) — and `raw` /
+  // `edits` / `adapter` are the current layer's. Everything below reads those three names when it runs, so switching
+  // layers (setLayer) is: input off, swap the three, input on. One layer at a time keeps input.ts / handles.ts as they
+  // are (the design's "switch, don't merge" for stages 1–3).
+  // merge of 2026-10-19: the hold layer (fb-safe) sits on top of the world's stack only; the watch of the game
+  // (watchGame) reads and puts back the world's `ruled`, whichever layer is being edited.
+  type Stack = { raw: StudioAdapter; edits: ReturnType<typeof withEdits>; ruled: StudioAdapter; driven: StudioAdapter };
+  const hold = createHoldState();
+  const stackOf = (a: StudioAdapter, rules: RulesHolder, held: boolean): Stack => {
+    const e = withEdits(a);
+    const ruled = withRules(e, rules);
+    return { raw: a, edits: e, ruled, driven: held ? withHold(ruled, hold) : ruled };
+  };
+  const world: Stack | null = deps.adapter ? stackOf(deps.adapter, deps.rules, true) : null;
+  const uiStack: Stack | null = deps.ui ? stackOf(deps.ui, { config: null, ext: [] }, false) : null;
+  let layer: EditLayer = world ? 'world' : 'ui';
+  const first = (world || uiStack)!;
+  let raw = first.raw;
+  let edits = first.edits;
+  let adapter = first.driven;
+  // The world's edit camera while the UI is edited (the UI has no camera: the world shows the player's view then).
+  let worldView: unknown = undefined;
+  // While the game is watched (watchGame): the last pose the editor itself gave each world object (a saved placement
+  // re-applied, a drag), so those are neither taken for the game's motion nor undone when the watch ends.
+  let watchBase: Map<string, Pose> | null = null;
+  const watchSet = new Set<string>(); // the keys the editor posed during the watch: put back after watch(false)
+  const post = (msg: BridgeToShell) => {
+    // Only the world's moves: a UI key posed meanwhile is not a world object to put back (merge of 2026-10-19).
+    if (watchBase && layer === 'world') {
+      if (msg.type === 'studio:placement/moved') (watchBase.set(msg.key, msg.pose), watchSet.add(msg.key));
+      else if (msg.type === 'studio:placement/moved-group') for (const m of msg.poses) (watchBase.set(m.key, m.pose), watchSet.add(m.key));
+    }
+    deps.post(msg);
+  };
   const state: EditState = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
   let lang: Lang = 'en';
   let loopId = 0;
@@ -66,6 +110,9 @@ export function createEditor(deps: EditorDeps): Editor {
   let inset: Inset = { top: 0, right: 0, bottom: 0, left: 0 };
   let theme: 'dark' | 'light' = 'dark';
   let aiMarks: { keys: string[]; label: string | null } = { keys: [], label: null };
+  // The game's UI shown (faded) while the world is edited: the shell's eye button (core/ui-peek). Off = hidden, the
+  // default every time the editor opens (paintLayers).
+  let uiPeek = false;
   // Step runs (keyboard/button repeats) fold into one undo step: remember the
   // pose before the run and close it when a non-hold step arrives or after a
   // quiet gap.
@@ -78,7 +125,46 @@ export function createEditor(deps: EditorDeps): Editor {
       post({ type: 'studio:core/error', message: `list() failed: ${(e as Error).message}` });
       state.items = [];
     }
-    post({ type: 'studio:placement/items', items: state.items });
+    post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
+  };
+  /** placement/items' `layer`, only for a game that has a UI (otherwise the message is what it always was). */
+  const itemsLayer = (): { layer?: EditLayer } => (uiStack ? { layer } : {});
+  /** The view state goes to the shell (kept for the next reload) only for the world: the UI has no camera. */
+  const postView = () => {
+    if (layer === 'world') post({ type: 'studio:core/view-state', state: adapter.view.state() });
+  };
+  const ready = () => {
+    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
+      drop: adapter.dim === '3d' && !!adapter.drop,
+      ...(uiStack ? { layers: (world ? ['world', 'ui'] : ['ui']) as EditLayer[], layer } : {}) });
+  };
+  /**
+   * Which layer can be touched, by brightness alone (design §2.3 ③): editing the UI dims the world 15 %; editing the
+   * world HIDES the UI (a try of the editor, 2026-10-20, "the UI is always there, in the way": the title, the Start button and the
+   * score sat over the trees and lanterns, faded to half, hard to see past and to click past). The shell's eye button
+   * (⇧U, core/ui-peek) shows it again faded to half, as before. Hidden or faded, the UI takes no pointer then
+   * (`pointer-events: none` on it and inside it), so a click on a title selects the tree behind it and the game's
+   * buttons show no hover. A style sheet in the game page while editing, gone at the end (Play shows the game as it
+   * is). `filter`, not `opacity` / `visibility`: it multiplies with the game's own opacity (a hidden overlay at 0
+   * stays hidden) and a child's own `visibility: visible` cannot bring it back. Only when the game has both layers.
+   */
+  const paintLayers = () => {
+    if (!uiStack || !world) return;
+    const doc = win.document;
+    let el = doc.getElementById('studio-edit-layer') as HTMLStyleElement | null;
+    if (!state.editing) {
+      el?.remove();
+      return;
+    }
+    if (!el) {
+      el = doc.createElement('style');
+      el.id = 'studio-edit-layer';
+      (doc.head || doc.documentElement).appendChild(el);
+    }
+    const top = '[data-studio-key]:not([data-studio-key] [data-studio-key])';
+    el.textContent = layer === 'ui'
+      ? 'canvas:not([data-studio-key]){filter:brightness(.85)}'
+      : `${top}{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *{pointer-events:none!important}`;
   };
 
   const frame = () => {
@@ -88,6 +174,8 @@ export function createEditor(deps: EditorDeps): Editor {
     // the picture correct when an engine re-uploads textures lazily.
     try {
       adapter.render();
+      // On the UI layer the world still needs drawing (a 2D world draws only when asked while time is frozen).
+      if (world && adapter !== world.driven) world.driven.render();
     } catch {
       /* keep the loop alive; the error was reported when it first happened */
     }
@@ -254,11 +342,11 @@ export function createEditor(deps: EditorDeps): Editor {
       // Rare (a list pick of something behind you); it frames the object like before.
       adapter.view.focus(key);
       slideIntoFree(key);
-      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      postView();
       return;
     }
     if (!adapter.view.restore) {
-      post({ type: 'studio:core/view-state', state: adapter.view.state() });
+      postView();
       return; // no way back to the start: the slide happens at once
     }
     // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
@@ -275,7 +363,7 @@ export function createEditor(deps: EditorDeps): Editor {
       if (t < 1) core.time.raf(tick);
       else {
         panGlide = 0;
-        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+        postView();
       }
     };
     core.time.raf(tick);
@@ -346,11 +434,11 @@ export function createEditor(deps: EditorDeps): Editor {
     const { key, from, op, group } = stepRun;
     stepRun = null;
     if (group) {
-      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, group, true), end: true, press: op as 'move', hold: true });
+      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, group, true), end: true, press: pressOf(op), hold: true });
       return;
     }
     const pose = poseOf(key);
-    if (pose) post({ type: 'studio:placement/moved', key, pose, end: true, from, press: op as 'move', hold: true });
+    if (pose) post({ type: 'studio:placement/moved', key, pose, end: true, from, press: pressOf(op), hold: true });
   };
 
   /**
@@ -366,10 +454,15 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     const g = run.group!;
     if (m.op === 'move') {
-      // Arrow keys move by screen px: the same as dragging the move handle by that much.
+      // Arrow keys move by screen px: the same as dragging the move handle by that much (on surfaces too, snap.ts).
       run.dx += m.dx || 0;
       run.dy += m.dy || 0;
+      adapter.setSnap?.({ on: true, skip: keys });
       groupMove(adapter, adapter.dim, g, run.dx, run.dy);
+      adapter.setSnap?.({ on: false });
+    } else if (m.op === 'drop') {
+      // End with several picked: each onto the surface under it, as Unreal's End does (the others are not floors).
+      for (const k of g.keys) adapter.drop?.(k, keys);
     } else if (m.op === 'rotate') {
       run.total += m.d || 0;
       // Q / E: upright, as for one object (the axis is the turn tool's), together or each in place as chosen.
@@ -377,17 +470,24 @@ export function createEditor(deps: EditorDeps): Editor {
     } else if (m.op === 'scale') {
       run.total *= m.d || 1;
       groupScale(adapter, adapter.dim, g, run.total, state.scaleMode);
-    } else if (m.op === 'lift') groupLift(adapter, g, m.d || 0);
+    } else if (m.op === 'lift') {
+      // PgDn: the step ends on the surface the first member meets (snap.ts stepDetent).
+      const d = adapter.rest ? stepDetent(firstToTouch(g.keys.map((k) => adapter.rest!(k, keys))), m.d || 0) : m.d || 0;
+      groupLift(adapter, g, d);
+    }
     dirtyFrame = true;
     if (m.hold) {
       stepRun = run;
       win.clearTimeout(run.timer);
       run.timer = win.setTimeout(closeStepRun, 400);
-      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, false), press: m.op, hold: true });
+      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, false), press: pressOf(m.op), hold: true });
     } else {
-      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, true), end: true, press: m.op });
+      post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, true), end: true, press: pressOf(m.op) });
     }
   };
+
+  /** The handle a step counts as for the shell (Drop to floor changes the height: the Height handle's). */
+  const pressOf = (op: string) => (op === 'drop' ? 'lift' : op) as 'move' | 'rotate' | 'lift' | 'scale';
 
   const step = (m: Extract<ShellToBridge, { type: 'studio:placement/step' }>) => {
     const keys = m.keys && m.keys.length > 1 ? m.keys : null;
@@ -403,18 +503,24 @@ export function createEditor(deps: EditorDeps): Editor {
       const a = adapter.anchor(m.key);
       if (!a) return;
       const [x, y] = a.center;
+      adapter.setSnap?.({ on: true, skip: [m.key] });
       if (adapter.grab(m.key, x, y)) pose = adapter.drag(m.key, x + (m.dx || 0), y + (m.dy || 0));
+      adapter.setSnap?.({ on: false });
     } else if (m.op === 'rotate') pose = adapter.rotate(m.key, m.d || 0);
     else if (m.op === 'scale') pose = adapter.scale(m.key, m.d || 1);
-    else if (m.op === 'lift' && adapter.nudgeY) pose = adapter.nudgeY(m.key, m.d || 0);
+    else if (m.op === 'lift' && adapter.nudgeY) {
+      // PgDn: a step that would cross the surface below ends on it; the next goes through (snap.ts stepDetent).
+      const d = adapter.rest ? stepDetent(adapter.rest(m.key, [m.key]), m.d || 0) : m.d || 0;
+      pose = adapter.nudgeY(m.key, d);
+    } else if (m.op === 'drop' && adapter.drop) pose = adapter.drop(m.key, [m.key]);
     dirtyFrame = true;
     if (m.hold) {
       if (!stepRun) stepRun = { key: m.key, from, op: m.op, timer: 0, total: 0, dx: 0, dy: 0 };
       win.clearTimeout(stepRun.timer);
       stepRun.timer = win.setTimeout(closeStepRun, 400);
-      post({ type: 'studio:placement/moved', key: m.key, pose, press: m.op, hold: true });
+      post({ type: 'studio:placement/moved', key: m.key, pose, press: pressOf(m.op), hold: true });
     } else {
-      post({ type: 'studio:placement/moved', key: m.key, pose, end: true, from, press: m.op });
+      post({ type: 'studio:placement/moved', key: m.key, pose, end: true, from, press: pressOf(m.op) });
     }
   };
 
@@ -463,9 +569,16 @@ export function createEditor(deps: EditorDeps): Editor {
       const sources = rest.map((f) => f.from);
       const ga = groupAnchor(adapter, sources, sources[0]!);
       const dx = ga && ga.rect ? Math.max(24, Math.min(400, ga.rect.w + 12)) : 40;
-      const g = beginGroup(adapter, rest.map((f) => f.key), rest[0]!.key);
-      // 3D: groupMove moves the first copy on the ground and the others by the same metres.
-      if (g) groupMove(adapter, adapter.dim, g, dx, 0);
+      // A copy of what the game moves is held like its original (hold.ts), but this first step beside it is the
+      // editor's own: let it through, then hold it.
+      for (const f of rest) hold.placing.add(f.key);
+      try {
+        const g = beginGroup(adapter, rest.map((f) => f.key), rest[0]!.key);
+        // 3D: groupMove moves the first copy on the ground and the others by the same metres.
+        if (g) groupMove(adapter, adapter.dim, g, dx, 0);
+      } finally {
+        hold.placing.clear();
+      }
     }
     for (const d of done) d.pose = adapter.anchor(d.key)?.pose ?? d.pose;
     dirtyFrame = true;
@@ -476,42 +589,150 @@ export function createEditor(deps: EditorDeps): Editor {
   };
 
   /**
-   * Put new copies in the middle of the free part of the frame (copy with `at: 'view'`). True when done.
-   * 2D: a screen drag of the group from where the originals' box is drawn to the middle (stage space).
-   * 3D: "on the ground where the camera looks". The middle of the view is often sky or far hills (Lantern Cove opens
-   * on the player's camera, its horizon a little under the middle), so the spot is the first point straight down
-   * from the middle whose ray meets the original's ground (toGround at its height): the lead copy's origin goes
-   * there (the others by the same metres), then — now in front of the camera — a drag of its pivot onto that screen
-   * point, so a long thing (the pier) is placed by its middle, not its origin. WHY: the first try (2026-10-18) only
-   * dragged from the original's screen point to the middle; that ray hit the sky, the drag kept the object where it
-   * was, and the pier copy stayed at the frame's right edge (off screen on a phone). Without toGround, or with no
-   * ground anywhere under the middle: the drag from the originals' box, as in 2D.
+   * Place the Library's "Add to scene" copies (copy with `at: 'view'`) where they can be seen whole. True when done.
+   * The rule (design review 2, 2026-10-19, item ①): the copy keeps the original's size and must show inside the middle
+   * 60 % of the frame, no taller than 35 % of it — never "in front of the camera, covering the view".
+   * 1. Beside the original, one of its widths over (toward the middle of the frame, else the other side), when the
+   *    original is on screen: the person sees the new one next to the one they know.
+   * 2. Otherwise (the original off screen, or both sides fail the rule): the middle of what the camera sees, at about
+   *    the original's distance. 3D: points on the original's ground down the middle line of the free area (toGround);
+   *    of the ones that pass the rule, the one whose screen height is nearest the original's (= the same distance).
+   *    2D: the middle of the free area (a 2D copy's size does not depend on where it stands).
+   * 3. Nothing passes (a giant object, no ground under the middle): the candidate that shows smallest.
+   * WHY: the first version (2026-10-18) always went to "the ground below the middle"; in Lantern Cove that ground is
+   * right under a low camera, and the sea-stack copy stood in front of it, covering ~45 % of the view and the
+   * lighthouse, with its strip off screen (review 2, photo 11).
    */
   const toView = (fresh: Array<{ key: string; from: string }>): boolean => {
     const keys = fresh.map((f) => f.key);
-    const area = freeArea(inset.top);
-    const tx = (area.x0 + area.x1) / 2, ty = (area.y0 + area.y1) / 2;
     const g = beginGroup(adapter, keys, keys[0]!);
     if (!g) return false;
+    // The copies stand exactly where the originals are (made this frame): the originals' box is theirs.
+    const ga = groupAnchor(adapter, fresh.map((f) => f.from), fresh[0]!.from);
+    const W = win.innerWidth, H = win.innerHeight;
+    const shown = () => {
+      const a = groupAnchor(adapter, keys, g.primary);
+      return a && a.visible && a.rect ? a.rect : null;
+    };
+    // The rule above: height ≤ 35 % of the frame, middle inside the middle 60 % (20 %–80 % both ways).
+    const passes = (r: { x: number; y: number; w: number; h: number } | null) => !!r && r.h <= H * 0.35 + 0.5
+      && r.x + r.w / 2 >= W * 0.2 && r.x + r.w / 2 <= W * 0.8 && r.y + r.h / 2 >= H * 0.2 && r.y + r.h / 2 <= H * 0.8;
+    const h0 = ga?.rect?.h ?? 0;
+    // Tried placements: how to put the group there again, and its screen box there.
+    const tried: Array<{ put: () => void; r: { x: number; y: number; w: number; h: number } | null }> = [];
+    const attempt = (put: () => void) => {
+      put();
+      const r = shown();
+      tried.push({ put, r });
+      return passes(r);
+    };
+    // 1. Beside the original.
+    const W0 = ga?.rect?.w ?? 0;
+    if (ga && ga.visible && ga.rect && W0 > 0) {
+      const toMiddle = ga.center[0] <= W / 2 ? 1 : -1;
+      const gap = Math.max(8, W0 * 0.1);
+      for (const dir of [toMiddle, -toMiddle]) {
+        if (attempt(() => groupMove(adapter, adapter.dim, g, dir * (W0 + gap), 0))) return true;
+      }
+    }
+    // 2. The middle of the view at about the original's distance.
+    const area = freeArea(inset.top);
+    const tx = (area.x0 + area.x1) / 2, ty = (area.y0 + area.y1) / 2;
     const lead = g.from.get(g.primary);
+    const good: Array<{ put: () => void; r: { x: number; y: number; w: number; h: number } }> = [];
     if (adapter.dim === '3d' && lead && adapter.toGround) {
-      // From the middle down to 85 % of the free height: 0.5 = the middle itself (a camera looking down at the ground).
-      for (const f of [0.5, 0.58, 0.66, 0.75, 0.85]) {
+      for (let f = 0.3; f <= 0.901; f += 0.05) {
         const y = area.y0 + (area.y1 - area.y0) * f;
         const hit = adapter.toGround(tx, y, lead.p[1] ?? 0);
         if (!hit) continue;
-        groupShift(adapter, g, [hit[0]! - (lead.p[0] ?? 0), 0, hit[2]! - (lead.p[2] ?? 0)]);
-        const a = adapter.anchor(g.primary);
-        const g2 = a && a.visible ? beginGroup(adapter, keys, g.primary) : null;
-        if (g2 && a) groupMove(adapter, '3d', g2, tx - a.center[0], y - a.center[1]);
-        return true;
+        const put = () => {
+          groupShift(adapter, g, [hit[0]! - (lead.p[0] ?? 0), 0, hit[2]! - (lead.p[2] ?? 0)]);
+          // Now in front of the camera: its pivot onto the screen point, so a long thing is placed by its middle.
+          const a = adapter.anchor(g.primary);
+          const g2 = a && a.visible ? beginGroup(adapter, keys, g.primary) : null;
+          if (g2 && a) groupMove(adapter, '3d', g2, tx - a.center[0], y - a.center[1]);
+        };
+        if (attempt(put)) good.push({ put, r: tried[tried.length - 1]!.r! });
       }
+    } else if (ga) {
+      const put = () => groupMove(adapter, adapter.dim, g, tx - ga.center[0], ty - ga.center[1]);
+      if (attempt(put)) good.push({ put, r: tried[tried.length - 1]!.r! });
     }
-    // The originals' box: the copies stand exactly there, but were made this frame (not drawn yet).
-    const ga = groupAnchor(adapter, fresh.map((f) => f.from), fresh[0]!.from);
-    if (!ga || !ga.visible) return false;
-    groupMove(adapter, adapter.dim, g, tx - ga.center[0], ty - ga.center[1]);
+    if (good.length) {
+      good.sort((a, b) => Math.abs(a.r.h - h0) - Math.abs(b.r.h - h0));
+      good[0]!.put();
+      return true;
+    }
+    // 3. Nothing passed: the smallest one seen (a visible one first).
+    const seen = tried.filter((x) => x.r).sort((a, b) => a.r!.h - b.r!.h);
+    if (!seen.length) return false;
+    seen[0]!.put();
     return true;
+  };
+
+  /**
+   * Once, right after the edit view is up: let the game's own frames run for WATCH_MS, find what it moved by itself
+   * (observe.ts), put those back where the first frame had them, and hold them (hold.ts: "the game moves this").
+   * Not skipped when core.time counted no game frame: a three.js game's frames are held by the adapter's own boot.js
+   * (raw.watch), not by core.time, so that count stays 0 there (found on the runner of that try, 2026-10-19).
+   */
+  let watched = false;
+  const watchGame = async () => {
+    if (watched) return;
+    watched = true;
+    // The world's objects only (UI stage 1 merged in, 2026-10-19): a game with only a UI has nothing to watch.
+    if (!world) return;
+    const { raw, ruled } = world;
+    let before: Item[];
+    try {
+      before = ruled.list();
+    } catch {
+      return;
+    }
+    watchBase = new Map(before.map((i) => [i.key, i.pose] as const));
+    core.time.thaw();
+    raw.watch?.(true);
+    await new Promise((r) => win.setTimeout(r, WATCH_MS));
+    const base = watchBase;
+    watchBase = null;
+    // Left editing meanwhile (Play): the game runs on as it should; nothing to put back.
+    if (!state.editing) {
+      raw.watch?.(false);
+      return;
+    }
+    core.time.freeze();
+    // Read what moved BEFORE watch(false): an adapter may put its whole scene back then (three.js does).
+    let after: Item[] = [];
+    try {
+      after = ruled.list();
+    } catch {
+      /* nothing found: the scene is put back below all the same */
+    }
+    raw.watch?.(false);
+    const was = after.map((i) => ({ ...i, pose: base.get(i.key) ?? i.pose }));
+    hold.driven = drivenBetween(was, after, world.driven.dim);
+    // What the game moved, and what the editor posed meanwhile (a saved layout re-applied, an early drag), which an
+    // adapter's watch(false) may have put back to the first frame with the rest of the scene.
+    for (const k of new Set([...hold.driven.keys(), ...watchSet])) {
+      const p = base.get(k);
+      if (p) ruled.setPose(k, p);
+    }
+    watchSet.clear();
+    if (!hold.driven.size) return;
+    dirtyFrame = true;
+    // The UI being edited by then (a reload that asked for it): the world's list, now with `held`, goes out marked as
+    // the world's, the way setEditing sends the other layer's list.
+    if (layer !== 'world') {
+      try {
+        post({ type: 'studio:placement/items', items: world.driven.list(), layer: 'world' });
+      } catch {
+        /* listed when switched to */
+      }
+      return;
+    }
+    refreshItems();
+    postSelected();
+    input?.selectionChanged();
   };
 
   const setEditing = (on: boolean, viewState?: unknown) => {
@@ -533,18 +754,32 @@ export function createEditor(deps: EditorDeps): Editor {
         // Tell the shell the first view too (not only after the person moves the camera): a reload
         // after the AI's change then opens on the same view, even when the AI's new objects would
         // make "frame all" choose another one (AI feel, 2026-10-16).
-        post({ type: 'studio:core/view-state', state: adapter.view.state() });
+        postView();
+      }
+      // The other layer starts too (UI: its CSS animations pause), but stays out of reach until switched to.
+      for (const o of others()) {
+        try {
+          o.driven.begin();
+        } catch (e) {
+          post({ type: 'studio:core/error', message: `begin() failed: ${(e as Error).message}` });
+        }
       }
       state.editing = true;
-      post({ type: 'studio:placement/items', items: state.items });
-      input = attachInput({ adapter, edits, core, win, post, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true) });
+      post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
+      // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
+      // even when the person never switches to the UI.
+      for (const o of others()) {
+        try {
+          post({ type: 'studio:placement/items', items: o.driven.list(), layer: o === uiStack ? 'ui' : 'world' });
+        } catch {
+          /* listed when switched to */
+        }
+      }
+      attach();
       toolHost.announce();
-      if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
-      input.setInset(inset);
-      input.setTheme(theme);
-      if (aiMarks.keys.length) input.setAiMarks(aiMarks.keys, aiMarks.label);
-      input.setLang(lang);
+      paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
+      const watching = watchGame();
       if (!checked) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
@@ -552,9 +787,14 @@ export function createEditor(deps: EditorDeps): Editor {
         // After the list and the first picture have painted (speed pass, 2026-10-17): the check draws twice and reads
         // the canvas back, which waits for the GPU to finish. Run at once, on a slow GPU it held the first paint of
         // the list by about a second (Lantern Cove in the play test's software GL).
-        void nextTurn()
+        // After the watch too (watchGame): the check moves an object and reads it back, which the game's own motion
+        // would spoil while it runs.
+        // The adapter of the layer edited first (the world's; a reload asking for the UI switches a moment later).
+        const checkOn = raw;
+        void watching
           .then(nextTurn)
-          .then(() => runSelfCheck(raw, core, win))
+          .then(nextTurn)
+          .then(() => runSelfCheck(checkOn, core, win))
           .then((result) => post({ type: 'studio:core/check', result }));
       }
     } else {
@@ -563,20 +803,93 @@ export function createEditor(deps: EditorDeps): Editor {
       input?.detach();
       input = null;
       state.editing = false;
-      try {
-        adapter.end();
-      } catch {
-        /* the page is usually reloaded after editing anyway */
+      for (const a of [adapter, ...others().map((o) => o.driven)]) {
+        try {
+          a.end();
+        } catch {
+          /* the page is usually reloaded after editing anyway */
+        }
       }
+      paintLayers();
     }
-    post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly });
+    ready();
+  };
+  /** The layers other than the current one (UI stage 1; none for a game without a UI). */
+  const others = () => [world, uiStack].filter((x): x is Stack => !!x && x.driven !== adapter);
+  /** Input on the current layer's adapter, with the shell's settings. */
+  const attach = () => {
+    // The input posts view-state itself (wheel, look-around): on the UI layer that is the 2D base's unused view, which
+    // must not replace the world camera the shell keeps for the next reload.
+    const inPost = (m: BridgeToShell) => {
+      if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
+    };
+    input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true) });
+    if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
+    input.setInset(inset);
+    input.setTheme(theme);
+    if (aiMarks.keys.length) input.setAiMarks(aiMarks.keys, aiMarks.label);
+    input.setLang(lang);
+  };
+  // A core/layer that came before editing started (the shell sends it right after core/edit on a reload).
+  let wantLayer: EditLayer | null = null;
+  /**
+   * Switch what is edited (core/layer, UI stage 1; design §2.2): 1. drop the pick and the input, 2. swap the adapter
+   * stack, 3. input again, 4. tell the shell (core/ready with `layer`, then that layer's list). The world's edit
+   * camera goes to the game's own view while the UI is edited (the UI sits on the player's picture) and comes back
+   * after.
+   */
+  const setLayer = (to: EditLayer) => {
+    const next = to === 'ui' ? uiStack : world;
+    if (!next) return;
+    if (!state.editing) {
+      wantLayer = to;
+      return;
+    }
+    if (next.driven === adapter) {
+      ready();
+      refreshItems();
+      return;
+    }
+    closeStepRun();
+    toolHost.activate(null);
+    panGlide = 0;
+    listPick = null;
+    state.selected = null;
+    state.group = [];
+    input?.detach();
+    input = null;
+    if (world) {
+      if (to === 'ui') {
+        worldView = world.driven.view.state();
+        if (world.driven.view.home) world.driven.view.home();
+      } else if (worldView !== undefined && world.driven.view.restore) world.driven.view.restore(worldView);
+    }
+    layer = to;
+    raw = next.raw;
+    edits = next.edits;
+    adapter = next.driven;
+    try {
+      state.items = adapter.list();
+    } catch {
+      state.items = [];
+    }
+    attach();
+    paintLayers();
+    dirtyFrame = true;
+    ready();
+    post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
+    postSelected();
   };
 
   toolHost = createToolHost({ win, adapter, state, post, select: (k) => select(k), lang: () => lang, markDirty: () => (dirtyFrame = true) });
   toolHost.register(deps.tools);
 
   return {
-    driven: adapter,
+    get driven() {
+      return adapter;
+    },
+    layer: () => layer,
+    announce: ready,
     addTools(list) {
       toolHost.register(list);
       if (state.editing) toolHost.announce();
@@ -632,6 +945,10 @@ export function createEditor(deps: EditorDeps): Editor {
           input?.setAiMarks(aiMarks.keys, aiMarks.label);
           dirtyFrame = true;
           break;
+        case 'studio:placement/hover':
+          input?.setHover(Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : []);
+          dirtyFrame = true;
+          break;
         case 'studio:tool/activate':
           toolHost.activate(msg.id);
           dirtyFrame = true;
@@ -647,6 +964,19 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:core/edit':
           setEditing(msg.on, msg.viewState);
+          if (msg.on && wantLayer) {
+            const w = wantLayer;
+            wantLayer = null;
+            setLayer(w);
+          }
+          break;
+        case 'studio:core/layer':
+          if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
+          break;
+        case 'studio:core/ui-peek':
+          uiPeek = !!msg.on;
+          paintLayers();
+          dirtyFrame = true;
           break;
         case 'studio:core/view': {
           const v = msg.view;
@@ -664,7 +994,7 @@ export function createEditor(deps: EditorDeps): Editor {
           else if (v.action === 'rise') adapter.view.rise?.(v.by * win.innerHeight);
           else if (v.action === 'restore') adapter.view.restore?.(v.state);
           dirtyFrame = true;
-          post({ type: 'studio:core/view-state', state: adapter.view.state() });
+          postView();
           break;
         }
         case 'studio:core/lang':
@@ -704,6 +1034,14 @@ export function createEditor(deps: EditorDeps): Editor {
           refreshItems();
           break;
         case 'studio:placement/pose': {
+          // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
+          // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.
+          const other = msg.layer && msg.layer !== layer ? (msg.layer === 'ui' ? uiStack : world) : null;
+          if (other) {
+            other.driven.setPose(msg.key, msg.pose);
+            dirtyFrame = true;
+            break;
+          }
           closeStepRun();
           const zBefore = msg.pose.z !== undefined ? poseOf(msg.key)?.z : undefined;
           const pose = adapter.setPose(msg.key, msg.pose);
@@ -717,6 +1055,13 @@ export function createEditor(deps: EditorDeps): Editor {
         }
         case 'studio:placement/step':
           if (state.editing) step(msg);
+          break;
+        case 'studio:placement/unhold':
+          // "Make movable" on a held ground (hold.ts): the tools work on it again, for this session.
+          for (const k of msg.keys) hold.freed.add(k);
+          refreshItems();
+          postSelected();
+          input?.selectionChanged();
           break;
         case 'studio:placement/thumbs': {
           // One queue, drawn one at a time; the newest request goes FIRST (tool-modes pass, 10/16). The shell

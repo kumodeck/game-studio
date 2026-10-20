@@ -84,8 +84,9 @@ test('--stop: only this folder\'s editor and watch; another folder\'s editor wit
     const b = run([two, '--starter', '3d', '--starters-dir', FAKE, '--detach', '--no-open']);
     const pa = Number(a.stdout.match(/pid (\d+)/)[1]);
     const pb = Number(b.stdout.match(/pid (\d+)/)[1]);
-    const watch = spawn(process.execPath, [CLI, one, '--watch'], { stdio: ['ignore', 'pipe', 'ignore'] });
-    await new Promise((r) => watch.stdout.once('data', r));
+    // Nothing waiting: its start line is on stderr (quiet watch, ai-watch.mjs).
+    const watch = spawn(process.execPath, [CLI, one, '--watch'], { stdio: ['ignore', 'ignore', 'pipe'] });
+    await new Promise((r) => watch.stderr.once('data', r));
     await sleep(300);
     assert.ok(existsSync(join(one, '.studio/watch.json')));
     const s = run([one, '--stop']);

@@ -119,6 +119,8 @@ export function createRiseButtons(doc: Document): RiseButtons {
     },
     setInset(i) {
       inset = i;
+      // The shell says when the buttons stand in the way (a phone's card, sheet or menu up): gone until it says again.
+      box.style.display = i.camera === false ? 'none' : '';
       position();
     },
     setTheme(theme) {

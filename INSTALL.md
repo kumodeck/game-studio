@@ -131,6 +131,8 @@ The plugin's skill only loads in a new session, so this time you start the edito
      call `preview_start` with the URL exactly as printed: the editor opens next to the chat. If the pane is hidden,
      add "Press ⌘⇧B to show it (Ctrl+Shift+B on Windows)." If `preview_start` fails, give the URL instead: "Open
      this link in your browser: <url>".
+     If they find the pane narrow: the ↗ button at the top right of the editor ("Open large") opens the same editor in
+     a large window; asking you and Save work there the same way.
 4. **Tell them, in three short lines** (in the language they wrote to you in; pick the words for your row):
 
    > Game Studio is installed. The editor is open next to this chat. *(Terminal, Codex: "…open in your browser: <url>")*
@@ -142,13 +144,16 @@ The plugin's skill only loads in a new session, so this time you start the edito
    log, the self-check, the plugin's version or the folder's path.
 
 5. **Right after that message, start the watch** (App and Terminal; not Codex), without saying so: run
-   `node STUDIO /absolute/game/folder --watch` with the Monitor tool (the command itself, not `tail -f` on a log).
-   It prints one `studio:` line for each save or request the person sends, and while it runs the editor tells them
-   you have it. Without it, the first thing they type in the editor answers "Your AI isn't watching", which is how
-   the dogfood of 2026-10-17 met every new person. Start it again whenever it ends.
+   `node STUDIO /absolute/game/folder --watch` with the Monitor tool (the command itself, not `tail -f` on a log)
+   and `timeout_ms: 1800000` (30 minutes, the longest). It prints one `studio:` line for each save or request the
+   person sends, and while it runs the editor tells them you have it. (Between watches, the plugin's hooks wake you
+   when a request comes: SKILL.md §3, "Woken by the editor". Never tell the person to type a command for it.) It ends
+   on its own after 29 minutes (`studio: watch rest …`) or when Monitor expires: **start it again at once and say
+   nothing about it** — not "watching again", not "no requests yet". Speak only for a request or a failure.
 6. **For the rest of this session**, read `PLUGIN/skills/arrange/SKILL.md` and follow it from §3: it is what
-   `/arrange` does (their saves and requests arrive in `.studio/requests/`; in Codex, or when no watch runs, they
-   type "look" and you read them). When they are finished: `node STUDIO /absolute/game/folder --stop`.
+   `/arrange` does (their saves and requests arrive in `.studio/requests/`; the watch or the plugin's hooks bring
+   them to you; in Codex the editor's **Call your AI** button copies *look* for them to paste, and you read them).
+   When they are finished: `node STUDIO /absolute/game/folder --stop`.
 
 ## 5. If something fails
 

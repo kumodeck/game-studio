@@ -14,7 +14,10 @@ or object) and the ask field.
 `ai-flow.ts` decides what the AI line says (sent → has it → working → done,
 or "isn't watching" at once) and when the game reloads by itself after the
 AI's change (in a second frame behind the old one, view and selection kept);
-"Undo AI change" / "Redo" call `host.undoAi` (CONTRACT.md §3.4). Phone:
+"Undo AI change" / "Redo" call `host.undoAi` (CONTRACT.md §3.4).
+`play-ask.ts` is the one line over the game while playing (asked with ` in
+▶ Play: looking → fixing → fixed with Reload, never reloaded by itself;
+CONTRACT.md §3.5; the game page draws it, `bridge/play-ask.ts`). Phone:
 top bar, game, the 56 px card and the ask bar at the bottom, the list and
 Assets as sheets. Selection, undo/redo (200 steps), a draft of every change as
 you go and Save (§3.4), English/Japanese, dark and light (the device's
@@ -62,8 +65,12 @@ design review wave 1 (W1-6) it shows no ask field and no "● AI" at all, and si
 in the ask field's place either (the demo's top line says it isn't connected to an AI).
 
 Names in the list and on the card (`names.ts`, polish pass 2026-10-16): an object without a name is called
-by its picture / model file or its kind ("Unnamed shape"), never by its tree path; the second "tree" reads
-"tree 2". The keys themselves do not change. `thumb-tone.ts` gives near-white list pictures a mid-grey tile.
+by its picture / model file, else by a name guessed from what it looks like (`Item.look`, a hands-on try,
+2026-10-19: "Black pillar by the road (left, 3rd)", the road "Road", the sky "Sky"),
+else by its kind ("Unnamed shape"), never by its tree path or "group"; the second "tree" reads "tree 2". The keys
+themselves do not change. A guessed name shows on two lines on the card (what it is / which one) and as only "which
+one" under its group heading; the ask chip keeps it short ("Black pillar", several: "×4"). A mouse over a row, the card or
+the chip lights the object in the game (`placement/hover`). `thumb-tone.ts` gives near-white list pictures a mid-grey tile.
 `thumb-fit.ts` crops every picture the game sends to the object itself with a 4 px margin at 32 px (W1-11:
 the lighthouse was an "i"). Ideas and Editor view flow down inside the list's own column (W1-3; they used to
 widen it to ~950 px) and close with Esc.
@@ -84,8 +91,16 @@ thing open at a time). Keys that move the pick do nothing while the Library hide
 part (`ShellContext.objects`, contract.ts `LibraryObjects`); the page is the Library tool (`tools/library/panel.ts`).
 `test/studio-library.browser.mjs` checks it all and takes the pictures.
 
+Save in the game (a try of the editor, 2026-10-20: "people won't notice they have to press Save"): only while
+something is not saved, "Save · 3  ⌘S" at the game's bottom right — PC on the ask bar's row (the bar keeps room for
+it on both sides, so it never moves), phone / side window just over the bar, card or list sheet with the camera ↑↓
+above it — in the solid (Play's fill), not a new colour; the only Save (the top bar keeps "✓ Saved"). Pressed: "✓
+Saved" in the same place for a moment, then gone. The picked object's card has a minimize button at its head's right
+end: one line (picture and name), kept across picks and reloads in this browser (`placement-panel.ts`).
+`test/studio-save-fab.browser.mjs`.
+
 Basic actions with a button AND a shortcut (basics pass, 2026-10-18; from a try of the editor: "undo, redo…
-keyboard shortcuts and buttons"): Undo / Redo always in the top bar (dimmed when there is nothing to undo; Save left of them so they
+keyboard shortcuts and buttons"): Undo / Redo always in the top bar (dimmed when there is nothing to undo; "✓ Saved" left of them so they
 never move), ⌘C / ⌘V (paste = duplicates of what was copied), 1–4 for the strip's tools, and `?` for the sheet of
 every shortcut. `keymap.ts` is the one table of keys that the tooltips, the ⌘K rows and the sheet (`shortcuts.ts`)
 print; `tooltip.ts` is the buttons' own tooltip (name, then the key in grey). While typing in a field only ⌘S and

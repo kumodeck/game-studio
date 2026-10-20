@@ -36,3 +36,20 @@ test('a tap just beside a small coin on a big hill still picks the coin', () => 
   const keys = pickNear(cands, camera, PROJ, ...at(0.75, 2), 28, SIZE);
   assert.equal(keys[0], 'coin', keys.join(' '));
 });
+
+test('a tap on a lantern standing on a ground that runs on under the camera picks the lantern, not the ground', () => {
+  // glow-camera pass 2026-10-20: a perspective camera (90°, square) at the origin looking down −z, standing over a
+  // 400 m ground that runs on behind it. pickNear's box of the ground used to drop the corners behind the camera:
+  // only its far strip was left, a band ~0 px high, so the ground "was tiny" and beat the lantern under the finger.
+  const near = 0.1, far = 1000;
+  const persp = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, (far + near) / (near - far), -1, 0, 0, (2 * far * near) / (near - far), 0];
+  const cam = { projectionMatrix: { elements: persp }, matrixWorld: { elements: ID } };
+  const ground = group(box([-200, -2.01, -200], [200, -2, 200]));
+  const lantern = group(box([-0.3, -2, -10.3], [0.3, -0.5, -9.7]));
+  const cands = [{ key: 'ground', object: ground }, { key: 'lantern', object: lantern }];
+  // On the lantern's middle: x = 0, y = −1.25 at 10 m → ndc (0, −0.125).
+  const keys = pickNear(cands, cam, persp, 0, -0.125, 0, SIZE);
+  assert.equal(keys[0], 'lantern', keys.join(' '));
+  // Beside it, on the grass: the ground (the only thing there).
+  assert.deepEqual(pickNear(cands, cam, persp, 0.5, -0.5, 0, SIZE), ['ground']);
+});

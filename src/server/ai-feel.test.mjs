@@ -10,7 +10,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { startStudioServer } from './server.mjs';
-import { runWatch, handoffLine } from './ai-watch.mjs';
+import { runWatch, handoffLine, AIW_REST_LINE } from './ai-watch.mjs';
 
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -187,9 +187,12 @@ test('the built studio.mjs --watch prints its first line and removes its heartbe
   t.after(s.close);
   const child = spawn(process.execPath, [path.join(PKG, 'skills/arrange/bin/studio.mjs'), s.root, '--watch'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
+  let err = '';
   child.stdout.on('data', (c) => (out += c));
-  for (let i = 0; i < 100 && !out.includes('\n'); i++) await sleep(50);
-  assert.equal(out.split('\n')[0], 'studio: watching 0 waiting');
+  child.stderr.on('data', (c) => (err += c));
+  for (let i = 0; i < 100 && !err.includes('\n'); i++) await sleep(50);
+  assert.equal(err.split('\n')[0], 'studio: watching 0 waiting', 'nothing waiting: the start line is on stderr, so it wakes nobody');
+  assert.equal(out, '');
   for (let i = 0; i < 60 && !(await s.req('GET', 'status')).json.watching; i++) await sleep(50);
   const ask = await s.req('POST', 'request', { kind: 'ask', text: 'Add three lighthouses around the island' });
   assert.equal(ask.json.watching, true);
@@ -198,6 +201,34 @@ test('the built studio.mjs --watch prints its first line and removes its heartbe
   child.kill('SIGTERM');
   await new Promise((r) => child.on('exit', r));
   assert.equal((await s.req('GET', 'status')).json.watching, false);
+});
+
+// Quiet watch (2026-10-19): the agent kept telling the person "I started watching again, no requests
+// yet" every time Monitor's time limit ended the watch. The watch now prints nothing while nobody asks, ends on
+// its own (--for, default 29 min, under Monitor's 30) with one line that says it is fine, and leaves no heartbeat.
+test('the built studio.mjs --watch --for: silent while nobody asks, then one rest line, exit 0, heartbeat gone', { timeout: 20000 }, async (t) => {
+  const s = await start();
+  t.after(s.close);
+  // 0.05 min = 3 s.
+  const child = spawn(process.execPath, [path.join(PKG, 'skills/arrange/bin/studio.mjs'), s.root, '--watch', '--for', '0.05'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  child.stdout.on('data', (c) => (out += c));
+  const code = await new Promise((r) => child.on('exit', r));
+  assert.equal(code, 0);
+  // One stdout line in the whole run: Claude Code delivers it with "stream ended" as one notice = one wake.
+  assert.deepEqual(out.trim().split('\n'), [AIW_REST_LINE], 'only the rest line on stdout');
+  assert.match(AIW_REST_LINE, /^studio: watch rest .*again.*nothing/);
+  assert.equal((await s.req('GET', 'status')).json.watching, false);
+  // The next watch prints what came while none ran, first.
+  await s.req('POST', 'request', { kind: 'ask', text: 'Make the sea darker' });
+  const lines = [];
+  const ac = new AbortController();
+  const done = runWatch(await fs.realpath(s.root), { out: (l) => lines.push(l), quiet: () => {}, signal: ac.signal });
+  for (let i = 0; i < 40 && lines.length < 2; i++) await sleep(50);
+  ac.abort();
+  await done;
+  assert.equal(lines[0], 'studio: watching 1 waiting');
+  assert.match(lines[1], /"Make the sea darker"/);
 });
 
 // e2e-save 2026-10-18: ⌘S hands over placement.json and library.json 1 ms apart. Both snapshots found no
@@ -211,5 +242,18 @@ test('undo: two snapshots at the same moment both keep a copy', async () => {
   const got = await Promise.all([snapshotGame(root, a), snapshotGame(root, b)]);
   assert.deepEqual(got, [true, true]);
   assert.ok(await hasSnapshot(root, a) && await hasSnapshot(root, b));
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+// e2e-016 2026-10-20: the same 1 ms pair on a game never saved before. Both hand-offs found no .studio/requests/; the
+// second mkdir failed (EEXIST) and that save was lost ("studio: error EEXIST … mkdir '.studio/requests'"): placement.json
+// never reached the AI and the editor kept "Save · 8".
+test('requests: two hand-offs at the same moment on a fresh folder are both kept', async () => {
+  const { writeStudioFile } = await import('./files.mjs');
+  const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'game-studio-requests-race-')));
+  await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><title>t</title>');
+  const a = 'requests/20261020-015308-919-saved-1d25.json', b = 'requests/20261020-015308-920-saved-7c01.json';
+  await Promise.all([writeStudioFile(root, a, '{"kind":"saved"}'), writeStudioFile(root, b, '{"kind":"saved"}')]);
+  assert.deepEqual((await fs.readdir(path.join(root, '.studio/requests'))).sort(), [path.basename(a), path.basename(b)]);
   await fs.rm(root, { recursive: true, force: true });
 });

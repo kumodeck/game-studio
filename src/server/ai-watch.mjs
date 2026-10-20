@@ -27,6 +27,17 @@ import { readStudioFileInfo, writeStudioFile } from './files.mjs';
 export const AIW_BEAT_MS = 1500;
 export const AIW_FRESH_MS = 5000;
 const AIW_POLL_MS = 400;
+// How long one `--watch` runs before it ends on its own (quiet watch, 2026-10-19).
+// WHY end at all: Claude Code's Monitor kills every watch at its timeout_ms (default 5 min, at most
+// 30 min) and wakes the agent with a bare "monitor expired" notice; the agents then told the person
+// "I started watching again, no requests yet" every time (a play test saw it over and over). A watch
+// that ends a minute before the cap with its own line tells the agent, in the event itself, that
+// nothing is wrong and what to do (start it again, say nothing). 29 = just under the 30-min cap
+// (recommended); `--for 0` = never end (agents without a time limit on their watch).
+export const AIW_FOR_MIN = 29;
+// The last line of a watch that ended on time. Read by the agent (SKILL.md §3 table), so the words
+// carry the instruction: it is not news for the person.
+export const AIW_REST_LINE = 'studio: watch rest (nothing wrong) - start the same --watch again now; tell the person nothing';
 
 export function pidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -38,25 +49,67 @@ export function pidAlive(pid) {
   }
 }
 
-/**
- * What the watch last wrote: { watching, seen? }. Lenient like the status: a missing or broken
- * file is "not watching", never an error.
- */
-export async function readWatch(rootReal, now = Date.now()) {
-  const f = await readStudioFileInfo(rootReal, 'watch.json', 4096);
-  if (!f) return { watching: false };
+/** Is a heartbeat file (watch.json, wake.json) fresh and written by a live process? */
+async function beatAlive(rootReal, name, now) {
+  const f = await readStudioFileInfo(rootReal, name, 4096);
+  if (!f) return { alive: false };
   let w;
   try {
     w = JSON.parse(f.text);
   } catch {
-    return { watching: false };
+    return { alive: false };
   }
   const at = typeof w?.at === 'string' ? Date.parse(w.at) : NaN;
   const fresh = Number.isFinite(at) && now - at < AIW_FRESH_MS && now - f.mtimeMs < AIW_FRESH_MS;
-  const watching = fresh && pidAlive(w.pid);
-  const out = { watching };
-  if (isRequestId(w?.seen)) out.seen = w.seen;
+  return { alive: fresh && pidAlive(w.pid), seen: isRequestId(w?.seen) ? w.seen : undefined, pid: w?.pid };
+}
+
+/**
+ * The last request id any watch or wake hook printed to the AI (.studio/told.json). WHY a file of its own
+ * (push to the AI, 2026-10-19): watch.json is removed when a watch ends, and the wake hook (ai-wake.mjs) ends the
+ * moment it wakes the AI; without a lasting mark the editor fell back from "Your AI has it" to "not watching" in
+ * the seconds between the wake and the AI's `received`, and the next wake could not tell which requests it already
+ * handed over.
+ */
+export async function readTold(rootReal) {
+  const f = await readStudioFileInfo(rootReal, 'told.json', 4096);
+  try {
+    const id = f ? JSON.parse(f.text)?.seen : undefined;
+    return isRequestId(id) ? id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Remember that `id` (and every request before it) was printed to the AI. Never goes back. */
+export async function markTold(rootReal, id) {
+  if (!isRequestId(id)) return;
+  const was = await readTold(rootReal);
+  if (was && was >= id) return;
+  await writeStudioFile(rootReal, 'told.json', JSON.stringify({ version: 1, seen: id, at: new Date().toISOString() }) + '\n').catch(() => {});
+}
+
+/**
+ * What the AI's way in looks like right now: { watching, seen? }. `watching` = a `--watch` is running, or the
+ * plugin's wake hook is waiting to wake the AI (wake.json, ai-wake.mjs): either way a request reaches the AI
+ * without the person doing anything. Lenient like the status: a missing or broken file is "not watching".
+ */
+export async function readWatch(rootReal, now = Date.now()) {
+  const [w, k, told] = await Promise.all([beatAlive(rootReal, 'watch.json', now), beatAlive(rootReal, 'wake.json', now), readTold(rootReal)]);
+  const out = { watching: w.alive || k.alive };
+  const seen = [w.seen, told].filter(Boolean).sort().pop();
+  if (seen) out.seen = seen;
   return out;
+}
+
+/** Is a `--watch` (not the wake hook) running for this folder? The wake hook steps aside for it. */
+export async function watchAlive(rootReal, now = Date.now()) {
+  return (await beatAlive(rootReal, 'watch.json', now)).alive;
+}
+
+/** Is a wake hook already waiting for this folder (one is enough)? */
+export async function wakeAlive(rootReal, now = Date.now()) {
+  return (await beatAlive(rootReal, 'wake.json', now)).alive;
 }
 
 /** One `studio:` line for a kept request: the same words the server prints when it keeps it. */
@@ -64,6 +117,18 @@ export function handoffLine(rec, relPath) {
   const v = rec || {};
   if (v.kind === 'saved') return `studio: saved ${(v.files && v.files[0]) || 'placement.json'} (${v.text || ''})`;
   if (v.kind === 'undone') return `studio: undone ${relPath} ${JSON.stringify(v.text || '')}`;
+  // The person answered your `asking` question in the editor (2026-10-19): the answer, then what it answers.
+  if (v.kind === 'answer') {
+    const q = v.question ? ` to ${JSON.stringify(v.question.length > 80 ? v.question.slice(0, 79) + '…' : v.question)}` : '';
+    return `studio: answer ${relPath} ${JSON.stringify(v.text || '')}${q}${v.to ? ` (request ${v.to})` : ''}`;
+  }
+  // Asked while playing (§3.5, 2026-10-20): the words, then what came with them — the picture's file (the AI opens it)
+  // and how many errors the console had, so the line alone says "look at the picture and the log".
+  if (v.kind === 'play') {
+    const errs = Array.isArray(v.logs) ? v.logs.filter((l) => l && l.level === 'error').length : 0;
+    const bits = ['while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
+  }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {
     return `studio: next-step ${v.step} ${(v.files && v.files[0]) || '.studio/next-step.md'}`;
   }
@@ -83,9 +148,10 @@ export function handoffLine(rec, relPath) {
 
 /**
  * `studio.mjs <folder> --watch`: print a line for every request (the waiting ones first), keep
- * .studio/watch.json fresh, and run until stopped. Resolves only when `signal` aborts (tests).
+ * .studio/watch.json fresh, and run until stopped or for `forMs` (then AIW_REST_LINE; 0 = no end).
+ * Prints nothing else while no request comes: every line wakes the agent (and costs a turn).
  */
-export async function runWatch(rootReal, { out = (l) => process.stdout.write(l + '\n'), signal } = {}) {
+export async function runWatch(rootReal, { out = (l) => process.stdout.write(l + '\n'), quiet = (l) => process.stderr.write(l + '\n'), signal, forMs = AIW_FOR_MIN * 60_000 } = {}) {
   const dir = path.join(rootReal, '.studio', 'requests');
   const printed = new Set();
   let seen;
@@ -97,7 +163,11 @@ export async function runWatch(rootReal, { out = (l) => process.stdout.write(l +
   };
   const scan = async (first) => {
     const names = (await fs.readdir(dir).catch(() => [])).filter((n) => n.endsWith('.json') && isRequestId(n.slice(0, -5))).sort();
-    if (first) out(`studio: watching ${names.length} waiting`);
+    // `watching 0 waiting` goes to stderr: on stdout it woke the agent at every (re)start with nothing to do,
+    // and the agent said "still watching" (quiet watch 2026-10-19). With requests waiting it stays on stdout
+    // as the header of the lines that follow. A start that fails prints its error instead, so the agent
+    // still hears about that (Monitor ends, with the exit code).
+    if (first) (names.length ? out : quiet)(`studio: watching ${names.length} waiting`);
     let fresh = false;
     for (const n of names) {
       const id = n.slice(0, -5);
@@ -113,6 +183,7 @@ export async function runWatch(rootReal, { out = (l) => process.stdout.write(l +
       seen = id;
       fresh = true;
     }
+    if (fresh) await markTold(rootReal, seen);
     // The beat right after a line: "your AI has it" shows in the editor at once.
     if (fresh || Date.now() - lastBeat >= AIW_BEAT_MS) await beat();
   };
@@ -127,10 +198,17 @@ export async function runWatch(rootReal, { out = (l) => process.stdout.write(l +
     process.once('SIGTERM', quit);
     process.once('SIGHUP', quit);
   }
+  const endAt = forMs > 0 ? Date.now() + forMs : Infinity;
+  let rested = false;
   while (!signal?.aborted) {
     await new Promise((r) => setTimeout(r, AIW_POLL_MS));
     if (signal?.aborted) break;
     await scan(false);
+    if (Date.now() >= endAt) {
+      rested = true;
+      break;
+    }
   }
   await stop();
+  if (rested) out(AIW_REST_LINE);
 }

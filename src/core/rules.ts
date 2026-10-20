@@ -169,7 +169,11 @@ export function withRules(inner: StudioAdapter, holder: RulesHolder): StudioAdap
     drag(key, x, y) {
       const r = ruleOf(key);
       if (!r || r.locked) return current(key)!;
-      return fix(key, inner.drag(key, x, y), true);
+      const before = r.lockHeight ? current(key) : null;
+      let after = inner.drag(key, x, y);
+      // Snap to surfaces (bridge/snap.ts) moves the height with the ground under it: not for a height the game holds.
+      if (before && after.p[1] !== before.p[1]) after = inner.setPose(key, { ...after, p: [after.p[0]!, before.p[1]!, after.p[2]!] }) || after;
+      return fix(key, after, true);
     },
     rotate(key, d) {
       const r = ruleOf(key);
@@ -219,6 +223,15 @@ export function withRules(inner: StudioAdapter, holder: RulesHolder): StudioAdap
     },
     view: inner.view,
   };
+  if (inner.drop) {
+    // Drop to floor (End) changes the height only: blocked where the height is (locked, lockHeight).
+    ruled.drop = (key, skip) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || r.lockHeight) return before!;
+      return fix(key, inner.drop!(key, skip), true);
+    };
+  }
   if (inner.nudgeY) {
     ruled.nudgeY = (key, dy) => {
       const r = ruleOf(key);

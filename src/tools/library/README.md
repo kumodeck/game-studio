@@ -25,7 +25,9 @@ in-game image preview that is not saved); "add" writes a NEW file under
   detail names the objects with "Show just these objects" and "Show in game →". With the shell's `files`
   (`LibraryFileUse`, "use the Library" 2026-10-18) a file's detail also has "Add to scene" and "Ask your AI…",
   Shift / Multi-select picks several files, the pick goes to the ask box's chip, and a file's tile can be dragged
-  onto the Scene row (`DRAG_FILE`).
+  onto the Scene row (`DRAG_FILE`). On a phone the bar's buttons (Multi-select, Add files, Make with AI) fold into one
+  "+" next to the search (the shell's phone CSS shows it), so the Library's head is two rows; tiles carry no
+  Object / Asset tag (the second design review, 2026-10-19).
 - `refs.ts` — names of asset files found in HTML/JS/CSS text, matched against
   the folder (`buildAssetList()` builds the contract's `listAssets()` answer).
 - `marks.ts` — one row per file from the three sources (folder, code, loads +

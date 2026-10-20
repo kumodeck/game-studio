@@ -14,6 +14,7 @@
 //   what people here learned in the first wave. Numbers are free and are what many tools use for modes.
 // - W A S D (+ E / Q) fly the 3D camera as in the engines (camera-wasd, 2026-10-18): alone with nothing picked; with a
 //   pick only while the right button is held, so S (Size) and E / Q (turn) keep their meaning (bridge/input.ts).
+//   W / S go level (wasd-level, 2026-10-19), E up / Q down as in Unreal; the note under the row says "level".
 // - `?` (Shift+/) opens the sheet; Esc closes it.
 // - None of these act while typing in a field (main.ts): the field keeps its own ⌘Z, ⌘A, ⌘C, ⌘V, Delete.
 //   Only ⌘S (save) and ⌘K (all actions) still work there.
@@ -30,6 +31,8 @@ export interface KeyDef {
   label?: string;
   /** Only in 3D / only in 2D. */
   dim?: '2d' | '3d';
+  /** Only in games with a UI layer (UI stage 1: an element marked data-studio-key). */
+  ui?: true;
   /** i18n key of a short line under the name in the sheet: WHEN the key works, if that needs saying (fly). */
   note?: string;
 }
@@ -53,22 +56,34 @@ export const KEYMAP: KeyDef[] = [
   { id: 'nudge', group: 'tools', keys: ['←↑↓→', '⇧ ←↑↓→'] },
   { id: 'turnStep', group: 'tools', keys: ['Q', 'E'] },
   { id: 'liftStep', group: 'tools', keys: ['PgUp', 'PgDn'], dim: '3d' },
+  // Snap to surfaces (a try of the editor, 2026-10-19, bridge/snap.ts): End drops onto the surface below, as Unreal's End; Ctrl or
+  // ⌥ held during a move / height drag stops the snapping (Blender's Ctrl; ⌥ for Mac hands — Ctrl-click is the Mac's
+  // right click). A Mac laptop's End is fn + →.
+  { id: 'drop', group: 'tools', keys: ['End'], dim: '3d' },
+  { id: 'free', group: 'tools', keys: ['⌃', '⌥'], dim: '3d', note: 'keys.free.note' },
   { id: 'sizeStep', group: 'tools', keys: ['+', '−'] },
   { id: 'play', group: 'view', keys: ['P'], label: 'btn.play' },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },
   // Camera up / down (camera-up pass, 2026-10-18; merged with basics in integrate1): E / Q with nothing picked, and
-  // Space+E / Q with a pick (plain E / Q turn the pick then — the turnStep row). Written as Space+E / Q here so one
-  // key still does one thing in this table. The name stays short (a longer one, "… (E / Q with nothing picked)", wrapped
-  // to three lines in the sheet); the ⌘K rows show plain E / Q when nothing is picked.
-  { id: 'camera', group: 'view', keys: ['Space+E', 'Space+Q'], dim: '3d' },
+  // Space+E / Q with a pick (plain E / Q turn the pick then — the turnStep row). Written as E / Q with the Space+ keys
+  // in the one-line note under the name (the second design review's ⑪, 2026-10-19: the row said only Space+E / Q, so
+  // the plain E / Q people use most — nothing picked — was written nowhere). The name stays short (a longer one,
+  // "… (E / Q with nothing picked)", wrapped to three lines in the sheet).
+  { id: 'camera', group: 'view', keys: ['E', 'Q'], dim: '3d', note: 'keys.camera.note' },
   // Fly (camera-wasd pass, 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"): one row,
   // the rule under its name (`note`, also the ⌘K row's words): WASD alone with nothing picked; with a pick, hold the
   // right button (S is the Size tool and E / Q turn then). E / Q fly up / down in the same moments (the camera row).
+  // The note is one line since the second design review (⑪, 2026-10-19; it was three).
   { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note' },
   { id: 'palette', group: 'view', keys: ['⌘K'], label: 'foot.palette' },
   { id: 'shortcuts', group: 'view', keys: ['?'] },
+  // U: World ⇄ UI (UI stage 1, 2026-10-19). U for UI; free in this table. Not Tab: it moves the browser's focus.
+  { id: 'layer', group: 'view', keys: ['U'], ui: true },
+  // ⇧U: the game's UI shown / hidden while the world is edited (a try of the editor, 2026-10-20: hidden by default, "in the way").
+  // Shift + the layer's own key: the same thing (the UI), looked at instead of switched to. Plain U stays the switch.
+  { id: 'uiPeek', group: 'view', keys: ['⇧U'], ui: true },
   { id: 'forward', group: 'layers', keys: ['⌘]'], label: 'layer.forward', dim: '2d' },
   { id: 'backward', group: 'layers', keys: ['⌘['], label: 'layer.backward', dim: '2d' },
   { id: 'toFront', group: 'layers', keys: ['⇧⌘]'], label: 'layer.toFront', dim: '2d' },
@@ -82,6 +97,9 @@ export function keyText(mac: string, onMac: boolean): string {
   const shift = mac.includes('⇧') && mac !== '⇧ ←↑↓→';
   let k = mac.replace('⇧', '').replace('⌘', '');
   if (k === '⌫') k = 'Backspace';
+  // Held alone (the snap-free keys): the names written on PC keyboards.
+  if (k === '⌃') k = 'Ctrl';
+  if (k === '⌥') k = 'Alt';
   const parts = [mac.includes('⌘') ? 'Ctrl' : '', shift ? 'Shift' : '', k].filter(Boolean);
   return mac === '⇧ ←↑↓→' ? 'Shift ←↑↓→' : parts.join('+');
 }

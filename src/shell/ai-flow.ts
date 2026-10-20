@@ -59,6 +59,15 @@ export interface AiFlowState {
 /** Seconds without a pick-up before "type look" when the host cannot tell whether an AI watches. */
 export const NUDGE_MS = 20_000;
 
+/**
+ * How long an AI's open question (`asking`) stays news for a page opened after it was asked. WHY (e2e-016,
+ * 2026-10-20): the AI asked "12, 16 or 24 pillars?" and waited for the answer from the editor; the editor was opened
+ * again (a reload) and showed nothing, so nobody could answer and the AI gave up after 10 minutes. A question is news
+ * until it is answered, whenever the page opened. 6 hours: a question left from yesterday's session is not shown
+ * (answering one anyway is harmless: the skill marks an answer it already had as done with no change).
+ */
+export const ASK_FRESH_MS = 6 * 60 * 60 * 1000;
+
 export function aiPhase(s: AiFlowState): AiPhase {
   if (s.after) return s.after;
   const p = s.pending;
@@ -72,7 +81,8 @@ export function aiPhase(s: AiFlowState): AiPhase {
   }
   // An old status from an earlier session ("done" yesterday) is not news: only once it answers this
   // page's request or was written while the page is open.
-  const fresh = !!s.status && ((p && covered) || (s.statusTime ?? 0) >= s.openedAt);
+  const openQuestion = s.status?.state === 'asking' && s.statusTime != null && s.now - s.statusTime < ASK_FRESH_MS;
+  const fresh = !!s.status && ((p && covered) || (s.statusTime ?? 0) >= s.openedAt || openQuestion);
   if (!fresh || !s.status) return 'none';
   if (s.status.state === 'done') return s.reloading ? 'updating' : 'done';
   return s.status.state;

@@ -17,7 +17,7 @@
  *                  never changes; dy = 1 is one view height at the target (the scene slides down the screen by its
  *                  full height). The one way to change height — pan keeps it, orbit turns round it, zoom slides along
  *                  the line of sight (camera up / down, play test 2026-10-18: "I can't raise the camera; it's needed").
- *   fly(r, u, f):  WASD — the camera and its turning point together, scaled to the scene (see fly)
+ *   fly(r, u, f):  WASD — the camera and its turning point together, scaled to the scene; W / S level (see fly)
  *   look(dx, dy):  turn where the camera stands (right-drag while flying); orbit turns round the point in front
  *   zoom(f, x, y): f > 1 moves closer; the point under (x, y) stays under the cursor (the camera slides along the line
  *                  through that point — exact for perspective)
@@ -118,19 +118,26 @@ export function createEditView(gameCamera) {
     /**
      * Fly (WASD, camera-wasd pass 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"):
      * move the camera and the point it turns round together by `right` / `up` / `fwd`, each in seconds of travel at
-     * the normal speed (the bridge passes the frame's dt; Shift multiplies it). fwd follows the line of sight, so W
-     * dives where you look, as in Unity / Unreal / Godot; up is straight up (the same as rise), right is level.
+     * the normal speed (the bridge passes the frame's dt; Shift multiplies it).
+     * fwd is LEVEL (wasd-level pass 2026-10-19, from a try of the editor: "W/S as level forward / back looks better"): along the
+     * ground the way the camera faces, so looking down at the harbour W glides over it at the same height instead of
+     * diving into the water. The height changes only with up (E / Q, straight up / down — the same as rise). This is
+     * Blender's Walk with gravity and Godot's "Fully Axis-Locked" freelook; Unreal / Unity / Godot's default fly
+     * follows the line of sight instead (which is what this did on 2026-10-18 — we chose level because an editor
+     * camera here mostly looks down on a level, and diving lost the scene).
+     * right is level too (as before). Looking straight down never happens (pitch ≤ 85°), so the level direction is
+     * always defined by yaw.
      * Speed: FLY_PER_S of the distance to the turning point, kept within 0.25–2 scene radii — the view crosses
      * about the same share of the screen per second in a small room and on Lantern Cove, slows down close to a
-     * small prop, and never crawls (or races) when zoomed very far in (or out). The height keeps rise's bound;
-     * sideways has none, as pan (engines let you fly anywhere, under the ground too).
+     * small prop, and never crawls (or races) when zoomed very far in (or out). The same speed level or not: W at a
+     * steep look-down moves a full step over the ground (the old look-along W moved only cos(pitch) of it).
+     * The height keeps rise's bound; sideways has none, as pan (engines let you fly anywhere, under the ground too).
      */
     fly(right, up, fwd) {
       const sp = FLY_PER_S * Math.min(Math.max(st.distance, st.radius * 0.25), st.radius * 2);
-      const cp = Math.cos(st.pitch);
-      const look = [-cp * Math.sin(st.yaw), -Math.sin(st.pitch), -cp * Math.cos(st.yaw)];
+      const ahead = [-Math.sin(st.yaw), 0, -Math.cos(st.yaw)]; // level, the way the camera faces (as pan's fwd)
       const side = [Math.cos(st.yaw), 0, -Math.sin(st.yaw)];
-      st.target = v.add(st.target, v.scale(v.add(v.add(v.scale(side, right), [0, up, 0]), v.scale(look, fwd)), sp));
+      st.target = v.add(st.target, v.scale(v.add(v.add(v.scale(side, right), [0, up, 0]), v.scale(ahead, fwd)), sp));
       const lim = Math.max(60, st.radius * 8);
       st.target[1] = Math.min(lim, Math.max(-lim, st.target[1]));
     },

@@ -151,6 +151,11 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
         return { ok: false, error: (e as Error).message };
       }
     },
+    // The printed link with its pass (server.mjs "link"), asked only when "Open large" is pressed and handed straight
+    // to window.open: the shell keeps no copy of it.
+    async largeLink() {
+      return (await call<{ url?: string }>('GET', 'link').catch(() => ({ url: undefined }))).url || null;
+    },
     async loadConfig() {
       const r = await call<{ value: GameConfig | null; error?: string }>('GET', 'config').catch(() => ({ value: null, error: undefined }));
       if (r.error) console.warn('[studio]', r.error);

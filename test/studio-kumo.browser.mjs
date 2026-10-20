@@ -67,9 +67,16 @@ async function run(mobile) {
   const unsaved = () => page.eval(`Math.max(0, ...[...document.querySelectorAll('[data-unsaved]')].map((b) => Number(b.dataset.unsaved)))`);
   try {
     await page.goto(srv.url + '&tool=library');
-    await page.waitFor(IN.visible('.gsl-ai-open'), 20000);
+    // (Phone: Make with AI is in the "+" next to the search, the second design review's ⑦.)
+    const openAi = async () => {
+      if (!mobile) return page.eval(IN.click('.gsl-ai-open'));
+      if (!(await page.eval(IN.click('.gsl-more')))) return false;
+      await new Promise((r) => setTimeout(r, 200));
+      return page.eval(IN.click('.gsl-more-item[data-action=more-ai-open]'));
+    };
+    await page.waitFor(IN.visible(mobile ? '.gsl-more' : '.gsl-ai-open'), 20000);
     // 1. not signed in
-    assert.ok(await page.eval(IN.click('.gsl-ai-open')));
+    assert.ok(await openAi());
     await page.waitFor(IN.visible('.gsl-ai-cmd code'));
     assert.equal(await page.eval(IN.text('.gsl-ai-cmd code')), 'npx kumodeck login');
     await shot('1-signed-out');
@@ -142,7 +149,7 @@ async function run(mobile) {
     kumo.st.balance = 5;
     const posts = kumo.st.posts;
     assert.ok(await page.eval(IN.click('.gsl-ai-close, .gsl-ai .gsl-close')));
-    assert.ok(await page.eval(IN.click('.gsl-ai-open')));
+    assert.ok(await openAi());
     await page.waitFor(`${IN.text('.gsl-ai-acct')}.includes('$0.05')`);
     await page.waitFor(`(${IN.visible('.gsl-ai-prompt')})`);
     assert.ok(await page.eval(IN.disabled('.gsl-ai-make')));

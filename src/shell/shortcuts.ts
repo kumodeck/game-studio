@@ -14,6 +14,8 @@ export interface ShortcutSheetDeps {
   t(key: string): string;
   mac(): boolean;
   dim(): '2d' | '3d';
+  /** The game has a UI layer (rows marked `ui` in the key table show only then). */
+  hasUi?(): boolean;
   /** Opened / closed (main.ts shows the scrim and tells the game what is covered). */
   changed(open: boolean): void;
 }
@@ -30,7 +32,7 @@ export function createShortcutSheet(d: ShortcutSheetDeps) {
     const groups: KeyGroup[] = d.dim() === '2d' ? ['edit', 'tools', 'view', 'layers'] : ['edit', 'tools', 'view'];
     for (const g of groups) {
       const dl = h('dl', { class: 'keys-list' });
-      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()))) {
+      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()))) {
         const keys = keysOf(k.id, d.mac());
         dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
           h('dt', {}, d.t(k.label || `keys.${k.id}`), k.note ? h('span', { class: 'keys-note', text: d.t(k.note) }) : null),

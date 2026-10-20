@@ -20,6 +20,8 @@ if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !
 warn('not a placement file');
 return report;
 }
+if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
+if (root && root.nodeType === 9) return report;
 if (data.dim !== dim) {
 warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
 return report;
@@ -54,6 +56,63 @@ if (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);
 if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
 if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
 return report;
+}
+function applyUi(doc, ui) {
+const out = { applied: [], missing: [] };
+const put = (el) => {
+const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
+if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
+if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+};
+doc.querySelectorAll('[data-studio-key]').forEach(put);
+for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
+if (typeof MutationObserver === 'function') {
+new MutationObserver((list) => {
+for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) {
+if (n.dataset.studioKey) put(n);
+n.querySelectorAll('[data-studio-key]').forEach(put);
+}
+}).observe(doc.documentElement, { childList: true, subtree: true });
+}
+return out;
+}
+const UI_STATE = Symbol.for('game-studio.ui');
+export function placeUi(el, p, s) {
+let st = el[UI_STATE];
+if (!st) {
+if (el.style.translate || el.style.scale) return false;
+const cs = getComputedStyle(el);
+st = el[UI_STATE] = { t: cssParts(cs.translate), s: cssParts(cs.scale), p: [0, 0], v: 1 };
+}
+st.p = [p[0], p[1]];
+st.v = s;
+const t = st.t, b = st.s ? st.s.map((x) => parseFloat(x) / (x.endsWith('%') ? 100 : 1)) : [1];
+const bx = b[0], by = b[1] === undefined ? bx : b[1];
+let x = p[0], y = p[1];
+if (s !== 1) {
+const cs = getComputedStyle(el);
+const m = /^matrix(3d)?\(([^)]+)\)/.exec(cs.transform);
+const v = m ? m[2].split(',').map(Number) : null;
+const [a, bb, c, d, e, f] = !v ? [1, 0, 0, 1, 0, 0] : m[1] ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;
+const o = (cs.transformOrigin || '').split(' ').map(parseFloat);
+const ux = (el.offsetWidth || 0) / 2 - (o[0] || 0), uy = (el.offsetHeight || 0) / 2 - (o[1] || 0);
+if (el.offsetWidth !== undefined && (m || cs.transform === 'none')) {
+x -= (s - 1) * bx * (a * ux + c * uy + e);
+y -= (s - 1) * by * (bb * ux + d * uy + f);
+}
+if (!st.ro && typeof ResizeObserver === 'function') (st.ro = new ResizeObserver(() => placeUi(el, st.p, st.v))).observe(el);
+}
+const none = !x && !y && s === 1;
+el.style.translate = none ? '' : t ? `calc(${t[0]} + ${x}px) calc(${t[1] || '0px'} + ${y}px)${t[2] ? ' ' + t[2] : ''}` : `${x}px ${y}px`;
+el.style.scale = s === 1 ? '' : st.s ? `${bx * s} ${by * s}${b[2] === undefined ? '' : ' ' + b[2]}` : String(s);
+return true;
+}
+export function uiOffset(el) {
+const st = el[UI_STATE];
+return st ? { p: st.p.slice(), s: st.v } : { p: [0, 0], s: 1 };
+}
+function cssParts(v) {
+return !v || v === 'none' ? null : v.match(/(?:[^\s(]|\([^)]*\))+/g);
 }
 function put(obj, e, n, three) {
 const p = e && e.p;

@@ -147,8 +147,9 @@ const en = {
   shelf_2d: '2D',
   shelf_sound: 'Sound',
   shelf_other: 'Other',
-  tagObject: 'Object',
-  tagFile: 'Asset',
+  // The phone's one "+" next to the search (the second design review's ⑦, 2026-10-19): Multi-select, Add files and
+  // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
+  more: 'More',
   countObjects: '{n:1 object|# objects}',
   countBoth: '{o:1 object|# objects} · {f:1 asset|# assets}',
   emptyObjects: 'No objects match.',
@@ -183,8 +184,7 @@ const ja: Partial<Record<StringKey, string>> = {
   shelf_2d: '2D',
   shelf_sound: '音',
   shelf_other: 'その他',
-  tagObject: '物',
-  tagFile: '素材',
+  more: 'ほか',
   countObjects: '物 {n}',
   countBoth: '物 {o} ・ 素材 {f}',
   emptyObjects: '当てはまる物はありません。',

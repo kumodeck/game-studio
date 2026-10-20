@@ -74,8 +74,17 @@ export function installTooltips(root: HTMLElement): { el: HTMLElement; hide(): v
     el.hidden = true;
   }
 
+  // Where the last press was. A pressed button that changes under a still pointer (Play ↔ Edit re-renders the top
+  // bar) gets a pointerover again, and its NEW title came up as a tip right after the press ("Edit  P" left on screen
+  // after Edit, the second design review's ⑪, 2026-10-19). No tip there until the pointer has moved off that spot.
+  let pressAt: { x: number; y: number } | null = null;
+  const nearPress = (e: PointerEvent) => !!pressAt && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) < 6;
+  root.addEventListener('pointermove', (e) => {
+    if (pressAt && !nearPress(e)) pressAt = null;
+  });
   root.addEventListener('pointerover', (e) => {
     if (e.pointerType !== 'mouse') return;
+    if (nearPress(e)) return;
     const b = (e.target as HTMLElement | null)?.closest?.(SEL) as HTMLElement | null;
     const cur = (e.target as HTMLElement | null)?.closest?.('[data-tip]') as HTMLElement | null;
     if (cur && cur === target) return;
@@ -94,7 +103,10 @@ export function installTooltips(root: HTMLElement): { el: HTMLElement; hide(): v
     hide();
   });
   // A press, a key that changes the page, a scroll: the tip goes (it would point at something that moved).
-  root.addEventListener('pointerdown', () => hide(), true);
+  root.addEventListener('pointerdown', (e) => {
+    pressAt = { x: e.clientX, y: e.clientY };
+    hide();
+  }, true);
   window.addEventListener('scroll', () => hide(), true);
   window.addEventListener('blur', () => hide());
   return { el, hide };

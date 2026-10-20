@@ -140,8 +140,17 @@ export async function runSelfCheck(adapter: StudioAdapter | null, core: Core, wi
   checks.push({ id: 'keys-valid', ok: bad.length === 0, detail: bad.length ? `bad or duplicate keys: ${bad.slice(0, 5).map((b) => JSON.stringify(b.key)).join(', ')}` : undefined });
 
   // Pick an object that is on screen and not huge (a ground plane moved by a
-  // few px may not change a 32×32 fingerprint in a meaningful way).
-  const sample = items.find((it) => {
+  // few px may not change a 32×32 fingerprint in a meaningful way). On screen =
+  // its centre inside the window: `visible` alone also allows a margin of a
+  // screen round it, and a 2D game opened on its own picture on a phone (port2d
+  // home(), the second design review's ⑩, 2026-10-19) has objects just off the
+  // edge — Firefly Ruins' bell — whose move draws nothing, so the check failed
+  // on our own sample. Objects with the centre off screen are the fallback.
+  const inView = (it: (typeof items)[number]) => {
+    const a = adapter.anchor(it.key);
+    return !!a && a.visible && a.size > 4 && a.center[0] >= 0 && a.center[1] >= 0 && a.center[0] <= win.innerWidth && a.center[1] <= win.innerHeight;
+  };
+  const sample = items.find(inView) || items.find((it) => {
     const a = adapter.anchor(it.key);
     return a && a.visible && a.size > 4;
   }) || items[0];

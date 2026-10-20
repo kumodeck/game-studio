@@ -28,6 +28,12 @@ export type Dim = '2d' | '3d';
  */
 export type AdapterKind = string;
 export type ToolId = 'placement' | 'library';
+/**
+ * What the editor moves right now (UI stage 1, 2026-10-19; CONTRACT.md §1.1): the game's world (three.js / 2D
+ * objects, as always) or its UI (HTML elements marked data-studio-key, later also UI drawn in a canvas). One at a
+ * time; the top bar switches. Not the same as Item.layer (a 2D draw-order list).
+ */
+export type EditLayer = 'world' | 'ui';
 
 /**
  * Pose of one movable object, in the object's PARENT space (what you would
@@ -121,8 +127,26 @@ export interface Item {
    * back" / dragging stop just in front of it. Set by the editor (a name like
    * ground / background, or as wide as the game), only for the run of such
    * objects at the very back of a list that also has other objects.
+   * 3D (a hands-on try of 2026-10-19: a stray Height drag lifted the road 16 m and it was saved like that): the
+   * three.js adapter sets it too, without `layer`, for a ground, road, sea or sky (a name that says so, or a box far
+   * bigger than the rest: adapters/three/ground.js). The editor then holds it still (`held: 'ground'`).
    */
   backdrop?: boolean;
+  /**
+   * Why the editor holds this object still (set by the editor, bridge/hold.ts; adapters never set it):
+   * - 'ground': a 3D ground / road / sky (`backdrop`), so a stray drag cannot lift the road. No tools until the
+   *   person presses "Make movable" on its card or its menu (ShellToBridge placement/unhold). The AI can still move it.
+   * - 'game': the game itself changed it while the editor watched the first moments of play (bridge/observe.ts),
+   *   so a new value would not last: the game sets it again every frame. Only what the game changed is off
+   *   (`driven`); the rest stays editable — a pillar the game slides along the road can still be made taller, a boat
+   *   that bobs on the waves can still be moved across the water.
+   */
+  held?: 'ground' | 'game';
+  /**
+   * With held 'game': what the game changes by itself. move = the place across the ground (3D x / z; 2D x / y),
+   * lift = the height (3D y), turn, size.
+   */
+  driven?: Array<'move' | 'lift' | 'turn' | 'size'>;
   /**
    * Copy made in this edit session (copy / ⌘D, CONTRACT.md §1.8): the key of
    * the object it was copied from. Absent for objects the game itself makes.
@@ -134,8 +158,25 @@ export interface Item {
    * copy into the code.
    */
   ghost?: boolean;
+  /**
+   * Optional, objects without a name (`unstable`): what it looks like, so the
+   * editor can call it by that ("Black pillar by the road (left, 3rd)", not
+   * "Unnamed group"; a hands-on try, 2026-10-19). `size` = its world box
+   * ([w, h, d] in 3D, [w, h] in 2D), `c` = the box's middle, `color` = the
+   * main part's colour (#rrggbb), `inside` = drawn from the inside (a sky
+   * dome). Only a hint for the shown name: keys and the AI never depend on it.
+   */
+  look?: ItemLook;
   /** Current pose (parent space). */
   pose: Pose;
+}
+
+/** Item.look: what an unnamed object looks like (src/shell/names.ts turns it into words). */
+export interface ItemLook {
+  size: number[];
+  c?: number[];
+  color?: string;
+  inside?: boolean;
 }
 
 /**
@@ -221,6 +262,13 @@ export interface StudioAdapter {
   /** Leave edit mode and restore the game's own camera/view. */
   end(): void;
   /**
+   * Optional: while editing, let the game's own frame code run (true) or hold it again (false), with the game's
+   * own draws still kept off the screen. The editor uses it once, for a moment, to find what the game moves by
+   * itself (bridge/observe.ts). Adapters whose engine holds frames on its own (three.js: boot.js) need it; without
+   * it the editor only thaws core.time's requestAnimationFrame.
+   */
+  watch?(on: boolean): void;
+  /**
    * Draw one frame of the edit view. Called by the bridge while frozen
    * (the game's own loop is paused, so nothing else draws).
    */
@@ -281,6 +329,21 @@ export interface StudioAdapter {
   coverage?(key: string): number | null;
   /** 3D only: raise/lower by `dy` units in parent space. */
   nudgeY?(key: string, dy: number): Pose;
+  /**
+   * 3D, optional — snap to surfaces (2026-10-19, bridge/snap.ts). The height of the object's bottom (its visual box)
+   * and of the highest surface under it (a face of any visible mesh, turned up), in the units `nudgeY` moves by;
+   * `below` null = nothing under it. `skip`: keys that are not surfaces (the others moving with it); the object
+   * itself and its children never are. The height drag stops on `below`, PgDn steps end on it.
+   */
+  rest?(key: string, skip?: string[]): { bottom: number; below: number | null } | null;
+  /** 3D, optional: Drop to floor (End) — the bottom set on the surface under it (`rest().below`); none: unchanged. */
+  drop?(key: string, skip?: string[]): Pose;
+  /**
+   * 3D, optional: snapping for the moves that follow. `on` while a person drags or nudges (the bridge turns it off
+   * after, so other callers of drag() are unchanged): a `drag` of an object standing on a surface keeps it standing
+   * on whatever is under it. `free`: Ctrl / ⌥ held (no snapping until let go). `skip`: keys moving together.
+   */
+  setSnap?(s: { on: boolean; free?: boolean; skip?: string[] }): void;
   /** Apply an absolute pose (undo/redo, typed numbers). null if the key is unknown. */
   setPose(key: string, pose: Pose): Pose | null;
   /**
@@ -333,6 +396,19 @@ export interface StudioAdapter {
   remove?(key: string): boolean;
   /** Undo remove(): the object is drawn and listed again, as it was. */
   putBack?(key: string): boolean;
+
+  // --- ask while playing (optional, CONTRACT.md §3.5) ---
+  /**
+   * 3D: where the PLAYER's camera (the game's own, not the edit camera) stands and looks right now, in world units:
+   * `eye` = its position, `target` = 10 units ahead along its view. Called during ▶ Play, when the person asks their
+   * AI something, so the request says where they were ("here the character vanishes"). null / left out = unknown
+   * (the request then carries the picture and the log only). 2D adapters need none: the editor uses `anchor()` for
+   * what is on screen.
+   */
+  player?(): { eye: [number, number, number]; target: [number, number, number];
+    /** What is near the player, nearest first (world distances; `screen` = where in the picture, 0–1). Left out = the
+     *  editor measures from list() poses itself. */
+    near?: Array<{ key: string; label?: string; d: number; screen?: [number, number] }> } | null;
 }
 
 export interface AdapterView {
@@ -351,7 +427,8 @@ export interface AdapterView {
    * 3D only, optional: fly (WASD, camera-wasd pass 2026-10-18 — the habit of every 3D engine). Move the camera by
    * `right` / `up` / `fwd`, each in seconds of travel at the adapter's normal speed, which it picks from the scene's
    * size so a small room and a big harbour feel the same (the bridge passes the frame's dt, ×3 with Shift). fwd
-   * follows the line of sight, up is straight up. Only on the person's own keys; never by itself. Adapters without
+   * is level (along the ground the way the camera faces: looking down, W keeps the height — wasd-level 2026-10-19;
+   * it followed the line of sight before), right is level, up is straight up. Only on the person's own keys; never by itself. Adapters without
    * it: WASD does nothing and E / Q fall back to rise steps.
    */
   fly?(right: number, up: number, fwd: number): void;
@@ -442,6 +519,13 @@ export interface StudioGlobal {
   registerAdapter(probe: AdapterProbe): void;
   /** Register a small 2D port; the base builds the full adapter from it. */
   register2D(port: Port2D | (() => Port2D | null)): void;
+  /**
+   * Register a port for the editor's UI layer (CONTRACT.md §1.1, the UI seat; UI stage 1 adds the name and the order
+   * only): UI the game draws itself — a Phaser HUD scene's texts, a Pixi UI container, a three.js orthographic HUD —
+   * in the same Port2D shape, with p = CSS px offsets on screen. Asked before the built-in DOM UI adapter; the
+   * first that answers wins (merging several seats into one list is a later stage).
+   */
+  registerUI(port: Port2D | (() => Port2D | null)): void;
   /** Shared services, for adapters that want the load log or the real rAF. */
   core: CoreContext;
   /**
@@ -758,9 +842,11 @@ export type ViewAction =
 /**
  * Viewport px the shell's floating panels cover on each side. `rightTo`: the
  * right inset only reaches down to this y (the card is in the top right
- * corner; below it the game is free to the edge).
+ * corner; below it the game is free to the edge). `camera: false`: hide the
+ * camera up / down buttons for now (a phone with the card, a sheet or a menu
+ * up — the second design review's ⑧, 2026-10-19); absent = shown.
  */
-export interface Inset { top: number; right: number; bottom: number; left: number; rightTo?: number }
+export interface Inset { top: number; right: number; bottom: number; left: number; rightTo?: number; camera?: boolean }
 
 /** shell -> bridge */
 export type ShellToBridge =
@@ -788,14 +874,17 @@ export type ShellToBridge =
   /** Delete objects from the picture (undo: placement/restore). */
   | { type: 'studio:placement/remove'; keys: string[] }
   | { type: 'studio:placement/restore'; keys: string[] }
-  | { type: 'studio:placement/pose'; key: string; pose: Pose }
+  /** `layer` (UI stage 1): set it on that layer even when the other one is being edited (saved UI places on open). */
+  | { type: 'studio:placement/pose'; key: string; pose: Pose; layer?: EditLayer }
+  /** "Make movable" on a held ground / road / sky (Item.held 'ground'): the tools work on it again for this session. */
+  | { type: 'studio:placement/unhold'; keys: string[] }
   /**
    * One keyboard/button step on the selected object (arrows, Q/E, PageUp/Down,
    * +/-). `hold: true` marks auto-repeat: the bridge folds a run of held steps
    * into one undo step (ends when a non-hold step or another gesture arrives,
    * or after holdDelayMs of silence).
    */
-  | { type: 'studio:placement/step'; key: string; op: 'move' | 'rotate' | 'lift' | 'scale'; dx?: number; dy?: number; d?: number; hold?: boolean; keys?: string[] }
+  | { type: 'studio:placement/step'; key: string; op: 'move' | 'rotate' | 'lift' | 'scale' | 'drop'; dx?: number; dy?: number; d?: number; hold?: boolean; keys?: string[] }
   | { type: 'studio:placement/thumbs'; keys: string[]; size: number }
   | { type: 'studio:library/assets' }
   | { type: 'studio:library/preview'; url: string; to: string | null }
@@ -813,6 +902,11 @@ export type ShellToBridge =
    * in the AI's colour with one tag (`label`, e.g. "AI added 3"). Empty = none.
    */
   | { type: 'studio:placement/marks'; keys: string[]; label?: string }
+  /**
+   * The mouse is over these objects' row in the list, the card or the ask bar's chip (a hands-on try, 2026-10-19: "light
+   * it up when I hover its card"): the game shows them lit, in your colour, softer than the pick. [] = none.
+   */
+  | { type: 'studio:placement/hover'; keys: string[] }
   /** 3D: the axis the strip's turn button uses (`next` = the R key: y → x → z → y). */
   | { type: 'studio:placement/axis'; axis: TurnAxis | 'next' }
   /** Choose the strip's tool (the M / H / T / S keys and ⌘K when the shell has focus), or none. */
@@ -834,7 +928,51 @@ export type ShellToBridge =
   | { type: 'studio:tool/restore'; id: string; data: unknown }
   /** Ask for the data of tools with unsaved changes (answered by tool/data). */
   | { type: 'studio:tool/collect' }
-  | { type: 'studio:tool/saved'; ids: string[] };
+  | { type: 'studio:tool/saved'; ids: string[] }
+  /**
+   * Switch what the editor moves (UI stage 1): the bridge drops the pick, swaps the adapter under the same input,
+   * and answers with core/ready (`layer`) and the layer's placement/items. Only sent when core/ready listed `layers`.
+   */
+  | { type: 'studio:core/layer'; layer: EditLayer }
+  /**
+   * While the world is edited, the game's UI (data-studio-key) is hidden — off the picture and out of the pointer's
+   * way — unless `on` (the shell's eye button / ⇧U, a try of the editor, 2026-10-20: "the UI is always there, in the way"). On: shown
+   * faded, still not in the pointer's way. Only the editing look: nothing is saved and the game's code is untouched.
+   * Only sent when core/ready listed `layers`; the bridge starts with `on` false.
+   */
+  | { type: 'studio:core/ui-peek'; on: boolean }
+  /**
+   * Ask while playing (§3.5): the editor answers the bridge's play/hello when an AI is behind the host (never in the
+   * offline web demo, where nothing is shown). `words`: the overlay's strings in the person's language (the bridge
+   * has no strings of its own).
+   */
+  | { type: 'studio:play/on'; lang: Lang; words: Record<string, string> }
+  /** What the AI is doing about the play request, for the small line over the game (shell/play-ask.ts playLine). */
+  | { type: 'studio:play/state'; state: PlayLine | null }
+  /** The request was kept (`ok`) or not, so the field can close or say it failed. */
+  | { type: 'studio:play/sent'; ok: boolean };
+
+/**
+ * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
+ * asking = it has a question (`choices` as buttons); fixed / failed = its reply (`text`), `reload` = the game's
+ * files changed since this game was opened, so Reload shows the fix; kept = nothing can reach the AI right now.
+ */
+export interface PlayLine {
+  state: 'looking' | 'fixing' | 'asking' | 'fixed' | 'failed' | 'kept';
+  text: string;
+  /** What the person asked, small under the line. */
+  asked?: string;
+  choices?: string[];
+  reload?: boolean;
+}
+
+/** One line of the game's console the bridge kept for a play request (§3.5). */
+export interface PlayLog {
+  level: 'error' | 'warn' | 'log';
+  text: string;
+  /** Seconds before the request was sent (0.0 = at that moment). */
+  ago: number;
+}
 
 /** bridge -> shell */
 export type BridgeToShell =
@@ -844,7 +982,15 @@ export type BridgeToShell =
   | { type: 'studio:core/wait'; reason?: 'no-adapter' | 'no-frame' | 'no-objects' }
   /** `rise`: the edit camera can go up / down (3D, adapter view.rise): the editor page lists Camera up / down in ⌘K.
    *  `fly`: it can fly with WASD (adapter view.fly): the editor page sends studio:core/fly for those keys. */
-  | { type: 'studio:core/ready'; kind: AdapterKind; dim: Dim; version?: string; editing: boolean; rise?: boolean; fly?: boolean }
+  | { type: 'studio:core/ready'; kind: AdapterKind; dim: Dim; version?: string; editing: boolean; rise?: boolean; fly?: boolean;
+      /** `drop`: the adapter can drop to floor (snap to surfaces, adapter drop): End / ⌘K / the menu offer it. */
+      drop?: boolean;
+      /**
+       * UI stage 1: the layers this game has, only when it has a UI (an element marked data-studio-key) — absent,
+       * the editor is exactly as before (no switch, no `ui` in placement.json). `layer`: the one being edited now;
+       * kind / dim / rise / fly are that layer's adapter's (the UI is 'dom-ui', '2d').
+       */
+      layers?: EditLayer[]; layer?: EditLayer }
   | { type: 'studio:core/view-state'; state: unknown }
   | { type: 'studio:core/check'; result: SelfCheckResult }
   /** A key pressed while the game iframe has focus (so shortcuts work everywhere). */
@@ -852,7 +998,8 @@ export type BridgeToShell =
   | { type: 'studio:core/error'; message: string }
   /** The game's own page threw (an uncaught error or rejection), edit or Play; the first few per page load. */
   | { type: 'studio:core/game-error'; message: string; where?: string }
-  | { type: 'studio:placement/items'; items: Item[] }
+  /** `layer`: whose objects these are (UI stage 1; absent = the world, as before). */
+  | { type: 'studio:placement/items'; items: Item[]; layer?: EditLayer }
   | { type: 'studio:placement/selected'; key: string | null; item?: Item; keys?: string[] }
   /**
    * A pose changed by direct manipulation. One gesture ("one move" = from
@@ -886,7 +1033,32 @@ export type BridgeToShell =
   /** Game tools registered by .studio/tools.js. */
   | { type: 'studio:tool/list'; tools: GameToolInfo[] }
   | { type: 'studio:tool/state'; id: string; dirty: number; active: boolean }
-  | { type: 'studio:tool/data'; items: Array<{ id: string; data: unknown }> };
+  | { type: 'studio:tool/data'; items: Array<{ id: string; data: unknown }> }
+  /** ▶ Play: the bridge can take a request while the game runs (§3.5); the editor answers play/on when an AI can get it. */
+  | { type: 'studio:play/hello' }
+  /**
+   * The person asked while playing: their words and the moment, as the bridge saw it. `shot` = a JPEG data URL of the
+   * game's canvas (≤ 1024 px wide), `view` = the player's camera (3D, adapter player()), `near` = what is near it
+   * (3D: nearest in front of the camera; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1),
+   * `logs` = the game's console errors / warnings and its last lines, `fullscreen` = the game was in full screen.
+   */
+  | { type: 'studio:play/ask'; text: string; shot?: string; view?: { eye: [number, number, number]; target: [number, number, number] };
+      near?: PlayNear[]; logs?: PlayLog[]; fullscreen?: boolean; size?: [number, number] }
+  /** The person's answer to the AI's question, from the line over the game. */
+  | { type: 'studio:play/answer'; text: string }
+  /** Reload pressed over the game: open the game again (its new code), still playing. */
+  | { type: 'studio:play/reload' };
+
+/** Something near the player when they asked while playing (§3.5). */
+export interface PlayNear {
+  key: string;
+  label?: string;
+  pose?: Pose;
+  /** 3D: metres (world units) from the player's camera. */
+  d?: number;
+  /** Where it is in the picture (0–1 from the top left), when the adapter can tell. */
+  screen?: [number, number];
+}
 
 export type StudioMessage = ShellToBridge | BridgeToShell;
 
@@ -933,7 +1105,7 @@ export type AiStepId = 'fit' | 'look' | 'tool';
 // (local: .studio/status.json). Normalised by src/schema/handoff.mjs.
 // ---------------------------------------------------------------------------
 
-export type StudioRequestKind = 'ask' | 'name' | 'next-step' | 'saved';
+export type StudioRequestKind = 'ask' | 'name' | 'next-step' | 'saved' | 'answer' | 'play';
 
 export interface RequestObject {
   key: string;
@@ -950,8 +1122,17 @@ export interface RequestObject {
 
 /** What the shell hands to host.request(). */
 export interface StudioRequestInput {
-  /** ask = the person's words about objects; name = "give these a name"; next-step = a next-steps page item. */
-  kind: 'ask' | 'name' | 'next-step';
+  /**
+   * ask = the person's words about objects; name = "give these a name"; next-step = a next-steps page item;
+   * answer = the person's answer to the AI's `asking` question (a choice button or their own words, 2026-10-19);
+   * play = asked while playing (▶ Play, §3.5: the words plus the moment — a picture, the player's camera, what was
+   * near, the console), so the AI fixes the game without the person stopping.
+   */
+  kind: 'ask' | 'name' | 'next-step' | 'answer' | 'play';
+  /** "answer": the request the question was about (the status's `request`). */
+  to?: string;
+  /** "answer": the question it answers (the status's `note`), so the record reads alone. */
+  question?: string;
   /** The person's words (any language), one line, ≤ 500 characters. */
   text: string;
   /** "ask": the picked objects; empty or left out = about the whole game (nothing picked). "name": at least one. */
@@ -967,7 +1148,7 @@ export interface StudioRequestInput {
    */
   files?: string[];
   /**
-   * "ask", 3D only: where the person's camera stood (`eye`) and what it looked at (`target`), in world units, when
+   * "ask" / "play", 3D only ("play": the player's own camera, adapter player()): where the person's camera stood (`eye`) and what it looked at (`target`), in world units, when
    * they asked. The editor opens on the game's own camera, so this is usually the player's view too. WHY
    * (agent-solid pass 2026-10-17): a real Claude Code run put all three lighthouses it was asked for outside the
    * picture, saw it only in its game shot, and spent another minute moving them. With the view in the request it
@@ -980,6 +1161,23 @@ export interface StudioRequestInput {
    * otherwise the file is what "this" means ("use this sound when the door opens").
    */
   assets?: string[];
+  /**
+   * UI stage 1: 'ui' when the objects are the game's HTML UI (data-studio-key elements, picked in the UI layer), so
+   * the AI changes that element's HTML / CSS, not a world object. Absent = the world, as before.
+   */
+  layer?: 'ui';
+  /**
+   * "play" only (§3.5): the game's picture at that moment, a JPEG / PNG data URL (≤ 1.5 MB). The host keeps it as a
+   * file and the stored request names that file instead (local: `.studio/play/<id>.jpg`).
+   */
+  shot?: string;
+  /** "play" only: the game's console (errors and warnings first-class, plus the last few lines), oldest first. */
+  logs?: PlayLog[];
+  /** "play" only: what was near the player (see PlayNear). */
+  near?: PlayNear[];
+  /** "play" only: the game was in full screen; `size` = the game page's size in CSS px. */
+  fullscreen?: boolean;
+  size?: [number, number];
 }
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1012,6 +1210,16 @@ export interface StudioStatus {
   changed?: number;
   /** One short line for the person, in their language. */
   note?: string;
+  /**
+   * `asking` only (2026-10-19): up to 4 short answers the editor shows as buttons under the question ("Undo it",
+   * "Keep it"); pressing one sends it back as an `answer` request. The ask field answers in the person's own words.
+   */
+  choices?: string[];
+  /** `asking` only: the objects the question is about (keys); the editor lights them in the scene. */
+  about?: string[];
+  /** `asking` only: what the question would change, one short line each, shown side by side ("On the road" → "16 m up"). */
+  before?: string;
+  after?: string;
   at?: string;
 }
 
@@ -1094,6 +1302,13 @@ export interface StudioHost {
   saveData(id: string, data: unknown): Promise<{ ok: boolean; error?: string }>;
   /** URLs of the AI's rewrite of the editor look (.studio/ui/studio.css and shell.js). */
   customUi(): { css: string; js: string };
+  /**
+   * The link that opens this same editor in another window, pass included (the side window's "Open large",
+   * a try on 2026-10-19: "hard to use from the sidebar"). The local server trades its pass for a cookie of THIS browser,
+   * so a plain location.href opened in the person's own browser (another cookie jar) only got "Missing pass".
+   * Left out (the web demo: no pass) = location.href.
+   */
+  largeLink?(): Promise<string | null>;
   /**
    * true when no AI is behind this host (the browser-only web demo,
    * src/hosts/browser): request() still keeps the request, but nobody picks
@@ -1226,6 +1441,8 @@ export interface StudioShellApi {
   t(key: string): string;
   lang(): Lang;
   items(): Item[];
+  /** The name the editor shows for an object (an unnamed one's is guessed from its look, src/shell/names.ts). */
+  nameOf(key: string): string;
   selected(): string | null;
   actions: {
     undo(): void;
@@ -1284,6 +1501,23 @@ export interface PlacementFile {
    * `was` are written.
    */
   order?: PlacementOrder[];
+  /**
+   * Optional (UI stage 1, 2026-10-19): the game's HTML UI moved / resized in the editor's UI layer, by the element's
+   * data-studio-key. Absent when nothing was moved — and always for a game without data-studio-key, so its file is
+   * byte for byte what it was. `dim` above stays the world's; UI is always screen CSS px.
+   */
+  ui?: Record<string, PlacementUiEntry>;
+  /** With `ui`: the game's size [width, height] in CSS px when it was saved (for turning px into % / vw). */
+  uiView?: [number, number];
+}
+
+export interface PlacementUiEntry {
+  /** [dx, dy] CSS px from where the game's own CSS puts the element (the CSS `translate` it gets). [0, -48] = 48 px up. */
+  p: [number, number];
+  /** CSS `scale`; absent = 1. */
+  s?: number;
+  /** The element's text (first 40 characters): a clue for finding it in the code. */
+  label?: string;
 }
 
 export interface PlacementAdded extends Pose {
@@ -1481,6 +1715,11 @@ export const LIMITS = {
   maxUnused: 2000,
   maxAssetBytes: 100 * 1024 * 1024,
   undoSteps: 200,
+  /** placement.json `ui` (UI stage 1): elements, |p| in CSS px, and the scale range (src/schema keeps the same values). */
+  maxUi: 200,
+  maxUiCoord: 10_000,
+  minUiScale: 0.1,
+  maxUiScale: 10,
 } as const;
 
 /** Allowed characters of an object key. Names with other characters are mapped; the original stays in `label`. */

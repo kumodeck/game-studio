@@ -41,6 +41,14 @@ export const LIMITS = Object.freeze({
   maxUrl: 2000,
   maxDepth: 8,
   maxOrders: 100, // sibling lists with a changed draw order (2D layers)
+  // `ui` (the game's HTML UI moved in the editor's UI layer, UI stage 1, 2026-10-19): offsets in CSS px from where the
+  // game's own CSS puts the element. 200 elements / 10,000 px / scale 0.1–10 are far beyond a real title screen or HUD;
+  // they stop a runaway drag, like the bounds above.
+  maxUi: 200,
+  maxUiCoord: 10000,
+  minUiScale: 0.1,
+  maxUiScale: 10,
+  maxUiView: 100000,
 });
 
 // Object keys (contract section "keys"): letters, digits and _ : # . - /, 1 to 80 chars.
@@ -127,7 +135,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -193,6 +201,18 @@ function placement(data, fail) {
     const removed = readRemoved(data.removed, dim, fail);
     if (removed.length) out.removed = removed;
   }
+  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
+  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
+  if (data.ui !== undefined) {
+    const ui = readUi(data.ui, fail);
+    if (Object.keys(ui).length) {
+      out.ui = ui;
+      if (data.uiView !== undefined) {
+        const view = readUiView(data.uiView, fail);
+        if (view) out.uiView = view;
+      }
+    }
+  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
   // One key, one meaning: a copy is never also a moved object or a deleted one.
   const addedKeys = new Set((out.added || []).map((a) => a.key));
   for (const k of addedKeys) if (Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
@@ -226,6 +246,61 @@ function readAdded(v, dim, fail) {
     out.push(o);
   });
   return out;
+}
+
+// The game's HTML UI (UI stage 1): { "<data-studio-key>": { p: [dx, dy], s?, label? } }. p = CSS px from the place
+// the game's own CSS gives the element (the CSS `translate` the loader adds), s = CSS `scale` (1 is not written:
+// equal content, equal bytes). No `was`: the original is always p [0, 0], s 1, and the key itself finds the element
+// in the code. Keys use the same characters as object keys. The world's `dim` does not apply: UI is always screen px.
+function readUi(v, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('ui', 'must be an object keyed by data-studio-key');
+    return out;
+  }
+  const keys = Object.keys(v);
+  if (keys.length > LIMITS.maxUi) fail('ui', `at most ${LIMITS.maxUi} elements`);
+  for (const key of keys.slice(0, LIMITS.maxUi)) {
+    const where = `ui[${JSON.stringify(key)}]`;
+    if (!KEY_RE.test(key)) {
+      fail(where, 'key must match ' + KEY_RE);
+      continue;
+    }
+    const e = v[key];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['p', 's', 'label'], where, fail);
+    if (!Array.isArray(e.p) || e.p.length !== 2) {
+      fail(`${where}.p`, 'must be 2 numbers: [dx, dy] in CSS px');
+      continue;
+    }
+    const p = e.p.map((x, i) => readNumber(x, -LIMITS.maxUiCoord, LIMITS.maxUiCoord, `${where}.p[${i}]`, fail));
+    if (p.some((x) => x === null)) continue;
+    const o = { p: p.map((x) => round(x, LIMITS.step2d)) };
+    if (e.s !== undefined) {
+      const sc = readNumber(e.s, LIMITS.minUiScale, LIMITS.maxUiScale, `${where}.s`, fail);
+      if (sc !== null && round(sc, LIMITS.stepScale) !== 1) o.s = round(sc, LIMITS.stepScale);
+    }
+    if (e.label !== undefined) {
+      const label = readLabel(e.label, `${where}.label`, fail);
+      if (label) o.label = label;
+    }
+    out[key] = o;
+  }
+  return out;
+}
+
+// The game's size in CSS px when the UI was saved: [width, height], whole pixels. A hint for the AI turning offsets
+// into % / vw (the offsets themselves stay px).
+function readUiView(v, fail) {
+  if (!Array.isArray(v) || v.length !== 2) {
+    fail('uiView', 'must be 2 numbers: [width, height] in CSS px');
+    return null;
+  }
+  const n = v.map((x, i) => readNumber(x, 1, LIMITS.maxUiView, `uiView[${i}]`, fail));
+  return n.some((x) => x === null) ? null : n.map((x) => Math.round(x));
 }
 
 // Objects deleted in the editor: [{ key, label?, was?, unstable? }], sorted by key.

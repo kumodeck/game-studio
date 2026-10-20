@@ -160,7 +160,7 @@ async function run(example, layout) {
       assert.deepEqual(await pressed(), [k], `after a tap on ${k}, pressed = ${JSON.stringify(await pressed())}`);
       if (first) {
         const hint = await shown('hint');
-        assert.ok(hint && (mobile ? hint.includes('2 本指') : hint.includes('⌥')), `the first-time line: ${hint}`);
+        assert.ok(hint && (mobile ? hint.includes('2 本指') : hint.includes('Esc')) && hint.length <= 40, `the first-time line (40 characters at most since review 2 ③): ${hint}`);
         if (k === tools[0]) await shot('1-tool-chosen-hint');
       }
       const v0 = await view();

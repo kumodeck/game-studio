@@ -4,11 +4,12 @@
 //   node test/studio-camera-wasd.browser.mjs [--shots <dir>] [--theme light|dark] [--game lantern-cove,firefly-ruins]
 //
 // Lantern Cove (3D) at PC 1280×800 with a mouse and a keyboard:
-// - nothing picked, the game focused: W held flies forward along the line of sight, smoothly (more the longer it is
+// - nothing picked, the game focused: W held flies forward LEVEL (the height stays — wasd-level 2026-10-19; also after
+//   tilting the view to look steeply down with a left-drag), smoothly (more the longer it is
 //   held), and stops when let go; S comes back, D goes right, E / Q up / down; the direction never changes; Shift is
 //   faster; the editor page focused does the same;
 // - something picked: W / A / D do nothing to the view, S still chooses the Size tool, E still turns the pick;
-// - something picked + the right button held: W flies, E rises, the drag turns where the camera stands (fly look),
+// - something picked + the right button held: W flies level (looking down too), E rises, the drag turns where the camera stands (fly look),
 //   the release opens no menu, the pick stays (and the camera never moves by itself in between);
 // - typing in the ask box: W types, the view stays;
 // - the ? sheet lists "Fly the camera  WASD" with its rule, ⌘K finds it by "wasd" with WASD / Right button+WASD.
@@ -94,10 +95,12 @@ async function run(game) {
     assert.ok(d > 1e-3, `${when}: the camera did not move`);
     return d;
   };
-  /** The look direction of a view state (unit). */
-  const dirOf = (s) => {
-    const cp = Math.cos(s.pitch);
-    return [-cp * Math.sin(s.yaw), -Math.sin(s.pitch), -cp * Math.cos(s.yaw)];
+  /** The way a view state faces over the ground (unit, level: W / S go this way since wasd-level 2026-10-19). */
+  const dirOf = (s) => [-Math.sin(s.yaw), 0, -Math.cos(s.yaw)];
+  /** W / S kept the camera's height (eye and turning point). */
+  const level = (a, b, when) => {
+    assert.ok(Math.abs(eye(b)[1] - eye(a)[1]) < 1e-6 * Math.max(1, a.distance), `${when}: the height changed (${eye(a)[1]} → ${eye(b)[1]})`);
+    assert.ok(Math.abs(b.target[1] - a.target[1]) < 1e-6 * Math.max(1, a.distance), `${when}: the turning point's height changed`);
   };
   const frame = () => j(`(() => { const r = document.querySelector('iframe').getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.width, r.height]); })()`);
   const right = (type, x, y) => page.send('Input.dispatchMouseEvent', { type, x, y, button: 'right', buttons: type === 'mouseReleased' ? 0 : 2, clickCount: 1 });
@@ -130,7 +133,8 @@ async function run(game) {
     const short = flew(a, b, 'W (short)');
     const fwd = sub(eye(b), eye(a));
     const want = dirOf(a);
-    for (let i = 0; i < 3; i++) assert.ok(Math.abs(fwd[i] / short - want[i]) < 1e-6, `W went ${fwd}, the view looks ${want}`);
+    level(a, b, 'W (short)');
+    for (let i = 0; i < 3; i++) assert.ok(Math.abs(fwd[i] / short - want[i]) < 1e-6, `W went ${fwd}, the view faces ${want}`);
     a = b;
     await hold('w', 700);
     b = await view();
@@ -138,12 +142,13 @@ async function run(game) {
     assert.ok(long > short * 2, `holding W 700 ms went ${long}, 150 ms ${short} (it should keep going while held)`);
     await sleep(300);
     same(b, await view(), 'after W was let go');
-    ok(`nothing picked: W flies along the line of sight, keeps going while held (${(long / short).toFixed(1)}×), stops on release`);
+    ok(`nothing picked: W flies level the way the view faces, keeps going while held (${(long / short).toFixed(1)}×), stops on release`);
 
     a = await view();
     await hold('s', 700);
     b = await view();
     const backD = sub(eye(b), eye(a));
+    level(a, b, 'S');
     assert.ok(backD.every((x, i) => Math.sign(x) === -Math.sign(fwd[i]) || Math.abs(x) < 1e-6), 'S did not go back');
     a = b;
     await hold('d', 300);
@@ -158,6 +163,43 @@ async function run(game) {
     flew(a, b, 'E');
     assert.ok(b.target[1] > a.target[1] && Math.abs(b.target[0] - a.target[0]) < 1e-9, 'E did not go straight up');
     a = b;
+    await hold('q', 300);
+    b = await view();
+    flew(a, b, 'Q');
+    assert.ok(b.target[1] < a.target[1] && Math.abs(b.target[0] - a.target[0]) < 1e-9, 'Q did not go straight down');
+    a = b;
+    ok('nothing picked: S back (level), D sideways, E straight up, Q straight down');
+
+    // Looking steeply down (a left-drag down on the sky tilts the view, nothing picked): W still glides level —
+    // the case from a try (2026-10-19): W used to dive along the line of sight into the water.
+    {
+      const [gl, gt, gw, gh] = await frame();
+      const x0 = gl + gw * 0.5, y0 = gt + gh * 0.2;
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: x0, y: y0, button: 'left', buttons: 1, clickCount: 1 });
+      const step = (gh * 0.7) / 14; // 70 % of the frame's height ≈ 63° of tilt (orbit: full height = 90°)
+      for (let i = 1; i <= 14; i++) {
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: x0, y: y0 + i * step, button: 'left', buttons: 1 });
+        await sleep(16);
+      }
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: x0, y: y0 + 14 * step, button: 'left', buttons: 0, clickCount: 1 });
+      await sleep(400);
+      a = await view();
+      assert.ok(a.pitch > 45 * Math.PI / 180, `the drag did not tilt the view down (pitch ${(a.pitch * 180 / Math.PI).toFixed(1)}°)`);
+      await focusGame();
+      await hold('w', 400);
+      b = await view();
+      const d = flew(a, b, 'W looking down');
+      level(a, b, 'W looking down');
+      const went = sub(eye(b), eye(a));
+      const face = dirOf(a);
+      for (let i = 0; i < 3; i++) assert.ok(Math.abs(went[i] / d - face[i]) < 1e-6, `W looking down went ${went}, the view faces ${face}`);
+      await hold('s', 400, 8); // Shift: faster, still level
+      const c = await view();
+      level(b, c, 'Shift+S looking down');
+      assert.ok(len(sub(eye(c), eye(b))) > d * 1.5, 'Shift+S was not faster than W');
+      ok(`looking down ${(a.pitch * 180 / Math.PI).toFixed(0)}°: W glides level the way the view faces, Shift+S back faster, the height stays`);
+      a = c;
+    }
     await hold('q', 300);
     b = await view();
     assert.ok(b.target[1] < a.target[1], 'Q did not go down');
@@ -236,6 +278,7 @@ async function run(game) {
     await hold('w', 400);
     b = await view();
     flew(a, b, 'right button + W');
+    level(a, b, 'right button + W');
     await hold('e', 250);
     const c = await view();
     assert.ok(c.target[1] > b.target[1], 'right button + E did not rise');
@@ -260,7 +303,7 @@ async function run(game) {
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await sleep(300);
-    ok('something picked + right button: W flies, E rises, the drag looks in place, no menu after; a plain right-click still opens it');
+    ok('something picked + right button: W flies level, E rises, the drag looks in place, no menu after; a plain right-click still opens it');
 
     // ⌘K with a pick: Right button+WASD.
     await focusShell();
@@ -301,7 +344,8 @@ async function run(game) {
     assert.ok(fly, 'no fly row in the sheet');
     assert.equal(fly.name, 'Fly the camera');
     assert.deepEqual(fly.keys, ['WASD']);
-    assert.match(fly.note, /right mouse button/);
+    assert.match(fly.note, /right button/); // one line since the second design review (⑪, 2026-10-19)
+    assert.match(fly.note, /level/); // W / S go level (wasd-level 2026-10-19)
     await sleep(300);
     await shot('3-keys');
     ok(`the ? sheet: "${fly.name}  ${fly.keys.join(' ')}" — ${fly.note}`);

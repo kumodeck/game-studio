@@ -18,12 +18,22 @@
 // Rules, and why:
 // - The names are the ones the rest of the editor uses for the same action (ops.copy "Duplicate", keys.copy "Copy",
 //   btn.undo…), and the key is the keymap.ts id, so the menu prints the key the sheet (?) and the tooltips print.
-// - Rows that cannot act now are DIMMED, not removed (Undo with nothing to undo, Paste with nothing copied): a menu
-//   whose rows come and go has to be read again every time; one that keeps its shape is found by position (Mac menus).
+// - SHORT, one way in per action (design review 2, 2026-10-19, item ②: the 3D menu was 9 rows, 2D 13, a phone's 9–11
+//   covered the card and the ask box). What has a place that is always on screen is not repeated here: Undo / Redo
+//   (the top bar), and on a phone Duplicate / Copy / Paste / Delete (the card's buttons). 2D draw order keeps the two
+//   big moves (to front / to back); one step at a time is ⌘] ⌘[ and the card's Layer row. An object's asset file is
+//   on the card ("Assets: planks.jpg"), so "Show its asset in Library" went too.
+// - Rows that cannot act now: on a PC the object's Duplicate / Copy / Delete stay DIMMED for a locked pick (the
+//   group keeps its shape, found by position as in Mac menus); everything else that cannot act is LEFT OUT — Paste
+//   with nothing copied, Deselect with nothing picked, the scene's rows while loading, layer moves that cannot
+//   happen. A phone never shows a dimmed row (review 2: "always dim" rows read as broken under a finger).
 //   What does not belong to this game at all is left out: the draw-order rows outside 2D layers, "Ask your AI" in the
 //   web demo (no AI behind it: the brief says so, and the demo has no ask box either — main.ts renderAll).
-// - Short. Groups of two to four, a thin line between them; the destructive one (Delete) last in its group, never
+// - Groups of two to four, a thin line between them; the destructive one (Delete) last in its group, never
 //   first under the pointer.
+// - The Library: one action, one entrance. An object's tile: Add to scene / Ask your AI… / Show in game → / Delete
+//   (no Duplicate: in the Library it did what Add to scene does, and the scene's Duplicate is the card and ⌘D). A
+//   file's tile: Add to scene / Ask your AI… / Replace… (the objects that use it are chips in its detail).
 import type { Dim } from '../contract.ts';
 import type { LayerOp } from './layers.ts';
 
@@ -39,6 +49,11 @@ export interface CtxFacts {
   picked: number;
   movable: number;
   unnamed: number;
+  /**
+   * object: how many of the picked are a held ground / road / sky (Item.held 'ground'). A hands-on try of
+   * 2026-10-19 asked that freeing one take a step on purpose — "right-click › Make movable", or its card's button.
+   */
+  held?: number;
   /** Anything picked at all (the scene's Deselect). */
   anyPicked: boolean;
   /** Objects in the scene (Select all). */
@@ -53,6 +68,11 @@ export interface CtxFacts {
   users?: number;
   /** libFile: the file is in the folder (a missing one cannot be added to the scene). */
   exists?: boolean;
+  /**
+   * object, 3D: how many picked objects can be dropped to the floor (End; their height may change). Absent = no row
+   * (2D, or an adapter without drop). A phone has no End key: the row is its only way to do it.
+   */
+  droppable?: number;
   /** object: the asset files the one picked object is drawn with (0 / absent = drawn in code, or several picked). */
   sourceFiles?: number;
   /**
@@ -61,6 +81,12 @@ export interface CtxFacts {
    * finger and half the game (test of 2026-10-18). The one-step moves stay on the card's Layer row.
    */
   compact?: boolean;
+  /**
+   * UI stage 1: the menu is for the game's UI layer. Its elements move and resize only — no duplicate / copy / paste /
+   * delete (placing new UI is stage 3) and no Library (an HTML element is not a Library object) — and the UI has no
+   * camera, so no Frame / Back to the opening view.
+   */
+  ui?: boolean;
 }
 
 export type CtxRow =
@@ -87,19 +113,8 @@ function tidy(rows: CtxRow[]): CtxRow[] {
   return out;
 }
 
-const LAYER_ROWS: Array<{ op: LayerOp; label: string }> = [
-  { op: 'forward', label: 'layer.forward' },
-  { op: 'backward', label: 'layer.backward' },
-  { op: 'toFront', label: 'layer.toFront' },
-  { op: 'toBack', label: 'layer.toBack' },
-];
-
 export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
   const off = !f.editing;
-  const history: CtxRow[] = [
-    { id: 'undo', label: 'btn.undo', key: 'undo', disabled: off || !f.canUndo },
-    { id: 'redo', label: 'btn.redo', key: 'redo', disabled: off || !f.canRedo },
-  ];
   if (place === 'object') {
     const locked = off || f.movable === 0;
     const rows: CtxRow[] = [];
@@ -113,36 +128,39 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
       else if (f.picked === 1) rows.push({ id: 'rename', label: 'ctx.rename' });
       rows.push(sep);
     }
-    rows.push(
-      { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
-      { id: 'copy', label: 'keys.copy', key: 'copy', disabled: locked },
-      { id: 'paste', label: 'keys.paste', key: 'paste', disabled: off || f.clip === 0 },
-      { id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked },
-      sep,
-      { id: 'showInLibrary', label: 'ctx.showInLibrary' },
-    );
-    // A phone keeps the menu short (see `compact`): its file is one press away on the card ("Assets: planks.jpg").
-    if (f.sourceFiles && !f.compact) rows.push({ id: 'showFileInLibrary', label: 'ctx.showFileInLibrary' });
-    if (f.dim === '2d' && f.layers && Object.keys(f.layers).length) {
-      rows.push(sep);
-      for (const l of LAYER_ROWS.filter((x) => !f.compact || x.op === 'toFront' || x.op === 'toBack')) rows.push({ id: `layer-${l.op}`, label: l.label, key: l.op, disabled: off || !f.layers[l.op] });
+    // A phone: the card has Duplicate and Delete (and Copy / Paste are the same as Duplicate there) — not here.
+    if (!f.compact && !f.ui) {
+      rows.push(
+        { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
+        { id: 'copy', label: 'keys.copy', key: 'copy', disabled: locked },
+      );
+      if (!off && f.clip > 0) rows.push({ id: 'paste', label: 'keys.paste', key: 'paste' });
+      rows.push({ id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked }, sep);
     }
-    rows.push(sep, ...history);
+    // Drop to floor (snap to surfaces, 2026-10-19): with the moves, before the way to the Library. A phone shows it only
+    // when it can act (no dimmed rows there).
+    if (f.droppable !== undefined && (!f.compact || (!off && f.droppable > 0))) rows.push({ id: 'drop', label: 'keys.drop', key: 'drop', disabled: off || f.droppable === 0 });
+    if (!off && f.held) rows.push({ id: 'unhold', label: 'hold.free' });
+    if (!f.ui) rows.push({ id: 'showInLibrary', label: 'ctx.showInLibrary' });
+    if (f.dim === '2d' && f.layers && Object.keys(f.layers).length) {
+      const layers: CtxRow[] = [
+        { id: 'layer-toFront', label: 'layer.toFront', key: 'toFront', disabled: off || !f.layers.toFront },
+        { id: 'layer-toBack', label: 'layer.toBack', key: 'toBack', disabled: off || !f.layers.toBack },
+      ];
+      rows.push(sep, ...layers.filter((r) => !f.compact || !('sep' in r) && !r.disabled));
+    }
     return tidy(rows);
   }
   if (place === 'scene') {
+    // Only what can act now (no dimmed rows): Paste when something is copied, Deselect when something is picked.
     const rows: CtxRow[] = [];
     if (!f.offline) rows.push({ id: 'ask', label: 'ask.game' }, sep);
-    rows.push(
-      { id: 'paste', label: 'keys.paste', key: 'paste', disabled: off || f.clip === 0 },
-      { id: 'selectAll', label: 'pal.selectAll', key: 'selectAll', disabled: off || f.items === 0 },
-      { id: 'deselect', label: 'ops.selectNone', key: 'deselect', disabled: !f.anyPicked },
-      sep,
-      { id: 'frame', label: 'btn.frame', key: 'frame', disabled: off },
-      { id: 'home', label: 'pal.home', key: 'home', disabled: off },
-      sep,
-      ...history,
-    );
+    if (!off) {
+      if (f.clip > 0 && !f.compact && !f.ui) rows.push({ id: 'paste', label: 'keys.paste', key: 'paste' });
+      if (f.items > 0) rows.push({ id: 'selectAll', label: 'pal.selectAll', key: 'selectAll' });
+    }
+    if (f.anyPicked) rows.push({ id: 'deselect', label: 'ops.selectNone', key: 'deselect' });
+    if (!off && !f.ui) rows.push(sep, { id: 'frame', label: 'btn.frame', key: 'frame' }, { id: 'home', label: 'pal.home', key: 'home' });
     return tidy(rows);
   }
   if (place === 'libObject') {
@@ -151,10 +169,7 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
       { id: 'addToScene', label: 'lib.addToScene', disabled: locked },
       ...(f.offline ? [] : [{ id: 'ask', label: 'lib.askAi' }]),
       sep,
-      { id: 'details', label: 'ctx.details' },
       { id: 'showInGame', label: 'ctx.showInGame' },
-      sep,
-      { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
       { id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked },
     ]);
   }
@@ -162,9 +177,6 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
   return tidy([
     { id: 'addFile', label: 'lib.addToScene', disabled: f.offline || f.exists === false },
     ...(f.offline ? [] : [{ id: 'askFile', label: 'lib.askAi' }]),
-    sep,
-    { id: 'details', label: 'ctx.details' },
-    { id: 'showUsers', label: 'ctx.showUsers', disabled: !f.users },
     sep,
     { id: 'replace', label: 'ctx.replace' },
   ]);

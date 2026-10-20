@@ -163,18 +163,51 @@ export function rayObjectHit(ray, object) {
   return best;
 }
 
-/** Screen box of ONE mesh's own geometry box (not its children), in ndc like screenRect, or null. */
-function meshScreenRect(mesh, viewProj) {
-  const b = localBox(mesh);
-  if (!b) return null;
+/**
+ * Screen box (ndc, NOT clipped to the canvas) of world boxes' corners, for pickNear's distance and size. Like
+ * screenShare, a box edge that runs behind the camera is cut just in front of it instead of dropping the corners
+ * behind (screenRect does that): the cut points land far outside the canvas, so a ground running on under the camera
+ * comes out as big as it is.
+ * WHY (glow-camera pass 2026-10-20): with corners dropped, a 400 m ground seen from inside came out as its far strip,
+ * a band 1 px high near the horizon — "size" ≈ 0, so under the finger the ground scored 0.25 and beat every lantern
+ * (≈ 10) standing on it: a tap on a lantern picked the ground, i.e. nothing. It showed when Glow Garden's ground grew
+ * to the horizon (studio-ui-layer: no world object under the UI any more); any game whose ground or sea runs under the
+ * camera had the same order. Unclipped on purpose: clipping to the canvas would shrink things that stand partly off
+ * screen and change which of them wins (W1 merge, 2026-10-17).
+ */
+function cutRect(boxes, viewProj) {
   let r = null;
-  for (const c of boxCorners(b[0], b[1])) {
-    const q = project(viewProj, applyM4(mesh.matrixWorld.elements, c));
-    if (q[3] <= 0) continue;
+  const add = (q) => {
     if (!r) r = [q[0], q[1], q[0], q[1]];
     else (r[0] = Math.min(r[0], q[0])), (r[1] = Math.min(r[1], q[1])), (r[2] = Math.max(r[2], q[0])), (r[3] = Math.max(r[3], q[1]));
+  };
+  for (const ps of boxes) {
+    const qs = ps.map((p) => project(viewProj, p));
+    for (const q of qs) if (q[3] > NEAR_W) add(q);
+    for (let i = 0; i < ps.length; i++) {
+      for (let j = i + 1; j < ps.length; j++) {
+        const wi = qs[i][3], wj = qs[j][3];
+        if ((wi > NEAR_W) === (wj > NEAR_W)) continue;
+        const t = (wi - NEAR_W) / (wi - wj);
+        add(project(viewProj, v.add(ps[i], v.scale(v.sub(ps[j], ps[i]), t))));
+      }
+    }
   }
   return r;
+}
+/** The world corners of one mesh's own geometry box, or null. */
+function meshCorners(mesh) {
+  const b = localBox(mesh);
+  return b ? boxCorners(b[0], b[1]).map((c) => applyM4(mesh.matrixWorld.elements, c)) : null;
+}
+/** pickNear's screen box of a subtree (cutRect over each mesh's box), or null. */
+function objectCutRect(object, viewProj) {
+  return cutRect(meshesOf(object).map(meshCorners).filter(Boolean), viewProj);
+}
+/** pickNear's screen box of ONE mesh's own geometry box (not its children), or null. */
+function meshScreenRect(mesh, viewProj) {
+  const ps = meshCorners(mesh);
+  return ps ? cutRect([ps], viewProj) : null;
 }
 
 /** Ring fractions of the radius and rays per ring for nearMiss(): 3 × 12 = 36 rays at most, only for an object
@@ -217,7 +250,7 @@ export function pickNear(cands, camera, viewProj, ndcX, ndcY, radiusPx, size) {
   }
   const rows = [];
   for (const c of cands) {
-    const r = screenRect(c.object, viewProj);
+    const r = objectCutRect(c.object, viewProj);
     if (!r) continue;
     const [x0, y1] = toPx(r[0], r[1]);
     const [x1, y0] = toPx(r[2], r[3]);

@@ -254,6 +254,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   search.value = filter.q;
   const addBtn = h('button', 'gsl-btn gsl-add', L('addFiles'));
   addBtn.type = 'button';
+  addBtn.dataset.action = 'add-files';
   const addInput = h('input');
   addInput.type = 'file';
   addInput.multiple = true;
@@ -265,15 +266,58 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open', L('aiOpen')) : null;
   if (aiBtn) {
     aiBtn.type = 'button';
+    aiBtn.dataset.action = 'ai-open';
     aiBtn.setAttribute('aria-expanded', 'false');
     bar.append(aiBtn);
   }
+  // The phone's "+" (the second design review's ⑦, 2026-10-19): the bar's buttons (Multi-select, Add files, Make with
+  // AI) fold into one menu next to the search, so the Library's head is two rows — Scene | Library with the filters, then
+  // the search and "+" — and the first tile starts in the top half of the screen (it started at y 470 of 844 under four
+  // rows). Shown by the shell's phone CSS only (hidden here and on PC, where the buttons stay in the bar). Each entry
+  // presses the real button, so the bar's behaviour stays in one place.
+  const moreBtn = h('button', 'gsl-btn gsl-more');
+  moreBtn.type = 'button';
+  moreBtn.dataset.action = 'library-more';
+  moreBtn.textContent = '+';
+  moreBtn.setAttribute('aria-label', L('more'));
+  moreBtn.setAttribute('aria-haspopup', 'menu');
+  moreBtn.setAttribute('aria-expanded', 'false');
+  const moreMenu = h('div', 'gsl-more-menu');
+  moreMenu.setAttribute('role', 'menu');
+  moreMenu.hidden = true;
+  const closeMore = () => {
+    moreMenu.hidden = true;
+    moreBtn.setAttribute('aria-expanded', 'false');
+  };
+  moreBtn.addEventListener('click', () => {
+    if (!moreMenu.hidden) return closeMore();
+    moreMenu.replaceChildren();
+    const entries = [...bar.querySelectorAll<HTMLButtonElement>(':scope > .shelf-multi, :scope > .gsl-add, :scope > .gsl-ai-open')];
+    for (const b of entries) {
+      const item = h('button', 'gsl-more-item', b.textContent || '');
+      item.type = 'button';
+      item.setAttribute('role', 'menuitem');
+      if (b.dataset.action) item.dataset.action = `more-${b.dataset.action}`;
+      item.addEventListener('click', () => {
+        closeMore();
+        b.click();
+      });
+      moreMenu.append(item);
+    }
+    moreMenu.hidden = false;
+    moreBtn.setAttribute('aria-expanded', 'true');
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!moreMenu.hidden && !moreMenu.contains(e.target as Node) && e.target !== moreBtn) closeMore();
+  }, true);
+  bar.append(moreBtn, moreMenu);
 
   // The filters: All / 3D / 2D / Sound / Other, one list with no headings (a review of the editor, 2026-10-18: "I couldn't make out
   // how they are split at all. 3D assets, 2D assets, music, other is about enough."). In the shell's left column on PC
   // (as rows), a row of chips that scrolls sideways on a phone. Before: four headed groups — Show (All / Objects /
   // Assets), Made from (a file / drawn in code), Asset type (Images / 3D models / Sounds…) and Use (used / not used).
-  // Object vs asset is still on each tile's small tag; used / not used still on a file's tile and in its detail.
+  // Used / not used is still on a file's tile and in its detail. (Object vs asset was on each tile's small tag until the
+  // second design review, 2026-10-19.)
   const chips = h('div', 'gsl-chips shelf-filters');
   chips.setAttribute('role', 'group');
   const headEl = h('div', 'gsl-head shelf-head');
@@ -552,10 +596,10 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       if (to) meta.append(h('span', 'gsl-tag gsl-tag-replace', `→ ${baseName(to)}`));
       if (newFiles.has(row.path) || state.added.some((a) => a.file === row.path)) meta.append(h('span', 'gsl-tag gsl-tag-new', L('added')));
       if (asked.has(row.path)) meta.append(h('span', 'gsl-tag gsl-tag-del', L('delAsked')));
+      // No "Asset" tag in the picture's corner any more (the second design review's ⑦ and "what to cut" 3, 2026-10-19):
+      // every tile had one ("Object" on the objects'), saying what the filters, the file name and the picture already
+      // say. The line under the name says what is particular to the tile: "Used by 3", or the file's mark.
       const pic = thumbFor(row, 128);
-      // "Asset" in the picture's corner (an object's tile says "Object"): what the tile is, read before the picture.
-      // Only with the objects in the same grid; grey words, no colour of their own (orange = picked, violet = AI).
-      if (objects) pic.append(h('span', 'lib-kind', L('tagFile')));
       tile.append(pic, name, meta);
       if (pickedFiles.has(row.path)) tile.classList.add('gsl-open');
       // Dragged onto the Scene row = "Add to scene" (main.ts). Only where an AI can make the object (deps.files.add).
@@ -670,38 +714,12 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       keys.append(k);
     }
     used.append(keys);
-    if (keysOf.length) {
-      const acts = h('div', 'gsl-acts');
-      if (objects || deps.showObjects) {
-        // "Show just these objects": the Library narrowed to the objects that use this file — still the Library, the
-        // game stays where it is. (In plan 1 this was "Show in Objects →", the other shelf.)
-        const shelf = h('button', 'gsl-btn gsl-to-shelf', objects ? L('showUsers') : L('showInShelf'));
-        shelf.type = 'button';
-        shelf.title = objects ? L('showUsersTip') : L('showInShelfTip');
-        shelf.dataset.action = 'asset-show-users';
-        shelf.addEventListener('click', () => showUsers(row.path));
-        acts.append(shelf);
-      }
-      // The class and action name stay from "In the scene: 2" (scripts and .studio/ui/ CSS find it by them).
-      const all = h('button', 'gsl-btn gsl-scene-all', L('showInGame'));
-      all.type = 'button';
-      all.title = L('inSceneTip');
-      all.dataset.action = 'asset-select-users';
-      all.addEventListener('click', () => (deps.selectObjects ? deps.selectObjects(keysOf) : deps.selectObject(keysOf[0]!)));
-      acts.append(all);
-      used.append(acts);
-    }
+    // Design review 2, item ①: a file's detail is "Add to scene · Ask your AI… · Replace…" and these chips (a chip opens
+    // that object) — nothing more. Gone: "Show just these objects" (the chips are those objects), "Show in game →"
+    // (`asset-select-users`: the chip, then the object's own "Show in game →") and the "Mentioned in" list of code files
+    // (a fact for the AI, not for the person placing things; refsInCode still feeds the badges and the AI's request).
+    // There were 7 kinds of action here (review 2, photo 12).
     detail.append(used);
-
-    const code = h('div', 'gsl-section');
-    code.append(h('h4', undefined, L('inCode')));
-    if (!row.refsInCode.length) code.append(h('p', 'gsl-muted', L('inCodeNone')));
-    else {
-      const ul = h('ul', 'gsl-files');
-      for (const f of row.refsInCode) ul.append(h('li', undefined, f));
-      code.append(ul);
-    }
-    detail.append(code);
 
     // Replace
     const rep = h('div', 'gsl-section gsl-replace');

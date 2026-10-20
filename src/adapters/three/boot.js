@@ -231,7 +231,7 @@
       var id = nextId++;
       var nid = nativeRAF(function (ts) {
         live.delete(id);
-        if (state.held) { parked.set(id, cb); return; }
+        if (state.held && !state.watching) { parked.set(id, cb); return; }
         cb(ts);
       });
       live.set(id, nid);
@@ -253,12 +253,27 @@
   function release() {
     if (!state.held) return;
     state.held = false;
+    state.watching = false;
     var cbs = Array.from(parked.values());
     parked.clear();
     // Replay on a real frame so the game sees a fresh timestamp (its clock will report a long delta — games
     // normally clamp dt; the editor reloads the game after saving anyway).
     if (cbs.length && nativeRAF) nativeRAF(function (ts) { for (var i = 0; i < cbs.length; i++) cbs[i](ts); });
     emit('release');
+  }
+
+  /**
+   * Let the game's frame callbacks run while it stays held for drawing (its renders are still skipped, the editor's
+   * picture does not change): the editor watches the first moments of play to find what the game moves by itself
+   * (bridge/observe.ts, a hands-on try of 2026-10-19). Off again = parked as before.
+   */
+  function watch(on) {
+    if (!on) { state.watching = false; return; }
+    if (!state.held || state.watching) return;
+    state.watching = true;
+    var cbs = Array.from(parked.values());
+    parked.clear();
+    if (cbs.length && nativeRAF) nativeRAF(function (ts) { for (var i = 0; i < cbs.length; i++) cbs[i](ts); });
   }
 
   // ------------------------------------------------------------------ 4. load records
@@ -380,6 +395,7 @@
   // Used by the adapter module (same window, loaded later).
   state.hold = hold;
   state.release = release;
+  state.watch = watch;
   state.nativeRAF = nativeRAF;
   state.on = function (fn) { state.listeners.push(fn); };
   state.kindOf = kindOf;

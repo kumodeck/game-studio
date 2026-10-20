@@ -63,7 +63,11 @@ renderer.setAnimationLoop(() => renderer.render(scene, camera));
 // under any of 8 points 40 px around it (so the finger's slack cannot reach an object) but the ground, and the
 // editor's own panels do not cover it.
 const GAMES = [
-  { id: 'lantern-cove', pick: 'lighthouse', spots: [{ name: 'sky in the lighthouse box', in: 'box' }, { name: 'sky', in: [0.55, 0.05, 0.75, 0.3] }, { name: 'water', in: [0.15, 0.6, 0.85, 0.85] }] },
+  // `point`: design review 2 (item ⑥)'s own clicks, page px at 1280×800 (on a phone: the same share of the game frame).
+  // (1000, 120) and (1100, 180) are under the card on a PC with the lighthouse picked — a click there is a click on the
+  // card — so the nearest bare sky beside the card is used, and the run says so.
+  { id: 'lantern-cove', pick: 'lighthouse', spots: [{ name: 'sky in the lighthouse box', in: 'box' }, { name: 'sky', in: [0.55, 0.05, 0.75, 0.3] }, { name: 'water', in: [0.15, 0.6, 0.85, 0.85] },
+    { name: 'sky (1000, 120)', point: [1000, 120] }, { name: 'sky (1100, 180)', point: [1100, 180] }, { name: 'sky (600, 100)', point: [600, 100] }, { name: 'water (700, 650)', point: [700, 650] }] },
   { id: 'firefly-ruins', pick: 'urn', spots: [{ name: 'sky', in: [0.1, 0.12, 0.6, 0.4] }, { name: 'water / below', in: [0.1, 0.72, 0.9, 0.9] }] },
   { id: 'farm', html: FARM, pick: 'path:2', ground: 'path:1', spots: [{ name: 'grass', in: [0.1, 0.62, 0.9, 0.85] }] },
 ].filter((g) => !opt('--game') || g.id === opt('--game'));
@@ -139,6 +143,17 @@ try {
         // Find each empty spot once, with the object picked (its card and strip are on screen then).
         const spots = [];
         for (const s of g.spots) {
+          if (s.point) {
+            const PC = [248, 44, 1024, 748];
+            const [x0, y0] = sz.touch ? [fx + ((s.point[0] - PC[0]) / PC[2]) * fw, fy + ((s.point[1] - PC[1]) / PC[3]) * fh] : s.point;
+            let at = (await page.eval(EMPTY(x0, y0, g.ground))) ? [x0, y0] : null;
+            // Covered (the card) or near an object: the nearest bare spot to the left or above, 12 px steps.
+            for (let d = 12; !at && d < 400; d += 12) for (const [x, y] of [[x0 - d, y0], [x0, y0 - d], [x0, y0 + d]]) if (!at && (await page.eval(EMPTY(x, y, g.ground)))) at = [x, y];
+            assert.ok(at, `${tag}: an empty spot near ${s.name}`);
+            if (at[0] !== x0 || at[1] !== y0) console.log(`  · ${tag}: ${s.name} → (${at.map(Math.round)}) — the review's point is ${await page.eval(`document.elementFromPoint(${x0}, ${y0}) === document.querySelector('iframe') ? 'beside an object' : 'under the editor (' + document.elementFromPoint(${x0}, ${y0})?.closest('[data-part]')?.dataset.part + ')'`)}`);
+            spots.push({ ...s, at });
+            continue;
+          }
           let area;
           if (s.in === 'box') {
             const b = JSON.parse(await page.eval(BOX(g.pick)));

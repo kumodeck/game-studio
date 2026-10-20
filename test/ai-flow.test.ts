@@ -2,7 +2,7 @@
 // when typing in the ask field opens the ⌘K list (palette.ts). No browser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aiBusy, aiPhase, reloadDecision, QUIET_MS, NUDGE_MS, type AiFlowState } from '../src/shell/ai-flow.ts';
+import { aiBusy, aiPhase, reloadDecision, QUIET_MS, NUDGE_MS, ASK_FRESH_MS, type AiFlowState } from '../src/shell/ai-flow.ts';
 import { suggests, type PaletteSection } from '../src/shell/palette.ts';
 
 const ID = '20261016-153012-482-ask-9f3c';
@@ -40,6 +40,14 @@ test('an old "done" from before the page opened is not news; Undo / Redo win ove
   assert.equal(aiPhase(base({ pending: null, status: { state: 'done' } as never, statusTime: 500 })), 'none');
   assert.equal(aiPhase(base({ pending: null, status: { state: 'done' } as never, statusTime: 5_000 })), 'done');
   assert.equal(aiPhase(base({ after: 'undone' })), 'undone');
+});
+
+// e2e-016 (2026-10-20): the editor opened again while the AI waited for an answer showed nothing; the AI gave up.
+test('an open question from before the page opened is still shown (until it is old)', () => {
+  const asking = { state: 'asking', request: ID, note: '12, 16 or 24 pillars?', choices: ['12', '16', '24'] } as never;
+  assert.equal(aiPhase(base({ pending: null, status: asking, statusTime: 500 })), 'asking');
+  assert.equal(aiPhase(base({ pending: null, status: asking, statusTime: 500, now: 500 + ASK_FRESH_MS + 1 })), 'none');
+  assert.equal(aiPhase(base({ pending: null, status: { state: 'working' } as never, statusTime: 500 })), 'none', 'other old states stay old');
 });
 
 test('reload: only when the files changed; at once when the AI is done; waits while it works', () => {
@@ -94,4 +102,18 @@ test('asking: the AI waits for the person; no running light; the game waits for 
     reloadDecision({ code: 'b', loadedCode: 'a', stableMs: 45_000, phase: 'asking', playing: false, reloading: false, ...o });
   assert.equal(r({}), 'wait', 'half a change before the question is not reloaded');
   assert.equal(r({ stableMs: QUIET_MS }), 'now');
+});
+
+test('answering the AI\'s question in the editor: the answer is a new request, so the line follows it like any other', () => {
+  const ASKED = '20261016-153012-482-ask-9f3c';
+  const ANSWER = '20261016-153100-000-answer-0001';
+  const asking = { version: 1, state: 'asking', request: ASKED, note: 'Keep it?' } as never;
+  // Still asking while no answer was sent.
+  assert.equal(aiPhase(base({ pending: { kind: 'ask', id: ASKED, at: 9_000, sent: 9_000 }, status: asking, statusTime: 9_500 })), 'asking');
+  // The answer (sent after the question was written) is not covered by the old "asking": it goes sent → seen.
+  const p = { kind: 'answer', id: ANSWER, at: 12_000, sent: 12_000, text: 'Keep it' };
+  assert.equal(aiPhase(base({ now: 12_100, pending: p, status: asking, statusTime: 9_500, watching: true })), 'sent');
+  assert.equal(aiPhase(base({ now: 12_100, pending: p, status: asking, statusTime: 9_500, watching: false, seen: ANSWER })), 'seen');
+  // The AI goes on with it.
+  assert.equal(aiPhase(base({ now: 13_000, pending: p, status: { version: 1, state: 'working', request: ANSWER } as never, statusTime: 12_500 })), 'working');
 });

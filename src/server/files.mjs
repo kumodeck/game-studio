@@ -183,15 +183,25 @@ export async function writeStudioNote(rootReal, name, text) {
  * browser). status.json: written by the AI; the server only writes it for `studio.mjs --status`.
  * watch.json: the heartbeat of `studio.mjs --watch` while an AI watches (ai-watch.mjs).
  */
-const STUDIO_WRITABLE = /^(requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|status\.json|watch\.json|server\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+const STUDIO_WRITABLE = /^(requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|status\.json|watch\.json|wake\.json|told\.json|server\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
 
 async function ensureRealDir(dir) {
-  try {
+  const check = async () => {
     const st = await fs.lstat(dir);
     if (!st.isDirectory()) throw httpError(409, `${path.basename(dir)} exists and is not a folder`);
+  };
+  try {
+    await check();
   } catch (e) {
     if (e.code !== 'ENOENT') throw e;
-    await fs.mkdir(dir);
+    // Two writes at once (⌘S hands off placement.json and library.json 1 ms apart) both see no folder; the second
+    // mkdir then fails with EEXIST and that save was lost: "studio: error EEXIST … mkdir '.studio/requests'", the
+    // placement never reached the AI and the editor kept "Save · 8" (e2e-016, 2026-10-20; the same race as
+    // ai-undo.mjs's copy folder in e2e-save). Made by the other write: use it if it is a real folder.
+    await fs.mkdir(dir).catch(async (m) => {
+      if (m.code !== 'EEXIST') throw m;
+      await check();
+    });
   }
 }
 
@@ -228,7 +238,7 @@ export async function readStudioFile(rootReal, rel, maxBytes) {
 
 /** Like readStudioFile, plus when the file was last written (ms): the AI's status (CONTRACT.md §3.4). */
 export async function readStudioFileInfo(rootReal, rel, maxBytes) {
-  if (!/^(adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/.test(rel)) return null;
+  if (!/^(adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/.test(rel)) return null;
   let p = path.join(rootReal, '.studio');
   try {
     for (const part of ['', ...rel.split('/').slice(0, -1)]) {
