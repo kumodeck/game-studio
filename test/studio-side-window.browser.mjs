@@ -12,7 +12,8 @@
 //      nothing that can be pressed in the window's bottom 48 px (the chat app's toolbar)
 //      (Half the window and 3 rows until the third design review's ⑨, 2026-10-20: "six rows with the card and the bar up".)
 //   3. the strip and the camera ↑↓ are a mouse's 28 px (not a finger's 44) and do not overlap
-//   4. the sheet's grip, dragged up, gives more rows (the game still seen above it); a click on it takes it back low
+//   4. the sheet's grip, dragged up, gives more rows (the game still seen above it); dragged down, it is low again; a click
+//      on it folds the bottom to the ask bar and ▴ opens it (a click took it back low until 2026-10-21: test/studio-side-sheet)
 //   5. an AI-written runner with 60 unnamed objects: the list's first row folds them all ("Unnamed objects 60 · Ask
 //      AI to name them"), no two rows in view read the same, the picked one shows under it as a picture and x · z,
 //      ▸ opens them all (each with its own x · z), and "Ask AI to name them" keeps one `name` request for all of them
@@ -210,7 +211,7 @@ for (const g of GAMES) {
             assert.equal(named[0].objects.length, Math.min(50, keys.length), `${tag}: the name request holds ${named[0].objects.length} of ${keys.length}`);
           }
         }
-        // 4. The grip: up for more rows, a click back to low.
+        // 4. The grip: up for more rows, down back to low, a click folds, ▴ opens.
         const grip = JSON.parse(await page.eval(`JSON.stringify(document.querySelector('.side .sheet-grip').getBoundingClientRect())`));
         const gx = grip.x + grip.width / 2, gy = grip.y + grip.height / 2;
         await page.mouseDrag(gx, gy, gx, gy - Math.round(h * 0.25), 8);
@@ -221,10 +222,17 @@ for (const g of GAMES) {
         assert.ok(up.sheetH > m.sheetH + h * 0.15, `${tag}: the grip did not pull the sheet up (${m.sheetH} → ${up.sheetH})`);
         assert.ok(up.seen > m.seen || up.seen >= up.total, `${tag}: no more rows after pulling it up (${m.seen} → ${up.seen})`);
         assert.ok(up.game >= 80, `${tag}: pulled up, the game is gone (${up.game}px)`);
-        await page.click(gx, gy - Math.round(h * 0.25));
+        await page.mouseDrag(gx, gy - Math.round(h * 0.25), gx, gy, 8);
         await sleep(900);
         const back = JSON.parse(await page.eval(MEASURE));
-        assert.ok(Math.abs(back.sheetH - m.sheetH) <= 2, `${tag}: a click on the grip did not take it back low (${m.sheetH} → ${back.sheetH})`);
+        assert.ok(Math.abs(back.sheetH - m.sheetH) <= 2, `${tag}: dragged down, the grip did not take it back low (${m.sheetH} → ${back.sheetH})`);
+        await page.click(gx, gy);
+        await sleep(900);
+        assert.equal(await page.eval(`document.querySelector('.shell').dataset.fold || ''`), 'min', `${tag}: a click on the grip did not fold the bottom`);
+        await page.eval(`document.querySelector('[data-action=sheet]').click()`);
+        await sleep(900);
+        const reopened = JSON.parse(await page.eval(MEASURE));
+        assert.ok(Math.abs(reopened.sheetH - m.sheetH) <= 2 && !(await page.eval(`document.querySelector('.shell').dataset.fold`)), `${tag}: ▴ did not open the low sheet again`);
         // 6. Open large (once per game): the printed link, then a second browser with no cookie opens it.
         if (w === 400) {
           await page.eval(`window.__opened = []; window.open = (u) => (window.__opened.push(u), {})`);

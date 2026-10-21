@@ -139,7 +139,7 @@ export async function startStudioServer(o) {
       return res.end();
     }
     if (!safeEqual(readCookie(req, cookieName), token)) {
-      return sendText(res, 403, 'Missing pass. Open the link printed by studio.mjs.');
+      return sendText(res, 403, 'Missing pass. This address needs the editor\'s whole link, which ends in ?t=…: ask your AI for the link (studio.mjs --link prints it).');
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {

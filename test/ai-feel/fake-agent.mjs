@@ -78,10 +78,10 @@ function edit(file, from, to) {
 
 /**
  * Start the stand-in. `slow` spaces the steps out like a person would see a real agent (for the
- * video); the default is quick (for tests). Returns { stop(), log } where log lists what it did with
+ * video); the default is quick (for tests). `plan` ({ working, done, changed, steps }) replaces planFor()'s change. Returns { stop(), log } where log lists what it did with
  * times (ms since start).
  */
-export function startFakeAgent(folder, { slow = false, onEvent = () => {} } = {}) {
+export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan: given = null } = {}) {
   const t0 = Date.now();
   const log = [];
   const note = (what) => {
@@ -107,7 +107,8 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {} } = {}
         } catch {
           /* moved already: English */
         }
-        const plan = planFor(folder, lang);
+        // `plan`: a change of the test's own (studio-play-after-ai: another object's colour), else the game's usual one.
+        const plan = given || planFor(folder, lang);
         await sleep(gap.wake); // a Monitor wakes the agent within a few seconds
         status('received', '--request', ask[2]);
         note('received');

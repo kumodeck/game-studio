@@ -42,6 +42,24 @@ function outOfOrder(was: string[], now: string[]): string[] {
   return now.filter((k) => !keep.has(k));
 }
 
+/**
+ * The person's pose over a new code's, part by part (play-after-ai, 2026-10-21): only what the hand changed since `was`
+ * wins — the position (as a whole: one drag), the turn, the size, the tilt. The rest is the new code's. So the AI making
+ * an object bigger keeps its size when the person had only dragged it, and the person's drag keeps its place.
+ */
+function handOver(cur: Pose, was: Pose, code: Pose, dim: Dim): Pose {
+  const same = (a: Partial<Pose>, b: Partial<Pose>) => samePose({ p: [0], ...a } as Pose, { p: [0], ...b } as Pose, dim);
+  const out: Pose = structuredClone({ ...code, z: undefined });
+  if (!same({ p: cur.p }, { p: was.p })) out.p = cur.p.slice();
+  if (!same({ r: cur.r }, { r: was.r })) out.r = cur.r;
+  if (!same({ s: cur.s }, { s: was.s })) out.s = Array.isArray(cur.s) ? cur.s.slice() : cur.s;
+  if (!same({ t: cur.t }, { t: was.t })) {
+    if (cur.t) out.t = [cur.t[0], cur.t[1]];
+    else delete out.t;
+  }
+  return out;
+}
+
 export class PlacementModel {
   dim: Dim = '3d';
   private was = new Map<string, Pose>();
@@ -264,16 +282,28 @@ export class PlacementModel {
    *
    * Only what the page shows AS ITS CODE MAKES IT: an object at `was` (the code's own pose) that the person put
    * elsewhere, a copy the page does not have, a deleted object it still has, a list in the code's order that the person
-   * reordered. Anything else is left alone: a game whose loader applied the draft already shows it (nothing to do),
-   * and an object the AI's change moved in the code (now ≠ `was`) is the AI's to keep — pushing the old pose back
-   * would undo its work.
+   * reordered. A game whose loader applied the draft already shows it (nothing to do).
+   *
+   * An object the page shows at neither `was` nor the editor's pose: the code puts it somewhere new (the AI's change,
+   * a game that places things itself). Its `was` becomes that new pose (so Save tells the AI where the code has it,
+   * Play's bridge finds it at the draft's `was`, ⌘Z on the move goes to the AI's place) and its key is in `code`
+   * (the AI's violet mark). Then (decided 2026-10-21, "Play after the AI showed only the AI's change"):
+   *   - the person moved it (saved or not; a saved move the code does not have yet is still theirs) → the PERSON'S
+   *     pose wins for what their hand changed (handOver: the place, the turn, the size, the tilt) and is pushed back.
+   *     A hand move in the editor is the newest thing they said about that object, and Play and the editor must show
+   *     the same; ⌘Z on the move shows the AI's place (the new `was`), the violet mark says the AI changed it;
+   *   - not touched → the AI's pose becomes the editor's (the card and the list follow the game).
+   * Before (v0.1.7) such an object was left at the AI's pose on screen while the model kept the person's, so the card
+   * said one place and the game showed another — and its `was` stayed the old code's, which Play's bridge never found.
    */
   notShown(items: Item[]): {
     poses: Array<{ key: string; pose: Pose }>;
     copies: Array<{ key: string; from: string; pose: Pose }>;
     removes: string[];
+    /** Objects the new code puts somewhere new (not at `was`, not at the editor's pose). */
+    code: string[];
   } {
-    const out = { poses: [] as Array<{ key: string; pose: Pose }>, copies: [] as Array<{ key: string; from: string; pose: Pose }>, removes: [] as string[] };
+    const out = { poses: [] as Array<{ key: string; pose: Pose }>, copies: [] as Array<{ key: string; from: string; pose: Pose }>, removes: [] as string[], code: [] as string[] };
     // Nothing known yet (the first list after opening): setItems' own `apply` does that one.
     if (!this.was.size) return out;
     const flat = (p: Pose): Pose => ({ ...p, z: undefined });
@@ -285,10 +315,28 @@ export class PlacementModel {
         continue;
       }
       const cur = this.current.get(it.key), was = this.was.get(it.key);
-      if (!cur || !was || samePose(flat(cur), flat(was), this.dim)) continue;
-      if (!samePose(flat(it.pose), flat(was), this.dim)) continue;
-      // z stays the page's: the draw order is put back below, as a whole list.
-      out.poses.push({ key: it.key, pose: flat(cur) });
+      if (!cur || !was) continue;
+      const at = flat(it.pose);
+      if (samePose(at, flat(was), this.dim)) {
+        // z stays the page's: the draw order is put back below, as a whole list.
+        if (!samePose(flat(cur), flat(was), this.dim)) out.poses.push({ key: it.key, pose: flat(cur) });
+        continue;
+      }
+      // Already as the editor has it (a loader read the draft; the AI put the move in the code): nothing to do.
+      if (samePose(at, flat(cur), this.dim)) continue;
+      // An object without a name (`path:…` key) is found by its place in the tree, which the AI's change shifts
+      // (path:8 → path:11): another object may now have this key, so nothing goes to it (as before 2026-10-21).
+      if (it.unstable || it.key.startsWith('path:')) continue;
+      // The code puts it somewhere new (see above).
+      out.code.push(it.key);
+      const saved = this.saved.get(it.key);
+      const handMoved = !samePose(flat(cur), flat(was), this.dim);
+      const savedMove = !!saved && !samePose(flat(saved), flat(was), this.dim);
+      this.was.set(it.key, { ...it.pose });
+      if (!savedMove) this.saved.set(it.key, { ...it.pose });
+      const want = handMoved ? handOver(cur, was, it.pose, this.dim) : null;
+      if (want && !samePose(want, at, this.dim)) out.poses.push({ key: it.key, pose: want });
+      else this.current.set(it.key, { ...it.pose });
     }
     for (const k of this.copyOrder) {
       if (!this.live.has(k) || byKey.has(k)) continue;

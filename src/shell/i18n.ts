@@ -112,7 +112,9 @@ const en = {
   'large.copied': "Couldn't open a window. The link is copied: paste it into your browser.",
   'large.failed': "Couldn't open a window.",
   // The list sheet's grip in the side window: drag it up for more rows, a click switches low / tall.
-  'sheet.grip': 'Drag to resize the list',
+  'sheet.grip': 'Click to minimize · drag to resize the list',
+  'sheet.fold': 'Minimize',
+  'sheet.unfold': 'Show the list and card',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to your AI. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -583,7 +585,9 @@ const ja: Partial<Record<Key, string>> = {
   'large.opened': '大きな窓で開きました。続きはそちらで（この窓は閉じても大丈夫です）。',
   'large.copied': '窓を開けませんでした。リンクをコピーしたので、ブラウザに貼り付けてください。',
   'large.failed': '窓を開けませんでした。',
-  'sheet.grip': 'ドラッグで一覧の高さを変える',
+  'sheet.grip': 'クリックでたたむ・ドラッグで一覧の高さを変える',
+  'sheet.fold': 'たたむ',
+  'sheet.unfold': '一覧とカードを出す',
   'ai.waiting': '{what}を AI に送りました。返事を待っています…',
   'ai.nudge': '依頼は届いています。AI が次に動いたときに反映されます。',
   'ai.call': 'AI を呼ぶ',

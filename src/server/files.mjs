@@ -183,7 +183,7 @@ export async function writeStudioNote(rootReal, name, text) {
  * browser). status.json: written by the AI; the server only writes it for `studio.mjs --status`.
  * watch.json: the heartbeat of `studio.mjs --watch` while an AI watches (ai-watch.mjs).
  */
-const STUDIO_WRITABLE = /^(requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|status\.json|watch\.json|wake\.json|told\.json|server\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+const STUDIO_WRITABLE = /^(requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
 
 async function ensureRealDir(dir) {
   const check = async () => {
@@ -238,7 +238,7 @@ export async function readStudioFile(rootReal, rel, maxBytes) {
 
 /** Like readStudioFile, plus when the file was last written (ms): the AI's status (CONTRACT.md §3.4). */
 export async function readStudioFileInfo(rootReal, rel, maxBytes) {
-  if (!/^(adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/.test(rel)) return null;
+  if (!/^(adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/.test(rel)) return null;
   let p = path.join(rootReal, '.studio');
   try {
     for (const part of ['', ...rel.split('/').slice(0, -1)]) {

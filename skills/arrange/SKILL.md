@@ -52,7 +52,7 @@ open it (above), never the sample. Then, for `no-game` only:
    and refuses a folder that already has a different game; the same line run again opens the same sample. The samples
    are three.js (3D) and PixiJS (2D) with their adapter included, so skip §1 and §2. In the Claude app, add
    `--no-open` and open the editor next to the chat (§3, "In the Claude app").
-3. Tell the user where it is with the link (§3, "When you open it, say") and one line: "Here's a sample game in your folder. Click anything and drag it to move
+3. The link first, then where it is (§3, "When you open it, say") and one line: "Here's a sample game in your folder. Click anything and drag it to move
    it, type a change in the box at the bottom, and click Save when you like it."
    Say nothing else about the editor: not the self-check (mention it only if it printed
    `studio: check failed`), not the watch, not the log.
@@ -157,8 +157,16 @@ node <this skill's folder>/bin/studio.mjs <game folder> --detach                
 node <this skill's folder>/bin/studio.mjs <game folder> --detach --tool library # open on the library
 node <this skill's folder>/bin/studio.mjs <game folder> --detach --lan          # also reachable from a phone on the same Wi-Fi (QR code in the log)
 node <this skill's folder>/bin/studio.mjs <game folder> --detach --entry neon-orb.html # a page other than the one it picked
+node <this skill's folder>/bin/studio.mjs <game folder> --link                  # the running editor's link: paste it as it is
+node <this skill's folder>/bin/studio.mjs <game folder> --open-in browser      # "open it in my browser / in Chrome" (remembered)
+node <this skill's folder>/bin/studio.mjs <game folder> --open-in app          # "back in the app" (the window next to the chat)
 node <this skill's folder>/bin/studio.mjs <game folder> --stop                  # when the user is finished
 ```
+
+**The link goes on the first line of every reply about the editor, and you never write it yourself: paste the
+`studio: ready` URL or the output of `--link`, exactly as printed.** Not from a browser tab (the editor drops its
+pass `?t=…` from the address once it opens, and a link without it only says "Missing pass"), not from
+`.studio/server.json`, not rebuilt from the port.
 
 `<game folder>` is always the folder's **absolute path** (not `.`). Use the same folder (and the same `--entry`, if
 any) in every command for this game: start, `--watch`, `--status`, `--stop`.
@@ -169,38 +177,50 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
   those end with your turn and the person gets a blank page. Running the same line again prints the running editor's
   URL instead of starting a second one. It opens the user's default browser by itself. The URL carries a one-time
   passcode: give the user the URL exactly as printed (below, "When you open it, say"). Do not open it with your own browser tools unless the user asks
-  you to check something, with one exception: the Claude app, below.
+  you to check something, with one exception: the Claude app, below. When they ask where the editor is, or for the
+  link, run `--link` and paste its one line (it says `studio: not running …` when there is none: start it again).
+- **They want it in their browser** ("open it in the browser", "in Chrome", "I'd rather use my browser", in any
+  language): run `--open-in browser`. It opens the link in their default browser now and remembers it for this game
+  (`.studio/open.json`), so from then on `--detach` opens the browser by itself, also in the Claude app with
+  `--no-open`, and prints `studio: open browser …` after `ready`: then don't open the window next to the chat. It
+  prints the link first: paste it first. "Back in the app" / "next to the chat": `--open-in app`, then open it next to
+  the chat (below). Never start a browser yourself (`open -a Chrome …`): their default browser is the one they use.
 - **In the Claude app (a browser pane next to the chat).** Look at your tools once, before you start the editor. If
   you have `mcp__Claude_Browser__preview_start` (the browser inside the Claude desktop app; it may be listed as a
-  deferred tool, so load it first), the person is in the app and may never open a terminal or another browser. Then:
+  deferred tool, so load it first), the person is in the app and may never open a terminal or another browser. Then
+  (unless the start line printed `studio: open browser …`: this person opens it in their browser, it is open there):
   1. Add `--no-open` to the start line, so no second browser window opens:
      `node <this skill's folder>/bin/studio.mjs <game folder> --detach --no-open` (keep `--tool library`,
      `--starter …` or `--lan` if you use them).
-  2. Call `tabs_context` (load it together with `preview_start` and `tabs_select`). If a tab already shows this exact
-     URL (the editor was already running), don't open a second one: call `tabs_select` with that tab. Otherwise call
+  2. Call `tabs_context` (load it together with `preview_start` and `tabs_select`). If a tab already shows this
+     editor (the same `127.0.0.1:<port>/__studio/`: the tab shows it without the pass), don't open a second one: call
+     `tabs_select` with that tab. Otherwise call
      `preview_start` with `url` set to the URL from `studio: ready`, exactly as printed: the editor opens in a tab of
      the pane next to the chat. Then call `tabs_context` again: its last line says whether the Browser pane is shown
      or hidden. Hidden: call `tabs_select` with the editor's tab (it fronts it) and `tabs_context` once more. The
      person must see the editor without doing anything; only when the pane is still hidden after that does the
-     reply start with "Press ⌘⇧B to see the editor (Ctrl+Shift+B on Windows)."
-  3. Tell the person where it is and what to do, and **give the link** (below, "When you open it, say"). If they say
+     reply say "Press ⌘⇧B to see the editor (Ctrl+Shift+B on Windows)." on its second line, after the link.
+  3. Tell the person where it is and what to do, the **link first** (below, "When you open it, say"). If they say
      the pane is too narrow: "The ↗ button at the top right of the editor opens it in a large window." (the same
      editor, pass included; asking you and Save work there the same way).
   4. If `preview_start` returns any error (the site isn't approved, the pane can't be reached) or the person
-     declines the site, don't retry: give the URL as usual, "Open this link in your browser: <url>". Nothing else
+     declines the site, don't retry: the link first as usual, then "Open this link in your browser." Nothing else
      opened it, because of `--no-open`.
 
 - **When you open it, say** (every time you start or reopen the editor, or tell them where it is; in their
-  language): where it is, the game's name, and the link, then what to do. The link is the URL from `studio: ready`
-  exactly as printed: it opens the editor on this computer only, and it is theirs, so give it every time (Claude app,
-  terminal and Codex alike), with one short "don't share it":
+  language): **the link alone on the first line**, then where it is with the game's name, then what to do. Nothing
+  before the link: not where it is, not ⌘⇧B, not that it is hidden. The link is the URL from `studio: ready` (or
+  `--link`) exactly as printed: it opens the editor on this computer only, and it is theirs, so give it every time
+  (Claude app, terminal and Codex alike; a hidden window is one click away with it), with one short "don't share it":
 
-  > NEON ORB is open in the editor next to this chat. Link (this computer only, don't share it): <url>
+  > <the link, the whole URL as printed>
+  > NEON ORB is open in the editor next to this chat (this link works on this computer only; don't share it).
   > Click anything and drag it to move it, type a change in the box at the bottom, and click Save when you like it.
 
-  Terminal and Codex: "…in the editor in your browser." App with the pane still hidden: "Press ⌘⇧B to see the
-  editor (Ctrl+Shift+B on Windows)." first. The game's name is its page's `<title>`, else the file name. Never
-  write "it's next to this chat" without the link, and never explain which file it opened or why.
+  Terminal, Codex, or `studio: open browser`: "…in the editor in your browser." App with the pane still hidden:
+  "Press ⌘⇧B to see the editor (Ctrl+Shift+B on Windows), or open the link." on the second line. The game's name is
+  its page's `<title>`, else the file name. Never write "it's next to this chat" without the link, and never explain
+  which file it opened or why.
 
   Everything else is the same, including the watch: the Claude app wakes you on its lines like Claude Code in a
   terminal (§3, "The watch"). Reloads and `--stop` too. **Only the `mcp__Claude_Browser__` tools count.**
@@ -221,7 +241,8 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 |---|---|---|
 | `studio: entry <page> …` | No `index.html`: the editor opened this page, the game's own file, as it is (other game pages, if any, are named) | Nothing to tell the person about it. Only if it is the wrong page: `--stop`, then start again with `--entry <page>` |
 | `studio: build-first <page> …` | The only game page needs its build (exit 5) | Run the build (`npm run build`), then the same start line |
-| `studio: ready` | The editor is up; the line has the URL | Tell them where it is, with the link, and what to do (above, "When you open it, say"). In the Claude app, open it next to the chat first (above) |
+| `studio: ready` | The editor is up; the line has the URL | The link first, then where it is and what to do (above, "When you open it, say"). In the Claude app, open it next to the chat first (above), unless `studio: open browser` follows |
+| `studio: open browser …` | This person opens the editor in their browser (`--open-in browser`, remembered); it opened there | Don't open it next to the chat. The link first, "…open in the editor in your browser" |
 | `studio: check ok` | The adapter works | Nothing; the user can start |
 | `studio: check failed` | The adapter (or the built-in three.js one) does not work for this game | Read `.studio/check.md`, fix `.studio/adapter.js` (§2), ask the user to reload the page |
 | `studio: unnamed` | Some objects have no name (`path:` keys; the line lists them) | §3.2: offer **once** to name them, before the user saves |
@@ -832,7 +853,7 @@ bigger buttons, fewer buttons, an extra button): `references/editor-look.md`.
 | Objects jump back after reload | A physics body or the game loop sets the position | §4 "Physics games"; apply before bodies and before the first update |
 | Keys changed after you edited the code | `path:` keys | §5: add marks and save again |
 | The wrong object moved | Several objects share a name and their order changed | Add distinct marks (§5) |
-| The page says the passcode is wrong | An old URL | Use the URL from the latest `studio: ready` line |
+| The page says the passcode is wrong, or "Missing pass" | An old URL, or one without its `?t=` (copied from a tab, or written by hand) | Run `--link` and paste its line |
 | `studio: listen EPERM … your AI’s sandbox is blocking the editor’s local server` | The agent's sandbox does not let commands listen, even on `127.0.0.1` (Codex's default `workspace-write` sandbox does this) | Run the start line again outside the sandbox: if your environment can ask the user to approve a command outside the sandbox, ask for this one. Otherwise tell the user in one line: "Your AI's sandbox blocks the editor's local server. Start Codex with `codex -c sandbox_workspace_write.network_access=true` (this also lets its commands reach the internet), or allow full access, and ask again." The sample is already copied; the same start line opens it |
 | The page is blank or "can't connect" a little after you gave the URL | The editor was started with `&` / `nohup` and ended with your turn | Start it with `--detach` (§3); it prints the URL again |
 | You need to stop the editor | — | `studio.mjs <game folder> --stop`. Never `pkill` / `killall` / a `pgrep` match: they stop other editors too |

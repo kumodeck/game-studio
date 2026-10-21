@@ -789,7 +789,11 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    now one 44 px row (below), and the grow is the measured cover + 32 instead of a fixed 160.
    66dvh stays the cap: the game keeps about a quarter of the screen above the sheet. */
 .shell[data-layout="phone"]:has(.card-slot > .card:not([hidden])) .side { height: min(calc(max(var(--studio-panel-h), 36dvh) + var(--studio-cover, 128px) + 32px), 66dvh); }
-.shell[data-layout="phone"] .side::before { content: ""; display: block; width: 36px; height: 5px; border-radius: 3px; background: var(--raise-3); margin: 4px auto 8px; flex: none; }
+/* The sheet's grip (main.ts sheetGrip): a click or a pull down folds the bottom to the ask bar (sheet-fold.ts, 2026-10-21).
+   It is the drawn bar that stood here as .side::before (36 × 5, 4 above, 8 below), now one that can be pressed. */
+.shell[data-layout="phone"] .sheet-grip { display: block; flex: none; height: 21px; margin: -4px -12px 0; cursor: pointer; touch-action: none; position: relative; outline: none; }
+.shell[data-layout="phone"] .sheet-grip::before { content: ""; position: absolute; left: 50%; top: 8px; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: var(--raise-3); }
+.shell[data-layout="phone"] .sheet-grip:focus-visible::before { background: var(--text-3); }
 .shell[data-layout="phone"] .page-head { background: transparent; }
 .shell[data-layout="phone"] .side-foot kbd { display: none; }
 /* "All actions" stays in the phone's list sheet: since the AI-feel pass (10/16) a tap on the ask bar only writes to
@@ -977,7 +981,6 @@ button.shelf-file.to:hover { background: var(--raise-2); }
   bottom: 48px; height: var(--side-low); padding: 0 10px calc(var(--studio-cover, 64px) - 44px); }
 .shell[data-layout="phone"][data-fit="side"][data-pull="up"] .side, .shell[data-layout="phone"][data-fit="side"][data-pull="up"]:has(.card-slot > .card:not([hidden])) .side {
   height: clamp(var(--side-low), var(--studio-sheet-h, 0px), calc(100dvh - var(--bar) - 56px)); }
-.shell[data-fit="side"] .side::before { display: none; }
 .shell[data-fit="side"] .sheet-grip { display: block; flex: none; height: 14px; margin: 0 -10px; cursor: ns-resize; touch-action: none; position: relative; outline: none; }
 .shell[data-fit="side"] .sheet-grip::before { content: ""; position: absolute; left: 50%; top: 5px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--raise-3); transition: background-color var(--dur) var(--ease); }
 .shell[data-fit="side"] .sheet-grip:hover::before, .shell[data-fit="side"] .sheet-grip:focus-visible::before { background: var(--text-3); }
@@ -1157,3 +1160,31 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* A UI element's kind instead of a picture (list rows and the card's head). */
 .thumb.ui-kind { display: grid; place-items: center; color: var(--text-2); background: var(--raise); }
 .thumb.ui-kind .icon { width: 70%; height: 70%; }
+
+/* ----- The bottom folded to one row: phone and side window (sheet-fold.ts; a try of v0.1.7 in the Claude app's side
+   window, 2026-10-21: "the bottom menu has to be able to be minimised") ----- */
+/* Folded: the list sheet, the picked objects' card and the AI's line go; the ask bar stays alone, with ▴ at its left
+   and what is picked in its chip ("×11"). A short toast (copy failed…) still shows over it; the AI's line is a dot on ▴. */
+.shell[data-layout="phone"][data-fold="min"] .side { transform: translateY(calc(100% + 16px)); visibility: hidden; }
+.shell[data-layout="phone"][data-fold="min"] .card-slot { display: none; }
+.shell[data-layout="phone"][data-fold="min"] .ai-caption > :not(.toast) { display: none; }
+.shell[data-layout="phone"][data-fold="min"] .ai-caption:not(:has(> .toast.on)) { display: none; }
+/* With a pick the dock is one glass plate for the card and the bar (the 10/19 item 6 above): folded, the bar is its own
+   pill again, as with nothing picked. */
+.shell[data-layout="phone"][data-fold="min"] .dock:has(.card-slot > .card:not([hidden])) { background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; overflow: visible; }
+.shell[data-layout="phone"][data-fold="min"] .dock:has(.card-slot > .card:not([hidden])) .bar { border-top: 0; border-radius: 999px; background: var(--glass); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+/* The AI said something while folded: a dot on ▴ (the AI's colour), gone when the line goes or the bottom opens. */
+.bar [data-action="sheet"] { position: relative; }
+.bar [data-action="sheet"][data-news="on"]::after { content: ""; position: absolute; top: 7px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--ai); box-shadow: 0 0 0 2px var(--float-solid); }
+/* A kind's heading does not stick in the sheet (it does on PC): in a sheet of three to six rows a stuck heading with
+   the row scrolled half under it read as two rows lying on one another ("tile-3" over "tile-3-6", the 10/21 try). */
+.shell[data-layout="phone"] .obj.group-row { position: relative; }
+/* "Deselect": a ✕ in the card's head on a phone / in the side window, the link under the head on PC (placement-panel.ts). */
+/* The head keeps 44 px (36 in the side window) on its right for the "…" of the one-object card (.fine > summary sits
+   there, absolute). The card of several has no "…": that room went to nothing while "11 selected" was cut to "11 …"
+   beside copy, delete, ✕ and ▾. */
+.shell[data-layout="phone"] .card:not(:has(.fine)) .card-head { padding-right: 0; }
+.card-actions .card-x { display: none; }
+.shell[data-layout="phone"] .card-actions .card-x { display: inline-flex; }
+.shell[data-layout="phone"] .card-body > [data-action="select-none"] { display: none; }
+.shell[data-layout="phone"] .card-body:not(:has(> :not([data-action="select-none"]))) { display: none; }

@@ -33,12 +33,15 @@ test('notShown: a page that already shows the move (its loader read the draft) g
   assert.deepEqual(m.notShown([item('lighthouse', [-18, 0, -20])]).poses, []);
 });
 
-test('notShown: an object the AI moved in the code is the AI\'s (not pushed back)', () => {
+test('notShown: an object the AI moved in the code too: the person\'s unsaved move wins (play-after-ai, 2026-10-21)', () => {
   const m = new PlacementModel();
   m.setItems([item('boat', [0, 0, 0])], '3d');
   m.moved('boat', { p: [4, 0, 0], r: 0, s: 1 });
-  // The AI's reload: the code now puts the boat at 7 (neither the old code's 0 nor the editor's 4).
-  assert.deepEqual(m.notShown([item('boat', [7, 0, 0])]).poses, []);
+  // The AI's reload: the code now puts the boat at 7 (neither the old code's 0 nor the editor's 4). Until 2026-10-21 it
+  // was left at 7 (the AI's) while the card said 4; now the editor's 4 goes back and 7 is the new `was`.
+  const lost = m.notShown([item('boat', [7, 0, 0])]);
+  assert.deepEqual(lost.poses.map((x) => x.pose.p), [[4, 0, 0]]);
+  assert.deepEqual(lost.code, ['boat']);
 });
 
 test('notShown: copies the page lacks and deletions it still shows', () => {
@@ -57,7 +60,7 @@ test('notShown: copies the page lacks and deletions it still shows', () => {
 test('notShown: the first list after opening is setItems\' own (nothing here)', () => {
   const m = new PlacementModel();
   const lost = m.notShown([item('a', [0, 0])]);
-  assert.deepEqual(lost, { poses: [], copies: [], removes: [] });
+  assert.deepEqual(lost, { poses: [], copies: [], removes: [], code: [] });
 });
 
 test('notShown: a reordered list shown in the code\'s order again', () => {

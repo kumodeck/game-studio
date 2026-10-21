@@ -15,6 +15,7 @@ or object) and the ask field.
 or "isn't watching" at once) and when the game reloads by itself after the
 AI's change (in a second frame behind the old one, view and selection kept);
 "Undo AI change" / "Redo" call `host.undoAi` (CONTRACT.md §3.4).
+`sheet-fold.ts`: the bottom (list sheet, card, AI line) folded to the ask bar on a phone / in the side window — kept in this browser, the grip and ▾ fold, ▴ opens (2026-10-21)
 `line-fade.ts`: the finished line (done / undone / redone, and "fixed" over the game)
 goes by itself after 5–10 s, never while the pointer or keyboard is in it; "● AI"
 in the top bar and ⌘K bring it back with its Undo (2026-10-20). A question, a
@@ -61,6 +62,9 @@ Play without Save (a try of the editor, 2026-10-21): ▶ Play shows the arrangem
 not (the bridge puts the draft on the page), and a new page of the game (back from Play, the AI's reload) gets back
 what it does not show (`placement-model.ts` notShown, pushed in `main.ts`). The top bar says "Playing · unsaved
 changes" while there are some.
+After an AI change (play-after-ai, 2026-10-21): an object the new code puts somewhere new gets that pose as its `was`
+(so the draft Play reads still finds it); if the person had moved it, the person's pose wins and goes back to the page.
+The violet "AI moved" mark is only for objects at neither the old code's pose nor the person's.
 
 Before unsaved changes are lost (a try of the editor, 2026-10-21: "people forget Save — show a window when edits would be
 lost"): `unsaved-guard.ts`. One window — "You have 3 unsaved changes", Save and continue (Enter) / Don't save / Cancel (Esc)

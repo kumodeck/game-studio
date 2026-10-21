@@ -159,29 +159,37 @@ The plugin's skill only loads in a new session, so this time you start the edito
      instead, so nothing of theirs is mixed with the sample (it is GAME from here on).
    - In Codex, `listen EPERM`: the sandbox blocks the local server. Ask for approval to run the same line outside
      the sandbox.
-3. **Show it.** The URL in `studio: ready` is **the link**: the editor, on this computer only.
+3. **Show it.** The URL in `studio: ready` is **the link**: the editor, on this computer only. **Paste it as printed
+   (or the one line `node STUDIO GAME --link` prints); never write it yourself or copy it from a tab**: the tab drops
+   its pass (`?t=…`), and a link without it only says "Missing pass".
    - **Terminal, Codex:** it opened the person's browser by itself.
-   - **App:** load `preview_start`, `tabs_context` and `tabs_select`. If a tab already shows this URL, don't open
-     another. Otherwise call `preview_start` with the URL exactly as printed: the editor opens in the Browser pane
+   - **They want it in their browser** ("in the browser", "in Chrome"; in any row): `node STUDIO GAME --open-in browser`.
+     It opens the link in their default browser and remembers it for this game, so it opens there by itself from then
+     on (also in the App, where it then prints `studio: open browser …` after `ready`: don't open the pane). Back to
+     the pane: `--open-in app`.
+   - **App:** load `preview_start`, `tabs_context` and `tabs_select`. If a tab already shows this editor (same
+     `127.0.0.1:<port>`; the tab shows it without the pass), don't open another. Otherwise call `preview_start` with the URL exactly as printed: the editor opens in the Browser pane
      next to the chat. Then call `tabs_context`: if it says the pane is hidden, call `tabs_select` with the editor's
-     tab, and `tabs_context` again. If the pane is still hidden, the reply starts with the ⌘⇧B line (step 4). If
-     `preview_start` fails, the browser is the way: "Open this link in your browser: <url>".
+     tab, and `tabs_context` again. If the pane is still hidden, the ⌘⇧B line goes right after the link (step 4). If
+     `preview_start` fails, the browser is the way: the link first, then "Open this link in your browser."
      If they find the pane narrow: the ↗ button at the top right of the editor ("Open large") opens the same editor
      in a large window; asking you and Save work there the same way.
-4. **Tell them, in three short lines** (in the language they wrote to you in; pick the words for your row). The
-   game's name is its page's `<title>` (else the file name), the link is the URL from `studio: ready`, as printed:
+4. **Tell them, the link alone on the first line, then three short lines** (in the language they wrote to you in;
+   pick the words for your row). Nothing before the link. The game's name is its page's `<title>` (else the file
+   name), the link is the URL from `studio: ready`, as printed:
 
-   > Game Studio is installed. NEON ORB is open in the editor next to this chat. Link (this computer only, don't share it): <url>
+   > <the link, the whole URL as printed>
+   > Game Studio is installed. NEON ORB is open in the editor next to this chat (this link works on this computer only; don't share it).
    > Click anything and drag it to move it, type a change in the box at the bottom, and click Save when you like it.
    > Next time, start a new session and type `/arrange`. New versions arrive by themselves. *(Codex: `$arrange`)*
 
    - "New versions arrive by themselves" only when they said yes and auto-update was turned on (App and Terminal);
      never in Codex.
-   - Terminal, Codex: "…NEON ORB is open in the editor in your browser. Link (…): <url>".
-   - App, pane still hidden: start the first line with "Press ⌘⇧B to see it (Ctrl+Shift+B on Windows)." right after
-     "Game Studio is installed."
+   - Terminal, Codex, or `studio: open browser`: "…NEON ORB is open in the editor in your browser (…)".
+   - App, pane still hidden: "Press ⌘⇧B to see it (Ctrl+Shift+B on Windows), or open the link." right after
+     "Game Studio is installed." (still after the link).
    - The sample (`--starter 3d`): "Here's a sample game in your folder, open in the editor …" in the first line.
-   - You changed the settings file (§3, no `claude` command): its one line goes first.
+   - You changed the settings file (§3, no `claude` command): its one line goes right after the link.
 
    Say nothing else: not which file names the editor looks for, not why a page was picked, not the watch (step 5),
    the log, the self-check, the plugin's version or the folder's path. Never call their game a sample, and never
@@ -197,8 +205,8 @@ The plugin's skill only loads in a new session, so this time you start the edito
 6. **For the rest of this session**, read `PLUGIN/skills/arrange/SKILL.md` and follow it from §3: it is what
    `/arrange` does (their saves and requests arrive in `.studio/requests/`; the watch or the plugin's hooks bring
    them to you; in Codex the editor's **Call your AI** button copies *look* for them to paste, and you read them).
-   Whenever you tell them about the editor again (it is open, where it is, how to get back to it), give the link
-   again in the same short form. When they are finished: `node STUDIO GAME --stop`.
+   Whenever you tell them about the editor again (it is open, where it is, how to get back to it), the link goes
+   first again: run `node STUDIO GAME --link` and paste its line. When they are finished: `node STUDIO GAME --stop`.
 
 ## 5. If something fails
 

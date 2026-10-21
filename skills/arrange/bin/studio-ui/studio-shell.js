@@ -7269,6 +7269,24 @@ function outOfOrder(was          , now          )           {
   return now.filter((k) => !keep.has(k));
 }
 
+/**
+ * The person's pose over a new code's, part by part (play-after-ai, 2026-10-21): only what the hand changed since `was`
+ * wins — the position (as a whole: one drag), the turn, the size, the tilt. The rest is the new code's. So the AI making
+ * an object bigger keeps its size when the person had only dragged it, and the person's drag keeps its place.
+ */
+function handOver(cur      , was      , code      , dim     )       {
+  const same = (a               , b               ) => samePose({ p: [0], ...a }        , { p: [0], ...b }        , dim);
+  const out       = structuredClone({ ...code, z: undefined });
+  if (!same({ p: cur.p }, { p: was.p })) out.p = cur.p.slice();
+  if (!same({ r: cur.r }, { r: was.r })) out.r = cur.r;
+  if (!same({ s: cur.s }, { s: was.s })) out.s = Array.isArray(cur.s) ? cur.s.slice() : cur.s;
+  if (!same({ t: cur.t }, { t: was.t })) {
+    if (cur.t) out.t = [cur.t[0], cur.t[1]];
+    else delete out.t;
+  }
+  return out;
+}
+
 class PlacementModel {
   dim      = '3d';
           was = new Map              ();
@@ -7491,16 +7509,28 @@ class PlacementModel {
    *
    * Only what the page shows AS ITS CODE MAKES IT: an object at `was` (the code's own pose) that the person put
    * elsewhere, a copy the page does not have, a deleted object it still has, a list in the code's order that the person
-   * reordered. Anything else is left alone: a game whose loader applied the draft already shows it (nothing to do),
-   * and an object the AI's change moved in the code (now ≠ `was`) is the AI's to keep — pushing the old pose back
-   * would undo its work.
+   * reordered. A game whose loader applied the draft already shows it (nothing to do).
+   *
+   * An object the page shows at neither `was` nor the editor's pose: the code puts it somewhere new (the AI's change,
+   * a game that places things itself). Its `was` becomes that new pose (so Save tells the AI where the code has it,
+   * Play's bridge finds it at the draft's `was`, ⌘Z on the move goes to the AI's place) and its key is in `code`
+   * (the AI's violet mark). Then (decided 2026-10-21, "Play after the AI showed only the AI's change"):
+   *   - the person moved it (saved or not; a saved move the code does not have yet is still theirs) → the PERSON'S
+   *     pose wins for what their hand changed (handOver: the place, the turn, the size, the tilt) and is pushed back.
+   *     A hand move in the editor is the newest thing they said about that object, and Play and the editor must show
+   *     the same; ⌘Z on the move shows the AI's place (the new `was`), the violet mark says the AI changed it;
+   *   - not touched → the AI's pose becomes the editor's (the card and the list follow the game).
+   * Before (v0.1.7) such an object was left at the AI's pose on screen while the model kept the person's, so the card
+   * said one place and the game showed another — and its `was` stayed the old code's, which Play's bridge never found.
    */
   notShown(items        )   
                                               
                                                              
                       
+                                                                                            
+                   
     {
-    const out = { poses: []                                      , copies: []                                                    , removes: []             };
+    const out = { poses: []                                      , copies: []                                                    , removes: []            , code: []             };
     // Nothing known yet (the first list after opening): setItems' own `apply` does that one.
     if (!this.was.size) return out;
     const flat = (p      )       => ({ ...p, z: undefined });
@@ -7512,10 +7542,28 @@ class PlacementModel {
         continue;
       }
       const cur = this.current.get(it.key), was = this.was.get(it.key);
-      if (!cur || !was || samePose(flat(cur), flat(was), this.dim)) continue;
-      if (!samePose(flat(it.pose), flat(was), this.dim)) continue;
-      // z stays the page's: the draw order is put back below, as a whole list.
-      out.poses.push({ key: it.key, pose: flat(cur) });
+      if (!cur || !was) continue;
+      const at = flat(it.pose);
+      if (samePose(at, flat(was), this.dim)) {
+        // z stays the page's: the draw order is put back below, as a whole list.
+        if (!samePose(flat(cur), flat(was), this.dim)) out.poses.push({ key: it.key, pose: flat(cur) });
+        continue;
+      }
+      // Already as the editor has it (a loader read the draft; the AI put the move in the code): nothing to do.
+      if (samePose(at, flat(cur), this.dim)) continue;
+      // An object without a name (`path:…` key) is found by its place in the tree, which the AI's change shifts
+      // (path:8 → path:11): another object may now have this key, so nothing goes to it (as before 2026-10-21).
+      if (it.unstable || it.key.startsWith('path:')) continue;
+      // The code puts it somewhere new (see above).
+      out.code.push(it.key);
+      const saved = this.saved.get(it.key);
+      const handMoved = !samePose(flat(cur), flat(was), this.dim);
+      const savedMove = !!saved && !samePose(flat(saved), flat(was), this.dim);
+      this.was.set(it.key, { ...it.pose });
+      if (!savedMove) this.saved.set(it.key, { ...it.pose });
+      const want = handMoved ? handOver(cur, was, it.pose, this.dim) : null;
+      if (want && !samePose(want, at, this.dim)) out.poses.push({ key: it.key, pose: want });
+      else this.current.set(it.key, { ...it.pose });
     }
     for (const k of this.copyOrder) {
       if (!this.live.has(k) || byKey.has(k)) continue;
@@ -7845,7 +7893,9 @@ const en = {
   'large.copied': "Couldn't open a window. The link is copied: paste it into your browser.",
   'large.failed': "Couldn't open a window.",
   // The list sheet's grip in the side window: drag it up for more rows, a click switches low / tall.
-  'sheet.grip': 'Drag to resize the list',
+  'sheet.grip': 'Click to minimize · drag to resize the list',
+  'sheet.fold': 'Minimize',
+  'sheet.unfold': 'Show the list and card',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to your AI. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -8316,7 +8366,9 @@ const ja                               = {
   'large.opened': '大きな窓で開きました。続きはそちらで（この窓は閉じても大丈夫です）。',
   'large.copied': '窓を開けませんでした。リンクをコピーしたので、ブラウザに貼り付けてください。',
   'large.failed': '窓を開けませんでした。',
-  'sheet.grip': 'ドラッグで一覧の高さを変える',
+  'sheet.grip': 'クリックでたたむ・ドラッグで一覧の高さを変える',
+  'sheet.fold': 'たたむ',
+  'sheet.unfold': '一覧とカードを出す',
   'ai.waiting': '{what}を AI に送りました。返事を待っています…',
   'ai.nudge': '依頼は届いています。AI が次に動いたときに反映されます。',
   'ai.call': 'AI を呼ぶ',
@@ -10493,12 +10545,20 @@ function createPlacementPanel(d                    )                 {
     // What the strip does with several is told once, on the heading's tooltip.
     const h0 = head(h('div', { class: 'stack' }, ...members.slice(0, 3).map((m) => thumbImg(m.key))), d.t('ops.many', { n: members.length }), names, 'group-head');
     h0.title = d.t('ops.groupHint');
+    // While "Select" is on, its "Done" is the way out.
+    // Phone / side window: "Deselect" is a ✕ in the head, after copy and delete (a try of v0.1.7 in the Claude app's side
+    // window, 2026-10-21: as a link under the head it took a whole row of its own, with empty room over it, between the
+    // list and the ask bar). PC keeps the link under the head (shell.css shows one or the other by layout).
+    if (!d.multi()) {
+      const x = h('button', { type: 'button', class: 'icon-btn card-x', dataset: { action: 'select-none' }, onclick: () => d.selectMany([], '') });
+      setButton(x, 'close', d.t('ops.selectNone'), false, tipText(d.t('ops.selectNone'), 'Esc'));
+      h0.querySelector('.card-actions')?.append(x);
+    }
     card.append(h0);
     const body = h('div', { class: 'card-body' });
     if (members.some((m) => m.movable === false)) body.append(h('p', { class: 'muted note-line', text: d.t('ops.lockedSkipped') }));
     const lr = groupLayerRow(keys);
     if (lr) body.append(lr);
-    // While "Select" is on, its "Done" is the way out.
     if (!d.multi()) body.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-none' }, text: d.t('ops.selectNone'), onclick: () => d.selectMany([], '') }));
     card.append(body);
   };
@@ -12594,6 +12654,83 @@ __def(__exports, "withUi", () => withUi);
 };
 __defs[45] = function (__exports) {
 'use strict';
+// sheet-fold.ts
+
+// The bottom sheet folded to one row (a phone, the side window next to a chat). A try of v0.1.7 in the Claude app's side
+// window on 2026-10-21, with an AI-made NEON ORB and eleven tiles picked: "it's too hard to use from the Claude sidebar
+// — the bottom menu has to be able to be minimised". The list sheet, the picked objects' card and the AI's line took
+// the lower half of the window, and the grip at the sheet's top only switched between a low and a tall sheet, which
+// nobody found.
+//
+// Folded = only the ask bar stays: ▴ at its left, then what is picked ("×11" / the short name) and the field to ask the
+// AI. The game is seen over the rest (≥ 80 % of a 400×900 side window, test/studio-side-sheet). One press folds —
+// the grip (a click, or dragged down), or ▾ at the bar's left — and one press on ▴ opens the list (and the card) again.
+// (The card's own ▾, placement-panel.ts, 2026-10-20, stays: it shrinks the card to its name and leaves the list up.)
+// Nothing opens it by itself: a pick, the AI's answer, Save keep it folded (the AI's news is a dot on ▴, its
+// running light stays on the bar). Opening a page in the sheet (Look, Ideas, the Library, the Scene) is a person's
+// own press, and unfolds.
+//
+// Kept in this browser (localStorage), as the card's own minimize is (placement-panel.ts MIN_KEY): a habit of the
+// hand, not of the game, so it does not go in the game's .studio/ui.json. PC (a wide window) has no fold: its list is
+// a column beside the game, not a sheet over it.
+
+/** localStorage key: '1' = folded. */
+const FOLD_KEY = 'studio.sheetFold';
+
+                                                                     
+
+/** Folded last time? Storage can be missing or throw (a private window, blocked site data): then not folded. */
+function readFold(store       )          {
+  try {
+    return store?.getItem(FOLD_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFold(store       , on         )       {
+  try {
+    store?.setItem(FOLD_KEY, on ? '1' : '0');
+  } catch {
+    /* no storage: this page only */
+  }
+}
+
+/**
+ * What the bar's left button does: ▴ unfolds; ▾ (the list or the card up) folds — the whole of it, list, card and AI line,
+ * not only the list as before 2026-10-21 (that left the card and its "Deselect" row standing over half the game); the
+ * list icon (nothing up) opens the list. Two states for the hand, open and folded: ▴ always opens the list (with the
+ * card, if something is picked), so the list is never more than one press away.
+ */
+function barPress(s                                  )                             {
+  if (s.fold) return 'unfold';
+  return s.open ? 'fold' : 'open';
+}
+
+/**
+ * The grip let go. A press without a move folds. Dragged: further down than the low sheet goes (CSS holds the sheet
+ * there, so the drag's own height reads lower than the sheet) by FOLD_DRAG px or more folds; otherwise the height
+ * stays where it was dragged (tall), or the low sheet again when it ended there.
+ *   fromH: the sheet's height at the press; dy: how far up the pointer went (negative = down);
+ *   nowH: the sheet's height now (CSS-clamped).
+ */
+const FOLD_DRAG = 32; // px below the low sheet: a deliberate pull down, not a hand that slipped on the way up
+function gripEnd(g                                                             )                          {
+  if (!g.moved) return 'fold';
+  if (g.fromH + g.dy <= g.nowH - FOLD_DRAG) return 'fold';
+  // CSS held the sheet above where the drag asked for: it ended at the low sheet.
+  return g.nowH > g.fromH + g.dy + 2 ? 'low' : 'tall';
+}
+
+__def(__exports, "FOLD_KEY", () => FOLD_KEY);
+__def(__exports, "readFold", () => readFold);
+__def(__exports, "writeFold", () => writeFold);
+__def(__exports, "barPress", () => barPress);
+__def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
+__def(__exports, "gripEnd", () => gripEnd);
+};
+__defs[46] = function (__exports) {
+'use strict';
 // main.ts
 
 // The shell page. Entries: shell/local.ts (studio-shell.js, the local server)
@@ -12644,6 +12781,7 @@ const { bigChanges, createSafeSave } = __require(41);
 const { createUnsavedGuard, lostBy } = __require(42);
 const { createLayerSwitch } = __require(43);
 const { uiAsPlacement, uiEntries, withUi } = __require(44);
+const { barPress, gripEnd, readFold, writeFold } = __require(45);
 
                                                                         
 
@@ -12758,6 +12896,15 @@ function start(host            ) {
   let toolDataWaiter                                                                 = null;
   let nextOpen                = null;
   let sheetOpen = false;
+  // The bottom folded to the ask bar alone (phone / side window; sheet-fold.ts): kept in this browser.
+  const handStore = (() => {
+    try {
+      return window.localStorage;
+    } catch {
+      return null;
+    }
+  })();
+  let fold = readFold(handStore);
   let toast = '';
   let toastTimer = 0;
   const thumbs = new Map                ();
@@ -12855,6 +13002,11 @@ function start(host            ) {
   // stay "AI added 3" (a real run said "AI moved 3": the AI had moved its own new lighthouses after the first
   // reload). Cleared by a new request and by any reload once the AI is no longer working.
   let aiBase                           = null;
+  // The code's own poses (`was`) at the same moments as aiBefore / aiBase (play-after-ai, 2026-10-21): an object the
+  // PERSON moved without saving stands at its code's pose on the new page of a game without the loader — that is not
+  // the AI moving it. Before, every such object got the violet "AI moved" mark after any AI change.
+  let aiBeforeCode                           = null;
+  let aiBaseCode                           = null;
   let aiMarks = new Map                           ();
   // The marks as sent to the game (again on every edit start: a reload makes a new game page).
   let aiMarksMsg                                     = { keys: [] };
@@ -13054,8 +13206,12 @@ function start(host            ) {
   const headTools = h('div', { class: 'side-head-tools' }, sheetMore);
   // The side window's list sheet opens LOW — about four rows, the game keeps at least half the window above it
   // (a try on 2026-10-19: the game was the top quarter, the picked object a speck) — and this grip at its top pulls it up
-  // (and back down) for a longer list. A click on it switches between low and tall. Phones keep their sheet as it
-  // was (shell.css shows the grip only for [data-fit="side"]; the phone draws the same bar as .side::before).
+  // (and back down) for a longer list.
+  // A click on it FOLDS the bottom to the ask bar alone, and so does a drag down past the low sheet (sheet-fold.ts; a try
+  // of v0.1.7 in the Claude app's side window, 2026-10-21: "the bottom menu has to be able to be minimised" — the grip
+  // was there, but a click only switched low ↔ tall and nobody found that). ▴ at the bar's left opens it again, at
+  // the height it had. The phone's sheet has the same grip (its old drawn bar, .side::before, is gone): a click or a
+  // pull down folds; it does not grow taller (its height is the phone's own, shell.css).
   // The height lives in --studio-sheet-h on the shell; the new inset is sent when the drag ends, so the view slides
   // the picked object over the sheet once, not on every pixel of the drag.
   const sheetGrip = h('div', { class: 'sheet-grip', role: 'separator', 'aria-orientation': 'horizontal', tabindex: '0', dataset: { action: 'sheet-grip' } });
@@ -13082,27 +13238,49 @@ function start(host            ) {
       const dy = from.y - e.clientY;
       if (!from.moved && Math.abs(dy) < 4) return;
       from.moved = true;
-      // (CSS clamps it: never under the low sheet, never over the top bar.)
-      setH(from.h + dy);
+      // (CSS clamps it: never under the low sheet, never over the top bar.) The phone's sheet keeps its own height.
+      if (sideWin()) setH(from.h + dy);
     });
     const end = (e              ) => {
       if (!from || e.pointerId !== from.id) return;
       const f = from;
       from = null;
-      if (!f.moved) setH(app.dataset.pull === 'up' ? null : tall());
+      const to = gripEnd({ moved: f.moved, fromH: f.h, dy: f.y - e.clientY, nowH: side.offsetHeight });
+      if (to === 'fold') {
+        // Pulled down: the sheet unfolds at the height it was pulled from, not at the drag's last pixel.
+        if (f.moved) setH(f.h > lowH() + 2 && sideWin() ? f.h : null);
+        foldBottom(false);
+        return;
+      }
       // Dragged down to the low sheet (CSS held it there): the low sheet again, which follows the window's size.
-      else if (side.offsetHeight > parseFloat(app.style.getPropertyValue('--studio-sheet-h')) + 2) setH(null);
+      if (to === 'low') setH(null);
       requestAnimationFrame(() => {
         sendInset();
         thumbsSoon(false);
       });
     };
+    // The low sheet's height (the pull-up's CSS floor), read with the pull taken off for a moment.
+    const lowH = () => {
+      const pull = app.style.getPropertyValue('--studio-sheet-h');
+      if (!pull) return side.offsetHeight;
+      app.style.removeProperty('--studio-sheet-h');
+      const h = side.offsetHeight;
+      app.style.setProperty('--studio-sheet-h', pull);
+      return h;
+    };
     sheetGrip.addEventListener('pointerup', end);
     sheetGrip.addEventListener('pointercancel', end);
+    // Keys: Enter / Space fold (as a click); ↑ pulls it tall (side window); ↓ takes a tall sheet low, a low one folds.
     sheetGrip.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
-      setH(e.key === 'ArrowDown' || (e.key !== 'ArrowUp' && app.dataset.pull === 'up') ? null : tall());
+      if (e.key === 'ArrowUp') {
+        if (sideWin()) setH(tall());
+      } else if (e.key === 'ArrowDown' && app.dataset.pull === 'up') setH(null);
+      else {
+        foldBottom(true);
+        return;
+      }
       requestAnimationFrame(() => sendInset());
     });
   }
@@ -13110,14 +13288,55 @@ function start(host            ) {
   const sideHead = h('div', { class: 'side-head' }, tabs, headTools);
   const side = h('aside', { class: 'side', dataset: { part: 'side' } }, sheetGrip, sideHead, status, panel,
     h('div', { class: 'side-foot' }, noNameSlot, paletteFoot));
-  // Phone: the list opens from the ask bar's left end, as a sheet from the bottom.
+  // Phone: the list opens from the ask bar's left end, as a sheet from the bottom. While the list or the card is up this
+  // button is ▾ and folds the whole bottom (sheet-fold.ts barPress: the list, the card and the AI's line — before
+  // 2026-10-21 it closed the list only, and the card stood on over half the game); folded, it is ▴ and opens the list
+  // (and the card) again.
   const sheetBtn = btn('sheet', () => {
-    sheetOpen = !sheetOpen;
+    const act = barPress({ fold: fold && phone(), open: sheetOpen || cardUpNarrow() });
+    if (act === 'fold') {
+      foldBottom(false);
+      return;
+    }
+    if (act === 'unfold') setFold(false);
+    sheetOpen = true;
     page = 'tool';
     // From the Library the list button brings the Scene's list (the game and its list).
     if (sheetOpen && tool === 'library') tool = 'placement';
     renderAll(true);
   }, { class: 'icon-btn' });
+  /** Fold / unfold, kept in this browser (sheet-fold.ts). No render: the caller renders. */
+  function setFold(on         ) {
+    fold = on;
+    writeFold(handStore, on);
+  }
+  /** Fold the bottom to the ask bar (the grip, ▾). From the keyboard the focus goes to ▴, the way back. */
+  function foldBottom(byKey         ) {
+    if (!phone()) return;
+    setFold(true);
+    sheetOpen = false;
+    // Look / Ideas live in the sheet: folding it leaves them for the Scene.
+    if (page !== 'tool') page = 'tool';
+    renderAll(true);
+    if (byKey) sheetBtn.focus();
+  }
+  /** The picked object's card stands over the bar (phone / side window; not over the Library, which hides it). */
+  const cardUpNarrow = () => phone() && tool !== 'library' && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl);
+  /** The bar's left button: ▴ folded; ▾ with the list or the card up; the list icon with nothing up. */
+  function renderSheetBtn() {
+    const folded = fold && phone();
+    const open = !folded && (sheetOpen || cardUpNarrow());
+    const want = folded ? 'up' : open ? 'down' : 'list';
+    if (sheetBtn.dataset.state !== want) {
+      sheetBtn.dataset.state = want;
+      setButton(sheetBtn, folded ? 'chevronUp' : open ? 'chevronDown' : 'list', folded ? t('sheet.unfold') : open ? t('sheet.fold') : t('btn.list'), false);
+    }
+    sheetBtn.setAttribute('aria-expanded', String(open));
+  }
+  /** A page the person asked for in the sheet (Look, Ideas, the Library, the Scene): it unfolds. */
+  const unfoldFor = () => {
+    if (fold && phone()) setFold(false);
+  };
   // News over the ask bar, one card, one place: a toast (copy failed…), the
   // AI line (handed over → picked up → done, with "Show" / "Reload"), the ask
   // box's own note and "playing".
@@ -13230,6 +13449,12 @@ function start(host            ) {
   const updateCaption = () => {
     const any = [...caption.children].some(captionShows);
     if (caption.hidden === any) caption.hidden = !any;
+    // Folded, the AI's line is not shown (shell.css): a dot on ▴ says it has something to read (sheet-fold.ts).
+    const news = fold && phone() && !aiLine.hidden && !!aiLine.textContent?.trim();
+    if ((sheetBtn.dataset.news === 'on') !== news) {
+      if (news) sheetBtn.dataset.news = 'on';
+      else delete sheetBtn.dataset.news;
+    }
   };
   new MutationObserver(updateCaption).observe(caption, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
 
@@ -13250,7 +13475,8 @@ function start(host            ) {
     const sr = stage.getBoundingClientRect();
     const inset        = { top: 0, right: 0, bottom: 0, left: 0 };
     // The bar and, on a phone, the card above it (the news card comes and goes: not counted).
-    const top = phone() && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
+    // (Folded, the card is hidden by CSS but not [hidden]: it does not count.)
+    const top = phone() && !(fold && phone()) && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
     if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
     // The phone's list sheet pads its foot by what the bar and the card cover (shell.css --studio-cover):
     // the card's height differs (2D Layer row, the open numbers), so it is measured, not guessed.
@@ -13269,7 +13495,7 @@ function start(host            ) {
     // hint line cut ↑, the card pushed them 72 px up, and they floated over the Library. Gone then, back after; PC keeps
     // them (a 28 px box in the corner that nothing covers).
     if (phone()) {
-      const cardUp = !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl);
+      const cardUp = !fold && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl);
       const sheetUp = (sheetOpen || page !== 'tool') && !playing;
       const libraryUp = tool === 'library' && !assetsPage.hidden;
       const menuUp = !!app.dataset.menu && app.dataset.menu !== 'closed';
@@ -13528,6 +13754,8 @@ function start(host            ) {
   // The "no name" row now lives at the top of the list (placement-panel.ts); the slot stays for .studio/ui/ looks.
   // The card grows when its file row arrives: what it covers is sent again.
   new ResizeObserver(() => sendInset()).observe(placementPanel.cardEl);
+  // A pick shows / drops the card without a renderAll: the bar's left button follows (▾ with the card up, the list icon without).
+  new MutationObserver(() => renderSheetBtn()).observe(placementPanel.cardEl, { attributes: true, attributeFilter: ['hidden'] });
   // The card: over the game's top right corner on PC, above the ask bar on a phone.
   const placeCard = () => {
     const want = phone() ? cardSlot : inspector;
@@ -14113,7 +14341,10 @@ function start(host            ) {
     filePick = [];
     // Phone: the Library is its own sheet; the scene list closes behind it. The Scene from the Library sheet (its
     // head's switch) opens the Scene's list sheet over the game.
-    if (phone()) sheetOpen = id === 'placement';
+    if (phone()) {
+      sheetOpen = id === 'placement';
+      unfoldFor();
+    }
     // The objects' files may have changed while the Library was away (copies, the AI's change): read them again.
     if (id === 'library') {
       usesP = null;
@@ -14125,6 +14356,7 @@ function start(host            ) {
   function openSettings() {
     page = 'settings';
     if (phone()) sheetOpen = true;
+    unfoldFor();
     renderAll();
     panel.scrollTop = 0;
   }
@@ -14191,6 +14423,7 @@ function start(host            ) {
     page = 'next';
     nextOpen = step;
     if (phone()) sheetOpen = true;
+    unfoldFor();
     renderAll();
     // The sheet keeps the list's scroll; start the page at its title and
     // "← Close" (on the phone they were scrolled out of sight).
@@ -14292,6 +14525,7 @@ function start(host            ) {
     // A new request: the marks of the AI's previous change are history now.
     aiReloadFor = null;
     aiBase = null;
+    aiBaseCode = null;
     aiAfter = null;
     lastChange = null;
     // The host's answer says at once whether an AI watches (no 20 s of not knowing).
@@ -14907,6 +15141,8 @@ function start(host            ) {
             uiModel.moved(a.key, a.pose);
             send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'ui' });
           }
+          // As for the world below: a new `was` goes to the draft.
+          if (uiLost?.code.length) keepSoon();
           if (editLayer === 'ui') {
             items = m.items;
             itemsSeen = true;
@@ -14926,9 +15162,12 @@ function start(host            ) {
         // First list after "Reload the game" (AI done): what moved or is new
         // compared with what was on screen before the reload. Raw adapter
         // poses (the game's code as the AI left it), before the model's.
+        // A page after the AI's change (its draft may have been tidied away by the AI: keepNow `again`, below).
+        const afterAi = !!aiBefore;
         if (aiBefore) {
           const before = aiBefore;
-          aiBefore = null;
+          const beforeCode = aiBeforeCode;
+          aiBefore = aiBeforeCode = null;
           aiMarks = new Map();
           const now0 = new Set(m.items.map((i) => i.key));
           // An object without a name gets a new path key when the AI adds things before it in the
@@ -14942,7 +15181,11 @@ function start(host            ) {
               continue;
             }
             if (!was) aiMarks.set(it.key, 'added');
-            else if (!samePose({ ...it.pose, z: undefined }, { ...was, z: undefined }, dim)) aiMarks.set(it.key, 'moved');
+            else if (!samePose({ ...it.pose, z: undefined }, { ...was, z: undefined }, dim)) {
+              // At its old code's pose: the person's unsaved move is not shown yet (it is pushed back below), not the AI's.
+              const code0 = beforeCode?.get(it.key);
+              if (!code0 || !samePose({ ...it.pose, z: undefined }, { ...code0, z: undefined }, dim)) aiMarks.set(it.key, 'moved');
+            }
           }
           const now = new Set(m.items.map((i) => i.key));
           aiGone = Math.max(0, [...before.keys()].filter((k) => !now.has(k)).length - renamed);
@@ -14985,7 +15228,13 @@ function start(host            ) {
             worldModel.moved(a.key, a.pose);
             send({ type: 'studio:placement/pose', key: a.key, pose: a.pose });
           }
+          // The new code moved things (their `was` is new): the draft must say so before Play, whose bridge puts a move
+          // only on an object standing at the draft's `was` (togglePlay writes it too; this is for a tab closed first).
+          if (lost.code.length) keepSoon();
         }
+        // After the AI's change, the unsaved arrangement goes to disk again even if it is what was written last: the AI
+        // may have taken placement.json away while it worked (see keepNow), and a closed tab must not lose the moves.
+        if (afterAi && placementDirty() > 0) void keepNow(true);
         // ... and the saved copies and deletions the AI has not put in the code yet.
         const fe = model.takeFileEdits();
         if (fe.copies.length) send({ type: 'studio:placement/copy', items: fe.copies });
@@ -15172,14 +15421,24 @@ function start(host            ) {
     if (!unwritten()) return;
     keepTimer = window.setTimeout(() => void keepNow(), 700);
   }
-  /** Write what changed, quietly. */
-  async function keepNow()                {
+  /**
+   * Write what changed, quietly. `again`: write the placement draft even when it is what was written last, if there are
+   * unsaved changes (▶ Play reads it from disk).
+   *
+   * WHY `again` (play-after-ai, 2026-10-21, "after asking the AI, Play showed only the AI's change, not my moves"): "the
+   * same as written last" says what THIS page wrote, not what is on disk now. The AI works in the same folder and the
+   * skill has it take applied entries out of placement.json and delete the file when it is empty, so after an AI change
+   * the draft can be gone while the editor still holds the moves (it pushes them to its own pages from memory). Play then
+   * read no draft and opened at the code's layout. Unsaved changes are the editor's, so they are written again before
+   * Play; with nothing unsaved the file is left as the AI left it (a saved arrangement is the AI's to apply and tidy).
+   */
+  async function keepNow(again = false)                {
     clearTimeout(keepTimer);
     if (keeping) await keeping;
     keeping = (async () => {
       const jobs                                = [];
       const file = fileNow();
-      if ((placementDirty() > 0 || written.placement !== undefined) && sigOf(file) !== written.placement) {
+      if ((placementDirty() > 0 || written.placement !== undefined) && (sigOf(file) !== written.placement || (again && placementDirty() > 0))) {
         const v = validatePlacement(file);
         if (!v.ok) {
           showToast(t('save.fail', { error: v.errors.join('; ') }));
@@ -15381,7 +15640,7 @@ function start(host            ) {
   async function togglePlay() {
     // A game tool's data lives in the game page only (unsaved-guard.ts); the placement draft goes along by itself.
     if (!playing && !(await confirmLoss('reload'))) return;
-    if (!playing) await keepNow();
+    if (!playing) await keepNow(true);
     if (swapping) finishSwap();
     playing = !playing;
     if (playing) playSince = Date.now();
@@ -15403,10 +15662,18 @@ function start(host            ) {
     if (why === 'undo') {
       aiBefore = null;
       aiBase = null;
+      aiBeforeCode = aiBaseCode = null;
       setAiMarks(new Map());
     } else {
-      aiBefore = why === 'ai' && aiBase ? aiBase : new Map(worldItems.map((i) => [i.key, structuredClone(worldModel.pose(i.key) || i.pose)]));
-      aiBase = why === 'ai' && aiBusy(currentPhase()) ? aiBefore : null;
+      const keep = why === 'ai' && !!aiBase;
+      aiBefore = keep && aiBase ? aiBase : new Map(worldItems.map((i) => [i.key, structuredClone(worldModel.pose(i.key) || i.pose)]));
+      aiBeforeCode = keep && aiBaseCode ? aiBaseCode : new Map(worldItems.flatMap((i) => {
+        const w = worldModel.original(i.key);
+        return w ? [[i.key, structuredClone(w)]                  ] : [];
+      }));
+      const busy = why === 'ai' && aiBusy(currentPhase());
+      aiBase = busy ? aiBefore : null;
+      aiBaseCode = busy ? aiBeforeCode : null;
     }
     if (why === 'ai' && changeFrom) {
       lastChange = { from: changeFrom, redo: null };
@@ -15914,6 +16181,9 @@ function start(host            ) {
     sheetGrip.setAttribute('aria-label', t('sheet.grip'));
     sheetGrip.title = t('sheet.grip');
     app.dataset.sheet = sheetOpen ? 'open' : 'closed';
+    // Folded (phone / side window only; PC has no sheet to fold): shell.css hides the sheet, the card and the AI's line.
+    if (fold && phone()) app.dataset.fold = 'min';
+    else delete app.dataset.fold;
     app.dataset.view = tool; // not data-tool: the Scene / Assets rows carry data-tool
     app.dataset.page = page;
     // The Library takes the game's place: the card steps away.
@@ -15962,9 +16232,10 @@ function start(host            ) {
     } else if (listTools.parentElement === headTools) {
       placementPanel.el.prepend(listTools);
     }
-    // The phone's list button: a list icon that turns into a chevron when the sheet is open.
-    setButton(sheetBtn, sheetOpen ? 'chevronDown' : 'list', sheetOpen ? t('btn.close') : t('btn.list'), false);
-    sheetBtn.setAttribute('aria-expanded', String(sheetOpen));
+    // The phone's list button (renderSheetBtn; again at the end, once the card is placed). A language change redraws it.
+    delete sheetBtn.dataset.state;
+    renderSheetBtn();
+    updateCaption();
     renderStatus();
     renderButtons();
     renderPeer();
@@ -16029,6 +16300,7 @@ function start(host            ) {
       placementPanel.render();
     }
     renderShelf();
+    renderSheetBtn();
     // Rows may have come into view without a scroll (a kind opened, the sheet opened).
     thumbsSoon(false);
     sendInset();
@@ -16198,7 +16470,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -16374,19 +16646,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(45);
-const { createLocalHost } = __require(46);
+const { start } = __require(46);
+const { createLocalHost } = __require(47);
 
 start(createLocalHost());
 
 
 };
-__require(47);
+__require(48);
 })();

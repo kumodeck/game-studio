@@ -20,6 +20,10 @@
 //   studio: watch rest (nothing wrong) - …   --watch ended on time (--for): start it again, tell the person nothing
 //   studio: ready <url> pid <n>              --detach: the editor runs on its own (log in .studio/studio.log)
 //   studio: stopped pid <n> …  /  studio: not running …   --stop
+//   studio: open browser - …                 --detach, when this person opens the editor in their browser (open-in.mjs)
+//   <url>                                    --link: the running editor's link, pass included, and nothing else
+//   studio: open-in browser|app (…) - …      --open-in (after the link, when the editor is running)
+// No line ever prints the editor's address without its pass (?t=): such a link only says "Missing pass" (open-in.mjs).
 // Anything meant only for a human (help text, the QR code) goes to stderr.
 
 import { promises as fs, existsSync, realpathSync } from 'node:fs';
@@ -40,6 +44,7 @@ import { pickGamePage, scorePage, entryLine } from './find-game.mjs';
 import { runWatch, AIW_FOR_MIN } from './ai-watch.mjs';
 import { runHook, registerEditor, unregisterEditor } from './ai-wake.mjs';
 import { recordServer, forgetServer, liveServers, stopFolder, detachEditor } from './lifecycle.mjs';
+import { OPEN_PLACES, readOpenPlace, writeOpenPlace, hasPass, browserLine } from './open-in.mjs';
 
 const HELP = `Usage: node studio.mjs <game folder> [options]
 
@@ -56,6 +61,12 @@ Options:
   --detach         start the editor on its own and return: prints "studio: ready <url> pid <n>"
                    (the editor keeps running after this command and your AI's turn end; its
                    output goes to <folder>/.studio/studio.log). Use this to start it.
+  --link           print the running editor's link (with its pass) as one line, nothing else; paste it as it is.
+                   Exit 1 with "studio: not running …" when no editor runs for this folder
+    --open           also open that link in the default browser
+  --open-in <browser|app>  remember where this person opens the editor (.studio/open.json). browser: their
+                   default browser, now (when running) and on every --detach, even with --no-open.
+                   app: back to the window next to the chat (Claude app). Prints the link first
   --stop           stop the editor (and the --watch) started for this folder, by the pids in
                    .studio/server.json and .studio/watch.json. Nothing else is stopped
   --check-view     check that the game looks the same in the editor as when it is played
@@ -99,6 +110,8 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
                    .studio/requests/done/, so the next --requests shows only new ones
   -h, --help       show this help
 
+STUDIO_BROWSER=<command> opens links with that command instead of the default browser (tests).
+
 Nothing is sent anywhere: the server only talks to the browser on this machine (or, with
 --lan, on your local network) and only reads and writes inside the game folder.
 Needs Node.js ${NODE_MIN.join(".")} or later.`;
@@ -117,6 +130,10 @@ export async function main(argv) {
   let entry = args.entry || 'index.html';
   const here = path.dirname(fileURLToPath(import.meta.url));
   if (args.stop) return stopCommand(root);
+  if (args.link) return linkCommand(root, args);
+  if (args.openIn !== undefined) return openInCommand(root, args);
+  // The person asked for their browser once (--open-in browser): it opens there, whatever the start line says.
+  if ((await readOpenPlace(root)) === 'browser') args.open = true;
   if (args.detach) return detachCommand(root, argv, args);
   // --starter: fill a folder that has no game (it may not exist yet), then carry on as usual.
   if (args.starter !== undefined) {
@@ -257,6 +274,52 @@ async function findOwnGame(root) {
   return { root: at, entry, line: entryLine(pick, root) };
 }
 
+/** The editor running for this folder (the newest, when there are two), with a link that has its pass; or null. */
+async function runningEditor(root) {
+  for (const r of await servedRoots(root)) {
+    const live = (await liveServers(r)).filter((s) => hasPass(s.url));
+    if (live.length) return live[live.length - 1];
+  }
+  return null;
+}
+
+// --link: the one line the AI pastes. WHY bare (no "studio: " in front): "paste the output as it is" then is the
+// whole rule; a prefix would have to be cut off by hand, and cutting by hand is how a link loses its pass.
+async function linkCommand(root, args) {
+  const s = existsSync(root) ? await runningEditor(root) : null;
+  if (!s) {
+    process.stdout.write(`studio: not running (no editor started for ${root}) - start it with --detach; its link comes with it\n`);
+    return 1;
+  }
+  process.stdout.write(s.url + '\n');
+  if (args.openNow) openBrowser(s.url);
+  return 0;
+}
+
+// --open-in browser|app: the person said where they want the editor ("in the browser", "in Chrome", "back in the
+// app"). Remembered for this game (.studio/open.json), and done now when the editor is running.
+async function openInCommand(root, args) {
+  if (!OPEN_PLACES.includes(args.openIn)) {
+    process.stderr.write(`studio: --open-in must be ${OPEN_PLACES.join(' or ')}\n`);
+    return 2;
+  }
+  if (!existsSync(root) || !(await fs.stat(root)).isDirectory()) {
+    process.stderr.write(`studio: ${root} isn’t a folder. Check the path and try again.\n`);
+    return 2;
+  }
+  const p = await writeOpenPlace(root, args.openIn);
+  const s = await runningEditor(root);
+  if (s) process.stdout.write(s.url + '\n');
+  const opened = Boolean(s) && args.openIn === 'browser' && args.open !== false;
+  if (opened) openBrowser(s.url);
+  const what = args.openIn === 'browser'
+    ? (opened ? 'opened the link in the default browser; from now on --detach opens it there too'
+      : s ? 'remembered; from now on --detach opens it there' : 'remembered; the editor is not running: --detach starts it in the browser')
+    : (s ? 'remembered; open the link next to the chat (preview_start), as before' : 'remembered; start it with --detach --no-open and open it next to the chat');
+  process.stdout.write(`studio: open-in ${args.openIn} (${p}) - ${what}\n`);
+  return 0;
+}
+
 async function stopCommand(root) {
   if (!existsSync(root)) {
     process.stderr.write(`studio: ${root} isn’t a folder. Check the path and try again.\n`);
@@ -277,14 +340,16 @@ async function detachCommand(root, argv, args) {
     process.stderr.write(`studio: ${root} isn’t a folder. Check the path and try again.\n`);
     return 2;
   }
+  // This person opens the editor in their browser (--open-in browser): the editor opens there by itself, --no-open or
+  // not (main() above), and the AI is told so on the line after `ready`, before it reaches for the pane (open-in.mjs).
+  const inBrowser = (await readOpenPlace(root)) === 'browser';
   // Already open for this folder (the agent ran the start line twice, or a new turn): the same editor, not a second.
-  for (const r of await servedRoots(root)) {
-    const live = (await liveServers(r)).filter((s) => s.url);
-    if (live.length) {
-      const s = live[live.length - 1];
-      process.stdout.write(`studio: ready ${s.url} pid ${s.pid} (already running)\n`);
-      return 0;
-    }
+  // Its link comes from server.json with the pass, the same line as a fresh start (never a bare /__studio/).
+  const s = await runningEditor(root);
+  if (s) {
+    process.stdout.write(`studio: ready ${s.url} pid ${s.pid} (already running)\n`);
+    if (inBrowser) process.stdout.write(browserLine(false) + '\n');
+    return 0;
   }
   await fs.mkdir(path.join(root, '.studio'), { recursive: true });
   const log = path.join(root, '.studio', 'studio.log');
@@ -293,6 +358,7 @@ async function detachCommand(root, argv, args) {
   if (r.code === 0) {
     for (const l of r.lines) process.stdout.write(l + '\n');
     process.stdout.write(`studio: ready ${r.url} pid ${r.pid}\n`);
+    if (inBrowser) process.stdout.write(browserLine(true) + '\n');
     process.stderr.write(`The editor keeps running on its own (log: ${log}).\nStop it with: node ${script} ${root} --stop\n`);
     return 0;
   }
@@ -454,6 +520,9 @@ function parseArgs(argv) {
     if (a === '-h' || a === '--help') out.help = true;
     else if (a === '--lan') out.lan = true;
     else if (a === '--no-open') out.open = false;
+    else if (a === '--open') out.openNow = true;
+    else if (a === '--link') out.link = true;
+    else if (a === '--open-in') out.openIn = argv[++i] || '';
     else if (a === '--detach') out.detach = true;
     else if (a === '--stop') out.stop = true;
     else if (a === '--check-view') out.checkView = true;
@@ -498,9 +567,13 @@ function lanAddress() {
   return pick ? pick.address : null;
 }
 
+// STUDIO_BROWSER=<command>: open the link with that command instead of the system's default browser. For tests and
+// try-outs on a machine where no real browser may start (a play test with a real AI: it records the link it was
+// asked to open, link-first 2026-10-21); a person never needs it.
 function openBrowser(url) {
   const [cmd, args] =
-    process.platform === 'darwin' ? ['open', [url]]
+    process.env.STUDIO_BROWSER ? [process.env.STUDIO_BROWSER, [url]]
+    : process.platform === 'darwin' ? ['open', [url]]
     : process.platform === 'win32' ? ['cmd', ['/c', 'start', '""', url]]
     : ['xdg-open', [url]];
   try {

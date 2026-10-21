@@ -437,12 +437,20 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // What the strip does with several is told once, on the heading's tooltip.
     const h0 = head(h('div', { class: 'stack' }, ...members.slice(0, 3).map((m) => thumbImg(m.key))), d.t('ops.many', { n: members.length }), names, 'group-head');
     h0.title = d.t('ops.groupHint');
+    // While "Select" is on, its "Done" is the way out.
+    // Phone / side window: "Deselect" is a ✕ in the head, after copy and delete (a try of v0.1.7 in the Claude app's side
+    // window, 2026-10-21: as a link under the head it took a whole row of its own, with empty room over it, between the
+    // list and the ask bar). PC keeps the link under the head (shell.css shows one or the other by layout).
+    if (!d.multi()) {
+      const x = h('button', { type: 'button', class: 'icon-btn card-x', dataset: { action: 'select-none' }, onclick: () => d.selectMany([], '') });
+      setButton(x, 'close', d.t('ops.selectNone'), false, tipText(d.t('ops.selectNone'), 'Esc'));
+      h0.querySelector('.card-actions')?.append(x);
+    }
     card.append(h0);
     const body = h('div', { class: 'card-body' });
     if (members.some((m) => m.movable === false)) body.append(h('p', { class: 'muted note-line', text: d.t('ops.lockedSkipped') }));
     const lr = groupLayerRow(keys);
     if (lr) body.append(lr);
-    // While "Select" is on, its "Done" is the way out.
     if (!d.multi()) body.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-none' }, text: d.t('ops.selectNone'), onclick: () => d.selectMany([], '') }));
     card.append(body);
   };
