@@ -144,8 +144,19 @@ export async function newPage(browser, { width, height, mobile = false, cdnCache
           if (m.sessionId === sessionId && m.method === 'Page.loadEventFired') { off(); res(); }
         });
       });
-      await send('Page.navigate', { url });
-      await loaded;
+      // A test's goto is a person choosing to go: the editor's "Leave site?" (beforeunload while something is unsaved,
+      // 2026-10-21) is answered Leave, or the navigation would wait on it forever (studio-save-fab reloads with a change).
+      const offAsk = browser.on((m) => {
+        if (m.sessionId === sessionId && m.method === 'Page.javascriptDialogOpening' && m.params.type === 'beforeunload') {
+          send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
+        }
+      });
+      try {
+        await send('Page.navigate', { url });
+        await loaded;
+      } finally {
+        offAsk();
+      }
     },
     /** Evaluate an expression (or `async () => …` source) in the page and return its JSON value. */
     async eval(expr) {

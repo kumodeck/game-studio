@@ -42,8 +42,10 @@ export interface LibraryObjectsDeps {
   setMulti(on: boolean): void;
   /** The list's picture of an object (a PNG data URL from the game), or null while it is not drawn yet. */
   thumb(key: string): string | null;
-  /** Tiles in view without a picture: ask the game for them first. */
-  wantThumbs(keys: string[]): void;
+  /** The tile's own picture is there: drawn at the tile's size, from the game as it is now (not the list's 96 px one). */
+  sharp(key: string): boolean;
+  /** Tiles in view without their own picture: ask the game for them first, `px` square (twice the tile on screen). */
+  wantThumbs(keys: string[], px: number): void;
   pose(key: string): Pose | undefined;
   dim(): Dim;
   /** A press on a tile: pick (or add / take out with `add`), never moving the camera or leaving the Library. */
@@ -77,6 +79,9 @@ export interface LibraryObjectsPart extends LibraryObjects {
 }
 
 const base = (p: string) => p.slice(p.lastIndexOf('/') + 1);
+
+/** The largest picture a tile asks for (the bridge's cap too, bridge/editor.ts placement/thumbs). */
+export const TILE_PX_MAX = 384;
 
 export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart {
   let onlyFile: string | null = null;
@@ -133,14 +138,19 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
     frame = requestAnimationFrame(() => {
       frame = 0;
       const want: string[] = [];
+      let side = 0;
       for (const tile of shown) {
         if (!tile.isConnected) continue;
         const box = (tile.closest('.gsl') || document.documentElement).getBoundingClientRect();
         const r = tile.getBoundingClientRect();
         if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
-        if (!d.thumb(tile.dataset.key!)) want.push(tile.dataset.key!);
+        side = Math.max(side, (tile.querySelector('.gsl-thumb') as HTMLElement | null)?.clientWidth || 0);
+        if (!d.sharp(tile.dataset.key!)) want.push(tile.dataset.key!);
       }
-      if (want.length) d.wantThumbs(want);
+      // Twice the tile's size on screen (Ive review 3 ⑧, 2026-10-20: the tiles showed the list's 96 px picture
+      // stretched to ~140 px, blurred on any screen and twice so on a Retina one), in steps of 32, 96–384.
+      const px = Math.min(TILE_PX_MAX, Math.max(96, Math.ceil((side * 2) / 32) * 32));
+      if (want.length) d.wantThumbs(want, px);
     });
   };
   document.addEventListener('scroll', () => shown.length && thumbsSoon(), { capture: true, passive: true });

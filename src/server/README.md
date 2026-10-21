@@ -8,11 +8,12 @@ dependencies). It is the local implementation of the host interface (contract 3)
     node skills/arrange/bin/studio.mjs <game folder> --stop                 # stop this folder's editor (its stop secret, else pid: .studio/server.json) + watch (pid: watch.json)
     node skills/arrange/bin/studio.mjs <game folder> --requests | --status <state> [--request id] [--changed n] [--note text]
     node skills/arrange/bin/studio.mjs <game folder> --watch                 # the agent's watch (Monitor): a line per request, .studio/watch.json while it runs
-    node skills/arrange/bin/studio.mjs <empty folder> --starter 3d|2d|<id>   # copy a sample game in, then open it
+    node skills/arrange/bin/studio.mjs <empty folder> --starter 3d|2d|<id>   # copy a sample game in, then open it (refused when any game page is there)
     node skills/arrange/bin/studio.mjs --starters                            # list the samples (JSON lines)
 
 - `node-check.mjs` - first code in studio.mjs: on Node older than 22.13, one line ("Game Studio needs Node 22.13 or newer. You have X. Install: https://nodejs.org") and exit 1
 - `starters.mjs` - sample games for a folder without one (`starters/<id>/` with `starter.json`; falls back to examples/three-crates and pixi-garden); `studio: no-game` (exit 4) and `--starter`
+- `find-game.mjs` - no `index.html` (and no `--entry`): finds the person's game page by any name (`neon-orb.html`, `game.html`, `dist/index.html`) by what it runs (engine, canvas, loop; readme/about/test pages never), prints `studio: entry <page>`, serves that page's folder; `studio: build-first` (exit 5) when only a Vite source is there (2026-10-21)
 - `cli.mjs` - arguments, browser opening, stdout lines (`studio: ready|saved|added|next-step|request|stopped`), the EPERM line for sandboxes, and `--requests` / `--status` for the agent (hand-offs, CONTRACT.md §3.4)
 - `lifecycle.mjs` - `--detach` (a new session, so Codex ending its turn does not end the editor), `.studio/server.json` (this folder's editors: pid, address, stop secret) and `--stop` (POST /__studio/stop with the secret — works in Codex's sandbox — else by pid, never by name; agent-solid pass 2026-10-17)
 - `server.mjs` - HTTP: pass + cookie, Host check, routes, API

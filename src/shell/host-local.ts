@@ -65,10 +65,10 @@ function createKumoHost(base: string): KumoHost {
 }
 
 export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
-  const call = async <T>(method: string, path: string, body?: BodyInit, type?: string): Promise<T> => {
+  const call = async <T>(method: string, path: string, body?: BodyInit, type?: string, keepalive = false): Promise<T> => {
     const headers: Record<string, string> = {};
     if (type) headers['content-type'] = type;
-    const r = await fetch(base + path, { method, headers, body, cache: 'no-store', credentials: 'same-origin' });
+    const r = await fetch(base + path, { method, headers, body, cache: 'no-store', credentials: 'same-origin', ...(keepalive ? { keepalive } : {}) });
     const data = (await r.json().catch(() => null)) as (T & { error?: string; details?: string[] }) | null;
     if (!r.ok) {
       const details = data && Array.isArray(data.details) ? `: ${data.details.join('; ')}` : '';
@@ -90,7 +90,11 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
     async save(tool: ToolId, data: object, opts?: { handoff?: boolean }) {
       try {
         const q = opts?.handoff === false ? '?handoff=0' : '';
-        const r = await call<{ request?: string; at?: number; watching?: boolean; seen?: string; undo?: boolean }>('PUT', `files/${tool}${q}`, JSON.stringify(data), 'application/json');
+        const body = JSON.stringify(data);
+        // The draft written as the tab closes (main.ts pagehide, after "Leave" on the browser's question) must outlive
+        // the page: keepalive. Only under the browser's 64 KB keepalive limit (a bigger body would fail outright).
+        const keepalive = opts?.handoff === false && body.length < 60_000;
+        const r = await call<{ request?: string; at?: number; watching?: boolean; seen?: string; undo?: boolean }>('PUT', `files/${tool}${q}`, body, 'application/json', keepalive);
         return { ok: true, request: r.request, at: r.at, watching: r.watching, seen: r.seen, undo: r.undo };
       } catch (e) {
         return { ok: false, error: (e as Error).message };

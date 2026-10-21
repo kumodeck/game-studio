@@ -708,8 +708,11 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   where it leaves it. A pointer-locked game lets go of the mouse when the field
   opens. The game keeps running the whole time.
 - **The moment comes with the words.** A `play` request (`StudioRequestInput`):
-  `text`, `shot` (the game's visible canvases drawn where they sit, ≤ 1024 px
-  wide, JPEG; in Play the edit script asks WebGL for `preserveDrawingBuffer` so
+  `text`, `shot` (a screenshot of the game as the player sees it — its visible
+  canvases and the HTML UI over them, painted in the page's order by
+  `src/bridge/play-shot.ts` without the editor's own parts; not drawn: CSS
+  gradients, shadows, background images, SVG, pictures from another site;
+  ≤ 1024 px wide, JPEG; in Play the edit script asks WebGL for `preserveDrawingBuffer` so
   the last frame can be read), `view` (3D: the player's camera, adapter
   `player()`: `eye`, `target` 10 units ahead), `near` (≤ 12: 3D nearest in front
   of the camera or within 3 units, world distances `d`, ground / sea / sky left

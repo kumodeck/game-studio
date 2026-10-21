@@ -39,6 +39,16 @@ export const KUMO_LOGIN_COMMAND = 'npx kumodeck login';
 const KUMO_3D_WAIT_SEC = 20;
 /** Largest file we take back from KUMODeck (a textured Tripo model is a few MB; addAsset allows 100 MB). */
 const KUMO_MAX_FILE = 100 * 1024 * 1024;
+/**
+ * Most triangles one 3D model from words may have (Tripo's face_limit; KUMODeck checks 500-100,000: the
+ * server's tasks.ts). 5000 = light enough for a web game (Tripo's suggested game value), the default for
+ * every "Make with AI" 3D (2026-10-20). Tried for real once with the same words: without it a 45.7 MB model
+ * of 1.48 million triangles; with it 3.65 MB / 4,635 triangles, a little faster (151 s), the same look and
+ * the same $0.20. faceLimit alone does not change the price, so kumo3dPrice stays as it is.
+ * lowPoly is not sent: it costs +$0.10 and took about 10 minutes.
+ * The "heavy" line and "Ask my AI to make it lighter" stay for heavy 3D brought in from elsewhere.
+ */
+export const KUMO_3D_FACE_LIMIT = 5000;
 
 /**
  * Price of one picture in US dollars (what fal charges; KUMODeck adds nothing).
@@ -255,7 +265,7 @@ export function createKumo(o) {
     await checkBalance(lg, kumo3dPrice({ texture }));
     const r = await call(lg, 'POST', `/v1/projects/${encodeURIComponent(projectId)}/ai/3d/jobs`, {
       task: '3d.from_text',
-      input: { prompt, texture },
+      input: { prompt, texture, faceLimit: KUMO_3D_FACE_LIMIT },
       ...(b.acceptTerms === true ? { acceptTerms: true } : {}),
       waitSec: 0,
     });

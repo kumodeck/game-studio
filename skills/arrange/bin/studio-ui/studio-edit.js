@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.5 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.7 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1391,6 +1391,12 @@ __defs[6] = function (__exports) {
  *   - fog is off (a far object would be a grey square).
  * The camera frames the object's world box from the editor's current viewing direction, slightly from above.
  *
+ * Light effects are left out (Ive review 3 ⑧, 2026-10-20): a lighthouse's beams (additive cards reaching far past the
+ * tower) made its box several times the tower, so the tower came out a small blurred stroke in the middle of its
+ * Library tile. Parts drawn only as light — additive blending, or see-through below 30 % — are hidden while the
+ * picture is drawn and are not in the frame. An object that is ONLY light (a glow on its own) keeps them all.
+ * (bridge/snap.ts / surface.js has its own, wider rule for what can be stood on; a pane of glass is not light.)
+ *
  * See-through background (visual pass 2026-10-16, Ive-view review item 5): the picture used to carry the game's sky
  * (a pale blue square behind every 3D object), so the dark list read as a column of blue tiles and 3D looked
  * different from 2D (whose pictures are see-through, on the shell's checkerboard). The object is now drawn twice,
@@ -1403,13 +1409,34 @@ __defs[6] = function (__exports) {
 const { worldBox } = __require(4);
 
 const DEG = Math.PI / 180;
+const ADDITIVE = 2; // THREE.AdditiveBlending
+
+/** Drawn only as light (see the header): every material of the mesh is additive or nearly clear. */
+function lightOnly(mesh) {
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return mats.length > 0 && mats.every((m) => !!m && (m.blending === ADDITIVE || (m.transparent && typeof m.opacity === 'number' && m.opacity < 0.3)));
+}
 
 function captureObject({ renderer, scene, render, boot, baseCamera, yaw }, object, size = 128) {
   const canvas = renderer.domElement;
   const pr = renderer.getPixelRatio ? renderer.getPixelRatio() : 1;
   const px = Math.max(16, Math.min(size, canvas.width, canvas.height));
   scene.updateMatrixWorld(true);
-  const box = worldBox(object);
+  const glow = [];
+  const walk = (o) => {
+    if (!o.visible) return;
+    if ((o.isMesh || o.isSkinnedMesh) && o.material && lightOnly(o)) glow.push(o);
+    for (const c of o.children) walk(c);
+  };
+  walk(object);
+  for (const g of glow) g.visible = false;
+  let box = worldBox(object);
+  if (!box) {
+    // Only light: draw it as it is.
+    for (const g of glow) g.visible = true;
+    glow.length = 0;
+    box = worldBox(object);
+  }
   if (!box) return { ok: false };
 
   const hidden = [];
@@ -1511,6 +1538,7 @@ function captureObject({ renderer, scene, render, boot, baseCamera, yaw }, objec
     scene.background = saved.background;
     if (renderer.setClearColor) renderer.setClearColor(clear, saved.clearAlpha);
     for (const h of hidden) h.visible = true;
+    for (const g of glow) g.visible = true;
   }
   return { ok: !!dataUrl, dataUrl: dataUrl || undefined };
 }
@@ -1739,7 +1767,7 @@ __defs[9] = function (__exports) {
  * ray reads one cell, a slanted one the cells under its path. The copy is kept until the mesh, its geometry or its
  * matrix changes (WeakMap per mesh), so a dragged crate is re-copied while it moves (small) and the terrain never is.
  */
-const { rayBox, rayTriangle, v } = __require(3);
+const { applyM4, boxCorners, rayBox, rayTriangle, v } = __require(3);
 
 /** Meshes with at least this many triangles get a grid; smaller ones are tested whole (a crate: 12). */
 const GRID_MIN_TRIS = 2000;
@@ -1758,6 +1786,38 @@ function solidMaterial(m) {
   if (m.blending === ADDITIVE) return false;
   if (m.transparent && (m.depthWrite === false || (typeof m.opacity === 'number' && m.opacity < 0.3))) return false;
   return true;
+}
+
+/**
+ * The world box of the parts of `object` that could stand on something — its solid meshes, as surfaceMeshes() counts
+ * them (no light effects, wireframes, lines…) — or null when it has none. The snapping moves measure the foot from it.
+ * WHY not the whole box (review 3 of 2026-10-20): Lantern Cove's lighthouse box held its two 28 m light beams, so the
+ * "bottom middle" foot was nowhere under the tower and the five rays of surfaceBelow() looked at hills 14 m away;
+ * dragged 20 px it jumped 8 m.
+ */
+function solidBox(object) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  let any = false;
+  const walk = (o) => {
+    if (!o.visible) return;
+    if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const g = o.geometry;
+      if (!g.boundingBox && typeof g.computeBoundingBox === 'function') g.computeBoundingBox();
+      const b = g.boundingBox;
+      if (mats.some(solidMaterial) && b && isFinite(b.min.x) && isFinite(b.max.x)) {
+        for (const c of boxCorners([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z])) {
+          const p = applyM4(o.matrixWorld.elements, c);
+          for (let i = 0; i < 3; i++) (min[i] = Math.min(min[i], p[i])), (max[i] = Math.max(max[i], p[i]));
+        }
+        any = true;
+      }
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(object);
+  return any ? { min, max } : null;
 }
 
 /**
@@ -1910,6 +1970,23 @@ function castSurface(ray, meshes, { minUp = 0.5, maxT = Infinity } = {}) {
 }
 
 /**
+ * Every surface the ray meets (as castSurface: the same faces count), nearest first. adapter.js's move looks down
+ * through all of them for the highest it may step onto (a pine's crown above the hill is skipped, the hill is not).
+ */
+function castSurfaceAll(ray, meshes, opts) {
+  const out = [];
+  let hit;
+  let r = ray;
+  // castSurface again from just past each hit (1e-4 m: a face shared by two triangles is not met twice): few hits per
+  // ray (2–4 in Lantern Cove), and castSurface's tests stay the one rule. `t` from the ray's own origin.
+  for (let n = 0; n < 16 && (hit = castSurface(r, meshes, opts)); n++) {
+    out.push({ ...hit, t: v.len(v.sub(hit.point, ray.o)) });
+    r = { o: v.add(hit.point, v.scale(ray.d, 1e-4)), d: ray.d };
+  }
+  return out;
+}
+
+/**
  * The highest surface under a box, looking down from `fromY` (world; adapter.js: the top of the box): five vertical rays, the box's middle and four
  * points halfway to its corners. The highest hit wins: an object half over a pier's edge rests on the pier, and on a
  * slope it rests on the uphill side instead of sinking into it. null = nothing below.
@@ -1931,8 +2008,10 @@ function surfaceBelowHit(box, fromY, meshes) {
   return top;
 }
 
+__def(__exports, "solidBox", () => solidBox);
 __def(__exports, "surfaceMeshes", () => surfaceMeshes);
 __def(__exports, "castSurface", () => castSurface);
+__def(__exports, "castSurfaceAll", () => castSurfaceAll);
 __def(__exports, "surfaceBelow", () => surfaceBelow);
 __def(__exports, "surfaceBelowHit", () => surfaceBelowHit);
 };
@@ -2020,18 +2099,46 @@ __defs[11] = function (__exports) {
  */
 
 const { collectCandidates } = __require(2);
-const { project, rayFromCamera, rayPlaneY, viewProjOf, wrapAngle } = __require(3);
+const { project, rayFromCamera, rayPlaneY, v, viewProjOf, wrapAngle } = __require(3);
 const { pickNear: pickNearImpl, screenRect, screenShare, worldBox } = __require(4);
 const { createEditView, yawOfCamera } = __require(5);
 const { captureObject } = __require(6);
 const { assetsOf: assetsOfImpl } = __require(7);
 const { focusSphere, sceneSphere } = __require(8);
-const { castSurface, surfaceBelowHit, surfaceMeshes } = __require(9);
+const { castSurface, castSurfaceAll, solidBox, surfaceBelowHit, surfaceMeshes } = __require(9);
 const { groundKeys } = __require(10);
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
 const S_MAX = 1000;
+/**
+ * The move on surfaces (dragOnSurface): the steepest the ground may look before a screen step stops being read "on
+ * the ground" — sin of the angle the view meets the ground at the foot. 0.25 ≈ 14°: a step up or down the screen then
+ * moves the foot at most 4× what a step across does. Below it (a hill seen from the cove, from below its top) the
+ * foot's ground is seen edge-on and following it exactly makes metres of a pixel.
+ */
+const GRAZE = 0.25;
+/**
+ * The move on surfaces: the highest a step goes up onto ANOTHER surface (m). 1.2: the pier's planks (1.11 over the
+ * sea), a crate's lid — not a pine's lowest boughs (~2 m) or the cottage's eaves (2.6 m): with 1.5 and five rays
+ * under the cottage's box, the cottage dragged 120 px climbed a pine's crown step by step to 8 m. On the surface
+ * it stands on (the same mesh: the hill) the foot follows it up and down freely.
+ */
+const STEP_UP = 1.2;
+/**
+ * The move on surfaces: what the pointer shows (the first face along the ray) pulls the step toward it only when it
+ * is at most this far from the stepped place (m): a barrel pulled onto the pier's planks, a foot that lagged on a
+ * slope. 2: farther is not the foot's ground but something in front of or behind it (the slope in front of the
+ * lighthouse's hill is 8 m off) and is left alone.
+ */
+const REACH = 2;
+/**
+ * The move on surfaces: how far one step may go toward what the pointer shows, as a share of the step itself. 0.5:
+ * the foot comes back under the pointer over a few steps and a step is never more than 1.5× itself. WHY not all at
+ * once (the same day): a small bump in front of the cottage's and a pine's foot took the place under the pointer
+ * 1.1 m nearer after a 4 px move, and the first step was a 1 m hop toward the camera.
+ */
+const PULL = 0.5;
 
 function bootState() {
   const b = globalThis.__studioThree;
@@ -2221,6 +2328,13 @@ function createThreeAdapter({ scene, renderer, camera }) {
     return out;
   }
   /**
+   * The box the snapping measures from: the solid parts only (surface.js solidBox — a lighthouse without its light
+   * beams), or the whole box when nothing in it is solid (an object made only of a glow still moves).
+   */
+  function footBox(o) {
+    return solidBox(o) || worldBox(o);
+  }
+  /**
    * World heights of the object's bottom (its box) and of the highest surface under it, looking down from the top of
    * its box: a thing sunk into the ground or the water still finds the surface it stands in (Lantern Cove's props
    * stand 15 cm deep; its barrel floats with its middle under the water — the first version looked down from the
@@ -2228,7 +2342,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
    */
   function restOf(o, keys) {
     scene.updateMatrixWorld(true);
-    const b = worldBox(o);
+    const b = footBox(o);
     if (!b) return null;
     const meshes = surfaceMeshes(scene, skipFor(o, keys));
     const hit = surfaceBelowHit(b, b.max[1] + 1e-4, meshes);
@@ -2310,39 +2424,94 @@ function createThreeAdapter({ scene, renderer, camera }) {
   const touch = () => { dirty = true; };
 
   /**
-   * The move on surfaces (snap on, the object standing): the ray from the camera through the foot's screen point
-   * finds where the foot goes — the nearest face it meets, as Unreal's surface snapping and Blender's Face Project
-   * place things under the cursor. A face to stand on (normal up): there. A wall: the floor at its foot (a ray
-   * straight down from just in front of it). Nothing (the sky): flat at the height it has. The bottom keeps the gap
-   * it had at the grab (`g.stand`: a post sunk 15 cm stays 15 cm deep, a barrel keeps its float) while it is over
-   * the surface it stood on (`g.on`, the same mesh); on another surface its bottom sits exactly on it (a gap above
-   * kept, a sink not: the barrel floating half under the water, dragged onto the pier, stands ON the planks — keeping
-   * its 43 cm float there sank it into them).
+   * The move on surfaces (snap on, the object standing). `g.at` = the foot: the point where the object meets what it
+   * stands on (world; set at the grab, then where each step put it), `g.last` = the pointer (ndc) at the last step.
+   * Each pointer step moves the foot by itself, from where the foot is — never from what a ray meets first:
+   * 1. the step on screen read as a step on the ground at the foot (right / left across the view, up / down the
+   *    screen away / toward; the screen motion one metre each way makes at the foot, solved for the step — exact on
+   *    a ground seen from above, the "up the screen" part capped at 1 / GRAZE where the ground is seen edge-on or
+   *    from below, and up then is always away);
+   * 2. the foot's new height (after 3, which only moves the place): the highest surface straight under it that it
+   *    may go to (the hill — not a pine's crown above it, not the sea under the land; the pier's planks over the
+   *    water); nothing there: flat;
+   * 3. what the pointer shows — the first face to stand on along the ray through the foot's screen point, where
+   *    Unreal's surface snapping puts things — pulls the step toward it (at most PULL of the step) when it is within
+   *    REACH and STEP_UP of the foot: the barrel pulled onto the pier ends where the pointer put it, and a foot that
+   *    lagged on a slope comes back under the pointer.
+   * WHY (review 3 of 2026-10-20): the first version did only (3) and took any face. On a hill seen from the cove the
+   * first face is the slope in front of the object: the lighthouse dragged 20 px jumped 8 m toward the camera,
+   * 120 px flung it 64 m into the hills, up 30 px 78 m, and a ray through the sailboat's sail (a "wall") dropped it to
+   * the boat's foot. Following the ground at the foot's height by the ray instead (tried the same day) turned over
+   * there: from below the hill's top, up the screen meets that height nearer the camera, and up 30 px slid the
+   * lighthouse 12 m down the slope toward the camera.
+   * The bottom keeps the gap it had at the grab (`g.stand`: a post sunk 15 cm stays 15 cm deep, a barrel keeps its
+   * float) while it is over the surface it stood on (`g.on`, the same mesh); on another surface its bottom sits exactly
+   * on it (a gap above kept, a sink not: the barrel floating half under the water, dragged onto the pier, stands ON
+   * the planks — keeping its 43 cm float there sank it into them).
    */
   function dragOnSurface(o, g, ndcX, ndcY) {
     scene.updateMatrixWorld(true);
-    const b = worldBox(o);
+    const b = footBox(o);
     if (!b) return poseOf(o);
-    const ray = rayFromCamera(view.camera, ndcX + g.foot[0], ndcY + g.foot[1]);
     const meshes = surfaceMeshes(scene, skipFor(o));
-    const hit = castSurface(ray, meshes, { minUp: -1 });
-    let to = null;
-    let hitMesh = null;
-    if (hit && hit.normal[1] >= 0.5) (to = hit.point), (hitMesh = hit.mesh);
-    else if (hit) {
-      const back = [hit.point[0] - ray.d[0] * 0.05, hit.point[1] - ray.d[1] * 0.05, hit.point[2] - ray.d[2] * 0.05];
-      const down = castSurface({ o: back, d: [0, -1, 0] }, meshes, { minUp: 0.5 });
-      if (down) (to = down.point), (hitMesh = down.mesh);
+    const at = g.at;
+    // 1. The step on the ground at the foot. Pixels, not ndc: ndc x and y differ by the aspect.
+    const [cw, ch] = cssSize();
+    const vp = viewProjOf(view.camera);
+    const px = (p) => {
+      const q = project(vp, p);
+      return q[3] > 0 ? [(q[0] * cw) / 2, (q[1] * ch) / 2] : null;
+    };
+    const e = view.camera.matrixWorld.elements;
+    const flat = (x, z) => {
+      const l = Math.hypot(x, z);
+      return l > 1e-6 ? [x / l, 0, z / l] : null;
+    };
+    const right = flat(e[0], e[2]);
+    // Away = the camera's forward on the ground; looking straight down it has none, and the screen's up is away.
+    const away = flat(-e[8], -e[10]) || flat(e[4], e[6]);
+    if (!right || !away) return poseOf(o);
+    const f0 = px(at), fr = px(v.add(at, right)), fa = px(v.add(at, away));
+    if (!f0 || !fr || !fa) return poseOf(o);
+    const jr = [fr[0] - f0[0], fr[1] - f0[1]];
+    let ja = [fa[0] - f0[0], fa[1] - f0[1]];
+    const across = Math.hypot(jr[0], jr[1]);
+    if (!(across > 1e-9)) return poseOf(o);
+    if (ja[1] < GRAZE * across) ja = [ja[0], GRAZE * across]; // edge-on or from below: up the screen = away, capped
+    const d = [((ndcX - g.last[0]) * cw) / 2, ((ndcY - g.last[1]) * ch) / 2];
+    const det = jr[0] * ja[1] - jr[1] * ja[0];
+    if (Math.abs(det) < 1e-12) return poseOf(o);
+    const mr = (d[0] * ja[1] - d[1] * ja[0]) / det; // metres right
+    const ma = (jr[0] * d[1] - jr[1] * d[0]) / det; // metres away
+    g.last = [ndcX, ndcY];
+    const x = at[0] + right[0] * mr + away[0] * ma;
+    const z = at[2] + right[2] * mr + away[2] * ma;
+    // 3 (before 2: it only moves the place). Toward what the pointer shows, when it is near.
+    const hit = castSurface(rayFromCamera(view.camera, ndcX + g.foot[0], ndcY + g.foot[1]), meshes, { minUp: 0.5 });
+    const shown = hit && hit.point;
+    let to = [x, at[1], z];
+    if (shown && Math.abs(shown[1] - at[1]) <= STEP_UP) {
+      const gap = Math.hypot(shown[0] - x, shown[2] - z);
+      const pull = Math.min(gap, PULL * Math.hypot(x - at[0], z - at[2]));
+      if (gap <= REACH && gap > 1e-9) to = [x + ((shown[0] - x) * pull) / gap, at[1], z + ((shown[2] - z) * pull) / gap];
     }
-    let bottom;
-    if (to) bottom = to[1] + (hitMesh === g.on ? g.stand : Math.max(0, g.stand));
-    else {
-      to = rayPlaneY(ray, b.min[1]);
-      if (!to) return poseOf(o); // pointing at the sky above the horizon: stay
-      bottom = b.min[1];
+    // 2. Its height there: the highest surface straight under the middle (the foot) that it may go to — on the surface
+    // it stands on, any height (the hill rises under it); onto another one, at most STEP_UP above the foot. WHY the
+    // middle and not restOf()'s five rays (the same day): the cottage's box is 6 m wide, its five rays met the pines
+    // beside it and it climbed them; and on its rise the uphill ray sat 0.8 m over the middle, so the gap measured
+    // that way sank it 0.8 m at the first step (the gap here is measured the same way at the grab: g.at).
+    let under = null;
+    for (const h of castSurfaceAll({ o: [to[0], 1e5, to[2]], d: [0, -1, 0] }, meshes)) {
+      if (h.point[1] > at[1] + STEP_UP && h.mesh !== g.on) continue; // too high a step onto something else
+      under = h;
+      break; // nearest first = the highest that is low enough
     }
+    const hitMesh = under ? under.mesh : null;
+    if (under) to[1] = under.point[1]; // nothing under it (off the land): flat at its height
+    const bottom = hitMesh ? to[1] + (hitMesh === g.on ? g.stand : Math.max(0, g.stand)) : b.min[1];
     const w = worldOrigin(o);
     setWorldPosition(o, [w[0] + to[0] - (b.min[0] + b.max[0]) / 2, w[1] + bottom - b.min[1], w[2] + to[2] - (b.min[2] + b.max[2]) / 2]);
+    g.at = to;
     touch();
     return poseOf(o);
   }
@@ -2581,14 +2750,22 @@ function createThreeAdapter({ scene, renderer, camera }) {
         g.on = r ? r.on : null;
       }
       if (snap.on && !snap.free && g.stand !== undefined && g.stand !== null) {
-        // The foot (bottom middle of the box) on screen, as an offset from the press: the ray through it finds the
-        // surface the foot goes to, and the object stays under the pointer the way it was grabbed.
-        // The foot is where the object meets what it stands on (bottom − gap), not the box's bottom: a sea stack sunk
-        // 4 m into the water had its bottom's ray meet the water well in front of it, so each ↓ step flung it toward
-        // the camera until it filled the view and could no longer be picked (test/web-demo-lp, merge of 2026-10-19).
-        const b = worldBox(o);
-        const f = project(viewProjOf(view.camera), [(b.min[0] + b.max[0]) / 2, b.min[1] - g.stand, (b.min[2] + b.max[2]) / 2]);
-        if (f[3] > 0) Object.assign(g, { mode: 'snap', foot: [f[0] - ndcX, f[1] - ndcY] });
+        // The foot (g.at, see dragOnSurface): where the object meets what it stands on, under the middle of its box.
+        // Its screen point is kept as an offset from the press, so the object stays under the pointer the way it was
+        // grabbed. Bottom − gap, not the box's bottom: a sea stack sunk 4 m into the water had its bottom's ray meet
+        // the water well in front of it, so each ↓ step flung it toward the camera until it filled the view
+        // (test/web-demo-lp, merge of 2026-10-19). The box without light effects (footBox): the lighthouse's foot is
+        // under its tower, not under its beams (review 3, 2026-10-20).
+        const b = footBox(o);
+        const meshes = surfaceMeshes(scene, skipFor(o));
+        const at = [(b.min[0] + b.max[0]) / 2, b.min[1] - g.stand, (b.min[2] + b.max[2]) / 2];
+        // The move measures under the middle only (dragOnSurface 2), so the gap is measured there too, when the
+        // middle stands on the same surface restOf()'s five rays found; a box resting on something else at its edge
+        // (half over the pier) keeps the five rays' gap. Not on a re-grab (Ctrl let go): `keep` is that gap already.
+        const mid = keep === undefined && castSurface({ o: [at[0], b.max[1] + 1e-4, at[2]], d: [0, -1, 0] }, meshes, { minUp: 0.5 });
+        if (mid && mid.mesh === g.on) (g.stand = b.min[1] - mid.point[1]), (at[1] = mid.point[1]);
+        const f = project(viewProjOf(view.camera), at);
+        if (f[3] > 0) Object.assign(g, { mode: 'snap', foot: [f[0] - ndcX, f[1] - ndcY], at, last: [ndcX, ndcY] });
       }
       grabs.set(key, g);
       return true;
@@ -4234,9 +4411,13 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                      
                                                                                                                    
-                                
+                                                                                                                 
+                                                                                                                    
+                                                     
      
-                                                                         
+                                                                                         
+                                                                                                      
+                                
                                                                                                                     
                                                          
                                                                                      
@@ -4306,7 +4487,8 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                                                                  
                                                                                                             
                                                                                                                                   
-                                                                       
+                                                                                                                          
+                                                                                      
                                                                                      
                                                              
                                                                                                                        
@@ -4331,6 +4513,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                   
                                                                                                                    
                                                                                                                   
+                                                                                                              
      
                                                                                                                                        
                                                                                           
@@ -8533,9 +8716,14 @@ function createHandles(doc          , hasLift         )          {
   };
   const positionHint = () => {
     if (hintEl.style.display === 'none') return;
-    const vw = win.innerWidth - inset.left - inset.right;
+    const top = win.innerHeight - inset.bottom - 12 - hintEl.offsetHeight;
+    // The card's room on the right (inset.right) only reaches down to inset.rightTo, as for the camera ↑↓ (rise.ts).
+    // Below the card the line is in the middle of the game, over the ask bar's middle (the third design review's ⑩,
+    // 2026-10-20: centred in the room left of the card, it sat 146 px left of the bar at 1280).
+    const right = inset.rightTo === undefined || top < inset.rightTo ? inset.right : 0;
+    const vw = win.innerWidth - inset.left - right;
     hintEl.style.left = `${inset.left + vw / 2}px`;
-    hintEl.style.top = `${win.innerHeight - inset.bottom - 12 - hintEl.offsetHeight}px`;
+    hintEl.style.top = `${top}px`;
   };
   let menuKind                          = null;
   // Where the strip went last: under the object (true) or over it.
@@ -9232,7 +9420,9 @@ __defs[31] = function (__exports) {
 //   active pointer: the next pointermove would otherwise be dropped and the
 //   drag would stop half-way. Stale pointers are cleaned up by reliable
 //   signals instead (a mouse move with no buttons pressed, a new press with
-//   the same id).
+//   the same id). A release is taken from the first sign of it — pointerup,
+//   lostpointercapture with no button, click, a pointerup in the page above —
+//   at once, never on the next press (first-click pass 2, see onLost).
 // - Several objects (CONTRACT.md §1.8): Shift+click (or a press in "select
 //   several" mode) adds or removes one; Shift+drag from an empty spot (or a
 //   mouse drag from an empty spot in that mode) draws a box. The handles then
@@ -9409,6 +9599,37 @@ function wrap(a        )         {
 const samePose = (a      , b      ) => JSON.stringify(a) === JSON.stringify(b);
 /** One number for a pose's size (the first of three when they differ), never 0. */
 const sizeOf = (p      ) => Math.abs((Array.isArray(p.s) ? p.s[0] : p.s) ?? 1) || 1;
+
+/** Share of the window (0–1) covered by the object's on-screen part (its box, clipped to the window). */
+function screenShareOf(adapter               , win        , k        )         {
+  // 3D: the adapter's own measure (a ground running on under the camera; see StudioAdapter.coverage).
+  try {
+    const c = adapter.coverage?.(k);
+    if (typeof c === 'number' && Number.isFinite(c)) return c;
+  } catch {
+    /* fall back to the box */
+  }
+  const r = adapter.anchor(k)?.rect;
+  if (!r) return 0;
+  // Clipped: the rect is the projected box, so it runs past the window's edges (see grabbable below).
+  const vw = win.innerWidth, vh = win.innerHeight;
+  const cw = Math.max(0, Math.min(vw, r.x + r.w) - Math.max(0, r.x));
+  const ch = Math.max(0, Math.min(vh, r.y + r.h) - Math.max(0, r.y));
+  return vw * vh > 0 ? (cw * ch) / (vw * vh) : 0;
+}
+
+/**
+ * What a tap at (x, y) may pick, best first: pickNear without the ground / background (an Item.backdrop, or a huge
+ * object: what a person calls "nothing" when tapping, see the header). Module-level (first-click pass, 2026-10-20) so
+ * the editor can read a press made while it was still getting ready (early-press.ts) the same way a tap is read.
+ */
+function tappableAt(adapter               , items        , win        , x        , y        , radius        )           {
+  try {
+    return adapter.pickNear(x, y, radius).filter((k) => !items.find((i) => i.key === k)?.backdrop && screenShareOf(adapter, win, k) < HUGE_ON_SCREEN);
+  } catch {
+    return [];
+  }
+}
 
 function attachInput(deps           )              {
   const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits, core } = deps;
@@ -9868,33 +10089,9 @@ function attachInput(deps           )              {
     mode = { kind: 'none' };
   };
 
-  /** Share of the window (0–1) covered by the object's on-screen part (its box, clipped to the window). */
-  const screenShare = (k        ) => {
-    // 3D: the adapter's own measure (a ground running on under the camera; see StudioAdapter.coverage).
-    try {
-      const c = adapter.coverage?.(k);
-      if (typeof c === 'number' && Number.isFinite(c)) return c;
-    } catch {
-      /* fall back to the box */
-    }
-    const r = adapter.anchor(k)?.rect;
-    if (!r) return 0;
-    // Clipped: the rect is the projected box, so it runs past the window's edges (see grabbable below).
-    const vw = win.innerWidth, vh = win.innerHeight;
-    const cw = Math.max(0, Math.min(vw, r.x + r.w) - Math.max(0, r.x));
-    const ch = Math.max(0, Math.min(vh, r.y + r.h) - Math.max(0, r.y));
-    return vw * vh > 0 ? (cw * ch) / (vw * vh) : 0;
-  };
-  /** The ground / background (or a huge object): what a person calls "nothing" when tapping (see the header). */
-  const background = (k        ) => !!state.items.find((i) => i.key === k)?.backdrop || screenShare(k) >= HUGE_ON_SCREEN;
+  const screenShare = (k        ) => screenShareOf(adapter, win, k);
   /** What a tap at the point may pick, best first: pickNear without the background. */
-  const tappable = (p     , radius        ) => {
-    try {
-      return adapter.pickNear(p.x, p.y, radius).filter((k) => !background(k));
-    } catch {
-      return [];
-    }
-  };
+  const tappable = (p     , radius        ) => tappableAt(adapter, state.items, win, p.x, p.y, radius);
 
   const tap = (p     ) => {
     const radius = p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch;
@@ -10112,8 +10309,15 @@ function attachInput(deps           )              {
     block(e);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
-    // Mouse moving with no button pressed = we missed the release.
+    // Mouse moving with no button pressed = we missed the release. But only once it has MOVED (past the tap slop from
+    // where the pointer was): a no-button move on the spot is no news, and the real release follows.
+    // WHY (first-click pass, 2026-10-20 — a try of test demo v16: "I click the lighthouse and it isn't selected"; a
+    // real Chrome, the second click always worked): a real mouse can deliver the move that brought the cursor there
+    // AFTER the press, with no button in it (the second click, on the same spot, has no such move). This line read it
+    // as a lost release and ended the press without a tap, so the first click never selected. headless tests send
+    // the move before the press and never saw it; test/studio-first-click.browser.mjs sends it after.
     if (e.pointerType === 'mouse' && e.buttons === 0) {
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= UI.tapSlopPx) return;
       onUp(e);
       return;
     }
@@ -10206,18 +10410,83 @@ function attachInput(deps           )              {
 
   const onUp = (e              ) => {
     block(e);
-    win.clearTimeout(pressTimer);
-    win.clearTimeout(menuTimer);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
-    ptrs.delete(e.pointerId);
+    // pointerup = let go here; pointercancel / the no-button move of onMove = the press is over, no tap.
+    if (e.type === 'pointerup') release(p, e);
+    else end(p, false);
+  };
+  /**
+   * The press `p` was let go, at `at` (a pointerup / click in this window) or where we last saw it (a release that came
+   * another way): it ends now, a tap if it did not travel.
+   * A release far from the press with no travel seen (mode still "pending") means we missed what came between — the
+   * moves, or this press itself (first-click pass 2, below): the tap is read where the person let go, never on the old
+   * press (that was "the previous object picked").
+   */
+  const release = (p     , at                                       ) => {
+    if (at && mode.kind === 'pending' && Math.hypot(at.clientX - p.x, at.clientY - p.y) > UI.tapSlopPx) {
+      p.x = p.sx = at.clientX;
+      p.y = p.sy = at.clientY;
+    }
+    end(p, true);
+  };
+  /**
+   * Releases that reach us some other way than this window's pointerup (first-click pass 2, 2026-10-20 — a try of test
+   * demo v17 in a real Chrome 152, Mac: click the sailboat → nothing picked; click the lighthouse → the SAILBOAT picked;
+   * a listener on the game window saw only `lostpointercapture`, buttons 0). The pointerup did not reach this window
+   * then, or reached it only just before the next press, which then tapped the old press: "one click late". So a
+   * release is taken AT ONCE from whichever comes first, and the later ones find no press (ptrs) and do nothing:
+   * - lostpointercapture with no button down (onDown captures the press; the browser lets go when the button is up).
+   *   With a button still down (the captured element went away, e.g. the strip re-drawn) the press goes on.
+   * - click in this window (comes after the release; the mouseup does not — onDown's preventDefault stops it).
+   * - pointerup / mouseup in the pages above the game frame (the editor page, the front page), when they can be
+   *   reached (same origin): never blocked there, the press point is used (their coordinates are not the game's).
+   * headless never showed it (the pointerup always came): test/studio-first-click-lag.browser.mjs holds it back,
+   * sends it to the page above, or loses it together with the next press.
+   */
+  const onLost = (e              ) => {
+    const p = ptrs.get(e.pointerId);
+    if (p && e.buttons === 0) release(p);
+  };
+  /** The press a click / a release above is about: by its pointer id, else the only mouse press held. */
+  const pressOf = (e            ) => {
+    const id = (e                ).pointerId;
+    if (typeof id === 'number' && ptrs.has(id)) return ptrs.get(id) ;
+    const mice = [...ptrs.values()].filter((q) => q.type === 'mouse');
+    return mice.length === 1 && ptrs.size === 1 ? mice[0]  : null;
+  };
+  const onClickEnd = (e            ) => {
+    const p = pressOf(e);
+    if (p) release(p, e);
+  };
+  const onUpAbove = (e            ) => {
+    const p = pressOf(e);
+    if (p && e.buttons === 0) release(p);
+  };
+  /** The pages above this game frame that we can reach (same origin), up to the top. */
+  const above           = [];
+  for (let w         = win; w.parent && w.parent !== w; ) {
+    w = w.parent;
+    try {
+      void w.document; // throws for another origin: stop there
+      above.push(w);
+    } catch {
+      break;
+    }
+  }
+
+  /** The press `p` is over: a tap / the place's menu when `tapped` (let go without travel), else just ended. */
+  const end = (p     , tapped         ) => {
+    win.clearTimeout(pressTimer);
+    win.clearTimeout(menuTimer);
+    ptrs.delete(p.id);
     if (mode.kind === 'rise') {
       riseEnd();
       mode = { kind: 'none' };
       return;
     }
     // A right-click (no travel): the place's menu instead of a tap (it picks only what is not picked yet).
-    if (mode.kind === 'pending' && e.type === 'pointerup') {
+    if (mode.kind === 'pending' && tapped) {
       // A right press that flew (WASD held with it) was the engines' fly mode, not a click: no menu.
       if (p.menu) {
         if (!p.flew) contextAt(p);
@@ -10258,6 +10527,9 @@ function attachInput(deps           )              {
   };
 
   const onWheel = (e            ) => {
+    // The web demo's front page, before the editor in it was first pressed (hosts/browser/embed.ts PAGE_WHEEL): the
+    // wheel scrolls that page, not the view. Left for embed.ts's own listener (added after this one) to pass up.
+    if ((win                                      ).__studioPageWheel === true) return;
     block(e);
     const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
     if (!e.ctrlKey && e.deltaMode === 0 && Math.abs(e.deltaX) > 0.5) {
@@ -10399,6 +10671,11 @@ function attachInput(deps           )              {
   win.addEventListener('pointerout', onLeave, opts);
   win.addEventListener('pointerup', onUp, opts);
   win.addEventListener('pointercancel', onUp, opts);
+  // The other ways a release comes (onLost above). Not blocked: lostpointercapture is the browser's own bookkeeping,
+  // and the click is blocked by `block` (added below, after this one: it stops the listeners after it).
+  win.addEventListener('lostpointercapture', onLost, opts);
+  win.addEventListener('click', onClickEnd, opts);
+  for (const w of above) for (const t of ['pointerup', 'mouseup']         ) w.addEventListener(t, onUpAbove, { capture: true });
   win.addEventListener('wheel', onWheel, opts);
   win.addEventListener('keydown', onKey, opts);
   win.addEventListener('blur', onBlur, opts);
@@ -10631,6 +10908,9 @@ function attachInput(deps           )              {
       win.removeEventListener('pointerout', onLeave, opts);
       win.removeEventListener('pointerup', onUp, opts);
       win.removeEventListener('pointercancel', onUp, opts);
+      win.removeEventListener('lostpointercapture', onLost, opts);
+      win.removeEventListener('click', onClickEnd, opts);
+      for (const w of above) for (const t of ['pointerup', 'mouseup']         ) w.removeEventListener(t, onUpAbove, { capture: true });
       win.removeEventListener('wheel', onWheel, opts);
       win.removeEventListener('keydown', onKey, opts);
       win.removeEventListener('blur', onBlur, opts);
@@ -10646,6 +10926,8 @@ function attachInput(deps           )              {
   };
 }
 
+__def(__exports, "screenShareOf", () => screenShareOf);
+__def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
 __defs[32] = function (__exports) {
@@ -10713,13 +10995,14 @@ __defs[33] = function (__exports) {
 // Edit session inside the game page: applies shell messages to the adapter,
 // runs the studio's own draw loop while the game is frozen, and reports
 // changes back. Pointer gestures and handles are attached by input.ts.
-                                                                                                                                                          
+const { UI } = __require(13);
                                              
 const { withRules } = __require(22);
 const { withEdits } = __require(23);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(25);
 const { createToolHost } = __require(26);
-const { attachInput } = __require(31);
+const { attachInput, tappableAt } = __require(31);
+                                                  
 const { firstToTouch, stepDetent } = __require(30);
 const { createHoldState, withHold } = __require(24);
 const { drivenBetween, WATCH_MS } = __require(32);
@@ -10740,6 +11023,8 @@ const { runSelfCheck } = __require(21);
              
                                   
                                      
+                                                                                                                            
+                        
  
 
                          
@@ -11102,7 +11387,7 @@ function createEditor(deps            )         {
         } catch {
           /* no thumbnail: the shell shows a placeholder */
         }
-        post({ type: 'studio:placement/thumb', key: q.key, src });
+        post({ type: 'studio:placement/thumb', key: q.key, src, size: q.size });
       }
     } finally {
       thumbRunning = false;
@@ -11456,6 +11741,11 @@ function createEditor(deps            )         {
       } catch (e) {
         post({ type: 'studio:core/error', message: `begin() failed: ${(e         ).message}` });
       }
+      // A tap made while the editor was getting ready (early-press.ts): read HERE, on the picture it was made on (begin()
+      // opens on the game's own camera), before a saved view or "everything in frame" below moves the view. Picked once
+      // input is attached (below).
+      const early = deps.earlyTaps?.take() ?? null;
+      const earlyKey = early ? (tappableAt(adapter, state.items, win, early.x, early.y, early.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null) : null;
       if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
       else {
         // The opening view: the game's own camera when the adapter has one (three.js, polish pass 2026-10-16),
@@ -11488,6 +11778,7 @@ function createEditor(deps            )         {
         }
       }
       attach();
+      if (earlyKey) select(earlyKey);
       toolHost.announce();
       paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
@@ -11780,10 +12071,12 @@ function createEditor(deps            )         {
           // asks for the rows you can see whenever the list scrolls, so with hundreds of objects the rows in
           // view are drawn next instead of after every earlier request (before: each request ran on its own,
           // 200 at most, in list order — rows further down stayed empty boxes).
-          const size = Math.min(256, Math.max(16, msg.size | 0));
+          // Up to 384: the Library's tiles ask for twice their size on screen (Ive review 3 ⑧, 2026-10-20; the list's
+          // rows ask for 96). A key asked for at another size is a different picture, so it stays queued.
+          const size = Math.min(384, Math.max(16, msg.size | 0));
           const fresh = msg.keys.filter((k) => typeof k === 'string').slice(0, 500);
           const ahead = new Set(fresh);
-          thumbQueue = [...fresh.map((key) => ({ key, size })), ...thumbQueue.filter((q) => !ahead.has(q.key))].slice(0, 2000);
+          thumbQueue = [...fresh.map((key) => ({ key, size })), ...thumbQueue.filter((q) => !(ahead.has(q.key) && q.size === size))].slice(0, 2000);
           if (!thumbRunning) void drawThumbs();
           break;
         }
@@ -11814,6 +12107,456 @@ __def(__exports, "createEditor", () => createEditor);
 };
 __defs[34] = function (__exports) {
 'use strict';
+// ../shell/line-fade.ts
+
+// The AI's finished line goes by itself (2026-10-20: "this line is always there, it's in the way" — the line "● Moved the pillar to the
+// middle of the road (in the game) / 1 thing changed" stayed over the game until the next request).
+//
+// What fades: a line that only REPORTS (done, undone, redone in the editor; "fixed" over the game while playing).
+// What stays: a line that needs the person — the AI's question (asking), a failure (failed: they have to decide what
+// to do next, and the reason is the one thing to read twice), and every "on it" phase (sent, seen, working…: the
+// person is waiting for it, and it is the only sign that something is happening).
+//
+// How long: long enough to read it twice, no longer. A report is read once when it appears and once more when the
+// person looks back from the game to check it; ~250 ms a word is a slow reading pace, so 5 s covers the short ones
+// ("Done." / "1 thing changed"), and the AI's own sentence gets a little more per character up to 10 s (longer than
+// that is no longer a report, it is a fixture). While the pointer is over the line or the keyboard is in it, it never
+// goes; after it leaves, LINE_GRACE_MS more so it does not vanish the moment the mouse slides off.
+//
+// Pure, so test/line-fade.test.ts reads the rules without a browser; main.ts (the editor) and bridge/play-ask.ts (over
+// the game) run the timers.
+                                            
+
+/** The shortest a finished line stays (ms): "Done." read twice. */
+const LINE_MIN_MS = 5000;
+/** The longest (ms): a long reply from the AI. */
+const LINE_MAX_MS = 10_000;
+/** Extra time per character of the line's text (ms): ~20 characters a second, a calm pace in English and in Japanese. */
+const LINE_PER_CHAR_MS = 50;
+/** After the pointer / focus leaves the line (ms). */
+const LINE_GRACE_MS = 2000;
+/** The fade itself (ms; shell.css and bridge/play-ask.ts use the same). */
+const LINE_FADE_MS = 400;
+
+/** Phases whose line goes by itself. Everything else stays as long as it is true. */
+function lineFades(ph         )          {
+  return ph === 'done' || ph === 'undone' || ph === 'redone';
+}
+
+/** How long a finished line with this text stays (ms). */
+function lineStayMs(text        )         {
+  const n = [...(text || '')].length;
+  return Math.max(LINE_MIN_MS, Math.min(LINE_MAX_MS, LINE_MIN_MS + Math.max(0, n - 20) * LINE_PER_CHAR_MS));
+}
+
+/**
+ * What a finished line is about, so the same report that faded does not come back on the next poll (every 3 s the
+ * line is drawn again) or after a save with nothing new: the phase, the AI's status time and its note. A new report
+ * (another request done, Undo, Redo) has another key and shows again. `turn` counts the Undo / Redo presses, so
+ * Undo → Redo → Undo shows "Back to before" again (same phase, same status, a new press).
+ */
+function lineKey(ph         , statusAt                             , note                    , turn = 0)         {
+  return `${ph}|${statusAt ?? ''}|${note ?? ''}|${turn}`;
+}
+
+__def(__exports, "LINE_MIN_MS", () => LINE_MIN_MS);
+__def(__exports, "LINE_MAX_MS", () => LINE_MAX_MS);
+__def(__exports, "LINE_PER_CHAR_MS", () => LINE_PER_CHAR_MS);
+__def(__exports, "LINE_GRACE_MS", () => LINE_GRACE_MS);
+__def(__exports, "LINE_FADE_MS", () => LINE_FADE_MS);
+__def(__exports, "lineFades", () => lineFades);
+__def(__exports, "lineStayMs", () => lineStayMs);
+__def(__exports, "lineKey", () => lineKey);
+};
+__defs[35] = function (__exports) {
+'use strict';
+// ../shell/icons.ts
+
+// Line icons for the shell, drawn here (no icon font, no images from a
+// third party). One grid for all of them: 20×20 view box, 1.5 px stroke, round
+// ends, `currentColor`, so every icon takes the button's text colour and
+// weight and they read as one family next to the system font.
+//
+// WHY drawn icons instead of the Unicode signs used before (↶ ↷ ⚙ ⋯ ⧉): the
+// signs came from whatever font the system picked, at different sizes and
+// weights per OS, and sat off the text baseline. A tool that should disappear
+// behind the game cannot have its few marks look accidental (design pass
+// 2026-10-16, "apple").
+//
+// Visual pass 2026-10-16 ("visual"): the first set mixed stroke weights
+// (1.6 lines, 2.6 dots, 1.0 on the filled ones), square and round corners,
+// and marks of different optical size, so a row of them looked drawn by
+// three hands. One rule now, the way a Mac pro app's symbol set is built:
+//   - 20×20 grid, artwork inside a 14 px live area (3..17), centred;
+//   - every line is 1.5 px ON SCREEN (vector-effect: non-scaling-stroke, the
+//     width comes from CSS --studio-icon-stroke), whatever size the icon is
+//     drawn at, so an 18 px toolbar icon and a 14 px chevron weigh the same
+//     as the regular weight of the system font beside them;
+//   - round caps and joins; boxes have 1.5 corners, never sharp;
+//   - dots are real filled circles (r 1.3), not zero-length strokes (those
+//     changed size with the stroke and looked blotchy at 2.6);
+//   - filled shapes (play, stop, spark) are filled AND stroked, so their
+//     corners round off the same way the lines do.
+const NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Artwork per icon, parts joined with "|". A part is SVG path data, or
+ * "o cx cy" for a dot (filled circle, r 1.3), or "O cx cy r" for a ring.
+ */
+const PATHS                         = {
+  undo: 'M7 4.5 3.5 8 7 11.5|M3.5 8h8.25a4.25 4.25 0 0 1 0 8.5H9',
+  redo: 'M13 4.5 16.5 8 13 11.5|M16.5 8H8.25a4.25 4.25 0 0 0 0 8.5H11',
+  // Four rounded corners: "show the whole scene".
+  frame: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5',
+  // The same four corners around a dot: "the picture the game opens on" (back to the opening view, speed pass).
+  opening: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5|o 10 10',
+  // A window with an arrow out of its top-right corner: "open this in a large window" (the side window's Open large).
+  openLarge: 'M11.5 3.5h5v5|M16.5 3.5 10 10|M14.5 11.5V15a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5h3.5',
+  // Two sliders with their knobs: "how the editor looks".
+  look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
+  play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
+  stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+  // The AI: a four-point spark.
+  spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
+  more: 'o 5 10|o 10 10|o 15 10',
+  list: 'M7.5 5.5h9|M7.5 10h9|M7.5 14.5h9|o 4 5.5|o 4 10|o 4 14.5',
+  // Two rounded sheets, the front one whole.
+  copy: 'M9 7.5h6A1.5 1.5 0 0 1 16.5 9v6a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 15V9A1.5 1.5 0 0 1 9 7.5z|M12.5 5A1.5 1.5 0 0 0 11 3.5H5A1.5 1.5 0 0 0 3.5 5v6A1.5 1.5 0 0 0 5 12.5',
+  trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
+  chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
+  chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  chevronLeft: 'M12 5l-5 5 5 5',
+  chevronRight: 'M8 5l5 5-5 5',
+  check: 'M4.5 10.5l3.5 3.5 7.5-8',
+  arrowUp: 'M10 15.5v-11|M5.5 9 10 4.5 14.5 9',
+  // Layers (2D draw order): a bar = the end of the stack.
+  toFront: 'M4.5 3.5h11|M10 16.5v-9|M6 11.5l4-4 4 4',
+  forward: 'M10 16v-11|M6 9l4-4 4 4',
+  backward: 'M10 4v11|M6 11l4 4 4-4',
+  toBack: 'M4.5 16.5h11|M10 3.5v9|M6 8.5l4 4 4-4',
+  send: 'M10 16V4.5|M5 9.5 10 4.5l5 5',
+  // Rebrand 2026-10-16: the left column's two places and the ⌘K actions.
+  // A box seen from a corner: "the scene".
+  // The UI layer (UI stage 1): a screen with a title bar and a button — "the things drawn over the game".
+  uiLayer: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M6.5 8h5|M6.5 12.5h3.5',
+  // A UI element's kind in the list and on the card (UI stage 1): text (a T), a button, a picture.
+  uiText: 'M5.5 5h9|M10 5v10.5',
+  uiButton: 'M5.5 6.5h9a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 3 11V9a2.5 2.5 0 0 1 2.5-2.5z|M7.5 10h5',
+  uiImage: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M3.5 13l4-4 3 3 2-2 4 4|o 12.5 8',
+  cube: 'M10 3.5 16 6.75v6.5L10 16.5 4 13.25v-6.5L10 3.5z|M4 6.75 10 10l6-3.25|M10 10v6.5',
+  // Four tiles: "the files".
+  grid: 'M4.5 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M12 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M4.5 11H8a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z|M12 11h3.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z',
+  eye: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25',
+  // The eye struck through: "the game's UI is hidden while you edit the world" (layer-switch.ts).
+  eyeOff: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25|M4 16 16 4',
+  plus: 'M10 4.5v11|M4.5 10h11',
+  // The plus turned 45°: close a note.
+  close: 'M6 6l8 8|M14 6l-8 8',
+  // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
+  keyboard: 'M4.5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 13V7a1.5 1.5 0 0 1 1.5-1.5z|o 6.5 8.5|o 10 8.5|o 13.5 8.5|M7.5 11.75h5',
+  swap: 'M4 7h11.5|M12.5 4l3 3-3 3|M16 13H4.5|M7.5 10l-3 3 3 3',
+  globe: 'O 10 10 6.5|M3.5 10h13|M10 3.5c-2.2 2.4-2.2 10.6 0 13|M10 3.5c2.2 2.4 2.2 10.6 0 13',
+  hand: 'M7 10V5.25a1.25 1.25 0 0 1 2.5 0V9|M9.5 8.5V4.25a1.25 1.25 0 0 1 2.5 0V9|M12 8.75V5.5a1.25 1.25 0 0 1 2.5 0V11a5.5 5.5 0 0 1-5.5 5.5h-.3a4.5 4.5 0 0 1-3.6-1.8L3.3 12.2a1.3 1.3 0 0 1 2-1.6L7 12',
+  layers: 'M10 3.5 16.5 7 10 10.5 3.5 7 10 3.5z|M3.5 10.25 10 13.75l6.5-3.5|M3.5 13.5 10 17l6.5-3.5',
+  // The studio's mark: two cards (the KUMODeck "deck"), a little apart. The
+  // front one filled = the scene you have open; the one behind, a line = the
+  // code under it. Simple enough to hold at 16 px.
+  mark: 'M8.5 3.5h6A2 2 0 0 1 16.5 5.5v6|M5.5 6.5h6A2 2 0 0 1 13.5 8.5v6a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z',
+  // Six dots: "drag me" (list grips).
+  grip: 'o 7.5 5.5|o 12.5 5.5|o 7.5 10|o 12.5 10|o 7.5 14.5|o 12.5 14.5',
+  // The tool strip's four tools (the same pictures as the strip in the game, on this 20 grid): ⌘K rows.
+  toolMove: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
+  toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
+  toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
+  toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
+};
+
+/** Icons drawn filled as well as stroked (they read too thin as outlines). */
+const FILLED = new Set(['play', 'stop', 'spark']);
+/** Icons whose LAST part is filled (the mark's front card). */
+const LAST_FILLED = new Set(['mark']);
+
+function part(d        , filled         )             {
+  if (d[0] === 'o' || d[0] === 'O') {
+    const [, cx, cy, r] = d.split(' ');
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', cx);
+    c.setAttribute('cy', cy);
+    if (d[0] === 'o') {
+      // A dot: fill only, so its size does not depend on the stroke width.
+      c.setAttribute('r', '1.3');
+      c.setAttribute('fill', 'currentColor');
+      c.setAttribute('stroke', 'none');
+    } else {
+      c.setAttribute('r', r);
+      c.setAttribute('fill', 'none');
+    }
+    return c;
+  }
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('fill', filled ? 'currentColor' : 'none');
+  return p;
+}
+
+function icon(name                             )                {
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', `icon icon-${name}`);
+  // Stroke colour, caps and joins on the <svg> (inherited by every part); the
+  // width comes from CSS (svg.icon { stroke-width: var(--studio-icon-stroke) })
+  // so a .studio/ui/studio.css can make every icon bolder in one place.
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const filled = FILLED.has(name);
+  const parts = (PATHS[name] || '').split('|');
+  for (const [i, d] of parts.entries()) {
+    const el = part(d, filled || (LAST_FILLED.has(name) && i === parts.length - 1));
+    // The same on-screen line width at every icon size (see the rule above).
+    el.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.append(el);
+  }
+  return svg;
+}
+
+/**
+ * Put an icon and a label into a button. `showLabel: false` keeps the label
+ * for screen readers and the tooltip only (icon-only toolbar buttons).
+ * Re-rendering a button goes through here, so textContent never wipes the icon.
+ */
+function setButton(b                   , name               , label        , showLabel = true, tip         )       {
+  b.replaceChildren();
+  if (name) b.append(icon(name));
+  if (showLabel) {
+    const s = document.createElement('span');
+    s.className = 'label';
+    s.textContent = label;
+    b.append(s);
+  }
+  b.setAttribute('aria-label', label);
+  if (tip !== undefined) b.title = tip;
+  else if (!showLabel) b.title = label;
+}
+
+__def(__exports, "icon", () => icon);
+__def(__exports, "setButton", () => setButton);
+};
+__defs[36] = function (__exports) {
+'use strict';
+// play-shot.ts
+
+// The picture and the UI that go with a request made while playing (CONTRACT.md §3.5; 2026-10-20: "I asked the AI
+// while playing and it ignored the UI on screen").
+//
+// WHY this file: the first picture (2026-10-20) drew only the page's canvases. A game's HUD, title, buttons and score
+// are usually HTML over the canvas, so the AI got a picture without them and could not tell what the person was
+// looking at when they said "make the score bigger" or "this button is in the way". `shootPage` is a screenshot of
+// the page as the player sees it: canvases AND the HTML over them, painted into one canvas. One picture is all that
+// goes (a UI list in words was tried the same day and taken out: "a screenshot is enough").
+//
+// WHY a small painter of our own, not the usual ways:
+// - the browser's own screen capture (getDisplayMedia) asks the person every time with a dialog — in the middle of a
+//   run; the brief says no dialog;
+// - there is no library here (the bridge is one file that goes into every game page);
+// - the SVG <foreignObject> route loads asynchronously, drops the game's style sheets unless each one is copied in,
+//   and in some browsers marks the canvas unreadable (then there is no picture at all).
+// The painter draws what HUDs are made of — boxes with a background colour, a border and round corners, text in its
+// font and colour, images from the game's own site — in the page's painting order (in-flow first, then positioned
+// boxes by z-index), synchronously, at the moment Enter is pressed.
+// NOT drawn (the AI sees the UI's place and words, not its finish): CSS gradients, shadows and glows (text-shadow,
+// box-shadow), CSS background images, inline SVG, rotations (a turned box is drawn upright in its bounds), pictures
+// from another site (drawing one would make the whole picture unreadable), what is typed in a game's input field
+// (its value is not text in the page), anything inside a shadow root or an iframe.
+//
+// The editor's own parts (the ask overlay, the tool strip) are never drawn: `skip` names them.
+
+/** Widest picture sent (px). Enough to read a sign in the game; a 1024 px JPEG is ~100-250 KB. */
+const SHOT_W = 1024;
+/** Text the painter draws at most (characters): a long credits page would otherwise take long frames to paint. */
+const PAINT_CHARS = 4000;
+
+
+// ---------------------------------------------------------------------------
+// The page (browser only)
+// ---------------------------------------------------------------------------
+
+                                      
+
+const isTransparent = (c        ) => !c || c === 'transparent' || /rgba\([^)]*,\s*0(\.0+)?\)$/.test(c) || /\/\s*0(\.0+)?\)$/.test(c);
+const sameSite = (win     , src        ) => {
+  if (!src) return false;
+  if (/^(data|blob):/.test(src)) return true;
+  try {
+    return new URL(src, win.location.href).origin === win.location.origin;
+  } catch {
+    return false;
+  }
+};
+const shown = (cs                     ) => cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse';
+const onScreen = (r         , vw        , vh        ) => r.width >= 1 && r.height >= 1 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
+
+/**
+ * The game as the player sees it — canvases and the HTML UI over them — scaled to SHOT_W at most, as a JPEG. null when
+ * nothing could be drawn (an empty page) or the browser refuses (a canvas with pictures from another site).
+ */
+function shootPage(win     , skip                          )                {
+  const doc = win.document;
+  const vw = win.innerWidth, vh = win.innerHeight;
+  if (!vw || !vh) return null;
+  const k = Math.min(1, SHOT_W / vw);
+  const out = doc.createElement('canvas');
+  out.width = Math.round(vw * k);
+  out.height = Math.round(vh * k);
+  const g = out.getContext('2d');
+  if (!g) return null;
+  g.scale(k, k);
+  // The page's own colour under everything (CSS gives the body's to the whole page when the root has none).
+  const rootBg = [doc.documentElement, doc.body].map((e) => (e ? win.getComputedStyle(e).backgroundColor : '')).find((c) => !isTransparent(c));
+  g.fillStyle = rootBg || '#000';
+  g.fillRect(0, 0, vw, vh);
+  let drawn = 0;
+  let chars = 0;
+  const range = doc.createRange();
+
+  // Positioned boxes are painted after the flow, lowest z-index first (CSS painting order, simplified: a box with
+  // z-index auto takes its parent's).
+  const later                                                                  = [];
+  let order = 0;
+
+  const box = (el         , cs                     , r         , alpha        ) => {
+    const bg = cs.backgroundColor;
+    const bw = parseFloat(cs.borderTopWidth) || 0;
+    const bc = cs.borderTopColor;
+    const paintBg = !isTransparent(bg);
+    const paintBorder = bw > 0 && cs.borderTopStyle !== 'none' && !isTransparent(bc);
+    if (!paintBg && !paintBorder) return;
+    const rad = Math.min(r.width / 2, r.height / 2, cs.borderTopLeftRadius.endsWith('%') ? (parseFloat(cs.borderTopLeftRadius) / 100) * r.width : parseFloat(cs.borderTopLeftRadius) || 0);
+    g.globalAlpha = alpha;
+    g.beginPath();
+    if (rad > 0 && typeof g.roundRect === 'function') g.roundRect(r.left, r.top, r.width, r.height, rad);
+    else g.rect(r.left, r.top, r.width, r.height);
+    if (paintBg) {
+      g.fillStyle = bg;
+      g.fill();
+    }
+    if (paintBorder) {
+      g.lineWidth = bw;
+      g.strokeStyle = bc;
+      g.stroke();
+    }
+    drawn++;
+  };
+
+  const text = (node      , cs                     , alpha        ) => {
+    const raw = node.data;
+    if (!raw.trim() || chars > PAINT_CHARS) return;
+    const tt = cs.textTransform;
+    const show = (s        ) => (tt === 'uppercase' ? s.toUpperCase() : tt === 'lowercase' ? s.toLowerCase() : s);
+    g.globalAlpha = alpha;
+    g.fillStyle = cs.color;
+    g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    g.textBaseline = 'middle';
+    const ls = parseFloat(cs.letterSpacing);
+    if ('letterSpacing' in g) (g                                                        ).letterSpacing = Number.isFinite(ls) ? `${ls}px` : '0px';
+    // Word by word, each where the browser laid it out (wrapped lines, centred text and all); a word the browser broke
+    // over two lines (no spaces: Japanese) letter by letter.
+    const re = /\S+/g;
+    let m                        ;
+    while ((m = re.exec(raw)) && chars <= PAINT_CHARS) {
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m[0].length);
+      const rects = range.getClientRects();
+      if (rects.length === 1) {
+        const q = rects[0] ;
+        if (onScreen(q, vw, vh)) g.fillText(show(m[0]), q.left, q.top + q.height / 2);
+        chars += m[0].length;
+        continue;
+      }
+      let i = m.index;
+      for (const ch of m[0]) {
+        range.setStart(node, i);
+        range.setEnd(node, i + ch.length);
+        const q = range.getClientRects()[0];
+        if (q && onScreen(q, vw, vh)) g.fillText(show(ch), q.left, q.top + q.height / 2);
+        i += ch.length;
+        chars++;
+      }
+    }
+    drawn++;
+  };
+
+  const paint = (el         , alpha        , z        , top         ) => {
+    if (skip(el)) return;
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none') return;
+    const a = alpha * (Number(cs.opacity) || (cs.opacity === '0' ? 0 : 1));
+    if (a <= 0.01) return;
+    const positioned = cs.position !== 'static';
+    const zi = cs.zIndex === 'auto' ? z : Number(cs.zIndex) || 0;
+    if (positioned && !top) {
+      later.push({ el, z: zi, order: order++, alpha });
+      return;
+    }
+    const tag = el.tagName;
+    const r = el.getBoundingClientRect();
+    const visible = cs.visibility === 'visible' && onScreen(r, vw, vh);
+    if (visible && el !== doc.documentElement && el !== doc.body) box(el, cs, r, a);
+    if (visible && tag === 'CANVAS') {
+      try {
+        g.globalAlpha = a;
+        g.drawImage(el                     , r.left, r.top, r.width, r.height);
+        drawn++;
+      } catch {
+        /* this one cannot be read; the others still can */
+      }
+      return;
+    }
+    if (visible && (tag === 'IMG' || tag === 'VIDEO')) {
+      const m = el                                       ;
+      const src = tag === 'IMG' ? m.currentSrc || m.src : m.currentSrc || m.src;
+      // Only the game's own pictures: one from another site would make the whole picture unreadable.
+      const ready = tag === 'IMG' ? m.complete && m.naturalWidth > 0 : m.readyState >= 2;
+      if (ready && sameSite(win, src)) {
+        try {
+          g.globalAlpha = a;
+          g.drawImage(m, r.left, r.top, r.width, r.height);
+          drawn++;
+        } catch {
+          /* not drawable */
+        }
+      }
+      return;
+    }
+    if (tag === 'SVG' || tag === 'svg' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEMPLATE' || tag === 'IFRAME') return;
+    for (const c of Array.from(el.childNodes)) {
+      if (c.nodeType === 3) {
+        if (shown(cs)) text(c        , cs, a);
+      } else if (c.nodeType === 1) paint(c           , a, zi, false);
+    }
+  };
+
+  paint(doc.documentElement, 1, 0, true);
+  while (later.length) {
+    later.sort((x, y) => x.z - y.z || x.order - y.order);
+    const next = later.shift() ;
+    paint(next.el, next.alpha, next.z, true);
+  }
+  g.globalAlpha = 1;
+  if (!drawn) return null;
+  try {
+    return out.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return null;
+  }
+}
+
+__def(__exports, "SHOT_W", () => SHOT_W);
+__def(__exports, "shootPage", () => shootPage);
+};
+__defs[37] = function (__exports) {
+'use strict';
 // play-ask.ts
 
 // Ask your AI while you play (CONTRACT.md §3.5, 2026-10-20: "develop while you play, full screen").
@@ -11838,6 +12581,9 @@ __defs[34] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                              
 const { isStudioMessage } = __require(13);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(34);
+const { icon } = __require(35);
+const { shootPage } = __require(36);
 
                                  
                                   
@@ -11861,6 +12607,13 @@ const { isStudioMessage } = __require(13);
 const LOG_ERRORS = 20;
 const LOG_TAIL = 10;
 const LOG_KEEP = 200;
+
+/**
+ * Below this width the field says it short ("Tell your AI what’s wrong"): the full sentence ("What went wrong? Your AI
+ * sees this moment.") was cut to "…sees this momen" on a 390 px phone (Ive review 3, ④, 2026-10-20). The same width as
+ * the CSS below that hides the field's hint.
+ */
+const NARROW_PX = 520;
 
 /** One console call as one line: strings as they are, errors by their message (first line of the stack), objects as JSON. */
 function logText(args           )         {
@@ -11919,48 +12672,8 @@ function near2D(items                                                           
 }
 
 // ---------------------------------------------------------------------------
-// The picture
+// The picture (play-shot.ts: a screenshot — the canvases and the HTML UI over them)
 // ---------------------------------------------------------------------------
-
-/** Widest picture sent (px). Enough to read a sign in the game; a 1024 px JPEG is ~100-250 KB. */
-const SHOT_W = 1024;
-
-/**
- * The game as the player sees it: every visible canvas drawn where it sits on the page (a game with a UI canvas over
- * the 3D one gets both), scaled to SHOT_W at most, as a JPEG. null when there is no canvas (a game made of HTML) or
- * the browser refuses (a canvas with pictures from another site cannot be read).
- */
-function shoot(win                            )                {
-  const vw = win.innerWidth, vh = win.innerHeight;
-  if (!vw || !vh) return null;
-  const k = Math.min(1, SHOT_W / vw);
-  const out = win.document.createElement('canvas');
-  out.width = Math.round(vw * k);
-  out.height = Math.round(vh * k);
-  const g = out.getContext('2d');
-  if (!g) return null;
-  g.fillStyle = '#000';
-  g.fillRect(0, 0, out.width, out.height);
-  let drawn = 0;
-  for (const c of Array.from(win.document.querySelectorAll('canvas'))) {
-    const r = c.getBoundingClientRect();
-    if (r.width < 8 || r.height < 8 || r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) continue;
-    const cs = win.getComputedStyle(c);
-    if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
-    try {
-      g.drawImage(c, r.left * k, r.top * k, r.width * k, r.height * k);
-      drawn++;
-    } catch {
-      /* this one cannot be read; the others still can */
-    }
-  }
-  if (!drawn) return null;
-  try {
-    return out.toDataURL('image/jpeg', 0.82);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * A WebGL canvas forgets its picture right after each frame is shown, so reading it later (when Enter is pressed)
@@ -12001,11 +12714,22 @@ const CSS = `
 .mark .word { white-space: nowrap; }
 .mark.small .word { display: none; }
 .mark.small { padding: 0 10px; }
+/* After its first 5 s the mark is only ✦ and \`; the pointer on it says what it is again: "Ask your AI \`" (Ive review
+   3, ④: the bare mark said nothing until pressed). No title tooltip on top of it (the words ARE the tooltip). */
+.mark.small:hover .word, .mark.small:focus-visible .word { display: inline; }
+.mark.small:hover, .mark.small:focus-visible { padding: 0 12px 0 10px; }
 kbd { font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 6px; border-radius: 5px;
   background: rgba(255,255,255,.12); color: #f4f4f6; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #8b7cff; flex: none; box-shadow: 0 0 0 3px rgba(139,124,255,.22); }
 .busy .dot { animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(139,124,255,.0); opacity: .55; } }
+/* The way in (the corner mark and the field) carries the editor's ask mark, ✦ (shell/icons.ts 'spark', the same as the
+   editor's "Ask your AI…" field: one sign for "ask your AI" everywhere — Ive review 3, ④). The violet glow the dot had
+   stays, as a soft light round the spark. The line at the top keeps the dot: it is the AI's state, as "● AI" is. */
+.spark { width: 14px; height: 14px; flex: none; color: #8b7cff; display: grid; filter: drop-shadow(0 0 3px rgba(139,124,255,.55)); }
+.spark svg { width: 14px; height: 14px; stroke-width: 1.5px; }
+.busy .spark { animation: glow 1.1s ease-in-out infinite; }
+@keyframes glow { 50% { filter: drop-shadow(0 0 0 rgba(139,124,255,0)); opacity: .55; } }
 .bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
   pointer-events: auto; border-radius: 14px; padding: 8px 8px 8px 14px; display: flex; align-items: center; gap: 10px;
   border-color: rgba(139,124,255,.55); box-shadow: 0 0 0 3px rgba(139,124,255,.18), 0 10px 34px rgba(0,0,0,.4); }
@@ -12027,6 +12751,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
 .x { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: rgba(255,255,255,.6); font-size: 15px; }
 .x:hover { background: rgba(255,255,255,.12); color: #fff; }
 .choices { display: flex; gap: 6px; flex-wrap: wrap; }
+/* "Fixed" goes by itself after it was read (line-fade.ts, 2026-10-20); the corner mark's dot keeps a stronger ring while
+   the fix waits for Reload (\` or the mark, then Enter). */
+.line { transition: opacity .4s cubic-bezier(.2,.8,.2,1), transform .4s cubic-bezier(.2,.8,.2,1); }
+.line.fading { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+.mark.ready .spark { filter: drop-shadow(0 0 2px #8b7cff) drop-shadow(0 0 6px rgba(139,124,255,.8)); }
 [hidden] { display: none !important; }
 @media (max-width: 520px) {
   .line { top: 10px; padding: 7px 8px 7px 12px; }
@@ -12039,7 +12768,7 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
   .mark { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; }
   .mark.small { padding: 0 17px; }
 }
-@media (prefers-reduced-motion: reduce) { .busy .dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .busy .dot, .busy .spark { animation: none; } .line { transition: none; } }
 `;
 
                                     
@@ -12098,7 +12827,21 @@ function startPlayAsk(o                )       {
   let sending = false;
   let sendFailed = false;
   let dismissed = '';
+  // Does this page draw the corner mark? The editor says (play/on `mark`): on a phone the way in is its ✦ in the top bar,
+  // left of Edit, because the corner sat on the game's own words at the foot ("WASD works too", Ive review 3, ④). In
+  // full screen the editor's bar is gone, so the mark comes back here whatever the editor said.
+  let markOn = true;
+  // "Fixed" fades by itself like the editor's finished line (line-fade.ts): `fadeSig` is the line whose timer runs; when
+  // it is due the line goes the way × goes (`dismissed`). Not "failed" / "asking" / "kept": those need the person.
+  let fadeSig = '';
+  let fadeTimer = 0;
+  let leftAt = 0;
   const w = (k        ) => (words && words[k]) || '';
+  const spark = () => {
+    const s = el('span', 'spark');
+    s.append(icon('spark'));
+    return s;
+  };
 
   const el =                                        (tag   , cls        , text         ) => {
     const e = doc.createElement(tag);
@@ -12139,8 +12882,7 @@ function startPlayAsk(o                )       {
     mark = el('button', 'mark glass')                     ;
     mark.type = 'button';
     mark.dataset.part = 'play-ask-mark';
-    mark.append(el('span', 'dot'), el('span', 'word', w('ask')), el('kbd', '', '`'));
-    mark.title = w('askTip');
+    mark.append(spark(), el('span', 'word', w('ask')), el('kbd', '', '`'));
     mark.setAttribute('aria-label', w('askTip'));
     mark.addEventListener('click', () => openBar());
     bar = el('div', 'bar glass');
@@ -12158,12 +12900,17 @@ function startPlayAsk(o                )       {
     close.title = w('close');
     close.setAttribute('aria-label', w('close'));
     close.addEventListener('click', () => closeBar());
-    bar.append(el('span', 'dot'), input, hint, close);
+    bar.append(spark(), input, hint, close);
     line = el('div', 'line glass');
     line.dataset.part = 'play-ask-line';
     line.hidden = true;
     line.setAttribute('role', 'status');
     line.setAttribute('aria-live', 'polite');
+    // In the line = it stays (and coming back during the fade stops it).
+    line.addEventListener('pointerenter', () => holdLine());
+    line.addEventListener('focusin', () => holdLine());
+    line.addEventListener('pointerleave', () => (leftAt = win.performance.now()));
+    line.addEventListener('focusout', () => (leftAt = win.performance.now()));
     wrap.append(mark, line, bar);
     root.append(style, wrap);
     // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
@@ -12174,6 +12921,8 @@ function startPlayAsk(o                )       {
     }
     (doc.body || doc.documentElement).appendChild(host);
     lift();
+    // The short or the long placeholder (NARROW_PX) follows the window.
+    win.addEventListener('resize', () => render());
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
     win.setTimeout(() => mark.classList.add('small'), 5000);
     render();
@@ -12218,12 +12967,18 @@ function startPlayAsk(o                )       {
       void submit();
     }
   }
-  doc.addEventListener('fullscreenchange', () => lift());
-  doc.addEventListener('webkitfullscreenchange', () => lift());
+  // Full screen changes whether the mark is drawn here (markOn), so draw again too.
+  doc.addEventListener('fullscreenchange', () => (lift(), render()));
+  doc.addEventListener('webkitfullscreenchange', () => (lift(), render()));
 
   function openBar() {
     if (!host) return;
     barOpen = true;
+    // The field open again = the person looks for what happened: a "fixed" line that faded comes back (and goes again).
+    if (state && state.state === 'fixed' && dismissed === JSON.stringify(state) && dismissed === fadeSig) {
+      dismissed = '';
+      fadeSig = '';
+    }
     // Pointer-locked games (first person) hold the mouse; let go so the person can type and click.
     try {
       if (doc.pointerLockElement) doc.exitPointerLock();
@@ -12270,8 +13025,9 @@ function startPlayAsk(o                )       {
   /** The words and the moment: picture, player's camera, what is near, the console. Each part is optional. */
   async function moment(text        )                         {
     const now = win.performance.now();
-    // The picture without the field over it (the field is DOM, the picture is the canvas: it never shows anyway).
-    const shot = shoot(win) || undefined;
+    // The picture with the game's HTML UI, without the editor's own parts (this overlay, the editor's tools).
+    const notOurs = (e         ) => e === host || e.tagName === 'GAME-STUDIO-PLAY' || e.hasAttribute('data-studio-ui');
+    const shot = shootPage(win, notOurs) || undefined;
     let view                                                                                 ;
     let near                        ;
     const a = findAdapter();
@@ -12327,24 +13083,68 @@ function startPlayAsk(o                )       {
     return null;
   }
 
+  // ----- the "fixed" line's own clock -----
+  function fadeFor(s                 , sig        ) {
+    if (!s || s.state !== 'fixed' || sig === dismissed) {
+      if (fadeSig !== sig) {
+        win.clearTimeout(fadeTimer);
+        fadeSig = '';
+      }
+      return;
+    }
+    if (fadeSig === sig) return;
+    fadeSig = sig;
+    line.classList.remove('fading');
+    win.clearTimeout(fadeTimer);
+    fadeTimer = win.setTimeout(lineDue, lineStayMs(s.text + (s.asked || '')));
+  }
+  function lineDue() {
+    // Held: the pointer or the keyboard is in it, it just left, or the field is open (the line is what they reply to).
+    if (line.matches(':hover') || line.matches(':focus-within') || barOpen || win.performance.now() - leftAt < LINE_GRACE_MS) {
+      fadeTimer = win.setTimeout(lineDue, 500);
+      return;
+    }
+    line.classList.add('fading');
+    const reduce = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    fadeTimer = win.setTimeout(() => {
+      line.classList.remove('fading');
+      dismissed = fadeSig;
+      render();
+    }, reduce ? 0 : LINE_FADE_MS);
+  }
+  function holdLine() {
+    if (!line.classList.contains('fading')) return;
+    line.classList.remove('fading');
+    win.clearTimeout(fadeTimer);
+    fadeTimer = win.setTimeout(lineDue, LINE_GRACE_MS);
+  }
+
   // ----- drawing: the corner mark, the field, the line -----
   function render() {
     if (!host) return;
     const s = state;
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
-    mark.hidden = barOpen;
+    mark.hidden = barOpen || !(markOn || !!doc.fullscreenElement);
     bar.hidden = !barOpen;
     bar.classList.toggle('busy', sending);
     input.disabled = sending;
     const asking = !!s && s.state === 'asking';
-    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : asking ? w('answerPlaceholder') : w('placeholder');
+    const narrow = win.innerWidth < NARROW_PX;
+    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : asking ? w('answerPlaceholder') : w(narrow ? 'placeholderShort' : 'placeholder');
     hint.textContent = s && s.state === 'fixed' && s.reload ? w('enterReloads') : '';
     hint.hidden = !hint.textContent;
 
     line.replaceChildren();
     const sig = s ? JSON.stringify(s) : '';
     line.hidden = !s || sig === dismissed;
+    fadeFor(s, sig);
+    // A fix that waits for Reload after its line went: the corner dot says so (` or the mark, then Enter reloads).
+    const waiting = !!s && s.state === 'fixed' && !!s.reload && line.hidden;
+    mark.classList.toggle('ready', waiting);
+    // The reload waiting is the one thing the mark's words do not say: only then a tooltip.
+    mark.title = waiting ? w('reloadTip') : '';
+    mark.setAttribute('aria-label', waiting ? w('reloadTip') : w('askTip'));
     if (!s || line.hidden) return;
     line.classList.toggle('busy', busy);
     const say = el('div', 'say');
@@ -12395,8 +13195,14 @@ function startPlayAsk(o                )       {
     const m = ev.data                 ;
     if (m.type === 'studio:play/on') {
       words = m.words;
-      if (doc.body) build();
+      markOn = m.mark !== false;
+      // Sent again when the editor's layout changes (a phone turned, a window made narrow): only the mark changes.
+      if (host) render();
+      else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
+    } else if (m.type === 'studio:play/open') {
+      // The editor's ✦ (phone): the same as ` or the corner mark.
+      if (host && !barOpen) openBar();
     } else if (m.type === 'studio:play/state') {
       state = m.state;
       render();
@@ -12415,13 +13221,432 @@ function startPlayAsk(o                )       {
 
 __def(__exports, "LOG_ERRORS", () => LOG_ERRORS);
 __def(__exports, "LOG_TAIL", () => LOG_TAIL);
+__def(__exports, "NARROW_PX", () => NARROW_PX);
 __def(__exports, "logText", () => logText);
 __def(__exports, "pickLogs", () => pickLogs);
 __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[35] = function (__exports) {
+__defs[38] = function (__exports) {
+'use strict';
+// ../shell/layers.ts
+
+// Draw order (2D layers) in the shell: which object is in front of which.
+// Pure functions over the item list (no DOM), so they are unit-tested.
+//
+// The adapter reports, per object, `layer` (the sibling list it is drawn in,
+// usually its parent) and `pose.z` (its place among the LISTED objects of that
+// list, 0 = back). Changing the order is one setPose with a new z, so undo,
+// redo and the Save count reuse the pose machinery.
+//
+// WHY every target is "the z of another listed sibling" and never z ± 1: the
+// adapter's ranks can have gaps (objects hidden by the game's rules are still
+// counted), and moving to a sibling's z puts the object just past that
+// sibling in the direction of travel. So "forward" always passes exactly one
+// thing the person can see.
+//
+// Ground / background (Item.backdrop, play test 2026-10-16): "to back"
+// once put a rock behind the ground, where it vanished. The backdrops at the
+// back of a list stay there: they have no targets of their own, and nothing
+// else goes behind them ("to back" = just in front of the ground).
+                                           
+
+                                                                    
+
+/** True when the adapter can change the draw order of this object. */
+const hasLayer = (it                  )                                 =>
+  !!it && typeof it.layer === 'string' && typeof it.pose.z === 'number';
+
+/** Listed objects drawn in the same list as `key`, back → front. */
+function siblingsOf(items        , key        )         {
+  const it = items.find((i) => i.key === key);
+  if (!hasLayer(it)) return [];
+  return items.filter((i) => hasLayer(i) && i.layer === it.layer).sort((a, b) => a.pose.z  - b.pose.z );
+}
+
+/**
+ * How many siblings (back → front list) are ground / background kept at the
+ * back: the lowest place anything else may take.
+ */
+function floorOf(sib        )         {
+  let n = 0;
+  while (n < sib.length && sib[n] .backdrop) n++;
+  return n;
+}
+
+/** The z to send for a button/shortcut, or null when the object is already there (or is the ground). */
+function layerTarget(items        , key        , op         )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib.length < 2 || sib[i] .backdrop) return null;
+  const floor = floorOf(sib);
+  const to = op === 'toFront' ? sib.length - 1 : op === 'toBack' ? floor : op === 'forward' ? i + 1 : i - 1;
+  if (to < floor || to >= sib.length || to === i) return null;
+  return sib[to] .pose.z ;
+}
+
+/**
+ * The z to send after a drag in the list. `frontIndex` = where the object was
+ * dropped among its siblings as the list shows them (front first, 0 = top),
+ * counted with the dragged object taken out.
+ */
+function dropTarget(items        , key        , frontIndex        )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib[i] .backdrop) return null;
+  const n = sib.length;
+  // Front-first position k ↔ back-first rank n-1-k; dropped below the ground = just in front of it.
+  const rank = Math.max(floorOf(sib), n - 1 - Math.max(0, Math.min(n - 1, Math.round(frontIndex))));
+  return rank === i ? null : sib[rank] .pose.z ;
+}
+
+/** Keys of one list, back → front (what placement.json `order[].keys` holds). */
+function orderOfLayer(items        , layer        )           {
+  return items.filter((i) => hasLayer(i) && i.layer === layer).sort((a, b) => a.pose.z  - b.pose.z ).map((i) => i.key);
+}
+
+                           
+             
+                                                                                                 
+                
+ 
+                             
+                                                                                         
+                
+                   
+ 
+
+/**
+ * The object list in draw order, front on top. Lists drawn inside a listed
+ * object (Pixi: sprites in a container) are shown right under that object,
+ * indented. Objects without a layer are not included (the caller shows them
+ * after, as before).
+ */
+function layerBlocks(items        )               {
+  const layered = items.filter(hasLayer);
+  const keys = new Set(items.map((i) => i.key));
+  const byLayer = new Map                ();
+  for (const it of layered) {
+    const arr = byLayer.get(it.layer ) || [];
+    arr.push(it);
+    byLayer.set(it.layer , arr);
+  }
+  for (const arr of byLayer.values()) arr.sort((a, b) => b.pose.z  - a.pose.z );
+  const done = new Set        ();
+  const walk = (layer        , depth        , rows            ) => {
+    if (done.has(layer)) return; // a malformed adapter could report a cycle
+    done.add(layer);
+    for (const it of byLayer.get(layer) || []) {
+      rows.push({ item: it, depth });
+      if (byLayer.has(it.key)) walk(it.key, depth + 1, rows);
+    }
+  };
+  const blocks               = [];
+  for (const layer of byLayer.keys()) {
+    if (keys.has(layer)) continue; // drawn inside a listed object: shown under it
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  // Lists whose parent object is listed but never reached (cycles): still show them.
+  for (const layer of byLayer.keys()) {
+    if (done.has(layer)) continue;
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  return blocks;
+}
+
+__def(__exports, "hasLayer", () => hasLayer);
+__def(__exports, "siblingsOf", () => siblingsOf);
+__def(__exports, "floorOf", () => floorOf);
+__def(__exports, "layerTarget", () => layerTarget);
+__def(__exports, "dropTarget", () => dropTarget);
+__def(__exports, "orderOfLayer", () => orderOfLayer);
+__def(__exports, "layerBlocks", () => layerBlocks);
+};
+__defs[39] = function (__exports) {
+'use strict';
+// ../shell/pose-compare.ts
+
+// Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
+// Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
+// poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
+const { LIMITS } = __require(13);
+
+function roundTo(v        , step        )         {
+  return Math.round(v / step) * step;
+}
+
+/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
+function roundPose(p      , dim     )       {
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
+  const out       = { p: p.p.map((v) => fix(v, step)) };
+  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
+  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
+  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
+  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
+  return out;
+}
+
+/**
+ * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
+ *
+ * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
+ * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
+ * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
+ * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
+ */
+function sameAngle(a                    , b                    )          {
+  if (a === undefined || b === undefined) return a === b;
+  const TAU = Math.PI * 2;
+  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
+  // Half a rounding step: values one step apart (a real nudge) still differ.
+  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
+}
+
+function samePose(a                  , b                  , dim     )          {
+  if (!a || !b) return a === b;
+  const x = roundPose(a, dim), y = roundPose(b, dim);
+  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
+  if (!sameAngle(x.r, y.r)) return false;
+  if (!x.t || !y.t) return !x.t === !y.t;
+  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
+}
+
+__def(__exports, "roundPose", () => roundPose);
+__def(__exports, "samePose", () => samePose);
+};
+__defs[40] = function (__exports) {
+'use strict';
+// play-arrange.ts
+
+// ▶ Play inside the editor: the game as the editor shows it — the arrangement on screen, saved or not.
+//
+// WHY (a try of the editor, 2026-10-21: "I moved things, pressed Play without Save, and everything was reset. People want to try
+// a change in Play first, then save it"): before, Play showed only what the game's own code does. A game that reads
+// placement.json itself (the loader, src/loader) got the moves because the editor writes its hidden draft before Play
+// (shell/main.ts keepNow); a game that does not (one the AI just made, before "add the loader") came up at its code's
+// layout, and so did every UI move. Since the polish pass of 2026-10-16 Play already showed the copies and deletions
+// (they lived only in placement.json); now it shows the moves, the draw orders and the UI places as well.
+//
+// The file is the editor's draft (the same placement.json the loader reads: on disk with the local studio, in this
+// browser in the web demo, src/hosts/browser/game-placement.js), read by the bridge when Play opens the page. Nothing is
+// written: Save still writes the file the AI is told about.
+//
+// Only what the page shows AS ITS CODE MAKES IT is changed, so applying twice is harmless:
+//   - a moved object only while it stands at its `was` (the code's own pose): a game whose loader already put it
+//     there is left alone, and so is an object the game itself moved since (physics, a boat on the waves);
+//   - a copy only when the page does not have that key; a deletion only while the object still looks as `was`;
+//   - a reordered list only while it is still in the code's order (`was`).
+// The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
+// offset again rather than adding to it.
+                                                               
+const { hasLayer, orderOfLayer } = __require(38);
+const { samePose } = __require(39);
+
+                                                                                                                                  
+                                                                                                   
+                                                                         
+                                                             
+                           
+                
+                                  
+                  
+                      
+                  
+ 
+
+const nums = (v         )                => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
+const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
+/** A pose of the file, or null when it is not one (the file is untrusted: a hand edit, an older version). */
+function poseOf(e                                                        , base       )              {
+  if (!nums(e.p)) return null;
+  const out       = { p: e.p.slice() };
+  const r = num(e.r) ? e.r : base?.r;
+  if (r !== undefined) out.r = r;
+  const s = num(e.s) || nums(e.s) ? e.s : base?.s;
+  if (s !== undefined) out.s = Array.isArray(s) ? s.slice() : s;
+  const t = nums(e.t) && e.t.length === 2 ? e.t : base?.t;
+  if (t) out.t = [t[0] , t[1] ];
+  return out;
+}
+const flat = (p      )       => ({ ...p, z: undefined });
+
+/**
+ * Put the file's arrangement on the page's objects (see the top of this file). Returns how many changes were made.
+ * `a`: the page's adapter, with objects listed.
+ */
+function arrangeInPlay(a               , file                 )         {
+  if (!file || typeof file !== 'object') return 0;
+  const dim      = file.dim === '2d' ? '2d' : '3d';
+  let shown = 0;
+  const list = () => a.list();
+  const find = (k        ) => list().find((i) => i.key === k);
+  const put = (k        , p      , what        ) => {
+    try {
+      if (a.setPose(k, p)) shown++;
+    } catch (err) {
+      console.warn(`[studio] could not show ${what} ${k} in Play:`, err);
+    }
+  };
+
+  // Deletions first: an object deleted in the editor is not among the moves.
+  if (a.remove && Array.isArray(file.removed)) {
+    for (const r of file.removed) {
+      const it = typeof r?.key === 'string' ? find(r.key) : undefined;
+      if (!it || (typeof r.label === 'string' && r.label !== it.label)) continue;
+      const wp = r.was && nums(r.was.p) ? r.was.p : null;
+      if (wp && it.pose && it.pose.p.some((v, i) => Math.abs(v - (wp[i] ?? 0)) > 1e-3)) continue;
+      try {
+        if (a.remove(it.key)) shown++;
+      } catch {
+        /* keep it */
+      }
+    }
+  }
+
+  // Moves: only an object the page shows where its code puts it (`was`).
+  if (file.objects && typeof file.objects === 'object') {
+    for (const [k, e] of Object.entries(file.objects)) {
+      const it = e && typeof e === 'object' ? find(k) : undefined;
+      if (!it || !e.was) continue;
+      const was = poseOf(e.was, it.pose), want = poseOf(e, it.pose);
+      if (!was || !want) continue;
+      if (!samePose(flat(it.pose), flat(was), dim) || samePose(flat(it.pose), flat(want), dim)) continue;
+      put(k, want, 'the move of');
+    }
+  }
+
+  // Copies (polish pass 2026-10-16): a clone of the original as it stands, so it looks right but does not act (a boat
+  // that floats, a coin that spins) until the AI adds it to the code. A key the page already has is left alone.
+  if (a.clone && Array.isArray(file.added)) {
+    for (const e of file.added) {
+      if (typeof e?.key !== 'string' || typeof e.from !== 'string') continue;
+      if (find(e.key) || !find(e.from)) continue;
+      const pose = poseOf(e);
+      if (!pose) continue;
+      try {
+        if (!a.clone(e.from, e.key)) continue;
+        a.setPose(e.key, pose);
+        shown++;
+      } catch (err) {
+        console.warn('[studio] could not show the copy ' + e.key + ' in Play:', err);
+      }
+    }
+  }
+
+  // Draw orders (2D): a list still in the code's order gets the editor's (z slots, as the editor's own reorder does).
+  if (Array.isArray(file.order)) {
+    for (const o of file.order) {
+      if (typeof o?.in !== 'string' || !Array.isArray(o.keys)) continue;
+      const layer = o.in;
+      const raw = list().filter((i) => hasLayer(i) && i.layer === layer);
+      const now = orderOfLayer(raw, layer);
+      const keys = (o.keys             ).filter((k)              => typeof k === 'string' && now.includes(k));
+      if (keys.join('\n') === now.filter((k) => keys.includes(k)).join('\n')) continue;
+      if (Array.isArray(o.was)) {
+        const was = (o.was             ).filter((k)              => typeof k === 'string');
+        if (now.filter((k) => was.includes(k)).join('\n') !== was.filter((k) => now.includes(k)).join('\n')) continue;
+      }
+      const slots = raw.filter((i) => keys.includes(i.key)).map((i) => i.pose.z ).sort((x, y) => x - y);
+      keys.forEach((k, i) => {
+        const it = raw.find((x) => x.key === k) ;
+        put(k, { ...find(k)?.pose ?? it.pose, z: slots[i]  }, 'the draw order of');
+      });
+    }
+  }
+  return shown;
+}
+
+__def(__exports, "arrangeInPlay", () => arrangeInPlay);
+};
+__defs[41] = function (__exports) {
+'use strict';
+// early-press.ts
+
+// A tap in the game while the editor is still getting ready (first-click pass, 2026-10-20).
+//
+// WHY: the game draws (the lighthouse is right there) a moment before the editor can pick anything: the bridge waits
+// for the scene's objects, then the editor page answers core/ready with core/edit, and only then does input.ts listen.
+// On a slow network or GPU that is a second or more, and the only sign is a small grey line in the list ("Finding
+// objects you can move…"), away from the game (a phone's list is closed). A click in that moment went to the game and was gone: nothing got
+// selected, and the person clicked again (a try of test demo v16: "I click the lighthouse and it isn't selected").
+// Decision (design, this pass): don't throw the click away and don't add a "please wait" sign — remember the last
+// tap, and when the editor begins, pick what was under it. The editor reads it right after adapter.begin(), while the
+// view is still the picture the person tapped on (three.js and 2D both open on the game's own camera there), before
+// a saved view or "everything in frame" moves it (editor.ts setEditing).
+//
+// Only a plain tap counts: the primary pointer, the left button, no modifier, released within the tap slop. A drag or a
+// right-click drops it, and a later tap replaces it (the last one is what the person meant). The listeners sit on the game
+// window in the capture phase, never block anything (the game still runs and gets its input until the editor begins),
+// and go away once the editor has taken the tap.
+const { UI } = __require(13);
+
+                           
+            
+            
+                                                                                          
+               
+ 
+
+                            
+                                                                                         
+                          
+ 
+
+function watchEarlyTaps(win        )            {
+  let down                                     = null;
+  let tap                  = null;
+  const opts = { capture: true };
+  const onDown = (e              ) => {
+    tap = null;
+    down = e.isPrimary && e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+      ? { id: e.pointerId, x: e.clientX, y: e.clientY, type: e.pointerType }
+      : null;
+  };
+  const onMove = (e              ) => {
+    if (down && e.pointerId === down.id && Math.hypot(e.clientX - down.x, e.clientY - down.y) > UI.tapSlopPx) down = null;
+  };
+  const onUp = (e              ) => {
+    if (down && e.pointerId === down.id && Math.hypot(e.clientX - down.x, e.clientY - down.y) <= UI.tapSlopPx) {
+      tap = { x: down.x, y: down.y, type: down.type };
+    }
+    down = null;
+  };
+  // A release that does not come as a pointerup here (first-click pass 2, input.ts onLost): the capture let go with no
+  // button down (when the game captured the press) counts as the release, at the press point.
+  const onLost = (e              ) => {
+    if (down && e.pointerId === down.id && e.buttons === 0) tap = { x: down.x, y: down.y, type: down.type };
+    if (down && e.pointerId === down.id) down = null;
+  };
+  const onCancel = () => (down = null);
+  win.addEventListener('pointerdown', onDown, opts);
+  win.addEventListener('pointermove', onMove, opts);
+  win.addEventListener('pointerup', onUp, opts);
+  win.addEventListener('pointercancel', onCancel, opts);
+  win.addEventListener('lostpointercapture', onLost, opts);
+  let done = false;
+  return {
+    take() {
+      if (done) return null;
+      done = true;
+      win.removeEventListener('pointerdown', onDown, opts);
+      win.removeEventListener('pointermove', onMove, opts);
+      win.removeEventListener('pointerup', onUp, opts);
+      win.removeEventListener('pointercancel', onCancel, opts);
+      win.removeEventListener('lostpointercapture', onLost, opts);
+      return tap;
+    },
+  };
+}
+
+__def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
+};
+__defs[42] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -12437,7 +13662,10 @@ const { adapterFromPort2D } = __require(17);
 const { findDomUi, uiAdapterFromPort } = __require(20);
 const { runSelfCheck } = __require(21);
 const { createEditor } = __require(33);
-const { startPlayAsk } = __require(34);
+const { startPlayAsk } = __require(37);
+const { arrangeInPlay } = __require(40);
+const { applyPlacement } = __require(18);
+const { watchEarlyTaps } = __require(41);
                                                     
 
                                 
@@ -12534,32 +13762,29 @@ function startBridge(opts               )       {
     }
   }
   /**
-   * ▶ Play inside the editor: show the saved copies (and deletions) the AI has
-   * not put in the code yet, as the editor shows them (polish pass 2026-10-16,
-   * play test stumble 2). WHY: a copy lives only in placement.json `added`
-   * until the AI writes it into the code; the game's loader only moves
-   * existing objects, so every copy vanished in Play and a first-time user
-   * read it as "Copy is broken". Same rules as reopening the editor (shell
-   * placement-model.ts applyFileEdits): a key the game already has is an
-   * ordinary object now (skipped); a `removed` key is hidden only while its
-   * label and pose still match `was`. The copy is a clone of the original as
-   * it stands, so it looks right but does not act (a boat that floats, a
-   * coin that spins) until the AI adds it to the code. Games run outside the
-   * editor get the same copies from studio-placement.js (src/loader).
+   * ▶ Play inside the editor: the game as the editor shows it, saved or not (play-arrange.ts says why and what). The
+   * file is the editor's draft, written just before Play opened this page (shell keepNow). Its UI places go through the
+   * loader's own applyPlacement(document, …) (placeUi: the same offset set again, never added), the world's through the
+   * page's adapter once it lists its objects.
    */
   async function showFileEditsInPlay() {
-                                                                                                       
-                                                                             
-    let file                                                  = null;
+    let file                                     = null;
     try {
       const res = await fetch(new URL('placement.json', win.location.href).href, { cache: 'no-cache' });
       if (res.ok) file = await res.json();
     } catch {
       return;
     }
-    const added = Array.isArray(file?.added) ? file .added  : [];
-    const removed = Array.isArray(file?.removed) ? file .removed  : [];
-    if (!added.length && !removed.length) return;
+    if (!file || typeof file !== 'object') return;
+    if (file.ui && typeof file.ui === 'object') {
+      try {
+        await applyPlacement(win.document, { tool: 'placement', objects: {}, ui: file.ui });
+      } catch {
+        /* the UI stays as the game draws it */
+      }
+    }
+    const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length;
+    if (!busy) return;
     await core.time.firstFrame();
     // The game may build its scene a little after its first frame (as in edit mode): look for up to ~5 s.
     let a                       = null;
@@ -12579,39 +13804,9 @@ function startBridge(opts               )       {
       }
       await new Promise((r) => win.setTimeout(r, 150));
     }
-    if (!a || !a.clone) return;
-    let shown = 0;
-    const has = (k        ) => a .list().some((i) => i.key === k);
-    for (const e of added) {
-      if (typeof e.key !== 'string' || typeof e.from !== 'string' || !Array.isArray(e.p)) continue;
-      if (has(e.key) || !has(e.from)) continue;
-      try {
-        if (!a.clone(e.from, e.key)) continue;
-        const pose                          = { p: e.p };
-        if (typeof e.r === 'number') pose.r = e.r;
-        if (e.s !== undefined) pose.s = e.s;
-        if (Array.isArray(e.t)) pose.t = e.t;
-        a.setPose(e.key, pose         );
-        shown++;
-      } catch (err) {
-        console.warn('[studio] could not show the copy ' + e.key + ' in Play:', err);
-      }
-    }
-    if (a.remove) {
-      const items = a.list();
-      for (const r of removed) {
-        const it = typeof r.key === 'string' ? items.find((i) => i.key === r.key) : undefined;
-        if (!it || (typeof r.label === 'string' && r.label !== it.label)) continue;
-        const wp = r.was && Array.isArray(r.was.p) ? (r.was.p            ) : null;
-        if (wp && it.pose && it.pose.p.some((v, i) => Math.abs(v - (wp[i] ?? 0)) > 1e-3)) continue;
-        try {
-          if (a.remove(it.key)) shown++;
-        } catch {
-          /* keep it */
-        }
-      }
-    }
-    if (shown) console.info(`[studio] Play: ${shown} saved cop${shown === 1 ? 'y or deletion' : 'ies or deletions'} shown (not in the code yet)`);
+    if (!a) return;
+    const shown = arrangeInPlay(a, file);
+    if (shown) console.info(`[studio] Play: ${shown} change${shown === 1 ? '' : 's'} from the editor shown (saved or not, not in the code yet)`);
   }
 
   /**
@@ -12691,10 +13886,30 @@ function startBridge(opts               )       {
   // ▶ Play inside the editor: ask your AI without stopping (play-ask.ts, §3.5). Installed now, before the game's code,
   // so the console is kept from its first line and the ask key is the first listener on the window.
   if (!edit && inFrame) {
+    // For tests (test/studio-play-unsaved.browser.mjs), like `_debug` in edit mode: the page's objects as its adapter
+    // lists them while playing, to compare with what the editor showed. Not enumerable, nothing else uses it.
+    Object.defineProperty(api, '_play', {
+      value: Object.freeze({
+        list: () => {
+          for (const p of [...gameProbes, ...opts.builtins]) {
+            try {
+              const a = p.found();
+              if (a) return a.list();
+            } catch {
+              /* next */
+            }
+          }
+          return null;
+        },
+      }),
+      enumerable: false,
+    });
     void showFileEditsInPlay();
     startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins] });
   }
   if (!edit || !inFrame) return;
+  // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.
+  const earlyTaps = watchEarlyTaps(win);
 
   const post = (msg               ) => {
     try {
@@ -12799,7 +14014,7 @@ function startBridge(opts               )       {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0) });
+    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.
@@ -12827,7 +14042,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[36] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -12846,11 +14061,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(35);
+const { startBridge } = __require(42);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(36);
+__require(43);
 })();

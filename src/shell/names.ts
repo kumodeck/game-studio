@@ -259,12 +259,27 @@ export function isGuessed(it: Pick<Item, 'key' | 'group' | 'unstable'>): boolean
 }
 
 /**
+ * A UI element's name, from its data-studio-key: "title-card" → "Title card", "score" → "Score", "startButton" →
+ * "Start button" (Ive review 3 ⑤, 2026-10-20). WHY the key and not the element's text: the text is the whole title
+ * card ("Glow Garden Tap the lanterns to light the garden"), cut to "Glow Garden Tap the lant…" in the list, on the
+ * card and in the ask field's chip, and a score's text changes while it is played. The key is short, never changes,
+ * and is what the AI finds in the code. The text stays as the card's grey second line (placement-panel.ts).
+ */
+export function uiName(key: string): string {
+  const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[-_\s.:#/]+/).filter(Boolean).map((w) => w.toLowerCase());
+  const s = words.join(' ');
+  return s ? s[0]!.toUpperCase() + s.slice(1) : key;
+}
+
+/**
  * The shown name.
+ * - UI (the game's HTML UI, kinds 'ui'): its key in words (uiName).
  * - Named: its label; a second, third… object with the same name (key `tree#2`) reads "tree 2".
  * - Unnamed (`unstable`): the stem of its picture or model file, else the guessed name (guessNames), else
  *   "Unnamed <kind>" (`t('noname.kind.<w>')`).
  */
 export function displayName(it: Pick<Item, 'key' | 'label' | 'kinds' | 'group' | 'unstable'>, t: (k: string) => string): string {
+  if (it.kinds && it.kinds.includes('ui')) return uiName(it.key);
   if (it.unstable) {
     const stem = fileStem(it.group);
     if (stem) return stem;

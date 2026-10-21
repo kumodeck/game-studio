@@ -162,7 +162,7 @@ async function pc(theme) {
     ok(!news.plate && news.inBar, '⑧ "Added … to the scene" is one line inside the ask bar, no plate over it', news);
     await shot('4-added');
 
-    // ⑪ a copy's card: one line; "Select all 2 like this" without the same words as a tooltip.
+    // ⑪ a copy's card: no copy line (5-2 of the third review); "Select all 2 like this" without the same words as a tooltip.
     await page.eval(`studioShell.actions.select('sea-stack')`);
     await sleep(600);
     await press('.card [data-action=copy]');
@@ -171,7 +171,8 @@ async function pc(theme) {
       const k = document.querySelector('.card [data-action=select-kind]');
       return { text: n ? n.textContent.trim() : '', lines: n ? Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight || '16')) : 0,
         kindTitle: k ? k.getAttribute('title') || k.dataset.tip || '' : 'no link', kindText: k ? k.textContent : '' }; })()`);
-    ok(/^Copy of sea-stack · Save to keep it$/.test(card.text) && card.lines <= 1, '⑪ the copy\'s card: one line', card.text);
+    // Since the third design review (5-2, 2026-10-20) there is no line at all: the list's "duplicate" tag and "Save · 1" say it.
+    ok(card.text === '', '⑪ the copy\'s card: no "Copy of … · Save to keep it" line', card.text);
     ok(card.kindTitle === '' || card.kindTitle !== card.kindText, '⑪ "Select all … like this" has no tooltip of the same words', card.kindTitle || 'none');
     await shot('5-copy-card');
 

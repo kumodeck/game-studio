@@ -34,8 +34,10 @@ export function createShortcutSheet(d: ShortcutSheetDeps) {
       const dl = h('dl', { class: 'keys-list' });
       for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()))) {
         const keys = keysOf(k.id, d.mac());
+        // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
+        const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
         dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
-          h('dt', {}, d.t(k.label || `keys.${k.id}`), k.note ? h('span', { class: 'keys-note', text: d.t(k.note) }) : null),
+          h('dt', {}, d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
           h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
       }
       // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).

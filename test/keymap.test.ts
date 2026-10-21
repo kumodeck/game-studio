@@ -100,3 +100,28 @@ test('the fly row: WASD in 3D only, its rule in both languages, read where the k
   assert.equal(toolFromKey('s'), 'scale');
   assert.equal(keyStep('e', false, '3d')?.op, 'rotate');
 });
+
+// Ive review 3 ⑦ / 5-5 (2026-10-20): the ? sheet listed Q E (turn) and E Q (camera), S (Size) and WASD (fly), Esc
+// (deselect) and Esc (put the tool down) with nothing saying which is which. A key in two rows of the same sheet now
+// needs a `when` on the rows that tells them apart — written on the row, not as a new row.
+test('the sheet never shows one key in two rows without saying when', () => {
+  const NAMED = new Set(['Esc', 'End', 'PgUp', 'PgDn', 'Space', 'Delete']);
+  const presses = (k: string): string[] => {
+    if (/^[A-Z]{2,}$/.test(k) && !NAMED.has(k)) return [...k]; // WASD = W, A, S, D
+    const m = /^(⇧ ?)?([←↑↓→]{2,})$/.exec(k);
+    if (m) return [...m[2]!].map((a) => (m[1] ? '⇧' : '') + a);
+    return [k];
+  };
+  for (const dim of ['2d', '3d'] as const) {
+    const rows = KEYMAP.filter((k) => !k.dim || k.dim === dim);
+    const byPress = new Map<string, typeof rows>();
+    for (const r of rows) for (const k of r.keys) for (const p of presses(k)) byPress.set(p, [...(byPress.get(p) || []), r]);
+    for (const [p, rs] of byPress) {
+      if (rs.length < 2) continue;
+      const whens = rs.map((r) => r.when || '');
+      assert.ok(whens.filter((w) => !w).length <= 1 && new Set(whens).size === whens.length,
+        `${dim}: "${p}" is in ${rs.map((r) => `${r.id}(${r.when || 'no condition'})`).join(', ')}`);
+    }
+  }
+  for (const w of ['picked', 'nothing', 'tool']) for (const lang of ['en', 'ja'] as const) assert.notEqual(translate(lang, `keys.when.${w}`), `keys.when.${w}`);
+});

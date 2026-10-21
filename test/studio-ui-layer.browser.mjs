@@ -75,7 +75,7 @@ const uiLook = async (page) => JSON.parse(await page.eval(`(() => { const d = ${
   const look = (k) => { const e = d.querySelector('[data-studio-key="' + k + '"]'); const c = ${WIN}.getComputedStyle(e); return { filter: c.filter, pointer: c.pointerEvents }; };
   const eye = document.querySelector('[data-part=ui-peek]'); const r = eye && eye.getBoundingClientRect();
   return JSON.stringify({ css, title: look('title-card'), start: look('start-button'), startInner: ${WIN}.getComputedStyle(d.querySelector('.title-card h1')).pointerEvents,
-    eye: eye && { hidden: eye.hidden || !eye.offsetParent, pressed: eye.getAttribute('aria-pressed'), text: eye.innerText.trim(), w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2, icon: eye.innerHTML.includes('M4 16 16 4') ? 'off' : 'on' } }); })()`));
+    eye: eye && { hidden: eye.hidden || !eye.offsetParent, pressed: eye.getAttribute('aria-pressed'), text: eye.innerText.trim(), title: eye.title, w: r.width, h: r.height, cx: r.left + r.width / 2, cy: r.top + r.height / 2, icon: eye.innerHTML.includes('M4 16 16 4') ? 'off' : 'on' } }); })()`));
 /**
  * A point inside the UI element `k` (editor page px) with a world object right under it in the game, and that
  * object's key — found with the bridge's under() on a grid over the element's box.
@@ -138,7 +138,8 @@ try {
     assert.ok(sw && !sw.hidden && sw.inHeader, `the switch is in the top bar: ${JSON.stringify(sw)}`);
     near(sw.cx, 640, 2, 'the switch sits in the middle of the bar');
     assert.equal(sw.on, 'world');
-    assert.equal(sw.text.replace(/\s*UI hidden$/, ''), 'World UI');
+    // Ive review 3, "what to cut" 1: no "UI hidden" beside the eye (the eye says it; the words are its tooltip).
+    assert.equal(sw.text, 'World UI');
     const worldKeys = await page.eval(`studioShell.items().map((i) => i.key).sort().join(' ')`);
     assert.match(worldKeys, /lantern-1.*tree-1/, `the world's list: ${worldKeys}`);
     assert.equal(await page.eval(`${DBG}.layer()`), 'world');
@@ -152,7 +153,8 @@ try {
     assert.equal(h0.start.pointer, 'none', 'Start takes no pointer');
     assert.equal(h0.startInner, 'none', 'nor what is inside the title');
     assert.ok(h0.eye && !h0.eye.hidden, 'the eye is there');
-    assert.deepEqual([h0.eye.pressed, h0.eye.text, h0.eye.icon], ['false', 'UI hidden', 'off'], 'the eye says the UI is hidden');
+    assert.deepEqual([h0.eye.pressed, h0.eye.text, h0.eye.icon], ['false', '', 'off'], 'the eye alone says the UI is hidden');
+    assert.equal(h0.eye.title, "Show the game's UI  ⇧U", 'the words are the tooltip');
     assert.ok(h0.eye.cx > sw.cx + 40, 'right of the switch');
     // A click where a UI element sits picks the world object behind it.
     let behind = null;
@@ -169,7 +171,8 @@ try {
     assert.match(h1.css, /filter:opacity\(\.5\)/, `shown faded: ${h1.css}`);
     assert.equal(h1.title.filter, 'opacity(0.5)');
     assert.equal(h1.start.pointer, 'none', 'shown, Start still takes no pointer');
-    assert.deepEqual([h1.eye.pressed, h1.eye.text, h1.eye.icon], ['true', 'UI shown', 'on']);
+    assert.deepEqual([h1.eye.pressed, h1.eye.text, h1.eye.icon], ['true', '', 'on']);
+    assert.equal(h1.eye.title, "Hide the game's UI  ⇧U");
     assert.equal(await page.eval(`${DBG}.layer()`), 'world', '⇧U does not switch the layer');
     if (SHOTS) writeFileSync(join(SHOTS, 'ui-pc-world-peek.png'), await page.screenshot());
     await page.click(h1.eye.cx, h1.eye.cy);

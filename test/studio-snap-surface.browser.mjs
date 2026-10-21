@@ -12,14 +12,25 @@
 // - the ? sheet lists Drop to floor (End) and Move without snapping (⌃ ⌥), ⌘K has Drop to floor.
 // Phone 390×844 (touch): the barrel dragged by the finger onto the pier stands on it; raised, then the place's menu
 // (a long press) "Drop to floor" sets it down.
-// Photos (--shots): <pc|phone>-1-on-pier.png, -2-before-drop.png, -3-after-drop.png.
+// Things standing on the land (review 3 of 2026-10-20: the lighthouse dragged 20 px right jumped 8 m, 120 px flung it
+// 64 m into the hills, and over the sailboat's sail it dropped to the boat's foot): PC, the side window 400×900 (mouse)
+// and the phone (finger), the lighthouse, the cottage, a pine and the sea stack dragged with the Move tool —
+// 20 px moves the foot 20 ± 8 px on screen and at most 2 m in the world; 20 / 60 / 120 px go on the same way (no back
+// and forth, nothing flung far); up / down 30 px go away / toward the camera by a step (≤ 12 m, not 78); the
+// lighthouse pulled right over the sail stays near where it was pulled (not at the boat's foot).
+// Photos (--shots): <pc|phone>-1-on-pier.png, -2-before-drop.png, -3-after-drop.png; <pc|side|phone>-land-<key>-<move>.png.
+//   --part land: only the things on the land (all three sizes).  --theme dark: the dark shell (photos).
+//   --demo: the things on the land in the web demo instead (built into a temporary folder by build-web-demo.mjs and
+//   served as the hosted demo is, test/web-demo-host.mjs): review 3 saw the same jump there.
 // Each run uses a temporary copy of the starter. Needs the network for the starter's libraries (or STUDIO_CDN_CACHE).
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { startStudioServer } from '../src/server/server.mjs';
+import { startHost } from './web-demo-host.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,6 +42,14 @@ const take = (flag, d) => {
 const SHOTS = take('--shots', null) ? resolve(take('--shots')) : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const ONLY = take('--only', null);
+const PART = take('--part', 'all');
+const THEME = take('--theme', 'light');
+const DEMO = args.includes('--demo');
+let demoDir = null;
+if (DEMO) {
+  demoDir = mkdtempSync(join(tmpdir(), 'studio-snap-demo-'));
+  execFileSync(process.execPath, [join(PKG, 'scripts/build-web-demo.mjs'), '--out', demoDir], { stdio: 'ignore' });
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const DBG = `document.querySelector('iframe').contentWindow.__gameStudio?._debug`;
 const MOD = process.platform === 'darwin' ? 4 : 2; // ⌘ / Ctrl for ⌘K
@@ -42,20 +61,31 @@ const PIER_TOP = 1.11;
 
 let failed = 0;
 
-async function run(phone) {
-  const tag = phone ? 'phone' : 'pc';
+/**
+ * Things on the land: [key, metres above the origin to press on (a point on the thing itself)]. The cottage at 2 m (its
+ * walls' top): on the phone demo a finger at 1.3 m (the middle of the wall) does not start a move at all — before
+ * this change too (checked on 512b4ec03, 2026-10-20): left for its own look, not a snapping matter.
+ */
+const LAND = [['lighthouse', 4], ['cottage', 2], ['pine-3', 2], ['sea-stack', 4]];
+/** The drags (px on the page): Ive's measures on the lighthouse (review 3: right 20 / 60 / 120, up 30, down 30). */
+const MOVES = [['r20', 20, 0], ['r60', 60, 0], ['r120', 120, 0], ['u30', 0, -30], ['d30', 0, 30]];
+
+async function run(kind) {
+  const phone = kind === 'phone';
+  const tag = DEMO ? `demo-${kind}` : kind;
   const root = mkdtempSync(join(tmpdir(), `studio-snap-${tag}-`));
   cpSync(join(PKG, 'starters', 'lantern-cove'), root, { recursive: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
-  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'en', theme: 'light' }));
-  const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
+  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'en', theme: THEME }));
+  const srv = DEMO ? await startHost({ dir: demoDir }) : await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
   const browser = await launch();
-  const page = await newPage(browser, phone ? { width: 390, height: 844, mobile: true, cdnCache: process.env.STUDIO_CDN_CACHE } : { width: 1280, height: 800, cdnCache: process.env.STUDIO_CDN_CACHE });
+  const size = phone ? { width: 390, height: 844, mobile: true } : kind === 'side' ? { width: 400, height: 900 } : { width: 1280, height: 800 };
+  const page = await newPage(browser, { ...size, cdnCache: process.env.STUDIO_CDN_CACHE });
   const ok = (m) => console.log(`  ✓ ${tag}: ${m}`);
   const shot = async (name) => {
     if (!SHOTS) return;
     await sleep(500);
-    writeFileSync(join(SHOTS, `${tag}-${name}.png`), await page.screenshot());
+    writeFileSync(join(SHOTS, `${tag}${THEME === 'dark' ? '-dark' : ''}-${name}.png`), await page.screenshot());
   };
   const j = async (expr) => JSON.parse((await page.eval(expr)) || 'null');
   const rest = () => j(`JSON.stringify(${DBG}.rest(${JSON.stringify(BARREL)}))`);
@@ -111,11 +141,105 @@ async function run(phone) {
     await drag(line(c, { x: c.x + to.x - f.x, y: c.y + to.y - f.y }, 30), modifiers);
   };
   const near = (a, b, eps) => Math.abs(a - b) <= eps;
+  const at = (k) => j(`JSON.stringify(${DBG}.anchor(${JSON.stringify(k)}).pose.p)`);
+  const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+  /** Where the edit camera stands (adapters/three/camera.js eyeOf, from the view's state). */
+  const camera = async () => {
+    const s = await j(`JSON.stringify(${DBG}.view())`);
+    const cp = Math.cos(s.pitch);
+    return [s.target[0] + s.distance * cp * Math.sin(s.yaw), s.target[1] + s.distance * Math.sin(s.pitch), s.target[2] + s.distance * cp * Math.cos(s.yaw)];
+  };
+  /**
+   * Things on the land, dragged with the Move tool (see the header). The foot = the object's origin (Lantern Cove's
+   * props stand on it: prop() puts it on the ground; the top-level groups' parent space is the world). The world box
+   * is not used: the lighthouse's includes its 28 m light beams.
+   */
+  const land = async () => {
+    for (const [k, up] of LAND) {
+      await page.eval(`studioShell.actions.select(${JSON.stringify(k)})`);
+      await sleep(1300); // the pick glides (0.6 s)
+      if (!phone) await tool('m');
+      const p0 = await at(k);
+      const s0 = await screen(p0);
+      const press = await screen([p0[0], p0[1] + up, p0[2]]);
+      assert.ok(s0 && press, `${k} is not in view`);
+      // Metres per pixel across the view at the foot (1 m along the camera's right, on screen): the side window and
+      // the phone see the cove from farther, so the same 20 px is more metres there than on the PC.
+      const view = await j(`JSON.stringify(${DBG}.view())`);
+      const sr = await screen([p0[0] + Math.cos(view.yaw), p0[1], p0[2] - Math.sin(view.yaw)]);
+      const mpp = 1 / Math.hypot(sr.x - s0.x, sr.y - s0.y);
+      const seen = [];
+      for (const [name, dx, dy] of MOVES) {
+        const px = Math.hypot(dx, dy);
+        await drag(line(press, { x: press.x + dx, y: press.y + dy }, Math.max(4, Math.round(px / 5))));
+        const p1 = await at(k);
+        const s1 = await screen(p1);
+        const world = Math.hypot(p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]);
+        const d = s1 ? sub(s1, s0) : { x: NaN, y: NaN };
+        // Along the drag (px): how far the foot went the way the pointer went, and how far off to the side.
+        const along = (d.x * dx + d.y * dy) / px, aside = Math.abs(d.x * dy - d.y * dx) / px;
+        const eye = await camera();
+        const farther = Math.hypot(p1[0] - eye[0], p1[2] - eye[2]) - Math.hypot(p0[0] - eye[0], p0[2] - eye[2]);
+        seen.push({ name, px, along, aside, world, farther });
+        console.log(`    ${tag}: ${k} ${name}: foot ${along.toFixed(1)} px along (${aside.toFixed(1)} aside), ${world.toFixed(2)} m → (${p1.map((x) => x.toFixed(1)).join(', ')})`);
+        if (name === 'r20' || name === 'u30') await shot(`land-${k}-${name}`);
+        await undo();
+        const back = await at(k);
+        assert.ok(Math.hypot(back[0] - p0[0], back[1] - p0[1], back[2] - p0[2]) < 1e-3, `${k}: undo did not bring it back`);
+      }
+      for (const m of seen) {
+        if (m.name[0] === 'r') {
+          // Across the view the foot moves on screen as far as the pointer: 20 px is Ive's line (20 ± 8 px, ≤ 2 m),
+          // longer ones ± 40 %, and the way the pointer went. Up or down a little is allowed: the cottage dragged
+          // right walks up its rise (10 px up for 20 px right) — the land, not a jump.
+          const tol = m.name === 'r20' ? 8 : 0.4 * m.px;
+          const moved = Math.hypot(m.along, m.aside);
+          assert.ok(Math.abs(moved - m.px) <= tol && m.along >= 0.5 * m.px, `${k} ${m.name}: the foot went ${m.along.toFixed(1)} px along / ${m.aside.toFixed(1)} px aside for ${m.px} px`);
+          // ≤ 2 m on the PC (Ive's line); where 20 px across is already more than ~1.25 m, 1.6× that.
+          if (m.name === 'r20') assert.ok(m.world <= Math.max(2, 1.6 * 20 * mpp), `${k} r20: ${m.world.toFixed(2)} m in the world (20 px across = ${(20 * mpp).toFixed(2)} m here)`);
+        } else {
+          // Up / down the screen: away / toward the camera, and a step, not a leap (Ive: up 30 px flung the
+          // lighthouse 78 m and the cottage 77 m). On a hill seen from below its top the foot cannot follow the
+          // pointer up the screen (beyond the top the land is hidden), so the screen is not asserted here.
+          // 12 m on the PC (30 px × 0.06 m × 1 / GRAZE = 7.4 m, and a slope); scaled the same way where pixels are bigger.
+          assert.ok(m.world <= Math.max(12, 12 * mpp / 0.062), `${k} ${m.name}: ${m.world.toFixed(2)} m for ${m.px} px (${mpp.toFixed(3)} m/px)`);
+          assert.ok(m.name === 'u30' ? m.farther > -0.05 : m.farther < 0.05, `${k} ${m.name}: ${m.farther.toFixed(2)} m farther from the camera`);
+        }
+      }
+      const r = seen.filter((m) => m.name[0] === 'r');
+      for (let i = 1; i < r.length; i++) assert.ok(r[i].along >= r[i - 1].along && r[i].world >= r[i - 1].world - 0.05, `${k}: ${r[i - 1].name} → ${r[i].name} went back`);
+      ok(`${k} (${mpp.toFixed(3)} m/px): 20 px → ${r[0].along.toFixed(1)} px / ${r[0].world.toFixed(2)} m; 60 → ${r[1].world.toFixed(1)} m; 120 → ${r[2].world.toFixed(1)} m; up 30 → ${seen[3].world.toFixed(1)} m`);
+    }
+    // Across the sailboat's sail: the lighthouse pulled right until the pointer is over the sail (Ive, review 3: at
+    // 154 px right the ray met the sail and the lighthouse dropped to the boat's foot, z 8.8, half the view) does not
+    // go to the boat.
+    await page.eval(`studioShell.actions.select('lighthouse')`);
+    await sleep(1300);
+    if (!phone) await tool('m');
+    const p0 = await at('lighthouse');
+    const boat = await at('sailboat');
+    const press = await screen([p0[0], p0[1] + 4, p0[2]]);
+    const sail = await screen([boat[0], boat[1] + 4, boat[2]]);
+    const fb = await frameBox();
+    if (sail && sail.x > press.x + 20 && sail.x < fb.right) {
+      await drag(line(press, { x: sail.x + 10, y: press.y }, 40));
+      const p1 = await at('lighthouse');
+      const off = Math.hypot(p1[0] - boat[0], p1[2] - boat[2]);
+      console.log(`    ${tag}: lighthouse pulled ${Math.round(sail.x + 10 - press.x)} px right, over the sail → (${p1.map((x) => x.toFixed(1)).join(', ')}), ${off.toFixed(1)} m from the boat`);
+      await shot('land-lighthouse-sail');
+      assert.ok(off > 6, `the lighthouse went to the boat's foot: ${off.toFixed(1)} m from it`);
+      // (Not "stays on the hill": pulled far enough it walks down to the shore and on over the water, as asked.)
+      ok(`lighthouse pulled right over the sail: not at the boat's foot (${off.toFixed(1)} m from the boat, y ${p1[1].toFixed(1)})`);
+      await undo();
+    } else console.log(`    ${tag}: the sail is not to the right of the lighthouse in this view, the sail drag skipped`);
+  };
   const step = (m) => process.env.SNAP_TRACE && console.log(`    … ${tag}: ${m}`);
   try {
-    await page.goto(srv.url);
+    await page.goto(DEMO ? `${srv.url.replace(/\/?$/, '/')}studio/?game=lantern-cove&lang=en` : srv.url);
     await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${DBG}`, 90000);
     await sleep(1500);
+    await land();
+    if (PART === 'land' || kind === 'side' || DEMO) return;
     await page.eval(`studioShell.actions.select(${JSON.stringify(BARREL)})`);
     await sleep(1200); // the first pick glides from the opening view (0.6 s)
     // The barrel and the pier both in view: frame all if the glide's framing left the pier out.
@@ -254,9 +378,9 @@ async function run(phone) {
   }
 }
 
-for (const phone of [false, true]) {
-  if (ONLY && ONLY !== (phone ? 'phone' : 'pc')) continue;
-  await run(phone);
+for (const kind of ['pc', 'side', 'phone']) {
+  if (ONLY && !ONLY.split(',').includes(kind)) continue;
+  await run(kind);
 }
 if (failed) {
   console.error(`studio-snap-surface: ${failed} failed`);

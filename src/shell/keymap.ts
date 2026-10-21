@@ -35,6 +35,14 @@ export interface KeyDef {
   ui?: true;
   /** i18n key of a short line under the name in the sheet: WHEN the key works, if that needs saying (fly). */
   note?: string;
+  /**
+   * When this key does THIS (a key that does two things by the moment): with something selected, with nothing
+   * selected, or while a strip tool is chosen. The sheet writes it first on the grey line under the name
+   * (`keys.when.<when>`). Ive review 3 ⑦ (2026-10-20): the sheet listed Q E and E Q, S and WASD, Esc and Esc with no word
+   * on which is which; test/keymap.test.ts now fails if one key is in two rows without a `when` that tells them apart.
+   * Rows are not added for it: the condition is on the row that has the key.
+   */
+  when?: 'picked' | 'nothing' | 'tool';
 }
 
 export const KEYMAP: KeyDef[] = [
@@ -52,9 +60,10 @@ export const KEYMAP: KeyDef[] = [
   { id: 'rotate', group: 'tools', keys: ['T', '3'] },
   { id: 'scale', group: 'tools', keys: ['S', '4'] },
   { id: 'axis', group: 'tools', keys: ['R'], dim: '3d' },
-  { id: 'noTool', group: 'tools', keys: ['Esc'] },
+  // Esc: puts a chosen strip tool down first; with no tool chosen it deselects (the edit row).
+  { id: 'noTool', group: 'tools', keys: ['Esc'], when: 'tool' },
   { id: 'nudge', group: 'tools', keys: ['←↑↓→', '⇧ ←↑↓→'] },
-  { id: 'turnStep', group: 'tools', keys: ['Q', 'E'] },
+  { id: 'turnStep', group: 'tools', keys: ['Q', 'E'], when: 'picked' },
   { id: 'liftStep', group: 'tools', keys: ['PgUp', 'PgDn'], dim: '3d' },
   // Snap to surfaces (a try of the editor, 2026-10-19, bridge/snap.ts): End drops onto the surface below, as Unreal's End; Ctrl or
   // ⌥ held during a move / height drag stops the snapping (Blender's Ctrl; ⌥ for Mac hands — Ctrl-click is the Mac's
@@ -71,12 +80,12 @@ export const KEYMAP: KeyDef[] = [
   // in the one-line note under the name (the second design review's ⑪, 2026-10-19: the row said only Space+E / Q, so
   // the plain E / Q people use most — nothing picked — was written nowhere). The name stays short (a longer one,
   // "… (E / Q with nothing picked)", wrapped to three lines in the sheet).
-  { id: 'camera', group: 'view', keys: ['E', 'Q'], dim: '3d', note: 'keys.camera.note' },
+  { id: 'camera', group: 'view', keys: ['E', 'Q'], dim: '3d', note: 'keys.camera.note', when: 'nothing' },
   // Fly (camera-wasd pass, 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"): one row,
   // the rule under its name (`note`, also the ⌘K row's words): WASD alone with nothing picked; with a pick, hold the
   // right button (S is the Size tool and E / Q turn then). E / Q fly up / down in the same moments (the camera row).
   // The note is one line since the second design review (⑪, 2026-10-19; it was three).
-  { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note' },
+  { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note', when: 'nothing' },
   { id: 'palette', group: 'view', keys: ['⌘K'], label: 'foot.palette' },
   { id: 'shortcuts', group: 'view', keys: ['?'] },
   // U: World ⇄ UI (UI stage 1, 2026-10-19). U for UI; free in this table. Not Tab: it moves the browser's focus.

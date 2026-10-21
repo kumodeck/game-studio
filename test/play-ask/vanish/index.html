@@ -4,12 +4,22 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
   <title>Pad Walk</title>
-  <style>html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; } canvas { display: block; }</style>
+  <style>html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2433; } canvas { display: block; }
+    /* The HTML UI over the canvas (2026-10-20: the AI's picture must have it): a magenta score the test finds in the
+       picture, a button, and a name field whose typed words must never reach the request. */
+    .score { position: fixed; top: 14px; right: 16px; padding: 8px 14px; border-radius: 10px; background: #ff22aa; color: #fff;
+      font: 700 22px/1 system-ui, sans-serif; }
+    .pause { position: fixed; left: 16px; bottom: 16px; padding: 8px 14px; border: 0; border-radius: 8px; background: #fff; color: #111; font: 600 15px system-ui, sans-serif; }
+    .name { position: fixed; left: 110px; bottom: 16px; width: 140px; padding: 7px 10px; font: 15px system-ui, sans-serif; }
+  </style>
   <script type="importmap">
     { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }
   </script>
 </head>
 <body>
+  <div class="score" data-studio-key="score">Score 120</div>
+  <button class="pause" type="button">Pause</button>
+  <input class="name" type="text" placeholder="Your name" value="my secret name" />
   <script type="module" src="game.js"></script>
 </body>
 </html>

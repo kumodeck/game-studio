@@ -15,7 +15,8 @@ const PROJECT = FAKE_KUMO_PROJECT;
  * modelBytes: size of the 3D file (over 10 MB = the "heavy" line; the real AI model was 45.7 MB).
  */
 export async function fakeKumoServer({ delayMs = 0, modelBytes = 0 } = {}) {
-  const st = { balance: 500, terms: false, n: 0, jobs: new Map(), posts: 0 };
+  // inputs: the input of every job asked for (the 3D one must carry faceLimit 5000: kumo.mjs KUMO_3D_FACE_LIMIT)
+  const st = { balance: 500, terms: false, n: 0, jobs: new Map(), posts: 0, inputs: [] };
   const srv = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
@@ -33,6 +34,7 @@ export async function fakeKumoServer({ delayMs = 0, modelBytes = 0 } = {}) {
     const create = /^\/v1\/projects\/[^/]+\/ai\/(image|3d)\/jobs$/.exec(p);
     if (create && req.method === 'POST') {
       st.posts++;
+      st.inputs.push({ kind: create[1], ...body.input });
       if (body.acceptTerms === true) st.terms = true;
       if (!st.terms) return json(403, { error: { code: 'ai_terms_not_accepted', message: 'You must accept the KUMODeck AI terms' } });
       const cost = create[1] === 'image' ? 1 : 20;

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.5 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.7 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -960,9 +960,13 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                      
                                                                                                                    
-                                
+                                                                                                                 
+                                                                                                                    
+                                                     
      
-                                                                         
+                                                                                         
+                                                                                                      
+                                
                                                                                                                     
                                                          
                                                                                      
@@ -1032,7 +1036,8 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                                                                  
                                                                                                             
                                                                                                                                   
-                                                                       
+                                                                                                                          
+                                                                                      
                                                                                      
                                                              
                                                                                                                        
@@ -1057,6 +1062,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                   
                                                                                                                    
                                                                                                                   
+                                                                                                              
      
                                                                                                                                        
                                                                                           
@@ -5906,12 +5912,27 @@ function isGuessed(it                                          )          {
 }
 
 /**
+ * A UI element's name, from its data-studio-key: "title-card" → "Title card", "score" → "Score", "startButton" →
+ * "Start button" (Ive review 3 ⑤, 2026-10-20). WHY the key and not the element's text: the text is the whole title
+ * card ("Glow Garden Tap the lanterns to light the garden"), cut to "Glow Garden Tap the lant…" in the list, on the
+ * card and in the ask field's chip, and a score's text changes while it is played. The key is short, never changes,
+ * and is what the AI finds in the code. The text stays as the card's grey second line (placement-panel.ts).
+ */
+function uiName(key        )         {
+  const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[-_\s.:#/]+/).filter(Boolean).map((w) => w.toLowerCase());
+  const s = words.join(' ');
+  return s ? s[0] .toUpperCase() + s.slice(1) : key;
+}
+
+/**
  * The shown name.
+ * - UI (the game's HTML UI, kinds 'ui'): its key in words (uiName).
  * - Named: its label; a second, third… object with the same name (key `tree#2`) reads "tree 2".
  * - Unnamed (`unstable`): the stem of its picture or model file, else the guessed name (guessNames), else
  *   "Unnamed <kind>" (`t('noname.kind.<w>')`).
  */
 function displayName(it                                                              , t                       )         {
+  if (it.kinds && it.kinds.includes('ui')) return uiName(it.key);
   if (it.unstable) {
     const stem = fileStem(it.group);
     if (stem) return stem;
@@ -5933,6 +5954,7 @@ __def(__exports, "noteItems", () => noteItems);
 __def(__exports, "forgetNames", () => forgetNames);
 __def(__exports, "nameParts", () => nameParts);
 __def(__exports, "isGuessed", () => isGuessed);
+__def(__exports, "uiName", () => uiName);
 __def(__exports, "displayName", () => displayName);
 };
 __defs[13] = function (__exports) {
@@ -6469,8 +6491,10 @@ const { toneThumb } = __require(15);
                               
                                                                                                            
                                     
-                                                                      
-                                   
+                                                                                                                          
+                              
+                                                                                                                      
+                                               
                                       
              
                                                                                                                 
@@ -6504,6 +6528,9 @@ const DRAG_OBJECT = 'application/x-studio-object';
  
 
 const base = (p        ) => p.slice(p.lastIndexOf('/') + 1);
+
+/** The largest picture a tile asks for (the bridge's cap too, bridge/editor.ts placement/thumbs). */
+const TILE_PX_MAX = 384;
 
 function createLibraryObjects(d                    )                     {
   let onlyFile                = null;
@@ -6560,14 +6587,19 @@ function createLibraryObjects(d                    )                     {
     frame = requestAnimationFrame(() => {
       frame = 0;
       const want           = [];
+      let side = 0;
       for (const tile of shown) {
         if (!tile.isConnected) continue;
         const box = (tile.closest('.gsl') || document.documentElement).getBoundingClientRect();
         const r = tile.getBoundingClientRect();
         if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
-        if (!d.thumb(tile.dataset.key )) want.push(tile.dataset.key );
+        side = Math.max(side, (tile.querySelector('.gsl-thumb')                      )?.clientWidth || 0);
+        if (!d.sharp(tile.dataset.key )) want.push(tile.dataset.key );
       }
-      if (want.length) d.wantThumbs(want);
+      // Twice the tile's size on screen (Ive review 3 ⑧, 2026-10-20: the tiles showed the list's 96 px picture
+      // stretched to ~140 px, blurred on any screen and twice so on a Retina one), in steps of 32, 96–384.
+      const px = Math.min(TILE_PX_MAX, Math.max(96, Math.ceil((side * 2) / 32) * 32));
+      if (want.length) d.wantThumbs(want, px);
     });
   };
   document.addEventListener('scroll', () => shown.length && thumbsSoon(), { capture: true, passive: true });
@@ -6740,6 +6772,7 @@ function createLibraryObjects(d                    )                     {
 }
 
 __def(__exports, "DRAG_OBJECT", () => DRAG_OBJECT);
+__def(__exports, "TILE_PX_MAX", () => TILE_PX_MAX);
 __def(__exports, "createLibraryObjects", () => createLibraryObjects);
 };
 __defs[17] = function (__exports) {
@@ -6998,6 +7031,59 @@ __def(__exports, "withRules", () => withRules);
 };
 __defs[18] = function (__exports) {
 'use strict';
+// pose-compare.ts
+
+// Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
+// Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
+// poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
+const { LIMITS } = __require(0);
+
+function roundTo(v        , step        )         {
+  return Math.round(v / step) * step;
+}
+
+/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
+function roundPose(p      , dim     )       {
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
+  const out       = { p: p.p.map((v) => fix(v, step)) };
+  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
+  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
+  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
+  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
+  return out;
+}
+
+/**
+ * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
+ *
+ * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
+ * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
+ * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
+ * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
+ */
+function sameAngle(a                    , b                    )          {
+  if (a === undefined || b === undefined) return a === b;
+  const TAU = Math.PI * 2;
+  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
+  // Half a rounding step: values one step apart (a real nudge) still differ.
+  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
+}
+
+function samePose(a                  , b                  , dim     )          {
+  if (!a || !b) return a === b;
+  const x = roundPose(a, dim), y = roundPose(b, dim);
+  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
+  if (!sameAngle(x.r, y.r)) return false;
+  if (!x.t || !y.t) return !x.t === !y.t;
+  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
+}
+
+__def(__exports, "roundPose", () => roundPose);
+__def(__exports, "samePose", () => samePose);
+};
+__defs[19] = function (__exports) {
+'use strict';
 // layers.ts
 
 // Draw order (2D layers) in the shell: which object is in front of which.
@@ -7135,7 +7221,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[19] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -7158,49 +7244,13 @@ __defs[19] = function (__exports) {
 // the AI finds it in the code). Each is one Save count. Reopening before the
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
-const { LIMITS } = __require(0);
-const { hasLayer, orderOfLayer } = __require(18);
+__require(0);
+const { hasLayer, orderOfLayer } = __require(19);
+const { roundPose, samePose } = __require(18);
 
-function roundTo(v        , step        )         {
-  return Math.round(v / step) * step;
-}
+// The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
+// (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
 
-/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
-function roundPose(p      , dim     )       {
-  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
-  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
-  const out       = { p: p.p.map((v) => fix(v, step)) };
-  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
-  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
-  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
-  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
-  return out;
-}
-
-/**
- * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
- *
- * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
- * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
- * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
- * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
- */
-function sameAngle(a                    , b                    )          {
-  if (a === undefined || b === undefined) return a === b;
-  const TAU = Math.PI * 2;
-  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
-  // Half a rounding step: values one step apart (a real nudge) still differ.
-  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
-}
-
-function samePose(a                  , b                  , dim     )          {
-  if (!a || !b) return a === b;
-  const x = roundPose(a, dim), y = roundPose(b, dim);
-  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
-  if (!sameAngle(x.r, y.r)) return false;
-  if (!x.t || !y.t) return !x.t === !y.t;
-  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
-}
 
 /** Keys of `now` outside a longest common subsequence with `was` (the moved ones). n ≤ 500, O(n²). */
 function outOfOrder(was          , now          )           {
@@ -7430,6 +7480,71 @@ class PlacementModel {
   }
 
   /**
+   * A NEW page of the game (Play → Edit, a reload) listed its objects: what of the arrangement on screen before it does
+   * not show. Call BEFORE setItems() with the new page's raw list; the shell pushes the result to the page.
+   *
+   * WHY (a try of the editor, 2026-10-21, "I moved things, pressed Play without Save, and everything was reset"): the saved poses
+   * were pushed only once, on the first list after opening (setItems' `apply`). A game that does not read
+   * placement.json itself (a game the AI made, before "add the loader") came back from Play — or from the AI's reload
+   * — at its code's layout while the card and "Save · 1" still said "moved". Now the page gets the editor's
+   * arrangement back, saved or not.
+   *
+   * Only what the page shows AS ITS CODE MAKES IT: an object at `was` (the code's own pose) that the person put
+   * elsewhere, a copy the page does not have, a deleted object it still has, a list in the code's order that the person
+   * reordered. Anything else is left alone: a game whose loader applied the draft already shows it (nothing to do),
+   * and an object the AI's change moved in the code (now ≠ `was`) is the AI's to keep — pushing the old pose back
+   * would undo its work.
+   */
+  notShown(items        )   
+                                              
+                                                             
+                      
+    {
+    const out = { poses: []                                      , copies: []                                                    , removes: []             };
+    // Nothing known yet (the first list after opening): setItems' own `apply` does that one.
+    if (!this.was.size) return out;
+    const flat = (p      )       => ({ ...p, z: undefined });
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    for (const it of items) {
+      if (this.copyFrom.has(it.key)) continue;
+      if (this.removed.has(it.key)) {
+        out.removes.push(it.key);
+        continue;
+      }
+      const cur = this.current.get(it.key), was = this.was.get(it.key);
+      if (!cur || !was || samePose(flat(cur), flat(was), this.dim)) continue;
+      if (!samePose(flat(it.pose), flat(was), this.dim)) continue;
+      // z stays the page's: the draw order is put back below, as a whole list.
+      out.poses.push({ key: it.key, pose: flat(cur) });
+    }
+    for (const k of this.copyOrder) {
+      if (!this.live.has(k) || byKey.has(k)) continue;
+      const from = this.liveFrom(k);
+      // Made from something the new page does not have (the AI took it out): nothing to copy.
+      if (!byKey.has(from)) continue;
+      out.copies.push({ key: k, from, pose: flat(this.current.get(k) ) });
+    }
+    // Draw order (2D): a list the person reordered that the page shows in the code's order again.
+    for (const layer of this.layers()) {
+      const want = this.order(layer);
+      const was = this.wasOrder.get(layer) || [];
+      const raw = items.filter((i) => hasLayer(i) && i.layer === layer);
+      const now = orderOfLayer(raw, layer);
+      const keys = want.filter((k) => now.includes(k));
+      if (keys.join('\n') === now.filter((k) => keys.includes(k)).join('\n')) continue;
+      if (now.filter((k) => was.includes(k)).join('\n') !== was.filter((k) => now.includes(k)).join('\n')) continue;
+      const slots = raw.filter((i) => keys.includes(i.key)).map((i) => i.pose.z ).sort((a, b) => a - b);
+      keys.forEach((k, i) => {
+        const p = out.poses.find((x) => x.key === k);
+        const base = p?.pose ?? { ...(byKey.get(k) .pose) };
+        if (p) p.pose = { ...base, z: slots[i]  };
+        else out.poses.push({ key: k, pose: { ...base, z: slots[i]  } });
+      });
+    }
+    return out;
+  }
+
+  /**
    * Poses (z only changes) that turn the current order of `layer` into
    * `want` (back → front). Applied one after another: putting the i-th key at
    * the i-th lowest place, from the back, leaves the earlier ones in place.
@@ -7608,11 +7723,11 @@ class PlacementModel {
   }
 }
 
-__def(__exports, "roundPose", () => roundPose);
-__def(__exports, "samePose", () => samePose);
+__def(__exports, "roundPose", () => __require(18).roundPose);
+__def(__exports, "samePose", () => __require(18).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[20] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -7680,8 +7795,9 @@ const en = {
   'status.gameErrorToast': 'The game stopped on an error ({msg}). Ask your AI to fix it.',
   'status.adapterError': 'The editor couldn’t read this game ({msg}). Ask your AI to “fix the Game Studio adapter,” then reload.',
   'btn.reloadGame': 'Reload',
-  'status.playing': 'Playing the game as the code is now. Your moves show up here once your AI adds them to the code. Switch to Edit to keep arranging.',
+  'status.playing': 'Playing the game as you arranged it in the editor, saved or not. Save hands it to your AI. Switch to Edit to keep arranging.',
   'status.playingShort': 'Playing',
+  'status.playingUnsaved': '· unsaved changes',
   'status.items': 'Finding objects you can move…',
   'placement.empty': 'No movable objects found.',
   'placement.select': 'Select an object in the game, or choose one here.',
@@ -7767,6 +7883,8 @@ const en = {
   'play.ask': 'Ask your AI',
   'play.askTip': 'Ask your AI about this moment (`). The game keeps running.',
   'play.placeholder': 'What went wrong? Your AI sees this moment.',
+  // A phone's field (bridge/play-ask.ts NARROW_PX): one line at 390 px (Ive review 3, ④).
+  'play.placeholderShort': 'Tell your AI what’s wrong',
   'play.answerPlaceholder': 'Your answer',
   'play.sending': 'Sending this moment…',
   'play.sendFail': 'Couldn’t send it. Press Enter to try again.',
@@ -7779,10 +7897,16 @@ const en = {
   'play.enterReloads': 'Enter reloads with the fix',
   'play.keep': 'Keep playing',
   'play.close': 'Close',
-  'ai.savedSub': 'Your layout is saved',
+  // Empty on purpose (the third design review, 5-3 / ⑩, 2026-10-20): the line after Save is one line, "Your request is
+  // in. It goes into the game the next time your AI runs." + "Call your AI". "Your layout is saved" said what the top
+  // bar's "✓ Saved" says. Emptied here, not taken out of main.ts renderAiLine(), which another fix of the same day
+  // was in (an empty sub is no second line there).
+  'ai.savedSub': '',
   'ai.updating': 'Updating the game…',
   'ai.undo': 'Undo AI change',
   'ai.redo': 'Redo',
+  'ai.redoPal': 'Redo AI change',
+  'ai.recall': 'Show your AI’s last reply',
   'ai.undone': 'Back to before your AI’s change',
   'ai.undoneSub': 'Your AI gets a note about it.',
   'ai.redone': 'Your AI’s change is back',
@@ -7891,6 +8015,11 @@ const en = {
   'safe.resized': 'Resized {name} to {n}×',
   'safe.putBack': 'Put back and save',
   'safe.save': 'Save anyway',
+  // Before unsaved changes are lost (unsaved-guard.ts, a try of the editor, 2026-10-21): one sentence with the number, three buttons.
+  'guard.title': '{n:You have 1 unsaved change|You have # unsaved changes}',
+  'guard.save': 'Save and continue',
+  'guard.discard': 'Don’t save',
+  'guard.cancel': 'Cancel',
   'layer.title': 'Layer',
   'layer.toBack': 'Send to back',
   'layer.backward': 'Send backward',
@@ -7940,6 +8069,7 @@ const en = {
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
   'app.brand': 'Studio',
   'list.title': 'In this scene',
+  'list.titleUi': 'On screen',
   'foot.palette': 'All actions',
   'save.unsavedTip': '{n:1 unsaved change|# unsaved changes}. Save writes placement.json and sends it to your AI, which updates the game’s code',
   'save.savedTip': 'Saved and sent to your AI',
@@ -7949,6 +8079,8 @@ const en = {
   'peer.busy': 'Your AI is working on your request',
   'peer.watching': 'Your AI is watching this editor',
   'peer.away': 'Your requests are kept. They go in the next time your AI runs.',
+  'peer.recall': 'Your AI’s last reply — press to see it again',
+  'peer.recallUndo': 'Your AI’s last reply — press to see it again (or undo its change)',
   'ask.chipOne': 'Ask your AI…',
   'ask.chipMany': 'Ask your AI about these…',
   'ops.manyShort': '{n} selected',
@@ -7968,6 +8100,7 @@ const en = {
   'pal.selectAll': 'Select all',
   'pal.home': 'Back to the opening view',
   'pal.home.words': 'start camera reset view home game camera',
+  'pal.aiUndo.words': 'ai undo revert redo last change reply back AI 戻す 元に戻す やり直す 返事',
   'pal.cameraUp': 'Camera up',
   'pal.cameraDown': 'Camera down',
   'pal.camera.words': 'camera up down raise lower rise height fly elevate view',
@@ -8020,6 +8153,10 @@ const en = {
   'keys.fly': 'Fly the camera',
   'keys.fly.note': 'W / S stay level · Selected: hold right button · ⇧ faster',
   'keys.camera.note': 'Selected: Space+E / Space+Q',
+  // When a key does what its row says (keymap.ts `when`), first on the row's grey line (Ive review 3 ⑦).
+  'keys.when.picked': 'Selected',
+  'keys.when.nothing': 'Nothing selected',
+  'keys.when.tool': 'A tool chosen',
   'keys.fly.picked': 'Right button+WASD',
   'pal.fly.words': 'wasd fly walk move camera forward back left right navigate level',
   'keys.shortcuts': 'Keyboard shortcuts',
@@ -8038,10 +8175,6 @@ const en = {
   'uiLayer.sub': 'over the game',
   // The eye next to World | UI (layer-switch.ts): the game's UI is hidden while the world is edited.
   'uiPeek.name': "The game's UI",
-  'uiPeek.hidden': 'UI hidden',
-  'uiPeek.shown': 'UI shown',
-  'uiPeek.show': "Show the game's UI (clicks still reach the world)",
-  'uiPeek.hide': "Hide the game's UI while you edit the world",
   'uiPeek.pal.show': "Show the game's UI",
   'uiPeek.pal.hide': "Hide the game's UI",
   'keys.uiPeek': "Show or hide the game's UI over the world",
@@ -8139,8 +8272,9 @@ const ja                               = {
   'status.gameErrorToast': 'ゲームがエラーで止まりました（{msg}）。AI に直すよう頼んでください。',
   'status.adapterError': 'エディタがこのゲームを読めませんでした（{msg}）。AI に「Game Studio のつなぎを直して」と頼んで、読み込み直してください。',
   'btn.reloadGame': '読み込み直す',
-  'status.playing': '今のコードのまま遊んでいます。動かした配置は、AI がコードに入れるとここに出ます。「編集」で続けて並べられます。',
+  'status.playing': 'エディタで並べたとおり（保存していない変更も込み）で遊んでいます。保存すると AI に渡ります。「編集」で続けて並べられます。',
   'status.playingShort': '遊んでいます',
+  'status.playingUnsaved': '· 保存していない変更込み',
   'status.items': '動かせる物を探しています…',
   'placement.empty': '動かせる物が見つかりません。',
   'placement.select': 'ゲームの中の物をクリックするか、ここから選んでください。',
@@ -8212,6 +8346,7 @@ const ja                               = {
   'play.ask': 'AI に頼む',
   'play.askTip': 'この瞬間について AI に頼む（`）。ゲームは止まりません。',
   'play.placeholder': '何がおかしい？ AI はこの瞬間を見ます。',
+  'play.placeholderShort': 'おかしい所を AI に伝える',
   'play.answerPlaceholder': '答え',
   'play.sending': 'この瞬間を送っています…',
   'play.sendFail': '送れませんでした。Enter でもう一度。',
@@ -8224,10 +8359,12 @@ const ja                               = {
   'play.enterReloads': 'Enter で直ったゲームに',
   'play.keep': 'このまま遊ぶ',
   'play.close': '閉じる',
-  'ai.savedSub': '配置は保存しました',
+  'ai.savedSub': '', // empty on purpose: see the English table
   'ai.updating': 'ゲームを新しくしています…',
   'ai.undo': 'AI の直しを戻す',
   'ai.redo': 'やり直す',
+  'ai.redoPal': 'AI の直しをやり直す',
+  'ai.recall': 'AI の最後の返事をもう一度見る',
   'ai.undone': 'AI が直す前に戻しました',
   'ai.undoneSub': 'AI にも知らせました。',
   'ai.redone': 'AI の直しをもう一度入れました',
@@ -8330,6 +8467,10 @@ const ja                               = {
   'safe.resized': '{name}を {n} 倍の大きさにしました',
   'safe.putBack': '元に戻して保存',
   'safe.save': 'このまま保存',
+  'guard.title': '保存していない変更が {n} 個あります',
+  'guard.save': '保存して続ける',
+  'guard.discard': '保存せずに続ける',
+  'guard.cancel': 'やめる',
   'layer.title': '重なり',
   'layer.toBack': 'いちばん奥へ',
   'layer.backward': '奥へ',
@@ -8374,6 +8515,7 @@ const ja                               = {
   'check.restored': 'エディタの確認で、オブジェクトが少しずれたかもしれません。',
   'app.brand': 'Studio',
   'list.title': 'このシーンの物',
+  'list.titleUi': '画面の上の物',
   'foot.palette': 'すべての操作',
   'save.unsavedTip': 'まだ保存していない変更が {n} 個あります。保存すると placement.json に書いて AI に送り、AI がゲームのコードに反映します',
   'save.savedTip': '保存して AI に送りました',
@@ -8383,6 +8525,8 @@ const ja                               = {
   'peer.busy': 'AI が頼みに取りかかっています',
   'peer.watching': 'AI がこのエディタを見ています',
   'peer.away': '依頼は残っています。AI が次に動いたときに反映されます。',
+  'peer.recall': 'AI の最後の返事 — 押すともう一度出ます',
+  'peer.recallUndo': 'AI の最後の返事 — 押すともう一度出ます（直しを戻すのもここから）',
   'ask.chipOne': 'AI に頼む…',
   'ask.chipMany': 'これらについて AI に頼む…',
   'ops.manyShort': '{n} 個を選択',
@@ -8401,6 +8545,7 @@ const ja                               = {
   'pal.selectAll': '全部選ぶ',
   'pal.home': '開いた時の眺めに戻る',
   'pal.home.words': '最初 視点 カメラ 戻す ホーム',
+  'pal.aiUndo.words': 'AI 戻す 元に戻す やり直す 直し 返事 undo redo',
   'pal.cameraUp': 'カメラを上げる',
   'pal.cameraDown': 'カメラを下げる',
   'pal.camera.words': 'カメラ 上 下 上げる 下げる 上昇 下降 高さ 視点',
@@ -8450,6 +8595,9 @@ const ja                               = {
   'keys.fly': 'カメラで飛び回る',
   'keys.fly.note': 'W/S は水平・選んでいる時は右ボタンも・⇧ で速く',
   'keys.camera.note': '選んでいる時は Space+E / Space+Q',
+  'keys.when.picked': '選んでいる時',
+  'keys.when.nothing': '何も選んでいない時',
+  'keys.when.tool': '道具を選んでいる時',
   'keys.fly.picked': '右ボタン+WASD',
   'pal.fly.words': 'wasd 飛ぶ 歩く 移動 カメラ 前 後ろ 左 右 視点 水平',
   'keys.shortcuts': 'キーボードショートカット',
@@ -8466,10 +8614,6 @@ const ja                               = {
   'uiLayer.size': '大きさ',
   'uiLayer.sub': 'ゲームの上',
   'uiPeek.name': 'ゲームの UI',
-  'uiPeek.hidden': 'UI は非表示',
-  'uiPeek.shown': 'UI を表示中',
-  'uiPeek.show': 'ゲームの UI を見る（クリックはワールドに届きます）',
-  'uiPeek.hide': 'ワールドの編集中はゲームの UI を隠す',
   'uiPeek.pal.show': 'ゲームの UI を見る',
   'uiPeek.pal.hide': 'ゲームの UI を隠す',
   'keys.uiPeek': 'ワールドの上のゲームの UI を見る・隠す',
@@ -8541,7 +8685,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // icons.ts
 
@@ -8716,7 +8860,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[22] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -8737,7 +8881,7 @@ __defs[22] = function (__exports) {
 // - No prices in the UI (they change); a link to the pricing page instead.
                                                                              
 const { h } = __require(14);
-const { icon } = __require(21);
+const { icon } = __require(22);
 
 /** The only place the KUMODeck site address appears in the shell. */
 const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
@@ -8819,7 +8963,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[23] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -9127,7 +9271,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -9155,7 +9299,7 @@ __defs[24] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                    
-const { statusCovers } = __require(23);
+const { statusCovers } = __require(24);
 
                                                                                                                                                                          
 
@@ -9279,7 +9423,7 @@ __def(__exports, "aiBusy", () => aiBusy);
 __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -9358,7 +9502,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -9416,14 +9560,77 @@ function playLine(i               )                  {
 
 /** The overlay's own words (the bridge has none), in the person's language. */
 function playWords(t                         )                         {
-  const keys = ['ask', 'askTip', 'placeholder', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close'];
+  const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close'];
   return Object.fromEntries(keys.map((k) => [k, t(`play.${k}`)]));
 }
 
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
+'use strict';
+// line-fade.ts
+
+// The AI's finished line goes by itself (2026-10-20: "this line is always there, it's in the way" — the line "● Moved the pillar to the
+// middle of the road (in the game) / 1 thing changed" stayed over the game until the next request).
+//
+// What fades: a line that only REPORTS (done, undone, redone in the editor; "fixed" over the game while playing).
+// What stays: a line that needs the person — the AI's question (asking), a failure (failed: they have to decide what
+// to do next, and the reason is the one thing to read twice), and every "on it" phase (sent, seen, working…: the
+// person is waiting for it, and it is the only sign that something is happening).
+//
+// How long: long enough to read it twice, no longer. A report is read once when it appears and once more when the
+// person looks back from the game to check it; ~250 ms a word is a slow reading pace, so 5 s covers the short ones
+// ("Done." / "1 thing changed"), and the AI's own sentence gets a little more per character up to 10 s (longer than
+// that is no longer a report, it is a fixture). While the pointer is over the line or the keyboard is in it, it never
+// goes; after it leaves, LINE_GRACE_MS more so it does not vanish the moment the mouse slides off.
+//
+// Pure, so test/line-fade.test.ts reads the rules without a browser; main.ts (the editor) and bridge/play-ask.ts (over
+// the game) run the timers.
+                                            
+
+/** The shortest a finished line stays (ms): "Done." read twice. */
+const LINE_MIN_MS = 5000;
+/** The longest (ms): a long reply from the AI. */
+const LINE_MAX_MS = 10_000;
+/** Extra time per character of the line's text (ms): ~20 characters a second, a calm pace in English and in Japanese. */
+const LINE_PER_CHAR_MS = 50;
+/** After the pointer / focus leaves the line (ms). */
+const LINE_GRACE_MS = 2000;
+/** The fade itself (ms; shell.css and bridge/play-ask.ts use the same). */
+const LINE_FADE_MS = 400;
+
+/** Phases whose line goes by itself. Everything else stays as long as it is true. */
+function lineFades(ph         )          {
+  return ph === 'done' || ph === 'undone' || ph === 'redone';
+}
+
+/** How long a finished line with this text stays (ms). */
+function lineStayMs(text        )         {
+  const n = [...(text || '')].length;
+  return Math.max(LINE_MIN_MS, Math.min(LINE_MAX_MS, LINE_MIN_MS + Math.max(0, n - 20) * LINE_PER_CHAR_MS));
+}
+
+/**
+ * What a finished line is about, so the same report that faded does not come back on the next poll (every 3 s the
+ * line is drawn again) or after a save with nothing new: the phase, the AI's status time and its note. A new report
+ * (another request done, Undo, Redo) has another key and shows again. `turn` counts the Undo / Redo presses, so
+ * Undo → Redo → Undo shows "Back to before" again (same phase, same status, a new press).
+ */
+function lineKey(ph         , statusAt                             , note                    , turn = 0)         {
+  return `${ph}|${statusAt ?? ''}|${note ?? ''}|${turn}`;
+}
+
+__def(__exports, "LINE_MIN_MS", () => LINE_MIN_MS);
+__def(__exports, "LINE_MAX_MS", () => LINE_MAX_MS);
+__def(__exports, "LINE_PER_CHAR_MS", () => LINE_PER_CHAR_MS);
+__def(__exports, "LINE_GRACE_MS", () => LINE_GRACE_MS);
+__def(__exports, "LINE_FADE_MS", () => LINE_FADE_MS);
+__def(__exports, "lineFades", () => lineFades);
+__def(__exports, "lineStayMs", () => lineStayMs);
+__def(__exports, "lineKey", () => lineKey);
+};
+__defs[29] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -9506,7 +9713,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[28] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -9515,8 +9722,8 @@ __defs[28] = function (__exports) {
 // the caller), so there is no separate Apply/Save step to forget.
                                                     
 const { h } = __require(14);
-const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(27);
+const { icon } = __require(22);
+const { DEFAULT_UI, UI_LIMITS } = __require(29);
 
                                
                          
@@ -9599,14 +9806,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[29] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(18);
+const { hasLayer } = __require(19);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -9703,7 +9910,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[30] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -9744,6 +9951,14 @@ __defs[30] = function (__exports) {
             
                                                                                                               
                 
+     
+                                                                                                              
+                                                                                                         
+                                                                                                                          
+                                                                                                                       
+                                                                             
+     
+                                       
  
 
 const KEYMAP           = [
@@ -9761,9 +9976,10 @@ const KEYMAP           = [
   { id: 'rotate', group: 'tools', keys: ['T', '3'] },
   { id: 'scale', group: 'tools', keys: ['S', '4'] },
   { id: 'axis', group: 'tools', keys: ['R'], dim: '3d' },
-  { id: 'noTool', group: 'tools', keys: ['Esc'] },
+  // Esc: puts a chosen strip tool down first; with no tool chosen it deselects (the edit row).
+  { id: 'noTool', group: 'tools', keys: ['Esc'], when: 'tool' },
   { id: 'nudge', group: 'tools', keys: ['←↑↓→', '⇧ ←↑↓→'] },
-  { id: 'turnStep', group: 'tools', keys: ['Q', 'E'] },
+  { id: 'turnStep', group: 'tools', keys: ['Q', 'E'], when: 'picked' },
   { id: 'liftStep', group: 'tools', keys: ['PgUp', 'PgDn'], dim: '3d' },
   // Snap to surfaces (a try of the editor, 2026-10-19, bridge/snap.ts): End drops onto the surface below, as Unreal's End; Ctrl or
   // ⌥ held during a move / height drag stops the snapping (Blender's Ctrl; ⌥ for Mac hands — Ctrl-click is the Mac's
@@ -9780,12 +9996,12 @@ const KEYMAP           = [
   // in the one-line note under the name (the second design review's ⑪, 2026-10-19: the row said only Space+E / Q, so
   // the plain E / Q people use most — nothing picked — was written nowhere). The name stays short (a longer one,
   // "… (E / Q with nothing picked)", wrapped to three lines in the sheet).
-  { id: 'camera', group: 'view', keys: ['E', 'Q'], dim: '3d', note: 'keys.camera.note' },
+  { id: 'camera', group: 'view', keys: ['E', 'Q'], dim: '3d', note: 'keys.camera.note', when: 'nothing' },
   // Fly (camera-wasd pass, 2026-10-18: "anyone who has used a 3D game engine moves the camera with WASD too"): one row,
   // the rule under its name (`note`, also the ⌘K row's words): WASD alone with nothing picked; with a pick, hold the
   // right button (S is the Size tool and E / Q turn then). E / Q fly up / down in the same moments (the camera row).
   // The note is one line since the second design review (⑪, 2026-10-19; it was three).
-  { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note' },
+  { id: 'fly', group: 'view', keys: ['WASD'], dim: '3d', note: 'keys.fly.note', when: 'nothing' },
   { id: 'palette', group: 'view', keys: ['⌘K'], label: 'foot.palette' },
   { id: 'shortcuts', group: 'view', keys: ['?'] },
   // U: World ⇄ UI (UI stage 1, 2026-10-19). U for UI; free in this table. Not Tab: it moves the browser's focus.
@@ -9834,7 +10050,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[31] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -9866,10 +10082,10 @@ __defs[31] = function (__exports) {
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
 const { h, safeImageSrc } = __require(14);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(18);
-const { groupLayerPossible, sameKind } = __require(29);
-const { icon, setButton } = __require(21);
-const { tipText } = __require(30);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(19);
+const { groupLayerPossible, sameKind } = __require(31);
+const { icon, setButton } = __require(22);
+const { tipText } = __require(32);
 const { displayName, isGuessed, nameParts } = __require(12);
 const { toneThumb } = __require(15);
 
@@ -10263,9 +10479,10 @@ function createPlacementPanel(d                    )                 {
    * copy of a title would be a promise the AI cannot keep from a moved offset alone).
    */
   // The minimize button ends every head (one object, several, a UI element), always at its right end.
+  // The "UI" tag sits beside the name, not inside it: inside, a long name's "…" cut the tag off with it (Ive review 3 ⑤).
   const head = (pics             , name        , sub               , cls = '', ui = false) =>
     h('div', { class: `card-head ${cls}`.trim() }, pics,
-      h('div', { class: 'head-text' }, h('strong', { text: name }, ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
+      h('div', { class: 'head-text' }, h('div', { class: 'head-name' }, h('strong', { text: name }), ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
       ui ? null : actionRow(), minBtn);
 
   const renderGroupCard = (keys          ) => {
@@ -10326,7 +10543,11 @@ function createPlacementPanel(d                    )                 {
     // A guessed name on two lines: what it is, then (grey) which one — "Black pillar by the road" / "left, 3rd". On one line
     // the 272 px card cut it to "Black pillar by the road (le…", the very part that tells it from the 19 others (2026-10-19).
     const parts = isGuessed(it) ? nameParts(shown) : { base: shown, where: '' };
-    const h0 = head(thumbImg(key), parts.base, parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', it.kinds.includes('ui'));
+    // UI (Ive review 3 ⑤): the name is the key in words ("Title card"); the grey second line is what it says ("Glow
+    // Garden Tap the lanterns…"), when that is not just the name again (a "Score" that reads "Score").
+    const ui = it.kinds.includes('ui');
+    const uiText = ui && it.label.trim().toLowerCase() !== shown.toLowerCase() ? it.label : null;
+    const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui);
     h0.title = parts.where ? shown : '';
     const sub = h0.querySelector('.key')               ;
     card.append(h0);
@@ -10334,7 +10555,9 @@ function createPlacementPanel(d                    )                 {
     // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
     // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
     // "…" (which still opens the fields). The second line stays empty; whoever needs numbers reads them on a PC.
-    if (d.phone() && !parts.where) sub.textContent = '';
+    // A UI element's text stays (Ive review 3 ⑤): it is words, not numbers, and the name alone ("Title card") does not say
+    // which title.
+    if (d.phone() && !parts.where && !uiText) sub.textContent = '';
     animate();
     // Held by the editor (bridge/hold.ts; a hands-on try of 2026-10-19, items 4 and 5). A ground / road / sky:
     // why it does not move, and the one button that frees it (the "one more step" asked for). What the game moves by
@@ -10541,7 +10764,10 @@ function createPlacementPanel(d                    )                 {
     // merge of 2026-10-19: the name line is a function so the card of an object the game moves (held 'game', which ends
     // early) shows it too — the unnamed pillars of the runner are both at once (fb-names + fb-safe).
     if (it.unstable) nameNote();
-    if (it.copyOf) body.append(h('p', { class: 'muted copy-note note-line', text: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf }) }));
+    // A copy: no line on the card (the third design review, 5-2, 2026-10-20). "Copy of barrel · Save to keep it" said
+    // what the list's "duplicate" tag (its tooltip has these words) and the "Save · 1" in the game's corner already
+    // say. A see-through stand-in keeps its line: why it is see-through is said nowhere else.
+    if (it.copyOf && it.ghost) body.append(h('p', { class: 'muted copy-note note-line', text: d.t('ops.ghostNote', { from: it.copyOf }) }));
     // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
     // want to go straight to its page in the Library"); its file is the Assets row above.
     // (Not for a UI element: HTML is not a Library object.)
@@ -10688,7 +10914,8 @@ function createPlacementPanel(d                    )                 {
     const n = (v                    , digits        ) => (v ?? 0).toFixed(digits).replace('-', '\u2212');
     return d.dim() === '3d' ? `x ${n(p[0], 1)} · z ${n(p[2], 1)}` : `x ${n(p[0], 0)} · y ${n(p[1], 0)}`;
   };
-  const nameOf = (it      ) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : undefined, text: displayName(it, d.t) });
+  // A UI row's tooltip is what it says (its name is its key in words, names.ts uiName).
+  const nameOf = (it      ) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : it.kinds.includes('ui') ? it.label : undefined, text: displayName(it, d.t) });
   // Keep the picked row in view inside the list (PC and phone). Before the
   // tool-modes pass (10/16) a phone scrolled the sheet to its top on a new
   // pick, because the card was then inside the sheet; the card now stands on
@@ -10739,7 +10966,9 @@ function createPlacementPanel(d                    )                 {
       text: on ? d.t('ops.multiDone') : d.t('ops.multi'),
       title: on ? (d.phone() ? '' : d.t('ops.multiOn')) : `${d.t('ops.multiHint')} ${d.phone() ? '' : d.t('ops.multiOff', { all: d.shortcutOf('all') })}`.trim(),
       onclick: () => d.setMulti(!on) });
-    listTools.append(h('span', { class: 'list-title', text: d.t('list.title') }), b);
+    // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
+    const uiList = d.items().every((i) => i.kinds.includes('ui'));
+    listTools.append(h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };
@@ -10893,7 +11122,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[32] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -10930,7 +11159,7 @@ __defs[32] = function (__exports) {
 // moves the words into the ask box (focused, not sent). Typing in the ask box still shows suggestions (the `typed`
 // mode below), and those still read the ask box: there the words were written in it on purpose.
 const { h } = __require(14);
-const { icon } = __require(21);
+const { icon } = __require(22);
 
                                                                         
 
@@ -11199,7 +11428,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[33] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -11218,13 +11447,18 @@ const FIT_MARGIN = 4 / 32;
 const ALPHA_MIN = 24;
 /** Share of the picture's alpha left out at each side when finding the object's box (see below). 0.01 = 1 %. */
 const TRIM = 0.01;
-const OUT = 96; // the size the shell asks the game for (main.ts placement/thumbs)
+const OUT = 96; // the size the list asks the game for (main.ts placement/thumbs); the Library's tiles ask for more
 
 const cache = new Map                         ();
 
-/** The picture cropped to its object with the margin; the same picture when it cannot tell (opaque, empty, an error). Never rejects. */
-function fitPicture(src        )                  {
-  let p = cache.get(src);
+/**
+ * The picture cropped to its object with the margin, `out` px square; the same picture when it cannot tell (opaque,
+ * empty, an error). Never rejects. `out`: the size it was asked for (a Library tile's twice-its-size picture must not
+ * come back as 96 px — that blur is what Ive review 3 ⑧ saw).
+ */
+function fitPicture(src        , out = OUT)                  {
+  const id = `${out}|${src}`;
+  let p = cache.get(id);
   if (!p) {
     p = new Promise        ((resolve) => {
       const img = new Image();
@@ -11273,11 +11507,11 @@ function fitPicture(src        )                  {
           if (side >= Math.max(w, h) - 2) return resolve(src);
           const cx = x0 + bw / 2, cy = y0 + bh / 2;
           const o = document.createElement('canvas');
-          o.width = o.height = OUT;
+          o.width = o.height = out;
           const og = o.getContext('2d');
           if (!og) return resolve(src);
           og.imageSmoothingQuality = 'high';
-          og.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, OUT, OUT);
+          og.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, out, out);
           resolve(o.toDataURL('image/png'));
         } catch {
           resolve(src);
@@ -11287,7 +11521,7 @@ function fitPicture(src        )                  {
       img.src = src;
     });
     if (cache.size > 600) cache.clear();
-    cache.set(src, p);
+    cache.set(id, p);
   }
   return p;
 }
@@ -11295,7 +11529,7 @@ function fitPicture(src        )                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[34] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -11391,7 +11625,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[35] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -11511,7 +11745,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[36] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -11524,8 +11758,8 @@ __defs[36] = function (__exports) {
 // keys in the third grey, three columns on a PC (Edit · Tools · View), one on a phone. Only what applies to this game
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(14);
-const { icon } = __require(21);
-const { KEYMAP, keysOf } = __require(30);
+const { icon } = __require(22);
+const { KEYMAP, keysOf } = __require(32);
 
                                     
                          
@@ -11551,8 +11785,10 @@ function createShortcutSheet(d                   ) {
       const dl = h('dl', { class: 'keys-list' });
       for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()))) {
         const keys = keysOf(k.id, d.mac());
+        // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
+        const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
         dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
-          h('dt', {}, d.t(k.label || `keys.${k.id}`), k.note ? h('span', { class: 'keys-note', text: d.t(k.note) }) : null),
+          h('dt', {}, d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
           h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
       }
       // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
@@ -11588,7 +11824,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[37] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -11813,7 +12049,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[38] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -12003,7 +12239,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[39] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -12114,7 +12350,121 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[40] = function (__exports) {
+__defs[42] = function (__exports) {
+'use strict';
+// unsaved-guard.ts
+
+// "You have 3 unsaved changes": the one window before something the person changed would be lost (a try of the editor, 2026-10-21:
+// "some people forget to press Save, so we have to make them notice — when edits are about to be lost, show a modal").
+//
+// WHAT is lost, and by what (the list made for this window):
+// - placement / Library changes are written as a draft ~0.7 s after each one (main.ts keepNow), so a new game page
+//   (Play, the AI's reload, Reload game, Undo AI change) never loses them (play-unsaved, 2026-10-21). What a closed or
+//   reloaded EDITOR page loses is the Save itself: the next page opens the draft as if it were saved, "Save · N" never
+//   comes back, and the local AI is never handed those changes. So leaving the page counts them — except in the web
+//   demo (`offline`), where there is no AI to hand them to and the draft IS the save (the same key in this browser).
+// - a game tool's data (.studio/data/<id>.json, CONTRACT.md §7) lives only in the game page until Save collects it:
+//   any new game page loses it, and so does leaving.
+// Nothing else asks: switching World / UI, the Library, the language, Play's own Reload (no tool is on while playing).
+//
+// The window: one sentence with the number, three buttons — Save and continue (the main one, focused: Enter), Don't
+// save, Cancel (Esc, or a press outside). Tab stays inside. Closing the tab or reloading can only get the browser's
+// own question (beforeunload: its words, not ours), and only while lostBy('leave') > 0.
+// Pure part (lostBy) in test/unsaved-guard.test.ts; the window and each case in test/studio-unsaved-guard.browser.mjs.
+const { h } = __require(14);
+
+                                                                       
+
+/** 'leave' = this editor page goes (tab, reload, a link); 'reload' = a new page of the game inside it. */
+                                         
+
+                             
+                                                                     
+                   
+                                                                                          
+               
+                                                               
+                
+ 
+
+/** How many unsaved changes `op` would lose (0 = go on without asking). */
+function lostBy(op         , s            )         {
+  const tools = Math.max(0, s.tools);
+  if (op === 'reload') return tools;
+  return (s.offline ? 0 : Math.max(0, s.kept)) + tools;
+}
+
+                                                        
+
+/** The window: in the middle of the editor, the glass of "Check before you save" (safe-save.ts); one at a time. */
+function createUnsavedGuard(deps                              ) {
+  const { t } = deps;
+  // The layer under the window takes the presses meant for the editor behind it (a press there = Cancel).
+  const scrim = h('div', { class: 'guard-scrim', hidden: true, dataset: { part: 'unsaved-scrim' } });
+  const el = h('div', { class: 'safe-save unsaved-guard', role: 'alertdialog', 'aria-modal': 'true', tabindex: '-1', hidden: true, dataset: { part: 'unsaved-guard' } });
+  deps.mount.append(scrim, el);
+  let done                                    = null;
+  let back                     = null;
+  const close = (a             ) => {
+    el.hidden = true;
+    scrim.hidden = true;
+    el.replaceChildren();
+    const d = done;
+    done = null;
+    // Focus goes back where it was (the Play button, the link…), so the keyboard carries on from there.
+    if (back?.isConnected) back.focus({ preventScroll: true });
+    back = null;
+    d?.(a);
+  };
+  scrim.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    close('cancel');
+  });
+  el.addEventListener('keydown', (e) => {
+    // Nothing typed here reaches the editor's keys (P would press Play again, ⌘Z would undo behind the window).
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      close('cancel');
+    } else if (e.key === 'Tab') {
+      const bs = [...el.querySelectorAll                   ('button')];
+      const i = bs.indexOf(document.activeElement                     );
+      e.preventDefault();
+      bs[(i + (e.shiftKey ? bs.length - 1 : 1) + bs.length) % bs.length]?.focus();
+    }
+    // Enter presses the focused button (the browser's own); the main one has the focus when the window opens, and
+    // Enter with the focus anywhere else in the window (after a press on its text) is the main one too.
+    else if (e.key === 'Enter' && !(document.activeElement instanceof HTMLButtonElement && el.contains(document.activeElement))) {
+      e.preventDefault();
+      close('save');
+    }
+  });
+  return {
+    get open() {
+      return !el.hidden;
+    },
+    ask(n        )                       {
+      if (done) close('cancel');
+      back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const title = h('h2', { class: 'safe-title', id: 'unsaved-guard-title', text: t('guard.title', { n }) });
+      el.setAttribute('aria-labelledby', 'unsaved-guard-title');
+      const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t('guard.save'), onclick: () => close('save') });
+      const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t('guard.discard'), onclick: () => close('discard') });
+      const no = h('button', { type: 'button', dataset: { action: 'guard-cancel' }, text: t('guard.cancel'), onclick: () => close('cancel') });
+      // Cancel · Don't save · Save and continue: the main one at the end, as in "Check before you save".
+      el.replaceChildren(title, h('div', { class: 'safe-actions' }, no, skip, save));
+      scrim.hidden = false;
+      el.hidden = false;
+      save.focus({ preventScroll: true });
+      return new Promise((r) => (done = r));
+    },
+  };
+}
+
+__def(__exports, "lostBy", () => lostBy);
+__def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
+};
+__defs[43] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -12135,11 +12485,13 @@ __defs[40] = function (__exports) {
 // something is hidden, and the one press that shows it again (faded, as a reference to place things around; clicks
 // still go through it to the world). ⇧U does the same (U itself switches the layer). On the UI layer there is nothing
 // to hide, so the eye is not drawn. It hangs off the switch's right edge (absolute), so the switch stays exactly in
-// the middle of the bar and does not jump when the eye comes and goes. PC: the eye and a short word ("UI hidden");
-// phone: the eye alone, a finger's 44 px.
+// the middle of the bar and does not jump when the eye comes and goes. The eye alone, on PC too (Ive review 3, "what to
+// cut" 1, 2026-10-20): the word beside it ("UI hidden" / "UI shown") said what the slashed / open eye already says, so
+// the bar's middle is World | UI and the eye; the words are the pointer's tooltip ("Show the game's UI  ⇧U"). Phone: a
+// finger's 44 px.
                                                 
 const { h } = __require(14);
-const { icon } = __require(21);
+const { icon } = __require(22);
 
                               
                   
@@ -12163,9 +12515,8 @@ function createLayerSwitch(choose                        , togglePeek           
       eye.setAttribute('aria-pressed', String(peek));
       eye.dataset.peek = peek ? 'on' : 'off';
       eye.replaceChildren(icon(peek ? 'eye' : 'eyeOff'));
-      if (!compact) eye.append(h('span', { class: 'label', text: t(peek ? 'uiPeek.shown' : 'uiPeek.hidden') }));
       eye.setAttribute('aria-label', t('uiPeek.name'));
-      eye.title = `${t(peek ? 'uiPeek.hide' : 'uiPeek.show')}  ${peekKey}`;
+      eye.title = `${t(peek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show')}  ${peekKey}`;
       el.setAttribute('aria-label', t('uiLayer.switch'));
       el.dataset.compact = compact ? 'on' : 'off';
       for (const b of btns) {
@@ -12183,7 +12534,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[41] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -12241,7 +12592,7 @@ __def(__exports, "uiAsPlacement", () => uiAsPlacement);
 __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[42] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -12264,33 +12615,35 @@ const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill
 const { DRAG_FILE } = __require(11);
 const { createLibraryObjects, DRAG_OBJECT } = __require(16);
 const { rulesFor } = __require(17);
-const { samePose } = __require(19);
+const { samePose } = __require(20);
 const { h, safeImageSrc } = __require(14);
-const { detectLang, setExtraText, translate } = __require(20);
-const { NEXT_STEPS, renderNextSteps } = __require(22);
-const { statusCovers } = __require(23);
-const { aiBusy, aiPhase, reloadDecision } = __require(24);
-const { askView: questionView } = __require(25);
-const { playLine, playWords } = __require(26);
-const { renderSettings } = __require(28);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(27);
-const { dropTarget, hasLayer, layerTarget } = __require(18);
-const { createPlacementPanel } = __require(31);
-const { icon, setButton } = __require(21);
-const { createPalette } = __require(32);
-const { fitPicture } = __require(33);
-const { PlacementModel } = __require(19);
-const { UndoStack, poseChange } = __require(34);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(29);
+const { detectLang, setExtraText, translate } = __require(21);
+const { NEXT_STEPS, renderNextSteps } = __require(23);
+const { statusCovers } = __require(24);
+const { aiBusy, aiPhase, reloadDecision } = __require(25);
+const { askView: questionView } = __require(26);
+const { playLine, playWords } = __require(27);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(28);
+const { renderSettings } = __require(30);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(29);
+const { dropTarget, hasLayer, layerTarget } = __require(19);
+const { createPlacementPanel } = __require(33);
+const { icon, setButton } = __require(22);
+const { createPalette } = __require(34);
+const { fitPicture } = __require(35);
+const { PlacementModel } = __require(20);
+const { UndoStack, poseChange } = __require(36);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(31);
 const { displayName, forgetNames, noteItems, useNameLang } = __require(12);
-const { keyOf, tipText } = __require(30);
-const { installTooltips } = __require(35);
-const { createShortcutSheet } = __require(36);
-const { createContextMenu } = __require(37);
-const { contextRows } = __require(38);
-const { bigChanges, createSafeSave } = __require(39);
-const { createLayerSwitch } = __require(40);
-const { uiAsPlacement, uiEntries, withUi } = __require(41);
+const { keyOf, tipText } = __require(32);
+const { installTooltips } = __require(37);
+const { createShortcutSheet } = __require(38);
+const { createContextMenu } = __require(39);
+const { contextRows } = __require(40);
+const { bigChanges, createSafeSave } = __require(41);
+const { createUnsavedGuard, lostBy } = __require(42);
+const { createLayerSwitch } = __require(43);
+const { uiAsPlacement, uiEntries, withUi } = __require(44);
 
                                                                         
 
@@ -12408,6 +12761,19 @@ function start(host            ) {
   let toast = '';
   let toastTimer = 0;
   const thumbs = new Map                ();
+  // Pictures kept from the game page before a reload (▶ Play → Edit, the AI's change): still shown, asked for again,
+  // and replaced when the new one comes (Ive review 3 ⑥, 2026-10-20 — the list showed empty squares after Edit until
+  // every picture was drawn again: `thumbs` was cleared on a reload). A key the new game no longer has keeps an unused
+  // entry; one that now names another object (a tree path) shows the old picture until its new one comes.
+  const staleThumbs = new Set        ();
+  const needsThumb = (k        ) => !thumbs.has(k) || staleThumbs.has(k);
+  // The Library's tiles: their own pictures, twice the tile's size on screen (Ive review 3 ⑧), apart from the list's
+  // 96 px ones so a game with hundreds of objects does not draw every list row at 384 px. Kept and replaced like the
+  // list's (`bigStale`). `bigShown`: asked for since the last reload.
+  const bigThumbs = new Map                ();
+  const bigStale = new Set        ();
+  const bigShown = new Set        ();
+  const bigRaw = new Map                ();
   // The last raw picture the game sent per object (before cropping, thumb-fit.ts).
   const thumbAsked = new Map                ();
   // One model per layer (ui-layer.ts says why the UI's is a PlacementModel too); `model` is the edited layer's, so
@@ -12419,6 +12785,8 @@ function start(host            ) {
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
   const listeners = new Map                                         ();
   let placementRestored = false;
+  // The same for the UI layer's first list of each page (UI stage 1): set false by loadGame().
+  let uiRestored = false;
   // itemsSeen: the game has answered with its object list at least once. Before
   // that the card said "No movable objects found", which read as "broken"
   // while the game was still starting (UI/UX review 2026-10-16, journey view).
@@ -12463,7 +12831,18 @@ function start(host            ) {
   let changeFrom                = null;
   let lastChange                                               = null;
   let aiAfter                             = null;
+  // Undo / Redo presses, so the same "Back to before" after Undo → Redo → Undo is a new line (line-fade.ts lineKey).
+  let aiAfterTurn = 0;
   let undoBusy = false;
+  // The finished line goes by itself (line-fade.ts, 2026-10-20: "this line is always there, it's in the way"). `lineShown`: the key of
+  // the finished line on screen, whose timer runs; `lineGone`: the key of the one that faded — the next poll draws the
+  // same line again and it must stay gone until there is something new (or the person calls it back with the top
+  // bar's "● AI" or ⌘K). `lineLeft`: when the pointer / keyboard last left it (LINE_GRACE_MS more after that).
+  let lineShown = '';
+  let lineGone = '';
+  let lineFading = false;
+  let lineTimer = 0;
+  let lineLeft = 0;
   // What the AI's last change did, made visible (the AI line said "made 3
   // changes", but not where). When the person presses "Reload the game"
   // after the AI is done, the poses on screen are kept; the first object
@@ -12555,7 +12934,7 @@ function start(host            ) {
   // Where you are, always in one line: ▣ Studio / <the game> / Scene.
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'here-note', hidden: true }), h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -12598,9 +12977,26 @@ function start(host            ) {
   // Is the AI there? Grey until it writes back in this session, green after,
   // violet while it works. (The editor cannot see the AI's window; this is
   // only what the AI told it, so it never claims more.)
-  const peer = h('span', { class: 'peer', dataset: { part: 'peer' } }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // A button since 2026-10-20: once the AI's finished line has faded, pressing "● AI" brings it back (with its "Undo AI
+  // change"). The quietest place for it: the AI already lives there, nothing new is drawn, and its label turns violet
+  // (the AI's hand) only while a change of the AI's can still be taken back (renderPeer).
+  const peer = h('button', { type: 'button', class: 'peer', dataset: { part: 'peer', action: 'ai-recall' }, onclick: () => recallLine() }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // Ask while playing on a narrow screen (a phone, the side window; Ive review 3 ④, 2026-10-20): ✦ left of Edit opens
+  // the field over the game. The game page's own corner mark sat on the game's words at its foot ("Tap or click the
+  // water to sail · WASD works too" in Lantern Cove), and a game's foot is where games put words; the top bar is the
+  // editor's own. Moved, not added: the game page draws no corner mark then (play/on `mark: false`), except in full
+  // screen where this bar is gone. Undo / Redo step away while playing there (they are disabled in Play anyway) so the
+  // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
+  const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
+  // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
+  // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
+  // From the keyboard (Tab then Enter / Space: detail 0) it keeps the focus and the ring, as it should.
+  for (const b of playBtns) b.addEventListener('click', (e) => {
+    if (e.detail > 0) b.blur();
+  });
   // The side window next to a chat (a try on 2026-10-19: "it's hard to use from the sidebar"): one quiet icon at the right of
   // the top bar opens this same editor in a large window — the link with its pass (host.largeLink: the server's pass
   // is a cookie of THIS browser, a bare location.href in another browser got "Missing pass"), plus this page's own
@@ -12827,8 +13223,12 @@ function start(host            ) {
     selectObject(null);
   });
   // The news card shows when one of its lines has something to say.
+  // Shown = not hidden AND drawn: the ask box's "Sent to your AI" note keeps its text but shell.css hides it once the AI
+  // line takes over (.shell[data-ai] .ask-note); counted as shown, it left an empty frosted card after the AI's line
+  // faded (line-fade.ts, 2026-10-20).
+  const captionShows = (c         ) => !(c               ).hidden && (!c.classList.contains('toast') || c.classList.contains('on')) && getComputedStyle(c).display !== 'none';
   const updateCaption = () => {
-    const any = [...caption.children].some((c) => !(c               ).hidden && (!(c               ).classList.contains('toast') || (c               ).classList.contains('on')));
+    const any = [...caption.children].some(captionShows);
     if (caption.hidden === any) caption.hidden = !any;
   };
   new MutationObserver(updateCaption).observe(caption, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
@@ -12876,19 +13276,26 @@ function start(host            ) {
       if (cardUp || sheetUp || libraryUp || menuUp) inset.camera = false;
     }
     // The Save in the game (saveFab), phone / side window: right over what covers the game's foot — the dock (the
-    // bar, the card and the AI's line over it), the list sheet, the Library — 8 px above the highest of them (CSS
+    // bar, the card and the AI's line over it), the list sheet, the Library — 12 px above the highest of them (CSS
     // reads --fab-bottom). And the camera ↑↓, in the same corner, go above it while it shows (it comes with the
     // first change, mostly with the card up, when the ↑↓ are away anyway). PC: CSS alone (the ask bar's row).
     if (phone()) {
       let foot = !dock.hidden && dock.offsetParent ? dock.getBoundingClientRect().top : sr.bottom;
       if ((sheetOpen || page !== 'tool') && !playing) foot = Math.min(foot, window.innerHeight - sideFoot - side.offsetHeight);
       if (tool === 'library' && !assetsPage.hidden) foot = Math.min(foot, assetsPage.getBoundingClientRect().top);
-      const fb = `${Math.max(8, Math.round(sr.bottom - foot + 8))}px`;
+      // 12 px over it, not 8 (the third design review's ③ / ⑨, 2026-10-20): at 8 the Save's shadow met the list
+      // sheet's edge and it read as sitting on it.
+      const fb = `${Math.max(8, Math.round(sr.bottom - foot + 12))}px`;
       // Not while it says "✓ Saved": the AI's line ("saved…") rises in the dock right after the press and would carry
       // the button up from under the finger, and a second tap would land on what slid into its place (the web demo's
       // test caught the card's "…" there). It stays put for that moment, then goes.
       if (saveFab.dataset.state !== 'done' && app.style.getPropertyValue('--fab-bottom') !== fb) app.style.setProperty('--fab-bottom', fb);
-      if (!saveFab.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - foot + 8 + (saveFab.offsetHeight || 44) + 8));
+      if (!saveFab.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - foot + 12 + (saveFab.offsetHeight || 44) + 8));
+    } else if (!saveFab.hidden && saveFab.offsetParent) {
+      // PC: the camera ↑↓ go above the Save while it shows (the third design review's ③, 2026-10-20). With the ask bar
+      // they already were (the Save sits on the bar's row), but the web demo has no ask bar: there the Save covered ↓
+      // (the editor in the front page, a game of 814×572). offsetTop, not the rect: the Save rises in (a transform).
+      inset.bottom = Math.max(inset.bottom, Math.round(stage.clientHeight - saveFab.offsetTop + 8));
     }
     const card = placementPanel.cardEl;
     if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
@@ -12981,12 +13388,13 @@ function start(host            ) {
     group: () => group,
     multi: () => multi,
     setMulti: (on) => setMulti(on),
-    thumb: (k) => thumbs.get(k) || null,
-    wantThumbs: (keys) => {
+    thumb: (k) => bigThumbs.get(k) || thumbs.get(k) || null,
+    sharp: (k) => bigThumbs.has(k) && !bigStale.has(k),
+    wantThumbs: (keys, px) => {
       if (!uiPrefs.show.thumbs || playing) return;
-      const ask = keys.filter((k) => !visibleShown.has(k));
-      for (const k of ask) visibleShown.add(k);
-      if (ask.length) send({ type: 'studio:placement/thumbs', keys: ask, size: 96 });
+      const ask = keys.filter((k) => !bigShown.has(k));
+      for (const k of ask) bigShown.add(k);
+      if (ask.length) send({ type: 'studio:placement/thumbs', keys: ask, size: px });
     },
     pose: (k) => model.pose(k),
     dim: () => dim,
@@ -13184,6 +13592,16 @@ function start(host            ) {
       if (editLayer === 'world') act('ui-peek', t(uiPeek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show'), uiPeek ? 'eyeOff' : 'eye', () => setUiPeek(!uiPeek), keyOf('uiPeek', mac), 'ui hud show hide peek eye 見る 隠す 表示');
     }
     if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    // The AI's change, undone from here too: its line fades by itself (line-fade.ts) and this row is always there while
+    // the change can be taken back (also on a phone, where the top bar has no "● AI").
+    {
+      const ph = currentPhase();
+      if (lastChange && host.undoAi && !playing && !undoBusy) {
+        if (ph === 'done' || ph === 'redone') act('ai-undo', t('ai.undo'), 'undo', () => void undoAiChange(false), undefined, t('pal.aiUndo.words'));
+        else if (ph === 'undone' && lastChange.redo) act('ai-redo', t('ai.redoPal'), 'redo', () => void undoAiChange(true), undefined, t('pal.aiUndo.words'));
+      }
+      if (lineRecallable()) act('ai-recall', t('ai.recall'), 'spark', () => recallLine(), undefined, t('pal.aiUndo.words'));
+    }
     if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
     if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
     if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
@@ -13900,6 +14318,9 @@ function start(host            ) {
   }
 
   function renderAiLine() {
+    // Keep the keyboard where it was: the line is drawn again on every poll, and a focused button replaced by its twin
+    // drops the focus to the page (the line would then fade under someone tabbing through it).
+    const focused = aiLine.contains(document.activeElement) ? (document.activeElement               ).dataset.action : undefined;
     aiLine.replaceChildren();
     aiLine.className = 'ai-line';
     const ph = currentPhase();
@@ -13981,10 +14402,11 @@ function start(host            ) {
       if (lastChange && host.undoAi && !playing) link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
       // A host that cannot tell when the game's files changed: the old button.
       else if (ph === 'done' && !playing && code === undefined && !aiReloaded) {
-        link('ai-reload', 'undo', t('ai.reload'), () => {
+        link('ai-reload', 'undo', t('ai.reload'), () => void confirmLoss('reload').then((go) => {
+          if (!go) return;
           aiReloadFor = aiStatus?.at ?? null;
           void softReload('ai');
-        });
+        }));
       }
     } else if (ph === 'undone' || ph === 'redone') {
       two(t(ph === 'undone' ? 'ai.undone' : 'ai.redone'), ph === 'undone' ? t('ai.undoneSub') : '');
@@ -13994,6 +14416,8 @@ function start(host            ) {
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
+    fadeLine(ph);
+    if (focused && !aiLine.hidden) (aiLine.querySelector(`[data-action="${focused}"]`)                      )?.focus({ preventScroll: true });
     sendMarks();
     // The ask field becomes the answer field while the AI asks (and goes back after).
     if ((ph === 'asking') !== wasAsking) {
@@ -14006,12 +14430,107 @@ function start(host            ) {
     sendPlayLine();
   }
 
+  /**
+   * A finished line (done / undone / redone) stays lineStayMs, longer while the pointer or keyboard is in it, then
+   * fades and stays gone across polls (lineGone). Every other phase shows as long as it is true (line-fade.ts).
+   */
+  function fadeLine(ph         ) {
+    if (!lineFades(ph) || aiLine.hidden) {
+      clearTimeout(lineTimer);
+      lineShown = '';
+      lineFading = false;
+      caption.classList.remove('fading');
+      return;
+    }
+    const key = lineKey(ph, aiStatus?.at, aiStatus?.note, aiAfterTurn);
+    if (key === lineGone) {
+      aiLine.hidden = true;
+      caption.classList.remove('fading');
+      return;
+    }
+    if (key !== lineShown) {
+      lineShown = key;
+      lineFading = false;
+      clearTimeout(lineTimer);
+      lineTimer = window.setTimeout(lineDue, lineStayMs(aiLine.textContent || ''));
+    }
+    // A poll during the fade draws the line again: keep it fading.
+    aiLine.classList.toggle('fading', lineFading);
+    caption.classList.toggle('fading', lineFading && onlyLine());
+  }
+  /** The caption shows nothing but the AI line (then the whole frosted card fades with it, not just its text). */
+  function onlyLine()          {
+    return ![...caption.children].some((c) => c !== aiLine && captionShows(c));
+  }
+  function lineDue() {
+    if (aiLine.matches(':hover, :focus-within') || Date.now() - lineLeft < LINE_GRACE_MS) {
+      lineTimer = window.setTimeout(lineDue, 500);
+      return;
+    }
+    lineFading = true;
+    aiLine.classList.add('fading');
+    if (onlyLine()) caption.classList.add('fading');
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    lineTimer = window.setTimeout(() => {
+      lineGone = lineShown;
+      lineShown = '';
+      lineFading = false;
+      renderAiLine();
+    }, reduce ? 0 : LINE_FADE_MS);
+  }
+  // In the line = it stays. Coming back during the fade stops it.
+  const lineHeld = () => {
+    if (!lineFading) return;
+    lineFading = false;
+    aiLine.classList.remove('fading');
+    caption.classList.remove('fading');
+    clearTimeout(lineTimer);
+    lineTimer = window.setTimeout(lineDue, LINE_GRACE_MS);
+  };
+  const lineLeaves = () => {
+    lineLeft = Date.now();
+  };
+  aiLine.addEventListener('pointerenter', lineHeld);
+  aiLine.addEventListener('focusin', lineHeld);
+  aiLine.addEventListener('pointerleave', lineLeaves);
+  aiLine.addEventListener('focusout', lineLeaves);
+  /** The faded line is still the current one (nothing newer): "● AI" / ⌘K can bring it back. */
+  function lineRecallable()          {
+    const ph = currentPhase();
+    return !!lineGone && lineFades(ph) && lineKey(ph, aiStatus?.at, aiStatus?.note, aiAfterTurn) === lineGone;
+  }
+  function recallLine() {
+    if (!lineRecallable()) return;
+    lineGone = '';
+    lineShown = '';
+    renderAiLine();
+  }
+
   // ----- ask while playing (§3.5; bridge/play-ask.ts draws it in the game page, full screen too) -----
   // `playSince`: when this Play began; only a request made since then has a line over the game (an earlier "done"
   // from the editor is not news to someone playing). `playSig`: the last line sent, so a poll that changes nothing
   // sends nothing.
   let playSince = 0;
   let playSig = '';
+  // The game page answered play/hello with an AI behind the host: the ask field is there. `playMark`: what play/on last
+  // said about the corner mark (sent again when the layout changes, renderPlayAsk).
+  let playAskOn = false;
+  let playMark                 = null;
+  let playNow                              = null;
+  function renderPlayAsk() {
+    const show = playing && playAskOn && phone();
+    playAskBtn.hidden = !show;
+    if (playing && playAskOn && playMark !== !phone()) {
+      playMark = !phone();
+      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
+    }
+    if (!show) return;
+    setButton(playAskBtn, 'spark', t('play.ask'), false, t('play.askTip'));
+    // The AI's state on the ✦ while the corner mark is not drawn: a pulse while it looks / fixes, a ring while a fix
+    // waits for Reload (the corner mark's dot did both).
+    const st = playNow?.state;
+    playAskBtn.dataset.state = st === 'looking' || st === 'fixing' ? 'busy' : st === 'fixed' ? 'ready' : '';
+  }
   function postGame(m               ) {
     try {
       iframe.contentWindow?.postMessage(m, gameOrigin);
@@ -14027,7 +14546,9 @@ function start(host            ) {
     const sig = JSON.stringify(v);
     if (!force && sig === playSig) return;
     playSig = sig;
+    playNow = v;
     postGame({ type: 'studio:play/state', state: v });
+    renderPlayAsk();
   }
 
   /**
@@ -14038,6 +14559,8 @@ function start(host            ) {
   async function undoAiChange(redo         ) {
     const to = redo ? lastChange?.redo : lastChange?.from;
     if (!host.undoAi || !lastChange || !to || undoBusy) return;
+    // The files change first, then the game reloads: ask before either (a game tool's data, unsaved-guard.ts).
+    if (!(await confirmLoss('reload'))) return;
     undoBusy = true;
     renderAiLine();
     const res = await host.undoAi(to, { redo }).catch((e) => ({ ok: false, error: (e         ).message, redo: null }));
@@ -14049,6 +14572,7 @@ function start(host            ) {
     }
     if (!redo) lastChange.redo = res.redo ?? null;
     aiAfter = redo ? 'redone' : 'undone';
+    aiAfterTurn++;
     // The files' new signature first, so the reload below does not trigger a second one.
     const st = await host.status().catch(() => null);
     if (st?.code) {
@@ -14065,6 +14589,8 @@ function start(host            ) {
   // also shows by itself); paused while the tab is hidden. Plain polling
   // works the same against the local server and a hosted one.
   let pollTimer = 0;
+  // The files' signature whose reload was asked about (unsaved game tool data): not asked again for the same change.
+  let heldFor                    ;
   async function pollStatus() {
     clearTimeout(pollTimer);
     if (document.visibilityState !== 'hidden') {
@@ -14082,7 +14608,19 @@ function start(host            ) {
         if (loadedCode === undefined) loadedCode = code;
       }
       const go = reloadDecision({ code, loadedCode, stableMs: Date.now() - codeSince, phase: currentPhase(), playing, reloading: !!swapping });
-      if (go === 'now') {
+      if (go === 'now' && lostNow('reload') > 0) {
+        // The AI's change would reload the game page and lose a game tool's unsaved data: ask once per change. Cancel
+        // keeps the old page until the person saves (then the next poll reloads by itself) or the AI changes it again.
+        if (heldFor !== code) {
+          heldFor = code;
+          const at = aiStatus?.state === 'done' || aiStatus?.state === 'failed' ? aiStatus.at ?? null : undefined;
+          void confirmLoss('reload').then((ok) => {
+            if (!ok || swapping || playing) return;
+            if (at !== undefined) aiReloadFor = at;
+            void softReload('ai');
+          });
+        }
+      } else if (go === 'now') {
         if (aiStatus?.state === 'done' || aiStatus?.state === 'failed') aiReloadFor = aiStatus.at ?? null;
         void softReload('ai');
       }
@@ -14164,7 +14702,7 @@ function start(host            ) {
     const first           = [];
     const rest           = [];
     for (const it of items) {
-      if (thumbs.has(it.key) || thumbsAsked.has(it.key)) continue;
+      if (!needsThumb(it.key) || thumbsAsked.has(it.key)) continue;
       const g = it.group || it.key;
       (seen.has(g) ? rest : first).push(it.key);
       seen.add(g);
@@ -14186,7 +14724,7 @@ function start(host            ) {
       if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
       const k = row.dataset.key ;
       // Not drawn yet and not already moved to the front for this view.
-      if (!thumbs.has(k) && !visibleShown.has(k)) keys.push(k);
+      if (needsThumb(k) && !visibleShown.has(k)) keys.push(k);
     }
     if (!keys.length) return;
     for (const k of keys) visibleShown.add(k);
@@ -14329,8 +14867,11 @@ function start(host            ) {
       // Ask while playing (§3.5): the game page can take a request; say whether an AI can get one (never offline).
       case 'studio:play/hello':
         if (playing && !host.offline) {
-          postGame({ type: 'studio:play/on', lang, words: playWords(t) });
+          playAskOn = true;
+          playMark = !phone();
+          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
           sendPlayLine(true);
+          renderPlayAsk();
         }
         break;
       case 'studio:play/ask':
@@ -14358,7 +14899,14 @@ function start(host            ) {
         if (m.layer === 'ui') {
           uiSeen = true;
           uiItems = m.items;
+          // A new page's UI shows the UI as its code makes it: the moves made before (saved or not) go back, as for the world below.
+          const uiLost = uiRestored ? null : uiModel.notShown(m.items);
+          uiRestored = true;
           for (const a of uiModel.setItems(m.items, '2d')) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'ui' });
+          for (const a of uiLost?.poses || []) {
+            uiModel.moved(a.key, a.pose);
+            send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'ui' });
+          }
           if (editLayer === 'ui') {
             items = m.items;
             itemsSeen = true;
@@ -14420,11 +14968,23 @@ function start(host            ) {
           usesTimer = window.setTimeout(() => void readUses().catch(() => undefined), 1200);
         }
         if (marksNow().keys.length) sendMarks(true);
+        // The first list of a NEW page (Play → Edit, the AI's reload): what of the arrangement it does not show, saved
+        // or not (placement-model.ts notShown; a try of the editor, 2026-10-21: "Play without Save reset everything"). Read before
+        // setItems, which takes the new page's draw order as the model's.
+        const lost = placementRestored ? null : worldModel.notShown(m.items);
         const apply = worldModel.setItems(items, worldDim);
         // Continue from the last save: push saved poses the game does not show.
         if (!placementRestored || apply.length) {
           placementRestored = true;
           for (const a of apply) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose });
+        }
+        if (lost) {
+          if (lost.copies.length) send({ type: 'studio:placement/copy', items: lost.copies });
+          if (lost.removes.length) send({ type: 'studio:placement/remove', keys: lost.removes });
+          for (const a of lost.poses) {
+            worldModel.moved(a.key, a.pose);
+            send({ type: 'studio:placement/pose', key: a.key, pose: a.pose });
+          }
         }
         // ... and the saved copies and deletions the AI has not put in the code yet.
         const fe = model.takeFileEdits();
@@ -14432,8 +14992,12 @@ function start(host            ) {
         if (fe.removes.length) send({ type: 'studio:placement/remove', keys: fe.removes });
         if (selected && !items.some((i) => i.key === selected)) selected = null;
         group = group.filter((k) => items.some((i) => i.key === k));
-        // A changed object's old picture is stale: ask again.
-        for (const k of aiMarks.keys()) thumbs.delete(k);
+        // A changed object's old picture is stale: shown until its new one comes (⑥), asked for again.
+        for (const k of aiMarks.keys()) {
+          if (thumbs.has(k)) staleThumbs.add(k);
+          if (bigThumbs.has(k)) bigStale.add(k);
+          bigShown.delete(k);
+        }
         requestThumbs();
         renderAll();
         if (swapping) {
@@ -14525,7 +15089,22 @@ function start(host            ) {
         break;
       }
       case 'studio:placement/thumb':
-        if (m.src) {
+        if (m.src && (m.size || 96) > 96) {
+          // A Library tile's own picture (⑧): cropped at its own size; the list takes it too while it has none.
+          const key = m.key, raw = m.src;
+          bigRaw.set(key, raw);
+          void fitPicture(raw, m.size).then((src) => {
+            if (bigRaw.get(key) !== raw) return;
+            bigThumbs.set(key, src);
+            bigStale.delete(key);
+            libraryObjects.updateThumb(key);
+            if (!thumbs.has(key)) {
+              thumbs.set(key, src);
+              staleThumbs.add(key);
+              placementPanel.updateThumb(key);
+            }
+          });
+        } else if (m.src) {
           // Cropped to the object first (thumb-fit.ts, W1-11): the lighthouse filled its tile instead of being an "i".
           // `thumbAsked` keeps the newest: a picture that arrives while an older one is still being cropped wins.
           const key = m.key, raw = m.src;
@@ -14533,6 +15112,7 @@ function start(host            ) {
           void fitPicture(raw).then((src) => {
             if (thumbAsked.get(key) !== raw) return;
             thumbs.set(key, src);
+            staleThumbs.delete(key);
             placementPanel.updateThumb(key);
             libraryObjects.updateThumb(key);
           });
@@ -14640,16 +15220,61 @@ function start(host            ) {
     if (unwritten()) void keepNow();
   });
 
+  // ----- before unsaved changes are lost (a try of the editor, 2026-10-21: "people forget Save — show a window when edits would be lost") -----
+  // unsaved-guard.ts says what each kind of step loses; here are the steps. A new game page (Play, Reload game, the AI's
+  // reload, Undo AI change) asks only for a game tool's data; leaving the page also for the Save itself (local studio).
+  const lostNow = (op         ) => lostBy(op, { offline: !!host.offline, kept: dirtyCount() - toolsDirty(), tools: toolsDirty() });
+  let guard                                               = null;
+  // True once the person chose to leave (Don't save, or after Save): the browser's own question must not come second.
+  let leaving = false;
+  /** Ask before `op` loses something; true = go on (saved first when asked to), false = stay as you are. */
+  async function confirmLoss(op         )                   {
+    const n = lostNow(op);
+    if (n <= 0) return true;
+    const a = await (guard ||= createUnsavedGuard({ mount: app, t })).ask(n);
+    if (a === 'cancel') return false;
+    // Save and continue: only once the save went through (a failed save, or Cancel on "Check before you save", stays).
+    if (a === 'save' && !(await handOff())) return false;
+    if (op === 'leave') leaving = true;
+    return true;
+  }
+  // Closing the tab, reloading, the browser's Back: only the browser's own question can be had (its words, not ours).
+  window.addEventListener('beforeunload', (e) => {
+    if (leaving || lostNow('leave') <= 0) return;
+    e.preventDefault();
+    // Older Chrome / Safari need returnValue set.
+    e.returnValue = '';
+  });
+  // A link of this page that opens another page in this tab (the web demo's "← Samples", "Back to the original look"
+  // on the Look page): our window instead of the browser's, and the draft written first (it waits 0.7 s after a change).
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = (e.target                  )?.closest?.('a[href]')                            ;
+    if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
+    const to = new URL(a.href, location.href);
+    if (to.protocol !== 'http:' && to.protocol !== 'https:') return;
+    // Same page, only a #part: nothing leaves.
+    if (to.origin === location.origin && to.pathname === location.pathname && to.search === location.search) return;
+    if (lostNow('leave') <= 0 && !unwritten()) return;
+    e.preventDefault();
+    void (async () => {
+      if (!(await confirmLoss('leave'))) return;
+      await keepNow();
+      leaving = true;
+      location.href = to.href;
+    })();
+  });
+
   let safeSave                                           = null;
   /** Save (⌘S): the files with a `saved` request, handed to the AI. */
-  async function handOff() {
+  async function handOff()                   {
     // Big changes to big things are said in words first (safe-save.ts; the road of that try that went up 16 m).
     // The world's objects, whichever layer is edited (merge of 2026-10-19: with UI stage 1 `model` / `items` / `dim` are
     // the edited layer's, and a road raised before switching to the UI must still be told).
     const big = bigChanges(worldItems, worldModel.changedKeys(), (k) => worldModel.savedPose(k), (k) => worldModel.pose(k), worldDim, t, (it) => displayName(it, t));
     if (big.length) {
       const a = await (safeSave ||= createSafeSave({ mount: stage, t })).ask(big);
-      if (a === 'cancel') return;
+      if (a === 'cancel') return false;
       if (a === 'putBack') {
         const onWorld = editLayer === 'world';
         // A world step pushed while the UI is edited: the one history marks it as the world's (undo.ts layerNow).
@@ -14677,7 +15302,7 @@ function start(host            ) {
       const v = validatePlacement(file);
       if (!v.ok) {
         showToast(t('save.fail', { error: v.errors.join('; ') }));
-        return;
+        return false;
       }
       if (placementDirty() > 0) {
         const sig = sigOf(file);
@@ -14700,7 +15325,7 @@ function start(host            ) {
       const v = validateLibrary(res);
       if (!v.ok) {
         showToast(t('save.fail', { error: v.errors.join('; ') }));
-        return;
+        return false;
       }
       const sig = sigOf(res);
       jobs.push(host.save(tl.id, v.value).then((r) => {
@@ -14740,6 +15365,7 @@ function start(host            ) {
     }
     if (!errors.length) emit('saved', null);
     renderButtons();
+    return !errors.length;
   }
 
   function goHome() {
@@ -14753,6 +15379,8 @@ function start(host            ) {
   // already kept); what was written waits first, so a game that reads
   // placement.json at start (studio-placement.js) gets the latest one.
   async function togglePlay() {
+    // A game tool's data lives in the game page only (unsaved-guard.ts); the placement draft goes along by itself.
+    if (!playing && !(await confirmLoss('reload'))) return;
     if (!playing) await keepNow();
     if (swapping) finishSwap();
     playing = !playing;
@@ -14818,6 +15446,9 @@ function start(host            ) {
 
   function loadGame(soft = false) {
     bridgeAlive = false;
+    // A new game page asks again (play/hello).
+    playAskOn = false;
+    playMark = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
     gameError = null;
@@ -14834,12 +15465,16 @@ function start(host            ) {
       itemsSeen = false;
       selected = null;
       group = [];
-      thumbs.clear();
+      // The pictures stay (⑥): the new game's come in their place, one by one.
+      for (const k of thumbs.keys()) staleThumbs.add(k);
+      for (const k of bigThumbs.keys()) bigStale.add(k);
     }
     check = null;
     thumbsAsked.clear();
     visibleShown.clear();
+    bigShown.clear();
     placementRestored = false;
+    uiRestored = false;
     // What the game in the frame is built from (the host's signature of the files).
     loadedCode = code;
     gameTools = [];
@@ -14859,6 +15494,8 @@ function start(host            ) {
   function shortcut(e                                                                                   )          {
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
+    // "You have 3 unsaved changes" is open: its own keys only (unsaved-guard.ts), nothing from the game frame either.
+    if (guard?.open) return true;
     // The shortcut sheet: Esc or ? again closes it first (from the game frame too).
     if (keySheet.isOpen() && !mod && (k === 'escape' || k === '?')) {
       keySheet.hide();
@@ -15172,7 +15809,7 @@ function start(host            ) {
     if (gameError && !playing) {
       line('warn', h('strong', { text: t('status.gameError') }), h('span', { class: 'mono', text: ` ${gameError.message}${gameError.where ? ` (${gameError.where})` : ''}` }),
         h('span', { text: ' ' + t('status.gameErrorHint') + ' ' }),
-        h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => loadGame() }));
+        h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => void confirmLoss('reload').then((go) => go && loadGame()) }));
     } else if (phase === 'loading') line('info', t('status.loading'));
     else if (phase === 'waiting') line('info', t('status.waiting'));
     else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
@@ -15256,6 +15893,14 @@ function start(host            ) {
     peer.dataset.state = busy ? 'busy' : live ? 'live' : 'idle';
     peer.title = busy ? t('peer.busy') : aiWatching === true ? t('peer.watching') : aiWatching === false ? t('peer.away') : st ? t('peer.live') : t('peer.idle');
     (peer.querySelector('.label')               ).textContent = t('peer.label');
+    // After the AI's finished line faded (line-fade.ts): "● AI" brings it back. Violet while it holds a change that
+    // can still be undone; otherwise it looks as before (only the pointer and the tooltip say it can be pressed).
+    const recall = lineRecallable();
+    const undoable = recall && !!lastChange && !!host.undoAi && !playing && currentPhase() !== 'undone';
+    peer.dataset.recall = recall ? (undoable ? 'undo' : 'on') : '';
+    // Not `disabled` (that greys the whole "● AI" out): out of the Tab order and a click does nothing (recallLine).
+    peer.tabIndex = recall ? 0 : -1;
+    if (recall) peer.title = t(undoable ? 'peer.recallUndo' : 'peer.recall');
   }
 
   let lastPage = '';
@@ -15263,6 +15908,7 @@ function start(host            ) {
     document.documentElement.lang = lang;
     keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
+    renderPlayAsk();
     app.dataset.fit = sideWin() ? 'side' : 'full';
     setButton(largeBtn, 'openLarge', t('large.open'), false, t('large.tip'));
     sheetGrip.setAttribute('aria-label', t('sheet.grip'));
@@ -15278,6 +15924,12 @@ function start(host            ) {
     (header.querySelector('.app')               ).textContent = t('app.brand');
     const sceneWord = (id        ) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here')               ).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
+    // Playing with changes not saved yet (a try of the editor, 2026-10-21: Play shows the editor's arrangement, saved or not): one quiet
+    // note after "Playing", so nobody takes what they see for what the AI was given. No button, no colour: Save is one
+    // press away in Edit, and a person trying a change first is doing the right thing.
+    const hereNote = header.querySelector('.here-note')               ;
+    hereNote.hidden = !(playing && dirtyCount() > 0);
+    hereNote.textContent = hereNote.hidden ? '' : t('status.playingUnsaved');
     // World | UI (UI stage 1): only for a game with both layers, while the game is being edited in the Scene.
     app.dataset.editLayer = editLayer;
     const showSwitch = !!editLayers && editLayers.length > 1 && editing && !playing && tool === 'placement' && page === 'tool';
@@ -15453,7 +16105,7 @@ function start(host            ) {
     actions: {
       undo: () => doUndo(),
       redo: () => doRedo(),
-      save: () => handOff(),
+      save: async () => void (await handOff()),
       select: (k) => selectObject(k, true),
       switchTool: (id) => switchTool(id),
       frameAll: () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }),
@@ -15546,7 +16198,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[43] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -15600,10 +16252,10 @@ function createKumoHost(base        )           {
 }
 
 function createLocalHost(base         = LOCAL_PATHS.api)             {
-  const call = async    (method        , path        , body           , type         )             => {
+  const call = async    (method        , path        , body           , type         , keepalive = false)             => {
     const headers                         = {};
     if (type) headers['content-type'] = type;
-    const r = await fetch(base + path, { method, headers, body, cache: 'no-store', credentials: 'same-origin' });
+    const r = await fetch(base + path, { method, headers, body, cache: 'no-store', credentials: 'same-origin', ...(keepalive ? { keepalive } : {}) });
     const data = (await r.json().catch(() => null))                                                       ;
     if (!r.ok) {
       const details = data && Array.isArray(data.details) ? `: ${data.details.join('; ')}` : '';
@@ -15625,7 +16277,11 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
     async save(tool        , data        , opts                        ) {
       try {
         const q = opts?.handoff === false ? '?handoff=0' : '';
-        const r = await call                                                                                      ('PUT', `files/${tool}${q}`, JSON.stringify(data), 'application/json');
+        const body = JSON.stringify(data);
+        // The draft written as the tab closes (main.ts pagehide, after "Leave" on the browser's question) must outlive
+        // the page: keepalive. Only under the browser's 64 KB keepalive limit (a bigger body would fail outright).
+        const keepalive = opts?.handoff === false && body.length < 60_000;
+        const r = await call                                                                                      ('PUT', `files/${tool}${q}`, body, 'application/json', keepalive);
         return { ok: true, request: r.request, at: r.at, watching: r.watching, seen: r.seen, undo: r.undo };
       } catch (e) {
         return { ok: false, error: (e         ).message };
@@ -15718,19 +16374,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[44] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(42);
-const { createLocalHost } = __require(43);
+const { start } = __require(45);
+const { createLocalHost } = __require(46);
 
 start(createLocalHost());
 
 
 };
-__require(44);
+__require(47);
 })();

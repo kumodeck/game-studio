@@ -20,6 +20,9 @@
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
 import type { AdapterProbe, BridgeToShell, PlayLine, PlayLog, PlayNear, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { isStudioMessage } from '../contract.ts';
+import { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } from '../shell/line-fade.ts';
+import { icon } from '../shell/icons.ts';
+import { shootPage } from './play-shot.ts';
 
 export interface PlayAskOptions {
   win: Window & typeof globalThis;
@@ -43,6 +46,13 @@ export interface LogEntry {
 export const LOG_ERRORS = 20;
 export const LOG_TAIL = 10;
 const LOG_KEEP = 200;
+
+/**
+ * Below this width the field says it short ("Tell your AI what’s wrong"): the full sentence ("What went wrong? Your AI
+ * sees this moment.") was cut to "…sees this momen" on a 390 px phone (Ive review 3, ④, 2026-10-20). The same width as
+ * the CSS below that hides the field's hint.
+ */
+export const NARROW_PX = 520;
 
 /** One console call as one line: strings as they are, errors by their message (first line of the stack), objects as JSON. */
 export function logText(args: unknown[]): string {
@@ -101,48 +111,8 @@ export function near2D(items: Array<{ key: string; label?: string; pose?: PlayNe
 }
 
 // ---------------------------------------------------------------------------
-// The picture
+// The picture (play-shot.ts: a screenshot — the canvases and the HTML UI over them)
 // ---------------------------------------------------------------------------
-
-/** Widest picture sent (px). Enough to read a sign in the game; a 1024 px JPEG is ~100-250 KB. */
-const SHOT_W = 1024;
-
-/**
- * The game as the player sees it: every visible canvas drawn where it sits on the page (a game with a UI canvas over
- * the 3D one gets both), scaled to SHOT_W at most, as a JPEG. null when there is no canvas (a game made of HTML) or
- * the browser refuses (a canvas with pictures from another site cannot be read).
- */
-function shoot(win: Window & typeof globalThis): string | null {
-  const vw = win.innerWidth, vh = win.innerHeight;
-  if (!vw || !vh) return null;
-  const k = Math.min(1, SHOT_W / vw);
-  const out = win.document.createElement('canvas');
-  out.width = Math.round(vw * k);
-  out.height = Math.round(vh * k);
-  const g = out.getContext('2d');
-  if (!g) return null;
-  g.fillStyle = '#000';
-  g.fillRect(0, 0, out.width, out.height);
-  let drawn = 0;
-  for (const c of Array.from(win.document.querySelectorAll('canvas'))) {
-    const r = c.getBoundingClientRect();
-    if (r.width < 8 || r.height < 8 || r.right <= 0 || r.bottom <= 0 || r.left >= vw || r.top >= vh) continue;
-    const cs = win.getComputedStyle(c);
-    if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) === 0) continue;
-    try {
-      g.drawImage(c, r.left * k, r.top * k, r.width * k, r.height * k);
-      drawn++;
-    } catch {
-      /* this one cannot be read; the others still can */
-    }
-  }
-  if (!drawn) return null;
-  try {
-    return out.toDataURL('image/jpeg', 0.82);
-  } catch {
-    return null;
-  }
-}
 
 /**
  * A WebGL canvas forgets its picture right after each frame is shown, so reading it later (when Enter is pressed)
@@ -183,11 +153,22 @@ const CSS = `
 .mark .word { white-space: nowrap; }
 .mark.small .word { display: none; }
 .mark.small { padding: 0 10px; }
+/* After its first 5 s the mark is only ✦ and \`; the pointer on it says what it is again: "Ask your AI \`" (Ive review
+   3, ④: the bare mark said nothing until pressed). No title tooltip on top of it (the words ARE the tooltip). */
+.mark.small:hover .word, .mark.small:focus-visible .word { display: inline; }
+.mark.small:hover, .mark.small:focus-visible { padding: 0 12px 0 10px; }
 kbd { font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 3px 6px; border-radius: 5px;
   background: rgba(255,255,255,.12); color: #f4f4f6; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: #8b7cff; flex: none; box-shadow: 0 0 0 3px rgba(139,124,255,.22); }
 .busy .dot { animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(139,124,255,.0); opacity: .55; } }
+/* The way in (the corner mark and the field) carries the editor's ask mark, ✦ (shell/icons.ts 'spark', the same as the
+   editor's "Ask your AI…" field: one sign for "ask your AI" everywhere — Ive review 3, ④). The violet glow the dot had
+   stays, as a soft light round the spark. The line at the top keeps the dot: it is the AI's state, as "● AI" is. */
+.spark { width: 14px; height: 14px; flex: none; color: #8b7cff; display: grid; filter: drop-shadow(0 0 3px rgba(139,124,255,.55)); }
+.spark svg { width: 14px; height: 14px; stroke-width: 1.5px; }
+.busy .spark { animation: glow 1.1s ease-in-out infinite; }
+@keyframes glow { 50% { filter: drop-shadow(0 0 0 rgba(139,124,255,0)); opacity: .55; } }
 .bar { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(560px, calc(100% - 32px));
   pointer-events: auto; border-radius: 14px; padding: 8px 8px 8px 14px; display: flex; align-items: center; gap: 10px;
   border-color: rgba(139,124,255,.55); box-shadow: 0 0 0 3px rgba(139,124,255,.18), 0 10px 34px rgba(0,0,0,.4); }
@@ -209,6 +190,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
 .x { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: rgba(255,255,255,.6); font-size: 15px; }
 .x:hover { background: rgba(255,255,255,.12); color: #fff; }
 .choices { display: flex; gap: 6px; flex-wrap: wrap; }
+/* "Fixed" goes by itself after it was read (line-fade.ts, 2026-10-20); the corner mark's dot keeps a stronger ring while
+   the fix waits for Reload (\` or the mark, then Enter). */
+.line { transition: opacity .4s cubic-bezier(.2,.8,.2,1), transform .4s cubic-bezier(.2,.8,.2,1); }
+.line.fading { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+.mark.ready .spark { filter: drop-shadow(0 0 2px #8b7cff) drop-shadow(0 0 6px rgba(139,124,255,.8)); }
 [hidden] { display: none !important; }
 @media (max-width: 520px) {
   .line { top: 10px; padding: 7px 8px 7px 12px; }
@@ -221,7 +207,7 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
   .mark { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; }
   .mark.small { padding: 0 17px; }
 }
-@media (prefers-reduced-motion: reduce) { .busy .dot { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .busy .dot, .busy .spark { animation: none; } .line { transition: none; } }
 `;
 
 type Words = Record<string, string>;
@@ -280,7 +266,21 @@ export function startPlayAsk(o: PlayAskOptions): void {
   let sending = false;
   let sendFailed = false;
   let dismissed = '';
+  // Does this page draw the corner mark? The editor says (play/on `mark`): on a phone the way in is its ✦ in the top bar,
+  // left of Edit, because the corner sat on the game's own words at the foot ("WASD works too", Ive review 3, ④). In
+  // full screen the editor's bar is gone, so the mark comes back here whatever the editor said.
+  let markOn = true;
+  // "Fixed" fades by itself like the editor's finished line (line-fade.ts): `fadeSig` is the line whose timer runs; when
+  // it is due the line goes the way × goes (`dismissed`). Not "failed" / "asking" / "kept": those need the person.
+  let fadeSig = '';
+  let fadeTimer = 0;
+  let leftAt = 0;
   const w = (k: string) => (words && words[k]) || '';
+  const spark = () => {
+    const s = el('span', 'spark');
+    s.append(icon('spark'));
+    return s;
+  };
 
   const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string) => {
     const e = doc.createElement(tag);
@@ -321,8 +321,7 @@ export function startPlayAsk(o: PlayAskOptions): void {
     mark = el('button', 'mark glass') as HTMLButtonElement;
     mark.type = 'button';
     mark.dataset.part = 'play-ask-mark';
-    mark.append(el('span', 'dot'), el('span', 'word', w('ask')), el('kbd', '', '`'));
-    mark.title = w('askTip');
+    mark.append(spark(), el('span', 'word', w('ask')), el('kbd', '', '`'));
     mark.setAttribute('aria-label', w('askTip'));
     mark.addEventListener('click', () => openBar());
     bar = el('div', 'bar glass');
@@ -340,12 +339,17 @@ export function startPlayAsk(o: PlayAskOptions): void {
     close.title = w('close');
     close.setAttribute('aria-label', w('close'));
     close.addEventListener('click', () => closeBar());
-    bar.append(el('span', 'dot'), input, hint, close);
+    bar.append(spark(), input, hint, close);
     line = el('div', 'line glass');
     line.dataset.part = 'play-ask-line';
     line.hidden = true;
     line.setAttribute('role', 'status');
     line.setAttribute('aria-live', 'polite');
+    // In the line = it stays (and coming back during the fade stops it).
+    line.addEventListener('pointerenter', () => holdLine());
+    line.addEventListener('focusin', () => holdLine());
+    line.addEventListener('pointerleave', () => (leftAt = win.performance.now()));
+    line.addEventListener('focusout', () => (leftAt = win.performance.now()));
     wrap.append(mark, line, bar);
     root.append(style, wrap);
     // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
@@ -356,6 +360,8 @@ export function startPlayAsk(o: PlayAskOptions): void {
     }
     (doc.body || doc.documentElement).appendChild(host);
     lift();
+    // The short or the long placeholder (NARROW_PX) follows the window.
+    win.addEventListener('resize', () => render());
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
     win.setTimeout(() => mark.classList.add('small'), 5000);
     render();
@@ -400,12 +406,18 @@ export function startPlayAsk(o: PlayAskOptions): void {
       void submit();
     }
   }
-  doc.addEventListener('fullscreenchange', () => lift());
-  doc.addEventListener('webkitfullscreenchange', () => lift());
+  // Full screen changes whether the mark is drawn here (markOn), so draw again too.
+  doc.addEventListener('fullscreenchange', () => (lift(), render()));
+  doc.addEventListener('webkitfullscreenchange', () => (lift(), render()));
 
   function openBar() {
     if (!host) return;
     barOpen = true;
+    // The field open again = the person looks for what happened: a "fixed" line that faded comes back (and goes again).
+    if (state && state.state === 'fixed' && dismissed === JSON.stringify(state) && dismissed === fadeSig) {
+      dismissed = '';
+      fadeSig = '';
+    }
     // Pointer-locked games (first person) hold the mouse; let go so the person can type and click.
     try {
       if (doc.pointerLockElement) doc.exitPointerLock();
@@ -452,8 +464,9 @@ export function startPlayAsk(o: PlayAskOptions): void {
   /** The words and the moment: picture, player's camera, what is near, the console. Each part is optional. */
   async function moment(text: string): Promise<BridgeToShell> {
     const now = win.performance.now();
-    // The picture without the field over it (the field is DOM, the picture is the canvas: it never shows anyway).
-    const shot = shoot(win) || undefined;
+    // The picture with the game's HTML UI, without the editor's own parts (this overlay, the editor's tools).
+    const notOurs = (e: Element) => e === host || e.tagName === 'GAME-STUDIO-PLAY' || e.hasAttribute('data-studio-ui');
+    const shot = shootPage(win, notOurs) || undefined;
     let view: { eye: [number, number, number]; target: [number, number, number] } | undefined;
     let near: PlayNear[] | undefined;
     const a = findAdapter();
@@ -509,24 +522,68 @@ export function startPlayAsk(o: PlayAskOptions): void {
     return null;
   }
 
+  // ----- the "fixed" line's own clock -----
+  function fadeFor(s: PlayLine | null, sig: string) {
+    if (!s || s.state !== 'fixed' || sig === dismissed) {
+      if (fadeSig !== sig) {
+        win.clearTimeout(fadeTimer);
+        fadeSig = '';
+      }
+      return;
+    }
+    if (fadeSig === sig) return;
+    fadeSig = sig;
+    line.classList.remove('fading');
+    win.clearTimeout(fadeTimer);
+    fadeTimer = win.setTimeout(lineDue, lineStayMs(s.text + (s.asked || '')));
+  }
+  function lineDue() {
+    // Held: the pointer or the keyboard is in it, it just left, or the field is open (the line is what they reply to).
+    if (line.matches(':hover') || line.matches(':focus-within') || barOpen || win.performance.now() - leftAt < LINE_GRACE_MS) {
+      fadeTimer = win.setTimeout(lineDue, 500);
+      return;
+    }
+    line.classList.add('fading');
+    const reduce = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    fadeTimer = win.setTimeout(() => {
+      line.classList.remove('fading');
+      dismissed = fadeSig;
+      render();
+    }, reduce ? 0 : LINE_FADE_MS);
+  }
+  function holdLine() {
+    if (!line.classList.contains('fading')) return;
+    line.classList.remove('fading');
+    win.clearTimeout(fadeTimer);
+    fadeTimer = win.setTimeout(lineDue, LINE_GRACE_MS);
+  }
+
   // ----- drawing: the corner mark, the field, the line -----
   function render() {
     if (!host) return;
     const s = state;
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
-    mark.hidden = barOpen;
+    mark.hidden = barOpen || !(markOn || !!doc.fullscreenElement);
     bar.hidden = !barOpen;
     bar.classList.toggle('busy', sending);
     input.disabled = sending;
     const asking = !!s && s.state === 'asking';
-    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : asking ? w('answerPlaceholder') : w('placeholder');
+    const narrow = win.innerWidth < NARROW_PX;
+    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : asking ? w('answerPlaceholder') : w(narrow ? 'placeholderShort' : 'placeholder');
     hint.textContent = s && s.state === 'fixed' && s.reload ? w('enterReloads') : '';
     hint.hidden = !hint.textContent;
 
     line.replaceChildren();
     const sig = s ? JSON.stringify(s) : '';
     line.hidden = !s || sig === dismissed;
+    fadeFor(s, sig);
+    // A fix that waits for Reload after its line went: the corner dot says so (` or the mark, then Enter reloads).
+    const waiting = !!s && s.state === 'fixed' && !!s.reload && line.hidden;
+    mark.classList.toggle('ready', waiting);
+    // The reload waiting is the one thing the mark's words do not say: only then a tooltip.
+    mark.title = waiting ? w('reloadTip') : '';
+    mark.setAttribute('aria-label', waiting ? w('reloadTip') : w('askTip'));
     if (!s || line.hidden) return;
     line.classList.toggle('busy', busy);
     const say = el('div', 'say');
@@ -577,8 +634,14 @@ export function startPlayAsk(o: PlayAskOptions): void {
     const m = ev.data as ShellToBridge;
     if (m.type === 'studio:play/on') {
       words = m.words;
-      if (doc.body) build();
+      markOn = m.mark !== false;
+      // Sent again when the editor's layout changes (a phone turned, a window made narrow): only the mark changes.
+      if (host) render();
+      else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
+    } else if (m.type === 'studio:play/open') {
+      // The editor's ✦ (phone): the same as ` or the corner mark.
+      if (host && !barOpen) openBar();
     } else if (m.type === 'studio:play/state') {
       state = m.state;
       render();

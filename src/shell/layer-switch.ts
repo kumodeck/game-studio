@@ -15,8 +15,10 @@
 // something is hidden, and the one press that shows it again (faded, as a reference to place things around; clicks
 // still go through it to the world). ⇧U does the same (U itself switches the layer). On the UI layer there is nothing
 // to hide, so the eye is not drawn. It hangs off the switch's right edge (absolute), so the switch stays exactly in
-// the middle of the bar and does not jump when the eye comes and goes. PC: the eye and a short word ("UI hidden");
-// phone: the eye alone, a finger's 44 px.
+// the middle of the bar and does not jump when the eye comes and goes. The eye alone, on PC too (Ive review 3, "what to
+// cut" 1, 2026-10-20): the word beside it ("UI hidden" / "UI shown") said what the slashed / open eye already says, so
+// the bar's middle is World | UI and the eye; the words are the pointer's tooltip ("Show the game's UI  ⇧U"). Phone: a
+// finger's 44 px.
 import type { EditLayer } from '../contract.ts';
 import { h } from './dom.ts';
 import { icon } from './icons.ts';
@@ -43,9 +45,8 @@ export function createLayerSwitch(choose: (l: EditLayer) => void, togglePeek: ()
       eye.setAttribute('aria-pressed', String(peek));
       eye.dataset.peek = peek ? 'on' : 'off';
       eye.replaceChildren(icon(peek ? 'eye' : 'eyeOff'));
-      if (!compact) eye.append(h('span', { class: 'label', text: t(peek ? 'uiPeek.shown' : 'uiPeek.hidden') }));
       eye.setAttribute('aria-label', t('uiPeek.name'));
-      eye.title = `${t(peek ? 'uiPeek.hide' : 'uiPeek.show')}  ${peekKey}`;
+      eye.title = `${t(peek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show')}  ${peekKey}`;
       el.setAttribute('aria-label', t('uiLayer.switch'));
       el.dataset.compact = compact ? 'on' : 'off';
       for (const b of btns) {

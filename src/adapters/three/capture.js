@@ -14,6 +14,12 @@
  *   - fog is off (a far object would be a grey square).
  * The camera frames the object's world box from the editor's current viewing direction, slightly from above.
  *
+ * Light effects are left out (Ive review 3 ⑧, 2026-10-20): a lighthouse's beams (additive cards reaching far past the
+ * tower) made its box several times the tower, so the tower came out a small blurred stroke in the middle of its
+ * Library tile. Parts drawn only as light — additive blending, or see-through below 30 % — are hidden while the
+ * picture is drawn and are not in the frame. An object that is ONLY light (a glow on its own) keeps them all.
+ * (bridge/snap.ts / surface.js has its own, wider rule for what can be stood on; a pane of glass is not light.)
+ *
  * See-through background (visual pass 2026-10-16, Ive-view review item 5): the picture used to carry the game's sky
  * (a pale blue square behind every 3D object), so the dark list read as a column of blue tiles and 3D looked
  * different from 2D (whose pictures are see-through, on the shell's checkerboard). The object is now drawn twice,
@@ -26,13 +32,34 @@
 import { worldBox } from './pick.js';
 
 const DEG = Math.PI / 180;
+const ADDITIVE = 2; // THREE.AdditiveBlending
+
+/** Drawn only as light (see the header): every material of the mesh is additive or nearly clear. */
+function lightOnly(mesh) {
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return mats.length > 0 && mats.every((m) => !!m && (m.blending === ADDITIVE || (m.transparent && typeof m.opacity === 'number' && m.opacity < 0.3)));
+}
 
 export function captureObject({ renderer, scene, render, boot, baseCamera, yaw }, object, size = 128) {
   const canvas = renderer.domElement;
   const pr = renderer.getPixelRatio ? renderer.getPixelRatio() : 1;
   const px = Math.max(16, Math.min(size, canvas.width, canvas.height));
   scene.updateMatrixWorld(true);
-  const box = worldBox(object);
+  const glow = [];
+  const walk = (o) => {
+    if (!o.visible) return;
+    if ((o.isMesh || o.isSkinnedMesh) && o.material && lightOnly(o)) glow.push(o);
+    for (const c of o.children) walk(c);
+  };
+  walk(object);
+  for (const g of glow) g.visible = false;
+  let box = worldBox(object);
+  if (!box) {
+    // Only light: draw it as it is.
+    for (const g of glow) g.visible = true;
+    glow.length = 0;
+    box = worldBox(object);
+  }
   if (!box) return { ok: false };
 
   const hidden = [];
@@ -134,6 +161,7 @@ export function captureObject({ renderer, scene, render, boot, baseCamera, yaw }
     scene.background = saved.background;
     if (renderer.setClearColor) renderer.setClearColor(clear, saved.clearAlpha);
     for (const h of hidden) h.visible = true;
+    for (const g of glow) g.visible = true;
   }
   return { ok: !!dataUrl, dataUrl: dataUrl || undefined };
 }

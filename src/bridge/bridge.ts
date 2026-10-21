@@ -23,6 +23,9 @@ import { findDomUi, uiAdapterFromPort } from '../adapters/ui/index.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk } from './play-ask.ts';
+import { arrangeInPlay, type PlayFile } from './play-arrange.ts';
+import { applyPlacement } from '../loader/studio-placement.js';
+import { watchEarlyTaps } from './early-press.ts';
 import type { RulesHolder } from '../core/rules.ts';
 
 export interface BridgeOptions {
@@ -119,32 +122,29 @@ export function startBridge(opts: BridgeOptions): void {
     }
   }
   /**
-   * ▶ Play inside the editor: show the saved copies (and deletions) the AI has
-   * not put in the code yet, as the editor shows them (polish pass 2026-10-16,
-   * play test stumble 2). WHY: a copy lives only in placement.json `added`
-   * until the AI writes it into the code; the game's loader only moves
-   * existing objects, so every copy vanished in Play and a first-time user
-   * read it as "Copy is broken". Same rules as reopening the editor (shell
-   * placement-model.ts applyFileEdits): a key the game already has is an
-   * ordinary object now (skipped); a `removed` key is hidden only while its
-   * label and pose still match `was`. The copy is a clone of the original as
-   * it stands, so it looks right but does not act (a boat that floats, a
-   * coin that spins) until the AI adds it to the code. Games run outside the
-   * editor get the same copies from studio-placement.js (src/loader).
+   * ▶ Play inside the editor: the game as the editor shows it, saved or not (play-arrange.ts says why and what). The
+   * file is the editor's draft, written just before Play opened this page (shell keepNow). Its UI places go through the
+   * loader's own applyPlacement(document, …) (placeUi: the same offset set again, never added), the world's through the
+   * page's adapter once it lists its objects.
    */
   async function showFileEditsInPlay() {
-    type Added = { key?: unknown; from?: unknown; p?: unknown; r?: unknown; s?: unknown; t?: unknown };
-    type Removed = { key?: unknown; label?: unknown; was?: { p?: unknown } };
-    let file: { added?: Added[]; removed?: Removed[] } | null = null;
+    let file: PlayFile & { ui?: unknown } | null = null;
     try {
       const res = await fetch(new URL('placement.json', win.location.href).href, { cache: 'no-cache' });
       if (res.ok) file = await res.json();
     } catch {
       return;
     }
-    const added = Array.isArray(file?.added) ? file!.added! : [];
-    const removed = Array.isArray(file?.removed) ? file!.removed! : [];
-    if (!added.length && !removed.length) return;
+    if (!file || typeof file !== 'object') return;
+    if (file.ui && typeof file.ui === 'object') {
+      try {
+        await applyPlacement(win.document, { tool: 'placement', objects: {}, ui: file.ui });
+      } catch {
+        /* the UI stays as the game draws it */
+      }
+    }
+    const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length;
+    if (!busy) return;
     await core.time.firstFrame();
     // The game may build its scene a little after its first frame (as in edit mode): look for up to ~5 s.
     let a: StudioAdapter | null = null;
@@ -164,39 +164,9 @@ export function startBridge(opts: BridgeOptions): void {
       }
       await new Promise((r) => win.setTimeout(r, 150));
     }
-    if (!a || !a.clone) return;
-    let shown = 0;
-    const has = (k: string) => a!.list().some((i) => i.key === k);
-    for (const e of added) {
-      if (typeof e.key !== 'string' || typeof e.from !== 'string' || !Array.isArray(e.p)) continue;
-      if (has(e.key) || !has(e.from)) continue;
-      try {
-        if (!a.clone(e.from, e.key)) continue;
-        const pose: Record<string, unknown> = { p: e.p };
-        if (typeof e.r === 'number') pose.r = e.r;
-        if (e.s !== undefined) pose.s = e.s;
-        if (Array.isArray(e.t)) pose.t = e.t;
-        a.setPose(e.key, pose as never);
-        shown++;
-      } catch (err) {
-        console.warn('[studio] could not show the copy ' + e.key + ' in Play:', err);
-      }
-    }
-    if (a.remove) {
-      const items = a.list();
-      for (const r of removed) {
-        const it = typeof r.key === 'string' ? items.find((i) => i.key === r.key) : undefined;
-        if (!it || (typeof r.label === 'string' && r.label !== it.label)) continue;
-        const wp = r.was && Array.isArray(r.was.p) ? (r.was.p as number[]) : null;
-        if (wp && it.pose && it.pose.p.some((v, i) => Math.abs(v - (wp[i] ?? 0)) > 1e-3)) continue;
-        try {
-          if (a.remove(it.key)) shown++;
-        } catch {
-          /* keep it */
-        }
-      }
-    }
-    if (shown) console.info(`[studio] Play: ${shown} saved cop${shown === 1 ? 'y or deletion' : 'ies or deletions'} shown (not in the code yet)`);
+    if (!a) return;
+    const shown = arrangeInPlay(a, file);
+    if (shown) console.info(`[studio] Play: ${shown} change${shown === 1 ? '' : 's'} from the editor shown (saved or not, not in the code yet)`);
   }
 
   /**
@@ -276,10 +246,30 @@ export function startBridge(opts: BridgeOptions): void {
   // ▶ Play inside the editor: ask your AI without stopping (play-ask.ts, §3.5). Installed now, before the game's code,
   // so the console is kept from its first line and the ask key is the first listener on the window.
   if (!edit && inFrame) {
+    // For tests (test/studio-play-unsaved.browser.mjs), like `_debug` in edit mode: the page's objects as its adapter
+    // lists them while playing, to compare with what the editor showed. Not enumerable, nothing else uses it.
+    Object.defineProperty(api, '_play', {
+      value: Object.freeze({
+        list: () => {
+          for (const p of [...gameProbes, ...opts.builtins]) {
+            try {
+              const a = p.found();
+              if (a) return a.list();
+            } catch {
+              /* next */
+            }
+          }
+          return null;
+        },
+      }),
+      enumerable: false,
+    });
     void showFileEditsInPlay();
     startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins] });
   }
   if (!edit || !inFrame) return;
+  // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.
+  const earlyTaps = watchEarlyTaps(win);
 
   const post = (msg: BridgeToShell) => {
     try {
@@ -384,7 +374,7 @@ export function startBridge(opts: BridgeOptions): void {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0) });
+    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.

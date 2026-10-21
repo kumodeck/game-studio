@@ -6,10 +6,12 @@
 //   reads as a video. WHY not at once: the 3D sample is a few MB of three.js and a scene that keeps drawing.
 // - Phones (narrower than 768 px) get no frame at all: the 3D sample takes about 26 s to settle there. Each sample is a
 //   card that opens the same editor on its own page (studio/?game=<id>).
-// - "Click to use": a clear layer covers the editor until it is clicked. Until then the wheel and the keys move the page
-//   (the editor zooms with the wheel, so a page scrolled with the mouse over it would get stuck). After the click the
-//   editor has the keys (and the editor keeps arrows / Space / Page Down from scrolling this page: embed.ts), and a click
-//   anywhere outside it gives the page back.
+// - "Click to use": until the editor is first pressed, the wheel over it and the keys move the page (the editor zooms
+//   with the wheel, so a page scrolled with the mouse over it would get stuck). That first press is a real press: it
+//   selects the object under it and can drag it at once (the third design review's ②, 2026-10-20 — a clear cover over
+//   the editor used to eat it, so the lighthouse got selected only on the second click). The editor tells this page it
+//   is in use (embed.ts, MSG_USED); after that it has the keys (and keeps arrows / Space / Page Down from scrolling this
+//   page), and a click anywhere outside it gives the page back (MSG_IDLE: the wheel is the page's again).
 // - Switching samples swaps the frame's page; saves are per sample and kept in this browser, shared with the full-size
 //   editor (same site), so "Open full size" shows the same work.
 (function () {
@@ -20,7 +22,7 @@
   var $ = function (id) { return document.getElementById(id); };
   if (ja) document.documentElement.lang = 'ja';
   document.title = T.pageTitle;
-  ['brand', 'title', 'lead', 'installLabel', 'installNote', 'tryTitle', 'tryLead', 'phoneNote', 'loading', 'shieldText', 'full',
+  ['brand', 'title', 'lead', 'installLabel', 'installNote', 'tryTitle', 'tryLead', 'phoneNote', 'loading', 'full',
     'line', 'f1Title', 'f1', 'f2Title', 'f2', 'f3Title', 'f3', 'engines', 'kdTitle', 'kd', 'kdLink', 'foot', 'license']
     .forEach(function (id) { $(id).textContent = T[id]; });
   $('gh').textContent = T.github;
@@ -104,7 +106,7 @@
     frame.allow = 'autoplay; fullscreen; gamepad';
     frame.addEventListener('load', function () { stage.classList.add('ready'); });
     frame.src = editorUrl(current, true);
-    stage.insertBefore(frame, $('shield'));
+    stage.append(frame);
   }
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (entries) {
@@ -127,20 +129,28 @@
   });
 
   // ----- "Click to use" -----
+  // The same strings as embed.ts's MSG_USED / MSG_IDLE.
+  var MSG_USED = 'studio:embed/used', MSG_IDLE = 'studio:embed/idle';
   function setActive(on) {
+    var was = stage.classList.contains('active');
     stage.classList.toggle('active', on);
     $('hint').textContent = on ? T.hintActive : T.hintIdle;
-    if (on && frame) {
-      // The keys go where the focus is: into the editor's page.
+    if (on && frame && document.activeElement !== frame) {
+      // The keys go where the focus is: into the editor's page. (A press in it usually took the focus there already;
+      // focusing again would pull it out of the game frame inside.)
       frame.focus();
       try { frame.contentWindow.focus(); } catch (e) { /* same site: never */ }
     }
+    // Idle again: the editor hands the wheel back to this page until its next press.
+    if (!on && was && frame) frame.contentWindow.postMessage({ type: MSG_IDLE }, location.origin);
   }
   setActive(false);
-  $('shield').addEventListener('click', function () { setActive(true); });
+  window.addEventListener('message', function (e) {
+    if (frame && e.source === frame.contentWindow && e.origin === location.origin && e.data && e.data.type === MSG_USED) setActive(true);
+  });
   // A press anywhere on this page (outside the frame: presses inside it go to the editor's page) gives the page back.
-  document.addEventListener('pointerdown', function (e) {
-    if (stage.classList.contains('active') && !$('shield').contains(e.target)) setActive(false);
+  document.addEventListener('pointerdown', function () {
+    if (stage.classList.contains('active')) setActive(false);
   }, true);
   // Tab out of the editor (or anything else that brings the focus back here) gives the page back too.
   window.addEventListener('focus', function () {

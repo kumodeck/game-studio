@@ -6,9 +6,11 @@
 // A desktop window driven by a mouse (no touch emulation: that is a phone, test/studio-narrow), the real server and
 // the built shell, at 400×900, 420×800, 360×700 and 480×1000:
 //   1. the side window is told from a phone (data-fit="side") and its top bar has "Open large"
-//   2. the list sheet opened and an object picked: the game keeps at least half the window above the sheet, with
-//      the picked object in it; the low sheet reads at least 3 list rows (2 at 700 high), the picked row among them,
-//      and the card; nothing that can be pressed in the window's bottom 48 px (the chat app's toolbar)
+//   2. the list sheet opened and an object picked: the game keeps at least 40 % of the window above the sheet, with
+//      the picked object in it; the low sheet reads at least 6 list rows at 900 high and more (3 lower, 2 at 700),
+//      the picked row among them, and the card; one "…" in sight (the card's: the sheet's goes while the card shows);
+//      nothing that can be pressed in the window's bottom 48 px (the chat app's toolbar)
+//      (Half the window and 3 rows until the third design review's ⑨, 2026-10-20: "six rows with the card and the bar up".)
 //   3. the strip and the camera ↑↓ are a mouse's 28 px (not a finger's 44) and do not overlap
 //   4. the sheet's grip, dragged up, gives more rows (the game still seen above it); a click on it takes it back low
 //   5. an AI-written runner with 60 unnamed objects: the list's first row folds them all ("Unnamed objects 60 · Ask
@@ -161,8 +163,10 @@ for (const g of GAMES) {
         const y = await page.eval(anchorY(key));
         await shot('1-picked');
         console.log(`  ${tag}: game ${m.game}px of ${h} above the sheet; ${m.seen} rows read (${m.texts.join(' | ')}); picked ${key} ${m.selSeen ? 'in view' : 'NOT in view'} at y=${Math.round(y)}; bottom 48 px: ${m.low.join(', ') || 'nothing'}`);
-        assert.ok(m.game >= h * 0.5, `${tag}: the game keeps only ${m.game}px above the sheet (want ≥ half of ${h})`);
-        assert.ok(m.seen >= Math.min(h <= 720 ? 2 : 3, m.total), `${tag}: only ${m.seen} of ${m.total} rows read in the low sheet`);
+        assert.ok(m.game >= h * 0.4, `${tag}: the game keeps only ${m.game}px above the sheet (want ≥ 40 % of ${h})`);
+        assert.ok(m.seen >= Math.min(h >= 900 ? 6 : h <= 720 ? 2 : 3, m.total), `${tag}: only ${m.seen} of ${m.total} rows read in the low sheet`);
+        const dots = await page.eval(`[...document.querySelectorAll('.sheet-more, [data-part=card] [data-part=fine] > summary')].filter((e) => e.offsetParent && e.getBoundingClientRect().width > 0).length`);
+        assert.equal(dots, 1, `${tag}: ${dots} "…" in sight with the sheet and the card up (want one)`);
         assert.ok(m.selSeen, `${tag}: the picked row is not in view`);
         assert.ok(m.card, `${tag}: the picked object's card is gone`);
         assert.ok(y !== null && y < m.sheetTop, `${tag}: the picked object is under the sheet (y=${y}, sheet top ${m.sheetTop})`);

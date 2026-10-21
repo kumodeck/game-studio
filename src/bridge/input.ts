@@ -48,7 +48,9 @@
 //   active pointer: the next pointermove would otherwise be dropped and the
 //   drag would stop half-way. Stale pointers are cleaned up by reliable
 //   signals instead (a mouse move with no buttons pressed, a new press with
-//   the same id).
+//   the same id). A release is taken from the first sign of it — pointerup,
+//   lostpointercapture with no button, click, a pointerup in the page above —
+//   at once, never on the next press (first-click pass 2, see onLost).
 // - Several objects (CONTRACT.md §1.8): Shift+click (or a press in "select
 //   several" mode) adds or removes one; Shift+drag from an empty spot (or a
 //   mouse drag from an empty spot in that mode) draws a box. The handles then
@@ -82,7 +84,7 @@
 //   the adapter snaps (setSnap on; off when the gesture ends). The height drag stops on the first surface below
 //   (liftDetent); Ctrl or ⌥ held during the drag frees it, and pressing / letting go of them re-reads the drag at
 //   once (no need to move the pointer).
-import { UI, type Anchor, type BridgeToShell, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
+import { UI, type Anchor, type BridgeToShell, type Item, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
@@ -225,6 +227,37 @@ function wrap(a: number): number {
 const samePose = (a: Pose, b: Pose) => JSON.stringify(a) === JSON.stringify(b);
 /** One number for a pose's size (the first of three when they differ), never 0. */
 const sizeOf = (p: Pose) => Math.abs((Array.isArray(p.s) ? p.s[0] : p.s) ?? 1) || 1;
+
+/** Share of the window (0–1) covered by the object's on-screen part (its box, clipped to the window). */
+export function screenShareOf(adapter: StudioAdapter, win: Window, k: string): number {
+  // 3D: the adapter's own measure (a ground running on under the camera; see StudioAdapter.coverage).
+  try {
+    const c = adapter.coverage?.(k);
+    if (typeof c === 'number' && Number.isFinite(c)) return c;
+  } catch {
+    /* fall back to the box */
+  }
+  const r = adapter.anchor(k)?.rect;
+  if (!r) return 0;
+  // Clipped: the rect is the projected box, so it runs past the window's edges (see grabbable below).
+  const vw = win.innerWidth, vh = win.innerHeight;
+  const cw = Math.max(0, Math.min(vw, r.x + r.w) - Math.max(0, r.x));
+  const ch = Math.max(0, Math.min(vh, r.y + r.h) - Math.max(0, r.y));
+  return vw * vh > 0 ? (cw * ch) / (vw * vh) : 0;
+}
+
+/**
+ * What a tap at (x, y) may pick, best first: pickNear without the ground / background (an Item.backdrop, or a huge
+ * object: what a person calls "nothing" when tapping, see the header). Module-level (first-click pass, 2026-10-20) so
+ * the editor can read a press made while it was still getting ready (early-press.ts) the same way a tap is read.
+ */
+export function tappableAt(adapter: StudioAdapter, items: Item[], win: Window, x: number, y: number, radius: number): string[] {
+  try {
+    return adapter.pickNear(x, y, radius).filter((k) => !items.find((i) => i.key === k)?.backdrop && screenShareOf(adapter, win, k) < HUGE_ON_SCREEN);
+  } catch {
+    return [];
+  }
+}
 
 export function attachInput(deps: InputDeps): InputHandle {
   const { adapter, win, post, state, select, selectMany, step, markDirty, tools, edits, core } = deps;
@@ -684,33 +717,9 @@ export function attachInput(deps: InputDeps): InputHandle {
     mode = { kind: 'none' };
   };
 
-  /** Share of the window (0–1) covered by the object's on-screen part (its box, clipped to the window). */
-  const screenShare = (k: string) => {
-    // 3D: the adapter's own measure (a ground running on under the camera; see StudioAdapter.coverage).
-    try {
-      const c = adapter.coverage?.(k);
-      if (typeof c === 'number' && Number.isFinite(c)) return c;
-    } catch {
-      /* fall back to the box */
-    }
-    const r = adapter.anchor(k)?.rect;
-    if (!r) return 0;
-    // Clipped: the rect is the projected box, so it runs past the window's edges (see grabbable below).
-    const vw = win.innerWidth, vh = win.innerHeight;
-    const cw = Math.max(0, Math.min(vw, r.x + r.w) - Math.max(0, r.x));
-    const ch = Math.max(0, Math.min(vh, r.y + r.h) - Math.max(0, r.y));
-    return vw * vh > 0 ? (cw * ch) / (vw * vh) : 0;
-  };
-  /** The ground / background (or a huge object): what a person calls "nothing" when tapping (see the header). */
-  const background = (k: string) => !!state.items.find((i) => i.key === k)?.backdrop || screenShare(k) >= HUGE_ON_SCREEN;
+  const screenShare = (k: string) => screenShareOf(adapter, win, k);
   /** What a tap at the point may pick, best first: pickNear without the background. */
-  const tappable = (p: Ptr, radius: number) => {
-    try {
-      return adapter.pickNear(p.x, p.y, radius).filter((k) => !background(k));
-    } catch {
-      return [];
-    }
-  };
+  const tappable = (p: Ptr, radius: number) => tappableAt(adapter, state.items, win, p.x, p.y, radius);
 
   const tap = (p: Ptr) => {
     const radius = p.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch;
@@ -928,8 +937,15 @@ export function attachInput(deps: InputDeps): InputHandle {
     block(e);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
-    // Mouse moving with no button pressed = we missed the release.
+    // Mouse moving with no button pressed = we missed the release. But only once it has MOVED (past the tap slop from
+    // where the pointer was): a no-button move on the spot is no news, and the real release follows.
+    // WHY (first-click pass, 2026-10-20 — a try of test demo v16: "I click the lighthouse and it isn't selected"; a
+    // real Chrome, the second click always worked): a real mouse can deliver the move that brought the cursor there
+    // AFTER the press, with no button in it (the second click, on the same spot, has no such move). This line read it
+    // as a lost release and ended the press without a tap, so the first click never selected. headless tests send
+    // the move before the press and never saw it; test/studio-first-click.browser.mjs sends it after.
     if (e.pointerType === 'mouse' && e.buttons === 0) {
+      if (Math.hypot(e.clientX - p.x, e.clientY - p.y) <= UI.tapSlopPx) return;
       onUp(e);
       return;
     }
@@ -1022,18 +1038,83 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   const onUp = (e: PointerEvent) => {
     block(e);
-    win.clearTimeout(pressTimer);
-    win.clearTimeout(menuTimer);
     const p = ptrs.get(e.pointerId);
     if (!p) return;
-    ptrs.delete(e.pointerId);
+    // pointerup = let go here; pointercancel / the no-button move of onMove = the press is over, no tap.
+    if (e.type === 'pointerup') release(p, e);
+    else end(p, false);
+  };
+  /**
+   * The press `p` was let go, at `at` (a pointerup / click in this window) or where we last saw it (a release that came
+   * another way): it ends now, a tap if it did not travel.
+   * A release far from the press with no travel seen (mode still "pending") means we missed what came between — the
+   * moves, or this press itself (first-click pass 2, below): the tap is read where the person let go, never on the old
+   * press (that was "the previous object picked").
+   */
+  const release = (p: Ptr, at?: { clientX: number; clientY: number }) => {
+    if (at && mode.kind === 'pending' && Math.hypot(at.clientX - p.x, at.clientY - p.y) > UI.tapSlopPx) {
+      p.x = p.sx = at.clientX;
+      p.y = p.sy = at.clientY;
+    }
+    end(p, true);
+  };
+  /**
+   * Releases that reach us some other way than this window's pointerup (first-click pass 2, 2026-10-20 — a try of test
+   * demo v17 in a real Chrome 152, Mac: click the sailboat → nothing picked; click the lighthouse → the SAILBOAT picked;
+   * a listener on the game window saw only `lostpointercapture`, buttons 0). The pointerup did not reach this window
+   * then, or reached it only just before the next press, which then tapped the old press: "one click late". So a
+   * release is taken AT ONCE from whichever comes first, and the later ones find no press (ptrs) and do nothing:
+   * - lostpointercapture with no button down (onDown captures the press; the browser lets go when the button is up).
+   *   With a button still down (the captured element went away, e.g. the strip re-drawn) the press goes on.
+   * - click in this window (comes after the release; the mouseup does not — onDown's preventDefault stops it).
+   * - pointerup / mouseup in the pages above the game frame (the editor page, the front page), when they can be
+   *   reached (same origin): never blocked there, the press point is used (their coordinates are not the game's).
+   * headless never showed it (the pointerup always came): test/studio-first-click-lag.browser.mjs holds it back,
+   * sends it to the page above, or loses it together with the next press.
+   */
+  const onLost = (e: PointerEvent) => {
+    const p = ptrs.get(e.pointerId);
+    if (p && e.buttons === 0) release(p);
+  };
+  /** The press a click / a release above is about: by its pointer id, else the only mouse press held. */
+  const pressOf = (e: MouseEvent) => {
+    const id = (e as PointerEvent).pointerId;
+    if (typeof id === 'number' && ptrs.has(id)) return ptrs.get(id)!;
+    const mice = [...ptrs.values()].filter((q) => q.type === 'mouse');
+    return mice.length === 1 && ptrs.size === 1 ? mice[0]! : null;
+  };
+  const onClickEnd = (e: MouseEvent) => {
+    const p = pressOf(e);
+    if (p) release(p, e);
+  };
+  const onUpAbove = (e: MouseEvent) => {
+    const p = pressOf(e);
+    if (p && e.buttons === 0) release(p);
+  };
+  /** The pages above this game frame that we can reach (same origin), up to the top. */
+  const above: Window[] = [];
+  for (let w: Window = win; w.parent && w.parent !== w; ) {
+    w = w.parent;
+    try {
+      void w.document; // throws for another origin: stop there
+      above.push(w);
+    } catch {
+      break;
+    }
+  }
+
+  /** The press `p` is over: a tap / the place's menu when `tapped` (let go without travel), else just ended. */
+  const end = (p: Ptr, tapped: boolean) => {
+    win.clearTimeout(pressTimer);
+    win.clearTimeout(menuTimer);
+    ptrs.delete(p.id);
     if (mode.kind === 'rise') {
       riseEnd();
       mode = { kind: 'none' };
       return;
     }
     // A right-click (no travel): the place's menu instead of a tap (it picks only what is not picked yet).
-    if (mode.kind === 'pending' && e.type === 'pointerup') {
+    if (mode.kind === 'pending' && tapped) {
       // A right press that flew (WASD held with it) was the engines' fly mode, not a click: no menu.
       if (p.menu) {
         if (!p.flew) contextAt(p);
@@ -1074,6 +1155,9 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
 
   const onWheel = (e: WheelEvent) => {
+    // The web demo's front page, before the editor in it was first pressed (hosts/browser/embed.ts PAGE_WHEEL): the
+    // wheel scrolls that page, not the view. Left for embed.ts's own listener (added after this one) to pass up.
+    if ((win as unknown as Record<string, unknown>).__studioPageWheel === true) return;
     block(e);
     const px = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 400 : 1;
     if (!e.ctrlKey && e.deltaMode === 0 && Math.abs(e.deltaX) > 0.5) {
@@ -1215,6 +1299,11 @@ export function attachInput(deps: InputDeps): InputHandle {
   win.addEventListener('pointerout', onLeave, opts);
   win.addEventListener('pointerup', onUp, opts);
   win.addEventListener('pointercancel', onUp, opts);
+  // The other ways a release comes (onLost above). Not blocked: lostpointercapture is the browser's own bookkeeping,
+  // and the click is blocked by `block` (added below, after this one: it stops the listeners after it).
+  win.addEventListener('lostpointercapture', onLost, opts);
+  win.addEventListener('click', onClickEnd, opts);
+  for (const w of above) for (const t of ['pointerup', 'mouseup'] as const) w.addEventListener(t, onUpAbove, { capture: true });
   win.addEventListener('wheel', onWheel, opts);
   win.addEventListener('keydown', onKey, opts);
   win.addEventListener('blur', onBlur, opts);
@@ -1447,6 +1536,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       win.removeEventListener('pointerout', onLeave, opts);
       win.removeEventListener('pointerup', onUp, opts);
       win.removeEventListener('pointercancel', onUp, opts);
+      win.removeEventListener('lostpointercapture', onLost, opts);
+      win.removeEventListener('click', onClickEnd, opts);
+      for (const w of above) for (const t of ['pointerup', 'mouseup'] as const) w.removeEventListener(t, onUpAbove, { capture: true });
       win.removeEventListener('wheel', onWheel, opts);
       win.removeEventListener('keydown', onKey, opts);
       win.removeEventListener('blur', onBlur, opts);

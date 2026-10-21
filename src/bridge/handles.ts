@@ -526,9 +526,14 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   };
   const positionHint = () => {
     if (hintEl.style.display === 'none') return;
-    const vw = win.innerWidth - inset.left - inset.right;
+    const top = win.innerHeight - inset.bottom - 12 - hintEl.offsetHeight;
+    // The card's room on the right (inset.right) only reaches down to inset.rightTo, as for the camera ↑↓ (rise.ts).
+    // Below the card the line is in the middle of the game, over the ask bar's middle (the third design review's ⑩,
+    // 2026-10-20: centred in the room left of the card, it sat 146 px left of the bar at 1280).
+    const right = inset.rightTo === undefined || top < inset.rightTo ? inset.right : 0;
+    const vw = win.innerWidth - inset.left - right;
     hintEl.style.left = `${inset.left + vw / 2}px`;
-    hintEl.style.top = `${win.innerHeight - inset.bottom - 12 - hintEl.offsetHeight}px`;
+    hintEl.style.top = `${top}px`;
   };
   let menuKind: 'axis' | 'scale' | null = null;
   // Where the strip went last: under the object (true) or over it.

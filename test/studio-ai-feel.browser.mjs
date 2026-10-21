@@ -17,6 +17,9 @@
 //    the camera and the selection kept; only the new crates are marked violet.
 // 5. "Undo AI change": one press, the files are back and the crates are gone; Redo brings them back.
 // 6. With the agent watching, a second request shows "has it" within ~1 s of Enter.
+// 5b. The finished line goes by itself (2026-10-20: "this line is always there, it's in the way"): not while the pointer is on it (PC),
+//    gone within LINE_MAX_MS + grace after, not back on the next polls; "● AI" (PC) or ⌘K (phone) brings it back with
+//    its Undo / Redo, and ⌘K lists "Undo AI change" while it is gone.
 // 7. The agent asks something (`--status asking` with choices and the object it is about): the question with its
 //    buttons and now → after, the object lit in the scene, the ask field says "Answer your AI…", the dot still, no
 //    running light; pressing a button sends an `answer` request back (hands-on test 2026-10-19).
@@ -33,6 +36,9 @@ import { startStudioServer } from '../src/server/server.mjs';
 import { launch, newPage } from './adapters-2d/cdp.mjs';
 import { startVideo } from './playtest/recorder.mjs';
 import { startFakeAgent } from './ai-feel/fake-agent.mjs';
+// The finished line's clock, as in src/shell/line-fade.ts (written out: these checks run with plain `node`, which
+// cannot import .ts; test/line-fade.test.ts reads the module itself).
+const LINE_MIN_MS = 5000, LINE_MAX_MS = 10_000, LINE_GRACE_MS = 2000, LINE_FADE_MS = 400;
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -269,6 +275,50 @@ async function run(layout) {
     await page.waitFor(`document.querySelector('.ai-line').classList.contains('redone')`, 3000);
     await shot('redone');
     ok('Undo AI change: one press, code and game back; Redo puts it back');
+
+    // ---- 5b. the finished line goes by itself, and comes back when asked ----
+    const lineGone = `document.querySelector('.ai-line').hidden && document.querySelector('.ai-caption').hidden`;
+    if (!mobile) {
+      // The pointer on the line: it stays past its longest time.
+      const r = await j(page, IN.rect('.ai-line'));
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y });
+      await sleep(LINE_MAX_MS + 800);
+      assert.equal(await page.eval(`document.querySelector('.ai-line').hidden`), false, 'the line went while the pointer was on it');
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 640, y: 120 });
+    }
+    t0 = Date.now();
+    await page.waitFor(lineGone, LINE_MAX_MS + LINE_GRACE_MS + LINE_FADE_MS + 2000).catch(async (e) => {
+      console.log(await page.eval(`JSON.stringify({ line: document.querySelector('.ai-line').className, hidden: document.querySelector('.ai-line').hidden,
+        hover: document.querySelector('.ai-line').matches(':hover'), focus: document.querySelector('.ai-line').matches(':focus-within'), active: document.activeElement?.outerHTML?.slice(0, 120),
+        caption: [...document.querySelector('.ai-caption').children].map((c) => c.className + ':' + c.hidden) })`));
+      throw e;
+    });
+    times.faded = Date.now() - t0;
+    if (!mobile) assert.ok(times.faded >= LINE_GRACE_MS - 300, `gone ${times.faded} ms after the pointer left (grace ${LINE_GRACE_MS})`);
+    await shot('faded');
+    // Polls (every 3 s) draw the line again: it stays gone.
+    await sleep(3600);
+    assert.equal(await page.eval(lineGone), true, 'the faded line came back on a poll');
+    // ⌘K keeps "Undo AI change" (the line was redone: its change can be undone again) and "Show your AI's last reply".
+    await key(page, 'k', mobile ? 2 : 4);
+    await page.waitFor(`${IN.palette} === 'open'`, 3000);
+    const rows = await j(page, `JSON.stringify([...document.querySelectorAll('.palette .p-row')].map((r) => r.dataset.row))`);
+    assert.ok(rows.includes('ai-undo') && rows.includes('ai-recall'), `⌘K rows: ${rows}`);
+    if (mobile) {
+      // No "● AI" in a phone's top bar: ⌘K brings it back.
+      await page.eval(IN.click('.palette .p-row[data-row="ai-recall"]'));
+    } else {
+      await key(page, 'Escape');
+      await page.waitFor(`${IN.palette} === 'closed'`, 3000);
+      assert.equal(await page.eval(`document.querySelector('.peer').dataset.recall`), 'undo', '"● AI" says a change can be undone');
+      await press(page, '.peer', false);
+    }
+    await page.waitFor(`!document.querySelector('.ai-line').hidden && !!document.querySelector('.ai-line [data-action=ai-undo]')`, 3000);
+    await shot('recalled');
+    assert.equal(await page.eval(`document.querySelector('.peer').dataset.recall`), '', 'nothing to bring back while it shows');
+    // And it goes again by itself.
+    await page.waitFor(lineGone, LINE_MAX_MS + LINE_GRACE_MS + LINE_FADE_MS + 2000);
+    ok(`the finished line goes by itself (${times.faded} ms after${mobile ? '' : ' the pointer left'}; at least ${LINE_MIN_MS} ms), stays gone on polls, comes back from ${mobile ? '⌘K' : '"● AI"'} with Undo`);
 
     // ---- 6. with the agent watching: "has it" within a second ----
     await page.waitFor(`document.querySelector('.peer').dataset.state === 'live'`, 5000);

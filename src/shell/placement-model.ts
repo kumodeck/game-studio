@@ -17,49 +17,13 @@
 // the AI finds it in the code). Each is one Save count. Reopening before the
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
-import { LIMITS, type Dim, type Item, type PlacementAdded, type PlacementEntry, type PlacementFile, type PlacementOrder, type PlacementRemoved, type Pose } from '../contract.ts';
+import { type Dim, type Item, type PlacementAdded, type PlacementEntry, type PlacementFile, type PlacementOrder, type PlacementRemoved, type Pose } from '../contract.ts';
 import { hasLayer, orderOfLayer } from './layers.ts';
+import { roundPose, samePose } from './pose-compare.ts';
 
-function roundTo(v: number, step: number): number {
-  return Math.round(v / step) * step;
-}
-
-/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
-export function roundPose(p: Pose, dim: Dim): Pose {
-  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
-  const fix = (v: number, s: number) => Number(roundTo(v, s).toFixed(6));
-  const out: Pose = { p: p.p.map((v) => fix(v, step)) };
-  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
-  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
-  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
-  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
-  return out;
-}
-
-/**
- * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
- *
- * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
- * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
- * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
- * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
- */
-function sameAngle(a: number | undefined, b: number | undefined): boolean {
-  if (a === undefined || b === undefined) return a === b;
-  const TAU = Math.PI * 2;
-  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
-  // Half a rounding step: values one step apart (a real nudge) still differ.
-  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
-}
-
-export function samePose(a: Pose | undefined, b: Pose | undefined, dim: Dim): boolean {
-  if (!a || !b) return a === b;
-  const x = roundPose(a, dim), y = roundPose(b, dim);
-  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
-  if (!sameAngle(x.r, y.r)) return false;
-  if (!x.t || !y.t) return !x.t === !y.t;
-  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
-}
+// The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
+// (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
+export { roundPose, samePose } from './pose-compare.ts';
 
 /** Keys of `now` outside a longest common subsequence with `was` (the moved ones). n ≤ 500, O(n²). */
 function outOfOrder(was: string[], now: string[]): string[] {
@@ -286,6 +250,71 @@ export class PlacementModel {
       }
     }
     return apply;
+  }
+
+  /**
+   * A NEW page of the game (Play → Edit, a reload) listed its objects: what of the arrangement on screen before it does
+   * not show. Call BEFORE setItems() with the new page's raw list; the shell pushes the result to the page.
+   *
+   * WHY (a try of the editor, 2026-10-21, "I moved things, pressed Play without Save, and everything was reset"): the saved poses
+   * were pushed only once, on the first list after opening (setItems' `apply`). A game that does not read
+   * placement.json itself (a game the AI made, before "add the loader") came back from Play — or from the AI's reload
+   * — at its code's layout while the card and "Save · 1" still said "moved". Now the page gets the editor's
+   * arrangement back, saved or not.
+   *
+   * Only what the page shows AS ITS CODE MAKES IT: an object at `was` (the code's own pose) that the person put
+   * elsewhere, a copy the page does not have, a deleted object it still has, a list in the code's order that the person
+   * reordered. Anything else is left alone: a game whose loader applied the draft already shows it (nothing to do),
+   * and an object the AI's change moved in the code (now ≠ `was`) is the AI's to keep — pushing the old pose back
+   * would undo its work.
+   */
+  notShown(items: Item[]): {
+    poses: Array<{ key: string; pose: Pose }>;
+    copies: Array<{ key: string; from: string; pose: Pose }>;
+    removes: string[];
+  } {
+    const out = { poses: [] as Array<{ key: string; pose: Pose }>, copies: [] as Array<{ key: string; from: string; pose: Pose }>, removes: [] as string[] };
+    // Nothing known yet (the first list after opening): setItems' own `apply` does that one.
+    if (!this.was.size) return out;
+    const flat = (p: Pose): Pose => ({ ...p, z: undefined });
+    const byKey = new Map(items.map((i) => [i.key, i]));
+    for (const it of items) {
+      if (this.copyFrom.has(it.key)) continue;
+      if (this.removed.has(it.key)) {
+        out.removes.push(it.key);
+        continue;
+      }
+      const cur = this.current.get(it.key), was = this.was.get(it.key);
+      if (!cur || !was || samePose(flat(cur), flat(was), this.dim)) continue;
+      if (!samePose(flat(it.pose), flat(was), this.dim)) continue;
+      // z stays the page's: the draw order is put back below, as a whole list.
+      out.poses.push({ key: it.key, pose: flat(cur) });
+    }
+    for (const k of this.copyOrder) {
+      if (!this.live.has(k) || byKey.has(k)) continue;
+      const from = this.liveFrom(k);
+      // Made from something the new page does not have (the AI took it out): nothing to copy.
+      if (!byKey.has(from)) continue;
+      out.copies.push({ key: k, from, pose: flat(this.current.get(k)!) });
+    }
+    // Draw order (2D): a list the person reordered that the page shows in the code's order again.
+    for (const layer of this.layers()) {
+      const want = this.order(layer);
+      const was = this.wasOrder.get(layer) || [];
+      const raw = items.filter((i) => hasLayer(i) && i.layer === layer);
+      const now = orderOfLayer(raw, layer);
+      const keys = want.filter((k) => now.includes(k));
+      if (keys.join('\n') === now.filter((k) => keys.includes(k)).join('\n')) continue;
+      if (now.filter((k) => was.includes(k)).join('\n') !== was.filter((k) => now.includes(k)).join('\n')) continue;
+      const slots = raw.filter((i) => keys.includes(i.key)).map((i) => i.pose.z!).sort((a, b) => a - b);
+      keys.forEach((k, i) => {
+        const p = out.poses.find((x) => x.key === k);
+        const base = p?.pose ?? { ...(byKey.get(k)!.pose) };
+        if (p) p.pose = { ...base, z: slots[i]! };
+        else out.poses.push({ key: k, pose: { ...base, z: slots[i]! } });
+      });
+    }
+    return out;
   }
 
   /**

@@ -53,6 +53,7 @@ import { statusCovers } from '../schema/handoff.mjs';
 import { aiBusy, aiPhase, reloadDecision, type AiPhase } from './ai-flow.ts';
 import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
+import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
 import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
@@ -70,6 +71,7 @@ import { createShortcutSheet } from './shortcuts.ts';
 import { createContextMenu, type MenuEntry } from './context-menu.ts';
 import { contextRows, type CtxPlace } from './context-rows.ts';
 import { bigChanges, createSafeSave } from './safe-save.ts';
+import { createUnsavedGuard, lostBy, type GuardOp } from './unsaved-guard.ts';
 import { createLayerSwitch } from './layer-switch.ts';
 import { uiAsPlacement, uiEntries, withUi } from './ui-layer.ts';
 
@@ -189,6 +191,19 @@ export function start(host: StudioHost) {
   let toast = '';
   let toastTimer = 0;
   const thumbs = new Map<string, string>();
+  // Pictures kept from the game page before a reload (▶ Play → Edit, the AI's change): still shown, asked for again,
+  // and replaced when the new one comes (Ive review 3 ⑥, 2026-10-20 — the list showed empty squares after Edit until
+  // every picture was drawn again: `thumbs` was cleared on a reload). A key the new game no longer has keeps an unused
+  // entry; one that now names another object (a tree path) shows the old picture until its new one comes.
+  const staleThumbs = new Set<string>();
+  const needsThumb = (k: string) => !thumbs.has(k) || staleThumbs.has(k);
+  // The Library's tiles: their own pictures, twice the tile's size on screen (Ive review 3 ⑧), apart from the list's
+  // 96 px ones so a game with hundreds of objects does not draw every list row at 384 px. Kept and replaced like the
+  // list's (`bigStale`). `bigShown`: asked for since the last reload.
+  const bigThumbs = new Map<string, string>();
+  const bigStale = new Set<string>();
+  const bigShown = new Set<string>();
+  const bigRaw = new Map<string, string>();
   // The last raw picture the game sent per object (before cropping, thumb-fit.ts).
   const thumbAsked = new Map<string, string>();
   // One model per layer (ui-layer.ts says why the UI's is a PlacementModel too); `model` is the edited layer's, so
@@ -200,6 +215,8 @@ export function start(host: StudioHost) {
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
   const listeners = new Map<string, Set<(m: BridgeToShell) => void>>();
   let placementRestored = false;
+  // The same for the UI layer's first list of each page (UI stage 1): set false by loadGame().
+  let uiRestored = false;
   // itemsSeen: the game has answered with its object list at least once. Before
   // that the card said "No movable objects found", which read as "broken"
   // while the game was still starting (UI/UX review 2026-10-16, journey view).
@@ -244,7 +261,18 @@ export function start(host: StudioHost) {
   let changeFrom: string | null = null;
   let lastChange: { from: string; redo: string | null } | null = null;
   let aiAfter: 'undone' | 'redone' | null = null;
+  // Undo / Redo presses, so the same "Back to before" after Undo → Redo → Undo is a new line (line-fade.ts lineKey).
+  let aiAfterTurn = 0;
   let undoBusy = false;
+  // The finished line goes by itself (line-fade.ts, 2026-10-20: "this line is always there, it's in the way"). `lineShown`: the key of
+  // the finished line on screen, whose timer runs; `lineGone`: the key of the one that faded — the next poll draws the
+  // same line again and it must stay gone until there is something new (or the person calls it back with the top
+  // bar's "● AI" or ⌘K). `lineLeft`: when the pointer / keyboard last left it (LINE_GRACE_MS more after that).
+  let lineShown = '';
+  let lineGone = '';
+  let lineFading = false;
+  let lineTimer = 0;
+  let lineLeft = 0;
   // What the AI's last change did, made visible (the AI line said "made 3
   // changes", but not where). When the person presses "Reload the game"
   // after the AI is done, the poses on screen are kept; the first object
@@ -336,7 +364,7 @@ export function start(host: StudioHost) {
   // Where you are, always in one line: ▣ Studio / <the game> / Scene.
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'here-note', hidden: true }), h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -379,9 +407,26 @@ export function start(host: StudioHost) {
   // Is the AI there? Grey until it writes back in this session, green after,
   // violet while it works. (The editor cannot see the AI's window; this is
   // only what the AI told it, so it never claims more.)
-  const peer = h('span', { class: 'peer', dataset: { part: 'peer' } }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // A button since 2026-10-20: once the AI's finished line has faded, pressing "● AI" brings it back (with its "Undo AI
+  // change"). The quietest place for it: the AI already lives there, nothing new is drawn, and its label turns violet
+  // (the AI's hand) only while a change of the AI's can still be taken back (renderPeer).
+  const peer = h('button', { type: 'button', class: 'peer', dataset: { part: 'peer', action: 'ai-recall' }, onclick: () => recallLine() }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // Ask while playing on a narrow screen (a phone, the side window; Ive review 3 ④, 2026-10-20): ✦ left of Edit opens
+  // the field over the game. The game page's own corner mark sat on the game's words at its foot ("Tap or click the
+  // water to sail · WASD works too" in Lantern Cove), and a game's foot is where games put words; the top bar is the
+  // editor's own. Moved, not added: the game page draws no corner mark then (play/on `mark: false`), except in full
+  // screen where this bar is gone. Undo / Redo step away while playing there (they are disabled in Play anyway) so the
+  // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
+  const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
+  // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
+  // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
+  // From the keyboard (Tab then Enter / Space: detail 0) it keeps the focus and the ring, as it should.
+  for (const b of playBtns) b.addEventListener('click', (e) => {
+    if (e.detail > 0) b.blur();
+  });
   // The side window next to a chat (a try on 2026-10-19: "it's hard to use from the sidebar"): one quiet icon at the right of
   // the top bar opens this same editor in a large window — the link with its pass (host.largeLink: the server's pass
   // is a cookie of THIS browser, a bare location.href in another browser got "Missing pass"), plus this page's own
@@ -608,8 +653,12 @@ export function start(host: StudioHost) {
     selectObject(null);
   });
   // The news card shows when one of its lines has something to say.
+  // Shown = not hidden AND drawn: the ask box's "Sent to your AI" note keeps its text but shell.css hides it once the AI
+  // line takes over (.shell[data-ai] .ask-note); counted as shown, it left an empty frosted card after the AI's line
+  // faded (line-fade.ts, 2026-10-20).
+  const captionShows = (c: Element) => !(c as HTMLElement).hidden && (!c.classList.contains('toast') || c.classList.contains('on')) && getComputedStyle(c).display !== 'none';
   const updateCaption = () => {
-    const any = [...caption.children].some((c) => !(c as HTMLElement).hidden && (!(c as HTMLElement).classList.contains('toast') || (c as HTMLElement).classList.contains('on')));
+    const any = [...caption.children].some(captionShows);
     if (caption.hidden === any) caption.hidden = !any;
   };
   new MutationObserver(updateCaption).observe(caption, { subtree: true, childList: true, attributes: true, attributeFilter: ['hidden', 'class'] });
@@ -657,19 +706,26 @@ export function start(host: StudioHost) {
       if (cardUp || sheetUp || libraryUp || menuUp) inset.camera = false;
     }
     // The Save in the game (saveFab), phone / side window: right over what covers the game's foot — the dock (the
-    // bar, the card and the AI's line over it), the list sheet, the Library — 8 px above the highest of them (CSS
+    // bar, the card and the AI's line over it), the list sheet, the Library — 12 px above the highest of them (CSS
     // reads --fab-bottom). And the camera ↑↓, in the same corner, go above it while it shows (it comes with the
     // first change, mostly with the card up, when the ↑↓ are away anyway). PC: CSS alone (the ask bar's row).
     if (phone()) {
       let foot = !dock.hidden && dock.offsetParent ? dock.getBoundingClientRect().top : sr.bottom;
       if ((sheetOpen || page !== 'tool') && !playing) foot = Math.min(foot, window.innerHeight - sideFoot - side.offsetHeight);
       if (tool === 'library' && !assetsPage.hidden) foot = Math.min(foot, assetsPage.getBoundingClientRect().top);
-      const fb = `${Math.max(8, Math.round(sr.bottom - foot + 8))}px`;
+      // 12 px over it, not 8 (the third design review's ③ / ⑨, 2026-10-20): at 8 the Save's shadow met the list
+      // sheet's edge and it read as sitting on it.
+      const fb = `${Math.max(8, Math.round(sr.bottom - foot + 12))}px`;
       // Not while it says "✓ Saved": the AI's line ("saved…") rises in the dock right after the press and would carry
       // the button up from under the finger, and a second tap would land on what slid into its place (the web demo's
       // test caught the card's "…" there). It stays put for that moment, then goes.
       if (saveFab.dataset.state !== 'done' && app.style.getPropertyValue('--fab-bottom') !== fb) app.style.setProperty('--fab-bottom', fb);
-      if (!saveFab.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - foot + 8 + (saveFab.offsetHeight || 44) + 8));
+      if (!saveFab.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - foot + 12 + (saveFab.offsetHeight || 44) + 8));
+    } else if (!saveFab.hidden && saveFab.offsetParent) {
+      // PC: the camera ↑↓ go above the Save while it shows (the third design review's ③, 2026-10-20). With the ask bar
+      // they already were (the Save sits on the bar's row), but the web demo has no ask bar: there the Save covered ↓
+      // (the editor in the front page, a game of 814×572). offsetTop, not the rect: the Save rises in (a transform).
+      inset.bottom = Math.max(inset.bottom, Math.round(stage.clientHeight - saveFab.offsetTop + 8));
     }
     const card = placementPanel.cardEl;
     if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
@@ -762,12 +818,13 @@ export function start(host: StudioHost) {
     group: () => group,
     multi: () => multi,
     setMulti: (on) => setMulti(on),
-    thumb: (k) => thumbs.get(k) || null,
-    wantThumbs: (keys) => {
+    thumb: (k) => bigThumbs.get(k) || thumbs.get(k) || null,
+    sharp: (k) => bigThumbs.has(k) && !bigStale.has(k),
+    wantThumbs: (keys, px) => {
       if (!uiPrefs.show.thumbs || playing) return;
-      const ask = keys.filter((k) => !visibleShown.has(k));
-      for (const k of ask) visibleShown.add(k);
-      if (ask.length) send({ type: 'studio:placement/thumbs', keys: ask, size: 96 });
+      const ask = keys.filter((k) => !bigShown.has(k));
+      for (const k of ask) bigShown.add(k);
+      if (ask.length) send({ type: 'studio:placement/thumbs', keys: ask, size: px });
     },
     pose: (k) => model.pose(k),
     dim: () => dim,
@@ -965,6 +1022,16 @@ export function start(host: StudioHost) {
       if (editLayer === 'world') act('ui-peek', t(uiPeek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show'), uiPeek ? 'eyeOff' : 'eye', () => setUiPeek(!uiPeek), keyOf('uiPeek', mac), 'ui hud show hide peek eye 見る 隠す 表示');
     }
     if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    // The AI's change, undone from here too: its line fades by itself (line-fade.ts) and this row is always there while
+    // the change can be taken back (also on a phone, where the top bar has no "● AI").
+    {
+      const ph = currentPhase();
+      if (lastChange && host.undoAi && !playing && !undoBusy) {
+        if (ph === 'done' || ph === 'redone') act('ai-undo', t('ai.undo'), 'undo', () => void undoAiChange(false), undefined, t('pal.aiUndo.words'));
+        else if (ph === 'undone' && lastChange.redo) act('ai-redo', t('ai.redoPal'), 'redo', () => void undoAiChange(true), undefined, t('pal.aiUndo.words'));
+      }
+      if (lineRecallable()) act('ai-recall', t('ai.recall'), 'spark', () => recallLine(), undefined, t('pal.aiUndo.words'));
+    }
     if (undo.canRedo) act('redo', t('btn.redo'), 'redo', doRedo, keyOf('redo', mac), `${describe(undo.peekRedo())} redo やり直す`);
     if (keys.length) act('deselect', t('ops.selectNone'), 'close', () => selectObject(null), keyOf('deselect', mac), 'deselect unselect none 選択解除');
     if (keys.length && editing && libraryShown() && targets().length) act('add-to-scene', t('lib.addToScene'), 'copy', () => addToScene(), undefined, 'add scene place 足す 置く');
@@ -1681,6 +1748,9 @@ export function start(host: StudioHost) {
   }
 
   function renderAiLine() {
+    // Keep the keyboard where it was: the line is drawn again on every poll, and a focused button replaced by its twin
+    // drops the focus to the page (the line would then fade under someone tabbing through it).
+    const focused = aiLine.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.action : undefined;
     aiLine.replaceChildren();
     aiLine.className = 'ai-line';
     const ph = currentPhase();
@@ -1762,10 +1832,11 @@ export function start(host: StudioHost) {
       if (lastChange && host.undoAi && !playing) link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
       // A host that cannot tell when the game's files changed: the old button.
       else if (ph === 'done' && !playing && code === undefined && !aiReloaded) {
-        link('ai-reload', 'undo', t('ai.reload'), () => {
+        link('ai-reload', 'undo', t('ai.reload'), () => void confirmLoss('reload').then((go) => {
+          if (!go) return;
           aiReloadFor = aiStatus?.at ?? null;
           void softReload('ai');
-        });
+        }));
       }
     } else if (ph === 'undone' || ph === 'redone') {
       two(t(ph === 'undone' ? 'ai.undone' : 'ai.redone'), ph === 'undone' ? t('ai.undoneSub') : '');
@@ -1775,6 +1846,8 @@ export function start(host: StudioHost) {
       }
     }
     aiLine.hidden = !aiLine.childNodes.length;
+    fadeLine(ph);
+    if (focused && !aiLine.hidden) (aiLine.querySelector(`[data-action="${focused}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
     sendMarks();
     // The ask field becomes the answer field while the AI asks (and goes back after).
     if ((ph === 'asking') !== wasAsking) {
@@ -1787,12 +1860,107 @@ export function start(host: StudioHost) {
     sendPlayLine();
   }
 
+  /**
+   * A finished line (done / undone / redone) stays lineStayMs, longer while the pointer or keyboard is in it, then
+   * fades and stays gone across polls (lineGone). Every other phase shows as long as it is true (line-fade.ts).
+   */
+  function fadeLine(ph: AiPhase) {
+    if (!lineFades(ph) || aiLine.hidden) {
+      clearTimeout(lineTimer);
+      lineShown = '';
+      lineFading = false;
+      caption.classList.remove('fading');
+      return;
+    }
+    const key = lineKey(ph, aiStatus?.at, aiStatus?.note, aiAfterTurn);
+    if (key === lineGone) {
+      aiLine.hidden = true;
+      caption.classList.remove('fading');
+      return;
+    }
+    if (key !== lineShown) {
+      lineShown = key;
+      lineFading = false;
+      clearTimeout(lineTimer);
+      lineTimer = window.setTimeout(lineDue, lineStayMs(aiLine.textContent || ''));
+    }
+    // A poll during the fade draws the line again: keep it fading.
+    aiLine.classList.toggle('fading', lineFading);
+    caption.classList.toggle('fading', lineFading && onlyLine());
+  }
+  /** The caption shows nothing but the AI line (then the whole frosted card fades with it, not just its text). */
+  function onlyLine(): boolean {
+    return ![...caption.children].some((c) => c !== aiLine && captionShows(c));
+  }
+  function lineDue() {
+    if (aiLine.matches(':hover, :focus-within') || Date.now() - lineLeft < LINE_GRACE_MS) {
+      lineTimer = window.setTimeout(lineDue, 500);
+      return;
+    }
+    lineFading = true;
+    aiLine.classList.add('fading');
+    if (onlyLine()) caption.classList.add('fading');
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    lineTimer = window.setTimeout(() => {
+      lineGone = lineShown;
+      lineShown = '';
+      lineFading = false;
+      renderAiLine();
+    }, reduce ? 0 : LINE_FADE_MS);
+  }
+  // In the line = it stays. Coming back during the fade stops it.
+  const lineHeld = () => {
+    if (!lineFading) return;
+    lineFading = false;
+    aiLine.classList.remove('fading');
+    caption.classList.remove('fading');
+    clearTimeout(lineTimer);
+    lineTimer = window.setTimeout(lineDue, LINE_GRACE_MS);
+  };
+  const lineLeaves = () => {
+    lineLeft = Date.now();
+  };
+  aiLine.addEventListener('pointerenter', lineHeld);
+  aiLine.addEventListener('focusin', lineHeld);
+  aiLine.addEventListener('pointerleave', lineLeaves);
+  aiLine.addEventListener('focusout', lineLeaves);
+  /** The faded line is still the current one (nothing newer): "● AI" / ⌘K can bring it back. */
+  function lineRecallable(): boolean {
+    const ph = currentPhase();
+    return !!lineGone && lineFades(ph) && lineKey(ph, aiStatus?.at, aiStatus?.note, aiAfterTurn) === lineGone;
+  }
+  function recallLine() {
+    if (!lineRecallable()) return;
+    lineGone = '';
+    lineShown = '';
+    renderAiLine();
+  }
+
   // ----- ask while playing (§3.5; bridge/play-ask.ts draws it in the game page, full screen too) -----
   // `playSince`: when this Play began; only a request made since then has a line over the game (an earlier "done"
   // from the editor is not news to someone playing). `playSig`: the last line sent, so a poll that changes nothing
   // sends nothing.
   let playSince = 0;
   let playSig = '';
+  // The game page answered play/hello with an AI behind the host: the ask field is there. `playMark`: what play/on last
+  // said about the corner mark (sent again when the layout changes, renderPlayAsk).
+  let playAskOn = false;
+  let playMark: boolean | null = null;
+  let playNow: ReturnType<typeof playLine> = null;
+  function renderPlayAsk() {
+    const show = playing && playAskOn && phone();
+    playAskBtn.hidden = !show;
+    if (playing && playAskOn && playMark !== !phone()) {
+      playMark = !phone();
+      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
+    }
+    if (!show) return;
+    setButton(playAskBtn, 'spark', t('play.ask'), false, t('play.askTip'));
+    // The AI's state on the ✦ while the corner mark is not drawn: a pulse while it looks / fixes, a ring while a fix
+    // waits for Reload (the corner mark's dot did both).
+    const st = playNow?.state;
+    playAskBtn.dataset.state = st === 'looking' || st === 'fixing' ? 'busy' : st === 'fixed' ? 'ready' : '';
+  }
   function postGame(m: ShellToBridge) {
     try {
       iframe.contentWindow?.postMessage(m, gameOrigin);
@@ -1808,7 +1976,9 @@ export function start(host: StudioHost) {
     const sig = JSON.stringify(v);
     if (!force && sig === playSig) return;
     playSig = sig;
+    playNow = v;
     postGame({ type: 'studio:play/state', state: v });
+    renderPlayAsk();
   }
 
   /**
@@ -1819,6 +1989,8 @@ export function start(host: StudioHost) {
   async function undoAiChange(redo: boolean) {
     const to = redo ? lastChange?.redo : lastChange?.from;
     if (!host.undoAi || !lastChange || !to || undoBusy) return;
+    // The files change first, then the game reloads: ask before either (a game tool's data, unsaved-guard.ts).
+    if (!(await confirmLoss('reload'))) return;
     undoBusy = true;
     renderAiLine();
     const res = await host.undoAi(to, { redo }).catch((e) => ({ ok: false, error: (e as Error).message, redo: null }));
@@ -1830,6 +2002,7 @@ export function start(host: StudioHost) {
     }
     if (!redo) lastChange.redo = res.redo ?? null;
     aiAfter = redo ? 'redone' : 'undone';
+    aiAfterTurn++;
     // The files' new signature first, so the reload below does not trigger a second one.
     const st = await host.status().catch(() => null);
     if (st?.code) {
@@ -1846,6 +2019,8 @@ export function start(host: StudioHost) {
   // also shows by itself); paused while the tab is hidden. Plain polling
   // works the same against the local server and a hosted one.
   let pollTimer = 0;
+  // The files' signature whose reload was asked about (unsaved game tool data): not asked again for the same change.
+  let heldFor: string | undefined;
   async function pollStatus() {
     clearTimeout(pollTimer);
     if (document.visibilityState !== 'hidden') {
@@ -1863,7 +2038,19 @@ export function start(host: StudioHost) {
         if (loadedCode === undefined) loadedCode = code;
       }
       const go = reloadDecision({ code, loadedCode, stableMs: Date.now() - codeSince, phase: currentPhase(), playing, reloading: !!swapping });
-      if (go === 'now') {
+      if (go === 'now' && lostNow('reload') > 0) {
+        // The AI's change would reload the game page and lose a game tool's unsaved data: ask once per change. Cancel
+        // keeps the old page until the person saves (then the next poll reloads by itself) or the AI changes it again.
+        if (heldFor !== code) {
+          heldFor = code;
+          const at = aiStatus?.state === 'done' || aiStatus?.state === 'failed' ? aiStatus.at ?? null : undefined;
+          void confirmLoss('reload').then((ok) => {
+            if (!ok || swapping || playing) return;
+            if (at !== undefined) aiReloadFor = at;
+            void softReload('ai');
+          });
+        }
+      } else if (go === 'now') {
         if (aiStatus?.state === 'done' || aiStatus?.state === 'failed') aiReloadFor = aiStatus.at ?? null;
         void softReload('ai');
       }
@@ -1945,7 +2132,7 @@ export function start(host: StudioHost) {
     const first: string[] = [];
     const rest: string[] = [];
     for (const it of items) {
-      if (thumbs.has(it.key) || thumbsAsked.has(it.key)) continue;
+      if (!needsThumb(it.key) || thumbsAsked.has(it.key)) continue;
       const g = it.group || it.key;
       (seen.has(g) ? rest : first).push(it.key);
       seen.add(g);
@@ -1967,7 +2154,7 @@ export function start(host: StudioHost) {
       if (!r.height || r.bottom < box.top || r.top > box.bottom) continue;
       const k = row.dataset.key!;
       // Not drawn yet and not already moved to the front for this view.
-      if (!thumbs.has(k) && !visibleShown.has(k)) keys.push(k);
+      if (needsThumb(k) && !visibleShown.has(k)) keys.push(k);
     }
     if (!keys.length) return;
     for (const k of keys) visibleShown.add(k);
@@ -2110,8 +2297,11 @@ export function start(host: StudioHost) {
       // Ask while playing (§3.5): the game page can take a request; say whether an AI can get one (never offline).
       case 'studio:play/hello':
         if (playing && !host.offline) {
-          postGame({ type: 'studio:play/on', lang, words: playWords(t) });
+          playAskOn = true;
+          playMark = !phone();
+          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
           sendPlayLine(true);
+          renderPlayAsk();
         }
         break;
       case 'studio:play/ask':
@@ -2139,7 +2329,14 @@ export function start(host: StudioHost) {
         if (m.layer === 'ui') {
           uiSeen = true;
           uiItems = m.items;
+          // A new page's UI shows the UI as its code makes it: the moves made before (saved or not) go back, as for the world below.
+          const uiLost = uiRestored ? null : uiModel.notShown(m.items);
+          uiRestored = true;
           for (const a of uiModel.setItems(m.items, '2d')) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'ui' });
+          for (const a of uiLost?.poses || []) {
+            uiModel.moved(a.key, a.pose);
+            send({ type: 'studio:placement/pose', key: a.key, pose: a.pose, layer: 'ui' });
+          }
           if (editLayer === 'ui') {
             items = m.items;
             itemsSeen = true;
@@ -2201,11 +2398,23 @@ export function start(host: StudioHost) {
           usesTimer = window.setTimeout(() => void readUses().catch(() => undefined), 1200);
         }
         if (marksNow().keys.length) sendMarks(true);
+        // The first list of a NEW page (Play → Edit, the AI's reload): what of the arrangement it does not show, saved
+        // or not (placement-model.ts notShown; a try of the editor, 2026-10-21: "Play without Save reset everything"). Read before
+        // setItems, which takes the new page's draw order as the model's.
+        const lost = placementRestored ? null : worldModel.notShown(m.items);
         const apply = worldModel.setItems(items, worldDim);
         // Continue from the last save: push saved poses the game does not show.
         if (!placementRestored || apply.length) {
           placementRestored = true;
           for (const a of apply) send({ type: 'studio:placement/pose', key: a.key, pose: a.pose });
+        }
+        if (lost) {
+          if (lost.copies.length) send({ type: 'studio:placement/copy', items: lost.copies });
+          if (lost.removes.length) send({ type: 'studio:placement/remove', keys: lost.removes });
+          for (const a of lost.poses) {
+            worldModel.moved(a.key, a.pose);
+            send({ type: 'studio:placement/pose', key: a.key, pose: a.pose });
+          }
         }
         // ... and the saved copies and deletions the AI has not put in the code yet.
         const fe = model.takeFileEdits();
@@ -2213,8 +2422,12 @@ export function start(host: StudioHost) {
         if (fe.removes.length) send({ type: 'studio:placement/remove', keys: fe.removes });
         if (selected && !items.some((i) => i.key === selected)) selected = null;
         group = group.filter((k) => items.some((i) => i.key === k));
-        // A changed object's old picture is stale: ask again.
-        for (const k of aiMarks.keys()) thumbs.delete(k);
+        // A changed object's old picture is stale: shown until its new one comes (⑥), asked for again.
+        for (const k of aiMarks.keys()) {
+          if (thumbs.has(k)) staleThumbs.add(k);
+          if (bigThumbs.has(k)) bigStale.add(k);
+          bigShown.delete(k);
+        }
         requestThumbs();
         renderAll();
         if (swapping) {
@@ -2306,7 +2519,22 @@ export function start(host: StudioHost) {
         break;
       }
       case 'studio:placement/thumb':
-        if (m.src) {
+        if (m.src && (m.size || 96) > 96) {
+          // A Library tile's own picture (⑧): cropped at its own size; the list takes it too while it has none.
+          const key = m.key, raw = m.src;
+          bigRaw.set(key, raw);
+          void fitPicture(raw, m.size).then((src) => {
+            if (bigRaw.get(key) !== raw) return;
+            bigThumbs.set(key, src);
+            bigStale.delete(key);
+            libraryObjects.updateThumb(key);
+            if (!thumbs.has(key)) {
+              thumbs.set(key, src);
+              staleThumbs.add(key);
+              placementPanel.updateThumb(key);
+            }
+          });
+        } else if (m.src) {
           // Cropped to the object first (thumb-fit.ts, W1-11): the lighthouse filled its tile instead of being an "i".
           // `thumbAsked` keeps the newest: a picture that arrives while an older one is still being cropped wins.
           const key = m.key, raw = m.src;
@@ -2314,6 +2542,7 @@ export function start(host: StudioHost) {
           void fitPicture(raw).then((src) => {
             if (thumbAsked.get(key) !== raw) return;
             thumbs.set(key, src);
+            staleThumbs.delete(key);
             placementPanel.updateThumb(key);
             libraryObjects.updateThumb(key);
           });
@@ -2421,16 +2650,61 @@ export function start(host: StudioHost) {
     if (unwritten()) void keepNow();
   });
 
+  // ----- before unsaved changes are lost (a try of the editor, 2026-10-21: "people forget Save — show a window when edits would be lost") -----
+  // unsaved-guard.ts says what each kind of step loses; here are the steps. A new game page (Play, Reload game, the AI's
+  // reload, Undo AI change) asks only for a game tool's data; leaving the page also for the Save itself (local studio).
+  const lostNow = (op: GuardOp) => lostBy(op, { offline: !!host.offline, kept: dirtyCount() - toolsDirty(), tools: toolsDirty() });
+  let guard: ReturnType<typeof createUnsavedGuard> | null = null;
+  // True once the person chose to leave (Don't save, or after Save): the browser's own question must not come second.
+  let leaving = false;
+  /** Ask before `op` loses something; true = go on (saved first when asked to), false = stay as you are. */
+  async function confirmLoss(op: GuardOp): Promise<boolean> {
+    const n = lostNow(op);
+    if (n <= 0) return true;
+    const a = await (guard ||= createUnsavedGuard({ mount: app, t })).ask(n);
+    if (a === 'cancel') return false;
+    // Save and continue: only once the save went through (a failed save, or Cancel on "Check before you save", stays).
+    if (a === 'save' && !(await handOff())) return false;
+    if (op === 'leave') leaving = true;
+    return true;
+  }
+  // Closing the tab, reloading, the browser's Back: only the browser's own question can be had (its words, not ours).
+  window.addEventListener('beforeunload', (e) => {
+    if (leaving || lostNow('leave') <= 0) return;
+    e.preventDefault();
+    // Older Chrome / Safari need returnValue set.
+    e.returnValue = '';
+  });
+  // A link of this page that opens another page in this tab (the web demo's "← Samples", "Back to the original look"
+  // on the Look page): our window instead of the browser's, and the draft written first (it waits 0.7 s after a change).
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = (e.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
+    if (!a || (a.target && a.target !== '_self') || a.hasAttribute('download')) return;
+    const to = new URL(a.href, location.href);
+    if (to.protocol !== 'http:' && to.protocol !== 'https:') return;
+    // Same page, only a #part: nothing leaves.
+    if (to.origin === location.origin && to.pathname === location.pathname && to.search === location.search) return;
+    if (lostNow('leave') <= 0 && !unwritten()) return;
+    e.preventDefault();
+    void (async () => {
+      if (!(await confirmLoss('leave'))) return;
+      await keepNow();
+      leaving = true;
+      location.href = to.href;
+    })();
+  });
+
   let safeSave: ReturnType<typeof createSafeSave> | null = null;
   /** Save (⌘S): the files with a `saved` request, handed to the AI. */
-  async function handOff() {
+  async function handOff(): Promise<boolean> {
     // Big changes to big things are said in words first (safe-save.ts; the road of that try that went up 16 m).
     // The world's objects, whichever layer is edited (merge of 2026-10-19: with UI stage 1 `model` / `items` / `dim` are
     // the edited layer's, and a road raised before switching to the UI must still be told).
     const big = bigChanges(worldItems, worldModel.changedKeys(), (k) => worldModel.savedPose(k), (k) => worldModel.pose(k), worldDim, t, (it) => displayName(it, t));
     if (big.length) {
       const a = await (safeSave ||= createSafeSave({ mount: stage, t })).ask(big);
-      if (a === 'cancel') return;
+      if (a === 'cancel') return false;
       if (a === 'putBack') {
         const onWorld = editLayer === 'world';
         // A world step pushed while the UI is edited: the one history marks it as the world's (undo.ts layerNow).
@@ -2458,7 +2732,7 @@ export function start(host: StudioHost) {
       const v = validatePlacement(file);
       if (!v.ok) {
         showToast(t('save.fail', { error: v.errors.join('; ') }));
-        return;
+        return false;
       }
       if (placementDirty() > 0) {
         const sig = sigOf(file);
@@ -2481,7 +2755,7 @@ export function start(host: StudioHost) {
       const v = validateLibrary(res);
       if (!v.ok) {
         showToast(t('save.fail', { error: v.errors.join('; ') }));
-        return;
+        return false;
       }
       const sig = sigOf(res);
       jobs.push(host.save(tl.id, v.value).then((r) => {
@@ -2521,6 +2795,7 @@ export function start(host: StudioHost) {
     }
     if (!errors.length) emit('saved', null);
     renderButtons();
+    return !errors.length;
   }
 
   function goHome() {
@@ -2534,6 +2809,8 @@ export function start(host: StudioHost) {
   // already kept); what was written waits first, so a game that reads
   // placement.json at start (studio-placement.js) gets the latest one.
   async function togglePlay() {
+    // A game tool's data lives in the game page only (unsaved-guard.ts); the placement draft goes along by itself.
+    if (!playing && !(await confirmLoss('reload'))) return;
     if (!playing) await keepNow();
     if (swapping) finishSwap();
     playing = !playing;
@@ -2599,6 +2876,9 @@ export function start(host: StudioHost) {
 
   function loadGame(soft = false) {
     bridgeAlive = false;
+    // A new game page asks again (play/hello).
+    playAskOn = false;
+    playMark = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
     gameError = null;
@@ -2615,12 +2895,16 @@ export function start(host: StudioHost) {
       itemsSeen = false;
       selected = null;
       group = [];
-      thumbs.clear();
+      // The pictures stay (⑥): the new game's come in their place, one by one.
+      for (const k of thumbs.keys()) staleThumbs.add(k);
+      for (const k of bigThumbs.keys()) bigStale.add(k);
     }
     check = null;
     thumbsAsked.clear();
     visibleShown.clear();
+    bigShown.clear();
     placementRestored = false;
+    uiRestored = false;
     // What the game in the frame is built from (the host's signature of the files).
     loadedCode = code;
     gameTools = [];
@@ -2640,6 +2924,8 @@ export function start(host: StudioHost) {
   function shortcut(e: { key: string; ctrl: boolean; meta: boolean; shift: boolean; fromGame?: boolean }): boolean {
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
+    // "You have 3 unsaved changes" is open: its own keys only (unsaved-guard.ts), nothing from the game frame either.
+    if (guard?.open) return true;
     // The shortcut sheet: Esc or ? again closes it first (from the game frame too).
     if (keySheet.isOpen() && !mod && (k === 'escape' || k === '?')) {
       keySheet.hide();
@@ -2953,7 +3239,7 @@ export function start(host: StudioHost) {
     if (gameError && !playing) {
       line('warn', h('strong', { text: t('status.gameError') }), h('span', { class: 'mono', text: ` ${gameError.message}${gameError.where ? ` (${gameError.where})` : ''}` }),
         h('span', { text: ' ' + t('status.gameErrorHint') + ' ' }),
-        h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => loadGame() }));
+        h('button', { type: 'button', class: 'link', dataset: { action: 'reload-game' }, text: t('btn.reloadGame'), onclick: () => void confirmLoss('reload').then((go) => go && loadGame()) }));
     } else if (phase === 'loading') line('info', t('status.loading'));
     else if (phase === 'waiting') line('info', t('status.waiting'));
     else if (phase === 'ready' && !itemsSeen) line('info', t('status.items'));
@@ -3037,6 +3323,14 @@ export function start(host: StudioHost) {
     peer.dataset.state = busy ? 'busy' : live ? 'live' : 'idle';
     peer.title = busy ? t('peer.busy') : aiWatching === true ? t('peer.watching') : aiWatching === false ? t('peer.away') : st ? t('peer.live') : t('peer.idle');
     (peer.querySelector('.label') as HTMLElement).textContent = t('peer.label');
+    // After the AI's finished line faded (line-fade.ts): "● AI" brings it back. Violet while it holds a change that
+    // can still be undone; otherwise it looks as before (only the pointer and the tooltip say it can be pressed).
+    const recall = lineRecallable();
+    const undoable = recall && !!lastChange && !!host.undoAi && !playing && currentPhase() !== 'undone';
+    peer.dataset.recall = recall ? (undoable ? 'undo' : 'on') : '';
+    // Not `disabled` (that greys the whole "● AI" out): out of the Tab order and a click does nothing (recallLine).
+    peer.tabIndex = recall ? 0 : -1;
+    if (recall) peer.title = t(undoable ? 'peer.recallUndo' : 'peer.recall');
   }
 
   let lastPage = '';
@@ -3044,6 +3338,7 @@ export function start(host: StudioHost) {
     document.documentElement.lang = lang;
     keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
+    renderPlayAsk();
     app.dataset.fit = sideWin() ? 'side' : 'full';
     setButton(largeBtn, 'openLarge', t('large.open'), false, t('large.tip'));
     sheetGrip.setAttribute('aria-label', t('sheet.grip'));
@@ -3059,6 +3354,12 @@ export function start(host: StudioHost) {
     (header.querySelector('.app') as HTMLElement).textContent = t('app.brand');
     const sceneWord = (id: ToolId) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here') as HTMLElement).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
+    // Playing with changes not saved yet (a try of the editor, 2026-10-21: Play shows the editor's arrangement, saved or not): one quiet
+    // note after "Playing", so nobody takes what they see for what the AI was given. No button, no colour: Save is one
+    // press away in Edit, and a person trying a change first is doing the right thing.
+    const hereNote = header.querySelector('.here-note') as HTMLElement;
+    hereNote.hidden = !(playing && dirtyCount() > 0);
+    hereNote.textContent = hereNote.hidden ? '' : t('status.playingUnsaved');
     // World | UI (UI stage 1): only for a game with both layers, while the game is being edited in the Scene.
     app.dataset.editLayer = editLayer;
     const showSwitch = !!editLayers && editLayers.length > 1 && editing && !playing && tool === 'placement' && page === 'tool';
@@ -3234,7 +3535,7 @@ export function start(host: StudioHost) {
     actions: {
       undo: () => doUndo(),
       redo: () => doRedo(),
-      save: () => handOff(),
+      save: async () => void (await handOff()),
       select: (k) => selectObject(k, true),
       switchTool: (id) => switchTool(id),
       frameAll: () => send({ type: 'studio:core/view', view: { action: 'frameAll' } }),

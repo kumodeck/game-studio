@@ -13,13 +13,18 @@ export const FIT_MARGIN = 4 / 32;
 const ALPHA_MIN = 24;
 /** Share of the picture's alpha left out at each side when finding the object's box (see below). 0.01 = 1 %. */
 const TRIM = 0.01;
-const OUT = 96; // the size the shell asks the game for (main.ts placement/thumbs)
+const OUT = 96; // the size the list asks the game for (main.ts placement/thumbs); the Library's tiles ask for more
 
 const cache = new Map<string, Promise<string>>();
 
-/** The picture cropped to its object with the margin; the same picture when it cannot tell (opaque, empty, an error). Never rejects. */
-export function fitPicture(src: string): Promise<string> {
-  let p = cache.get(src);
+/**
+ * The picture cropped to its object with the margin, `out` px square; the same picture when it cannot tell (opaque,
+ * empty, an error). Never rejects. `out`: the size it was asked for (a Library tile's twice-its-size picture must not
+ * come back as 96 px — that blur is what Ive review 3 ⑧ saw).
+ */
+export function fitPicture(src: string, out = OUT): Promise<string> {
+  const id = `${out}|${src}`;
+  let p = cache.get(id);
   if (!p) {
     p = new Promise<string>((resolve) => {
       const img = new Image();
@@ -68,11 +73,11 @@ export function fitPicture(src: string): Promise<string> {
           if (side >= Math.max(w, h) - 2) return resolve(src);
           const cx = x0 + bw / 2, cy = y0 + bh / 2;
           const o = document.createElement('canvas');
-          o.width = o.height = OUT;
+          o.width = o.height = out;
           const og = o.getContext('2d');
           if (!og) return resolve(src);
           og.imageSmoothingQuality = 'high';
-          og.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, OUT, OUT);
+          og.drawImage(img, cx - side / 2, cy - side / 2, side, side, 0, 0, out, out);
           resolve(o.toDataURL('image/png'));
         } catch {
           resolve(src);
@@ -82,7 +87,7 @@ export function fitPicture(src: string): Promise<string> {
       img.src = src;
     });
     if (cache.size > 600) cache.clear();
-    cache.set(src, p);
+    cache.set(id, p);
   }
   return p;
 }

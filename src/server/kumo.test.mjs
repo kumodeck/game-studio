@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { startStudioServer } from './server.mjs';
-import { kumoImagePrice, kumo3dPrice } from './kumo.mjs';
+import { kumoImagePrice, kumo3dPrice, KUMO_3D_FACE_LIMIT } from './kumo.mjs';
 
 const API = 'http://kumo.test';
 const TOKEN = 'kds_test_SECRET_do_not_leak_0123456789';
@@ -20,7 +20,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222';
  * Game Studio name (what the real server's gate checks: routes3d.ts).
  */
 function fakeKumo({ balance = 500, terms = false } = {}) {
-  const st = { balance, terms, calls: [], jobs: new Map(), creates: 0 };
+  const st = { balance, terms, calls: [], jobs: new Map(), creates: 0, inputs: [] };
   const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   const err = (status, code, message) => json(status, { error: { code, message } });
   const fetch = async (url, init = {}) => {
@@ -36,6 +36,7 @@ function fakeKumo({ balance = 500, terms = false } = {}) {
     const create = /^\/v1\/projects\/([^/]+)\/ai\/(image|3d)\/jobs$/.exec(p);
     if (create && init.method === 'POST') {
       const b = JSON.parse(init.body);
+      st.inputs.push(b.input);
       if (b.acceptTerms === true) st.terms = true;
       if (!st.terms) return err(403, 'ai_terms_not_accepted', 'You must accept the AI terms');
       const cost = create[2] === 'image' ? 3 : 20;
@@ -116,6 +117,8 @@ test('prices shown before Make match the server table (fal / Tripo at cost)', ()
   assert.equal(kumoImagePrice({ width: 1024, height: 1024, tiling: 'both' }), 0.02);
   assert.equal(kumo3dPrice({ texture: true }), 0.2);
   assert.equal(kumo3dPrice({ texture: false }), 0.1);
+  // light 3D by default (faceLimit 5000, 2026-10-20) does not change the price shown before Make
+  assert.equal(kumo3dPrice({ texture: true, faceLimit: KUMO_3D_FACE_LIMIT }), 0.2);
 });
 
 test('not signed in: the editor gets the sign-in command, nothing is called or written', async () => {
@@ -179,6 +182,9 @@ test('3D: starts, the editor checks until done, the model goes into assets/ once
     assert.equal(r.status, 200, JSON.stringify(r.json));
     assert.equal(r.json.status, 'running');
     assert.equal(r.json.path, null);
+    // light for a web game from the start: Tripo's face_limit 5000 (kumo.mjs KUMO_3D_FACE_LIMIT)
+    assert.equal(KUMO_3D_FACE_LIMIT, 5000);
+    assert.deepEqual(s.kumo.st.inputs, [{ prompt: 'a low wooden treasure chest', texture: true, faceLimit: 5000 }]);
     const done = await s.req('GET', `kumo/model3d/${r.json.id}`);
     assert.equal(done.json.status, 'succeeded');
     assert.equal(done.json.path, 'assets/chest.glb');

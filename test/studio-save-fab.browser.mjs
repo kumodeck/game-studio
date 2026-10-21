@@ -4,8 +4,8 @@
 // Per layout (PC 1280×800 with a mouse, the chat app's side window 400×900 with a mouse, a phone 390×844 with touch)
 // and theme (dark, light), on Lantern Cove (3D: the camera ↑↓ sit in the game's bottom-right corner):
 //   0-open     nothing changed: no Save in the game
-//   1-changed  one object moved (the card's X field): "Save · 1" in the game's bottom-right, clear of the camera ↑↓,
-//              the ask bar, the card, the list sheet and the AI line
+//   1-changed  one object moved (the card's X field): "Save · 1" in the game's bottom-right, 8 px or more from the
+//              camera ↑↓, the ask bar, the card, the list sheet and the AI line (the third design review's ③)
 //   2-min      the card minimized: one line (its name); another pick keeps it minimized; a reload too (this browser)
 //   3-saved    the Save in the game pressed with a real click / tap: placement.json written, the button gone
 //
@@ -65,6 +65,9 @@ const BOXES = `(() => {
   });
 })()`;
 const meet = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
+// At least 8 px of air between two boxes (the third design review's ③, 2026-10-20: "not touching" was not enough — on
+// the web demo the Save covered ↓, and in the side window it sat on the list sheet's edge).
+const apart = (a, b) => !a || !b || Math.max(b.l - a.r, a.l - b.r, b.t - a.b, a.t - b.b) >= 8;
 
 let failed = 0;
 const check = (ok, what) => {
@@ -122,7 +125,7 @@ try {
       if (b.fab) {
         check(b.fab.r > b.W * 0.6 && b.fab.b > b.H * 0.5, 'in the bottom-right');
         check(b.fab.r <= b.W && b.fab.b <= b.H && b.fab.l >= 0, 'whole on screen');
-        for (const n of ['cam', 'bar', 'caption', 'card', 'sheet']) if (b[n]) check(!meet(b.fab, b[n]), `clear of ${n}`);
+        for (const n of ['cam', 'bar', 'caption', 'card', 'sheet']) if (b[n]) check(apart(b.fab, b[n]), `8 px or more from ${n}`);
         if (l.id === 'side') check(b.fab.b <= b.H - 48, 'above the chat app\'s 48 px toolbar');
         if (b.game) check(b.fab.t >= b.game.t && b.fab.r <= b.game.r + 1, 'over the game');
         const tip = await page.eval(`${FAB}?.title || ${FAB}?.dataset.tip || ''`);
@@ -170,7 +173,8 @@ try {
         check(await page.eval(`document.querySelector('[data-part=card]').dataset.min !== 'on'`), 'opens again');
         b = await boxes();
         if (b.fab && b.card) check(!meet(b.fab, b.card), 'Save clear of the open card (with the sheet up)');
-        if (b.fab && b.sheet) check(!meet(b.fab, b.sheet), 'Save clear of the list sheet');
+        if (b.fab && b.sheet) check(apart(b.fab, b.sheet), 'Save 8 px or more from the list sheet');
+        if (b.fab && b.cam) check(apart(b.fab, b.cam), 'Save 8 px or more from the camera ↑↓ (sheet up)');
         await shot('2c-open-again');
       }
 
@@ -181,7 +185,7 @@ try {
       b = await boxes();
       await shot('2d-changed-again');
       // On a phone / the side window the list sheet is up now (opened before the pick above).
-      if (b.fab) for (const n of ['cam', 'bar', 'caption', 'card', 'sheet']) if (b[n]) check(!meet(b.fab, b[n]), `again: clear of ${n}`);
+      if (b.fab) for (const n of ['cam', 'bar', 'caption', 'card', 'sheet']) if (b[n]) check(apart(b.fab, b[n]), `again: 8 px or more from ${n}`);
       const reqs = () => (existsSync(join(root, '.studio/requests')) ? readdirSync(join(root, '.studio/requests')).filter((f) => f.endsWith('.json')).length : 0);
       const r0 = reqs();
       if (b.fab) {

@@ -214,6 +214,8 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .brand .sep { color: var(--text-3); }
 .brand .title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .brand .here { color: var(--text-2); }
+/* Playing with unsaved changes (main.ts renderAll): quieter than "Playing" itself, never a badge. */
+.brand .here-note { color: var(--text-3, var(--text-2)); margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .brand .adapter { color: var(--text-3); font-size: var(--fs-s); }
 .brand .lang { font-size: var(--fs-s); color: var(--text-2); }
 .top-right { flex: none; display: flex; align-items: center; gap: 12px; }
@@ -232,6 +234,14 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .peer[data-state="live"] .dot { background: var(--live); }
 .peer[data-state="busy"] { color: var(--ai-text); }
 .peer[data-state="busy"] .dot { background: var(--ai); animation: studio-pulse 1.2s var(--ease) infinite; }
+/* "● AI" is a button since 2026-10-20 (it brings the AI's faded line back, main.ts recallLine): it still looks like the
+   quiet word it was — no plate, no hover until there is something to bring back. Violet label = a change of the AI's
+   can still be undone from there (violet = the AI's hand, as everywhere). */
+.top .peer { min-height: 0; padding: 0; border-radius: 0; background: none; cursor: default; }
+.top .peer:hover { background: none; }
+.top .peer:is([data-recall="on"], [data-recall="undo"]) { cursor: pointer; }
+.top .peer:is([data-recall="on"], [data-recall="undo"]):hover .label { color: var(--text); }
+.top .peer[data-recall="undo"] .label { color: var(--ai-text); }
 .top-actions { display: flex; align-items: center; gap: 4px; }
 .top-actions .play { background: var(--solid); color: var(--solid-fg); font-weight: 600; padding: 0 12px 0 10px; }
 .top-actions .play:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
@@ -351,6 +361,9 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .card-head .stack .thumb + .thumb { margin-left: -10px; }
 .head-text { flex: 1; min-width: 0; display: grid; }
 .head-text strong { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The name and its "UI" tag: the name gives way ("…"), the tag never does (Ive review 3 ⑤). */
+.head-text .head-name { display: flex; align-items: center; min-width: 0; }
+.head-text .head-name strong { min-width: 0; }
 .head-text .key { color: var(--text-3); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.2em; }
 .card-actions { display: flex; gap: 2px; flex: none; }
 .card-actions .icon-btn .icon { width: 16px; height: 16px; }
@@ -421,7 +434,7 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
    PC: on the ask bar's row (its centre line), 12 px in from the game's right edge. The dock keeps --fab-room free on
    BOTH sides at every width (not only while Save shows), so the bar never moves or narrows when Save comes; at 1280
    that changes nothing (the bar stays 600). The camera ↑↓ sit above the bar's row, so the two never meet.
-   Phone / side window: right edge, 8 px over what covers the game's foot (--fab-bottom, measured in sendInset). */
+   Phone / side window: right edge, 12 px over what covers the game's foot (--fab-bottom, measured in sendInset). */
 :root { --fab-room: 172px; }
 .shell:not([data-layout="phone"]) .dock { width: min(600px, calc(100% - 2 * var(--fab-room))); }
 .save-fab { position: absolute; right: 12px; bottom: calc(16px + (var(--bar) - 36px) / 2); z-index: 6; height: 36px; padding: 0 14px;
@@ -483,6 +496,11 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .ask-box:not(:focus-within):has(.ask-input:placeholder-shown) .ask-send:disabled { display: none; }
 .ai-caption { display: grid; gap: 4px; padding: 8px 8px 8px 16px; border-radius: var(--R); font-size: var(--fs); animation: studio-rise var(--dur-in) var(--ease); }
 .ai-caption > * { margin: 0; }
+/* The finished line fades by itself (line-fade.ts; LINE_FADE_MS = .4s): the whole card when the line is all it shows,
+   the line alone when a toast shares the card. Down a little as it goes, the way it rose in. */
+.ai-caption, .ai-line { transition: opacity .4s var(--ease), transform .4s var(--ease); }
+.ai-caption.fading, .ai-line.fading { opacity: 0; transform: translateY(4px); }
+.ai-caption.fading .ai-line.fading { opacity: 1; transform: none; }
 .toast { display: none; }
 .toast.on { display: block; }
 .ai-line { display: flex; align-items: center; gap: 12px; min-height: var(--h); }
@@ -730,13 +748,21 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] { --fs: calc(var(--studio-font) + 4px); --fs-s: calc(var(--fs) - 4px); --fs-l: var(--fs); --h: 44px; --bar: 48px; --R: 22px;
   grid-template: var(--bar) minmax(0, 1fr) / minmax(0, 1fr); grid-template-areas: "head" "stage"; }
 .shell[data-layout="phone"] .top { padding: 0 6px 0 16px; gap: 4px; }
-.shell[data-layout="phone"] .brand .app, .shell[data-layout="phone"] .brand .sep, .shell[data-layout="phone"] .brand .here { display: none; }
+.shell[data-layout="phone"] .brand .app, .shell[data-layout="phone"] .brand .sep, .shell[data-layout="phone"] .brand .here, .shell[data-layout="phone"] .brand .here-note { display: none; }
 .shell[data-layout="phone"] .brand .title { font-size: var(--fs-l); font-weight: 600; }
 .shell[data-layout="phone"] .top-right { gap: 2px; }
 .shell[data-layout="phone"] .peer { display: none; }
 .shell[data-layout="phone"] .save-state { padding: 0 6px; }
 .shell[data-layout="phone"] .top .icon-btn { width: 44px; }
 .shell[data-layout="phone"] .top .icon-btn .icon { width: 20px; height: 20px; }
+/* Ask while playing (Ive review 3 ④): ✦ left of Edit, the AI's violet, no plate (it is the ask field's spark, not a
+   tool button). Undo / Redo step away while playing (disabled then anyway); ✦ takes their place, Edit does not move.
+   A pulse while the AI looks / fixes, a glow while a fix waits for Reload (the game's corner mark did both). */
+.shell[data-layout="phone"][data-playing="on"] .top .actions { display: none; }
+.top-actions > button.play-ask { background: none; color: var(--ai); }
+.top-actions > button.play-ask .icon { width: 18px; height: 18px; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--ai) 45%, transparent)); }
+.top-actions > button.play-ask[data-state="busy"] .icon { animation: studio-pulse 1.2s var(--ease) infinite; }
+.top-actions > button.play-ask[data-state="ready"] .icon { filter: drop-shadow(0 0 2px var(--ai)) drop-shadow(0 0 6px color-mix(in srgb, var(--ai) 80%, transparent)); }
 /* Play is drawn 36 high (a 44 capsule filled the 48 bar edge to edge) and pressed 44 high (::after). */
 .shell[data-layout="phone"] .top-actions .play { min-height: 36px; padding: 0 14px 0 12px; font-size: var(--fs-s); }
 .shell[data-layout="phone"] .top-actions .play,
@@ -932,12 +958,15 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    rows; the game keeps at least half the window above it) with a grip to pull it up, the card and the bar lifted
    over the window's 48 px foot (the chat app's toolbar), and "Open large" in the top bar.
    --side-low: the low sheet = what covers its foot (the card and the bar, measured: --studio-cover) + its head
-   (grip 14, switch row 36 + 4) + four rows, but never more than leaves the game half the window
-   (100dvh = top bar 44 + game ≥ 50dvh + sheet + its 48 foot → sheet ≤ 50dvh − 92). */
+   (grip 14, switch row 36 + 4) + six rows, but never more than leaves the game 40 % of the window
+   (100dvh = top bar 44 + game ≥ 40dvh + sheet + its 48 foot → sheet ≤ 60dvh − 92).
+   History: four rows and the game ≥ half until the third design review's ⑨ (2026-10-20): with an object picked the
+   card and the bar cover the sheet's foot, and the list read four and a half rows — "the list must read six rows
+   with the card and the bar up". At 400×900 the game keeps about 45 % (the picked object is still drawn over it). */
 .large-btn { display: none; }
 .sheet-grip { display: none; }
 .shell[data-layout="phone"][data-fit="side"] { --fs: calc(var(--studio-font) + 1px); --fs-s: calc(var(--fs) - 2px); --fs-l: calc(var(--fs) + 1px); --h: 32px; --bar: 44px; --R: 18px;
-  --side-low: min(calc(var(--studio-cover, 64px) + 54px + 4 * var(--h)), calc(50dvh - 92px)); }
+  --side-low: min(calc(var(--studio-cover, 64px) + 54px + 6 * var(--h) + 4px), calc(60dvh - 92px)); }
 .shell[data-fit="side"] .top { padding: 0 6px 0 12px; }
 .shell[data-fit="side"] .top .icon-btn { width: 32px; }
 .shell[data-fit="side"] .top .icon-btn .icon { width: 18px; height: 18px; }
@@ -959,6 +988,10 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-fit="side"] .list-tools .toggle { min-height: 30px; }
 .shell[data-fit="side"] .list-tools .toggle::after { inset: 0; }
 .shell[data-fit="side"] .sheet-more { width: 32px; min-height: 32px; }
+/* One "…" at a time (the third design review's ⑨ / 5-4, 2026-10-20): with the card up, its "…" sits right under the
+   sheet's — two of them stacked. The sheet's goes while the card shows (⌘K and the card's "…" are there); with
+   nothing picked it is the only one, and stays. */
+.shell[data-fit="side"]:has(.card-slot > .card:not([hidden])) .sheet-more { display: none; }
 .shell[data-fit="side"] .sheet-more .icon { width: 18px; height: 18px; }
 .shell[data-fit="side"] .obj { height: var(--h); border-radius: var(--r); }
 .shell[data-fit="side"] .obj .thumb, .shell[data-fit="side"] .noname.fold .thumb { width: 22px; height: 22px; border-radius: 5px; }
@@ -1006,7 +1039,10 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* Item 4: "check before saving" (safe-save.ts), over the middle of the game. */
 .safe-save { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 30; width: min(420px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto;
   display: grid; gap: 10px; padding: 14px 16px 16px; border-radius: var(--R); color: var(--text);
-  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); animation: studio-rise var(--dur-in) var(--ease); }
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); animation: studio-rise-mid var(--dur-in) var(--ease); }
+/* studio-rise ends at `transform: none`, which drops the centring translate for the length of the animation (the sheet
+   started half its size right and down, then jumped; a press aimed at it then could land beside it). */
+@keyframes studio-rise-mid { from { opacity: 0; transform: translate(-50%, calc(-50% + 6px)) scale(.985); } to { opacity: 1; transform: translate(-50%, -50%); } }
 .safe-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .safe-title { margin: 0; font-size: var(--fs-l); font-weight: 600; }
 .safe-x { font-size: 20px; line-height: 1; }
@@ -1015,6 +1051,16 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .safe-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
 .safe-actions button { min-height: 36px; padding: 0 14px; border-radius: var(--r); }
 .shell[data-layout="phone"] .safe-actions button { min-height: 44px; flex: 1 1 auto; }
+/* "You have 3 unsaved changes" (unsaved-guard.ts, a try of the editor, 2026-10-21): the same glass as above, one sentence and three
+   buttons, in the middle of the whole window (fixed: the web demo's top line and the phone's top bar are covered too,
+   so nothing behind it is pressed by mistake). The layer under it dims a little and a press on it is Cancel. */
+.guard-scrim { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, var(--bg) 35%, transparent); animation: studio-fade var(--dur-in) var(--ease); }
+.safe-save.unsaved-guard { position: fixed; z-index: 61; width: min(400px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); gap: 14px; padding: 16px; }
+.unsaved-guard .safe-title { font-size: var(--fs-l); line-height: 1.3; }
+.unsaved-guard .safe-actions { margin-top: 0; }
+/* Narrow (phone, the chat's side window): one button per row, the main one on top under the thumb's reach of the text. */
+.shell[data-layout="phone"] .unsaved-guard .safe-actions { flex-direction: column-reverse; }
+.shell[data-layout="phone"] .unsaved-guard .safe-actions button { flex: none; width: 100%; }
 
 /* ----- The buttons' tooltip (tooltip.ts) and the shortcut sheet (shortcuts.ts); basics pass, 2026-10-18 ----- */
 /* One line of glass, the small size: the name in the text colour, the key after it in the third grey (as a Mac menu
@@ -1106,7 +1152,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .stage > .layer-switch .ui-peek { background: inherit; backdrop-filter: inherit; -webkit-backdrop-filter: inherit; box-shadow: inherit; }
 .stage > .layer-switch .ui-peek[aria-pressed="true"] { background: color-mix(in srgb, var(--float-solid) 82%, transparent); color: var(--text); }
 /* The card's "UI" tag after the name (an element of the UI layer). */
-.head-text strong .ui-tag { display: inline-flex; align-items: center; height: 16px; margin-left: 6px; padding: 0 5px; border-radius: 999px; vertical-align: 1px;
+.head-text .ui-tag { flex: none; display: inline-flex; align-items: center; height: 16px; margin-left: 6px; padding: 0 5px; border-radius: 999px; vertical-align: 1px;
   font-size: 10px; font-weight: 600; letter-spacing: .04em; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-2); }
 /* A UI element's kind instead of a picture (list rows and the card's head). */
 .thumb.ui-kind { display: grid; place-items: center; color: var(--text-2); background: var(--raise); }

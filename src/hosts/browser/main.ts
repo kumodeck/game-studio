@@ -6,7 +6,7 @@
 // and live in ../games/<id>/. An unknown id goes back to the front page (../).
 // `&embed=1`: the editor inside the front page's frame (embed.ts): no "← Samples" (the front page switches the
 // samples itself), an unknown id opens the first sample (going "back" would put the front page inside its own frame),
-// and the keys pressed in it don't scroll the front page.
+// the keys pressed in it don't scroll the front page, and the wheel scrolls that page until the editor is first pressed.
 import type { Lang } from '../../contract.ts';
 import { start } from '../../shell/main.ts';
 import { detectLang, setExtraText } from '../../shell/i18n.ts';
@@ -14,7 +14,7 @@ import { h } from '../../shell/dom.ts';
 import { createBrowserHost, type DemoGame } from './host.ts';
 import { openStore } from './store.ts';
 import { DEMO_TEXT } from './text.ts';
-import { holdPageScrollEverywhere, isEmbedded } from './embed.ts';
+import { holdPageScrollEverywhere, isEmbedded, shareWheelUntilPressed } from './embed.ts';
 
 async function boot() {
   for (const l of Object.keys(DEMO_TEXT) as Lang[]) setExtraText(l, DEMO_TEXT[l]);
@@ -35,6 +35,7 @@ async function boot() {
   if (embedded) {
     document.body.classList.add('studio-embed');
     holdPageScrollEverywhere(document);
+    shareWheelUntilPressed(document);
   }
   document.body.prepend(banner);
 

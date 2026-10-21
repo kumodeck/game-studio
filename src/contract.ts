@@ -944,9 +944,13 @@ export type ShellToBridge =
   /**
    * Ask while playing (§3.5): the editor answers the bridge's play/hello when an AI is behind the host (never in the
    * offline web demo, where nothing is shown). `words`: the overlay's strings in the person's language (the bridge
-   * has no strings of its own).
+   * has no strings of its own). `mark: false` (a phone, Ive review 3 ④, 2026-10-20): the editor shows the way in
+   * itself (✦ in its top bar, left of Edit) and the game page draws its corner mark only in full screen; sent again
+   * when the editor's layout changes. Absent = true.
    */
-  | { type: 'studio:play/on'; lang: Lang; words: Record<string, string> }
+  | { type: 'studio:play/on'; lang: Lang; words: Record<string, string>; mark?: boolean }
+  /** The editor's ✦ was pressed (phone): open the field over the game, as ` or the corner mark do. */
+  | { type: 'studio:play/open' }
   /** What the AI is doing about the play request, for the small line over the game (shell/play-ask.ts playLine). */
   | { type: 'studio:play/state'; state: PlayLine | null }
   /** The request was kept (`ok`) or not, so the field can close or say it failed. */
@@ -1016,7 +1020,8 @@ export type BridgeToShell =
   | { type: 'studio:placement/moved-group'; poses: Array<{ key: string; pose: Pose; from?: Pose }>; end?: boolean; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean }
   /** Answer to placement/copy: the copies made (with their poses) and the keys that could not be copied. */
   | { type: 'studio:placement/added'; items: Array<{ key: string; from: string; pose: Pose; ghost?: boolean }>; failed: string[] }
-  | { type: 'studio:placement/thumb'; key: string; src: string | null }
+  /** `size`: the side asked for (placement/thumbs), so the editor can tell a Library tile's picture from a list row's. */
+  | { type: 'studio:placement/thumb'; key: string; src: string | null; size?: number }
   /** The strip's chosen tool changed (a strip button, a key in the game, Escape). */
   | { type: 'studio:placement/tool'; tool: StripTool | null }
   /** The strip's choices (the ▾ on turn / size) opened or closed: the editor page closes them on a press or Escape. */
@@ -1041,6 +1046,7 @@ export type BridgeToShell =
    * game's canvas (≤ 1024 px wide), `view` = the player's camera (3D, adapter player()), `near` = what is near it
    * (3D: nearest in front of the camera; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1),
    * `logs` = the game's console errors / warnings and its last lines, `fullscreen` = the game was in full screen.
+   * Since 2026-10-20 the picture has the game's HTML UI in it too (bridge/play-shot.ts), not only the canvas.
    */
   | { type: 'studio:play/ask'; text: string; shot?: string; view?: { eye: [number, number, number]; target: [number, number, number] };
       near?: PlayNear[]; logs?: PlayLog[]; fullscreen?: boolean; size?: [number, number] }

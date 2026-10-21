@@ -1,13 +1,14 @@
 // Edit session inside the game page: applies shell messages to the adapter,
 // runs the studio's own draw loop while the game is frozen, and reports
 // changes back. Pointer gestures and handles are attached by input.ts.
-import type { BridgeToShell, EditLayer, GameTool, GroupScaleMode, Inset, Item, Lang, Pose, ShellToBridge, StudioAdapter, TurnAxis } from '../contract.ts';
+import { UI, type BridgeToShell, type EditLayer, type GameTool, type GroupScaleMode, type Inset, type Item, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import { withRules, type RulesHolder } from '../core/rules.ts';
 import { withEdits } from '../core/edits.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift, type GroupSession } from './group.ts';
 import { createToolHost } from './game-tools.ts';
-import { attachInput, type InputHandle } from './input.ts';
+import { attachInput, tappableAt, type InputHandle } from './input.ts';
+import type { EarlyTaps } from './early-press.ts';
 import { firstToTouch, stepDetent } from './snap.ts';
 import { createHoldState, withHold } from './hold.ts';
 import { drivenBetween, WATCH_MS } from './observe.ts';
@@ -28,6 +29,8 @@ export interface EditorDeps {
   core: Core;
   win: Window & typeof globalThis;
   post: (msg: BridgeToShell) => void;
+  /** Taps made in the game before the editor was ready (early-press.ts): the first begin picks what the last one was on. */
+  earlyTaps?: EarlyTaps;
 }
 
 export interface Editor {
@@ -390,7 +393,7 @@ export function createEditor(deps: EditorDeps): Editor {
         } catch {
           /* no thumbnail: the shell shows a placeholder */
         }
-        post({ type: 'studio:placement/thumb', key: q.key, src });
+        post({ type: 'studio:placement/thumb', key: q.key, src, size: q.size });
       }
     } finally {
       thumbRunning = false;
@@ -744,6 +747,11 @@ export function createEditor(deps: EditorDeps): Editor {
       } catch (e) {
         post({ type: 'studio:core/error', message: `begin() failed: ${(e as Error).message}` });
       }
+      // A tap made while the editor was getting ready (early-press.ts): read HERE, on the picture it was made on (begin()
+      // opens on the game's own camera), before a saved view or "everything in frame" below moves the view. Picked once
+      // input is attached (below).
+      const early = deps.earlyTaps?.take() ?? null;
+      const earlyKey = early ? (tappableAt(adapter, state.items, win, early.x, early.y, early.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null) : null;
       if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
       else {
         // The opening view: the game's own camera when the adapter has one (three.js, polish pass 2026-10-16),
@@ -776,6 +784,7 @@ export function createEditor(deps: EditorDeps): Editor {
         }
       }
       attach();
+      if (earlyKey) select(earlyKey);
       toolHost.announce();
       paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
@@ -1068,10 +1077,12 @@ export function createEditor(deps: EditorDeps): Editor {
           // asks for the rows you can see whenever the list scrolls, so with hundreds of objects the rows in
           // view are drawn next instead of after every earlier request (before: each request ran on its own,
           // 200 at most, in list order — rows further down stayed empty boxes).
-          const size = Math.min(256, Math.max(16, msg.size | 0));
+          // Up to 384: the Library's tiles ask for twice their size on screen (Ive review 3 ⑧, 2026-10-20; the list's
+          // rows ask for 96). A key asked for at another size is a different picture, so it stays queued.
+          const size = Math.min(384, Math.max(16, msg.size | 0));
           const fresh = msg.keys.filter((k) => typeof k === 'string').slice(0, 500);
           const ahead = new Set(fresh);
-          thumbQueue = [...fresh.map((key) => ({ key, size })), ...thumbQueue.filter((q) => !ahead.has(q.key))].slice(0, 2000);
+          thumbQueue = [...fresh.map((key) => ({ key, size })), ...thumbQueue.filter((q) => !(ahead.has(q.key) && q.size === size))].slice(0, 2000);
           if (!thumbRunning) void drawThumbs();
           break;
         }

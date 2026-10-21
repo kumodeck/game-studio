@@ -13,18 +13,46 @@
  */
 
 import { collectCandidates } from './keys.js';
-import { project, rayFromCamera, rayPlaneY, viewProjOf, wrapAngle } from './math.js';
+import { project, rayFromCamera, rayPlaneY, v, viewProjOf, wrapAngle } from './math.js';
 import { pickNear as pickNearImpl, screenRect, screenShare, worldBox } from './pick.js';
 import { createEditView, yawOfCamera } from './camera.js';
 import { captureObject } from './capture.js';
 import { assetsOf as assetsOfImpl } from './assets.js';
 import { focusSphere, sceneSphere } from './focus.js';
-import { castSurface, surfaceBelowHit, surfaceMeshes } from './surface.js';
+import { castSurface, castSurfaceAll, solidBox, surfaceBelowHit, surfaceMeshes } from './surface.js';
 import { groundKeys } from './ground.js';
 
 const DEG = Math.PI / 180;
 const S_MIN = 0.01;
 const S_MAX = 1000;
+/**
+ * The move on surfaces (dragOnSurface): the steepest the ground may look before a screen step stops being read "on
+ * the ground" — sin of the angle the view meets the ground at the foot. 0.25 ≈ 14°: a step up or down the screen then
+ * moves the foot at most 4× what a step across does. Below it (a hill seen from the cove, from below its top) the
+ * foot's ground is seen edge-on and following it exactly makes metres of a pixel.
+ */
+const GRAZE = 0.25;
+/**
+ * The move on surfaces: the highest a step goes up onto ANOTHER surface (m). 1.2: the pier's planks (1.11 over the
+ * sea), a crate's lid — not a pine's lowest boughs (~2 m) or the cottage's eaves (2.6 m): with 1.5 and five rays
+ * under the cottage's box, the cottage dragged 120 px climbed a pine's crown step by step to 8 m. On the surface
+ * it stands on (the same mesh: the hill) the foot follows it up and down freely.
+ */
+const STEP_UP = 1.2;
+/**
+ * The move on surfaces: what the pointer shows (the first face along the ray) pulls the step toward it only when it
+ * is at most this far from the stepped place (m): a barrel pulled onto the pier's planks, a foot that lagged on a
+ * slope. 2: farther is not the foot's ground but something in front of or behind it (the slope in front of the
+ * lighthouse's hill is 8 m off) and is left alone.
+ */
+const REACH = 2;
+/**
+ * The move on surfaces: how far one step may go toward what the pointer shows, as a share of the step itself. 0.5:
+ * the foot comes back under the pointer over a few steps and a step is never more than 1.5× itself. WHY not all at
+ * once (the same day): a small bump in front of the cottage's and a pine's foot took the place under the pointer
+ * 1.1 m nearer after a 4 px move, and the first step was a 1 m hop toward the camera.
+ */
+const PULL = 0.5;
 
 function bootState() {
   const b = globalThis.__studioThree;
@@ -214,6 +242,13 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     return out;
   }
   /**
+   * The box the snapping measures from: the solid parts only (surface.js solidBox — a lighthouse without its light
+   * beams), or the whole box when nothing in it is solid (an object made only of a glow still moves).
+   */
+  function footBox(o) {
+    return solidBox(o) || worldBox(o);
+  }
+  /**
    * World heights of the object's bottom (its box) and of the highest surface under it, looking down from the top of
    * its box: a thing sunk into the ground or the water still finds the surface it stands in (Lantern Cove's props
    * stand 15 cm deep; its barrel floats with its middle under the water — the first version looked down from the
@@ -221,7 +256,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
    */
   function restOf(o, keys) {
     scene.updateMatrixWorld(true);
-    const b = worldBox(o);
+    const b = footBox(o);
     if (!b) return null;
     const meshes = surfaceMeshes(scene, skipFor(o, keys));
     const hit = surfaceBelowHit(b, b.max[1] + 1e-4, meshes);
@@ -303,39 +338,94 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   const touch = () => { dirty = true; };
 
   /**
-   * The move on surfaces (snap on, the object standing): the ray from the camera through the foot's screen point
-   * finds where the foot goes — the nearest face it meets, as Unreal's surface snapping and Blender's Face Project
-   * place things under the cursor. A face to stand on (normal up): there. A wall: the floor at its foot (a ray
-   * straight down from just in front of it). Nothing (the sky): flat at the height it has. The bottom keeps the gap
-   * it had at the grab (`g.stand`: a post sunk 15 cm stays 15 cm deep, a barrel keeps its float) while it is over
-   * the surface it stood on (`g.on`, the same mesh); on another surface its bottom sits exactly on it (a gap above
-   * kept, a sink not: the barrel floating half under the water, dragged onto the pier, stands ON the planks — keeping
-   * its 43 cm float there sank it into them).
+   * The move on surfaces (snap on, the object standing). `g.at` = the foot: the point where the object meets what it
+   * stands on (world; set at the grab, then where each step put it), `g.last` = the pointer (ndc) at the last step.
+   * Each pointer step moves the foot by itself, from where the foot is — never from what a ray meets first:
+   * 1. the step on screen read as a step on the ground at the foot (right / left across the view, up / down the
+   *    screen away / toward; the screen motion one metre each way makes at the foot, solved for the step — exact on
+   *    a ground seen from above, the "up the screen" part capped at 1 / GRAZE where the ground is seen edge-on or
+   *    from below, and up then is always away);
+   * 2. the foot's new height (after 3, which only moves the place): the highest surface straight under it that it
+   *    may go to (the hill — not a pine's crown above it, not the sea under the land; the pier's planks over the
+   *    water); nothing there: flat;
+   * 3. what the pointer shows — the first face to stand on along the ray through the foot's screen point, where
+   *    Unreal's surface snapping puts things — pulls the step toward it (at most PULL of the step) when it is within
+   *    REACH and STEP_UP of the foot: the barrel pulled onto the pier ends where the pointer put it, and a foot that
+   *    lagged on a slope comes back under the pointer.
+   * WHY (review 3 of 2026-10-20): the first version did only (3) and took any face. On a hill seen from the cove the
+   * first face is the slope in front of the object: the lighthouse dragged 20 px jumped 8 m toward the camera,
+   * 120 px flung it 64 m into the hills, up 30 px 78 m, and a ray through the sailboat's sail (a "wall") dropped it to
+   * the boat's foot. Following the ground at the foot's height by the ray instead (tried the same day) turned over
+   * there: from below the hill's top, up the screen meets that height nearer the camera, and up 30 px slid the
+   * lighthouse 12 m down the slope toward the camera.
+   * The bottom keeps the gap it had at the grab (`g.stand`: a post sunk 15 cm stays 15 cm deep, a barrel keeps its
+   * float) while it is over the surface it stood on (`g.on`, the same mesh); on another surface its bottom sits exactly
+   * on it (a gap above kept, a sink not: the barrel floating half under the water, dragged onto the pier, stands ON
+   * the planks — keeping its 43 cm float there sank it into them).
    */
   function dragOnSurface(o, g, ndcX, ndcY) {
     scene.updateMatrixWorld(true);
-    const b = worldBox(o);
+    const b = footBox(o);
     if (!b) return poseOf(o);
-    const ray = rayFromCamera(view.camera, ndcX + g.foot[0], ndcY + g.foot[1]);
     const meshes = surfaceMeshes(scene, skipFor(o));
-    const hit = castSurface(ray, meshes, { minUp: -1 });
-    let to = null;
-    let hitMesh = null;
-    if (hit && hit.normal[1] >= 0.5) (to = hit.point), (hitMesh = hit.mesh);
-    else if (hit) {
-      const back = [hit.point[0] - ray.d[0] * 0.05, hit.point[1] - ray.d[1] * 0.05, hit.point[2] - ray.d[2] * 0.05];
-      const down = castSurface({ o: back, d: [0, -1, 0] }, meshes, { minUp: 0.5 });
-      if (down) (to = down.point), (hitMesh = down.mesh);
+    const at = g.at;
+    // 1. The step on the ground at the foot. Pixels, not ndc: ndc x and y differ by the aspect.
+    const [cw, ch] = cssSize();
+    const vp = viewProjOf(view.camera);
+    const px = (p) => {
+      const q = project(vp, p);
+      return q[3] > 0 ? [(q[0] * cw) / 2, (q[1] * ch) / 2] : null;
+    };
+    const e = view.camera.matrixWorld.elements;
+    const flat = (x, z) => {
+      const l = Math.hypot(x, z);
+      return l > 1e-6 ? [x / l, 0, z / l] : null;
+    };
+    const right = flat(e[0], e[2]);
+    // Away = the camera's forward on the ground; looking straight down it has none, and the screen's up is away.
+    const away = flat(-e[8], -e[10]) || flat(e[4], e[6]);
+    if (!right || !away) return poseOf(o);
+    const f0 = px(at), fr = px(v.add(at, right)), fa = px(v.add(at, away));
+    if (!f0 || !fr || !fa) return poseOf(o);
+    const jr = [fr[0] - f0[0], fr[1] - f0[1]];
+    let ja = [fa[0] - f0[0], fa[1] - f0[1]];
+    const across = Math.hypot(jr[0], jr[1]);
+    if (!(across > 1e-9)) return poseOf(o);
+    if (ja[1] < GRAZE * across) ja = [ja[0], GRAZE * across]; // edge-on or from below: up the screen = away, capped
+    const d = [((ndcX - g.last[0]) * cw) / 2, ((ndcY - g.last[1]) * ch) / 2];
+    const det = jr[0] * ja[1] - jr[1] * ja[0];
+    if (Math.abs(det) < 1e-12) return poseOf(o);
+    const mr = (d[0] * ja[1] - d[1] * ja[0]) / det; // metres right
+    const ma = (jr[0] * d[1] - jr[1] * d[0]) / det; // metres away
+    g.last = [ndcX, ndcY];
+    const x = at[0] + right[0] * mr + away[0] * ma;
+    const z = at[2] + right[2] * mr + away[2] * ma;
+    // 3 (before 2: it only moves the place). Toward what the pointer shows, when it is near.
+    const hit = castSurface(rayFromCamera(view.camera, ndcX + g.foot[0], ndcY + g.foot[1]), meshes, { minUp: 0.5 });
+    const shown = hit && hit.point;
+    let to = [x, at[1], z];
+    if (shown && Math.abs(shown[1] - at[1]) <= STEP_UP) {
+      const gap = Math.hypot(shown[0] - x, shown[2] - z);
+      const pull = Math.min(gap, PULL * Math.hypot(x - at[0], z - at[2]));
+      if (gap <= REACH && gap > 1e-9) to = [x + ((shown[0] - x) * pull) / gap, at[1], z + ((shown[2] - z) * pull) / gap];
     }
-    let bottom;
-    if (to) bottom = to[1] + (hitMesh === g.on ? g.stand : Math.max(0, g.stand));
-    else {
-      to = rayPlaneY(ray, b.min[1]);
-      if (!to) return poseOf(o); // pointing at the sky above the horizon: stay
-      bottom = b.min[1];
+    // 2. Its height there: the highest surface straight under the middle (the foot) that it may go to — on the surface
+    // it stands on, any height (the hill rises under it); onto another one, at most STEP_UP above the foot. WHY the
+    // middle and not restOf()'s five rays (the same day): the cottage's box is 6 m wide, its five rays met the pines
+    // beside it and it climbed them; and on its rise the uphill ray sat 0.8 m over the middle, so the gap measured
+    // that way sank it 0.8 m at the first step (the gap here is measured the same way at the grab: g.at).
+    let under = null;
+    for (const h of castSurfaceAll({ o: [to[0], 1e5, to[2]], d: [0, -1, 0] }, meshes)) {
+      if (h.point[1] > at[1] + STEP_UP && h.mesh !== g.on) continue; // too high a step onto something else
+      under = h;
+      break; // nearest first = the highest that is low enough
     }
+    const hitMesh = under ? under.mesh : null;
+    if (under) to[1] = under.point[1]; // nothing under it (off the land): flat at its height
+    const bottom = hitMesh ? to[1] + (hitMesh === g.on ? g.stand : Math.max(0, g.stand)) : b.min[1];
     const w = worldOrigin(o);
     setWorldPosition(o, [w[0] + to[0] - (b.min[0] + b.max[0]) / 2, w[1] + bottom - b.min[1], w[2] + to[2] - (b.min[2] + b.max[2]) / 2]);
+    g.at = to;
     touch();
     return poseOf(o);
   }
@@ -574,14 +664,22 @@ export function createThreeAdapter({ scene, renderer, camera }) {
         g.on = r ? r.on : null;
       }
       if (snap.on && !snap.free && g.stand !== undefined && g.stand !== null) {
-        // The foot (bottom middle of the box) on screen, as an offset from the press: the ray through it finds the
-        // surface the foot goes to, and the object stays under the pointer the way it was grabbed.
-        // The foot is where the object meets what it stands on (bottom − gap), not the box's bottom: a sea stack sunk
-        // 4 m into the water had its bottom's ray meet the water well in front of it, so each ↓ step flung it toward
-        // the camera until it filled the view and could no longer be picked (test/web-demo-lp, merge of 2026-10-19).
-        const b = worldBox(o);
-        const f = project(viewProjOf(view.camera), [(b.min[0] + b.max[0]) / 2, b.min[1] - g.stand, (b.min[2] + b.max[2]) / 2]);
-        if (f[3] > 0) Object.assign(g, { mode: 'snap', foot: [f[0] - ndcX, f[1] - ndcY] });
+        // The foot (g.at, see dragOnSurface): where the object meets what it stands on, under the middle of its box.
+        // Its screen point is kept as an offset from the press, so the object stays under the pointer the way it was
+        // grabbed. Bottom − gap, not the box's bottom: a sea stack sunk 4 m into the water had its bottom's ray meet
+        // the water well in front of it, so each ↓ step flung it toward the camera until it filled the view
+        // (test/web-demo-lp, merge of 2026-10-19). The box without light effects (footBox): the lighthouse's foot is
+        // under its tower, not under its beams (review 3, 2026-10-20).
+        const b = footBox(o);
+        const meshes = surfaceMeshes(scene, skipFor(o));
+        const at = [(b.min[0] + b.max[0]) / 2, b.min[1] - g.stand, (b.min[2] + b.max[2]) / 2];
+        // The move measures under the middle only (dragOnSurface 2), so the gap is measured there too, when the
+        // middle stands on the same surface restOf()'s five rays found; a box resting on something else at its edge
+        // (half over the pier) keeps the five rays' gap. Not on a re-grab (Ctrl let go): `keep` is that gap already.
+        const mid = keep === undefined && castSurface({ o: [at[0], b.max[1] + 1e-4, at[2]], d: [0, -1, 0] }, meshes, { minUp: 0.5 });
+        if (mid && mid.mesh === g.on) (g.stand = b.min[1] - mid.point[1]), (at[1] = mid.point[1]);
+        const f = project(viewProjOf(view.camera), at);
+        if (f[3] > 0) Object.assign(g, { mode: 'snap', foot: [f[0] - ndcX, f[1] - ndcY], at, last: [ndcX, ndcY] });
       }
       grabs.set(key, g);
       return true;

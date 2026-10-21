@@ -423,9 +423,10 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
    * copy of a title would be a promise the AI cannot keep from a moved offset alone).
    */
   // The minimize button ends every head (one object, several, a UI element), always at its right end.
+  // The "UI" tag sits beside the name, not inside it: inside, a long name's "…" cut the tag off with it (Ive review 3 ⑤).
   const head = (pics: HTMLElement, name: string, sub: string | null, cls = '', ui = false) =>
     h('div', { class: `card-head ${cls}`.trim() }, pics,
-      h('div', { class: 'head-text' }, h('strong', { text: name }, ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
+      h('div', { class: 'head-text' }, h('div', { class: 'head-name' }, h('strong', { text: name }), ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
       ui ? null : actionRow(), minBtn);
 
   const renderGroupCard = (keys: string[]) => {
@@ -486,7 +487,11 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // A guessed name on two lines: what it is, then (grey) which one — "Black pillar by the road" / "left, 3rd". On one line
     // the 272 px card cut it to "Black pillar by the road (le…", the very part that tells it from the 19 others (2026-10-19).
     const parts = isGuessed(it) ? nameParts(shown) : { base: shown, where: '' };
-    const h0 = head(thumbImg(key), parts.base, parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', it.kinds.includes('ui'));
+    // UI (Ive review 3 ⑤): the name is the key in words ("Title card"); the grey second line is what it says ("Glow
+    // Garden Tap the lanterns…"), when that is not just the name again (a "Score" that reads "Score").
+    const ui = it.kinds.includes('ui');
+    const uiText = ui && it.label.trim().toLowerCase() !== shown.toLowerCase() ? it.label : null;
+    const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui);
     h0.title = parts.where ? shown : '';
     const sub = h0.querySelector('.key') as HTMLElement;
     card.append(h0);
@@ -494,7 +499,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
     // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
     // "…" (which still opens the fields). The second line stays empty; whoever needs numbers reads them on a PC.
-    if (d.phone() && !parts.where) sub.textContent = '';
+    // A UI element's text stays (Ive review 3 ⑤): it is words, not numbers, and the name alone ("Title card") does not say
+    // which title.
+    if (d.phone() && !parts.where && !uiText) sub.textContent = '';
     animate();
     // Held by the editor (bridge/hold.ts; a hands-on try of 2026-10-19, items 4 and 5). A ground / road / sky:
     // why it does not move, and the one button that frees it (the "one more step" asked for). What the game moves by
@@ -701,7 +708,10 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // merge of 2026-10-19: the name line is a function so the card of an object the game moves (held 'game', which ends
     // early) shows it too — the unnamed pillars of the runner are both at once (fb-names + fb-safe).
     if (it.unstable) nameNote();
-    if (it.copyOf) body.append(h('p', { class: 'muted copy-note note-line', text: d.t(it.ghost ? 'ops.ghostNote' : 'ops.copyNote', { from: it.copyOf }) }));
+    // A copy: no line on the card (the third design review, 5-2, 2026-10-20). "Copy of barrel · Save to keep it" said
+    // what the list's "duplicate" tag (its tooltip has these words) and the "Save · 1" in the game's corner already
+    // say. A see-through stand-in keeps its line: why it is see-through is said nowhere else.
+    if (it.copyOf && it.ghost) body.append(h('p', { class: 'muted copy-note note-line', text: d.t('ops.ghostNote', { from: it.copyOf }) }));
     // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
     // want to go straight to its page in the Library"); its file is the Assets row above.
     // (Not for a UI element: HTML is not a Library object.)
@@ -848,7 +858,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const n = (v: number | undefined, digits: number) => (v ?? 0).toFixed(digits).replace('-', '\u2212');
     return d.dim() === '3d' ? `x ${n(p[0], 1)} · z ${n(p[2], 1)}` : `x ${n(p[0], 0)} · y ${n(p[1], 0)}`;
   };
-  const nameOf = (it: Item) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : undefined, text: displayName(it, d.t) });
+  // A UI row's tooltip is what it says (its name is its key in words, names.ts uiName).
+  const nameOf = (it: Item) => h('span', { class: it.unstable ? 'name unnamed' : 'name', title: it.unstable ? d.t('placement.unstable') : it.kinds.includes('ui') ? it.label : undefined, text: displayName(it, d.t) });
   // Keep the picked row in view inside the list (PC and phone). Before the
   // tool-modes pass (10/16) a phone scrolled the sheet to its top on a new
   // pick, because the card was then inside the sheet; the card now stands on
@@ -899,7 +910,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       text: on ? d.t('ops.multiDone') : d.t('ops.multi'),
       title: on ? (d.phone() ? '' : d.t('ops.multiOn')) : `${d.t('ops.multiHint')} ${d.phone() ? '' : d.t('ops.multiOff', { all: d.shortcutOf('all') })}`.trim(),
       onclick: () => d.setMulti(!on) });
-    listTools.append(h('span', { class: 'list-title', text: d.t('list.title') }), b);
+    // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
+    const uiList = d.items().every((i) => i.kinds.includes('ui'));
+    listTools.append(h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };

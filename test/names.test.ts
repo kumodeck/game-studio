@@ -3,7 +3,7 @@
 // Run: node --experimental-strip-types --no-warnings --test test/names.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { displayName, fileStem } from '../src/shell/names.ts';
+import { displayName, fileStem, uiName } from '../src/shell/names.ts';
 
 const t = (k: string) => ({ 'noname.kind.shape': 'Unnamed shape', 'noname.kind.picture': 'Unnamed picture', 'noname.kind.object': 'Unnamed object' } as Record<string, string>)[k] ?? k;
 const item = (key: string, label: string, extra: Record<string, unknown> = {}) => ({ key, label, kinds: ['object'], ...extra });
@@ -105,4 +105,17 @@ test('colour words', () => {
   assert.equal(hueOf('#ffdd33'), 'yellow');
   assert.equal(hueOf('#3a2266'), 'purple');
   assert.equal(hueOf('nope'), null);
+});
+
+// Ive review 3 ⑤ (2026-10-20): a UI element is named by its data-studio-key, not by its text (the title card read
+// "Glow Garden Tap the lant…" in the list, on the card and in the chip). The text is the card's grey second line.
+test('a UI element is called by its key in words, whatever it says', () => {
+  const ui = (key: string, label: string) => item(key, label, { kinds: ['ui', 'text'] });
+  assert.equal(displayName(ui('title-card', 'Glow Garden Tap the lanterns to light th'), t), 'Title card');
+  assert.equal(displayName(ui('score', 'Glow 0 / 5'), t), 'Score');
+  assert.equal(displayName(ui('start-button', 'Start'), t), 'Start button');
+  assert.equal(uiName('hudTopLeft'), 'Hud top left');
+  assert.equal(uiName('menu_play.btn'), 'Menu play btn');
+  // Short enough not to be cut ("…") where a name is shown: the list row, the card, the ask chip.
+  assert.ok(displayName(ui('title-card', 'x'.repeat(40)), t).length <= 12);
 });

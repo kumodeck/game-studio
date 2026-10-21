@@ -10,7 +10,9 @@
 //   studio: request ask .studio/requests/<id>.json "…" (barrel)   the user asked the AI something
 //   studio: stopped
 //   studio: check-view ok|failed|skipped …   with --check-view (then the process exits)
-//   studio: no-game <folder> - ask once …    no index.html: offer a starter (exit 4, see --starter)
+//   studio: entry <page> - opened …          no index.html: the game page found instead (find-game.mjs); "ready" follows
+//   studio: build-first <page> - …           the only game page needs its build first (exit 5)
+//   studio: no-game <folder> - ask once …    no game page at all: offer a starter (exit 4, see --starter)
 //   studio: started <id> (12 files)          --starter copied a sample game in; "ready" follows
 //   studio: undone .studio/requests/<id>.json "…"   the person pressed "Undo AI change"
 //   studio: watching 2 waiting               --watch started with requests waiting (then one line per request, as
@@ -34,6 +36,7 @@ import { runViewCheck, runGameShot } from './view-check.mjs';
 import { writeStudioFile } from './files.mjs';
 import { normalizeStatus, isRequestId, AI_STATES } from '../schema/handoff.mjs';
 import { findStarters, pickStarter, copyStarter, noGameLine } from './starters.mjs';
+import { pickGamePage, scorePage, entryLine } from './find-game.mjs';
 import { runWatch, AIW_FOR_MIN } from './ai-watch.mjs';
 import { runHook, registerEditor, unregisterEditor } from './ai-wake.mjs';
 import { recordServer, forgetServer, liveServers, stopFolder, detachEditor } from './lifecycle.mjs';
@@ -44,7 +47,7 @@ Opens the game in the KUMODeck Game Studio editor. Saving writes placement.json 
 library.json into the folder; your AI agent reads them and updates the code.
 
 Options:
-  --entry <file>   page to open (default: index.html)
+  --entry <file>   page to open (default: index.html; without one, the game's page, whatever it is called)
   --port <n>       port to listen on (default: a free port)
   --tool <name>    open on "placement" (default) or "library"
   --lan            listen on this computer's Wi-Fi/LAN address so a phone on the same
@@ -63,7 +66,7 @@ Options:
                    Look at them after changing the game, before you report. Exit 3 = no Chrome
   --ui <folder>    built editor UI (default: studio-ui next to this file)
 
-A folder without a game (no index.html):
+A folder without a game (no index.html and no other page that looks like a game):
   --starter <3d|2d|id>  copy a sample game into the folder (created if missing; nothing is
                    ever overwritten), then open the editor on it
   --starters       list the sample games (one JSON per line), then exit
@@ -111,7 +114,7 @@ export async function main(argv) {
   }
 
   let root = path.resolve(args.dir);
-  const entry = args.entry || 'index.html';
+  let entry = args.entry || 'index.html';
   const here = path.dirname(fileURLToPath(import.meta.url));
   if (args.stop) return stopCommand(root);
   if (args.detach) return detachCommand(root, argv, args);
@@ -129,6 +132,20 @@ export async function main(argv) {
   // the same way they do when the game is deployed.
   if (!existsSync(path.join(root, entry)) && existsSync(path.join(root, 'public', entry))) {
     root = path.join(root, 'public');
+  }
+  // No --entry and no runnable index.html: open the person's game page, whatever it is called (find-game.mjs,
+  // 2026-10-21). The same folder always gives the same page, so --watch / --requests / --status / --stop run
+  // with the same folder land in the same .studio/ as the editor.
+  const found = args.entry ? null : await findOwnGame(root);
+  if (found?.buildFirst) {
+    process.stdout.write(`studio: build-first ${found.buildFirst} - this game runs from its build: build it (its package.json "build"), then run this again (the built page is found by itself)\n`);
+    return 5;
+  }
+  if (found) {
+    root = found.root;
+    entry = found.entry;
+    // Only for the editor itself: the hand-off commands print nothing extra, so the watch stays quiet.
+    if (!args.watch && !args.requests && args.status === undefined && !args.checkView && !args.shot) process.stdout.write(found.line + '\n');
   }
   if (!existsSync(path.join(root, entry))) {
     // No game here. With the default page that usually means "an empty folder": say on stdout what
@@ -206,13 +223,38 @@ export async function main(argv) {
 // ---------------------------------------------------------------------------------------------
 // --detach / --stop (lifecycle.mjs): start the editor so it outlives the agent's turn, and stop only this folder's.
 
-/** Where an editor for `root` writes server.json: the folder, or its public/ when the game is served from there. */
-function servedRoots(root) {
+/**
+ * Where an editor for `root` writes server.json: the folder, its public/ when the game is served from there, or the
+ * folder of the game page found by findOwnGame (dist/, a game's own subfolder).
+ */
+async function servedRoots(root) {
   const out = [];
-  for (const r of [root, path.join(root, 'public')]) {
-    if (existsSync(path.join(r, '.studio'))) out.push(realpathSync(r));
+  const found = existsSync(root) ? await findOwnGame(root).catch(() => null) : null;
+  for (const r of [root, path.join(root, 'public'), found?.root].filter(Boolean)) {
+    if (existsSync(path.join(r, '.studio')) && !out.includes(realpathSync(r))) out.push(realpathSync(r));
   }
   return out;
+}
+
+/**
+ * The person's game when there's no runnable index.html (the default page) in `root` or its public/. Returns null
+ * (keep index.html: it is there, or there's no game and the sample is offered), { buildFirst: page } (the only game
+ * page needs a build), or { root, entry, line }: the folder to serve and the page in it.
+ * WHY the page's own folder becomes the root (dist/index.html → serve dist/): a built game asks for /assets/… from
+ * its own top, as when it is deployed; the same reason public/ is served above. A page at the top keeps `root`.
+ * WHY a source index.html that loads .ts (Vite) does not count: the browser can't run it; its dist/ can.
+ */
+async function findOwnGame(root) {
+  for (const r of [root, path.join(root, 'public')]) {
+    if (existsSync(path.join(r, 'index.html')) && !(await scorePage(r, 'index.html')).needsBuild) return null;
+  }
+  const pick = await pickGamePage(root);
+  if (!pick) return null;
+  if (pick.needsBuild) return existsSync(path.join(root, 'index.html')) ? null : { buildFirst: pick.entry };
+  const dir = path.dirname(pick.entry);
+  const at = dir === '.' ? root : path.join(root, dir);
+  const entry = path.basename(pick.entry);
+  return { root: at, entry, line: entryLine(pick, root) };
 }
 
 async function stopCommand(root) {
@@ -220,7 +262,7 @@ async function stopCommand(root) {
     process.stderr.write(`studio: ${root} isn’t a folder. Check the path and try again.\n`);
     return 2;
   }
-  const { stopped, watch } = await stopFolder(servedRoots(root));
+  const { stopped, watch } = await stopFolder(await servedRoots(root));
   if (!stopped.length && !watch) {
     process.stdout.write(`studio: not running (no editor started for ${root})\n`);
     return 0;
@@ -236,7 +278,7 @@ async function detachCommand(root, argv, args) {
     return 2;
   }
   // Already open for this folder (the agent ran the start line twice, or a new turn): the same editor, not a second.
-  for (const r of servedRoots(root)) {
+  for (const r of await servedRoots(root)) {
     const live = (await liveServers(r)).filter((s) => s.url);
     if (live.length) {
       const s = live[live.length - 1];
@@ -319,9 +361,11 @@ async function useStarter(root, entry, here, args) {
       return null;
     }
   }
-  // Never into a folder that has a game: a starter is for starting, not for mixing into a project.
-  if (existsSync(path.join(root, entry)) || existsSync(path.join(root, 'public', entry))) {
-    process.stderr.write(`studio: ${root} already has a game (${entry}). --starter only works in a folder without one, so nothing was copied.\n`);
+  // Never into a folder that has a game: a starter is for starting, not for mixing into a project. Any game page
+  // counts (neon-orb.html), not only index.html: the person's own game always comes before a sample.
+  const own = existsSync(root) && !existsSync(path.join(root, entry)) ? await pickGamePage(root) : null;
+  if (existsSync(path.join(root, entry)) || existsSync(path.join(root, 'public', entry)) || own) {
+    process.stderr.write(`studio: ${root} already has a game (${own ? own.entry : entry}). --starter only works in a folder without one, so nothing was copied. Open the game instead: run this again without --starter.\n`);
     return 2;
   }
   if (existsSync(root) && !(await fs.stat(root)).isDirectory()) {

@@ -23,7 +23,7 @@
  * ray reads one cell, a slanted one the cells under its path. The copy is kept until the mesh, its geometry or its
  * matrix changes (WeakMap per mesh), so a dragged crate is re-copied while it moves (small) and the terrain never is.
  */
-import { rayBox, rayTriangle, v } from './math.js';
+import { applyM4, boxCorners, rayBox, rayTriangle, v } from './math.js';
 
 /** Meshes with at least this many triangles get a grid; smaller ones are tested whole (a crate: 12). */
 const GRID_MIN_TRIS = 2000;
@@ -42,6 +42,38 @@ function solidMaterial(m) {
   if (m.blending === ADDITIVE) return false;
   if (m.transparent && (m.depthWrite === false || (typeof m.opacity === 'number' && m.opacity < 0.3))) return false;
   return true;
+}
+
+/**
+ * The world box of the parts of `object` that could stand on something — its solid meshes, as surfaceMeshes() counts
+ * them (no light effects, wireframes, lines…) — or null when it has none. The snapping moves measure the foot from it.
+ * WHY not the whole box (review 3 of 2026-10-20): Lantern Cove's lighthouse box held its two 28 m light beams, so the
+ * "bottom middle" foot was nowhere under the tower and the five rays of surfaceBelow() looked at hills 14 m away;
+ * dragged 20 px it jumped 8 m.
+ */
+export function solidBox(object) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+  let any = false;
+  const walk = (o) => {
+    if (!o.visible) return;
+    if (o.isMesh && o.geometry && o.geometry.attributes && o.geometry.attributes.position) {
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      const g = o.geometry;
+      if (!g.boundingBox && typeof g.computeBoundingBox === 'function') g.computeBoundingBox();
+      const b = g.boundingBox;
+      if (mats.some(solidMaterial) && b && isFinite(b.min.x) && isFinite(b.max.x)) {
+        for (const c of boxCorners([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z])) {
+          const p = applyM4(o.matrixWorld.elements, c);
+          for (let i = 0; i < 3; i++) (min[i] = Math.min(min[i], p[i])), (max[i] = Math.max(max[i], p[i]));
+        }
+        any = true;
+      }
+    }
+    for (const c of o.children) walk(c);
+  };
+  walk(object);
+  return any ? { min, max } : null;
 }
 
 /**
@@ -191,6 +223,23 @@ export function castSurface(ray, meshes, { minUp = 0.5, maxT = Infinity } = {}) 
     else for (let t = 0; t < T.n; t++) test(t);
   }
   return best;
+}
+
+/**
+ * Every surface the ray meets (as castSurface: the same faces count), nearest first. adapter.js's move looks down
+ * through all of them for the highest it may step onto (a pine's crown above the hill is skipped, the hill is not).
+ */
+export function castSurfaceAll(ray, meshes, opts) {
+  const out = [];
+  let hit;
+  let r = ray;
+  // castSurface again from just past each hit (1e-4 m: a face shared by two triangles is not met twice): few hits per
+  // ray (2–4 in Lantern Cove), and castSurface's tests stay the one rule. `t` from the ray's own origin.
+  for (let n = 0; n < 16 && (hit = castSurface(r, meshes, opts)); n++) {
+    out.push({ ...hit, t: v.len(v.sub(hit.point, ray.o)) });
+    r = { o: v.add(hit.point, v.scale(ray.d, 1e-4)), d: ray.d };
+  }
+  return out;
 }
 
 /**

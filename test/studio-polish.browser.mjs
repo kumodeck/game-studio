@@ -153,8 +153,10 @@ const cases = {
         await s.page.eval('window.studioShell.actions.copy()');
         await s.page.waitFor(`${DBG}.list().some(i => i.copyOf === ${JSON.stringify(from)})`, 8000);
         const key = await s.page.eval(`${DBG}.list().find(i => i.copyOf === ${JSON.stringify(from)}).key`);
-        const note = await s.page.eval(`document.querySelector('.copy-note')?.textContent || ''`);
-        assert.match(note, /Save to keep it/, `the card's copy note: ${note}`);
+        // The card says nothing about it being a copy (the third design review, 5-2): the list's "duplicate" tag does.
+        const note = await s.page.eval(`document.querySelector('.card .copy-note')?.textContent || ''`);
+        assert.equal(note, '', `the card has a copy note: ${note}`);
+        assert.ok(await s.page.eval(`[...document.querySelectorAll('.obj .tag')].some((t) => t.textContent === 'duplicate')`), 'no "duplicate" tag in the list');
         await s.page.eval(`[...document.querySelectorAll('[data-action=play]')].find((b) => b.offsetParent || b.offsetHeight)?.click()`);
         const found = `(() => { const w = document.querySelector('iframe').contentWindow; const b = w.__studioThree; if (!b || w.location.search.includes('studio=edit')) return 0;
           let n = 0; for (const sc of b.scenes) sc.traverse((o) => { if (o.userData && o.userData.studioKey === ${JSON.stringify(key)} && o.visible !== false) n++; }); return n; })()`;

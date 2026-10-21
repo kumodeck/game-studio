@@ -69,15 +69,6 @@
     .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; opacity: 0; transition: opacity .4s ease; background: var(--sunk); }
     .stage.ready iframe { opacity: 1; }
     .stage.ready > img.poster, .stage.ready .loading { opacity: 0; pointer-events: none; }
-    /* "Click to use": over the editor until it is clicked, so the wheel and the keys still move the page (lp.js). Clear,
-       with its words only while the mouse is over it: the editor is what there is to see. */
-    .shield { position: absolute; inset: 0; width: 100%; border: 0; margin: 0; padding: 0; background: transparent; cursor: pointer; display: flex;
-      align-items: center; justify-content: center; font: inherit; color: inherit; }
-    .shield span { padding: 8px 16px; border-radius: 999px; background: rgba(17,17,17,.78); color: #fff; font-size: 14px; font-weight: 500;
-      opacity: 0; transform: translateY(4px); transition: opacity .15s ease, transform .15s ease; }
-    .shield:hover span, .shield:focus-visible span { opacity: 1; transform: none; }
-    .shield:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 14px; }
-    .stage.active .shield { display: none; }
     .stage.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
     .stage-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
     .hint::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); opacity: .5; margin-right: 8px; vertical-align: 1px; }
@@ -155,7 +146,6 @@
       <div class="stage" id="stage">
         <img class="poster" id="poster" alt="" />
         <div class="loading" id="loading"></div>
-        <button type="button" class="shield" id="shield"><span id="shieldText"></span></button>
       </div>
       <div class="stage-foot">
         <span class="hint" id="hint" aria-live="polite"></span>

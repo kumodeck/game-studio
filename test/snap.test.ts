@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BREAK_PX, firstToTouch, freeHeld, liftDetent, stepDetent, type DetentState } from '../src/bridge/snap.ts';
-import { castSurface, surfaceBelow, surfaceMeshes } from '../src/adapters/three/surface.js';
+import { castSurface, castSurfaceAll, solidBox, surfaceBelow, surfaceMeshes } from '../src/adapters/three/surface.js';
 import { keyStep } from '../src/core/keys.ts';
 import { KEYMAP, keysOf } from '../src/shell/keymap.ts';
 import { contextRows, type CtxFacts } from '../src/shell/context-rows.ts';
@@ -130,6 +130,23 @@ test('a slanted ray (the camera through the foot) meets the first face; walls ar
   assert.ok(any && Math.abs(any.point[0] - 30) < 1e-9 && any.normal[1] < 0.5, 'hits the wall first');
   const floor = castSurface({ o: [20, 3, 0], d: [0.6, -0.8, 0] }, ms, { minUp: 0.5 });
   assert.ok(floor && Math.abs(floor.point[1]) < 1e-9 && floor.normal[1] > 0.99);
+});
+
+test('the foot box leaves light effects out (review 3: the lighthouse box held its 28 m beams)', () => {
+  // A tower 2 m wide, 10 m high, with an additive beam card reaching 28 m out at the top.
+  const box = (min: V3, max: V3) => ({ min: { x: min[0], y: min[1], z: min[2] }, max: { x: max[0], y: max[1], z: max[2] } });
+  const tower = { ...mesh(square(-1, -1, 1, 1, 0)), geometry: { ...mesh([]).geometry, boundingBox: box([-1, 0, -1], [1, 10, 1]) } };
+  const card = { ...mesh([], { transparent: true, depthWrite: false, blending: 2 }), geometry: { ...mesh([]).geometry, boundingBox: box([0, 9, -2], [28, 11, 2]) } };
+  const lighthouse = { visible: true, children: [tower, card] };
+  const b = solidBox(lighthouse)!;
+  assert.deepEqual([b.min, b.max], [[-1, 0, -1], [1, 10, 1]], 'the beam is not in the foot box');
+  assert.equal(solidBox({ visible: true, children: [card] }), null, 'only a glow: no foot box (adapter falls back to the whole box)');
+});
+
+test('every surface along a ray, nearest first (castSurfaceAll: the move looks down through them)', () => {
+  const ms = surfaceMeshes(scene, new Set([barrel]));
+  const all = castSurfaceAll({ o: [15.3, 5, 0.4], d: [0, -1, 0] }, ms);
+  assert.deepEqual(all.map((h: { point: number[] }) => Math.round(h.point[1] * 100) / 100), [1.11, 0], 'the planks, then the ground under them (not their underside)');
 });
 
 // ---------------------------------------------------------------- keys and rows

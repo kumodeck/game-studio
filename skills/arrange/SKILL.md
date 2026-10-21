@@ -23,14 +23,20 @@ serves and writes inside the game folder.
 
 When the user starts this as a command (`/arrange` in Claude Code, `$arrange` in Codex): the word `library` in the
 arguments means open on the library tool (`--tool library`); any other argument is the game folder. Without a folder,
-use the current directory if it has an `index.html`, otherwise find the game's `index.html` and ask if there are
-several. **If there is no game at all** (an empty folder, or only notes and config), do not stop and do not write a
-game yourself: offer a sample, below.
+use the current directory: the editor finds the game's page in it by itself, **whatever it is called**
+(`neon-orb.html`, `game.html`, `dist/index.html`, a single HTML file with all the code inside) and prints
+`studio: entry <page> …` when it isn't `index.html`. Open **the person's own file**: never copy their game into a new
+folder, rename it or make an `index.html` for it (saves would go to the copy, not their game). If the page it picked
+is not the one they mean, start it again with `--entry <page>`. **Only if there is no game at all** (`studio:
+no-game`: an empty folder, or only notes, config and pages that aren't games) offer a sample, below; do not write a
+game yourself. Never tell the person what the file is called or isn't called: say the game is open.
 
 ## 0. A folder without a game: start from a sample
 
-Someone trying the editor for the first time often has no game yet. Look once (the folder and its subfolders, not
-`node_modules`): no `index.html` anywhere = no game. Then:
+Someone trying the editor for the first time often has no game yet. The editor decides it: started without
+`--starter`, it looks through the folder and its subfolders (not `node_modules`) for any page that runs a game, by
+any name, and prints `studio: no-game …` (exit 4) only when there is none. A game page by another name is their game:
+open it (above), never the sample. Then, for `no-game` only:
 
 1. Ask **one** question, in the user's language, and nothing else first: **"There's no game here yet. Want to start from a
    sample? Pick 3D or 2D."** (in Claude Code, in a terminal or the Claude app, a question with the two choices). If they say no, stop there.
@@ -46,7 +52,7 @@ Someone trying the editor for the first time often has no game yet. Look once (t
    and refuses a folder that already has a different game; the same line run again opens the same sample. The samples
    are three.js (3D) and PixiJS (2D) with their adapter included, so skip §1 and §2. In the Claude app, add
    `--no-open` and open the editor next to the chat (§3, "In the Claude app").
-3. Tell the user the URL (in the Claude app: "The editor is open next to this chat." instead) and one line: "Here's a sample game in your folder. Click anything and drag it to move
+3. Tell the user where it is with the link (§3, "When you open it, say") and one line: "Here's a sample game in your folder. Click anything and drag it to move
    it, type a change in the box at the bottom, and click Save when you like it."
    Say nothing else about the editor: not the self-check (mention it only if it printed
    `studio: check failed`), not the watch, not the log.
@@ -69,13 +75,16 @@ files under `.studio/` in the game folder; the editor itself, the game code and 
 
 ## 1. Look at the game first
 
-You need the folder that the browser can run as-is: the one with the game's `index.html`. If the project needs a
-build step (Vite, webpack, a Godot export), see the table below. Node.js 22.13 or newer must be on the PATH
+You need the folder that the browser can run as-is and the game's page in it (any name; `--entry <page>` when the
+editor's own pick, `studio: entry`, is not it). If the project needs a build step (Vite, webpack, a Godot export),
+see the table below; the editor says `studio: build-first <page>` (exit 5) when the only game page needs its build. Node.js 22.13 or newer must be on the PATH
 (`node --version`). Nothing else gets installed: the server is one file with no dependencies. On an older Node the
 editor stops at once with one line (`Game Studio needs Node 22.13 or newer. You have 20.11.0. Install:
 https://nodejs.org`): pass it on to the user as it is, and do not try to work around it.
 
-Read `index.html`, the main script and `package.json` (if any) and decide which row fits:
+Read the game's page, its main script and `package.json` (if any) and decide which row fits. A game in one HTML file
+(the script inside the page) is the same: read the page; any adapter goes to `.studio/adapter.js` as usual (§2), and
+marks (§5) go into that same file.
 
 | You see | The game is | What the editor needs |
 |---|---|---|
@@ -91,8 +100,9 @@ Read `index.html`, the main script and `package.json` (if any) and decide which 
   DOM menu is three.js).
 - `adapters/` is in the same folder as this `SKILL.md`. Each example is short and commented; you copy one and fit it
   to the game. Details in [`references/adapters.md`](references/adapters.md).
-- If the game is built by a bundler, open the folder the bundler writes (`npm run build`, then `dist/`), or the dev
-  server's root if it serves plain files. Result files are written into the folder you open: when that is a build
+- If the game is built by a bundler, open the folder the bundler writes (`npm run build`; started on the project
+  folder, the editor finds `dist/index.html` by itself and serves `dist/`), or the dev server's root if it serves
+  plain files. Result files are written into the folder you open: when that is a build
   output, copy `placement.json` / `library.json` back next to the source before you apply them, and say so.
 - For a Godot game, open the **web export folder**; you apply the results to the Godot project (§4, "Godot").
 
@@ -146,17 +156,19 @@ The server ships next to this file: `bin/studio.mjs` in the same folder as this 
 node <this skill's folder>/bin/studio.mjs <game folder> --detach                # placement first
 node <this skill's folder>/bin/studio.mjs <game folder> --detach --tool library # open on the library
 node <this skill's folder>/bin/studio.mjs <game folder> --detach --lan          # also reachable from a phone on the same Wi-Fi (QR code in the log)
+node <this skill's folder>/bin/studio.mjs <game folder> --detach --entry neon-orb.html # a page other than the one it picked
 node <this skill's folder>/bin/studio.mjs <game folder> --stop                  # when the user is finished
 ```
 
-`<game folder>` is always the folder's **absolute path** (not `.`).
+`<game folder>` is always the folder's **absolute path** (not `.`). Use the same folder (and the same `--entry`, if
+any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 
 - **Start it with `--detach`.** It starts the editor on its own, prints `studio: ready <url> pid <n>` and returns at
   once; the editor keeps running after the command and your turn end (its output goes to
   `<game folder>/.studio/studio.log`). Do not start it with `&`, `nohup` or a background shell instead: in Codex
   those end with your turn and the person gets a blank page. Running the same line again prints the running editor's
   URL instead of starting a second one. It opens the user's default browser by itself. The URL carries a one-time
-  passcode: give the user the URL exactly as printed. Do not open it with your own browser tools unless the user asks
+  passcode: give the user the URL exactly as printed (below, "When you open it, say"). Do not open it with your own browser tools unless the user asks
   you to check something, with one exception: the Claude app, below.
 - **In the Claude app (a browser pane next to the chat).** Look at your tools once, before you start the editor. If
   you have `mcp__Claude_Browser__preview_start` (the browser inside the Claude desktop app; it may be listed as a
@@ -164,18 +176,31 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
   1. Add `--no-open` to the start line, so no second browser window opens:
      `node <this skill's folder>/bin/studio.mjs <game folder> --detach --no-open` (keep `--tool library`,
      `--starter …` or `--lan` if you use them).
-  2. Call `tabs_context` (load it together with `preview_start`). If a tab already shows this exact URL (the editor was
-     already running), don't open a second one. Otherwise call `preview_start` with `url` set to the URL from
-     `studio: ready`, exactly as printed: the editor opens in a tab of the pane next to the chat. Then call
-     `tabs_context` again: its last line says whether the Browser pane is shown, hidden or not open.
-  3. Tell the person: "The editor is open next to this chat." and what to do, in one line ("Click an object and
-     drag it. When you're done, click **Save**."; for a sample, the line from §0 step 3 instead). Don't print the
-     URL unless they ask for it. If the pane is hidden or not open, add: "Press ⌘⇧B to show it (Ctrl+Shift+B on
-     Windows)." If they say the pane is too narrow: "The ↗ button at the top right of the editor opens it in a large
-     window." (the same editor, pass included; asking you and Save work there the same way).
+  2. Call `tabs_context` (load it together with `preview_start` and `tabs_select`). If a tab already shows this exact
+     URL (the editor was already running), don't open a second one: call `tabs_select` with that tab. Otherwise call
+     `preview_start` with `url` set to the URL from `studio: ready`, exactly as printed: the editor opens in a tab of
+     the pane next to the chat. Then call `tabs_context` again: its last line says whether the Browser pane is shown
+     or hidden. Hidden: call `tabs_select` with the editor's tab (it fronts it) and `tabs_context` once more. The
+     person must see the editor without doing anything; only when the pane is still hidden after that does the
+     reply start with "Press ⌘⇧B to see the editor (Ctrl+Shift+B on Windows)."
+  3. Tell the person where it is and what to do, and **give the link** (below, "When you open it, say"). If they say
+     the pane is too narrow: "The ↗ button at the top right of the editor opens it in a large window." (the same
+     editor, pass included; asking you and Save work there the same way).
   4. If `preview_start` returns any error (the site isn't approved, the pane can't be reached) or the person
      declines the site, don't retry: give the URL as usual, "Open this link in your browser: <url>". Nothing else
      opened it, because of `--no-open`.
+
+- **When you open it, say** (every time you start or reopen the editor, or tell them where it is; in their
+  language): where it is, the game's name, and the link, then what to do. The link is the URL from `studio: ready`
+  exactly as printed: it opens the editor on this computer only, and it is theirs, so give it every time (Claude app,
+  terminal and Codex alike), with one short "don't share it":
+
+  > NEON ORB is open in the editor next to this chat. Link (this computer only, don't share it): <url>
+  > Click anything and drag it to move it, type a change in the box at the bottom, and click Save when you like it.
+
+  Terminal and Codex: "…in the editor in your browser." App with the pane still hidden: "Press ⌘⇧B to see the
+  editor (Ctrl+Shift+B on Windows)." first. The game's name is its page's `<title>`, else the file name. Never
+  write "it's next to this chat" without the link, and never explain which file it opened or why.
 
   Everything else is the same, including the watch: the Claude app wakes you on its lines like Claude Code in a
   terminal (§3, "The watch"). Reloads and `--stop` too. **Only the `mcp__Claude_Browser__` tools count.**
@@ -194,7 +219,9 @@ node <this skill's folder>/bin/studio.mjs <game folder> --stop                  
 
 | Line starts with | Meaning | What you do |
 |---|---|---|
-| `studio: ready` | The editor is up; the line has the URL | Tell the user the URL and what to do ("Click an object and drag it. When you're done, click **Save**."). In the Claude app, open it next to the chat first (above) |
+| `studio: entry <page> …` | No `index.html`: the editor opened this page, the game's own file, as it is (other game pages, if any, are named) | Nothing to tell the person about it. Only if it is the wrong page: `--stop`, then start again with `--entry <page>` |
+| `studio: build-first <page> …` | The only game page needs its build (exit 5) | Run the build (`npm run build`), then the same start line |
+| `studio: ready` | The editor is up; the line has the URL | Tell them where it is, with the link, and what to do (above, "When you open it, say"). In the Claude app, open it next to the chat first (above) |
 | `studio: check ok` | The adapter works | Nothing; the user can start |
 | `studio: check failed` | The adapter (or the built-in three.js one) does not work for this game | Read `.studio/check.md`, fix `.studio/adapter.js` (§2), ask the user to reload the page |
 | `studio: unnamed` | Some objects have no name (`path:` keys; the line lists them) | §3.2: offer **once** to name them, before the user saves |
@@ -699,7 +726,8 @@ extension), delete only the confirmed files that nothing uses, and say which one
 lighter (the Assets page has an "Ask my AI to make it lighter" button that sends that request), follow
 [`references/heavy-models.md`](references/heavy-models.md): see what is heavy, ask, write a lighter copy next to it,
 check. Files made with "Make with AI" in the Assets page are already in `assets/` and are not listed in
-`library.json` until the user places them; AI-made 3D models are often 20–50 MB.
+`library.json` until the user places them. Its 3D models are light (about 5,000 triangles, a few MB); AI-made 3D
+models from elsewhere are often 20–50 MB.
 
 When an asset the user wants does not exist yet, they can drop a file into `assets/` (it shows up in the library on
 the next open). Connecting KUMODeck (§7) adds AI-made 3D models; mention it once if it fits, never push it.
@@ -712,6 +740,8 @@ Everything above works without an account. KUMODeck is an optional service for w
 - **Online multiplayer**: rooms, quick match, and invite links or QR codes.
 - **Save data and leaderboards**: each player's saves, and the game's own server functions and database.
 - **AI 3D models**: make a 3D model from a prompt and finish it in Blender, then drop it into the library.
+  When you make one with KUMODeck's 3D tools, also ask for a game-sized model: `faceLimit` about 5000 (raise it
+  only when the user says they need more detail).
 
 Cost: it needs a KUMODeck account and prepaid credit, and usage is charged at cost. Do not quote prices (they
 change); point to the pricing page instead: https://kumodeck.com/docs/pricing/

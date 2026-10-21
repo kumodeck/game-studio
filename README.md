@@ -52,6 +52,15 @@ codex plugin marketplace add kumodeck/game-studio && codex plugin add game-studi
 
 (Or inside Codex: `/plugins`, choose **KUMODeck Game Studio**.) Start a new session afterwards.
 
+### Updates
+
+**Claude Code:** the one-line install asks once whether new versions should install by themselves. Say yes and they
+arrive on their own (they load in your next session). Said no, or installed it yourself? Turn it on in `/plugin` →
+Marketplaces → game-studio → Enable auto-update. To stop it, choose Disable auto-update there. To update now:
+`claude plugin update game-studio@game-studio`.
+
+**Codex** has no auto-update for plugins. To update: `codex plugin marketplace upgrade game-studio`.
+
 ### Uninstall
 
 **Claude Code:** `claude plugin uninstall game-studio@game-studio && claude plugin marketplace remove game-studio`

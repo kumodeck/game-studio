@@ -8,11 +8,12 @@
 //   1. in a short window (1280×640) the page opens with no frame yet (the editor's stage is mostly below the fold);
 //      the install line is INSTALL.md's
 //   2. the window at 800 (a third of the stage in view: the editor peeks in on the first screen) → the frame loads the editor on Lantern Cove (studio/?game=…&embed=1), with no "← Samples" in it
-//   3. the wheel over the editor, before it is clicked, scrolls the page (the "Click to use" layer is on top)
-//   4. clicked → the editor has the keys: W flies the camera; ↓ / Space / Page Down / End don't move the page,
+//   3. the wheel over the editor, before it is clicked, scrolls the page (the game hands it on until the first press)
+//   4. the first click, on an object, selects it and hands the editor the keys at once (the third design review's ②,
+//      2026-10-20: a clear cover used to eat that click) → W flies the camera; ↓ / Space / Page Down / End don't move the page,
 //      with nothing selected, with an object selected (↓ moves the object instead), and with the focus in the game
 //   5. right-click on an object opens the editor's menu; a drag then ⌘Z puts it back; Save keeps it in this browser
-//   6. a click outside gives the page back: ↓ scrolls the page again
+//   6. a click outside gives the page back: ↓ and the wheel over the editor scroll the page again
 //   7. the other sample swaps the frame's page; "Open full size" opens the same editor without the frame, with the save
 // Phone 390×844 with touch:
 //   8. no iframe anywhere on the page (scrolled to the bottom too); each sample is a card that opens the editor
@@ -108,8 +109,8 @@ async function runPc() {
     if (!a || !a.visible) return 'null'; const x = a.center[0], y = a.center[1];
     return JSON.stringify({ x: e.left + g.left + x, y: e.top + g.top + y, under: ${DBG}.under(x, y) }); })()`);
   const poseOf = async (k) => (await j(`JSON.stringify(${DBG}.list())`)).find((i) => i.key === k)?.pose;
-  const pick = async () => {
-    for (const k of ['sea-stack', 'lighthouse', 'sea-stack-small']) {
+  const pick = async (order = ['sea-stack', 'lighthouse', 'sea-stack-small']) => {
+    for (const k of order) {
       const p = await at(k);
       if (p && p.under === k) return { k, p };
     }
@@ -156,10 +157,16 @@ async function runPc() {
     await sleep(400);
     step(`the wheel over the editor before a click scrolls the page (${y0} → ${y1})`);
 
-    // --- 4. clicked → the keys are the editor's ---
-    await page.click(stage.x, stage.y - 120);
-    await sleep(400);
-    assert.equal(await page.eval(`document.getElementById('stage').classList.contains('active') && document.activeElement === ${EF}`), true, 'a click did not hand the editor the keys');
+    // --- 4. the first click selects the object under it, and hands the editor the keys ---
+    // The lighthouse first: the one most people grab first (the third design review).
+    const first = await pick(['lighthouse', 'sea-stack', 'sea-stack-small']);
+    await page.click(first.p.x, first.p.y);
+    await sleep(600);
+    assert.equal(await page.eval(`document.getElementById('stage').classList.contains('active') && document.activeElement === ${EF}`), true, 'the first click did not hand the editor the keys');
+    assert.equal(await page.eval(`${EF}.contentWindow.studioShell.selected()`), first.k, `the first click on "${first.k}" did not select it`);
+    step(`the first click on "${first.k}" selects it and the editor is in use`);
+    await shot(page, 'pc-light-2-first-click.png');
+    await key('Escape');
     const hint = await page.eval(`document.getElementById('hint').textContent`);
     const view0 = JSON.stringify(await j(`JSON.stringify(${DBG}.view())`));
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'w', code: 'KeyW', windowsVirtualKeyCode: 87, text: 'w' });
@@ -237,7 +244,12 @@ async function runPc() {
     await key('ArrowDown');
     await sleep(300);
     assert.ok((await scrollY()) > yB, 'after a click outside, ↓ does not scroll the page');
-    step('a click outside → ↓ scrolls the page again');
+    const stage2 = await j(`(() => { const r = document.getElementById('stage').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: Math.min(innerHeight - 40, r.top + r.height / 2) }); })()`);
+    const yC = await scrollY();
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: stage2.x, y: stage2.y, deltaX: 0, deltaY: 200 });
+    await sleep(600);
+    assert.ok((await scrollY()) > yC + 50, `after a click outside, the wheel over the editor did not scroll the page: ${yC} → ${await scrollY()}`);
+    step('a click outside → ↓ and the wheel scroll the page again'); 
 
     // --- 7. the other sample; open full size ---
     await page.eval(`window.scrollTo(0, document.getElementById('try').getBoundingClientRect().top + scrollY - 24)`);

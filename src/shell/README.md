@@ -15,6 +15,10 @@ or object) and the ask field.
 or "isn't watching" at once) and when the game reloads by itself after the
 AI's change (in a second frame behind the old one, view and selection kept);
 "Undo AI change" / "Redo" call `host.undoAi` (CONTRACT.md §3.4).
+`line-fade.ts`: the finished line (done / undone / redone, and "fixed" over the game)
+goes by itself after 5–10 s, never while the pointer or keyboard is in it; "● AI"
+in the top bar and ⌘K bring it back with its Undo (2026-10-20). A question, a
+failure and every "on it" phase stay.
 `play-ask.ts` is the one line over the game while playing (asked with ` in
 ▶ Play: looking → fixing → fixed with Reload, never reloaded by itself;
 CONTRACT.md §3.5; the game page draws it, `bridge/play-ask.ts`). Phone:
@@ -50,7 +54,20 @@ Copy, delete, several at once (CONTRACT.md §1.8): `edit-ops.ts` (pure
 helpers: copy keys, group draw-order moves, "all of this kind"); the card's
 action row, "Select" (picking several) and group headings in `placement-panel.ts`;
 compound undo entries in `undo.ts` and `main.ts`; `added` / `removed` of
-placement.json in `placement-model.ts`.
+placement.json in `placement-model.ts`. `pose-compare.ts`: the file's rounding and "the same pose" (shared with
+the game page's Play code, `bridge/play-arrange.ts`).
+
+Play without Save (a try of the editor, 2026-10-21): ▶ Play shows the arrangement as the editor has it, saved or
+not (the bridge puts the draft on the page), and a new page of the game (back from Play, the AI's reload) gets back
+what it does not show (`placement-model.ts` notShown, pushed in `main.ts`). The top bar says "Playing · unsaved
+changes" while there are some.
+
+Before unsaved changes are lost (a try of the editor, 2026-10-21: "people forget Save — show a window when edits would be
+lost"): `unsaved-guard.ts`. One window — "You have 3 unsaved changes", Save and continue (Enter) / Don't save / Cancel (Esc)
+— only where something really goes: a game tool's data on a new game page (Play, Reload game, the AI's reload, Undo AI
+change), and the Save itself when this page goes (a link of the page; the local studio only: in the web demo the draft is
+the save). Closing the tab or reloading gets the browser's own question, only then. Play with unsaved moves, World ↔ UI,
+the Library and the language ask nothing. `test/unsaved-guard.test.ts`, `test/studio-unsaved-guard.browser.mjs`.
 
 No first-run tips: the four-step intro over the ask bar (`intro.ts`, "1/4
 Click an object…") was removed on 2026-10-17 after a try of the web demo — the
