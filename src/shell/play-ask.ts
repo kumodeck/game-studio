@@ -6,8 +6,8 @@
 //
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
-import type { PlayLine, StudioStatus } from '../contract.ts';
-import type { AiPhase } from './ai-flow.ts';
+import type { AiAgent, PlayLine, StudioStatus } from '../contract.ts';
+import { moreIn, type AiPhase } from './ai-flow.ts';
 
 export interface PlayLineInput {
   phase: AiPhase;
@@ -16,6 +16,8 @@ export interface PlayLineInput {
   asked?: string;
   /** The game's files changed since the game in the frame was opened (undefined: this host cannot tell). */
   codeChanged: boolean | undefined;
+  /** Which AI is behind the editor (host.status().agent, which-ai.mjs): "More in Claude" / "Codex" / "your AI". */
+  agent?: AiAgent;
   t: (key: string, vars?: Record<string, string | number>) => string;
 }
 
@@ -24,7 +26,14 @@ export function playLine(i: PlayLineInput): PlayLine | null {
   const { phase: ph, status: s, t } = i;
   const note = s?.note ? s.note.replace(/[.…]+$/, '') : '';
   const asked = i.asked ? t('ai.asked', { text: i.asked }).replace(/\s*→\s*$/, '') : undefined;
-  const out = (state: PlayLine['state'], text: string, extra: Partial<PlayLine> = {}): PlayLine => ({ state, text, ...(asked ? { asked } : {}), ...extra });
+  // "More in Claude" at the end of the small row (a try of v0.1.8, 2026-10-21: the editor's line had it, the line over the game
+  // did not). The same rule as the editor's line, by the same function: only when the AI did or said something (done,
+  // failed, asking), so not while it looks / fixes, not on "kept", and not on "updating" (the files still move).
+  // Offline is false here: the offline web demo never sends this line (main.ts sendPlayLine).
+  const moreKey = moreIn(ph, i.agent, false);
+  const more = moreKey ? t(moreKey) : undefined;
+  const out = (state: PlayLine['state'], text: string, extra: Partial<PlayLine> = {}): PlayLine =>
+    ({ state, text, ...(asked ? { asked } : {}), ...(more ? { more } : {}), ...extra });
   switch (ph) {
     case 'waiting':
     case 'sent':

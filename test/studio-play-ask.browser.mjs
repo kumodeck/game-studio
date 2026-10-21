@@ -14,6 +14,7 @@
 //    nothing typed in a game field goes with the request (2026-10-20: "it ignored the UI on screen").
 // 4. The agent: received → working → fixes the code → done. The line over the game follows ("Your AI is looking" →
 //    its note → its reply with Reload); the game is NOT reloaded by itself while playing.
+// 4c. The fixed line ends with "More in Claude" (2026-10-21); the looking / fixing lines do not.
 // 4b. The "fixed" line goes by itself once read (2026-10-20, src/shell/line-fade.ts): gone within 10 s + grace, the
 //    corner mark's dot keeps a ring for the Reload that waits; ` brings the line back over the open field.
 // 5. ` then Enter (empty) reloads: a new game page, still playing, and the fix is in (the hero stays on the pad).
@@ -106,7 +107,8 @@ async function keyIn(page, key, code, text) {
 }
 
 async function open(root, mobile) {
-  const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
+  // Started as from Claude Code (which-ai.mjs), whatever runs the test: the line says "More in Claude" (4c).
+  const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {}, env: { CLAUDECODE: '1' } });
   const browser = await launch();
   const page = await newPage(browser, mobile ? { width: 390, height: 844, mobile: true } : { width: 1280, height: 800 });
   await page.goto(srv.url);
@@ -245,6 +247,11 @@ async function pc() {
     assert.match(all, /Keeping the hero on screen on the pad/);
     assert.match(fixed.line, /no longer vanishes/);
     assert.equal(await page.eval(IN.marker), true, 'not reloaded while playing, even after done');
+    // 4c. "More in Claude" at the end of the small row once the AI is done (2026-10-21, as the editor's line), and not
+    // while it looked or fixed (shell/play-ask.ts, ai-flow.ts moreIn).
+    const more = LANG === 'ja' ? '詳しくは Claude で' : 'More in Claude';
+    assert.ok(fixed.line.endsWith(more + (LANG === 'ja' ? '読み込み直す×' : 'Reload×')), `the fixed line ends with "${more}": ${fixed.line}`);
+    assert.ok([...seen].filter((l) => /Your AI is looking|AI が見ています|Keeping the hero/.test(l)).every((l) => !l.includes(more)), 'no "More in" while it looks / fixes');
     await shot(page, '5-fixed');
     // 4b. The fixed line goes by itself (no pointer on it: the last click was on the game); the Reload waits.
     const t0 = Date.now();

@@ -966,6 +966,11 @@ export interface PlayLine {
   text: string;
   /** What the person asked, small under the line. */
   asked?: string;
+  /**
+   * "More in Claude" / "More in Codex" / "More in your AI" (2026-10-21), already in the person's language: the end of
+   * the small row, as on the editor's AI line (shell/ai-flow.ts moreIn decides when). Absent = no words.
+   */
+  more?: string;
   choices?: string[];
   reload?: boolean;
 }

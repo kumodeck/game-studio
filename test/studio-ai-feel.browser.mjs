@@ -263,6 +263,17 @@ async function run(layout) {
     ok(`picked up in ${times.pickedUp} ms; reloaded by itself ${times.reloaded} ms after the agent started, after "done", no flash; camera + selection kept; violet: ${marked.join(', ')}`);
 
     // ---- 5. Undo AI change, then Redo ----
+    if (mobile) {
+      // The phone is folded here: the list button pressed after the pick (above) folds the bottom since 2026-10-21
+      // (sheet-fold.ts; it only closed the list before). Folded, the AI's line is not drawn and its news is a dot on ▴;
+      // one press on ▴ opens the bottom and the line with Undo. (Until test-fix, 2026-10-21, this pressed Undo at once
+      // and stopped with "nothing visible": the place changed, Undo is not lost — ▴, or ⌘K "Undo AI change".)
+      assert.equal(await page.eval(`document.querySelector('.shell').dataset.fold || ''`), 'min', 'the phone is folded after the list button');
+      assert.equal(await page.eval(`document.querySelector('.bar [data-action=sheet]').dataset.news || ''`), 'on', 'folded, no dot on ▴ for the AI\'s line');
+      await press(page, '[data-action=sheet]', true);
+      await page.waitFor(`!document.querySelector('.shell').dataset.fold && ${IN.rect('[data-action=ai-undo]')} !== 'null'`, 3000);
+      await shot('unfolded');
+    }
     await press(page, '[data-action=ai-undo]', mobile);
     await page.waitFor(`!${IN.keys}.includes('crate-5')`, 15000);
     assert.equal(readFileSync(join(root, 'game.js'), 'utf8'), code0, 'the code is back');
@@ -299,6 +310,12 @@ async function run(layout) {
     // Polls (every 3 s) draw the line again: it stays gone.
     await sleep(3600);
     assert.equal(await page.eval(lineGone), true, 'the faded line came back on a poll');
+    // Phone: fold the bottom again (▾), so ⌘K below brings the line back to a folded bottom — folded, it drew the line
+    // unseen until test-fix (2026-10-21); now it unfolds.
+    if (mobile) {
+      await press(page, '[data-action=sheet]', true);
+      await page.waitFor(`document.querySelector('.shell').dataset.fold === 'min'`, 3000);
+    }
     // ⌘K keeps "Undo AI change" (the line was redone: its change can be undone again) and "Show your AI's last reply".
     await key(page, 'k', mobile ? 2 : 4);
     await page.waitFor(`${IN.palette} === 'open'`, 3000);
@@ -314,6 +331,9 @@ async function run(layout) {
       await press(page, '.peer', false);
     }
     await page.waitFor(`!document.querySelector('.ai-line').hidden && !!document.querySelector('.ai-line [data-action=ai-undo]')`, 3000);
+    // Drawn where it can be pressed (folded, it was in the DOM but not on screen).
+    assert.ok(await j(page, IN.rect('.ai-line [data-action=ai-undo]')), 'the recalled line\'s Undo is not on screen');
+    if (mobile) assert.equal(await page.eval(`document.querySelector('.shell').dataset.fold || ''`), '', '⌘K "Show your AI\'s last reply" left the bottom folded');
     await shot('recalled');
     assert.equal(await page.eval(`document.querySelector('.peer').dataset.recall`), '', 'nothing to bring back while it shows');
     // And it goes again by itself.

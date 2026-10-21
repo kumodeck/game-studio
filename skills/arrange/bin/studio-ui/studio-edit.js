@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.9 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.11 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4433,6 +4433,11 @@ const MSG_PREFIX = 'studio:';
                
                                                      
                  
+     
+                                                                                                                      
+                                                                                                         
+     
+                
                      
                    
  
@@ -12752,6 +12757,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
 .line .say { display: flex; flex-direction: column; min-width: 0; }
 .line .head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .line .sub { color: rgba(255,255,255,.55); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* "More in Claude" at the end of the small row (2026-10-21, as the editor's line, shell.css .has-more): it never shrinks;
+   what was asked is the part cut with "…", so the row stays one line on a phone and in the side window too. */
+.line .sub.has-more { display: flex; gap: 6px; min-width: 0; }
+.line .sub.has-more > .said { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.line .sub.has-more > .sep, .line .sub.has-more > .more { flex: none; }
 .line .acts { display: flex; gap: 6px; flex: none; }
 .x { all: unset; cursor: pointer; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: rgba(255,255,255,.6); font-size: 15px; }
 .x:hover { background: rgba(255,255,255,.12); color: #fff; }
@@ -13154,9 +13164,21 @@ function startPlayAsk(o                )       {
     line.classList.toggle('busy', busy);
     const say = el('div', 'say');
     say.append(el('span', 'head', s.text));
-    if (s.asked) say.append(el('span', 'sub', s.asked));
+    if (s.more) {
+      // Words only, not a button (as the editor's line): a web page cannot bring the AI's own window to the front.
+      const sub = el('span', 'sub has-more');
+      if (s.asked) {
+        const sep = el('span', 'sep', '·');
+        sep.setAttribute('aria-hidden', 'true');
+        sub.append(el('span', 'said', s.asked), sep);
+      }
+      const more = el('span', 'more', s.more);
+      more.dataset.part = 'play-ask-more';
+      sub.append(more);
+      say.append(sub);
+    } else if (s.asked) say.append(el('span', 'sub', s.asked));
     line.append(el('span', 'dot'), say);
-    line.title = s.asked ? `${s.text} — ${s.asked}` : s.text;
+    line.title = [s.asked ? `${s.text} — ${s.asked}` : s.text, s.more].filter(Boolean).join(' · ');
     const acts = el('div', 'acts');
     if (s.state === 'asking' && s.choices && s.choices.length) {
       const row = el('div', 'choices');

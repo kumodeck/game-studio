@@ -109,6 +109,27 @@ test('the line over the game: looking → fixing → fixed (Reload only when the
   assert.equal(playLine({ phase: 'failed', status: st({ state: 'failed' }), codeChanged: false, t })!.text, 'Your AI stopped before finishing.');
 });
 
+test('the line over the game ends with "More in Claude" when the AI did or said something, as the editor\'s line (2026-10-21)', () => {
+  const st = (o: Partial<StudioStatus>): StudioStatus => ({ version: 1, state: 'working', ...o } as StudioStatus);
+  for (const lang of ['en', 'ja'] as const) {
+    const t = (k: string, v?: Record<string, string | number>) => translate(lang, k, v);
+    const done = (agent?: 'claude' | 'codex') => playLine({ phase: 'done', status: st({ state: 'done' }), codeChanged: true, agent, t, asked: 'the hero vanished' })!;
+    // Claude / Codex / not known: the same words as the editor's line (i18n ai.more.*).
+    assert.equal(done('claude').more, translate(lang, 'ai.more.claude'));
+    assert.equal(done('codex').more, translate(lang, 'ai.more.codex'));
+    assert.equal(done().more, translate(lang, 'ai.more.any'));
+    assert.equal(done('claude').asked, t('ai.asked', { text: 'the hero vanished' }).replace(/\s*→\s*$/, ''), 'what was asked stays');
+    assert.ok(playLine({ phase: 'failed', status: st({ state: 'failed' }), codeChanged: false, agent: 'claude', t })!.more, 'failed: why it stopped is in its window');
+    assert.ok(playLine({ phase: 'asking', status: st({ state: 'asking', note: 'Which one?' }), codeChanged: false, agent: 'claude', t })!.more, 'asking: asked there too');
+    // Not while it looks or fixes, not while the files still move, not when nothing reached it.
+    for (const phase of ['sent', 'seen', 'received', 'working', 'updating', 'away', 'nudge'] as const) {
+      const v = playLine({ phase, status: st({ state: phase === 'updating' ? 'done' : 'working' }), codeChanged: true, agent: 'claude', t });
+      assert.equal(v?.more, undefined, `${lang} ${phase}: no "More in"`);
+    }
+  }
+  assert.equal(playLine({ phase: 'done', status: st({ state: 'done' }), codeChanged: true, agent: 'claude', t: (k, v) => translate('ja', k, v) })!.more, '詳しくは Claude で');
+});
+
 test('the overlay\'s words exist in English and Japanese', () => {
   for (const lang of ['en', 'ja'] as const) {
     const w = playWords((k) => translate(lang, k));

@@ -11,7 +11,8 @@
 //      the picked row among them, and the card; one "…" in sight (the card's: the sheet's goes while the card shows);
 //      nothing that can be pressed in the window's bottom 48 px (the chat app's toolbar)
 //      (Half the window and 3 rows until the third design review's ⑨, 2026-10-20: "six rows with the card and the bar up".)
-//   3. the strip and the camera ↑↓ are a mouse's 28 px (not a finger's 44) and do not overlap
+//   3. the strip and the camera ↑↓ are a mouse's 28 px (not a finger's 44) and do not overlap; the ↑↓ are gone while the sheet
+//      and the card are up (a narrow window's rule, Ive review 2 ⑧) and back once the bottom is folded
 //   4. the sheet's grip, dragged up, gives more rows (the game still seen above it); dragged down, it is low again; a click
 //      on it folds the bottom to the ask bar and ▴ opens it (a click took it back low until 2026-10-21: test/studio-side-sheet)
 //   5. an AI-written runner with 60 unnamed objects: the list's first row folds them all ("Unnamed objects 60 · Ask
@@ -172,12 +173,15 @@ for (const g of GAMES) {
         assert.ok(m.card, `${tag}: the picked object's card is gone`);
         assert.ok(y !== null && y < m.sheetTop, `${tag}: the picked object is under the sheet (y=${y}, sheet top ${m.sheetTop})`);
         assert.deepEqual(m.low, [], `${tag}: something to press in the window's bottom 48 px`);
-        // 3. The strip and ↑↓: a mouse's size, apart.
+        // 3. The strip and ↑↓: a mouse's size, apart. With the sheet and the card up the ↑↓ are not there at all: the side
+        //    window is a narrow window (phone(): ≤ 720 wide), and there the camera's ↑↓ show only with nothing else up
+        //    (Ive review 2 ⑧ / w3-library, 2026-10-19; review 3 ⑧ kept it: "no ↑↓ while the card is up"). Until
+        //    2026-10-21 this step wanted 2 here and failed on every size since v0.1.7 (test-fix): the rule is right, the
+        //    check was old. Where both can show — something picked, the bottom folded — is checked after the fold (4).
         const ui = JSON.parse(await page.eval(GAME_UI));
-        const rise = ui.filter((b) => b.rise), strip = ui.filter((b) => !b.rise);
-        assert.ok(rise.length === 2 || g.id !== 'lantern-cove', `${tag}: the camera ↑↓ are not shown (${rise.length})`);
-        for (const b of ui) assert.ok(b.w <= 30 && b.h <= 30, `${tag}: a ${b.rise ? '↑↓' : 'strip'} button is ${Math.round(b.w)}×${Math.round(b.h)} (want the mouse's 28)`);
-        for (const r of rise) for (const s of strip) assert.ok(!overlap(r, s), `${tag}: the strip lies over the camera ↑↓`);
+        const rise = ui.filter((b) => b.rise);
+        assert.equal(rise.length, 0, `${tag}: the camera ↑↓ show over the sheet and the card (want them gone)`);
+        for (const b of ui) assert.ok(b.w <= 30 && b.h <= 30, `${tag}: a strip button is ${Math.round(b.w)}×${Math.round(b.h)} (want the mouse's 28)`);
         // 5. The runner's unnamed objects: one folded row.
         if (g.id === 'runner') {
           const fold = JSON.parse(await page.eval(`(() => { const f = document.querySelector('.side .list-scroll > .noname');
@@ -229,6 +233,13 @@ for (const g of GAMES) {
         await page.click(gx, gy);
         await sleep(900);
         assert.equal(await page.eval(`document.querySelector('.shell').dataset.fold || ''`), 'min', `${tag}: a click on the grip did not fold the bottom`);
+        // 3 (folded). Nothing up over the game now, the object still picked: the ↑↓ are back beside the strip, both a
+        // mouse's 28 px, and the strip does not lie over them.
+        const ui2 = JSON.parse(await page.eval(GAME_UI));
+        const rise2 = ui2.filter((b) => b.rise), strip2 = ui2.filter((b) => !b.rise);
+        assert.ok(rise2.length === 2 || g.id !== 'lantern-cove', `${tag}: folded, the camera ↑↓ are not shown (${rise2.length})`);
+        for (const b of ui2) assert.ok(b.w <= 30 && b.h <= 30, `${tag}: folded, a ${b.rise ? '↑↓' : 'strip'} button is ${Math.round(b.w)}×${Math.round(b.h)} (want the mouse's 28)`);
+        for (const r of rise2) for (const s of strip2) assert.ok(!overlap(r, s), `${tag}: folded, the strip lies over the camera ↑↓`);
         await page.eval(`document.querySelector('[data-action=sheet]').click()`);
         await sleep(900);
         const reopened = JSON.parse(await page.eval(MEASURE));

@@ -2023,6 +2023,15 @@ export function start(host: StudioHost) {
     if (!lineRecallable()) return;
     lineGone = '';
     lineShown = '';
+    // Folded (phone / side window), shell.css hides the AI's line: "Show your AI's last reply" from ⌘K drew it there
+    // unseen — the press did nothing to look at, and its Undo could not be reached (test-fix, 2026-10-21). Asking for
+    // the line is a person's own press, so it unfolds, as opening a page in the sheet does (sheet-fold.ts). Only the
+    // fold: the list stays as it was (closed), so the line shows over the bar with the card, not under a sheet.
+    if (fold && phone()) {
+      unfoldFor();
+      renderAll(true);
+      return;
+    }
     renderAiLine();
   }
 
@@ -2062,7 +2071,7 @@ export function start(host: StudioHost) {
     if (!playing || host.offline) return;
     const mine = !!pending && pending.sent >= playSince;
     const v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
-      codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, t }) : null;
+      codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, agent: aiAgent, t }) : null;
     const sig = JSON.stringify(v);
     if (!force && sig === playSig) return;
     playSig = sig;

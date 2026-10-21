@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.9 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.11 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -982,6 +982,11 @@ const MSG_PREFIX = 'studio:';
                
                                                      
                  
+     
+                                                                                                                      
+                                                                                                         
+     
+                
                      
                    
  
@@ -9655,8 +9660,8 @@ __defs[28] = function (__exports) {
 //
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
-                                                             
-                                            
+                                                                      
+const { moreIn } = __require(25);
 
                                 
                  
@@ -9665,6 +9670,8 @@ __defs[28] = function (__exports) {
                  
                                                                                                             
                                    
+                                                                                                                   
+                  
                                                                      
  
 
@@ -9673,7 +9680,14 @@ function playLine(i               )                  {
   const { phase: ph, status: s, t } = i;
   const note = s?.note ? s.note.replace(/[.…]+$/, '') : '';
   const asked = i.asked ? t('ai.asked', { text: i.asked }).replace(/\s*→\s*$/, '') : undefined;
-  const out = (state                   , text        , extra                    = {})           => ({ state, text, ...(asked ? { asked } : {}), ...extra });
+  // "More in Claude" at the end of the small row (a try of v0.1.8, 2026-10-21: the editor's line had it, the line over the game
+  // did not). The same rule as the editor's line, by the same function: only when the AI did or said something (done,
+  // failed, asking), so not while it looks / fixes, not on "kept", and not on "updating" (the files still move).
+  // Offline is false here: the offline web demo never sends this line (main.ts sendPlayLine).
+  const moreKey = moreIn(ph, i.agent, false);
+  const more = moreKey ? t(moreKey) : undefined;
+  const out = (state                   , text        , extra                    = {})           =>
+    ({ state, text, ...(asked ? { asked } : {}), ...(more ? { more } : {}), ...extra });
   switch (ph) {
     case 'waiting':
     case 'sent':
@@ -14861,6 +14875,15 @@ function start(host            ) {
     if (!lineRecallable()) return;
     lineGone = '';
     lineShown = '';
+    // Folded (phone / side window), shell.css hides the AI's line: "Show your AI's last reply" from ⌘K drew it there
+    // unseen — the press did nothing to look at, and its Undo could not be reached (test-fix, 2026-10-21). Asking for
+    // the line is a person's own press, so it unfolds, as opening a page in the sheet does (sheet-fold.ts). Only the
+    // fold: the list stays as it was (closed), so the line shows over the bar with the card, not under a sheet.
+    if (fold && phone()) {
+      unfoldFor();
+      renderAll(true);
+      return;
+    }
     renderAiLine();
   }
 
@@ -14900,7 +14923,7 @@ function start(host            ) {
     if (!playing || host.offline) return;
     const mine = !!pending && pending.sent >= playSince;
     const v = mine ? playLine({ phase: currentPhase(), status: aiStatus, asked: pending?.text,
-      codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, t }) : null;
+      codeChanged: code === undefined || loadedCode === undefined ? undefined : code !== loadedCode, agent: aiAgent, t }) : null;
     const sig = JSON.stringify(v);
     if (!force && sig === playSig) return;
     playSig = sig;
