@@ -64,7 +64,11 @@ const en = {
   'btn.reloadGame': 'Reload',
   'status.playing': 'Playing the game as you arranged it in the editor, saved or not. Save hands it to your AI. Switch to Edit to keep arranging.',
   'status.playingShort': 'Playing',
-  'status.playingUnsaved': '· unsaved changes',
+  // Playing with changes not saved (a try of the editor, 2026-10-21, B: "people won't notice — make it show at Play too"): a strip over the
+  // game with Save beside it (main.ts playUnsaved). It replaced the quiet "· unsaved changes, not in the game yet" after
+  // "Playing" in the top bar, which nobody read. Says what is missing, not what to feel: the game itself has not changed.
+  'play.unsaved': '{n:This change isn’t|These changes aren’t} in the game yet',
+  'play.unsavedHide': 'Hide (Save stays in the top bar)',
   'status.items': 'Finding objects you can move…',
   'placement.empty': 'No movable objects found.',
   'placement.select': 'Select an object in the game, or choose one here.',
@@ -144,6 +148,11 @@ const en = {
   'ai.done1': '1 thing changed',
   'ai.doneN': '{n} things changed',
   'ai.failed': 'Your AI stopped before finishing.',
+  // The end of the line's grey row when the AI did or said something (ai-flow.ts moreIn, 2026-10-21): where its
+  // whole answer is. Short on purpose: the row is one line on a phone too.
+  'ai.more.claude': 'More in Claude',
+  'ai.more.codex': 'More in Codex',
+  'ai.more.any': 'More in your AI',
   'ai.reload': 'Reload the game',
   // AI feel (2026-10-16): the line above the input, from Enter to the change on screen.
   'ai.sent': 'Sent to your AI',
@@ -340,7 +349,11 @@ const en = {
   'list.title': 'In this scene',
   'list.titleUi': 'On screen',
   'foot.palette': 'All actions',
-  'save.unsavedTip': '{n:1 unsaved change|# unsaved changes}. Save writes placement.json and sends it to your AI, which updates the game’s code',
+  // The Save in the game (a try of the editor, 2026-10-21: "Save is hard to understand. Play works without it, so people won't notice it is
+  // needed"). The button says where the change goes; the tooltip says the rest in one sentence: until Save, the moves live only
+  // in this editor; Save hands them to the AI, which puts them in the game's code, so the game outside the editor changes too.
+  'save.fab': 'Save to game',
+  'save.unsavedTip': '{n:1 change is|# changes are} only in this editor. Save, and your AI puts {n:it|them} in the game’s code — the game outside the editor changes too',
   'save.savedTip': 'Saved and sent to your AI',
   'peer.label': 'AI',
   'peer.idle': 'No reply from your AI yet',
@@ -543,7 +556,8 @@ const ja: Partial<Record<Key, string>> = {
   'btn.reloadGame': '読み込み直す',
   'status.playing': 'エディタで並べたとおり（保存していない変更も込み）で遊んでいます。保存すると AI に渡ります。「編集」で続けて並べられます。',
   'status.playingShort': '遊んでいます',
-  'status.playingUnsaved': '· 保存していない変更込み',
+  'play.unsaved': 'この変更はまだゲームに入っていません',
+  'play.unsavedHide': '隠す（保存は上に残ります）',
   'status.items': '動かせる物を探しています…',
   'placement.empty': '動かせる物が見つかりません。',
   'placement.select': 'ゲームの中の物をクリックするか、ここから選んでください。',
@@ -611,6 +625,9 @@ const ja: Partial<Record<Key, string>> = {
   'ai.done1': '1 個変わりました',
   'ai.doneN': '{n} 個変わりました',
   'ai.failed': 'AI が途中で止まりました。',
+  'ai.more.claude': '詳しくは Claude で',
+  'ai.more.codex': '詳しくは Codex で',
+  'ai.more.any': '詳しくはお使いの AI で',
   'ai.reload': 'ゲームを開き直す',
   'ai.sent': 'AI に送りました',
   'ai.seen': 'AI が受け取りました',
@@ -788,7 +805,8 @@ const ja: Partial<Record<Key, string>> = {
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
   'foot.palette': 'すべての操作',
-  'save.unsavedTip': 'まだ保存していない変更が {n} 個あります。保存すると placement.json に書いて AI に送り、AI がゲームのコードに反映します',
+  'save.fab': '保存してゲームへ',
+  'save.unsavedTip': '{n} 個の変更は、まだこのエディタの中だけです。保存すると AI がゲームのコードに入れ、エディタの外のゲームも変わります',
   'save.savedTip': '保存して AI に送りました',
   'peer.label': 'AI',
   'peer.idle': 'AI からの返事はまだありません',

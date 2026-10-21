@@ -18,6 +18,7 @@ dependencies). It is the local implementation of the host interface (contract 3)
 - `lifecycle.mjs` - `--detach` (a new session, so Codex ending its turn does not end the editor), `.studio/server.json` (this folder's editors: pid, address, stop secret) and `--stop` (POST /__studio/stop with the secret — works in Codex's sandbox — else by pid, never by name; agent-solid pass 2026-10-17)
 - `server.mjs` - HTTP: pass + cookie, Host check, routes, API
 - `ai-watch.mjs` - `--watch` (one line per request, the heartbeat `.studio/watch.json`) and reading it back as "is an AI watching" (AI feel, 2026-10-16)
+- `which-ai.mjs` - which AI is behind the editor (Claude / Codex / unknown), from the wake hook and the environment it was started in: the AI line's "More in Claude" (2026-10-21)
 - `ai-undo.mjs` - the game files' signature (the editor reloads the game when it changes) and the snapshots in `.studio/undo/` behind "Undo AI change"
 - `files.mjs` - what may be served or written (inside the folder only, no dot-files, no overwrites)
 - `assets.mjs` - asset list with `refsInCode` and names in code that match no file

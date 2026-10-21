@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.7 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.8 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4704,6 +4704,9 @@ function isStudioMessage(x         )                     {
  * files as they were, so "Undo AI change" can go back to this request.
  * Left out = unknown (then the editor falls back to waiting for a status).
  */
+/** The AI behind the editor, when the host can tell (src/server/which-ai.mjs). */
+                                         
+
                               
                      
                 
@@ -4749,8 +4752,10 @@ function isStudioMessage(x         )                     {
                                                                            
                                                                             
                                                        
+                                                                                                              
+                                                                                           
      
-                                                                                                                            
+                                                                                                                                             
      
                                                                              
                                                                          

@@ -344,7 +344,7 @@ async function run(layout) {
     const asking = JSON.parse(await page.eval(`(() => { const l = document.querySelector('.ai-line');
       const tagEl = document.querySelector('iframe').contentWindow.document.querySelector('[data-studio-ui]')?.shadowRoot?.querySelector('.tag.ai');
       const tag = tagEl ? tagEl.style.display + ' ' + tagEl.textContent : 'none';
-      return JSON.stringify({ head: l.querySelector('.ai-head')?.textContent, sub: l.querySelector('.ai-sub')?.textContent,
+      return JSON.stringify({ head: l.querySelector('.ai-head')?.textContent, sub: (l.querySelector('.ai-sub .ai-said') || l.querySelector('.ai-sub'))?.textContent, more: l.querySelector('.ai-more')?.textContent || '',
         choices: [...l.querySelectorAll('[data-action=ai-answer]')].map((b) => b.textContent),
         compare: l.querySelector('[data-part=ai-compare]')?.textContent || '', show: !!l.querySelector('[data-action=ai-ask-show]'), tag,
         placeholder: document.querySelector('.ask-input').placeholder,
@@ -353,6 +353,8 @@ async function run(layout) {
     assert.equal(asking.head, q, 'the question first');
     assert.equal(asking.sub, LANG === 'ja' ? 'AI から質問です' : 'Your AI has a question');
     assert.doesNotMatch(asking.head + asking.sub, /Claude Code/, 'no "answer it in another window"');
+    // Where the AI's whole question is, at the end of the grey row (2026-10-21): Claude / Codex / "your AI" by how the editor was started.
+    assert.match(asking.more, LANG === 'ja' ? /^詳しくは.+で$/ : /^More in /);
     assert.deepEqual(asking.choices, ['A real door', 'Only for looks']);
     assert.match(asking.compare, /A door you walk through.*A picture of a door/);
     assert.equal(asking.show, true, '"Show it in the scene"');

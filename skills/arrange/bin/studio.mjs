@@ -2800,6 +2800,45 @@ async function runWatch(rootReal, { out = (l) => process.stdout.write(l + '\n'),
   if (rested) out(AIW_REST_LINE);
 }
 
+// ---- src/server/which-ai.mjs ----
+// Which AI is behind this editor, for the AI line's "More in Claude" / "More in Codex" (a try of v0.1.8, 2026-10-21: "it
+// should say 'see Claude for details' — Claude if you use Claude, Codex if Codex, or something general like 'see your AI'").
+//
+// WHY: the AI's line in the editor is one line ("Made it a triple jump / 'let me triple jump' · Done."). The AI's full
+// answer — what it changed, why, what it would do next — is in its own window, and nothing on the line said so.
+//
+// Only what the editor already knows, never a new question to the person:
+//   1. the plugin's wake hook is waiting for this folder (.studio/wake.json, ai-wake.mjs): only Claude Code runs it
+//      (Codex has no hooks), so that is Claude, whatever started the editor;
+//   2. the environment the editor was started in. The AI starts the editor from its own shell (SKILL.md §1, `--detach`
+//      keeps the environment, lifecycle.mjs): Claude Code puts CLAUDECODE=1 (and CLAUDE_CODE_ENTRYPOINT) there, Codex
+//      its CODEX_* variables (CODEX_SANDBOX, CODEX_SANDBOX_NETWORK_DISABLED, CODEX_THREAD_ID…).
+//      CODEX_HOME is left out on purpose: people set it in their shell profile, so it is there in Claude Code too and
+//      in a plain terminal.
+// Anything else (a plain terminal, another agent, a hosted editor): undefined, and the line says "More in your AI".
+// Claude wins over Codex when both are there (Codex started inside a Claude Code session is still read in Claude).
+
+/** @typedef {'claude' | 'codex'} AiAgent */
+
+/**
+ * @param {Record<string, string | undefined>} env  the editor's environment (process.env)
+ * @returns {AiAgent | undefined}
+ */
+function agentFromEnv(env) {
+  if (!env) return undefined;
+  if (env.CLAUDECODE === '1' || env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
+  if (Object.keys(env).some((k) => k.startsWith('CODEX_') && k !== 'CODEX_HOME' && env[k])) return 'codex';
+  return undefined;
+}
+
+/**
+ * @param {{ wake: boolean, env: AiAgent | undefined }} o  wake = the wake hook's heartbeat is fresh (ai-watch.mjs wakeAlive)
+ * @returns {AiAgent | undefined}
+ */
+function whichAi(o) {
+  return o.wake ? 'claude' : o.env;
+}
+
 // ---- src/server/server.mjs ----
 // The local studio server: serves one game folder to the editor and writes the result files.
 //
@@ -2840,6 +2879,7 @@ async function runWatch(rootReal, { out = (l) => process.stdout.write(l + '\n'),
 
 
 
+
 const PREFIX = '/__studio/';
 const EDIT_SCRIPT_URL = '/__studio/studio-edit.js';
 const GAME_ADAPTER_URL = '/__studio/game-adapter.js';
@@ -2855,6 +2895,7 @@ const GAME_TOOLS_URL = '/__studio/game-tools.js';
  * @param {string} [o.uiDir]     folder with the built editor UI (index.html, studio-edit.js, ...)
  * @param {(line: string) => void} [o.log]  one line per event, for the agent (default: stdout)
  * @param {object} [o.kumo]    tests only: { home, env, fetch } for the optional KUMODeck sign-in (kumo.mjs)
+ * @param {object} [o.env]     tests only: the environment read for which AI started the editor (which-ai.mjs; default process.env)
  * @returns {Promise<{ url: string, origin: string, port: number, close: () => Promise<void> }>}
  */
 async function startStudioServer(o) {
@@ -2898,7 +2939,8 @@ async function startStudioServer(o) {
   if (host === '127.0.0.1') allowedHosts.add(`localhost:${port}`);
   const cookieName = `studio_${port}`;
   const url = `${origin}${PREFIX}?t=${token}`;
-  const ctx = { rootReal, entry, uiDir, log, origin, url, isLan: o.isLan === true };
+  // Which AI started the editor (which-ai.mjs): read once, the environment does not change while it runs.
+  const ctx = { rootReal, entry, uiDir, log, origin, url, isLan: o.isLan === true, agent: agentFromEnv(o.env || process.env) };
   // Optional KUMODeck sign-in for AI pictures / 3D (kumo.mjs). Reads the CLI's saved sign-in only
   // when the editor asks; holds the key here and never hands it to the browser.
   ctx.kumo = createKumo({ rootReal, log, ...(o.kumo || {}) });
@@ -3134,8 +3176,10 @@ async function handleApi(req, res, u, ctx) {
     }
     // + whether an AI's watch runs (and the last request it printed), and the game files'
     // signature: the editor reloads the game by itself when it changes (ai-undo.mjs).
+    // + which AI it is (`agent`, which-ai.mjs): the AI's line says "More in Claude" / "More in Codex" (2026-10-21).
     const files = await listGameFiles(ctx.rootReal);
-    return sendJson(res, 200, { status: st, time: st && f ? Math.round(f.mtimeMs) : null, ...(await readWatch(ctx.rootReal)), code: codeSignature(files) });
+    const agent = whichAi({ wake: await wakeAlive(ctx.rootReal), env: ctx.agent });
+    return sendJson(res, 200, { status: st, time: st && f ? Math.round(f.mtimeMs) : null, ...(await readWatch(ctx.rootReal)), code: codeSignature(files), ...(agent ? { agent } : {}) });
   }
 
   // .studio/ui/prefs.json (the person's editor layout), .studio/studio.json (the game's settings, written

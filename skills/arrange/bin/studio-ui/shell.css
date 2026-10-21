@@ -23,6 +23,11 @@
    2. COLOUR — none of its own. Greys (text in three steps, fills in three),
       plus two colours that each mean one thing and are never decoration:
         --you  #ff6b1a  your hand: what you picked (outline, name tag, chip, dot);
+                        ONE EXCEPTION (a try of the editor, 2026-10-21, "make Save orange"): the
+                        Save presses (.save-fab, .top-save, .play-unsaved-save) are
+                        FILLED with it, white words on top — a pick is only ever an
+                        outline, a tint or a dot, never a filled capsule, so the two
+                        do not read alike;
         --ai   #8b7cff  the AI's hand: what its change touched, the ask spark,
                         the light that runs round the input while it works;
       one green dot (the AI wrote back) and red only on Delete. Axis letters
@@ -66,6 +71,7 @@
   --text-3: #6e6e73;
   --solid: #f5f5f7; --solid-fg: #1c1c1e;   /* Play and send: the solid ones */
   --you-soft: rgba(255, 107, 26, .14); --you-text: #ffb48a;
+  --you-fg: #ffffff;   /* words on a filled --you (the Save presses, rule 2's exception): white in both themes */
   --ai: #8b7cff; --ai-soft: rgba(139, 124, 255, .16); --ai-text: #c1b8ff;
   --live: #30d158;
   --danger: #ff453a;
@@ -214,8 +220,6 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .brand .sep { color: var(--text-3); }
 .brand .title { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .brand .here { color: var(--text-2); }
-/* Playing with unsaved changes (main.ts renderAll): quieter than "Playing" itself, never a badge. */
-.brand .here-note { color: var(--text-3, var(--text-2)); margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .brand .adapter { color: var(--text-3); font-size: var(--fs-s); }
 .brand .lang { font-size: var(--fs-s); color: var(--text-2); }
 .top-right { flex: none; display: flex; align-items: center; gap: 12px; }
@@ -248,6 +252,11 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .top-actions .play .icon { width: 12px; height: 12px; }
 .top-actions .play kbd { background: none; padding: 0; margin-left: 2px; color: color-mix(in srgb, var(--solid-fg) 45%, transparent); }
 .top-actions > button:not(.play) { background: var(--raise); }
+/* "Save to game" right beside ▶ Play while something is not saved (a try of the editor, 2026-10-21, B; main.ts topSave): the same
+   orange fill as the Save in the game (rule 2's exception), Play's size. Shown in Edit and in Play. */
+.top-actions > button.top-save { background: var(--you); color: var(--you-fg); font-weight: 600; padding: 0 12px; white-space: nowrap; animation: studio-rise var(--dur-in) var(--ease); }
+.top-actions > button.top-save[hidden] { display: none; }
+.top-actions > button.top-save:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
 .game-tools { display: flex; gap: 4px; align-items: center; min-width: 0; }
 .game-tools .label { color: var(--text-3); font-size: var(--fs-s); }
 .game-tools button { background: var(--raise); }
@@ -438,12 +447,20 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 :root { --fab-room: 172px; }
 .shell:not([data-layout="phone"]) .dock { width: min(600px, calc(100% - 2 * var(--fab-room))); }
 .save-fab { position: absolute; right: 12px; bottom: calc(16px + (var(--bar) - 36px) / 2); z-index: 6; height: 36px; padding: 0 14px;
-  display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: var(--solid); color: var(--solid-fg); font-weight: 600; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: var(--you); color: var(--you-fg); font-weight: 600; white-space: nowrap;
   box-shadow: 0 1px 1px rgba(0, 0, 0, .2), 0 8px 24px rgba(0, 0, 0, .32); animation: studio-rise var(--dur-in) var(--ease); }
+/* KUMO's orange since 2026-10-21 (a try of the editor, C: "make Save orange" — the black "Save to game · 1" was not noticed).
+   The --you of rule 2, not a new orange; the one place it is a FILL: a pick is an outline / tint / dot, so a filled
+   capsule with white words reads as a press, not as something picked. The solid (black / white) of before stays
+   Play's and send's. Hover: a step darker (towards black in both themes: lighter would wash the white words out). */
 .save-fab[hidden] { display: none; }
-.save-fab:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
-.save-fab .n { color: color-mix(in srgb, var(--solid-fg) 60%, transparent); }
-.save-fab kbd { margin-left: 4px; color: color-mix(in srgb, var(--solid-fg) 45%, transparent); }
+.save-fab:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
+.save-fab .n { color: color-mix(in srgb, var(--you-fg) 78%, transparent); }
+.save-fab kbd { margin-left: 4px; color: color-mix(in srgb, var(--you-fg) 62%, transparent); }
+/* One bounce when a change first appears (a try of the editor, 2026-10-21, C): rises as before, overshoots 6 % and settles — once,
+   never on later changes. It is a script animation (main.ts renderButtons, save-loud.ts bounces), not a rule here: a
+   CSS animation switched on by an attribute ran studio-rise a second time when the attribute came off. .48 s = two of
+   rule 6's arrivals: a third duration, allowed for this one press. Not for a person who asked for less motion. */
 .save-fab .icon { width: 14px; height: 14px; }
 /* "✓ Saved" for a moment after the press: the same place, quieter (glass), then gone. */
 .save-fab[data-state="done"] { background: var(--glass); color: var(--text-2); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); cursor: default; }
@@ -451,6 +468,27 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .shell[data-palette="open"] .save-fab, .shell[data-palette="suggest"] .save-fab, .shell[data-keys="open"] .save-fab, .shell[data-playing="on"] .save-fab { display: none; }
 .shell[data-layout="phone"] .save-fab { bottom: var(--fab-bottom, 80px); height: 44px; padding: 0 18px; font-size: var(--fs-s); }
 .shell[data-fit="side"] .save-fab { height: 32px; padding: 0 12px; }
+/* ----- Playing with changes not saved (a try of the editor, 2026-10-21, B; main.ts playStrip / save-loud.ts) -----
+   "This change isn't in the game yet  [Save to game]  ×" over the top of the game. Clear, not loud: the glass of every
+   plate over the game, ink words, the orange press. One line the height of a button (40) so the game keeps its screen;
+   × hides it for this round of Play (the orange Save beside Play stays). Narrow screens: the words may take two lines
+   rather than be cut (what is missing must be read whole). */
+.play-unsaved { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; max-width: calc(100% - 16px); box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 4px 4px 16px; border-radius: 20px; color: var(--text); font-weight: 600;
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); }
+.play-unsaved[hidden] { display: none; }
+.play-unsaved.enter { animation: studio-drop var(--dur-in) var(--ease); }
+/* It comes down from the top edge it hangs on (studio-rise, but downwards and keeping its centring). */
+@keyframes studio-drop { from { opacity: 0; transform: translate(-50%, -6px) scale(.985); } to { opacity: 1; transform: translateX(-50%); } }
+.play-unsaved-text { min-width: 0; line-height: 1.3; }
+.play-unsaved .play-unsaved-save { flex: none; min-height: 32px; padding: 0 14px; border-radius: 999px; background: var(--you); color: var(--you-fg); font-weight: 600; white-space: nowrap; }
+.play-unsaved .play-unsaved-save:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
+.play-unsaved .play-unsaved-hide { flex: none; width: 32px; min-height: 32px; border-radius: 999px; }
+.play-unsaved .play-unsaved-hide .icon { width: 14px; height: 14px; }
+.shell:not([data-playing="on"]) .play-unsaved { display: none; }
+.shell[data-layout="phone"] .play-unsaved { top: 8px; width: calc(100% - 16px); gap: 6px; padding-left: 14px; font-size: var(--fs-s); border-radius: var(--r); }
+.shell[data-layout="phone"] .play-unsaved-text { flex: 1; }
+.shell[data-layout="phone"] .play-unsaved .play-unsaved-hide { width: 36px; min-height: 36px; }
 .bar { display: flex; align-items: center; gap: 4px; }
 .bar [data-action="sheet"] { display: none; }
 .ask-slot { flex: 1; min-width: 0; }
@@ -547,6 +585,13 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .ai-text.two { display: grid; white-space: normal; }
 .ai-text.two > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-sub { color: var(--text-2); font-size: var(--fs-s); }
+/* "More in Claude" at the end of the grey row (ai-flow.ts moreIn, 2026-10-21): where the AI's whole answer is.
+   One line always (PC, the side window, a phone): what was asked is the part cut with "…", the pointer never is.
+   Same grey, no link look — it is not a button (a web page cannot bring the AI's window up). Five classes: wins over
+   the asking row's two-line clamp above. */
+.ai-line .ai-text.two > .ai-sub.has-more { display: flex; gap: 6px; min-width: 0; white-space: nowrap; }
+.ai-sub.has-more > .ai-said { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ai-sub.has-more > .ai-dot, .ai-sub.has-more > .ai-more { flex: none; }
 .ai-asked, .ai-note { color: var(--text-2); }
 /* The AI note's one action: a filled capsule (a press). */
 .ai-line .link { flex: none; gap: 6px; color: var(--text); background: var(--raise-2); border-radius: 999px; padding: 0 12px 0 10px; min-height: var(--h); font-weight: 600; }
@@ -748,7 +793,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] { --fs: calc(var(--studio-font) + 4px); --fs-s: calc(var(--fs) - 4px); --fs-l: var(--fs); --h: 44px; --bar: 48px; --R: 22px;
   grid-template: var(--bar) minmax(0, 1fr) / minmax(0, 1fr); grid-template-areas: "head" "stage"; }
 .shell[data-layout="phone"] .top { padding: 0 6px 0 16px; gap: 4px; }
-.shell[data-layout="phone"] .brand .app, .shell[data-layout="phone"] .brand .sep, .shell[data-layout="phone"] .brand .here, .shell[data-layout="phone"] .brand .here-note { display: none; }
+.shell[data-layout="phone"] .brand .app, .shell[data-layout="phone"] .brand .sep, .shell[data-layout="phone"] .brand .here { display: none; }
 .shell[data-layout="phone"] .brand .title { font-size: var(--fs-l); font-weight: 600; }
 .shell[data-layout="phone"] .top-right { gap: 2px; }
 .shell[data-layout="phone"] .peer { display: none; }
@@ -765,6 +810,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .top-actions > button.play-ask[data-state="ready"] .icon { filter: drop-shadow(0 0 2px var(--ai)) drop-shadow(0 0 6px color-mix(in srgb, var(--ai) 80%, transparent)); }
 /* Play is drawn 36 high (a 44 capsule filled the 48 bar edge to edge) and pressed 44 high (::after). */
 .shell[data-layout="phone"] .top-actions .play { min-height: 36px; padding: 0 14px 0 12px; font-size: var(--fs-s); }
+.shell[data-layout="phone"] .top-actions > button.top-save { min-height: 36px; padding: 0 14px; font-size: var(--fs-s); }
 .shell[data-layout="phone"] .top-actions .play,
 .shell[data-layout="phone"] .list-tools .toggle, .shell[data-layout="phone"] .assets-page .gsl-chip, .shell[data-layout="phone"] .assets-page .gsl-key { position: relative; }
 .shell[data-layout="phone"] .top-actions .play::after,
@@ -974,7 +1020,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-fit="side"] .top { padding: 0 6px 0 12px; }
 .shell[data-fit="side"] .top .icon-btn { width: 32px; }
 .shell[data-fit="side"] .top .icon-btn .icon { width: 18px; height: 18px; }
-.shell[data-fit="side"] .top-actions .play { min-height: 30px; }
+.shell[data-fit="side"] .top-actions .play, .shell[data-fit="side"] .top-actions > button.top-save { min-height: 30px; }
 .shell[data-fit="side"] .large-btn { display: inline-flex; }
 /* The sheet: low, its foot over the chat app's toolbar, the grip in the old drawn bar's place. */
 .shell[data-layout="phone"][data-fit="side"] .side, .shell[data-layout="phone"][data-fit="side"]:has(.card-slot > .card:not([hidden])) .side {

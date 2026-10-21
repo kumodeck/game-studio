@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.7 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.8 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1253,6 +1253,9 @@ function isStudioMessage(x         )                     {
  * files as they were, so "Undo AI change" can go back to this request.
  * Left out = unknown (then the editor falls back to waiting for a status).
  */
+/** The AI behind the editor, when the host can tell (src/server/which-ai.mjs). */
+                                         
+
                               
                      
                 
@@ -1298,8 +1301,10 @@ function isStudioMessage(x         )                     {
                                                                            
                                                                             
                                                        
+                                                                                                              
+                                                                                           
      
-                                                                                                                            
+                                                                                                                                             
      
                                                                              
                                                                          
@@ -7845,7 +7850,11 @@ const en = {
   'btn.reloadGame': 'Reload',
   'status.playing': 'Playing the game as you arranged it in the editor, saved or not. Save hands it to your AI. Switch to Edit to keep arranging.',
   'status.playingShort': 'Playing',
-  'status.playingUnsaved': '· unsaved changes',
+  // Playing with changes not saved (a try of the editor, 2026-10-21, B: "people won't notice — make it show at Play too"): a strip over the
+  // game with Save beside it (main.ts playUnsaved). It replaced the quiet "· unsaved changes, not in the game yet" after
+  // "Playing" in the top bar, which nobody read. Says what is missing, not what to feel: the game itself has not changed.
+  'play.unsaved': '{n:This change isn’t|These changes aren’t} in the game yet',
+  'play.unsavedHide': 'Hide (Save stays in the top bar)',
   'status.items': 'Finding objects you can move…',
   'placement.empty': 'No movable objects found.',
   'placement.select': 'Select an object in the game, or choose one here.',
@@ -7925,6 +7934,11 @@ const en = {
   'ai.done1': '1 thing changed',
   'ai.doneN': '{n} things changed',
   'ai.failed': 'Your AI stopped before finishing.',
+  // The end of the line's grey row when the AI did or said something (ai-flow.ts moreIn, 2026-10-21): where its
+  // whole answer is. Short on purpose: the row is one line on a phone too.
+  'ai.more.claude': 'More in Claude',
+  'ai.more.codex': 'More in Codex',
+  'ai.more.any': 'More in your AI',
   'ai.reload': 'Reload the game',
   // AI feel (2026-10-16): the line above the input, from Enter to the change on screen.
   'ai.sent': 'Sent to your AI',
@@ -8121,7 +8135,11 @@ const en = {
   'list.title': 'In this scene',
   'list.titleUi': 'On screen',
   'foot.palette': 'All actions',
-  'save.unsavedTip': '{n:1 unsaved change|# unsaved changes}. Save writes placement.json and sends it to your AI, which updates the game’s code',
+  // The Save in the game (a try of the editor, 2026-10-21: "Save is hard to understand. Play works without it, so people won't notice it is
+  // needed"). The button says where the change goes; the tooltip says the rest in one sentence: until Save, the moves live only
+  // in this editor; Save hands them to the AI, which puts them in the game's code, so the game outside the editor changes too.
+  'save.fab': 'Save to game',
+  'save.unsavedTip': '{n:1 change is|# changes are} only in this editor. Save, and your AI puts {n:it|them} in the game’s code — the game outside the editor changes too',
   'save.savedTip': 'Saved and sent to your AI',
   'peer.label': 'AI',
   'peer.idle': 'No reply from your AI yet',
@@ -8324,7 +8342,8 @@ const ja                               = {
   'btn.reloadGame': '読み込み直す',
   'status.playing': 'エディタで並べたとおり（保存していない変更も込み）で遊んでいます。保存すると AI に渡ります。「編集」で続けて並べられます。',
   'status.playingShort': '遊んでいます',
-  'status.playingUnsaved': '· 保存していない変更込み',
+  'play.unsaved': 'この変更はまだゲームに入っていません',
+  'play.unsavedHide': '隠す（保存は上に残ります）',
   'status.items': '動かせる物を探しています…',
   'placement.empty': '動かせる物が見つかりません。',
   'placement.select': 'ゲームの中の物をクリックするか、ここから選んでください。',
@@ -8392,6 +8411,9 @@ const ja                               = {
   'ai.done1': '1 個変わりました',
   'ai.doneN': '{n} 個変わりました',
   'ai.failed': 'AI が途中で止まりました。',
+  'ai.more.claude': '詳しくは Claude で',
+  'ai.more.codex': '詳しくは Codex で',
+  'ai.more.any': '詳しくはお使いの AI で',
   'ai.reload': 'ゲームを開き直す',
   'ai.sent': 'AI に送りました',
   'ai.seen': 'AI が受け取りました',
@@ -8569,7 +8591,8 @@ const ja                               = {
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
   'foot.palette': 'すべての操作',
-  'save.unsavedTip': 'まだ保存していない変更が {n} 個あります。保存すると placement.json に書いて AI に送り、AI がゲームのコードに反映します',
+  'save.fab': '保存してゲームへ',
+  'save.unsavedTip': '{n} 個の変更は、まだこのエディタの中だけです。保存すると AI がゲームのコードに入れ、エディタの外のゲームも変わります',
   'save.savedTip': '保存して AI に送りました',
   'peer.label': 'AI',
   'peer.idle': 'AI からの返事はまだありません',
@@ -9350,7 +9373,7 @@ __defs[25] = function (__exports) {
 //   updating         the AI is done and the game is reloading behind the old picture
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
-                                                   
+                                                            
 const { statusCovers } = __require(24);
 
                                                                                                                                                                          
@@ -9468,14 +9491,88 @@ function reloadDecision(r             )                        {
   return r.stableMs > 0 ? 'now' : 'wait';
 }
 
+/**
+ * "More in Claude" / "More in Codex" / "More in your AI" at the end of the line's small grey row (a try of v0.1.8,
+ * 2026-10-21: "it should say 'see Claude for details' — Claude if you use Claude, Codex if Codex, or a general 'see your AI'").
+ * The line is one sentence; the AI's whole answer (what it changed and why, what it would do next, its question in full)
+ * is in its own window, and nothing said so.
+ *
+ * Only when the AI has done or said something: done, failed (why it stopped is there) and asking (it asked in its own
+ * window too). Not while it works (the line is the news then), not after the person's own Undo / Redo (nothing new from
+ * the AI), not on an offline host (the web demo: no AI to look at).
+ * Words only, not a button (2026-10-21): a web page cannot bring the AI's window to the front — the Claude app's side
+ * pane is right next to the chat anyway, and a browser tab has no way back to a terminal or to Codex.
+ * Returns the i18n key, or null for no words.
+ */
+function moreIn(phase         , agent                     , offline         )                {
+  if (offline || (phase !== 'done' && phase !== 'failed' && phase !== 'asking')) return null;
+  return agent === 'claude' ? 'ai.more.claude' : agent === 'codex' ? 'ai.more.codex' : 'ai.more.any';
+}
+
 __def(__exports, "NUDGE_MS", () => NUDGE_MS);
 __def(__exports, "ASK_FRESH_MS", () => ASK_FRESH_MS);
 __def(__exports, "aiPhase", () => aiPhase);
 __def(__exports, "aiBusy", () => aiBusy);
 __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
+__def(__exports, "moreIn", () => moreIn);
 };
 __defs[26] = function (__exports) {
+'use strict';
+// save-loud.ts
+
+// Save, loud (a try of the editor, 2026-10-21, B and C). The first answer to "people won't notice Save is needed" (save-clear,
+// same day) changed only the words on the black button ("Save to game · 1"); a second look at it: "nobody will
+// notice that". So:
+//   C  the Save in the game is filled with KUMO's orange (shell.css .save-fab — the one exception to "orange = your
+//      pick"), and it gives one small bounce when a change first appears;
+//   B  while something is not saved, the top bar has "Save to game" right beside ▶ Play (short "Save" on a phone and
+//      in the side window), and Play shows a strip over the game — "This change isn't in the game yet  [Save to game]  ×".
+//      × hides the strip for this round of Play only; the Save beside Play stays. Saving takes all of them away.
+// What is shown where is decided here (no DOM), so test/save-loud.test.ts can read it without a browser; main.ts
+// renderButtons draws it.
+
+                             
+                                                    
+            
+                   
+                                                                     
+                       
+                                                                                         
+                  
+ 
+
+                              
+                                                                                                                         
+               
+                                                                                    
+                               
+                                               
+                 
+ 
+
+function saveLoud(s            )              {
+  const any = s.n > 0;
+  return {
+    fab: any && !s.playing,
+    top: any ? (s.narrow ? 'short' : 'long') : null,
+    strip: any && s.playing && !s.stripHidden,
+  };
+}
+
+/**
+ * The one bounce (C): only when a change appears after there was none — the moment Save goes from "nothing to save" to
+ * "1". Not on the second, third… change (it would jump under every drag), not when coming back from Play (the change
+ * is not new), never for a person who asked the system for less motion (shell.css also stops every animation then).
+ */
+function bounces(prevN        , n        , playing         , reducedMotion         )          {
+  return prevN === 0 && n > 0 && !playing && !reducedMotion;
+}
+
+__def(__exports, "saveLoud", () => saveLoud);
+__def(__exports, "bounces", () => bounces);
+};
+__defs[27] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -9554,7 +9651,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -9619,7 +9716,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -9682,7 +9779,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -9765,7 +9862,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -9775,7 +9872,7 @@ __defs[30] = function (__exports) {
                                                     
 const { h } = __require(14);
 const { icon } = __require(22);
-const { DEFAULT_UI, UI_LIMITS } = __require(29);
+const { DEFAULT_UI, UI_LIMITS } = __require(30);
 
                                
                          
@@ -9858,7 +9955,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -9962,7 +10059,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -10102,7 +10199,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -10135,9 +10232,9 @@ __defs[33] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(14);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(19);
-const { groupLayerPossible, sameKind } = __require(31);
+const { groupLayerPossible, sameKind } = __require(32);
 const { icon, setButton } = __require(22);
-const { tipText } = __require(32);
+const { tipText } = __require(33);
 const { displayName, isGuessed, nameParts } = __require(12);
 const { toneThumb } = __require(15);
 
@@ -11182,7 +11279,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -11488,7 +11585,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -11589,7 +11686,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -11685,7 +11782,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -11805,7 +11902,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -11819,7 +11916,7 @@ __defs[38] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(14);
 const { icon } = __require(22);
-const { KEYMAP, keysOf } = __require(32);
+const { KEYMAP, keysOf } = __require(33);
 
                                     
                          
@@ -11884,7 +11981,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -12109,7 +12206,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -12299,7 +12396,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -12410,7 +12507,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -12524,7 +12621,7 @@ function createUnsavedGuard(deps                              ) {
 __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -12594,7 +12691,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -12652,7 +12749,7 @@ __def(__exports, "uiAsPlacement", () => uiAsPlacement);
 __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -12729,7 +12826,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -12757,31 +12854,32 @@ const { h, safeImageSrc } = __require(14);
 const { detectLang, setExtraText, translate } = __require(21);
 const { NEXT_STEPS, renderNextSteps } = __require(23);
 const { statusCovers } = __require(24);
-const { aiBusy, aiPhase, reloadDecision } = __require(25);
-const { askView: questionView } = __require(26);
-const { playLine, playWords } = __require(27);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(28);
-const { renderSettings } = __require(30);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(29);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(25);
+const { bounces, saveLoud } = __require(26);
+const { askView: questionView } = __require(27);
+const { playLine, playWords } = __require(28);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(29);
+const { renderSettings } = __require(31);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(30);
 const { dropTarget, hasLayer, layerTarget } = __require(19);
-const { createPlacementPanel } = __require(33);
+const { createPlacementPanel } = __require(34);
 const { icon, setButton } = __require(22);
-const { createPalette } = __require(34);
-const { fitPicture } = __require(35);
+const { createPalette } = __require(35);
+const { fitPicture } = __require(36);
 const { PlacementModel } = __require(20);
-const { UndoStack, poseChange } = __require(36);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(31);
+const { UndoStack, poseChange } = __require(37);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(32);
 const { displayName, forgetNames, noteItems, useNameLang } = __require(12);
-const { keyOf, tipText } = __require(32);
-const { installTooltips } = __require(37);
-const { createShortcutSheet } = __require(38);
-const { createContextMenu } = __require(39);
-const { contextRows } = __require(40);
-const { bigChanges, createSafeSave } = __require(41);
-const { createUnsavedGuard, lostBy } = __require(42);
-const { createLayerSwitch } = __require(43);
-const { uiAsPlacement, uiEntries, withUi } = __require(44);
-const { barPress, gripEnd, readFold, writeFold } = __require(45);
+const { keyOf, tipText } = __require(33);
+const { installTooltips } = __require(38);
+const { createShortcutSheet } = __require(39);
+const { createContextMenu } = __require(40);
+const { contextRows } = __require(41);
+const { bigChanges, createSafeSave } = __require(42);
+const { createUnsavedGuard, lostBy } = __require(43);
+const { createLayerSwitch } = __require(44);
+const { uiAsPlacement, uiEntries, withUi } = __require(45);
+const { barPress, gripEnd, readFold, writeFold } = __require(46);
 
                                                                         
 
@@ -12962,6 +13060,8 @@ function start(host            ) {
   // screen (`swapping` = the old frame), which goes only once the new game has
   // drawn its objects: no flash of black or of an empty list.
   let aiWatching                     ;
+  // Which AI is behind the editor (host.status().agent, which-ai.mjs): the line's "More in Claude" (ai-flow.ts moreIn).
+  let aiAgent                     ;
   let aiSeen                    ;
   let code                    ;
   let codeSince = 0;
@@ -13086,7 +13186,7 @@ function start(host            ) {
   // Where you are, always in one line: ▣ Studio / <the game> / Scene.
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'here-note', hidden: true }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -13124,6 +13224,23 @@ function start(host            ) {
     if (saveFab.dataset.state === 'done') return;
     void handOff();
   }, { class: 'save-fab', hidden: true, dataset: { action: 'save', part: 'save-fab' } });
+  // Save, loud (a try of the editor, 2026-10-21, B: "make it show at Play too"; save-loud.ts). Two more presses of the same Save, both
+  // in KUMO's orange like the one in the game, shown only while something is not saved:
+  //   - topSave: right beside ▶ Play in the top bar, in Edit and in Play ("Save to game"; "Save" where the bar is narrow).
+  //     Play is where a person goes to try the change, so that is where the eye already is. Its own data-action
+  //     (save-top), not "save": many screen tests read "the first visible [data-action=save]" as the count-carrying one.
+  //   - playStrip: over the game while playing — "This change isn't in the game yet  [Save to game]  ×". It replaced the
+  //     grey "· unsaved changes, not in the game yet" after "Playing" (v0.1.7–0.1.8), which nobody read. One line, the
+  //     height of a button, top centre; × hides it for this round of Play (Save beside Play stays).
+  const topSave = btn('save-top', () => void handOff(), { class: 'top-save', hidden: true, dataset: { action: 'save-top', part: 'save-top' } });
+  let stripHidden = false;
+  const stripText = h('span', { class: 'play-unsaved-text' });
+  const stripSave = btn('save-strip', () => void handOff(), { class: 'play-unsaved-save', dataset: { action: 'save-strip', part: 'play-unsaved-save' } });
+  const stripHide = btn('play-unsaved-hide', () => {
+    stripHidden = true;
+    renderButtons();
+  }, { class: 'icon-btn play-unsaved-hide', dataset: { action: 'play-unsaved-hide', part: 'play-unsaved-hide' } });
+  const playStrip = h('div', { class: 'play-unsaved', role: 'status', hidden: true, dataset: { part: 'play-unsaved' } }, stripText, stripSave, stripHide);
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
     saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
   // Is the AI there? Grey until it writes back in this session, green after,
@@ -13141,7 +13258,7 @@ function start(host            ) {
   // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
   const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
   // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
   // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
   // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
@@ -13352,7 +13469,7 @@ function start(host            ) {
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
   const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, saveFab);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, saveFab, playStrip);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
@@ -14563,9 +14680,15 @@ function start(host            ) {
     app.dataset.ai = busy ? 'busy' : ph;
     aiLine.classList.add(ph);
     const covered = pending ? statusCovers({ id: pending.id ?? '', at: pending.at }, aiStatus, aiTime) : false;
+    // "More in Claude" at the end of the grey row when the AI did or said something (ai-flow.ts moreIn, 2026-10-21). Its
+    // own span that never shrinks: what was asked is the part cut with "…" when the row is too long (shell.css .has-more).
+    const moreKey = moreIn(ph, aiAgent, !!host.offline);
     const two = (head        , sub         ) => {
       const say = h('span', { class: 'ai-text two' }, h('span', { class: 'ai-head', text: head }));
-      if (sub) say.append(h('span', { class: 'ai-sub', text: sub }));
+      if (moreKey) {
+        say.append(h('span', { class: 'ai-sub has-more' }, ...(sub ? [h('span', { class: 'ai-said', text: sub }), h('span', { class: 'ai-dot', 'aria-hidden': 'true', text: '·' })] : []),
+          h('span', { class: 'ai-more', dataset: { part: 'ai-more', agent: aiAgent ?? 'any' }, text: t(moreKey) })));
+      } else if (sub) say.append(h('span', { class: 'ai-sub', text: sub }));
       aiLine.append(say);
     };
     // What was asked, small and grey under what is happening (verganti review): one glance says what and why.
@@ -14834,6 +14957,7 @@ function start(host            ) {
         aiTime = r.time;
         if (r.watching !== undefined) aiWatching = r.watching;
         if (r.seen) aiSeen = r.seen;
+        aiAgent = r.agent;
         if (r.code !== code) {
           code = r.code;
           codeSince = Date.now();
@@ -15644,6 +15768,8 @@ function start(host            ) {
     if (swapping) finishSwap();
     playing = !playing;
     if (playing) playSince = Date.now();
+    // × on the "not in the game yet" strip is for one round of Play (save-loud.ts): the next Play says it again.
+    stripHidden = false;
     palette.close();
     loadGame();
   }
@@ -16099,6 +16225,8 @@ function start(host            ) {
   const FAB_DONE_MS = 1200;
   let fabDoneUntil = 0;
   let fabTimer = 0;
+  // The count at the last render: the Save in the game bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
+  let prevUnsaved = 0;
   function renderButtons() {
     const n = dirtyCount();
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
@@ -16128,7 +16256,9 @@ function start(host            ) {
       // "Save · 3  ⌘S": only while there is something not saved (or "✓ Saved" for a moment after the press).
       if (done) setButton(b, 'check', t('btn.saved'), true, t('save.savedTip'));
       else {
-        setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
+        // "Save to game · 3" (a try of the editor, 2026-10-21): the word says where the change goes; Play shows it without saving, so the
+        // plain "Save" read as optional. Same button, same place, same colour — only the words (save-clear README).
+        setButton(b, null, t('save.fab'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
         if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
         // The key on the button itself (PC and the side window: a keyboard is there); a phone has none.
         if (!phone() || sideWin()) b.append(h('kbd', { text: mac ? '⌘S' : 'Ctrl S' }));
@@ -16141,6 +16271,34 @@ function start(host            ) {
       clearTimeout(fabTimer);
       fabTimer = window.setTimeout(() => renderButtons(), fabDoneUntil - Date.now() + 20);
     }
+    // C (a try of the editor, 2026-10-21): one small bounce when a change first appears — it rises in as before, overshoots 6 % and
+    // settles. A script animation, not a CSS one switched on by an attribute: taking such an attribute off again (the
+    // first try, a timer at 700 ms) changed the animation back to studio-rise, which then ran a SECOND time — the Save
+    // moved twice and the save-fab test caught it 6 px low. animate() runs once and leaves nothing behind. .48 s = two
+    // of rule 6's arrivals (shell.css .save-fab). Reduced motion: no bounce (bounces()). data-bumps counts them, for the
+    // screen test ("once, not on every change").
+    if (bounces(prevUnsaved, n, playing, matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      saveFab.dataset.bumps = String(Number(saveFab.dataset.bumps || 0) + 1);
+      saveFab.animate?.([
+        { opacity: 0, transform: 'translateY(6px) scale(.985)' },
+        { opacity: 1, transform: 'translateY(-3px) scale(1.06)', offset: 0.45 },
+        { transform: 'scale(.985)', offset: 0.75 },
+        { transform: 'none' },
+      ], { duration: 480, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    }
+    prevUnsaved = n;
+    // B (a try of the editor, 2026-10-21): "Save to game" beside ▶ Play, and the strip over the game while playing (save-loud.ts).
+    const loud = saveLoud({ n, playing, stripHidden, narrow: phone() || sideWin() });
+    topSave.hidden = !loud.top;
+    if (loud.top) setButton(topSave, null, loud.top === 'short' ? t('btn.save') : t('save.fab'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
+    const stripWas = !playStrip.hidden;
+    playStrip.hidden = !loud.strip;
+    if (loud.strip) {
+      stripText.textContent = t('play.unsaved', { n });
+      setButton(stripSave, null, phone() || sideWin() ? t('btn.save') : t('save.fab'), true, t('save.unsavedTip', { n }));
+      setButton(stripHide, 'close', t('play.unsavedHide'), false);
+      if (!stripWas) playStrip.classList.add('enter');
+    } else playStrip.classList.remove('enter');
     // Shown or gone: the camera ↑↓ make room above it on a phone (sendInset).
     if (wasShown === saveFab.hidden) sendInset();
     for (const b of playBtns) {
@@ -16194,12 +16352,8 @@ function start(host            ) {
     (header.querySelector('.app')               ).textContent = t('app.brand');
     const sceneWord = (id        ) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here')               ).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
-    // Playing with changes not saved yet (a try of the editor, 2026-10-21: Play shows the editor's arrangement, saved or not): one quiet
-    // note after "Playing", so nobody takes what they see for what the AI was given. No button, no colour: Save is one
-    // press away in Edit, and a person trying a change first is doing the right thing.
-    const hereNote = header.querySelector('.here-note')               ;
-    hereNote.hidden = !(playing && dirtyCount() > 0);
-    hereNote.textContent = hereNote.hidden ? '' : t('status.playingUnsaved');
+    // (Playing with changes not saved: v0.1.7–0.1.8 had a quiet "· unsaved changes" after "Playing" here. Since the
+    // second look of 2026-10-21 (B) it is the strip over the game and the orange Save beside Play: renderButtons, save-loud.ts.)
     // World | UI (UI stage 1): only for a game with both layers, while the game is being edited in the Scene.
     app.dataset.editLayer = editLayer;
     const showSwitch = !!editLayers && editLayers.length > 1 && editing && !playing && tool === 'placement' && page === 'tool';
@@ -16470,7 +16624,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -16591,9 +16745,11 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
       }
     },
     async status() {
-      const r = await call                                                                                                        ('GET', 'status')
-        .catch(() => ({ status: null, time: null }                                                                                  ));
-      return { status: r.status ?? null, time: typeof r.time === 'number' ? r.time : null, watching: r.watching, seen: r.seen, code: r.code };
+      const r = await call                                                                                                                        ('GET', 'status')
+        .catch(() => ({ status: null, time: null }                                                                                                  ));
+      // Only the two names the line knows; anything else is "your AI" (which-ai.mjs).
+      const agent = r.agent === 'claude' || r.agent === 'codex' ? r.agent : undefined;
+      return { status: r.status ?? null, time: typeof r.time === 'number' ? r.time : null, watching: r.watching, seen: r.seen, code: r.code, agent };
     },
     async undoAi(to        , opts                     ) {
       try {
@@ -16646,19 +16802,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(46);
-const { createLocalHost } = __require(47);
+const { start } = __require(47);
+const { createLocalHost } = __require(48);
 
 start(createLocalHost());
 
 
 };
-__require(48);
+__require(49);
 })();

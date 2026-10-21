@@ -62,6 +62,9 @@ const BOXES = `(() => {
     sheet: document.querySelector('.shell').dataset.layout === 'phone' && document.querySelector('.shell').dataset.sheet === 'open' ? r(document.querySelector('.side')) : null,
     game: r(document.querySelector('iframe')), W: innerWidth, H: innerHeight,
     topSave: !!document.querySelector('.top [data-action=save]:not([hidden])')?.offsetParent,
+    // "Save to game" beside ▶ Play (a try of the editor, 2026-10-21, B; save-loud.ts): its own data-action, so the one above stays false.
+    topBeside: (() => { const t = document.querySelector('[data-part=save-top]'); const p = document.querySelector('.top [data-action=play]'); if (!t || t.hidden || !t.offsetParent || !p) return false;
+      const a = t.getBoundingClientRect(), b = p.getBoundingClientRect(); return b.left - a.right >= 0 && b.left - a.right <= 8; })(),
   });
 })()`;
 const meet = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
@@ -130,7 +133,8 @@ try {
         if (b.game) check(b.fab.t >= b.game.t && b.fab.r <= b.game.r + 1, 'over the game');
         const tip = await page.eval(`${FAB}?.title || ${FAB}?.dataset.tip || ''`);
         if (l.id !== 'phone') check(/⌘S|Ctrl/.test(await page.eval(`${FAB}.innerText + ' ' + (${FAB}.getAttribute('aria-keyshortcuts') || '') + ' ' + (${FAB}.title || '')`)), `the key ⌘S on it (${tip})`);
-        check(!b.topSave, 'one Save: none in the top bar');
+        check(!b.topSave, 'no second "Save · N" in the top bar');
+        check(b.topBeside, 'and "Save to game" beside ▶ Play (a try of the editor, 2026-10-21, B)');
       }
 
       // The card's minimize.

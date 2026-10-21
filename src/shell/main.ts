@@ -22,6 +22,7 @@ import {
   type Inset,
   type GameToolInfo,
   type Item,
+  type AiAgent,
   type Lang,
   type PlacementFile,
   type Pose,
@@ -50,7 +51,8 @@ import { h, safeImageSrc } from './dom.ts';
 import { detectLang, setExtraText, translate } from './i18n.ts';
 import { NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
 import { statusCovers } from '../schema/handoff.mjs';
-import { aiBusy, aiPhase, reloadDecision, type AiPhase } from './ai-flow.ts';
+import { aiBusy, aiPhase, moreIn, reloadDecision, type AiPhase } from './ai-flow.ts';
+import { bounces, saveLoud } from './save-loud.ts';
 import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } from './line-fade.ts';
@@ -255,6 +257,8 @@ export function start(host: StudioHost) {
   // screen (`swapping` = the old frame), which goes only once the new game has
   // drawn its objects: no flash of black or of an empty list.
   let aiWatching: boolean | undefined;
+  // Which AI is behind the editor (host.status().agent, which-ai.mjs): the line's "More in Claude" (ai-flow.ts moreIn).
+  let aiAgent: AiAgent | undefined;
   let aiSeen: string | undefined;
   let code: string | undefined;
   let codeSince = 0;
@@ -379,7 +383,7 @@ export function start(host: StudioHost) {
   // Where you are, always in one line: ▣ Studio / <the game> / Scene.
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'here-note', hidden: true }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -417,6 +421,23 @@ export function start(host: StudioHost) {
     if (saveFab.dataset.state === 'done') return;
     void handOff();
   }, { class: 'save-fab', hidden: true, dataset: { action: 'save', part: 'save-fab' } });
+  // Save, loud (a try of the editor, 2026-10-21, B: "make it show at Play too"; save-loud.ts). Two more presses of the same Save, both
+  // in KUMO's orange like the one in the game, shown only while something is not saved:
+  //   - topSave: right beside ▶ Play in the top bar, in Edit and in Play ("Save to game"; "Save" where the bar is narrow).
+  //     Play is where a person goes to try the change, so that is where the eye already is. Its own data-action
+  //     (save-top), not "save": many screen tests read "the first visible [data-action=save]" as the count-carrying one.
+  //   - playStrip: over the game while playing — "This change isn't in the game yet  [Save to game]  ×". It replaced the
+  //     grey "· unsaved changes, not in the game yet" after "Playing" (v0.1.7–0.1.8), which nobody read. One line, the
+  //     height of a button, top centre; × hides it for this round of Play (Save beside Play stays).
+  const topSave = btn('save-top', () => void handOff(), { class: 'top-save', hidden: true, dataset: { action: 'save-top', part: 'save-top' } });
+  let stripHidden = false;
+  const stripText = h('span', { class: 'play-unsaved-text' });
+  const stripSave = btn('save-strip', () => void handOff(), { class: 'play-unsaved-save', dataset: { action: 'save-strip', part: 'play-unsaved-save' } });
+  const stripHide = btn('play-unsaved-hide', () => {
+    stripHidden = true;
+    renderButtons();
+  }, { class: 'icon-btn play-unsaved-hide', dataset: { action: 'play-unsaved-hide', part: 'play-unsaved-hide' } });
+  const playStrip = h('div', { class: 'play-unsaved', role: 'status', hidden: true, dataset: { part: 'play-unsaved' } }, stripText, stripSave, stripHide);
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
     saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
   // Is the AI there? Grey until it writes back in this session, green after,
@@ -434,7 +455,7 @@ export function start(host: StudioHost) {
   // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
   const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
   // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
   // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
   // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
@@ -645,7 +666,7 @@ export function start(host: StudioHost) {
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
   const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, saveFab);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, saveFab, playStrip);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
@@ -1856,9 +1877,15 @@ export function start(host: StudioHost) {
     app.dataset.ai = busy ? 'busy' : ph;
     aiLine.classList.add(ph);
     const covered = pending ? statusCovers({ id: pending.id ?? '', at: pending.at }, aiStatus, aiTime) : false;
+    // "More in Claude" at the end of the grey row when the AI did or said something (ai-flow.ts moreIn, 2026-10-21). Its
+    // own span that never shrinks: what was asked is the part cut with "…" when the row is too long (shell.css .has-more).
+    const moreKey = moreIn(ph, aiAgent, !!host.offline);
     const two = (head: string, sub?: string) => {
       const say = h('span', { class: 'ai-text two' }, h('span', { class: 'ai-head', text: head }));
-      if (sub) say.append(h('span', { class: 'ai-sub', text: sub }));
+      if (moreKey) {
+        say.append(h('span', { class: 'ai-sub has-more' }, ...(sub ? [h('span', { class: 'ai-said', text: sub }), h('span', { class: 'ai-dot', 'aria-hidden': 'true', text: '·' })] : []),
+          h('span', { class: 'ai-more', dataset: { part: 'ai-more', agent: aiAgent ?? 'any' }, text: t(moreKey) })));
+      } else if (sub) say.append(h('span', { class: 'ai-sub', text: sub }));
       aiLine.append(say);
     };
     // What was asked, small and grey under what is happening (verganti review): one glance says what and why.
@@ -2127,6 +2154,7 @@ export function start(host: StudioHost) {
         aiTime = r.time;
         if (r.watching !== undefined) aiWatching = r.watching;
         if (r.seen) aiSeen = r.seen;
+        aiAgent = r.agent;
         if (r.code !== code) {
           code = r.code;
           codeSince = Date.now();
@@ -2937,6 +2965,8 @@ export function start(host: StudioHost) {
     if (swapping) finishSwap();
     playing = !playing;
     if (playing) playSince = Date.now();
+    // × on the "not in the game yet" strip is for one round of Play (save-loud.ts): the next Play says it again.
+    stripHidden = false;
     palette.close();
     loadGame();
   }
@@ -3392,6 +3422,8 @@ export function start(host: StudioHost) {
   const FAB_DONE_MS = 1200;
   let fabDoneUntil = 0;
   let fabTimer = 0;
+  // The count at the last render: the Save in the game bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
+  let prevUnsaved = 0;
   function renderButtons() {
     const n = dirtyCount();
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
@@ -3421,7 +3453,9 @@ export function start(host: StudioHost) {
       // "Save · 3  ⌘S": only while there is something not saved (or "✓ Saved" for a moment after the press).
       if (done) setButton(b, 'check', t('btn.saved'), true, t('save.savedTip'));
       else {
-        setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
+        // "Save to game · 3" (a try of the editor, 2026-10-21): the word says where the change goes; Play shows it without saving, so the
+        // plain "Save" read as optional. Same button, same place, same colour — only the words (save-clear README).
+        setButton(b, null, t('save.fab'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
         if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
         // The key on the button itself (PC and the side window: a keyboard is there); a phone has none.
         if (!phone() || sideWin()) b.append(h('kbd', { text: mac ? '⌘S' : 'Ctrl S' }));
@@ -3434,6 +3468,34 @@ export function start(host: StudioHost) {
       clearTimeout(fabTimer);
       fabTimer = window.setTimeout(() => renderButtons(), fabDoneUntil - Date.now() + 20);
     }
+    // C (a try of the editor, 2026-10-21): one small bounce when a change first appears — it rises in as before, overshoots 6 % and
+    // settles. A script animation, not a CSS one switched on by an attribute: taking such an attribute off again (the
+    // first try, a timer at 700 ms) changed the animation back to studio-rise, which then ran a SECOND time — the Save
+    // moved twice and the save-fab test caught it 6 px low. animate() runs once and leaves nothing behind. .48 s = two
+    // of rule 6's arrivals (shell.css .save-fab). Reduced motion: no bounce (bounces()). data-bumps counts them, for the
+    // screen test ("once, not on every change").
+    if (bounces(prevUnsaved, n, playing, matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+      saveFab.dataset.bumps = String(Number(saveFab.dataset.bumps || 0) + 1);
+      saveFab.animate?.([
+        { opacity: 0, transform: 'translateY(6px) scale(.985)' },
+        { opacity: 1, transform: 'translateY(-3px) scale(1.06)', offset: 0.45 },
+        { transform: 'scale(.985)', offset: 0.75 },
+        { transform: 'none' },
+      ], { duration: 480, easing: 'cubic-bezier(.2, .8, .2, 1)' });
+    }
+    prevUnsaved = n;
+    // B (a try of the editor, 2026-10-21): "Save to game" beside ▶ Play, and the strip over the game while playing (save-loud.ts).
+    const loud = saveLoud({ n, playing, stripHidden, narrow: phone() || sideWin() });
+    topSave.hidden = !loud.top;
+    if (loud.top) setButton(topSave, null, loud.top === 'short' ? t('btn.save') : t('save.fab'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
+    const stripWas = !playStrip.hidden;
+    playStrip.hidden = !loud.strip;
+    if (loud.strip) {
+      stripText.textContent = t('play.unsaved', { n });
+      setButton(stripSave, null, phone() || sideWin() ? t('btn.save') : t('save.fab'), true, t('save.unsavedTip', { n }));
+      setButton(stripHide, 'close', t('play.unsavedHide'), false);
+      if (!stripWas) playStrip.classList.add('enter');
+    } else playStrip.classList.remove('enter');
     // Shown or gone: the camera ↑↓ make room above it on a phone (sendInset).
     if (wasShown === saveFab.hidden) sendInset();
     for (const b of playBtns) {
@@ -3487,12 +3549,8 @@ export function start(host: StudioHost) {
     (header.querySelector('.app') as HTMLElement).textContent = t('app.brand');
     const sceneWord = (id: ToolId) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here') as HTMLElement).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
-    // Playing with changes not saved yet (a try of the editor, 2026-10-21: Play shows the editor's arrangement, saved or not): one quiet
-    // note after "Playing", so nobody takes what they see for what the AI was given. No button, no colour: Save is one
-    // press away in Edit, and a person trying a change first is doing the right thing.
-    const hereNote = header.querySelector('.here-note') as HTMLElement;
-    hereNote.hidden = !(playing && dirtyCount() > 0);
-    hereNote.textContent = hereNote.hidden ? '' : t('status.playingUnsaved');
+    // (Playing with changes not saved: v0.1.7–0.1.8 had a quiet "· unsaved changes" after "Playing" here. Since the
+    // second look of 2026-10-21 (B) it is the strip over the game and the orange Save beside Play: renderButtons, save-loud.ts.)
     // World | UI (UI stage 1): only for a game with both layers, while the game is being edited in the Scene.
     app.dataset.editLayer = editLayer;
     const showSwitch = !!editLayers && editLayers.length > 1 && editing && !playing && tool === 'placement' && page === 'tool';

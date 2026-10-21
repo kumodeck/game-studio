@@ -38,7 +38,8 @@ import { encodeQR, qrToSvg } from './qr.mjs';
 import { embedded } from './embedded.mjs';
 import { createKumo } from './kumo.mjs';
 import { listGameFiles, codeSignature, snapshotGame, restoreGame } from './ai-undo.mjs';
-import { readWatch, handoffLine } from './ai-watch.mjs';
+import { readWatch, handoffLine, wakeAlive } from './ai-watch.mjs';
+import { agentFromEnv, whichAi } from './which-ai.mjs';
 
 const PREFIX = '/__studio/';
 const EDIT_SCRIPT_URL = '/__studio/studio-edit.js';
@@ -55,6 +56,7 @@ const GAME_TOOLS_URL = '/__studio/game-tools.js';
  * @param {string} [o.uiDir]     folder with the built editor UI (index.html, studio-edit.js, ...)
  * @param {(line: string) => void} [o.log]  one line per event, for the agent (default: stdout)
  * @param {object} [o.kumo]    tests only: { home, env, fetch } for the optional KUMODeck sign-in (kumo.mjs)
+ * @param {object} [o.env]     tests only: the environment read for which AI started the editor (which-ai.mjs; default process.env)
  * @returns {Promise<{ url: string, origin: string, port: number, close: () => Promise<void> }>}
  */
 export async function startStudioServer(o) {
@@ -98,7 +100,8 @@ export async function startStudioServer(o) {
   if (host === '127.0.0.1') allowedHosts.add(`localhost:${port}`);
   const cookieName = `studio_${port}`;
   const url = `${origin}${PREFIX}?t=${token}`;
-  const ctx = { rootReal, entry, uiDir, log, origin, url, isLan: o.isLan === true };
+  // Which AI started the editor (which-ai.mjs): read once, the environment does not change while it runs.
+  const ctx = { rootReal, entry, uiDir, log, origin, url, isLan: o.isLan === true, agent: agentFromEnv(o.env || process.env) };
   // Optional KUMODeck sign-in for AI pictures / 3D (kumo.mjs). Reads the CLI's saved sign-in only
   // when the editor asks; holds the key here and never hands it to the browser.
   ctx.kumo = createKumo({ rootReal, log, ...(o.kumo || {}) });
@@ -334,8 +337,10 @@ async function handleApi(req, res, u, ctx) {
     }
     // + whether an AI's watch runs (and the last request it printed), and the game files'
     // signature: the editor reloads the game by itself when it changes (ai-undo.mjs).
+    // + which AI it is (`agent`, which-ai.mjs): the AI's line says "More in Claude" / "More in Codex" (2026-10-21).
     const files = await listGameFiles(ctx.rootReal);
-    return sendJson(res, 200, { status: st, time: st && f ? Math.round(f.mtimeMs) : null, ...(await readWatch(ctx.rootReal)), code: codeSignature(files) });
+    const agent = whichAi({ wake: await wakeAlive(ctx.rootReal), env: ctx.agent });
+    return sendJson(res, 200, { status: st, time: st && f ? Math.round(f.mtimeMs) : null, ...(await readWatch(ctx.rootReal)), code: codeSignature(files), ...(agent ? { agent } : {}) });
   }
 
   // .studio/ui/prefs.json (the person's editor layout), .studio/studio.json (the game's settings, written

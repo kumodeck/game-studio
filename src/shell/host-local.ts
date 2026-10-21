@@ -132,9 +132,11 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
       }
     },
     async status() {
-      const r = await call<{ status: StudioStatus | null; time: number | null; watching?: boolean; seen?: string; code?: string }>('GET', 'status')
-        .catch(() => ({ status: null, time: null } as { status: null; time: null; watching?: boolean; seen?: string; code?: string }));
-      return { status: r.status ?? null, time: typeof r.time === 'number' ? r.time : null, watching: r.watching, seen: r.seen, code: r.code };
+      const r = await call<{ status: StudioStatus | null; time: number | null; watching?: boolean; seen?: string; code?: string; agent?: string }>('GET', 'status')
+        .catch(() => ({ status: null, time: null } as { status: null; time: null; watching?: boolean; seen?: string; code?: string; agent?: string }));
+      // Only the two names the line knows; anything else is "your AI" (which-ai.mjs).
+      const agent = r.agent === 'claude' || r.agent === 'codex' ? r.agent : undefined;
+      return { status: r.status ?? null, time: typeof r.time === 'number' ? r.time : null, watching: r.watching, seen: r.seen, code: r.code, agent };
     },
     async undoAi(to: string, opts?: { redo?: boolean }) {
       try {

@@ -579,6 +579,24 @@ test('status: the agent\'s .studio/status.json, read leniently, with the time it
   assert.deepEqual(await get(), { status: null, time: null });
 });
 
+test('status: which AI started the editor (`agent`, which-ai.mjs) for the line\'s "More in Claude" (2026-10-21)', async (t) => {
+  const agentOf = async (env) => {
+    const s = await start({ env });
+    t.after(() => s.srv.close());
+    return JSON.parse((await s.req('GET', '/__studio/api/status')).text).agent;
+  };
+  assert.equal(await agentOf({ CLAUDECODE: '1' }), 'claude');
+  assert.equal(await agentOf({ CODEX_SANDBOX: 'seatbelt' }), 'codex');
+  // A plain terminal (CODEX_HOME alone is a shell-profile setting, not Codex running): left out.
+  assert.equal(await agentOf({ PATH: '/usr/bin', CODEX_HOME: '/x' }), undefined);
+  // The plugin's wake hook waits for this folder (Claude Code only): Claude, whatever the environment says.
+  const s = await start({ env: { CODEX_SANDBOX: 'seatbelt' } });
+  t.after(() => s.srv.close());
+  await fs.mkdir(path.join(s.root, '.studio'), { recursive: true });
+  await fs.writeFile(path.join(s.root, '.studio/wake.json'), JSON.stringify({ version: 1, pid: process.pid, at: new Date().toISOString() }));
+  assert.equal(JSON.parse((await s.req('GET', '/__studio/api/status')).text).agent, 'claude');
+});
+
 test('title: the page <title>, or the folder name when the title says nothing', async (t) => {
   const s = await start();
   t.after(() => s.srv.close());

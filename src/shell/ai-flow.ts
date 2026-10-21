@@ -21,7 +21,7 @@
 //   updating         the AI is done and the game is reloading behind the old picture
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
-import type { StudioStatus } from '../contract.ts';
+import type { AiAgent, StudioStatus } from '../contract.ts';
 import { statusCovers } from '../schema/handoff.mjs';
 
 export type AiPhase = 'none' | 'waiting' | 'nudge' | 'sent' | 'seen' | 'away' | 'received' | 'working' | 'asking' | 'updating' | 'done' | 'failed' | 'undone' | 'redone';
@@ -137,4 +137,22 @@ export function reloadDecision(r: ReloadState): 'now' | 'wait' | 'no' {
   // Asking: the AI may have written half its change before its question; wait for its "done" like while it works.
   if (aiBusy(r.phase) || r.phase === 'asking') return r.stableMs >= QUIET_MS ? 'now' : 'wait';
   return r.stableMs > 0 ? 'now' : 'wait';
+}
+
+/**
+ * "More in Claude" / "More in Codex" / "More in your AI" at the end of the line's small grey row (a try of v0.1.8,
+ * 2026-10-21: "it should say 'see Claude for details' — Claude if you use Claude, Codex if Codex, or a general 'see your AI'").
+ * The line is one sentence; the AI's whole answer (what it changed and why, what it would do next, its question in full)
+ * is in its own window, and nothing said so.
+ *
+ * Only when the AI has done or said something: done, failed (why it stopped is there) and asking (it asked in its own
+ * window too). Not while it works (the line is the news then), not after the person's own Undo / Redo (nothing new from
+ * the AI), not on an offline host (the web demo: no AI to look at).
+ * Words only, not a button (2026-10-21): a web page cannot bring the AI's window to the front — the Claude app's side
+ * pane is right next to the chat anyway, and a browser tab has no way back to a terminal or to Codex.
+ * Returns the i18n key, or null for no words.
+ */
+export function moreIn(phase: AiPhase, agent: AiAgent | undefined, offline: boolean): string | null {
+  if (offline || (phase !== 'done' && phase !== 'failed' && phase !== 'asking')) return null;
+  return agent === 'claude' ? 'ai.more.claude' : agent === 'codex' ? 'ai.more.codex' : 'ai.more.any';
 }

@@ -1237,6 +1237,9 @@ export interface StudioStatus {
  * files as they were, so "Undo AI change" can go back to this request.
  * Left out = unknown (then the editor falls back to waiting for a status).
  */
+/** The AI behind the editor, when the host can tell (src/server/which-ai.mjs). */
+export type AiAgent = 'claude' | 'codex';
+
 export interface AiWatchInfo {
   watching?: boolean;
   seen?: string;
@@ -1282,8 +1285,10 @@ export interface StudioHost {
    * Plus (AI feel, 2026-10-16) whether an AI is watching right now and the
    * game files' signature `code`: the shell reloads the game by itself when
    * it changes. Hosts that cannot tell leave them out.
+   * `agent` (2026-10-21): which AI is behind the editor, for the AI line's "More in Claude" / "More in Codex"
+   * (local: src/server/which-ai.mjs). Left out = unknown: the line says "More in your AI".
    */
-  status(): Promise<{ status: StudioStatus | null; time: number | null; watching?: boolean; seen?: string; code?: string }>;
+  status(): Promise<{ status: StudioStatus | null; time: number | null; watching?: boolean; seen?: string; code?: string; agent?: AiAgent }>;
   /**
    * "Undo AI change" (optional): put the game's files back as they were when
    * request `to` was made (the host keeps a snapshot of the game's files

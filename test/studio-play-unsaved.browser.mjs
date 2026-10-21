@@ -12,7 +12,8 @@
 //   glow / glow-bare     Glow Garden (examples/three-hud, a three.js world with an HTML UI): the title card moved on
 //                 the UI layer (its CSS translate in the running game)
 //   demo          the web demo (saves in this browser), Lantern Cove: PC and a phone
-// In Play the top bar says "Playing · unsaved changes" (not on a phone: the bar has no "Playing" there).
+// In Play a strip over the game says "This change isn't in the game yet" with Save (save-loud.ts, a try of the editor, 2026-10-21; the web
+// demo: "isn't saved yet"), on every layout.
 //
 //   node test/studio-play-unsaved.browser.mjs [--shots <dir>] [--tag before|after] [--only cove,cove-bare,…]
 //     [--layouts pc,side,phone] [--ui <a built studio-ui folder>]
@@ -55,7 +56,10 @@ const PLAY_READY = `!!${GAME}?.__gameStudio && !${GAME}.__gameStudio._debug && (
 const LIST = `JSON.stringify(${GAME}.__gameStudio._debug ? ${GAME}.__gameStudio._debug.list() : (${GAME}.__gameStudio._play?.list() || ${THREE_LIST}))`;
 const UI_AT = (k) => `(() => { const e = ${GAME}.document.querySelector('[data-studio-key=${JSON.stringify(k)}]'); return e ? getComputedStyle(e).translate : null; })()`;
 const FAB = `(() => { const f = document.querySelector('[data-part=save-fab]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
-const NOTE = `(() => { const n = document.querySelector('.brand .here-note'); return n && !n.hidden && n.offsetParent ? n.textContent : ''; })()`;
+// While playing with changes not saved: the strip over the game (a try of the editor, 2026-10-21, B; save-loud.ts). It replaced the
+// grey "· unsaved changes" after "Playing" in the top bar, which the narrow layouts never showed; the strip is on all.
+const NOTE = `(() => { const n = document.querySelector('[data-part=play-unsaved]'); return n && !n.hidden && n.offsetParent ? n.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
+const UNSAVED = /not in the game yet|not saved yet|isn’t in the game yet|isn’t saved yet|aren’t in the game yet|aren’t saved yet/;
 const keyDown = (k, extra = {}) => `window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, ...${JSON.stringify(extra)} }))`;
 const PLAY_BTN = `(() => { const b = [...document.querySelectorAll('[data-action=play]')].find((x) => x.offsetParent && x.getBoundingClientRect().width); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`;
 
@@ -181,10 +185,7 @@ function worldSteps({ move, d, copy, del, extra }) {
     await page.waitFor(PLAY_READY, 40000);
     check(await until(same), `Play: as in the editor (${await where()})`);
     const note = await page.eval(NOTE);
-    // A phone and the chat's side window (both the narrow layout) show only the game's name in the bar: no "Playing"
-    // to stand next to, and no note either (Edit on the right says it is playing).
-    if ((await page.eval(`document.querySelector('.shell').dataset.layout`)) === 'phone') check(note === '', 'narrow layout: no note (the bar has no "Playing" there)');
-    else check(/unsaved/.test(note), `the top bar says it ("${note}")`);
+    check(UNSAVED.test(note), `the strip over the game says it ("${note}")`);
     await sleep(800);
     await shot('play');
 
@@ -193,7 +194,7 @@ function worldSteps({ move, d, copy, del, extra }) {
     check(await until(same), `back to Edit: still as before (${await where()})`);
     const fab2 = await page.eval(FAB);
     check(fab2 === fab, `back to Edit: "${fab2}" as before`);
-    check((await page.eval(NOTE)) === '', 'no note in Edit');
+    check((await page.eval(NOTE)) === '', 'no strip in Edit');
     await sleep(500);
     await shot('edit-back');
     if (extra) await extra({ ...t, start, moved });
@@ -265,7 +266,7 @@ try {
       await togglePlay();
       await page.waitFor(`!!${GAME}?.__gameStudio && !${GAME}.__gameStudio._debug`, 40000);
       check(await until(async () => (await page.eval(UI_AT(K))) === at1), `Play: the title card where it was put (${await page.eval(UI_AT(K))})`);
-      check(/unsaved/.test(await page.eval(NOTE)), 'the top bar says it');
+      check(UNSAVED.test(await page.eval(NOTE)), 'the strip over the game says it');
       await shot('play');
       await togglePlay();
       await page.waitFor(EDIT_READY, 40000);

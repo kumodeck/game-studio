@@ -120,6 +120,15 @@ Saved" in the same place for a moment, then gone. The picked object's card has a
 end: one line (picture and name), kept across picks and reloads in this browser (`placement-panel.ts`).
 `test/studio-save-fab.browser.mjs`.
 
+Save, loud (a try of the editor, 2026-10-21, a second look: the black "Save to game · 1" was not noticed; `save-loud.ts`):
+the Save in the game is filled with KUMO's orange (`--you`, white words — the one place orange is a fill; a pick is
+only ever an outline, tint or dot) and bounces once when a change first appears (not on later changes, not back from
+Play, not with reduced motion). While something is not saved the top bar also has "Save to game" right beside ▶ Play
+("Save" on a phone and in the side window), in Edit and in Play; while playing, a strip over the top of the game says
+"This change isn't in the game yet" with the orange Save and × (hides the strip for that round of Play only; it
+replaced the grey "· unsaved changes" after "Playing"). Saving takes all of them away. `test/save-loud.test.ts`,
+`test/save-loud.browser.mjs` (and its before / after photos).
+
 Basic actions with a button AND a shortcut (basics pass, 2026-10-18; from a try of the editor: "undo, redo…
 keyboard shortcuts and buttons"): Undo / Redo always in the top bar (dimmed when there is nothing to undo; "✓ Saved" left of them so they
 never move), ⌘C / ⌘V (paste = duplicates of what was copied), 1–4 for the strip's tools, and `?` for the sheet of
