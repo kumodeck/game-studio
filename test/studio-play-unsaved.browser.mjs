@@ -12,8 +12,10 @@
 //   glow / glow-bare     Glow Garden (examples/three-hud, a three.js world with an HTML UI): the title card moved on
 //                 the UI layer (its CSS translate in the running game)
 //   demo          the web demo (saves in this browser), Lantern Cove: PC and a phone
-// In Play a strip over the game says "This change isn't in the game yet" with Save (save-loud.ts, a try of the editor, 2026-10-21; the web
-// demo: "isn't saved yet"), on every layout.
+// ▶ Play with changes not saved asks first — Save and play / Try without saving (unsaved-guard.ts, a try of the editor,
+// 2026-10-21: "let them choose with buttons"); every case here takes Try without saving, on every layout, and checks
+// that nothing more is said over the game while playing (the strip "This change isn't in the game yet" went then).
+// The window itself: test/studio-play-choice.browser.mjs.
 //
 //   node test/studio-play-unsaved.browser.mjs [--shots <dir>] [--tag before|after] [--only cove,cove-bare,…]
 //     [--layouts pc,side,phone] [--ui <a built studio-ui folder>]
@@ -55,11 +57,14 @@ const THREE_LIST = `(() => { const out = []; for (const s of ${GAME}.__studioThr
 const PLAY_READY = `!!${GAME}?.__gameStudio && !${GAME}.__gameStudio._debug && ((${GAME}.__gameStudio._play?.list() || ${THREE_LIST}) || []).length > 0`;
 const LIST = `JSON.stringify(${GAME}.__gameStudio._debug ? ${GAME}.__gameStudio._debug.list() : (${GAME}.__gameStudio._play?.list() || ${THREE_LIST}))`;
 const UI_AT = (k) => `(() => { const e = ${GAME}.document.querySelector('[data-studio-key=${JSON.stringify(k)}]'); return e ? getComputedStyle(e).translate : null; })()`;
-const FAB = `(() => { const f = document.querySelector('[data-part=save-fab]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
-// While playing with changes not saved: the strip over the game (a try of the editor, 2026-10-21, B; save-loud.ts). It replaced the
-// grey "· unsaved changes" after "Playing" in the top bar, which the narrow layouts never showed; the strip is on all.
-const NOTE = `(() => { const n = document.querySelector('[data-part=play-unsaved]'); return n && !n.hidden && n.offsetParent ? n.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
-const UNSAVED = /not in the game yet|not saved yet|isn’t in the game yet|isn’t saved yet|aren’t in the game yet|aren’t saved yet/;
+// The one Save, beside ▶ Play (2026-10-21; it was the Save in the game's corner, [data-part=save-fab], until then).
+const FAB = `(() => { const f = document.querySelector('[data-part=save]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
+// While playing with changes not saved: nothing over the game says so any more (the strip of 2026-10-21 B went the same
+// day — Play asks first now). Any such line left would show here.
+const NOTE = `(() => { const n = document.querySelector('[data-part=play-unsaved]'); if (n) return n.innerText; const m = (document.querySelector('.stage')?.innerText || '').match(/[^\\n]*(in the game yet|saved yet)[^\\n]*/); return m ? m[0] : ''; })()`;
+// Play's window (unsaved-guard.ts kind 'play'): open, and its title.
+const CHOICE = `(() => { const g = document.querySelector('[data-part=unsaved-guard][data-kind=play]'); return g && !g.hidden ? g.querySelector('h2').textContent : ''; })()`;
+const TRY_BTN = `(() => { const b = document.querySelector('[data-part=unsaved-guard]:not([hidden]) [data-action=guard-discard]'); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`;
 const keyDown = (k, extra = {}) => `window.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(k)}, bubbles: true, ...${JSON.stringify(extra)} }))`;
 const PLAY_BTN = `(() => { const b = [...document.querySelectorAll('[data-action=play]')].find((x) => x.offsetParent && x.getBoundingClientRect().width); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`;
 
@@ -109,11 +114,23 @@ async function run(name, layout, opts) {
     }
   };
   const press = async (p) => (layout.mobile ? page.tap(p.x, p.y) : page.click(p.x, p.y));
+  // Into Play with changes not saved: the window, then "Try without saving" (pressed like a person). `asked` = its title.
+  let asked = '';
   const togglePlay = async () => {
     const b = JSON.parse((await page.eval(PLAY_BTN)) || 'null');
     if (b) await press(b);
     else await page.eval(keyDown('p'));
+    asked = '';
+    for (let i = 0; i < 10 && !asked; i++) {
+      await sleep(150);
+      asked = await page.eval(CHOICE);
+    }
+    if (asked) {
+      const tr = JSON.parse((await page.eval(TRY_BTN)) || 'null');
+      if (tr) await press(tr);
+    }
   };
+  const askedNow = () => asked;
   /** The card's first number (X), by `d`: one change, as a person types it. */
   const nudgeX = async (d) => page.eval(`(() => { const i = document.querySelector('[data-part=card] .fields input'); if (!i) return false;
     i.value = String((parseFloat(i.value) || 0) + ${d}); i.dispatchEvent(new Event('change')); return true; })()`);
@@ -127,7 +144,7 @@ async function run(name, layout, opts) {
     await page.goto(opts.url);
     await page.waitFor(EDIT_READY, 40000);
     await sleep(1200);
-    await opts.steps({ page, tag, shot, list, poseOf, until, togglePlay, nudgeX });
+    await opts.steps({ page, tag, shot, list, poseOf, until, togglePlay, askedNow, nudgeX });
   } catch (e) {
     check(false, `${tag}: ${e.message}`);
   } finally {
@@ -138,7 +155,7 @@ async function run(name, layout, opts) {
 /** The world's case: move (and copy / delete), Play, back to Edit. */
 function worldSteps({ move, d, copy, del, extra }) {
   return async (t) => {
-    const { page, shot, poseOf, until, togglePlay, nudgeX, list } = t;
+    const { page, shot, poseOf, until, togglePlay, askedNow, nudgeX, list } = t;
     const start = await poseOf(move);
     await page.eval(`studioShell.actions.select(${JSON.stringify(move)})`);
     await sleep(700);
@@ -182,14 +199,18 @@ function worldSteps({ move, d, copy, del, extra }) {
     };
 
     await togglePlay();
+    check(/unsaved change/.test(askedNow()), `▶ Play asked first ("${askedNow()}") → Try without saving`);
     await page.waitFor(PLAY_READY, 40000);
     check(await until(same), `Play: as in the editor (${await where()})`);
     const note = await page.eval(NOTE);
-    check(UNSAVED.test(note), `the strip over the game says it ("${note}")`);
+    check(note === '', `nothing over the game says "not in the game yet" ("${note}")`);
+    // The one Save (2026-10-21): the same button stays beside ▶ Play while playing, with its count.
+    check((await page.eval(FAB)) === fab, `Play: the same Save beside Play ("${await page.eval(FAB)}")`);
     await sleep(800);
     await shot('play');
 
     await togglePlay();
+    check(askedNow() === '', 'Edit from Play: no window');
     await page.waitFor(EDIT_READY, 40000);
     check(await until(same), `back to Edit: still as before (${await where()})`);
     const fab2 = await page.eval(FAB);
@@ -251,7 +272,7 @@ try {
     if (!want(name)) continue;
     const root = gameFolder('examples/three-hud', bare);
     roots.push(root);
-    await run(name, LAYOUTS.pc, { url: await serve(root), steps: async ({ page, shot, until, togglePlay, nudgeX }) => {
+    await run(name, LAYOUTS.pc, { url: await serve(root), steps: async ({ page, shot, until, togglePlay, askedNow, nudgeX }) => {
       const K = 'title-card';
       const at0 = await page.eval(UI_AT(K));
       await page.eval(keyDown('u'));
@@ -264,9 +285,10 @@ try {
       check(at1 !== at0, `the title card: ${at0} → ${at1}`);
       await shot('edit-moved');
       await togglePlay();
+      check(/unsaved change/.test(askedNow()), `▶ Play asked first ("${askedNow()}") → Try without saving`);
       await page.waitFor(`!!${GAME}?.__gameStudio && !${GAME}.__gameStudio._debug`, 40000);
       check(await until(async () => (await page.eval(UI_AT(K))) === at1), `Play: the title card where it was put (${await page.eval(UI_AT(K))})`);
-      check(UNSAVED.test(await page.eval(NOTE)), 'the strip over the game says it');
+      check((await page.eval(NOTE)) === '', 'nothing over the game says "not in the game yet"');
       await shot('play');
       await togglePlay();
       await page.waitFor(EDIT_READY, 40000);

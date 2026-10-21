@@ -24,7 +24,8 @@
       plus two colours that each mean one thing and are never decoration:
         --you  #ff6b1a  your hand: what you picked (outline, name tag, chip, dot);
                         ONE EXCEPTION (a try of the editor, 2026-10-21, "make Save orange"): the
-                        Save presses (.save-fab, .top-save, .play-unsaved-save) are
+                        Save presses (.top-save, and "Save and play" in Play's window,
+                        .unsaved-guard[data-kind="play"] .primary) are
                         FILLED with it, white words on top — a pick is only ever an
                         outline, a tint or a dot, never a filled capsule, so the two
                         do not read alike;
@@ -229,8 +230,8 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 /* Undo / redo: always in the top bar, PC and phone, dimmed (button:disabled) when there is nothing to undo / redo
    (basics pass, 2026-10-18). Until then PC hid them (⌘Z and ⌘K only) and the phone showed Undo only when it could
    act: a person without the shortcut had nothing to find, and a button that comes and goes moves its neighbours.
-   "✓ Saved" sits left of them, so nothing here moves when it comes and goes. (Save itself left the top bar for the
-   game on 2026-10-20: .save-fab.) */
+   "✓ Saved" sits left of them, so nothing here moves when it comes and goes. (Save itself is beside ▶ Play since
+   2026-10-21: .top-save.) */
 .top [data-action="undo"], .top [data-action="redo"] { flex: none; }
 .peer { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-s); }
 .peer .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
@@ -252,11 +253,25 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .top-actions .play .icon { width: 12px; height: 12px; }
 .top-actions .play kbd { background: none; padding: 0; margin-left: 2px; color: color-mix(in srgb, var(--solid-fg) 45%, transparent); }
 .top-actions > button:not(.play) { background: var(--raise); }
-/* "Save to game" right beside ▶ Play while something is not saved (a try of the editor, 2026-10-21, B; main.ts topSave): the same
-   orange fill as the Save in the game (rule 2's exception), Play's size. Shown in Edit and in Play. */
-.top-actions > button.top-save { background: var(--you); color: var(--you-fg); font-weight: 600; padding: 0 12px; white-space: nowrap; animation: studio-rise var(--dur-in) var(--ease); }
+/* The ONE Save, right beside ▶ Play while something is not saved (a try of v0.1.9, 2026-10-21; main.ts topSave,
+   save-loud.ts): "Save · 3  ⌘S", in Edit and in Play. It was a second press of the Save in the game's corner (.save-fab,
+   2026-10-20 → 21) — "why are there two buttons that do the same thing?" — and now is the only one.
+   KUMO's orange (rule 2's one exception): a pick is an outline / tint / dot, so a FILLED capsule with white words reads
+   as a press, not as something picked. The solid (black / white) stays Play's and send's. Play's size. Hover: a step
+   darker (towards black in both themes: lighter would wash the white words out).
+   One bounce when a change first appears (2026-10-21, C): rises in, overshoots 6 % and settles — once, never on later
+   changes. A script animation (main.ts renderButtons, save-loud.ts bounces), not a rule here: a CSS animation switched
+   on by an attribute ran studio-rise a second time when the attribute came off. .48 s = two of rule 6's arrivals: a
+   third duration, allowed for this one press. Not for a person who asked for less motion. */
+.top-actions > button.top-save { display: inline-flex; align-items: center; gap: 6px; background: var(--you); color: var(--you-fg); font-weight: 600; padding: 0 12px; white-space: nowrap; animation: studio-rise var(--dur-in) var(--ease); }
 .top-actions > button.top-save[hidden] { display: none; }
 .top-actions > button.top-save:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
+.top-actions > button.top-save .n { color: color-mix(in srgb, var(--you-fg) 78%, transparent); }
+.top-actions > button.top-save kbd { background: none; padding: 0; margin-left: 2px; color: color-mix(in srgb, var(--you-fg) 62%, transparent); }
+.top-actions > button.top-save .icon { width: 14px; height: 14px; }
+/* "✓ Saved" for a moment after the press: the same place, quiet (the bar's raised grey), then gone — and the quiet
+   "✓ Saved" left of Undo takes over. */
+.top-actions > button.top-save[data-state="done"] { background: var(--raise); color: var(--text-2); cursor: default; }
 .game-tools { display: flex; gap: 4px; align-items: center; min-width: 0; }
 .game-tools .label { color: var(--text-3); font-size: var(--fs-s); }
 .game-tools button { background: var(--raise); }
@@ -436,59 +451,9 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 /* One column that never grows past the dock: a long ⌘K row (17 px type on a phone) pushed the grid wider than the screen. */
 .dock { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(600px, calc(100% - 32px)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; z-index: 5; }
 .shell[data-shelf="on"]:not([data-layout="phone"]) .dock { z-index: 6; }
-/* ----- Save in the game (a try of the editor, 2026-10-20; main.ts saveFab) -----
-   Only while something is not saved: "Save · 3  ⌘S" at the game's bottom right. The SOLID (white on dark, black on
-   light — the fill of Play and send) and not a new hue: orange is the pick, violet the AI (rule 2), and the solid is
-   already the editor's "press this" — over a game it is the strongest contrast there is, in both themes.
-   PC: on the ask bar's row (its centre line), 12 px in from the game's right edge. The dock keeps --fab-room free on
-   BOTH sides at every width (not only while Save shows), so the bar never moves or narrows when Save comes; at 1280
-   that changes nothing (the bar stays 600). The camera ↑↓ sit above the bar's row, so the two never meet.
-   Phone / side window: right edge, 12 px over what covers the game's foot (--fab-bottom, measured in sendInset). */
-:root { --fab-room: 172px; }
-.shell:not([data-layout="phone"]) .dock { width: min(600px, calc(100% - 2 * var(--fab-room))); }
-.save-fab { position: absolute; right: 12px; bottom: calc(16px + (var(--bar) - 36px) / 2); z-index: 6; height: 36px; padding: 0 14px;
-  display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; background: var(--you); color: var(--you-fg); font-weight: 600; white-space: nowrap;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, .2), 0 8px 24px rgba(0, 0, 0, .32); animation: studio-rise var(--dur-in) var(--ease); }
-/* KUMO's orange since 2026-10-21 (a try of the editor, C: "make Save orange" — the black "Save to game · 1" was not noticed).
-   The --you of rule 2, not a new orange; the one place it is a FILL: a pick is an outline / tint / dot, so a filled
-   capsule with white words reads as a press, not as something picked. The solid (black / white) of before stays
-   Play's and send's. Hover: a step darker (towards black in both themes: lighter would wash the white words out). */
-.save-fab[hidden] { display: none; }
-.save-fab:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
-.save-fab .n { color: color-mix(in srgb, var(--you-fg) 78%, transparent); }
-.save-fab kbd { margin-left: 4px; color: color-mix(in srgb, var(--you-fg) 62%, transparent); }
-/* One bounce when a change first appears (a try of the editor, 2026-10-21, C): rises as before, overshoots 6 % and settles — once,
-   never on later changes. It is a script animation (main.ts renderButtons, save-loud.ts bounces), not a rule here: a
-   CSS animation switched on by an attribute ran studio-rise a second time when the attribute came off. .48 s = two of
-   rule 6's arrivals: a third duration, allowed for this one press. Not for a person who asked for less motion. */
-.save-fab .icon { width: 14px; height: 14px; }
-/* "✓ Saved" for a moment after the press: the same place, quieter (glass), then gone. */
-.save-fab[data-state="done"] { background: var(--glass); color: var(--text-2); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); cursor: default; }
-/* One thing at a time: not over the ⌘K list, the shortcut sheet, while playing. */
-.shell[data-palette="open"] .save-fab, .shell[data-palette="suggest"] .save-fab, .shell[data-keys="open"] .save-fab, .shell[data-playing="on"] .save-fab { display: none; }
-.shell[data-layout="phone"] .save-fab { bottom: var(--fab-bottom, 80px); height: 44px; padding: 0 18px; font-size: var(--fs-s); }
-.shell[data-fit="side"] .save-fab { height: 32px; padding: 0 12px; }
-/* ----- Playing with changes not saved (a try of the editor, 2026-10-21, B; main.ts playStrip / save-loud.ts) -----
-   "This change isn't in the game yet  [Save to game]  ×" over the top of the game. Clear, not loud: the glass of every
-   plate over the game, ink words, the orange press. One line the height of a button (40) so the game keeps its screen;
-   × hides it for this round of Play (the orange Save beside Play stays). Narrow screens: the words may take two lines
-   rather than be cut (what is missing must be read whole). */
-.play-unsaved { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; max-width: calc(100% - 16px); box-sizing: border-box;
-  display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 4px 4px 16px; border-radius: 20px; color: var(--text); font-weight: 600;
-  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow); }
-.play-unsaved[hidden] { display: none; }
-.play-unsaved.enter { animation: studio-drop var(--dur-in) var(--ease); }
-/* It comes down from the top edge it hangs on (studio-rise, but downwards and keeping its centring). */
-@keyframes studio-drop { from { opacity: 0; transform: translate(-50%, -6px) scale(.985); } to { opacity: 1; transform: translateX(-50%); } }
-.play-unsaved-text { min-width: 0; line-height: 1.3; }
-.play-unsaved .play-unsaved-save { flex: none; min-height: 32px; padding: 0 14px; border-radius: 999px; background: var(--you); color: var(--you-fg); font-weight: 600; white-space: nowrap; }
-.play-unsaved .play-unsaved-save:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
-.play-unsaved .play-unsaved-hide { flex: none; width: 32px; min-height: 32px; border-radius: 999px; }
-.play-unsaved .play-unsaved-hide .icon { width: 14px; height: 14px; }
-.shell:not([data-playing="on"]) .play-unsaved { display: none; }
-.shell[data-layout="phone"] .play-unsaved { top: 8px; width: calc(100% - 16px); gap: 6px; padding-left: 14px; font-size: var(--fs-s); border-radius: var(--r); }
-.shell[data-layout="phone"] .play-unsaved-text { flex: 1; }
-.shell[data-layout="phone"] .play-unsaved .play-unsaved-hide { width: 36px; min-height: 36px; }
+/* (The strip over the game while playing with changes not saved — "This change isn't in the game yet [Save] ×",
+   2026-10-21 B — was taken out the same day: ▶ Play now asks first, "Save and play / Try without saving", in the window of
+   unsaved-guard.ts below, so Play has nothing more to say. The orange Save beside Play stays.) */
 .bar { display: flex; align-items: center; gap: 4px; }
 .bar [data-action="sheet"] { display: none; }
 .ask-slot { flex: 1; min-width: 0; }
@@ -1110,6 +1075,13 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* Narrow (phone, the chat's side window): one button per row, the main one on top under the thumb's reach of the text. */
 .shell[data-layout="phone"] .unsaved-guard .safe-actions { flex-direction: column-reverse; }
 .shell[data-layout="phone"] .unsaved-guard .safe-actions button { flex: none; width: 100%; }
+/* At ▶ Play (unsaved-guard.ts kind 'play', 2026-10-21: "let them choose with buttons"): the second line sits under the
+   title as its quieter half (the window's gap is for the buttons), and the main press — "Save and play" — is the orange
+   of Save beside Play (rule 2's one exception), because it IS that Save, then Play. */
+.unsaved-guard[data-kind="play"] .safe-title + .safe-lead { margin-top: -8px; color: var(--text-2); line-height: 1.45; }
+.unsaved-guard[data-kind="play"] .safe-lead + .safe-lead { margin-top: -10px; color: var(--text-2); line-height: 1.45; }
+.unsaved-guard[data-kind="play"] button.primary { background: var(--you); color: var(--you-fg); font-weight: 600; }
+.unsaved-guard[data-kind="play"] button.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--you) 88%, #000); }
 
 /* ----- The buttons' tooltip (tooltip.ts) and the shortcut sheet (shortcuts.ts); basics pass, 2026-10-18 ----- */
 /* One line of glass, the small size: the name in the text colour, the key after it in the third grey (as a Mac menu

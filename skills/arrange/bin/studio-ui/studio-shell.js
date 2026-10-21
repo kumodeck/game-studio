@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.8 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.9 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -7850,11 +7850,6 @@ const en = {
   'btn.reloadGame': 'Reload',
   'status.playing': 'Playing the game as you arranged it in the editor, saved or not. Save hands it to your AI. Switch to Edit to keep arranging.',
   'status.playingShort': 'Playing',
-  // Playing with changes not saved (a try of the editor, 2026-10-21, B: "people won't notice — make it show at Play too"): a strip over the
-  // game with Save beside it (main.ts playUnsaved). It replaced the quiet "· unsaved changes, not in the game yet" after
-  // "Playing" in the top bar, which nobody read. Says what is missing, not what to feel: the game itself has not changed.
-  'play.unsaved': '{n:This change isn’t|These changes aren’t} in the game yet',
-  'play.unsavedHide': 'Hide (Save stays in the top bar)',
   'status.items': 'Finding objects you can move…',
   'placement.empty': 'No movable objects found.',
   'placement.select': 'Select an object in the game, or choose one here.',
@@ -8084,6 +8079,12 @@ const en = {
   'guard.save': 'Save and continue',
   'guard.discard': 'Don’t save',
   'guard.cancel': 'Cancel',
+  // The same window at ▶ Play with changes not saved (unsaved-guard.ts, a try of the editor, 2026-10-21: "let them choose
+  // with buttons — save, or try it without saving"). The title is guard.title; the second line says what Save does.
+  'guard.playWhy': 'Save, and your AI puts the changes in the game’s code.',
+  'guard.playTools': '{n:1 change in a game tool is|# changes in game tools are} lost if you don’t save.',
+  'guard.playSave': 'Save and play',
+  'guard.playTry': 'Try without saving',
   'layer.title': 'Layer',
   'layer.toBack': 'Send to back',
   'layer.backward': 'Send backward',
@@ -8135,11 +8136,10 @@ const en = {
   'list.title': 'In this scene',
   'list.titleUi': 'On screen',
   'foot.palette': 'All actions',
-  // The Save in the game (a try of the editor, 2026-10-21: "Save is hard to understand. Play works without it, so people won't notice it is
-  // needed"). The button says where the change goes; the tooltip says the rest in one sentence: until Save, the moves live only
-  // in this editor; Save hands them to the AI, which puts them in the game's code, so the game outside the editor changes too.
-  'save.fab': 'Save to game',
-  'save.unsavedTip': '{n:1 change is|# changes are} only in this editor. Save, and your AI puts {n:it|them} in the game’s code — the game outside the editor changes too',
+  // The Save's tooltip (a try of v0.1.9, 2026-10-21): one sentence. The button itself says only "Save" (btn.save) — it said
+  // "Save to game" for a day ("Save is hard to understand. Play works without it, so people won't notice it is needed"),
+  // and that read as a different action: "'Save to game' — I don't get what that means". Where the change goes is said here.
+  'save.unsavedTip': 'Save, and your AI puts it in the game’s code (the game outside the editor changes too)',
   'save.savedTip': 'Saved and sent to your AI',
   'peer.label': 'AI',
   'peer.idle': 'No reply from your AI yet',
@@ -8342,8 +8342,6 @@ const ja                               = {
   'btn.reloadGame': '読み込み直す',
   'status.playing': 'エディタで並べたとおり（保存していない変更も込み）で遊んでいます。保存すると AI に渡ります。「編集」で続けて並べられます。',
   'status.playingShort': '遊んでいます',
-  'play.unsaved': 'この変更はまだゲームに入っていません',
-  'play.unsavedHide': '隠す（保存は上に残ります）',
   'status.items': '動かせる物を探しています…',
   'placement.empty': '動かせる物が見つかりません。',
   'placement.select': 'ゲームの中の物をクリックするか、ここから選んでください。',
@@ -8545,6 +8543,10 @@ const ja                               = {
   'guard.save': '保存して続ける',
   'guard.discard': '保存せずに続ける',
   'guard.cancel': 'やめる',
+  'guard.playWhy': '保存すると AI がゲームのコードに入れます。',
+  'guard.playTools': 'ゲームの道具の変更 {n} 個は、保存しないと消えます。',
+  'guard.playSave': '保存して遊ぶ',
+  'guard.playTry': '保存せずに試す',
   'layer.title': '重なり',
   'layer.toBack': 'いちばん奥へ',
   'layer.backward': '奥へ',
@@ -8591,8 +8593,7 @@ const ja                               = {
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
   'foot.palette': 'すべての操作',
-  'save.fab': '保存してゲームへ',
-  'save.unsavedTip': '{n} 個の変更は、まだこのエディタの中だけです。保存すると AI がゲームのコードに入れ、エディタの外のゲームも変わります',
+  'save.unsavedTip': '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）',
   'save.savedTip': '保存して AI に送りました',
   'peer.label': 'AI',
   'peer.idle': 'AI からの返事はまだありません',
@@ -9521,14 +9522,18 @@ __defs[26] = function (__exports) {
 'use strict';
 // save-loud.ts
 
-// Save, loud (a try of the editor, 2026-10-21, B and C). The first answer to "people won't notice Save is needed" (save-clear,
-// same day) changed only the words on the black button ("Save to game · 1"); a second look at it: "nobody will
-// notice that". So:
-//   C  the Save in the game is filled with KUMO's orange (shell.css .save-fab — the one exception to "orange = your
-//      pick"), and it gives one small bounce when a change first appears;
-//   B  while something is not saved, the top bar has "Save to game" right beside ▶ Play (short "Save" on a phone and
-//      in the side window), and Play shows a strip over the game — "This change isn't in the game yet  [Save to game]  ×".
-//      × hides the strip for this round of Play only; the Save beside Play stays. Saving takes all of them away.
+// Save, loud (a try of the editor, 2026-10-21, B and C), then ONE Save (a try of v0.1.9, same day: "why are there two
+// buttons that do the same thing?" and "'Save to game' — I don't get what that means").
+// History: the first answer to "people won't notice Save is needed" (save-clear) changed only the words on the black
+// button in the game ("Save to game · 1"); a second look: "nobody will notice that". So C — KUMO's orange and one bounce
+// — and B — a second orange "Save to game" beside ▶ Play plus a strip over the game while playing. The second button
+// was a misreading of the brief: v0.1.9 showed the same Save twice (top right and bottom right of the game). Now:
+//   - ONE Save, right beside ▶ Play in the top bar (main.ts topSave), in Edit and in Play, on every screen width:
+//     orange, "Save · 3  ⌘S", one bounce when a change first appears. Its word is plain "Save" everywhere — "Save to
+//     game" read as a different, second action. Where the change goes is said once, in its tooltip.
+//   - The strip over the game while playing ("This change isn't in the game yet  [Save]  ×") went the same day: ▶ Play
+//     with changes not saved asks first — Save and play / Try without saving (unsaved-guard.ts, main.ts togglePlay;
+//     "let them choose with buttons") — so once playing, the person has chosen and nothing more is said over the game.
 // What is shown where is decided here (no DOM), so test/save-loud.test.ts can read it without a browser; main.ts
 // renderButtons draws it.
 
@@ -9536,28 +9541,15 @@ __defs[26] = function (__exports) {
                                                     
             
                    
-                                                                     
-                       
-                                                                                         
-                  
  
 
                               
-                                                                                                                         
+                                                                                                          
                
-                                                                                    
-                               
-                                               
-                 
  
 
 function saveLoud(s            )              {
-  const any = s.n > 0;
-  return {
-    fab: any && !s.playing,
-    top: any ? (s.narrow ? 'short' : 'long') : null,
-    strip: any && s.playing && !s.stripHidden,
-  };
+  return { top: s.n > 0 };
 }
 
 /**
@@ -12528,6 +12520,14 @@ __defs[43] = function (__exports) {
 // save, Cancel (Esc, or a press outside). Tab stays inside. Closing the tab or reloading can only get the browser's
 // own question (beforeunload: its words, not ours), and only while lostBy('leave') > 0.
 // Pure part (lostBy) in test/unsaved-guard.test.ts; the window and each case in test/studio-unsaved-guard.browser.mjs.
+//
+// The same window, asked at ▶ Play (a try of the editor, 2026-10-21: "when 'this change isn't in the game yet', some
+// people want to save and some want to try it without saving — let them choose with buttons"). Nothing is lost at
+// Play (the draft goes along), so it is not a warning but a choice: "You have 3 unsaved changes" / "Save, and your
+// AI puts them in the game's code." and Save and play (the main one: Enter) · Try without saving · Cancel. It replaced
+// the strip over the game while playing ("This change isn't in the game yet [Save] ×"): the person already chose, so
+// Play says nothing more (the orange Save beside Play stays). Asked by main.ts togglePlay; the pure "when" is
+// playAsks() below, the screen in test/studio-play-choice.browser.mjs.
 const { h } = __require(14);
 
                                                                        
@@ -12552,6 +12552,25 @@ function lostBy(op         , s            )         {
 }
 
                                                         
+
+/**
+ * Does ▶ Play ask first? Only with something not saved (n = main.ts dirtyCount: placement, both layers, the Library and
+ * a game tool's data), and only going INTO Play — Edit from Play never asks (nothing is chosen there).
+ */
+function playAsks(n        , playing         )          {
+  return !playing && n > 0;
+}
+
+/**
+ * What the window says. 'loss' = something would be lost (leave, a game tool's data at a reload); 'play' = the choice
+ * at ▶ Play. `tools` (play only) = a game tool's changes among them, which live in the game page only: Try without
+ * saving loses those (unsaved-guard's own rule), so the window says so in a third short line instead of promising
+ * that every change stays.
+ */
+                           
+                         
+                 
+ 
 
 /** The window: in the middle of the editor, the glass of "Check before you save" (safe-save.ts); one at a time. */
 function createUnsavedGuard(deps                              ) {
@@ -12600,16 +12619,31 @@ function createUnsavedGuard(deps                              ) {
     get open() {
       return !el.hidden;
     },
-    ask(n        )                       {
+    /** The kind it was opened for ('loss' / 'play'; null while closed), for the screen tests. */
+    get kind() {
+      return el.hidden ? null : el.dataset.kind || null;
+    },
+    ask(n        , how           = {})                       {
       if (done) close('cancel');
       back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const play = how.kind === 'play';
+      el.dataset.kind = play ? 'play' : 'loss';
       const title = h('h2', { class: 'safe-title', id: 'unsaved-guard-title', text: t('guard.title', { n }) });
       el.setAttribute('aria-labelledby', 'unsaved-guard-title');
-      const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t('guard.save'), onclick: () => close('save') });
-      const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t('guard.discard'), onclick: () => close('discard') });
+      // Play: the second line says what Save does (one short sentence; the web demo says "kept in this browser",
+      // hosts/browser/text.ts), and — only when a game tool's data is among them — what Try loses.
+      const lines = !play ? [] : [
+        h('p', { class: 'safe-lead', id: 'unsaved-guard-why', dataset: { part: 'unsaved-guard-why' }, text: t('guard.playWhy') }),
+        ...((how.tools ?? 0) > 0 ? [h('p', { class: 'safe-lead', dataset: { part: 'unsaved-guard-tools' }, text: t('guard.playTools', { n: how.tools ?? 0 }) })] : []),
+      ];
+      if (play) el.setAttribute('aria-describedby', 'unsaved-guard-why');
+      else el.removeAttribute('aria-describedby');
+      const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t(play ? 'guard.playSave' : 'guard.save'), onclick: () => close('save') });
+      const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t(play ? 'guard.playTry' : 'guard.discard'), onclick: () => close('discard') });
       const no = h('button', { type: 'button', dataset: { action: 'guard-cancel' }, text: t('guard.cancel'), onclick: () => close('cancel') });
-      // Cancel · Don't save · Save and continue: the main one at the end, as in "Check before you save".
-      el.replaceChildren(title, h('div', { class: 'safe-actions' }, no, skip, save));
+      // Cancel · Don't save · Save and continue: the main one at the end, as in "Check before you save" (narrow: one
+      // per row, the main one on top — shell.css .unsaved-guard). Play's window has the same three places.
+      el.replaceChildren(title, ...lines, h('div', { class: 'safe-actions' }, no, skip, save));
       scrim.hidden = false;
       el.hidden = false;
       save.focus({ preventScroll: true });
@@ -12619,6 +12653,7 @@ function createUnsavedGuard(deps                              ) {
 }
 
 __def(__exports, "lostBy", () => lostBy);
+__def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
 __defs[44] = function (__exports) {
@@ -12876,7 +12911,7 @@ const { createShortcutSheet } = __require(39);
 const { createContextMenu } = __require(40);
 const { contextRows } = __require(41);
 const { bigChanges, createSafeSave } = __require(42);
-const { createUnsavedGuard, lostBy } = __require(43);
+const { createUnsavedGuard, lostBy, playAsks } = __require(43);
 const { createLayerSwitch } = __require(44);
 const { uiAsPlacement, uiEntries, withUi } = __require(45);
 const { barPress, gripEnd, readFold, writeFold } = __require(46);
@@ -13201,46 +13236,34 @@ function start(host            ) {
   // they would change and the key ("Undo: move lighthouse  ⌘Z"). Phone: 44 × 44.
   // "✓ Saved" sits LEFT of Undo / Redo: the bar's right group is aligned to the right, so whatever comes and goes
   // must be left of what stays (with Undo first, the first change pushed Undo 80 px left under the mouse).
-  // History: Save itself was here until 2026-10-20 (it moved into the game, saveFab below). A web demo bug of
-  // 2026-10-16 is why nothing may slide under the finger after Save: Save vanished, Undo slid into its spot, and a
-  // second tap on "Save" pressed Undo — "saving does not work". The Save in the game keeps its place for a moment
-  // after the press for the same reason (FAB_DONE_MS).
-  // Save in the game (a try of the editor, 2026-10-20: "people won't notice they have to press Save — show a Save button in the
-  // game view once something changed, bottom right, in a colour that stands out"). It was a quiet grey "Save · 3" in
-  // the top bar, beside Undo: out of the eye's way while the hand is on the game. Now there is ONE Save, the one in
-  // the game (a second one up top said the same thing twice); the top bar keeps only "✓ Saved" after it.
-  //   - shown only while something is not saved: "Save · 3  ⌘S"; pressing it = Save as before (handOff: the big
-  //     changes said in words first, then placement.json to the AI); in the web demo the same (saved in the browser);
-  //   - colour: the SOLID (white on dark, black on light — Play's and send's), not a new hue. Orange is the pick and
-  //     violet the AI (shell.css rule 2); a blue or green Save would be a third meaning to learn. The solid is the
-  //     strongest contrast the editor has, and over a game it reads at once in both themes;
-  //   - place: PC — the ask bar's row, at the game's right edge (the dock keeps room for it on both sides, shell.css,
-  //     so the bar never moves when it comes); the camera ↑↓ sit above that row. Phone / side window — the right
-  //     edge, just over whatever covers the game's foot (the bar, the card, the list sheet), and the camera ↑↓ go
-  //     above it (sendInset);
-  //   - pressed: "✓ Saved" in its place for a moment (FAB_DONE_MS), then gone. A second tap (people tap again when
-  //     the first seems to do little) lands on it, not on the game under it.
-  const saveFab = mk(saveBtns, 'save', () => {
-    if (saveFab.dataset.state === 'done') return;
+  // History: Save itself was here until 2026-10-20 (it moved into the game, then on 2026-10-21 beside ▶ Play: topSave
+  // below). A web demo bug of 2026-10-16 is why nothing may slide under the finger after Save: Save vanished, Undo slid
+  // into its spot, and a second tap on "Save" pressed Undo — "saving does not work". The Save keeps its place for a
+  // moment after the press for the same reason (SAVE_DONE_MS).
+  // The ONE Save (a try of v0.1.9, 2026-10-21: "why are there two buttons that do the same thing?"; save-loud.ts). Its way here:
+  //   - 2026-10-20 "people won't notice they have to press Save — show a Save button in the game view once something
+  //     changed, bottom right, in a colour that stands out": a Save in the game's bottom-right corner (save-fab);
+  //   - 2026-10-21 B "make it show at Play too": a second, orange "Save to game" beside ▶ Play — the brief was misread,
+  //     so v0.1.9 had the same press twice, and "Save to game" read as a different action;
+  //   - now: only the one beside ▶ Play. Play is where a person goes to try the change, so that is where the eye
+  //     already is, and it is the one place that is on screen in Edit AND in Play, on a PC, in the side window and on
+  //     a phone (the game's corner is under the dock, the card and the list sheet there, and gone while playing).
+  // What it is:
+  //   - shown only while something is not saved: "Save · 3  ⌘S" (the key on PC and in the side window; a phone has
+  //     none); pressing it = Save as always (handOff: the big changes said in words first, then placement.json to the
+  //     AI); in the web demo the same (saved in the browser). The word is "Save" on every width — where the change
+  //     goes is the tooltip's one sentence;
+  //   - KUMO's orange (shell.css .top-save — rule 2's one exception) and one bounce when a change first appears;
+  //   - pressed: "✓ Saved" in its place for a moment (SAVE_DONE_MS), then gone, and the quiet "✓ Saved" left of Undo
+  //     takes over. Play is right of it and the top bar's right group is aligned right, so Play never moves.
+  //   - data-action="save": screen tests read "the first visible [data-action=save]" as the count-carrying Save.
+  const topSave = mk(saveBtns, 'save', () => {
+    if (topSave.dataset.state === 'done') return;
     void handOff();
-  }, { class: 'save-fab', hidden: true, dataset: { action: 'save', part: 'save-fab' } });
-  // Save, loud (a try of the editor, 2026-10-21, B: "make it show at Play too"; save-loud.ts). Two more presses of the same Save, both
-  // in KUMO's orange like the one in the game, shown only while something is not saved:
-  //   - topSave: right beside ▶ Play in the top bar, in Edit and in Play ("Save to game"; "Save" where the bar is narrow).
-  //     Play is where a person goes to try the change, so that is where the eye already is. Its own data-action
-  //     (save-top), not "save": many screen tests read "the first visible [data-action=save]" as the count-carrying one.
-  //   - playStrip: over the game while playing — "This change isn't in the game yet  [Save to game]  ×". It replaced the
-  //     grey "· unsaved changes, not in the game yet" after "Playing" (v0.1.7–0.1.8), which nobody read. One line, the
-  //     height of a button, top centre; × hides it for this round of Play (Save beside Play stays).
-  const topSave = btn('save-top', () => void handOff(), { class: 'top-save', hidden: true, dataset: { action: 'save-top', part: 'save-top' } });
-  let stripHidden = false;
-  const stripText = h('span', { class: 'play-unsaved-text' });
-  const stripSave = btn('save-strip', () => void handOff(), { class: 'play-unsaved-save', dataset: { action: 'save-strip', part: 'play-unsaved-save' } });
-  const stripHide = btn('play-unsaved-hide', () => {
-    stripHidden = true;
-    renderButtons();
-  }, { class: 'icon-btn play-unsaved-hide', dataset: { action: 'play-unsaved-hide', part: 'play-unsaved-hide' } });
-  const playStrip = h('div', { class: 'play-unsaved', role: 'status', hidden: true, dataset: { part: 'play-unsaved' } }, stripText, stripSave, stripHide);
+  }, { class: 'top-save', hidden: true, dataset: { action: 'save', part: 'save' } });
+  // (The strip over the game while playing — "This change isn't in the game yet  [Save]  ×", 2026-10-21 B — went the
+  // same day: ▶ Play with changes not saved now asks first, "Save and play / Try without saving" (togglePlay, a try of
+  // the editor: "let them choose with buttons"), so once in Play the person has already chosen. Save beside Play stays.)
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
     saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
   // Is the AI there? Grey until it writes back in this session, green after,
@@ -13469,7 +13492,7 @@ function start(host            ) {
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
   const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, saveFab, playStrip);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
@@ -13617,28 +13640,6 @@ function start(host            ) {
       const libraryUp = tool === 'library' && !assetsPage.hidden;
       const menuUp = !!app.dataset.menu && app.dataset.menu !== 'closed';
       if (cardUp || sheetUp || libraryUp || menuUp) inset.camera = false;
-    }
-    // The Save in the game (saveFab), phone / side window: right over what covers the game's foot — the dock (the
-    // bar, the card and the AI's line over it), the list sheet, the Library — 12 px above the highest of them (CSS
-    // reads --fab-bottom). And the camera ↑↓, in the same corner, go above it while it shows (it comes with the
-    // first change, mostly with the card up, when the ↑↓ are away anyway). PC: CSS alone (the ask bar's row).
-    if (phone()) {
-      let foot = !dock.hidden && dock.offsetParent ? dock.getBoundingClientRect().top : sr.bottom;
-      if ((sheetOpen || page !== 'tool') && !playing) foot = Math.min(foot, window.innerHeight - sideFoot - side.offsetHeight);
-      if (tool === 'library' && !assetsPage.hidden) foot = Math.min(foot, assetsPage.getBoundingClientRect().top);
-      // 12 px over it, not 8 (the third design review's ③ / ⑨, 2026-10-20): at 8 the Save's shadow met the list
-      // sheet's edge and it read as sitting on it.
-      const fb = `${Math.max(8, Math.round(sr.bottom - foot + 12))}px`;
-      // Not while it says "✓ Saved": the AI's line ("saved…") rises in the dock right after the press and would carry
-      // the button up from under the finger, and a second tap would land on what slid into its place (the web demo's
-      // test caught the card's "…" there). It stays put for that moment, then goes.
-      if (saveFab.dataset.state !== 'done' && app.style.getPropertyValue('--fab-bottom') !== fb) app.style.setProperty('--fab-bottom', fb);
-      if (!saveFab.hidden) inset.bottom = Math.max(inset.bottom, Math.round(sr.bottom - foot + 12 + (saveFab.offsetHeight || 44) + 8));
-    } else if (!saveFab.hidden && saveFab.offsetParent) {
-      // PC: the camera ↑↓ go above the Save while it shows (the third design review's ③, 2026-10-20). With the ask bar
-      // they already were (the Save sits on the bar's row), but the web demo has no ask bar: there the Save covered ↓
-      // (the editor in the front page, a game of 814×572). offsetTop, not the rect: the Save rises in (a transform).
-      inset.bottom = Math.max(inset.bottom, Math.round(stage.clientHeight - saveFab.offsetTop + 8));
     }
     const card = placementPanel.cardEl;
     if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
@@ -15608,13 +15609,14 @@ function start(host            ) {
   // reload, Undo AI change) asks only for a game tool's data; leaving the page also for the Save itself (local studio).
   const lostNow = (op         ) => lostBy(op, { offline: !!host.offline, kept: dirtyCount() - toolsDirty(), tools: toolsDirty() });
   let guard                                               = null;
+  const guardWindow = () => (guard ||= createUnsavedGuard({ mount: app, t }));
   // True once the person chose to leave (Don't save, or after Save): the browser's own question must not come second.
   let leaving = false;
   /** Ask before `op` loses something; true = go on (saved first when asked to), false = stay as you are. */
   async function confirmLoss(op         )                   {
     const n = lostNow(op);
     if (n <= 0) return true;
-    const a = await (guard ||= createUnsavedGuard({ mount: app, t })).ask(n);
+    const a = await guardWindow().ask(n);
     if (a === 'cancel') return false;
     // Save and continue: only once the save went through (a failed save, or Cancel on "Check before you save", stays).
     if (a === 'save' && !(await handOff())) return false;
@@ -15744,7 +15746,7 @@ function start(host            ) {
     else if (!placementHanded && jobs.length) showToast(t('save.ok', { file: 'placement.json' }), 6000);
     if (!errors.length && jobs.length) {
       savedOnce = true;
-      fabDoneUntil = Date.now() + FAB_DONE_MS;
+      saveDoneUntil = Date.now() + SAVE_DONE_MS;
     }
     if (!errors.length) emit('saved', null);
     renderButtons();
@@ -15758,18 +15760,31 @@ function start(host            ) {
   let playing = false;
   // The first error the game's page threw since it was (re)loaded (studio:core/game-error), shown in the status line.
   let gameError                                             = null;
-  // Play: the game as its code is now. Nothing to confirm (every change is
-  // already kept); what was written waits first, so a game that reads
-  // placement.json at start (studio-placement.js) gets the latest one.
+  // Play: the game as the editor shows it (every change is kept as a draft and goes along); what was written waits
+  // first, so a game that reads placement.json at start (studio-placement.js) gets the latest one.
+  // With changes not saved, Play asks first (a try of the editor, 2026-10-21: "when 'this change isn't in the game yet',
+  // some people want to save and some want to try without saving — let them choose with buttons"): the window of
+  // unsaved-guard.ts, "You have 3 unsaved changes" — Save and play (Enter) · Try without saving · Cancel (Esc, outside).
+  //   - Save and play = Save as always (handOff: "Check before you save" for big changes comes first and is obeyed —
+  //     its Cancel, or a failed save, stays in Edit), then Play;
+  //   - Try without saving = what Play did before: the changes stay, in Play and back in Edit, and so does Save · N;
+  //   - Cancel = Edit as it was. The button, P and the ⌘K list all come here.
+  // It replaced the strip over the game while playing (the person has chosen; Play says nothing more) and the separate
+  // "a game tool's data would be lost" question at Play (its count is one more line of this window).
+  async function playChoice()                   {
+    const n = dirtyCount();
+    if (!playAsks(n, playing)) return true;
+    const a = await guardWindow().ask(n, { kind: 'play', tools: toolsDirty() });
+    if (a === 'cancel') return false;
+    if (a === 'save') return handOff();
+    return true;
+  }
   async function togglePlay() {
-    // A game tool's data lives in the game page only (unsaved-guard.ts); the placement draft goes along by itself.
-    if (!playing && !(await confirmLoss('reload'))) return;
+    if (!(await playChoice())) return;
     if (!playing) await keepNow(true);
     if (swapping) finishSwap();
     playing = !playing;
     if (playing) playSince = Date.now();
-    // × on the "not in the game yet" strip is for one round of Play (save-loud.ts): the next Play says it again.
-    stripHidden = false;
     palette.close();
     loadGame();
   }
@@ -16221,11 +16236,11 @@ function start(host            ) {
     app.dataset.playing = playing ? 'on' : 'off';
   }
 
-  // The Save in the game says "✓ Saved" this long after a press that went through, then goes (see saveFab).
-  const FAB_DONE_MS = 1200;
-  let fabDoneUntil = 0;
-  let fabTimer = 0;
-  // The count at the last render: the Save in the game bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
+  // The Save says "✓ Saved" this long after a press that went through, then goes (see topSave).
+  const SAVE_DONE_MS = 1200;
+  let saveDoneUntil = 0;
+  let saveTimer = 0;
+  // The count at the last render: the Save bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
   let prevUnsaved = 0;
   function renderButtons() {
     const n = dirtyCount();
@@ -16245,41 +16260,41 @@ function start(host            ) {
       setButton(b, 'redo', t('btn.redo'), false, tipText(nextRedo ? `${t('btn.redo')}: ${nextRedo}` : t('keys.nothingRedo'), keyOf('redo', mac)));
       b.disabled = playing || !undo.canRedo;
     }
-    // "✓ Saved": only after Save, until the next change (the draft writes are not shown).
+    const done = n === 0 && Date.now() < saveDoneUntil;
+    // "✓ Saved": only after Save, until the next change (the draft writes are not shown). Not while the Save itself
+    // still says "✓ Saved" (done): the two sit in the same bar now, and one "✓ Saved" twice read as two things.
     if (n > 0) savedOnce = false;
     saveState.replaceChildren(icon('check'), h('span', { text: t('btn.saved') }));
     saveState.title = t('save.savedTip');
-    saveState.hidden = !savedOnce || n > 0 || playing;
-    const done = n === 0 && Date.now() < fabDoneUntil;
-    const wasShown = !saveFab.hidden;
+    saveState.hidden = !savedOnce || n > 0 || playing || done;
+    const loud = saveLoud({ n, playing });
     for (const b of saveBtns) {
       // "Save · 3  ⌘S": only while there is something not saved (or "✓ Saved" for a moment after the press).
       if (done) setButton(b, 'check', t('btn.saved'), true, t('save.savedTip'));
       else {
-        // "Save to game · 3" (a try of the editor, 2026-10-21): the word says where the change goes; Play shows it without saving, so the
-        // plain "Save" read as optional. Same button, same place, same colour — only the words (save-clear README).
-        setButton(b, null, t('save.fab'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
+        // Plain "Save" (a try of v0.1.9, 2026-10-21: "'Save to game' — I don't get what that means"); the tooltip says where it goes.
+        setButton(b, null, t('btn.save'), true, tipText(t('save.unsavedTip'), keyOf('save', mac)));
         if (n) b.append(h('span', { class: 'n', text: `· ${n}` }));
         // The key on the button itself (PC and the side window: a keyboard is there); a phone has none.
         if (!phone() || sideWin()) b.append(h('kbd', { text: mac ? '⌘S' : 'Ctrl S' }));
       }
       b.dataset.state = done ? 'done' : '';
-      b.hidden = (n === 0 && !done) || playing;
+      b.hidden = !loud.top && !done;
       b.dataset.unsaved = String(n);
     }
     if (done) {
-      clearTimeout(fabTimer);
-      fabTimer = window.setTimeout(() => renderButtons(), fabDoneUntil - Date.now() + 20);
+      clearTimeout(saveTimer);
+      saveTimer = window.setTimeout(() => renderButtons(), saveDoneUntil - Date.now() + 20);
     }
-    // C (a try of the editor, 2026-10-21): one small bounce when a change first appears — it rises in as before, overshoots 6 % and
+    // C (a try of the editor, 2026-10-21): one small bounce when a change first appears — it rises in, overshoots 6 % and
     // settles. A script animation, not a CSS one switched on by an attribute: taking such an attribute off again (the
     // first try, a timer at 700 ms) changed the animation back to studio-rise, which then ran a SECOND time — the Save
-    // moved twice and the save-fab test caught it 6 px low. animate() runs once and leaves nothing behind. .48 s = two
-    // of rule 6's arrivals (shell.css .save-fab). Reduced motion: no bounce (bounces()). data-bumps counts them, for the
+    // moved twice and the screen test caught it 6 px low. animate() runs once and leaves nothing behind. .48 s = two
+    // of rule 6's arrivals (shell.css .top-save). Reduced motion: no bounce (bounces()). data-bumps counts them, for the
     // screen test ("once, not on every change").
     if (bounces(prevUnsaved, n, playing, matchMedia('(prefers-reduced-motion: reduce)').matches)) {
-      saveFab.dataset.bumps = String(Number(saveFab.dataset.bumps || 0) + 1);
-      saveFab.animate?.([
+      topSave.dataset.bumps = String(Number(topSave.dataset.bumps || 0) + 1);
+      topSave.animate?.([
         { opacity: 0, transform: 'translateY(6px) scale(.985)' },
         { opacity: 1, transform: 'translateY(-3px) scale(1.06)', offset: 0.45 },
         { transform: 'scale(.985)', offset: 0.75 },
@@ -16287,20 +16302,6 @@ function start(host            ) {
       ], { duration: 480, easing: 'cubic-bezier(.2, .8, .2, 1)' });
     }
     prevUnsaved = n;
-    // B (a try of the editor, 2026-10-21): "Save to game" beside ▶ Play, and the strip over the game while playing (save-loud.ts).
-    const loud = saveLoud({ n, playing, stripHidden, narrow: phone() || sideWin() });
-    topSave.hidden = !loud.top;
-    if (loud.top) setButton(topSave, null, loud.top === 'short' ? t('btn.save') : t('save.fab'), true, tipText(t('save.unsavedTip', { n }), keyOf('save', mac)));
-    const stripWas = !playStrip.hidden;
-    playStrip.hidden = !loud.strip;
-    if (loud.strip) {
-      stripText.textContent = t('play.unsaved', { n });
-      setButton(stripSave, null, phone() || sideWin() ? t('btn.save') : t('save.fab'), true, t('save.unsavedTip', { n }));
-      setButton(stripHide, 'close', t('play.unsavedHide'), false);
-      if (!stripWas) playStrip.classList.add('enter');
-    } else playStrip.classList.remove('enter');
-    // Shown or gone: the camera ↑↓ make room above it on a phone (sendInset).
-    if (wasShown === saveFab.hidden) sendInset();
     for (const b of playBtns) {
       setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
       if (!phone()) b.append(h('kbd', { text: 'P' }));
@@ -16353,7 +16354,8 @@ function start(host            ) {
     const sceneWord = (id        ) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here')               ).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
     // (Playing with changes not saved: v0.1.7–0.1.8 had a quiet "· unsaved changes" after "Playing" here. Since the
-    // second look of 2026-10-21 (B) it is the strip over the game and the orange Save beside Play: renderButtons, save-loud.ts.)
+    // second look of 2026-10-21 (B) the orange Save beside Play, and ▶ Play asks first — Save and play / Try without
+    // saving — so nothing more is said once playing: togglePlay, save-loud.ts.)
     // World | UI (UI stage 1): only for a game with both layers, while the game is being edited in the Scene.
     app.dataset.editLayer = editLayer;
     const showSwitch = !!editLayers && editLayers.length > 1 && editing && !playing && tool === 'placement' && page === 'tool';

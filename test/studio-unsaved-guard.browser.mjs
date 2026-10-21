@@ -8,9 +8,10 @@
 //                continue → placement.json + one request for the AI, then the page goes
 //   unload       local Lantern Cove: the browser's own question (beforeunload) on reload only while something is
 //                unsaved; none after Save
-//   play         local Lantern Cove: Play with unsaved moves asks nothing and keeps them (play-unsaved); Play with a game
-//                tool's unsaved data asks: Cancel stays in Edit, Don't save plays, Save and continue writes
-//                .studio/data/mark.json first
+//   play         local Lantern Cove: since the same day ▶ Play with anything unsaved asks first — Save and play / Try
+//                without saving (kind 'play'; the whole of it in test/studio-play-choice.browser.mjs). Here, a game
+//                tool's unsaved data: the window says Try loses it; Cancel stays in Edit, Save and play writes
+//                .studio/data/mark.json first, Try without saving plays and the file keeps what was saved
 //   ai-reload    local Lantern Cove + a game tool: the AI changes the game's code → the window before the game reloads;
 //                Cancel keeps the old page (and asks no more for that change); after Save it reloads by itself
 //   layer        Glow Garden: World ↔ UI with an unsaved move asks nothing, the count stays
@@ -49,7 +50,10 @@ const LAYOUTS = {
 const GAME = `document.querySelector('iframe').contentWindow`;
 const EDIT_READY = `document.querySelectorAll('.obj, .noname').length > 0 && !!${GAME}?.__gameStudio?._debug`;
 const PLAYING = `!!${GAME}?.__gameStudio && !${GAME}.__gameStudio._debug`;
-const FAB = `(() => { const f = document.querySelector('[data-part=save-fab]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
+// The one Save, beside ▶ Play (2026-10-21; it was the Save in the game's corner, [data-part=save-fab], until then).
+const FAB = `(() => { const f = document.querySelector('[data-part=save]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
+// Play's window: the line that says a game tool's changes are lost by Try without saving.
+const TOOLS_LINE = `document.querySelector('[data-part=unsaved-guard]:not([hidden]) [data-part=unsaved-guard-tools]')?.textContent || ''`;
 const GUARD = `(() => { const g = document.querySelector('[data-part=unsaved-guard]'); return g && !g.hidden ? g.querySelector('h2').textContent : ''; })()`;
 const RECT = (sel) => `(() => { const e = [...document.querySelectorAll(${JSON.stringify(sel)})].find((x) => x.getClientRects().length && x.getBoundingClientRect().width && getComputedStyle(x).visibility !== 'hidden'); if (!e) return null;
   // A link that wraps onto two lines: its first line (the middle of its whole box can be between the two).
@@ -267,13 +271,14 @@ try {
     const url = await serve(root);
     await run('play', LAYOUTS.pc, { url, steps: async ({ page, move, guardText, pressSel, until, press, shot }) => {
       const playBtn = '[data-action=play]';
-      // Unsaved moves: Play asks nothing and keeps them (play-unsaved, 2026-10-21).
+      // Unsaved moves: Play asks (Save and play / Try without saving); Try keeps them (play-unsaved, 2026-10-21).
       check(await move('lighthouse', 6), 'one unsaved move');
       const x = await page.eval(`parseFloat(document.querySelector('[data-part=card] .fields input').value)`);
       await pressSel(playBtn);
-      await sleep(700);
-      check((await guardText()) === '', 'Play with an unsaved move: no window');
-      check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'playing');
+      check(await until(async () => (await guardText()) === 'You have 1 unsaved change', 3000), `Play with an unsaved move: the window ("${await guardText()}")`);
+      check(!(await page.eval(TOOLS_LINE)), 'no game tool line (nothing of a tool is lost)');
+      await pressSel('[data-action=guard-discard]');
+      check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Try without saving: playing');
       await pressSel(playBtn);
       await page.waitFor(EDIT_READY, 40000);
       check(/1/.test(await page.eval(FAB)), `back in Edit: still "${await page.eval(FAB)}"`);
@@ -288,31 +293,32 @@ try {
       };
       check(await markOnce(), 'the game tool has 1 unsaved change');
       await pressSel(playBtn);
-      check(await until(async () => (await guardText()) === 'You have 1 unsaved change', 3000), `Play with the tool's data: "${await guardText()}"`);
+      check(await until(async () => (await guardText()) === 'You have 2 unsaved changes', 3000), `Play with the move and the tool's data: "${await guardText()}"`);
+      check(/^1 change in a game tool is lost/.test(await page.eval(TOOLS_LINE)), `the window says Try loses the tool's change ("${await page.eval(TOOLS_LINE)}")`);
       await shot('play-window');
       await pressSel('[data-action=guard-cancel]');
       await sleep(1200);
       check((await guardText()) === '' && !!(await page.eval(EDIT_READY)), 'Cancel: still in Edit');
       check(/\(1\)/.test(await page.eval(`document.querySelector('[data-game-tool=mark]').textContent`)), 'Cancel: the tool still has its change');
-      // Save and continue: .studio/data/mark.json first, then Play.
+      // Save and play: .studio/data/mark.json first, then Play.
       await pressSel(playBtn);
       check(await until(async () => !!(await guardText()), 3000), 'Play again: the window again');
       await pressSel('[data-action=guard-save]');
 
-      check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Save and continue: playing');
+      check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Save and play: playing');
       const data = existsSync(join(root, '.studio/data/mark.json')) ? JSON.parse(readFileSync(join(root, '.studio/data/mark.json'), 'utf8')) : null;
-      check(data?.marks === 1, `Save and continue: saved first (.studio/data/mark.json ${JSON.stringify(data)})`);
+      check(data?.marks === 1, `Save and play: saved first (.studio/data/mark.json ${JSON.stringify(data)})`);
       check(Math.abs((savedX(root, 'lighthouse') ?? NaN) - x) < 0.05 && requests(root) === 2, `the move was saved with it (${requests(root)} requests for the AI: placement.json and the tool's data)`);
       await pressSel(playBtn);
       await page.waitFor(EDIT_READY, 40000);
       await sleep(800);
-      // Don't save: plays, the file keeps what was saved.
+      // Try without saving: plays, the file keeps what was saved.
       check(await markOnce(), 'the game tool has 1 new unsaved change');
       await pressSel(playBtn);
       await until(async () => !!(await guardText()), 3000);
       await pressSel('[data-action=guard-discard]');
-      check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Don\'t save: playing');
-      check(JSON.parse(readFileSync(join(root, '.studio/data/mark.json'), 'utf8')).marks === 1, 'Don\'t save: the file is as it was saved');
+      check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Try without saving: playing');
+      check(JSON.parse(readFileSync(join(root, '.studio/data/mark.json'), 'utf8')).marks === 1, 'Try without saving: the file is as it was saved');
     } });
   }
 

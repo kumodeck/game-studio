@@ -158,6 +158,9 @@ const cases = {
         assert.equal(note, '', `the card has a copy note: ${note}`);
         assert.ok(await s.page.eval(`[...document.querySelectorAll('.obj .tag')].some((t) => t.textContent === 'duplicate')`), 'no "duplicate" tag in the list');
         await s.page.eval(`[...document.querySelectorAll('[data-action=play]')].find((b) => b.offsetParent || b.offsetHeight)?.click()`);
+        // The copy is not saved: ▶ Play asks first (unsaved-guard.ts kind 'play', 2026-10-21) — Try without saving.
+        await s.page.waitFor(`!!document.querySelector('[data-part=unsaved-guard][data-kind=play]:not([hidden])')`, 3000).then(() =>
+          s.page.eval(`document.querySelector('[data-part=unsaved-guard] [data-action=guard-discard]').click(), true`), () => undefined);
         const found = `(() => { const w = document.querySelector('iframe').contentWindow; const b = w.__studioThree; if (!b || w.location.search.includes('studio=edit')) return 0;
           let n = 0; for (const sc of b.scenes) sc.traverse((o) => { if (o.userData && o.userData.studioKey === ${JSON.stringify(key)} && o.visible !== false) n++; }); return n; })()`;
         await s.page.waitFor(found, 30000);

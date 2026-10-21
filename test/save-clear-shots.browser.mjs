@@ -1,7 +1,8 @@
 // Pictures (and a few checks) for the two asks of a try of v0.1.8 (2026-10-21): ① "More in Claude" on the AI line,
 // ② Save that says where the change goes. One run per build of the editor, same steps:
 //   1-ai      the AI's change is in: "Added 3 crates in a row / “Add three crates in a row” · 3 things changed · More in Claude"
-//   2-save    one object moved without saving: the Save in the game ("Save to game · 1")
+//   2-save    one object moved without saving: the Save ("Save to game · 1" in the game's corner until v0.1.9; since the
+//             "why two Saves?" of a try of v0.1.9 (2026-10-21) the one "Save · 1" beside ▶ Play, its tooltip saying where it goes)
 //   3-tip     the pointer on it (PC and the side window: a mouse is there): its tooltip, the one-sentence why
 //   4-play    ▶ Play with that change not saved: the top bar's note (PC; the narrow layouts have no note there)
 // at PC 1280×800, the Claude app's side window 400×900 and a phone 390×844, light and dark.
@@ -59,7 +60,7 @@ async function key(page, k) {
   await page.send('Input.dispatchKeyEvent', { ...down, type: 'keyUp', text: undefined });
 }
 
-const FAB = `(() => { const b = document.querySelector('[data-part=save-fab]'); if (!b || b.hidden || !b.offsetParent) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, r: r.right, w: r.width, text: b.textContent }); })()`;
+const FAB = `(() => { const b = document.querySelector('[data-part=save]') || document.querySelector('[data-part=save-fab]'); if (!b || b.hidden || !b.offsetParent) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, l: r.left, r: r.right, w: r.width, text: b.textContent }); })()`;
 const PLAY = `(() => { const b = [...document.querySelectorAll('[data-action=play]')].find((x) => x.offsetParent && x.getBoundingClientRect().width); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`;
 // The grey row of the AI line: one line (its height ≈ one line of text), and "More in …" whole (not cut).
 const ROW = `(() => { const s = document.querySelector('.ai-line:not([hidden]) .ai-sub'); if (!s) return null; const m = s.querySelector('.ai-more'); const lh = parseFloat(getComputedStyle(s).lineHeight) || 18; return JSON.stringify({ text: s.textContent, more: m ? m.textContent : '', oneLine: s.getBoundingClientRect().height <= lh * 1.5, moreWhole: !m || m.scrollWidth <= m.clientWidth + 1, moreIn: !m || m.getBoundingClientRect().right <= s.getBoundingClientRect().right + 1 }); })()`;
@@ -107,7 +108,7 @@ async function shoot(size, theme) {
     await sleep(900);
     if (MOCK === 'c') {
       // Not built: a one-time hint over the Save.
-      await page.eval(`(() => { const b = document.querySelector('[data-part=save-fab]'); const r = b.getBoundingClientRect(); const d = document.createElement('div');
+      await page.eval(`(() => { const b = document.querySelector('[data-part=save]') || document.querySelector('[data-part=save-fab]'); const r = b.getBoundingClientRect(); const d = document.createElement('div');
         d.textContent = ${JSON.stringify(LANG === 'ja' ? 'まだこのエディタの中だけ。保存すると AI がゲームに入れます' : 'Only in this editor so far. Save, and your AI puts it in the game')};
         Object.assign(d.style, { position: 'fixed', right: (innerWidth - r.right) + 'px', bottom: (innerHeight - r.top + 8) + 'px', maxWidth: '300px', padding: '8px 12px', borderRadius: '10px', font: '13px/1.4 system-ui', background: 'var(--glass-thick, #222)', color: 'var(--text, #fff)', boxShadow: 'var(--shadow)', zIndex: 50 });
         document.body.append(d); return true; })()`);
@@ -116,8 +117,9 @@ async function shoot(size, theme) {
     console.log(`  save: ${fab?.text} (${Math.round(fab?.w || 0)} px wide)`);
     writeFileSync(name('2-save'), await page.screenshot());
     if (!MOCK) {
-      check(!!fab && /1/.test(fab.text), 'Save in the game with the count');
-      check(!!fab && fab.text.includes(LANG === 'ja' ? '保存してゲームへ' : 'Save to game'), 'it says where the change goes');
+      check(!!fab && /1/.test(fab.text), 'Save with the count');
+      check(!!fab && fab.text.startsWith(LANG === 'ja' ? '保存' : 'Save') && !/ゲームへ|to game/.test(fab.text), `the word is plain "Save" ("${fab?.text}")`);
+      check(/AI/.test(await page.eval(`document.querySelector('[data-part=save]')?.title || ''`)), 'its tooltip says where the change goes');
       check(!!fab && fab.l >= 0 && fab.r <= size.width, 'whole on screen');
     }
     if (!size.mobile && fab && !MOCK) {
@@ -131,6 +133,14 @@ async function shoot(size, theme) {
     if (p) {
       if (size.mobile) await page.tap(p.x, p.y);
       else await page.click(p.x, p.y);
+      // Since 2026-10-21 (later the same day) ▶ Play with changes asks first — Save and play / Try without saving
+      // (unsaved-guard.ts): take Try, as this photo was "Play without saving".
+      const asked = await page.waitFor(`!!document.querySelector('[data-part=unsaved-guard][data-kind=play]:not([hidden])')`, 3000).then(() => true, () => false);
+      if (asked) {
+        const tr = JSON.parse(await page.eval(`(() => { const r = document.querySelector('[data-part=unsaved-guard] [data-action=guard-discard]').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
+        if (size.mobile) await page.tap(tr.x, tr.y);
+        else await page.click(tr.x, tr.y);
+      }
       await page.waitFor(`document.querySelector('.shell').dataset.playing === 'on'`, 15000).catch(() => {});
       await sleep(2500);
       if (MOCK === 'b') {
@@ -139,10 +149,9 @@ async function shoot(size, theme) {
           (n || document.querySelector('.brand')).after(b); return true; })()`);
       }
       writeFileSync(name('4-play'), await page.screenshot());
-      // The grey note after "Playing" (this round) or, since the second look of the same day (B), the strip over the game (save-loud.ts).
-      const note = await page.eval(`(() => { const n = document.querySelector('.brand .here-note') || document.querySelector('[data-part=play-unsaved]'); return n && !n.hidden && n.offsetParent ? n.textContent : ''; })()`);
-      console.log(`  play note: ${note || '(none)'}`);
-      if (!MOCK && size.id === 'pc') check(note.includes(LANG === 'ja' ? 'ゲームに' : 'in the game yet') && note.includes(LANG === 'ja' ? 'まだ' : 'yet'), 'Play says the change is not in the game yet');
+      // The grey note after "Playing" (this round), then the strip over the game (the second look, B), then neither: Play
+      // asks first (the third look of 2026-10-21), so it is said in the window before Play.
+      if (!MOCK && size.id === 'pc') check(asked, 'Play asks first (Save and play / Try without saving)');
     }
   } finally {
     await agent.stop();

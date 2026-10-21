@@ -15,6 +15,14 @@
 // save, Cancel (Esc, or a press outside). Tab stays inside. Closing the tab or reloading can only get the browser's
 // own question (beforeunload: its words, not ours), and only while lostBy('leave') > 0.
 // Pure part (lostBy) in test/unsaved-guard.test.ts; the window and each case in test/studio-unsaved-guard.browser.mjs.
+//
+// The same window, asked at ▶ Play (a try of the editor, 2026-10-21: "when 'this change isn't in the game yet', some
+// people want to save and some want to try it without saving — let them choose with buttons"). Nothing is lost at
+// Play (the draft goes along), so it is not a warning but a choice: "You have 3 unsaved changes" / "Save, and your
+// AI puts them in the game's code." and Save and play (the main one: Enter) · Try without saving · Cancel. It replaced
+// the strip over the game while playing ("This change isn't in the game yet [Save] ×"): the person already chose, so
+// Play says nothing more (the orange Save beside Play stays). Asked by main.ts togglePlay; the pure "when" is
+// playAsks() below, the screen in test/studio-play-choice.browser.mjs.
 import { h } from './dom.ts';
 
 type T = (k: string, vars?: Record<string, string | number>) => string;
@@ -39,6 +47,25 @@ export function lostBy(op: GuardOp, s: GuardState): number {
 }
 
 export type GuardAnswer = 'save' | 'discard' | 'cancel';
+
+/**
+ * Does ▶ Play ask first? Only with something not saved (n = main.ts dirtyCount: placement, both layers, the Library and
+ * a game tool's data), and only going INTO Play — Edit from Play never asks (nothing is chosen there).
+ */
+export function playAsks(n: number, playing: boolean): boolean {
+  return !playing && n > 0;
+}
+
+/**
+ * What the window says. 'loss' = something would be lost (leave, a game tool's data at a reload); 'play' = the choice
+ * at ▶ Play. `tools` (play only) = a game tool's changes among them, which live in the game page only: Try without
+ * saving loses those (unsaved-guard's own rule), so the window says so in a third short line instead of promising
+ * that every change stays.
+ */
+export interface GuardAsk {
+  kind?: 'loss' | 'play';
+  tools?: number;
+}
 
 /** The window: in the middle of the editor, the glass of "Check before you save" (safe-save.ts); one at a time. */
 export function createUnsavedGuard(deps: { mount: HTMLElement; t: T }) {
@@ -87,16 +114,31 @@ export function createUnsavedGuard(deps: { mount: HTMLElement; t: T }) {
     get open() {
       return !el.hidden;
     },
-    ask(n: number): Promise<GuardAnswer> {
+    /** The kind it was opened for ('loss' / 'play'; null while closed), for the screen tests. */
+    get kind() {
+      return el.hidden ? null : el.dataset.kind || null;
+    },
+    ask(n: number, how: GuardAsk = {}): Promise<GuardAnswer> {
       if (done) close('cancel');
       back = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const play = how.kind === 'play';
+      el.dataset.kind = play ? 'play' : 'loss';
       const title = h('h2', { class: 'safe-title', id: 'unsaved-guard-title', text: t('guard.title', { n }) });
       el.setAttribute('aria-labelledby', 'unsaved-guard-title');
-      const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t('guard.save'), onclick: () => close('save') });
-      const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t('guard.discard'), onclick: () => close('discard') });
+      // Play: the second line says what Save does (one short sentence; the web demo says "kept in this browser",
+      // hosts/browser/text.ts), and — only when a game tool's data is among them — what Try loses.
+      const lines = !play ? [] : [
+        h('p', { class: 'safe-lead', id: 'unsaved-guard-why', dataset: { part: 'unsaved-guard-why' }, text: t('guard.playWhy') }),
+        ...((how.tools ?? 0) > 0 ? [h('p', { class: 'safe-lead', dataset: { part: 'unsaved-guard-tools' }, text: t('guard.playTools', { n: how.tools ?? 0 }) })] : []),
+      ];
+      if (play) el.setAttribute('aria-describedby', 'unsaved-guard-why');
+      else el.removeAttribute('aria-describedby');
+      const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t(play ? 'guard.playSave' : 'guard.save'), onclick: () => close('save') });
+      const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t(play ? 'guard.playTry' : 'guard.discard'), onclick: () => close('discard') });
       const no = h('button', { type: 'button', dataset: { action: 'guard-cancel' }, text: t('guard.cancel'), onclick: () => close('cancel') });
-      // Cancel · Don't save · Save and continue: the main one at the end, as in "Check before you save".
-      el.replaceChildren(title, h('div', { class: 'safe-actions' }, no, skip, save));
+      // Cancel · Don't save · Save and continue: the main one at the end, as in "Check before you save" (narrow: one
+      // per row, the main one on top — shell.css .unsaved-guard). Play's window has the same three places.
+      el.replaceChildren(title, ...lines, h('div', { class: 'safe-actions' }, no, skip, save));
       scrim.hidden = false;
       el.hidden = false;
       save.focus({ preventScroll: true });

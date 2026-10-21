@@ -64,11 +64,6 @@ const en = {
   'btn.reloadGame': 'Reload',
   'status.playing': 'Playing the game as you arranged it in the editor, saved or not. Save hands it to your AI. Switch to Edit to keep arranging.',
   'status.playingShort': 'Playing',
-  // Playing with changes not saved (a try of the editor, 2026-10-21, B: "people won't notice — make it show at Play too"): a strip over the
-  // game with Save beside it (main.ts playUnsaved). It replaced the quiet "· unsaved changes, not in the game yet" after
-  // "Playing" in the top bar, which nobody read. Says what is missing, not what to feel: the game itself has not changed.
-  'play.unsaved': '{n:This change isn’t|These changes aren’t} in the game yet',
-  'play.unsavedHide': 'Hide (Save stays in the top bar)',
   'status.items': 'Finding objects you can move…',
   'placement.empty': 'No movable objects found.',
   'placement.select': 'Select an object in the game, or choose one here.',
@@ -298,6 +293,12 @@ const en = {
   'guard.save': 'Save and continue',
   'guard.discard': 'Don’t save',
   'guard.cancel': 'Cancel',
+  // The same window at ▶ Play with changes not saved (unsaved-guard.ts, a try of the editor, 2026-10-21: "let them choose
+  // with buttons — save, or try it without saving"). The title is guard.title; the second line says what Save does.
+  'guard.playWhy': 'Save, and your AI puts the changes in the game’s code.',
+  'guard.playTools': '{n:1 change in a game tool is|# changes in game tools are} lost if you don’t save.',
+  'guard.playSave': 'Save and play',
+  'guard.playTry': 'Try without saving',
   'layer.title': 'Layer',
   'layer.toBack': 'Send to back',
   'layer.backward': 'Send backward',
@@ -349,11 +350,10 @@ const en = {
   'list.title': 'In this scene',
   'list.titleUi': 'On screen',
   'foot.palette': 'All actions',
-  // The Save in the game (a try of the editor, 2026-10-21: "Save is hard to understand. Play works without it, so people won't notice it is
-  // needed"). The button says where the change goes; the tooltip says the rest in one sentence: until Save, the moves live only
-  // in this editor; Save hands them to the AI, which puts them in the game's code, so the game outside the editor changes too.
-  'save.fab': 'Save to game',
-  'save.unsavedTip': '{n:1 change is|# changes are} only in this editor. Save, and your AI puts {n:it|them} in the game’s code — the game outside the editor changes too',
+  // The Save's tooltip (a try of v0.1.9, 2026-10-21): one sentence. The button itself says only "Save" (btn.save) — it said
+  // "Save to game" for a day ("Save is hard to understand. Play works without it, so people won't notice it is needed"),
+  // and that read as a different action: "'Save to game' — I don't get what that means". Where the change goes is said here.
+  'save.unsavedTip': 'Save, and your AI puts it in the game’s code (the game outside the editor changes too)',
   'save.savedTip': 'Saved and sent to your AI',
   'peer.label': 'AI',
   'peer.idle': 'No reply from your AI yet',
@@ -556,8 +556,6 @@ const ja: Partial<Record<Key, string>> = {
   'btn.reloadGame': '読み込み直す',
   'status.playing': 'エディタで並べたとおり（保存していない変更も込み）で遊んでいます。保存すると AI に渡ります。「編集」で続けて並べられます。',
   'status.playingShort': '遊んでいます',
-  'play.unsaved': 'この変更はまだゲームに入っていません',
-  'play.unsavedHide': '隠す（保存は上に残ります）',
   'status.items': '動かせる物を探しています…',
   'placement.empty': '動かせる物が見つかりません。',
   'placement.select': 'ゲームの中の物をクリックするか、ここから選んでください。',
@@ -759,6 +757,10 @@ const ja: Partial<Record<Key, string>> = {
   'guard.save': '保存して続ける',
   'guard.discard': '保存せずに続ける',
   'guard.cancel': 'やめる',
+  'guard.playWhy': '保存すると AI がゲームのコードに入れます。',
+  'guard.playTools': 'ゲームの道具の変更 {n} 個は、保存しないと消えます。',
+  'guard.playSave': '保存して遊ぶ',
+  'guard.playTry': '保存せずに試す',
   'layer.title': '重なり',
   'layer.toBack': 'いちばん奥へ',
   'layer.backward': '奥へ',
@@ -805,8 +807,7 @@ const ja: Partial<Record<Key, string>> = {
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
   'foot.palette': 'すべての操作',
-  'save.fab': '保存してゲームへ',
-  'save.unsavedTip': '{n} 個の変更は、まだこのエディタの中だけです。保存すると AI がゲームのコードに入れ、エディタの外のゲームも変わります',
+  'save.unsavedTip': '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）',
   'save.savedTip': '保存して AI に送りました',
   'peer.label': 'AI',
   'peer.idle': 'AI からの返事はまだありません',

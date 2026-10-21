@@ -1,8 +1,9 @@
 // The two asks of a try of v0.1.8 (2026-10-21), without a browser:
 //   ① the AI line ends with "More in Claude" / "More in Codex" / "More in your AI" when the AI did or said something
 //      (ai-flow.ts moreIn; which AI: src/server/which-ai.mjs);
-//   ② Save says where the change goes: "Save to game · 3", a tooltip that says the moves are only in the editor until
-//      then (i18n.ts; the web demo keeps the plain "Save"). Play's "not in the game yet" became a strip: save-loud.test.ts.
+//   ② Save says where the change goes. First on the button ("Save to game · 3"); since a try of v0.1.9 ("'Save to
+//      game' — I don't get what that means", 2026-10-21) the button says "Save" and the tooltip says it in one sentence
+//      (i18n.ts; the web demo says what its own Save does). Play's "not in the game yet" became a strip, then Play's own window ("Save and play / Try without saving"): unsaved-guard.test.ts.
 // The screen test (and its photos) is test/save-clear-shots.browser.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -45,22 +46,27 @@ test('① which AI: the wake hook says Claude; else the environment the editor w
   assert.equal(whichAi({ wake: false, env: undefined }), undefined);
 });
 
-test('② Save says where the change goes, and what is lost without it', () => {
-  assert.equal(translate('en', 'save.fab'), 'Save to game');
-  assert.equal(translate('ja', 'save.fab'), '保存してゲームへ');
-  assert.equal(translate('en', 'save.unsavedTip', { n: 1 }), '1 change is only in this editor. Save, and your AI puts it in the game’s code — the game outside the editor changes too');
-  assert.equal(translate('en', 'save.unsavedTip', { n: 3 }), '3 changes are only in this editor. Save, and your AI puts them in the game’s code — the game outside the editor changes too');
-  assert.match(translate('ja', 'save.unsavedTip', { n: 3 }), /^3 個の変更は、まだこのエディタの中だけです。/);
+test('② Save says where the change goes, in one sentence', () => {
+  assert.equal(translate('en', 'btn.save'), 'Save');
+  assert.equal(translate('ja', 'btn.save'), '保存');
+  assert.equal(translate('ja', 'save.unsavedTip'), '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）');
+  assert.equal(translate('en', 'save.unsavedTip'), 'Save, and your AI puts it in the game’s code (the game outside the editor changes too)');
+  // One sentence: one full stop at most (ja: none inside the parentheses either).
+  assert.ok((translate('ja', 'save.unsavedTip').match(/。/g) || []).length <= 1);
+  assert.ok(!/\. /.test(translate('en', 'save.unsavedTip')));
   // The confirm box before a loss (unsaved-guard.ts, 10/21) keeps its words.
   assert.equal(translate('en', 'guard.title', { n: 3 }), 'You have 3 unsaved changes');
+  assert.equal(translate('ja', 'guard.save'), '保存して続ける');
 });
 
 // Last in the file: setExtraText cannot be undone, and the tests above read the editor's own words.
-test('② the web demo keeps the plain "Save": no AI puts it in a game there', () => {
+test('② the web demo: the same "Save", and a tooltip with no AI or game in it', () => {
   for (const lang of ['en', 'ja'] as const) setExtraText(lang, DEMO_TEXT[lang]);
-  assert.equal(translate('en', 'save.fab'), 'Save');
-  assert.equal(translate('ja', 'save.fab'), '保存');
-  assert.doesNotMatch(translate('en', 'save.unsavedTip', { n: 2 }), /AI|game/);
-  assert.equal(translate('en', 'play.unsaved', { n: 1 }), 'This change isn’t saved yet');
-  assert.equal(translate('ja', 'play.unsaved', { n: 1 }), 'この変更はまだ保存していません');
+  assert.equal(translate('en', 'btn.save'), 'Save');
+  assert.equal(translate('ja', 'btn.save'), '保存');
+  assert.doesNotMatch(translate('en', 'save.unsavedTip'), /AI|game/);
+  assert.doesNotMatch(translate('ja', 'save.unsavedTip'), /AI|ゲーム/);
+  // ▶ Play's window (unsaved-guard.ts kind 'play'): its second line says what the demo's Save does, no AI in it.
+  assert.doesNotMatch(translate('en', 'guard.playWhy'), /AI|game/);
+  assert.doesNotMatch(translate('ja', 'guard.playWhy'), /AI|ゲーム/);
 });

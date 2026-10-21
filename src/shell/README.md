@@ -60,8 +60,8 @@ the game page's Play code, `bridge/play-arrange.ts`).
 
 Play without Save (a try of the editor, 2026-10-21): ▶ Play shows the arrangement as the editor has it, saved or
 not (the bridge puts the draft on the page), and a new page of the game (back from Play, the AI's reload) gets back
-what it does not show (`placement-model.ts` notShown, pushed in `main.ts`). The top bar says "Playing · unsaved
-changes" while there are some.
+what it does not show (`placement-model.ts` notShown, pushed in `main.ts`). (Said first by "Playing · unsaved
+changes" in the top bar, then a strip over the game; now ▶ Play asks before, below.)
 After an AI change (play-after-ai, 2026-10-21): an object the new code puts somewhere new gets that pose as its `was`
 (so the draft Play reads still finds it); if the person had moved it, the person's pose wins and goes back to the page.
 The violet "AI moved" mark is only for objects at neither the old code's pose nor the person's.
@@ -70,8 +70,17 @@ Before unsaved changes are lost (a try of the editor, 2026-10-21: "people forget
 lost"): `unsaved-guard.ts`. One window — "You have 3 unsaved changes", Save and continue (Enter) / Don't save / Cancel (Esc)
 — only where something really goes: a game tool's data on a new game page (Play, Reload game, the AI's reload, Undo AI
 change), and the Save itself when this page goes (a link of the page; the local studio only: in the web demo the draft is
-the save). Closing the tab or reloading gets the browser's own question, only then. Play with unsaved moves, World ↔ UI,
-the Library and the language ask nothing. `test/unsaved-guard.test.ts`, `test/studio-unsaved-guard.browser.mjs`.
+the save). Closing the tab or reloading gets the browser's own question, only then. World ↔ UI, the Library and the
+language ask nothing. `test/unsaved-guard.test.ts`, `test/studio-unsaved-guard.browser.mjs`.
+
+▶ Play with changes not saved asks first (a try of the editor, 2026-10-21: "some people want to save, some want to try
+it without saving — let them choose with buttons"): the same window (`unsaved-guard.ts` kind 'play', `main.ts`
+togglePlay) — "You have 3 unsaved changes" / "Save, and your AI puts the changes in the game's code." — with **Save
+and play** (orange, Enter), **Try without saving** and Cancel (Esc, a press outside). Save and play = Save as always
+("Check before you save" first for big changes, obeyed), then Play; Try without saving = Play as before (the changes
+stay, and Save · N); a game tool's data, which Try loses, gets one more line. The button, P and the ⌘K list alike; no
+window without changes, none from Play back to Edit. Narrow: one button per row, the main one on top.
+`test/studio-play-choice.browser.mjs`.
 
 No first-run tips: the four-step intro over the ask bar (`intro.ts`, "1/4
 Click an object…") was removed on 2026-10-17 after a try of the web demo — the
@@ -112,7 +121,7 @@ thing open at a time). Keys that move the pick do nothing while the Library hide
 part (`ShellContext.objects`, contract.ts `LibraryObjects`); the page is the Library tool (`tools/library/panel.ts`).
 `test/studio-library.browser.mjs` checks it all and takes the pictures.
 
-Save in the game (a try of the editor, 2026-10-20: "people won't notice they have to press Save"): only while
+Save in the game (a try of the editor, 2026-10-20 → 21; replaced by the one Save beside ▶ Play, below): only while
 something is not saved, "Save · 3  ⌘S" at the game's bottom right — PC on the ask bar's row (the bar keeps room for
 it on both sides, so it never moves), phone / side window just over the bar, card or list sheet with the camera ↑↓
 above it — in the solid (Play's fill), not a new colour; the only Save (the top bar keeps "✓ Saved"). Pressed: "✓
@@ -121,13 +130,18 @@ end: one line (picture and name), kept across picks and reloads in this browser 
 `test/studio-save-fab.browser.mjs`.
 
 Save, loud (a try of the editor, 2026-10-21, a second look: the black "Save to game · 1" was not noticed; `save-loud.ts`):
-the Save in the game is filled with KUMO's orange (`--you`, white words — the one place orange is a fill; a pick is
-only ever an outline, tint or dot) and bounces once when a change first appears (not on later changes, not back from
-Play, not with reduced motion). While something is not saved the top bar also has "Save to game" right beside ▶ Play
-("Save" on a phone and in the side window), in Edit and in Play; while playing, a strip over the top of the game says
-"This change isn't in the game yet" with the orange Save and × (hides the strip for that round of Play only; it
-replaced the grey "· unsaved changes" after "Playing"). Saving takes all of them away. `test/save-loud.test.ts`,
-`test/save-loud.browser.mjs` (and its before / after photos).
+KUMO's orange (`--you`, white words — the one place orange is a fill; a pick is only ever an outline, tint or dot) and
+one bounce when a change first appears (not on later changes, not back from Play, not with reduced motion); while
+playing, a strip over the top of the game said "This change isn't in the game yet" with an orange "Save" and × (it
+replaced the grey "· unsaved changes" after "Playing"; gone the same day, when ▶ Play began to ask first, above).
+
+One Save (a try of v0.1.9, 2026-10-21: "why are there two buttons that do the same thing?" / "'Save to game' — I don't
+get what that means"): the Save in the game's corner above is gone, and so is the word "Save to game". There is ONE
+Save, right beside ▶ Play in the top bar (`main.ts` topSave, `data-action="save"`), in Edit and in Play, on a PC, in
+the side window and on a phone: "Save · 3  ⌘S" (no key on a phone), orange, the one bounce. Its tooltip is one
+sentence: "Save, and your AI puts it in the game's code (the game outside the editor changes too)". Pressed: "✓ Saved"
+in its place for a moment, then gone, and the quiet "✓ Saved" left of Undo takes over. Narrow top bars: the game's
+title gives way (it ends in "…"); Save and Play keep their size (checked down to a 320 px phone). `test/save-loud.test.ts`, `test/save-loud.browser.mjs`, `test/studio-save-fab.browser.mjs`.
 
 Basic actions with a button AND a shortcut (basics pass, 2026-10-18; from a try of the editor: "undo, redo…
 keyboard shortcuts and buttons"): Undo / Redo always in the top bar (dimmed when there is nothing to undo; "✓ Saved" left of them so they

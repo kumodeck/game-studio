@@ -49,7 +49,8 @@ const LIST = `JSON.stringify(${GAME}.__gameStudio._debug ? ${GAME}.__gameStudio.
 const HULL = `(() => { const seen = new Set(); for (const s of ${GAME}?.__studioThree?.scenes || []) s.traverse((o) => { const m = o.isMesh && o.material;
   if (m?.color && Math.abs(m.roughness - 0.55) < 1e-6 && !m.metalness) seen.add(m.color.getHexString()); });
   return seen.size ? [...seen].join(',') : 'none of ' + (${GAME}?.__studioThree?.scenes || []).length + ' scenes'; })()`;
-const FAB = `(() => { const f = document.querySelector('[data-part=save-fab]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
+// The one Save, beside ▶ Play (2026-10-21; it was the Save in the game's corner, [data-part=save-fab], until then).
+const FAB = `(() => { const f = document.querySelector('[data-part=save]'); return f && !f.hidden && f.offsetParent ? f.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
 // The rows with the AI's violet tag (as studio-ai-feel reads them).
 const MARKED = `JSON.stringify([...document.querySelectorAll('li.obj')].filter((r) => r.querySelector(':scope > .tag.ai')).map((r) => r.dataset.key))`;
 const PLAY_BTN = `(() => { const b = [...document.querySelectorAll('[data-action=play]')].find((x) => x.offsetParent && x.getBoundingClientRect().width); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`;
@@ -121,6 +122,10 @@ async function run(name, { bare, plan: planName, extra }) {
     const b = JSON.parse((await page.eval(PLAY_BTN)) || 'null');
     if (b) await page.click(b.x, b.y);
     else await page.eval(`window.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', bubbles: true }))`);
+    // ▶ Play with changes not saved asks first (unsaved-guard.ts kind 'play', 2026-10-21): this case is "Play without
+    // saving", so Try without saving.
+    const tr = await until(async () => !!(await page.eval(`document.querySelector('[data-part=unsaved-guard][data-kind=play]:not([hidden])')`)), 2000);
+    if (tr) await page.eval(`document.querySelector('[data-part=unsaved-guard] [data-action=guard-discard]').click(), true`);
   };
   const cardX = async () => parseFloat(await page.eval(`document.querySelector('[data-part=card] .fields input')?.value`));
   try {

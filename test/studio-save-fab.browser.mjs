@@ -1,17 +1,20 @@
-// The Save button in the game and the card's minimize (a try of the editor, 2026-10-20: "people won't notice they have to press
+// The one Save and the card's minimize. History: a try of the editor, 2026-10-20 — "people won't notice they have to press
 // Save — show a Save button in the game view once something changed, bottom right, in a colour that stands out" and
-// "the card gets in the way while working: a minimize button").
+// "the card gets in the way while working: a minimize button" — put Save in the game's corner (save-fab). On 2026-10-21
+// a second orange Save came beside ▶ Play, and a try of it asked "why are there two buttons that do the same thing?":
+// now there is ONE Save, beside ▶ Play (main.ts topSave), and nothing in the game's corner. (The file keeps its name:
+// other notes and team tools point here.)
 // Per layout (PC 1280×800 with a mouse, the chat app's side window 400×900 with a mouse, a phone 390×844 with touch)
 // and theme (dark, light), on Lantern Cove (3D: the camera ↑↓ sit in the game's bottom-right corner):
-//   0-open     nothing changed: no Save in the game
-//   1-changed  one object moved (the card's X field): "Save · 1" in the game's bottom-right, 8 px or more from the
-//              camera ↑↓, the ask bar, the card, the list sheet and the AI line (the third design review's ③)
+//   0-open     nothing changed: no Save
+//   1-changed  one object moved (the card's X field): "Save · 1" beside ▶ Play, whole on screen, the only Save, no
+//              Save over the game
 //   2-min      the card minimized: one line (its name); another pick keeps it minimized; a reload too (this browser)
-//   3-saved    the Save in the game pressed with a real click / tap: placement.json written, the button gone
+//   3-saved    the Save pressed with a real click / tap: placement.json written, "✓ Saved" for a moment, then gone
 //
 //   node test/studio-save-fab.browser.mjs [--shots <dir>] [--tag before|after] [--only pc,side,phone]
 //     [--theme dark|light|both] [--lang ja|en] [--before]
-// --before: an old build (no Save in the game, no minimize): photos and numbers only, no assertions.
+// --before: an old build: photos and numbers only, no assertions.
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -39,9 +42,10 @@ const LAYOUTS = [
 
 const GAME = `document.querySelector('iframe').contentWindow`;
 const READY = `document.querySelectorAll('.obj, .noname').length > 0 && !!${GAME}.__gameStudio?._debug`;
-const FAB = `document.querySelector('[data-part=save-fab]')`;
-// Boxes on screen (page coordinates): the Save in the game, and what it must stay clear of. The camera ↑↓ live in the
-// game frame's own shadow root, so their box is moved by the frame's place.
+// The one Save (beside ▶ Play since 2026-10-21; [data-part=save-fab] in the game's corner before).
+const FAB = `document.querySelector('[data-part=save]')`;
+// Boxes on screen (page coordinates): the Save, and what is around it. The camera ↑↓ live in the game frame's own
+// shadow root, so their box is moved by the frame's place.
 const BOXES = `(() => {
   const r = (e) => { if (!e || !e.offsetParent && getComputedStyle(e).position !== 'fixed' || e.hidden) return null; const b = e.getBoundingClientRect(); return b.width && b.height ? { l: Math.round(b.left), t: Math.round(b.top), r: Math.round(b.right), b: Math.round(b.bottom) } : null; };
   const fr = document.querySelector('iframe').getBoundingClientRect();
@@ -61,16 +65,14 @@ const BOXES = `(() => {
     card: r(document.querySelector('.inspector > .card:not([hidden]), .card-slot > .card:not([hidden])')),
     sheet: document.querySelector('.shell').dataset.layout === 'phone' && document.querySelector('.shell').dataset.sheet === 'open' ? r(document.querySelector('.side')) : null,
     game: r(document.querySelector('iframe')), W: innerWidth, H: innerHeight,
-    topSave: !!document.querySelector('.top [data-action=save]:not([hidden])')?.offsetParent,
-    // "Save to game" beside ▶ Play (a try of the editor, 2026-10-21, B; save-loud.ts): its own data-action, so the one above stays false.
-    topBeside: (() => { const t = document.querySelector('[data-part=save-top]'); const p = document.querySelector('.top [data-action=play]'); if (!t || t.hidden || !t.offsetParent || !p) return false;
-      const a = t.getBoundingClientRect(), b = p.getBoundingClientRect(); return b.left - a.right >= 0 && b.left - a.right <= 8; })(),
+    // Every Save press on screen (v0.1.9 had two: the corner one and "Save to game" beside Play).
+    saves: [...document.querySelectorAll('[data-action=save], [data-action=save-top], [data-part=save-fab]')].filter((e) => !e.hidden && e.offsetParent && e.getBoundingClientRect().width).length,
+    topBeside: (() => { const t = ${FAB}; const p = document.querySelector('.top [data-action=play]'); if (!t || t.hidden || !t.offsetParent || !p) return false;
+      const a = t.getBoundingClientRect(), b = p.getBoundingClientRect(); return b.left - a.right >= 0 && b.left - a.right <= 8 && Math.abs((a.top + a.bottom) - (b.top + b.bottom)) < 4; })(),
+    head: r(document.querySelector('.top')),
   });
 })()`;
 const meet = (a, b) => !!a && !!b && a.l < b.r && b.l < a.r && a.t < b.b && b.t < a.b;
-// At least 8 px of air between two boxes (the third design review's ③, 2026-10-20: "not touching" was not enough — on
-// the web demo the Save covered ↓, and in the side window it sat on the list sheet's edge).
-const apart = (a, b) => !a || !b || Math.max(b.l - a.r, a.l - b.r, b.t - a.b, a.t - b.b) >= 8;
 
 let failed = 0;
 const check = (ok, what) => {
@@ -112,7 +114,7 @@ try {
       await sleep(1500);
       let b = await boxes();
       await shot('0-open');
-      check(!b.fab, 'nothing changed: no Save in the game');
+      check(!b.fab && b.saves === 0, 'nothing changed: no Save');
 
       const keys = await page.eval(`JSON.stringify(studioShell.items().filter((i) => i.movable !== false && !i.held).map((i) => i.key))`).then(JSON.parse);
       const [k1, k2] = [keys.find((k) => /boat|crate|barrel/.test(k)) || keys[0], keys.find((k) => /lighthouse|buoy|pier/.test(k)) || keys[1]];
@@ -121,20 +123,21 @@ try {
       // One change: the card's X field (on a phone it sits under "…", closed, but is still the same field).
       const moved = await page.eval(`(() => { const i = document.querySelector('[data-part=card] .fields input'); if (!i) return false; i.value = String((parseFloat(i.value) || 0) + 0.5); i.dispatchEvent(new Event('change')); return true; })()`);
       await sleep(900);
+      // Measured once its arrival (studio-rise + the one bounce) has settled: on a busy first page it can still be running
+      // at 900 ms, and the box is then a few px low.
+      await page.waitFor(`!(${FAB}?.getAnimations?.() || []).some((a) => a.playState === 'running')`, 3000).catch(() => {});
       b = await boxes();
       await shot('1-changed');
       console.log(`  moved ${k1}: ${moved}; boxes ${JSON.stringify(b)}`);
-      check(!!b.fab && /1/.test(b.fabText), `one change: Save in the game ("${b.fabText}")`);
+      check(!!b.fab && /1/.test(b.fabText), `one change: Save ("${b.fabText}")`);
+      check(b.saves === 1, `one Save on screen, not two (${b.saves})`);
       if (b.fab) {
-        check(b.fab.r > b.W * 0.6 && b.fab.b > b.H * 0.5, 'in the bottom-right');
+        check(b.topBeside, 'beside ▶ Play, on its line');
+        check(!!b.head && b.fab.t >= b.head.t && b.fab.b <= b.head.b, 'in the top bar, not over the game');
         check(b.fab.r <= b.W && b.fab.b <= b.H && b.fab.l >= 0, 'whole on screen');
-        for (const n of ['cam', 'bar', 'caption', 'card', 'sheet']) if (b[n]) check(apart(b.fab, b[n]), `8 px or more from ${n}`);
-        if (l.id === 'side') check(b.fab.b <= b.H - 48, 'above the chat app\'s 48 px toolbar');
-        if (b.game) check(b.fab.t >= b.game.t && b.fab.r <= b.game.r + 1, 'over the game');
+        for (const n of ['card', 'sheet']) if (b[n]) check(!meet(b.fab, b[n]), `clear of the ${n}`);
         const tip = await page.eval(`${FAB}?.title || ${FAB}?.dataset.tip || ''`);
         if (l.id !== 'phone') check(/⌘S|Ctrl/.test(await page.eval(`${FAB}.innerText + ' ' + (${FAB}.getAttribute('aria-keyshortcuts') || '') + ' ' + (${FAB}.title || '')`)), `the key ⌘S on it (${tip})`);
-        check(!b.topSave, 'no second "Save · N" in the top bar');
-        check(b.topBeside, 'and "Save to game" beside ▶ Play (a try of the editor, 2026-10-21, B)');
       }
 
       // The card's minimize.
@@ -177,8 +180,7 @@ try {
         check(await page.eval(`document.querySelector('[data-part=card]').dataset.min !== 'on'`), 'opens again');
         b = await boxes();
         if (b.fab && b.card) check(!meet(b.fab, b.card), 'Save clear of the open card (with the sheet up)');
-        if (b.fab && b.sheet) check(apart(b.fab, b.sheet), 'Save 8 px or more from the list sheet');
-        if (b.fab && b.cam) check(apart(b.fab, b.cam), 'Save 8 px or more from the camera ↑↓ (sheet up)');
+        if (b.fab && b.sheet) check(!meet(b.fab, b.sheet), 'Save clear of the list sheet');
         await shot('2c-open-again');
       }
 
@@ -189,11 +191,18 @@ try {
       b = await boxes();
       await shot('2d-changed-again');
       // On a phone / the side window the list sheet is up now (opened before the pick above).
-      if (b.fab) for (const n of ['cam', 'bar', 'caption', 'card', 'sheet']) if (b[n]) check(apart(b.fab, b[n]), `again: 8 px or more from ${n}`);
+      if (b.fab) for (const n of ['card', 'sheet']) if (b[n]) check(!meet(b.fab, b[n]), `again: clear of the ${n}`);
       const reqs = () => (existsSync(join(root, '.studio/requests')) ? readdirSync(join(root, '.studio/requests')).filter((f) => f.endsWith('.json')).length : 0);
       const r0 = reqs();
       if (b.fab) {
         await press(b.fab);
+        // "✓ Saved" in its place for a moment (SAVE_DONE_MS 1.2 s after the hand-off went through), then gone.
+        let doneText = '';
+        for (let i = 0; i < 30 && !/保存済み|Saved/.test(doneText); i++) {
+          doneText = await page.eval(`(${FAB}.hidden ? '(hidden) ' : '') + ${FAB}.innerText.replace(/\\s+/g, ' ')`);
+          if (!/保存済み|Saved/.test(doneText)) await sleep(50);
+        }
+        check(/保存済み|Saved/.test(doneText), `"✓ Saved" in its place for a moment ("${doneText}")`);
         await sleep(1500);
         b = await boxes();
         await shot('3-saved');
@@ -204,9 +213,9 @@ try {
         check(await page.eval(`(() => { const s = document.querySelector('[data-action=save]'); return !s || s.dataset.unsaved === '0' || !(Number(s.dataset.unsaved) > 0); })()`), 'nothing left to save');
         await sleep(1500);
         b = await boxes();
-        check(!b.fab, 'the Save in the game is gone after saving');
+        check(!b.fab && b.saves === 0, 'the Save is gone after saving');
         await shot('3b-later');
-      } else check(false, 'Save in the game to press');
+      } else check(false, 'a Save to press');
       const errors = page.logs.filter((x) => x.startsWith('exception'));
       check(!errors.length, `no page errors${errors.length ? ': ' + errors.join(' / ') : ''}`);
     } catch (e) {
