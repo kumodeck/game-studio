@@ -113,6 +113,16 @@ function gone(pid) {
   }
 }
 
+/** Can this process see `pid` at all? False when signals to it are refused (EPERM: another user, a sandbox). */
+function canSeePid(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code !== 'EPERM'; // ESRCH (no such process) is seeing it: it is gone
+  }
+}
+
 async function waitGone(pid, ms) {
   const end = Date.now() + ms;
   while (!gone(pid) && Date.now() < end) await new Promise((r) => setTimeout(r, 100));
@@ -136,7 +146,13 @@ async function stopByRequest(s) {
     try {
       await fetch(`${s.origin}/__studio/`, { signal: AbortSignal.timeout(500) });
     } catch {
-      return true; // connection refused: it has stopped
+      // Connection refused: its port is closed. That is not yet "stopped": the editor closes its port first, then
+      // takes itself out of server.json and unregisters (cli.mjs stop()) before it exits, so for a few ms the pid
+      // is still alive. Wait for the pid as well, so "studio: stopped pid N" means N is gone (the flaky
+      // lifecycle.test.mjs `--detach … --stop stops it`, ~3 in 50 runs, 2026-10-22). Only where we can see the
+      // pid: in Codex's sandbox kill(pid, 0) is refused (EPERM) and the closed port is all the proof there is.
+      if (canSeePid(s.pid)) await waitGone(s.pid, STOP_WAIT_MS);
+      return true;
     }
     await new Promise((r) => setTimeout(r, 100));
   }
