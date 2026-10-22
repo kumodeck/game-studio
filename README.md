@@ -29,6 +29,8 @@ the right… no, less."
 
 You need [Node.js](https://nodejs.org) 22.13 or newer (`node --version`). Nothing else is installed.
 
+> **Please update Node.js to 22.23.4 or later (24.22.1 or later on Node 24).** These include the [October 2026 security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
+
 **Paste this into Claude Code or Codex** (in the Claude app or a terminal):
 
 ```

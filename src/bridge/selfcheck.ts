@@ -108,6 +108,20 @@ const frames = (core: Core) => new Promise<void>((r) => core.time.raf(() => core
 const near = (a: number[] | undefined, b: number[] | undefined, eps: number) =>
   !!a && !!b && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]!) <= eps);
 
+/** The checks that move the sample object and read it back: a game still settling can spoil them once. */
+const MOVING_CHECKS = new Set(['pose-roundtrip', 'screen-changes', 'anchor-follows', 'restored']);
+/** How long the editor waits before the second look (bridge/editor.ts): 1.2 s ≈ a slow first second of a game. */
+export const SECOND_LOOK_MS = 1200;
+
+/**
+ * Is a failed check worth running once more before telling anyone (polish-1022, 2026-10-22)? Only when everything
+ * that failed is a moving check (above): "no adapter", "no objects" or bad keys do not change by waiting.
+ */
+export function worthASecondLook(res: SelfCheckResult): boolean {
+  const failed = res.checks.filter((c) => !c.ok);
+  return failed.length > 0 && failed.every((c) => MOVING_CHECKS.has(c.id));
+}
+
 export async function runSelfCheck(adapter: StudioAdapter | null, core: Core, win: Window): Promise<SelfCheckResult> {
   const checks: Check[] = [];
   const res: SelfCheckResult = { ok: false, kind: adapter ? adapter.kind : null, checks };

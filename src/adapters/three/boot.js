@@ -33,6 +33,10 @@
   'use strict';
   var g = typeof globalThis !== 'undefined' ? globalThis : window;
   if (g.__studioThree) return; // injected twice (e.g. a reload inside the same window) — keep the first
+  // The browser's own setTimeout, taken now: in the editor the window's one later waits with the game's clock
+  // (core/play-timers.ts, polish-1022), and the safety nets below must fire while the game is held. Kept on the state
+  // for the adapter module (adapter.js whenThreeReady) too.
+  var nativeTimeout = g.setTimeout.bind(g);
 
   var params = null;
   try { params = new URLSearchParams(location.search); } catch (e) { params = null; }
@@ -55,7 +59,8 @@
     readyCamera: null,     // camera handed to studio.ready({ camera }) — used when the game was held before rendering
     holdAfterRender: false,
     holdAfterCamera: null, // ready({ camera }) before that camera drew: hold after its first render (see ready())
-    placed: false          // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    placed: false,         // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    setTimeout: nativeTimeout // the browser's own (see above)
   };
   g.__studioThree = state;
 
@@ -336,7 +341,7 @@
   api.waitForReady = function () {
     if (!state.editOnLoad || state.held) return;
     state.waitingForReady = true;
-    setTimeout(function () { if (state.waitingForReady) { state.waitingForReady = false; hold('ready-timeout'); } }, 8000);
+    nativeTimeout(function () { if (state.waitingForReady) { state.waitingForReady = false; hold('ready-timeout'); } }, 8000);
   };
   /**
    * The initial layout is final. In edit-on-load mode the game is held here. A no-op otherwise.
@@ -359,7 +364,7 @@
         // that waits for a click to start drawing), hold anyway after 1.5 s.
         snapLayout();
         state.holdAfterCamera = opts.camera;
-        setTimeout(function () { if (state.holdAfterCamera) { state.holdAfterCamera = null; putBackLayout(); hold('ready'); } }, 1500);
+        nativeTimeout(function () { if (state.holdAfterCamera) { state.holdAfterCamera = null; putBackLayout(); hold('ready'); } }, 1500);
       } else if (state.gameRendered || state.readyCamera) hold('ready');
       else state.holdAfterRender = true;
     }

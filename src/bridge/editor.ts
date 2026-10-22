@@ -3,7 +3,7 @@
 // changes back. Pointer gestures and handles are attached by input.ts.
 import { UI, type BridgeToShell, type EditLayer, type GameTool, type GroupScaleMode, type Inset, type Item, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
-import { nativeNow } from '../core/native.ts';
+import { nativeClearTimeout, nativeNow, nativeSetTimeout } from '../core/native.ts';
 import { withRules, type RulesHolder } from '../core/rules.ts';
 import { withEdits } from '../core/edits.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift, type GroupSession } from './group.ts';
@@ -13,7 +13,7 @@ import type { EarlyTaps } from './early-press.ts';
 import { firstToTouch, stepDetent } from './snap.ts';
 import { createHoldState, withHold } from './hold.ts';
 import { drivenBetween, WATCH_MS } from './observe.ts';
-import { runSelfCheck } from './selfcheck.ts';
+import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
 
 export interface EditorDeps {
@@ -420,7 +420,7 @@ export function createEditor(deps: EditorDeps): Editor {
   // the shell's second request (the rows in view) arrived after the queue had emptied, so all 15 were drawn twice.
   // Now the list and the editor's first frame paint first, the pictures fill in one by one, and a request that
   // arrives meanwhile is merged with what is still queued.
-  const nextTurn = () => new Promise<void>((r) => core.time.raf(() => win.setTimeout(r, 0)));
+  const nextTurn = () => new Promise<void>((r) => core.time.raf(() => nativeSetTimeout(r, 0)));
   const drawThumbs = async () => {
     thumbRunning = true;
     try {
@@ -472,7 +472,7 @@ export function createEditor(deps: EditorDeps): Editor {
 
   const closeStepRun = () => {
     if (!stepRun) return;
-    win.clearTimeout(stepRun.timer);
+    nativeClearTimeout(stepRun.timer);
     const { key, from, op, group } = stepRun;
     stepRun = null;
     if (group) {
@@ -520,8 +520,8 @@ export function createEditor(deps: EditorDeps): Editor {
     dirtyFrame = true;
     if (m.hold) {
       stepRun = run;
-      win.clearTimeout(run.timer);
-      run.timer = win.setTimeout(closeStepRun, 400);
+      nativeClearTimeout(run.timer);
+      run.timer = nativeSetTimeout(closeStepRun, 400);
       post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, false), press: pressOf(m.op), hold: true });
     } else {
       post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, true), end: true, press: pressOf(m.op) });
@@ -558,8 +558,8 @@ export function createEditor(deps: EditorDeps): Editor {
     dirtyFrame = true;
     if (m.hold) {
       if (!stepRun) stepRun = { key: m.key, from, op: m.op, timer: 0, total: 0, dx: 0, dy: 0 };
-      win.clearTimeout(stepRun.timer);
-      stepRun.timer = win.setTimeout(closeStepRun, 400);
+      nativeClearTimeout(stepRun.timer);
+      stepRun.timer = nativeSetTimeout(closeStepRun, 400);
       post({ type: 'studio:placement/moved', key: m.key, pose, press: pressOf(m.op), hold: true });
     } else {
       post({ type: 'studio:placement/moved', key: m.key, pose, end: true, from, press: pressOf(m.op) });
@@ -736,7 +736,7 @@ export function createEditor(deps: EditorDeps): Editor {
     watchBase = new Map(before.map((i) => [i.key, i.pose] as const));
     core.time.thaw();
     raw.watch?.(true);
-    await new Promise((r) => win.setTimeout(r, WATCH_MS));
+    await new Promise((r) => nativeSetTimeout(r, WATCH_MS));
     const base = watchBase;
     watchBase = null;
     // Left editing meanwhile (Play): the game runs on as it should; nothing to put back.
@@ -845,24 +845,36 @@ export function createEditor(deps: EditorDeps): Editor {
         // would spoil while it runs.
         // The adapter of the layer edited first (the world's; a reload asking for the UI switches a moment later).
         const checkOn = raw;
+        const checkOnce = () => {
+          checkSet = new Map();
+          return runSelfCheck(checkOn, core, win).finally(() => {
+            const given = checkSet!;
+            checkSet = null;
+            if (!world) return;
+            for (const [k, p] of given) {
+              try {
+                world.ruled.setPose(k, p);
+              } catch {
+                /* gone meanwhile */
+              }
+            }
+            if (given.size) dirtyFrame = true;
+          });
+        };
         firstMoments = watching
           .then(nextTurn)
           .then(nextTurn)
-          .then(() => {
-            checkSet = new Map();
-            return runSelfCheck(checkOn, core, win).finally(() => {
-              const given = checkSet!;
-              checkSet = null;
-              if (!world) return;
-              for (const [k, p] of given) {
-                try {
-                  world.ruled.setPose(k, p);
-                } catch {
-                  /* gone meanwhile */
-                }
-              }
-              if (given.size) dirtyFrame = true;
-            });
+          .then(checkOnce)
+          // A second look before saying anything (polish-1022, 2026-10-22). WHY: the docs' photo of our own Lantern
+          // Cove, taken on a busy machine, showed "Moving things may not show in this game yet"; opened with the CPU
+          // slowed 4×, the check sometimes read its test move undone ("asked x −21.1, read back −22") — the game was
+          // still settling under it, the adapter was fine. A broken adapter fails the same way twice; only the
+          // checks that move the sample get the second look, never "no adapter" or "no objects".
+          .then(async (result) => {
+            if (result.ok || !worthASecondLook(result) || !state.editing) return result;
+            await new Promise((r) => nativeSetTimeout(r, SECOND_LOOK_MS));
+            await nextTurn();
+            return state.editing ? checkOnce() : result;
           })
           .then((result) => post({ type: 'studio:core/check', result }))
           .catch((e) => console.warn('[studio] self-check failed:', e));
@@ -991,7 +1003,7 @@ export function createEditor(deps: EditorDeps): Editor {
             const lp = listPick;
             if (grew && lp && lp.key === state.selected && nativeNow() - lp.at < 1000) {
               listPick = null;
-              win.setTimeout(() => {
+              nativeSetTimeout(() => {
                 if (state.selected === lp.key) focusIfHidden(lp.key);
               }, 60);
             }

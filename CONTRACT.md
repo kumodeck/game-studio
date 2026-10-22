@@ -851,8 +851,13 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   `performance.now()` and the frame timestamps, so Resume steps one frame, not
   the whole pause), suspends the game's AudioContexts and pauses its playing
   `<audio>` / `<video>`. No key press or pointer reaches the game while paused;
-  key releases do (a key held at the pause does not stay down). Not held: a
-  game stepped only by `setTimeout` / `setInterval` or by `Date.now()`.
+  key releases do (a key held at the pause does not stay down). The game's
+  `setTimeout` / `setInterval` wait too and fire after the time they had left,
+  and `Date.now()` leaves out the paused time like `performance.now()`
+  (`src/core/play-timers.ts`, polish-1022; the same in Edit, which holds the
+  game's clock). The studio's own timers in the game page use the browser's
+  (`src/core/native.ts`). Not held: `new Date()`, promises and microtasks,
+  `requestIdleCallback`, a Worker's own timers.
 - Over the paused game, a small chat (`src/bridge/play-chat.ts`, same shadow
   root and top layer). Each message is a `play` request with `paused: true`; the
   first carries the moment taken when the game stopped, the next ones `chat`

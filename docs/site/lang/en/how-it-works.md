@@ -31,7 +31,7 @@ When you save, the editor writes `placement.json` in your game folder. It lists 
 - Each object goes by its name in the game (`tree-01`).
 - `p` is where it is, `r` is how far it’s turned, `s` is its size.
 - `was` is where it was before you changed it. Your AI looks for those numbers in the code to find the right line.
-- Duplicates you made are in `added`, deleted objects in `removed`.
+- Duplicates you made are in `added`, deleted objects in `removed`. The loader shows them right away (a look-alike duplicate, the deleted one hidden), and your AI puts them in the code so a duplicate acts like the original.
 - Motions, levels and UI are in the same file. The full shape is in [CONTRACT.md](../../../../CONTRACT.md).
 
 **`library.json`** does the same for files: the ones you swapped (`replace`), added (`added`), and the ones nothing uses (`unused`). The editor never deletes a file. If you press Delete on one, your AI asks you first.

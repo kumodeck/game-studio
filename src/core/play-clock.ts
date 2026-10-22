@@ -7,8 +7,16 @@
 // one ordinary frame's step.
 //
 // Only in ▶ Play inside the editor (bridge.ts installs it before any game code, so the game's first look at
-// performance.now already goes through it). Date.now() is left alone: it is wall time (saves, "last played"), and a
-// game that steps with it is rare (CONTRACT.md §3.5.1 lists what a pause does not stop).
+// performance.now already goes through it).
+//
+// The game's timers and Date.now() stop with it too (polish-1022, 2026-10-22; play-timers.ts). Until then Date.now was
+// left alone as wall time ("saves, last played") and setTimeout / setInterval were not held: a countdown or an enemy
+// spawner on a timer ran on through a pause and through Edit. Date.now now leaves out the stopped time as well (a save's
+// time is off by the minutes paused, which no game we know minds; `new Date()` stays the wall clock). CONTRACT.md §3.5.1
+// lists what a pause still does not stop.
+
+import { nativeClearTimeout, nativeDateNow, nativeSetTimeout } from './native.ts';
+import { installTimerHold, type TimerHold } from './play-timers.ts';
 
 export interface PlayClock {
   /** Stop the clock: performance.now() stays where it is until go(). */
@@ -21,6 +29,8 @@ export interface PlayClock {
   realNow(): number;
   /** ms taken out so far (tests). */
   readonly skipped: number;
+  /** The game's timers (null: the page would not let them be replaced, they run as before). */
+  readonly timers: TimerHold | null;
 }
 
 /** The pure part (test/pause.test.ts): real time in, game time out. */
@@ -60,9 +70,27 @@ export function installPlayClock(win: Window & typeof globalThis): PlayClock {
   } catch {
     /* a locked-down page: the rAF timestamps are still shifted (time.ts) */
   }
+  // The browser's own timers: captured by core/native.ts before anything wrapped them (the edit script's first import);
+  // another window (tests) uses its own.
+  const own = typeof window !== 'undefined' && win === window;
+  const timers = installTimerHold(win, {
+    setTimeout: own ? nativeSetTimeout : win.setTimeout.bind(win),
+    clearTimeout: own ? nativeClearTimeout : win.clearTimeout.bind(win),
+    now: realNow,
+    dateNow: own ? nativeDateNow : win.Date.now.bind(win.Date),
+  }, () => c.at(realNow()));
   return {
-    stop: c.stop,
-    go: c.go,
+    // The timers stop and go with the clock: in a pause (play-pause.ts) and, in the edit page, with every hold of the
+    // game (time.ts `clock`), so Edit holds a timer-driven game as it holds a frame-driven one.
+    stop() {
+      c.stop();
+      timers?.stop();
+    },
+    go() {
+      c.go();
+      timers?.go();
+    },
+    timers,
     get stopped() {
       return c.stopped;
     },

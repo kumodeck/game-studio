@@ -6,8 +6,9 @@
 // its frames through window.requestAnimationFrame and looks the function up at
 // call time. Wrapping it before any game code runs freezes all of them with
 // one mechanism and needs no knowledge of the engine. Engines that tick from
-// setTimeout/setInterval or audio clocks are not frozen here; adapters can add
-// their own pause()/resume() for those.
+// setTimeout/setInterval are held with the game's clock instead (inside the
+// editor's frame: play-clock.ts → play-timers.ts, polish-1022); an audio clock
+// is not frozen here (a pause suspends the AudioContext, play-pause.ts).
 //
 // WHY "after the first frame": edit mode should show the scene as the game
 // first draws it. Freezing before any frame shows an empty canvas; freezing
@@ -17,7 +18,7 @@
 // The studio's own drawing uses raf(), which always reaches the real browser
 // function, so the editor keeps animating handles while the game is frozen.
 import type { TimeControl } from '../contract.ts';
-import { nativeCancelRaf, nativeRaf } from './native.ts';
+import { nativeCancelRaf, nativeRaf, nativeSetTimeout } from './native.ts';
 
 type FrameCb = (t: number) => void;
 
@@ -144,7 +145,10 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
 
   if (opts.firstFrameTimeoutMs) {
     const ms = opts.firstFrameTimeoutMs;
-    const start = () => win.setTimeout(() => {
+    // The browser's own timer (native.ts): the window's waits with the game's clock (play-timers.ts), and this is the
+    // studio's own wait for a game that may never draw.
+    const later = isMainWindow ? nativeSetTimeout : (fn: () => void, t: number) => win.setTimeout(fn, t);
+    const start = () => later(() => {
       if (!firstDone) {
         timedOut = true;
         markFirst();

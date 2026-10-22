@@ -31,6 +31,7 @@ import type { Core } from '../core/index.ts';
 import type { RulesHolder } from '../core/rules.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { drivenBetween } from './observe.ts';
+import { nativeSetTimeout } from '../core/native.ts';
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
 const one = (key: string, pose: Pose) => [{ key, pose } as unknown as Item];
@@ -170,7 +171,7 @@ export function createPlayMove(o: PlayMoveOptions): PlayMove {
           if (!atPause) start = new Map(l.map((it) => [it.key, it.pose] as const));
           return;
         }
-        await new Promise((r) => win.setTimeout(r, 150));
+        await new Promise((r) => nativeSetTimeout(r, 150));
       }
     }).catch(() => {});
   };

@@ -2,7 +2,7 @@
 // real local server, the built editor, the starters, and the stand-in AI (test/ai-feel/fake-agent.mjs), which answers a
 // paused message in its `done` note.
 //
-//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark] [--shots <dir>] [--lang ja]
+//   node test/studio-pause.browser.mjs [--only cove,ruins,glow,phone,side,dark,timers] [--shots <dir>] [--lang ja]
 //                                       [--before <studio-ui dir of an older build>]
 //
 // cove  Lantern Cove (three.js) PC 1280×800:
@@ -23,7 +23,13 @@
 // phone 390×844 (touch) and side 400×900 (the side window): ❚❚ in the editor's top bar, left of ✦; the chat is a sheet at
 //       the foot; the same button (now ▶) resumes.
 // dark  the editor in its dark look (PC and phone), paused with a reply (photos only, plus the basic checks).
-// --before <dir>: only photos of ▶ Play with an older build's editor (`skills/arrange/bin/studio-ui` of that build).
+// timers Lantern Cove PC, a game stepped by timers and the wall clock (polish-1022, 2026-10-22; core/play-timers.ts):
+//       an interval and a setTimeout chain set by the game page, and its Date.now(). Paused: none of them move; the
+//       chat still answers (the studio's own timers run). Resume: they go on, and Date.now() steps by the time since
+//       Resume, not the pause. Edit (the same page, held): they stand still again, a timer set while editing waits;
+//       Play: they go on.
+// --before <dir>: only photos of ▶ Play with an older build's editor (`skills/arrange/bin/studio-ui` of that build);
+//       with --only timers, the timers run's pause photos (the counter goes on there).
 //
 // Stage 2, moving things while paused (bridge/play-move.ts, 2026-10-22):
 // move   Lantern Cove PC: P, then Move in the panel: no veil, the card says to pick, the game still held. A still object
@@ -401,6 +407,99 @@ async function darkPc() {
   }
 }
 
+// A game that steps by timers and the wall clock, as the game page's own code (the window's setInterval / setTimeout /
+// Date.now, which the game would call). `n` an interval's ticks, `t` a setTimeout chain's, `d` Date.now() now.
+const TIMERS = {
+  // A small counter drawn in the game page (top left), so the photos show whether the timers ran: "Enemies" from the
+  // interval, "Time" a 60 s countdown from Date.now().
+  start: `(() => { const w = ${GW}; const d = w.document; const tp = w.__tp = { n: 0, t: 0, late: 0, from: w.Date.now() };
+    const el = d.createElement('div'); el.id = 'tp-hud';
+    el.style.cssText = 'position:fixed;left:16px;top:16px;z-index:5;padding:8px 12px;border-radius:10px;background:rgba(0,0,0,.55);color:#fff;font:600 18px/1.3 system-ui;pointer-events:none';
+    d.body.appendChild(el);
+    const draw = () => { el.textContent = 'Enemies ' + Math.floor(tp.n / 20) + ' · Time ' + Math.max(0, 60 - Math.floor((w.Date.now() - tp.from) / 1000)) + ' s'; };
+    w.setInterval(() => { tp.n++; draw(); }, 50);
+    const tick = () => { tp.t++; w.setTimeout(tick, 100); }; tick();
+    draw(); return true; })()`,
+  read: `JSON.stringify({ n: ${GW}.__tp.n, t: ${GW}.__tp.t, late: ${GW}.__tp.late, d: ${GW}.Date.now(), wall: Date.now() })`,
+  // One timer set now (while held), for 300 ms: `late` counts it when it fires.
+  later: `(${GW}.setTimeout(() => ${GW}.__tp.late++, 300), true)`,
+};
+
+async function timers() {
+  console.log('timers: a game stepped by setInterval / setTimeout / Date.now (Lantern Cove page), PC');
+  const g = await open('starters/lantern-cove', LAYOUTS.pc);
+  const { root, page, shot } = g;
+  const agent = startFakeAgent(root);
+  const read = () => j(page, TIMERS.read);
+  try {
+    await page.eval(TIMERS.start);
+    await sleep(3000); // a few enemies and seconds on the counter before the photos
+    let a = await read();
+    await sleep(1200);
+    let b = await read();
+    assert.ok(b.n - a.n >= 5 && b.t - a.t >= 3, `playing: the timers run (interval +${b.n - a.n}, chain +${b.t - a.t})`);
+    assert.ok(b.d - a.d >= 900, `playing: Date.now() runs (+${b.d - a.d} ms)`);
+    // Pause.
+    await page.click(640, 260);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(`JSON.parse(${IN.ui}).chat`, 5000);
+    await sleep(200);
+    a = await read();
+    await shot('timers', 'paused');
+    await page.eval(TIMERS.later);
+    // The studio's own timers still run while the game's wait: the chat sends and the stand-in AI's reply shows.
+    await chatSay(page, root, ja ? 'タイマーは止まっている？' : 'Are the timers stopped?', 1);
+    await sleep(1500);
+    b = await read();
+    assert.deepEqual([b.n - a.n, b.t - a.t, b.late], [0, 0, 0], `paused: no timer fired (interval +${b.n - a.n}, chain +${b.t - a.t}, set while paused ${b.late})`);
+    assert.equal(b.d, a.d, `paused: Date.now() stands still (+${b.d - a.d} ms over ${b.wall - a.wall} ms)`);
+    await shot('timers', 'paused-later');
+    const pausedMs = b.wall - a.wall;
+    // Resume.
+    await page.eval(`(${Q('[data-part=pause-chat] input')}.blur(), ${GW}.focus(), true)`);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(`!JSON.parse(${IN.ui}).chat`, 5000);
+    await sleep(1200);
+    const c = await read();
+    assert.ok(c.n - b.n >= 5 && c.t - b.t >= 3, `resumed: the timers go on (interval +${c.n - b.n}, chain +${c.t - b.t})`);
+    assert.equal(c.late, 1, 'resumed: the timer set while paused fired once');
+    // The browser's own clock minus the game's: it grew by the time paused (at least a→b, at most a→c), no more.
+    const left = (c.wall - c.d) - (a.wall - a.d);
+    assert.ok(left >= pausedMs - 50 && left <= c.wall - a.wall + 50, `resumed: Date.now() left out ${left} ms (paused ${pausedMs}–${c.wall - a.wall} ms)`);
+    // Edit: the same page, held.
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(IN.ready + ` && document.querySelector('.shell').dataset.playing === 'off'`, 20000);
+    await sleep(800);
+    const e0 = await read();
+    await page.eval(TIMERS.later);
+    await sleep(1500);
+    const e1 = await read();
+    assert.deepEqual([e1.n - e0.n, e1.t - e0.t, e1.late], [0, 0, 1], `Edit: the timers stand still (interval +${e1.n - e0.n}, chain +${e1.t - e0.t}, set in Edit ${e1.late - 1})`);
+    assert.equal(e1.d, e0.d, 'Edit: Date.now() stands still');
+    // The editor itself still works in a held page: a pick and an arrow step land, Save counts it.
+    await page.eval(`studioShell.actions.select('cottage')`);
+    await page.waitFor(`studioShell.selected() === 'cottage'`, 3000);
+    await sleep(400);
+    await page.eval(`document.activeElement?.blur?.()`);
+    await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+    await page.waitFor(`/1/.test(document.querySelector('[data-part=save]')?.innerText || '')`, 4000);
+    await shot('timers', 'edit');
+    // Play again (the window before Play: try without saving).
+    await page.eval(`document.querySelector('button.play').click()`);
+    await sleep(500);
+    await page.eval(`document.querySelector('[data-part=unsaved-guard]:not([hidden]) [data-action=guard-discard]')?.click()`);
+    await page.waitFor(IN.playing, 20000);
+    await sleep(1200);
+    const p1 = await read();
+    assert.ok(p1.n - e1.n >= 5 && p1.late === 2, `Play again: the timers go on (interval +${p1.n - e1.n}), the one set in Edit fired`);
+    console.log(`  ok: held in a pause (${pausedMs} ms) and in Edit, on again after each; Date.now() with them`);
+  } finally {
+    await agent.stop();
+    await g.close();
+  }
+}
+
 // ----- stage 2: moving things while paused -----
 
 /** Objects of the paused game that can be pressed right now: on screen, clear of the panel, nothing in front of them. */
@@ -585,7 +684,34 @@ async function moveSome(src, layout, tag, { theme = 'light', layoutIn = true } =
   }
 }
 
+/** --before with --only timers: the counter in a pause with an older build's editor (photos; the timers run on there). */
+async function timersBefore() {
+  console.log(`before (timers): ${BEFORE}`);
+  const g = await open('starters/lantern-cove', LAYOUTS.pc, { uiDir: resolve(BEFORE) });
+  const { root, page, shot } = g;
+  const agent = startFakeAgent(root);
+  try {
+    await page.eval(TIMERS.start);
+    await sleep(3000);
+    await page.click(640, 260);
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(`JSON.parse(${IN.ui}).chat`, 5000);
+    await sleep(200);
+    const a = await j(page, TIMERS.read);
+    await shot('before-timers', 'paused');
+    await chatSay(page, root, ja ? 'タイマーは止まっている？' : 'Are the timers stopped?', 1);
+    await sleep(1500);
+    const b = await j(page, TIMERS.read);
+    await shot('before-timers', 'paused-later');
+    console.log(`  before: while paused the interval ran +${b.n - a.n}, Date.now() +${b.d - a.d} ms`);
+  } finally {
+    await agent.stop();
+    await g.close();
+  }
+}
+
 async function before() {
+  if (ONLY?.includes('timers')) return timersBefore();
   console.log(`before: ${BEFORE}`);
   for (const [layout, theme] of [[LAYOUTS.pc, 'light'], [LAYOUTS.pc, 'dark'], [LAYOUTS.side, 'light'], [LAYOUTS.phone, 'light'], [LAYOUTS.phone, 'dark']]) {
     const g = await open('starters/lantern-cove', layout, { theme, uiDir: resolve(BEFORE) });
@@ -611,6 +737,7 @@ try {
       await narrow(LAYOUTS.phone, 'dark');
       await narrow(LAYOUTS.side, 'dark');
     }
+    if (on('timers')) await timers();
     if (on('move')) await moveCove();
     if (on('move2d')) await moveSome('starters/firefly-ruins', LAYOUTS.pc, 'move-ruins');
     if (on('moveglow')) await moveSome('examples/three-hud', LAYOUTS.pc, 'move-glow');

@@ -14,6 +14,7 @@ Install Game Studio with one line, then open your game with `/arrange`. It takes
 
 - **Claude Code** (in the Claude app or a terminal) or **Codex**, running on your computer. Plugins don’t load in cloud sessions.
 - **Node.js 22.13 or later.** To check, run `node --version` in a terminal. If it’s older, get the latest LTS from [nodejs.org](https://nodejs.org).
+  **Please update Node.js to 22.23.4 or later (24.22.1 or later on Node 24).** These include the [October 2026 security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases).
 
 That’s all. Game Studio installs nothing else.
 

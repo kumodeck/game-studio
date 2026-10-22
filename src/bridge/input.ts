@@ -86,7 +86,7 @@
 //   once (no need to move the pointer).
 import { UI, type Anchor, type BridgeToShell, type Item, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
-import { nativeNow } from '../core/native.ts';
+import { nativeClearTimeout, nativeNow, nativeSetTimeout } from '../core/native.ts';
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
@@ -395,8 +395,8 @@ export function attachInput(deps: InputDeps): InputHandle {
     const name = tool === 'rotate' && canTurn() && state.axis !== 'y' ? rw[state.axis === 'x' ? 'tipX' : 'tipZ'] : rw[tool];
     handles.hint(touchFirst() ? words.touch(name) : words.mouse(name));
     // Gone after the first drag with the tool (it was read and used), or after 8 s.
-    win.clearTimeout(hintTimer);
-    hintTimer = win.setTimeout(() => handles.hint(null), 8000);
+    nativeClearTimeout(hintTimer);
+    hintTimer = nativeSetTimeout(() => handles.hint(null), 8000);
   };
   const hintUsed = () => {
     if (!hintShown) return;
@@ -472,8 +472,8 @@ export function attachInput(deps: InputDeps): InputHandle {
   // The long press on the turn / size button (LONG_PRESS_MS): armed at the press, checked when it fires.
   let pressTimer = 0;
   const armLongPress = (id: number, kind: 'axis' | 'scale') => {
-    win.clearTimeout(pressTimer);
-    pressTimer = win.setTimeout(() => {
+    nativeClearTimeout(pressTimer);
+    pressTimer = nativeSetTimeout(() => {
       const p = ptrs.get(id);
       if (!p || ptrs.size !== 1 || (mode.kind !== 'handle' && mode.kind !== 'group') || mode.anywhere) return;
       if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
@@ -768,8 +768,8 @@ export function attachInput(deps: InputDeps): InputHandle {
   // The touch held still for the menu (LONG_PRESS_MS): armed when a plain press starts, checked when it fires.
   let menuTimer = 0;
   const armMenuPress = (id: number) => {
-    win.clearTimeout(menuTimer);
-    menuTimer = win.setTimeout(() => {
+    nativeClearTimeout(menuTimer);
+    menuTimer = nativeSetTimeout(() => {
       const p = ptrs.get(id);
       if (!p || ptrs.size !== 1 || mode.kind !== 'pending') return;
       if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
@@ -866,7 +866,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       /* element may not accept capture (e.g. document) */
     }
     if (ptrs.size === 2) {
-      win.clearTimeout(menuTimer);
+      nativeClearTimeout(menuTimer);
       // Second finger: whatever the first was doing turns into pinch/pan.
       if (mode.kind === 'handle' || mode.kind === 'group') endGesture();
       if (mode.kind === 'rise') riseEnd();
@@ -1116,8 +1116,8 @@ export function attachInput(deps: InputDeps): InputHandle {
 
   /** The press `p` is over: a tap / the place's menu when `tapped` (let go without travel), else just ended. */
   const end = (p: Ptr, tapped: boolean) => {
-    win.clearTimeout(pressTimer);
-    win.clearTimeout(menuTimer);
+    nativeClearTimeout(pressTimer);
+    nativeClearTimeout(menuTimer);
     ptrs.delete(p.id);
     if (mode.kind === 'rise') {
       riseEnd();
@@ -1552,11 +1552,11 @@ export function attachInput(deps: InputDeps): InputHandle {
     },
     detach() {
       endGesture();
-      win.clearTimeout(pressTimer);
-      win.clearTimeout(menuTimer);
+      nativeClearTimeout(pressTimer);
+      nativeClearTimeout(menuTimer);
       for (const [t, fn] of winListeners) win.removeEventListener(t, fn, opts);
       for (const w of above) for (const t of ['pointerup', 'mouseup'] as const) w.removeEventListener(t, onUpAbove, { capture: true });
-      win.clearTimeout(hintTimer);
+      nativeClearTimeout(hintTimer);
       handles.destroy();
       if (riseFrame) core.time.cancelRaf(riseFrame);
       if (flyFrame) core.time.cancelRaf(flyFrame);

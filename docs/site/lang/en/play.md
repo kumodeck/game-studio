@@ -30,7 +30,7 @@ Going back from Play to Edit never asks.
 
 ## Pause and talk to your AI
 
-Something odd happens? Press <kbd>P</kbd> while the game has the focus, or the **❚❚** button. The game stops right there: its clock, its sound, everything. A chat opens beside it.
+Something odd happens? Press <kbd>P</kbd> while the game has the focus, or the **❚❚** button. The game stops right there: its clock, its timers, its sound, everything. A chat opens beside it.
 
 ![The game paused, with the chat open and the AI’s reply](media/pause-chat.webp)
 

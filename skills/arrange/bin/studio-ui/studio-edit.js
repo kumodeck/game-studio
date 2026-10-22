@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.19 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.20 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -34,10 +34,25 @@ const nativeNow               =
   typeof performance !== 'undefined' ? performance.now.bind(performance) : () => Date.now();
 const nativeCancelRaf                       =
   typeof window !== 'undefined' ? window.cancelAnimationFrame.bind(window) : (id) => clearTimeout(id);
+/**
+ * The browser's own timers and wall clock, captured before ▶ Play's game clock (play-clock.ts → play-timers.ts) makes
+ * the window's setTimeout / setInterval / Date.now stop with the game (polish-1022, 2026-10-22: a game that steps from
+ * a timer or Date.now kept running through a pause and through Edit). Every timer of the studio itself in the game page
+ * (the line's fade, the long press, the self-check's waits, the three.js boot script's safety nets) uses these: on the
+ * window's ones it would wait for the game to go on, and a paused game never goes on by itself.
+ */
+const nativeSetTimeout                                                       =
+  typeof window !== 'undefined' ? (window.setTimeout.bind(window)                                                        ) : (fn, ms) => setTimeout(fn, ms)                     ;
+const nativeClearTimeout                                   =
+  typeof window !== 'undefined' ? window.clearTimeout.bind(window) : (id) => clearTimeout(id                                                 );
+const nativeDateNow               = Date.now.bind(Date);
 
 __def(__exports, "nativeRaf", () => nativeRaf);
 __def(__exports, "nativeNow", () => nativeNow);
 __def(__exports, "nativeCancelRaf", () => nativeCancelRaf);
+__def(__exports, "nativeSetTimeout", () => nativeSetTimeout);
+__def(__exports, "nativeClearTimeout", () => nativeClearTimeout);
+__def(__exports, "nativeDateNow", () => nativeDateNow);
 };
 __defs[1] = function (__exports) {
 'use strict';
@@ -78,6 +93,10 @@ __defs[1] = function (__exports) {
   'use strict';
   var g = typeof globalThis !== 'undefined' ? globalThis : window;
   if (g.__studioThree) return; // injected twice (e.g. a reload inside the same window) — keep the first
+  // The browser's own setTimeout, taken now: in the editor the window's one later waits with the game's clock
+  // (core/play-timers.ts, polish-1022), and the safety nets below must fire while the game is held. Kept on the state
+  // for the adapter module (adapter.js whenThreeReady) too.
+  var nativeTimeout = g.setTimeout.bind(g);
 
   var params = null;
   try { params = new URLSearchParams(location.search); } catch (e) { params = null; }
@@ -100,7 +119,8 @@ __defs[1] = function (__exports) {
     readyCamera: null,     // camera handed to studio.ready({ camera }) — used when the game was held before rendering
     holdAfterRender: false,
     holdAfterCamera: null, // ready({ camera }) before that camera drew: hold after its first render (see ready())
-    placed: false          // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    placed: false,         // true from that render until the hold: the rest of that frame is not drawn (see wrapRender)
+    setTimeout: nativeTimeout // the browser's own (see above)
   };
   g.__studioThree = state;
 
@@ -381,7 +401,7 @@ __defs[1] = function (__exports) {
   api.waitForReady = function () {
     if (!state.editOnLoad || state.held) return;
     state.waitingForReady = true;
-    setTimeout(function () { if (state.waitingForReady) { state.waitingForReady = false; hold('ready-timeout'); } }, 8000);
+    nativeTimeout(function () { if (state.waitingForReady) { state.waitingForReady = false; hold('ready-timeout'); } }, 8000);
   };
   /**
    * The initial layout is final. In edit-on-load mode the game is held here. A no-op otherwise.
@@ -404,7 +424,7 @@ __defs[1] = function (__exports) {
         // that waits for a click to start drawing), hold anyway after 1.5 s.
         snapLayout();
         state.holdAfterCamera = opts.camera;
-        setTimeout(function () { if (state.holdAfterCamera) { state.holdAfterCamera = null; putBackLayout(); hold('ready'); } }, 1500);
+        nativeTimeout(function () { if (state.holdAfterCamera) { state.holdAfterCamera = null; putBackLayout(); hold('ready'); } }, 1500);
       } else if (state.gameRendered || state.readyCamera) hold('ready');
       else state.holdAfterRender = true;
     }
@@ -2182,7 +2202,8 @@ function whenThreeReady({ timeoutMs = 20000 } = {}) {
       const renderer = boot.renderers.find((r) => r.domElement && r.domElement.isConnected) || boot.renderers[0];
       if (scene && renderer) return resolve(createThreeAdapter({ scene, renderer }));
       if (performance.now() - t0 > timeoutMs) return reject(new Error('studio: no three.js scene was rendered'));
-      setTimeout(tick, 50);
+      // The browser's own timer (boot.js): the window's one waits with a held game's clock (core/play-timers.ts).
+      (boot.setTimeout || setTimeout)(tick, 50);
     };
     tick();
   });
@@ -5802,8 +5823,9 @@ __defs[15] = function (__exports) {
 // its frames through window.requestAnimationFrame and looks the function up at
 // call time. Wrapping it before any game code runs freezes all of them with
 // one mechanism and needs no knowledge of the engine. Engines that tick from
-// setTimeout/setInterval or audio clocks are not frozen here; adapters can add
-// their own pause()/resume() for those.
+// setTimeout/setInterval are held with the game's clock instead (inside the
+// editor's frame: play-clock.ts → play-timers.ts, polish-1022); an audio clock
+// is not frozen here (a pause suspends the AudioContext, play-pause.ts).
 //
 // WHY "after the first frame": edit mode should show the scene as the game
 // first draws it. Freezing before any frame shows an empty canvas; freezing
@@ -5813,7 +5835,7 @@ __defs[15] = function (__exports) {
 // The studio's own drawing uses raf(), which always reaches the real browser
 // function, so the editor keeps animating handles while the game is frozen.
                                                   
-const { nativeCancelRaf, nativeRaf } = __require(0);
+const { nativeCancelRaf, nativeRaf, nativeSetTimeout } = __require(0);
 
                                    
 
@@ -5940,7 +5962,10 @@ function installTime(opts             )                  {
 
   if (opts.firstFrameTimeoutMs) {
     const ms = opts.firstFrameTimeoutMs;
-    const start = () => win.setTimeout(() => {
+    // The browser's own timer (native.ts): the window's waits with the game's clock (play-timers.ts), and this is the
+    // studio's own wait for a game that may never draw.
+    const later = isMainWindow ? nativeSetTimeout : (fn            , t        ) => win.setTimeout(fn, t);
+    const start = () => later(() => {
       if (!firstDone) {
         timedOut = true;
         markFirst();
@@ -5999,6 +6024,188 @@ __def(__exports, "installCore", () => installCore);
 };
 __defs[17] = function (__exports) {
 'use strict';
+// ../core/play-timers.ts
+
+// The game's timers and wall clock, held with the game's clock (polish-1022, 2026-10-22; play-clock.ts).
+//
+// WHY: a pause (bridge/play-pause.ts) and Edit hold the game's frames (time.ts) and take the held time out of
+// performance.now() (play-clock.ts). A game that steps from a timer — `setInterval(spawnEnemy, 2000)`, a countdown with
+// `setTimeout(tick, 1000)`, a `Date.now() - startedAt` clock — still ran on: enemies piled up behind the chat, the
+// countdown ran out while the person was moving a tree. Here every timer the game sets waits while the clock is stopped
+// and goes on with the time it had left (a 2 s interval stopped 0.5 s after its last tick fires 1.5 s after Resume),
+// and Date.now() leaves out the stopped time like performance.now() does.
+//
+// The studio's own timers in the game page never come here: they use core/native.ts (nativeSetTimeout, nativeDateNow),
+// captured before this wraps the window's. Otherwise a paused game would also pause the line's fade, the long press,
+// the self-check's waits — and Edit, which holds the game, would hold the editor.
+//
+// Not held (CONTRACT.md §3.5.1): `new Date()` (an object, its time is wall time: saves, "today"), promises and
+// queueMicrotask (they run when what they wait for is done), requestIdleCallback, a Worker's own timers, an audio
+// clock (the pause suspends the AudioContext itself).
+
+/** What the hold needs from the browser: its own setTimeout / clearTimeout and clock (injected for test/pause.test.ts). */
+                               
+                                                  
+                                  
+                                                                                 
+                
+ 
+
+                                                    
+
+                 
+                  
+                                                                         
+                       
+                                                  
+              
+                                                
+               
+                
+ 
+
+                            
+                                                                        
+                                                                         
+                                                                                                         
+                           
+               
+             
+                            
+                                         
+                         
+ 
+
+/**
+ * The pure part: the game's timers over the browser's own. Ids are the hold's own (a held timer has no browser id, and
+ * the game keeps the id it got across a pause). `compile` turns a string handler (`setTimeout("tick()", 100)`, old
+ * code) into a function; absent = string handlers are ignored, as a page with a strict CSP does.
+ */
+function makeTimerHold(n              , compile                               )            {
+  const timers = new Map               ();
+  let nextId = 1;
+  let stopped = false;
+
+  const arm = (id        , t       , wait        ) => {
+    t.due = n.now() + wait;
+    t.real = n.setTimeout(() => fire(id), wait);
+  };
+  function fire(id        ) {
+    const t = timers.get(id);
+    if (!t || stopped) return;
+    t.real = null;
+    if (t.every === null) timers.delete(id);
+    else {
+      // The next tick from when this one was due, not from now: no drift. Far behind (a background tab the browser
+      // throttled): from now, so it does not fire a burst to catch up (the browser's own setInterval never does).
+      const next = t.due + t.every;
+      const wait = next - n.now();
+      arm(id, t, wait >= -t.every ? Math.max(0, wait) : t.every);
+    }
+    t.run();
+  }
+  function add(handler         , ms         , args           , every         )         {
+    const fn = typeof handler === 'function' ? handler : compile && typeof handler === 'string' ? compile(handler) : null;
+    const id = nextId++;
+    if (!fn) return id;
+    // As the browser reads it: not a number or below 0 = 0; an interval of 0 still waits a little (Chrome: 4 ms after
+    // a few; here 1, so a 0 interval cannot freeze the page in a loop of its own).
+    const wait = Math.max(0, Number(ms) || 0);
+    const t        = { run: () => fn(...args), every: every ? Math.max(1, wait) : null, due: 0, left: wait, real: null };
+    timers.set(id, t);
+    if (stopped) t.left = wait;
+    else arm(id, t, wait);
+    return id;
+  }
+
+  return {
+    setTimeout: (h, ms, ...args) => add(h, ms, args, false),
+    setInterval: (h, ms, ...args) => add(h, ms, args, true),
+    clear(id) {
+      const t = timers.get(id          );
+      if (!t) return;
+      if (t.real != null) n.clearTimeout(t.real);
+      timers.delete(id          );
+    },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      const now = n.now();
+      for (const t of timers.values()) {
+        if (t.real != null) n.clearTimeout(t.real);
+        t.real = null;
+        t.left = Math.max(0, t.due - now);
+      }
+    },
+    go() {
+      if (!stopped) return;
+      stopped = false;
+      // In the order they were set (a Map keeps it): two timers with the same time left fire in the game's order.
+      for (const [id, t] of timers) arm(id, t, t.left);
+    },
+    get stopped() {
+      return stopped;
+    },
+    get count() {
+      return timers.size;
+    },
+  };
+}
+
+/**
+ * Put the hold on the page: the window's setTimeout / setInterval / clearTimeout / clearInterval and Date.now become
+ * the game's. `gameNow` is the game's performance.now (play-clock.ts), so Date.now leaves out exactly the time it does.
+ * Returns null when the page will not let the globals be replaced (nothing is held then, as before).
+ */
+function installTimerHold(win                            , real                                                                                                                                      ,
+  gameNow              )                   {
+  const hold = makeTimerHold(
+    { setTimeout: (fn, ms) => real.setTimeout(fn, ms), clearTimeout: (id) => real.clearTimeout(id          ), now: real.now },
+    (code) => {
+      try {
+        return new win.Function(code)              ;
+      } catch {
+        return () => {}; // a CSP without unsafe-eval: the browser would refuse it too
+      }
+    },
+  );
+  // Date.now = the wall clock minus the time the game's clock has been stopped (real perf − game perf), in whole ms.
+  // WHY whole, frozen and never back (first run of the screen test, 2026-10-22): the two clocks are read a moment
+  // apart, so the plain difference wobbled by a fraction of a ms while paused, and was not the integer games expect.
+  let frozen                = null;
+  let last = -Infinity;
+  const dateNow = () => (frozen !== null ? frozen : (last = Math.max(last, Math.floor(real.dateNow() - (real.now() - gameNow())))));
+  const g = win                                      ;
+  // Named like the browser's: engines and polyfills that check `setTimeout.name` or call through `window.setTimeout`
+  // see the usual shape.
+  const named =                                       (name        , f   )    => (Object.defineProperty(f, 'name', { value: name }), f);
+  try {
+    g.setTimeout = named('setTimeout', (h         , ms         , ...a           ) => hold.setTimeout(h, ms, ...a));
+    g.setInterval = named('setInterval', (h         , ms         , ...a           ) => hold.setInterval(h, ms, ...a));
+    g.clearTimeout = named('clearTimeout', (id         ) => hold.clear(id));
+    g.clearInterval = named('clearInterval', (id         ) => hold.clear(id));
+    win.Date.now = named('now', dateNow);
+  } catch {
+    return null;
+  }
+  // Stopped: one value, taken when it stopped. Going: whole ms like the browser's, never going back.
+  const { stop, go } = hold;
+  hold.stop = () => {
+    if (!hold.stopped) frozen = dateNow();
+    stop();
+  };
+  hold.go = () => {
+    go();
+    frozen = null;
+  };
+  return hold;
+}
+
+__def(__exports, "makeTimerHold", () => makeTimerHold);
+__def(__exports, "installTimerHold", () => installTimerHold);
+};
+__defs[18] = function (__exports) {
+'use strict';
 // ../core/play-clock.ts
 
 // The game's clock while playing inside the editor, so a pause takes no time (pause, 2026-10-22).
@@ -6010,8 +6217,16 @@ __defs[17] = function (__exports) {
 // one ordinary frame's step.
 //
 // Only in ▶ Play inside the editor (bridge.ts installs it before any game code, so the game's first look at
-// performance.now already goes through it). Date.now() is left alone: it is wall time (saves, "last played"), and a
-// game that steps with it is rare (CONTRACT.md §3.5.1 lists what a pause does not stop).
+// performance.now already goes through it).
+//
+// The game's timers and Date.now() stop with it too (polish-1022, 2026-10-22; play-timers.ts). Until then Date.now was
+// left alone as wall time ("saves, last played") and setTimeout / setInterval were not held: a countdown or an enemy
+// spawner on a timer ran on through a pause and through Edit. Date.now now leaves out the stopped time as well (a save's
+// time is off by the minutes paused, which no game we know minds; `new Date()` stays the wall clock). CONTRACT.md §3.5.1
+// lists what a pause still does not stop.
+
+const { nativeClearTimeout, nativeDateNow, nativeSetTimeout } = __require(0);
+const { installTimerHold } = __require(17);
 
                             
                                                                         
@@ -6024,6 +6239,8 @@ __defs[17] = function (__exports) {
                     
                                      
                            
+                                                                                               
+                                    
  
 
 /** The pure part (test/pause.test.ts): real time in, game time out. */
@@ -6063,9 +6280,27 @@ function installPlayClock(win                            )            {
   } catch {
     /* a locked-down page: the rAF timestamps are still shifted (time.ts) */
   }
+  // The browser's own timers: captured by core/native.ts before anything wrapped them (the edit script's first import);
+  // another window (tests) uses its own.
+  const own = typeof window !== 'undefined' && win === window;
+  const timers = installTimerHold(win, {
+    setTimeout: own ? nativeSetTimeout : win.setTimeout.bind(win),
+    clearTimeout: own ? nativeClearTimeout : win.clearTimeout.bind(win),
+    now: realNow,
+    dateNow: own ? nativeDateNow : win.Date.now.bind(win.Date),
+  }, () => c.at(realNow()));
   return {
-    stop: c.stop,
-    go: c.go,
+    // The timers stop and go with the clock: in a pause (play-pause.ts) and, in the edit page, with every hold of the
+    // game (time.ts `clock`), so Edit holds a timer-driven game as it holds a frame-driven one.
+    stop() {
+      c.stop();
+      timers?.stop();
+    },
+    go() {
+      c.go();
+      timers?.go();
+    },
+    timers,
     get stopped() {
       return c.stopped;
     },
@@ -6080,7 +6315,7 @@ function installPlayClock(win                            )            {
 __def(__exports, "makeClock", () => makeClock);
 __def(__exports, "installPlayClock", () => installPlayClock);
 };
-__defs[18] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // ../core/port2d.ts
 
@@ -6564,7 +6799,7 @@ __def(__exports, "BACKDROP_NAME", () => BACKDROP_NAME);
 __def(__exports, "backdropRun", () => backdropRun);
 __def(__exports, "adapterFromPort2D", () => adapterFromPort2D);
 };
-__defs[19] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // ../loader/studio-placement.js
 
@@ -7395,7 +7630,7 @@ __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
 };
-__defs[20] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // ../adapters/ui/adapter.js
 
@@ -7416,7 +7651,7 @@ __defs[20] = function (__exports) {
 // UI in stage 1: rotatable false). parentToScreen maps that offset space to the screen: origin = where the middle
 // of the element would be at offset 0, one offset px = k screen px (k = the zoom of the parent, e.g. a HUD scaled to
 // fit the window).
-const { placeUi, uiOffset } = __require(19);
+const { placeUi, uiOffset } = __require(20);
 
 const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 /** Scale bounds of a UI element: the same as placement.json `ui` (src/schema LIMITS.minUiScale / maxUiScale). */
@@ -7535,7 +7770,7 @@ function createUiPort(win, opts = {}) {
 
 __def(__exports, "createUiPort", () => createUiPort);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // ../adapters/ui/index.ts
 
@@ -7549,8 +7784,8 @@ __defs[21] = function (__exports) {
 // The UI seat (CONTRACT.md §1.1): the bridge asks the game's own studio.registerUI() ports first, then this one.
                                                                
                                                 
-const { adapterFromPort2D } = __require(18);
-const { createUiPort } = __require(20);
+const { adapterFromPort2D } = __require(19);
+const { createUiPort } = __require(21);
 
 /** A UI-seat adapter from any Port2D (the built-in DOM one, or a game's registerUI port). */
 function uiAdapterFromPort(port        , core      , win        )                {
@@ -7571,7 +7806,7 @@ function findDomUi(core      , win        , skip                    )           
 __def(__exports, "uiAdapterFromPort", () => uiAdapterFromPort);
 __def(__exports, "findDomUi", () => findDomUi);
 };
-__defs[22] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -7684,6 +7919,20 @@ const frames = (core      ) => new Promise      ((r) => core.time.raf(() => core
 
 const near = (a                      , b                      , eps        ) =>
   !!a && !!b && a.length === b.length && a.every((v, i) => Math.abs(v - b[i] ) <= eps);
+
+/** The checks that move the sample object and read it back: a game still settling can spoil them once. */
+const MOVING_CHECKS = new Set(['pose-roundtrip', 'screen-changes', 'anchor-follows', 'restored']);
+/** How long the editor waits before the second look (bridge/editor.ts): 1.2 s ≈ a slow first second of a game. */
+const SECOND_LOOK_MS = 1200;
+
+/**
+ * Is a failed check worth running once more before telling anyone (polish-1022, 2026-10-22)? Only when everything
+ * that failed is a moving check (above): "no adapter", "no objects" or bad keys do not change by waiting.
+ */
+function worthASecondLook(res                 )          {
+  const failed = res.checks.filter((c) => !c.ok);
+  return failed.length > 0 && failed.every((c) => MOVING_CHECKS.has(c.id));
+}
 
 async function runSelfCheck(adapter                      , core      , win        )                           {
   const checks          = [];
@@ -7811,9 +8060,11 @@ function fmt(p                      )         {
 }
 
 __def(__exports, "mainCanvas", () => mainCanvas);
+__def(__exports, "SECOND_LOOK_MS", () => SECOND_LOOK_MS);
+__def(__exports, "worthASecondLook", () => worthASecondLook);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[23] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -8067,7 +8318,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -8382,7 +8633,7 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // hold.ts
 
@@ -8494,7 +8745,7 @@ __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -8522,7 +8773,7 @@ __defs[26] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
-const { canLift } = __require(25);
+const { canLift } = __require(26);
 
                                
                  
@@ -8896,7 +9147,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -9118,7 +9369,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -9171,7 +9422,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -10094,7 +10345,7 @@ __def(__exports, "moreFromEvent", () => moreFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -10252,7 +10503,7 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // snap.ts
 
@@ -10353,7 +10604,7 @@ __def(__exports, "stepDetent", () => stepDetent);
 __def(__exports, "freeHeld", () => freeHeld);
 __def(__exports, "firstToTouch", () => firstToTouch);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -10445,16 +10696,16 @@ __defs[32] = function (__exports) {
 //   once (no need to move the pointer).
 const { UI } = __require(13);
                                              
-const { nativeNow } = __require(0);
-const { keyStep } = __require(28);
+const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
+const { keyStep } = __require(29);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(29);
+const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(30);
                                                      
-const { createRiseButtons } = __require(30);
-const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(31);
-const { canLift } = __require(25);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(26);
+const { createRiseButtons } = __require(31);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(32);
+const { canLift } = __require(26);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(27);
 
                             
                          
@@ -10754,8 +11005,8 @@ function attachInput(deps           )              {
     const name = tool === 'rotate' && canTurn() && state.axis !== 'y' ? rw[state.axis === 'x' ? 'tipX' : 'tipZ'] : rw[tool];
     handles.hint(touchFirst() ? words.touch(name) : words.mouse(name));
     // Gone after the first drag with the tool (it was read and used), or after 8 s.
-    win.clearTimeout(hintTimer);
-    hintTimer = win.setTimeout(() => handles.hint(null), 8000);
+    nativeClearTimeout(hintTimer);
+    hintTimer = nativeSetTimeout(() => handles.hint(null), 8000);
   };
   const hintUsed = () => {
     if (!hintShown) return;
@@ -10831,8 +11082,8 @@ function attachInput(deps           )              {
   // The long press on the turn / size button (LONG_PRESS_MS): armed at the press, checked when it fires.
   let pressTimer = 0;
   const armLongPress = (id        , kind                  ) => {
-    win.clearTimeout(pressTimer);
-    pressTimer = win.setTimeout(() => {
+    nativeClearTimeout(pressTimer);
+    pressTimer = nativeSetTimeout(() => {
       const p = ptrs.get(id);
       if (!p || ptrs.size !== 1 || (mode.kind !== 'handle' && mode.kind !== 'group') || mode.anywhere) return;
       if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
@@ -11127,8 +11378,8 @@ function attachInput(deps           )              {
   // The touch held still for the menu (LONG_PRESS_MS): armed when a plain press starts, checked when it fires.
   let menuTimer = 0;
   const armMenuPress = (id        ) => {
-    win.clearTimeout(menuTimer);
-    menuTimer = win.setTimeout(() => {
+    nativeClearTimeout(menuTimer);
+    menuTimer = nativeSetTimeout(() => {
       const p = ptrs.get(id);
       if (!p || ptrs.size !== 1 || mode.kind !== 'pending') return;
       if (Math.hypot(p.x - p.sx, p.y - p.sy) > UI.tapSlopPx) return;
@@ -11225,7 +11476,7 @@ function attachInput(deps           )              {
       /* element may not accept capture (e.g. document) */
     }
     if (ptrs.size === 2) {
-      win.clearTimeout(menuTimer);
+      nativeClearTimeout(menuTimer);
       // Second finger: whatever the first was doing turns into pinch/pan.
       if (mode.kind === 'handle' || mode.kind === 'group') endGesture();
       if (mode.kind === 'rise') riseEnd();
@@ -11475,8 +11726,8 @@ function attachInput(deps           )              {
 
   /** The press `p` is over: a tap / the place's menu when `tapped` (let go without travel), else just ended. */
   const end = (p     , tapped         ) => {
-    win.clearTimeout(pressTimer);
-    win.clearTimeout(menuTimer);
+    nativeClearTimeout(pressTimer);
+    nativeClearTimeout(menuTimer);
     ptrs.delete(p.id);
     if (mode.kind === 'rise') {
       riseEnd();
@@ -11911,11 +12162,11 @@ function attachInput(deps           )              {
     },
     detach() {
       endGesture();
-      win.clearTimeout(pressTimer);
-      win.clearTimeout(menuTimer);
+      nativeClearTimeout(pressTimer);
+      nativeClearTimeout(menuTimer);
       for (const [t, fn] of winListeners) win.removeEventListener(t, fn, opts);
       for (const w of above) for (const t of ['pointerup', 'mouseup']         ) w.removeEventListener(t, onUpAbove, { capture: true });
-      win.clearTimeout(hintTimer);
+      nativeClearTimeout(hintTimer);
       handles.destroy();
       if (riseFrame) core.time.cancelRaf(riseFrame);
       if (flyFrame) core.time.cancelRaf(flyFrame);
@@ -11929,7 +12180,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -11987,7 +12238,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -12015,7 +12266,7 @@ __defs[34] = function (__exports) {
 // for objects at the top of the scene (every starter's); an object inside a moved group draws its path off by the
 // group's offset (stage 2).
                                                                                                                      
-const { trackAt } = __require(19);
+const { trackAt } = __require(20);
 
 const YOU = '#ff6b1a';
 const WORDS                                                               = {
@@ -12402,7 +12653,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -12411,18 +12662,18 @@ __defs[35] = function (__exports) {
 // changes back. Pointer gestures and handles are attached by input.ts.
 const { UI } = __require(13);
                                              
-const { nativeNow } = __require(0);
-const { withRules } = __require(23);
-const { withEdits } = __require(24);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(26);
-const { createToolHost } = __require(27);
-const { attachInput, tappableAt } = __require(32);
+const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
+const { withRules } = __require(24);
+const { withEdits } = __require(25);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(27);
+const { createToolHost } = __require(28);
+const { attachInput, tappableAt } = __require(33);
                                                   
-const { firstToTouch, stepDetent } = __require(31);
-const { createHoldState, withHold } = __require(25);
-const { drivenBetween, WATCH_MS } = __require(33);
-const { runSelfCheck } = __require(22);
-const { createTimelineView } = __require(34);
+const { firstToTouch, stepDetent } = __require(32);
+const { createHoldState, withHold } = __require(26);
+const { drivenBetween, WATCH_MS } = __require(34);
+const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
+const { createTimelineView } = __require(35);
 
                              
                                                                                                                      
@@ -12828,7 +13079,7 @@ function createEditor(deps            )         {
   // the shell's second request (the rows in view) arrived after the queue had emptied, so all 15 were drawn twice.
   // Now the list and the editor's first frame paint first, the pictures fill in one by one, and a request that
   // arrives meanwhile is merged with what is still queued.
-  const nextTurn = () => new Promise      ((r) => core.time.raf(() => win.setTimeout(r, 0)));
+  const nextTurn = () => new Promise      ((r) => core.time.raf(() => nativeSetTimeout(r, 0)));
   const drawThumbs = async () => {
     thumbRunning = true;
     try {
@@ -12880,7 +13131,7 @@ function createEditor(deps            )         {
 
   const closeStepRun = () => {
     if (!stepRun) return;
-    win.clearTimeout(stepRun.timer);
+    nativeClearTimeout(stepRun.timer);
     const { key, from, op, group } = stepRun;
     stepRun = null;
     if (group) {
@@ -12928,8 +13179,8 @@ function createEditor(deps            )         {
     dirtyFrame = true;
     if (m.hold) {
       stepRun = run;
-      win.clearTimeout(run.timer);
-      run.timer = win.setTimeout(closeStepRun, 400);
+      nativeClearTimeout(run.timer);
+      run.timer = nativeSetTimeout(closeStepRun, 400);
       post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, false), press: pressOf(m.op), hold: true });
     } else {
       post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, g, true), end: true, press: pressOf(m.op) });
@@ -12966,8 +13217,8 @@ function createEditor(deps            )         {
     dirtyFrame = true;
     if (m.hold) {
       if (!stepRun) stepRun = { key: m.key, from, op: m.op, timer: 0, total: 0, dx: 0, dy: 0 };
-      win.clearTimeout(stepRun.timer);
-      stepRun.timer = win.setTimeout(closeStepRun, 400);
+      nativeClearTimeout(stepRun.timer);
+      stepRun.timer = nativeSetTimeout(closeStepRun, 400);
       post({ type: 'studio:placement/moved', key: m.key, pose, press: pressOf(m.op), hold: true });
     } else {
       post({ type: 'studio:placement/moved', key: m.key, pose, end: true, from, press: pressOf(m.op) });
@@ -13144,7 +13395,7 @@ function createEditor(deps            )         {
     watchBase = new Map(before.map((i) => [i.key, i.pose]         ));
     core.time.thaw();
     raw.watch?.(true);
-    await new Promise((r) => win.setTimeout(r, WATCH_MS));
+    await new Promise((r) => nativeSetTimeout(r, WATCH_MS));
     const base = watchBase;
     watchBase = null;
     // Left editing meanwhile (Play): the game runs on as it should; nothing to put back.
@@ -13253,24 +13504,36 @@ function createEditor(deps            )         {
         // would spoil while it runs.
         // The adapter of the layer edited first (the world's; a reload asking for the UI switches a moment later).
         const checkOn = raw;
+        const checkOnce = () => {
+          checkSet = new Map();
+          return runSelfCheck(checkOn, core, win).finally(() => {
+            const given = checkSet ;
+            checkSet = null;
+            if (!world) return;
+            for (const [k, p] of given) {
+              try {
+                world.ruled.setPose(k, p);
+              } catch {
+                /* gone meanwhile */
+              }
+            }
+            if (given.size) dirtyFrame = true;
+          });
+        };
         firstMoments = watching
           .then(nextTurn)
           .then(nextTurn)
-          .then(() => {
-            checkSet = new Map();
-            return runSelfCheck(checkOn, core, win).finally(() => {
-              const given = checkSet ;
-              checkSet = null;
-              if (!world) return;
-              for (const [k, p] of given) {
-                try {
-                  world.ruled.setPose(k, p);
-                } catch {
-                  /* gone meanwhile */
-                }
-              }
-              if (given.size) dirtyFrame = true;
-            });
+          .then(checkOnce)
+          // A second look before saying anything (polish-1022, 2026-10-22). WHY: the docs' photo of our own Lantern
+          // Cove, taken on a busy machine, showed "Moving things may not show in this game yet"; opened with the CPU
+          // slowed 4×, the check sometimes read its test move undone ("asked x −21.1, read back −22") — the game was
+          // still settling under it, the adapter was fine. A broken adapter fails the same way twice; only the
+          // checks that move the sample get the second look, never "no adapter" or "no objects".
+          .then(async (result) => {
+            if (result.ok || !worthASecondLook(result) || !state.editing) return result;
+            await new Promise((r) => nativeSetTimeout(r, SECOND_LOOK_MS));
+            await nextTurn();
+            return state.editing ? checkOnce() : result;
           })
           .then((result) => post({ type: 'studio:core/check', result }))
           .catch((e) => console.warn('[studio] self-check failed:', e));
@@ -13399,7 +13662,7 @@ function createEditor(deps            )         {
             const lp = listPick;
             if (grew && lp && lp.key === state.selected && nativeNow() - lp.at < 1000) {
               listPick = null;
-              win.setTimeout(() => {
+              nativeSetTimeout(() => {
                 if (state.selected === lp.key) focusIfHidden(lp.key);
               }, 60);
             }
@@ -13595,7 +13858,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -13658,7 +13921,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -13839,7 +14102,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -14051,7 +14314,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -14063,14 +14326,16 @@ __defs[39] = function (__exports) {
 // - the frames: core time's freeze() (the same hold the editor uses in Edit), so every engine that draws through
 //   requestAnimationFrame stops — three.js setAnimationLoop, Pixi's Ticker, Phaser, hand-made loops;
 // - the clock: core/play-clock.ts takes the paused time out of performance.now() and the frame timestamps, so the first
-//   frame after Resume steps one frame, not the whole pause;
+//   frame after Resume steps one frame, not the whole pause; with it the game's setTimeout / setInterval wait and
+//   Date.now() stops (core/play-timers.ts, polish-1022), so a game stepped by a timer stops too;
 // - the sound: the game's AudioContexts are suspended and its playing <audio> / <video> paused; Resume brings back
 //   only what was playing (a context the game had suspended itself stays suspended);
 // - the input: no key press and no pointer reaches the game (the veil over it takes the pointer; play-ask.ts's first
 //   listener on the window drops the keys). Key RELEASES still reach it: a key held when P was pressed and let go
 //   during the pause would otherwise stay "down" in the game, and the hero would run on by itself after Resume.
 //
-// Not held (CONTRACT.md §3.5.1; a later stage): a game that steps only from setTimeout / setInterval, or from Date.now().
+// Not held (CONTRACT.md §3.5.1): new Date(), promises and microtasks, requestIdleCallback, a Worker's own timers.
+// Until polish-1022 (2026-10-22) a game stepped only by setTimeout / setInterval or Date.now() was not held either.
                                                   
                                                        
 
@@ -14188,7 +14453,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -14208,7 +14473,7 @@ __defs[40] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(37);
+const { icon } = __require(38);
 
                            
                     
@@ -14535,7 +14800,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -14570,8 +14835,9 @@ __defs[41] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(35);
-const { drivenBetween } = __require(33);
+const { createEditor } = __require(36);
+const { drivenBetween } = __require(34);
+const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
 const one = (key        , pose      ) => [{ key, pose }                   ];
@@ -14711,7 +14977,7 @@ function createPlayMove(o                 )           {
           if (!atPause) start = new Map(l.map((it) => [it.key, it.pose]         ));
           return;
         }
-        await new Promise((r) => win.setTimeout(r, 150));
+        await new Promise((r) => nativeSetTimeout(r, 150));
       }
     }).catch(() => {});
   };
@@ -14935,7 +15201,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -14961,14 +15227,15 @@ __defs[42] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(36);
-const { icon } = __require(37);
-const { shootPage } = __require(38);
-const { createPauseHold, isPauseKey } = __require(39);
-const { CHAT_CSS, createChat } = __require(40);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(41);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(37);
+const { icon } = __require(38);
+const { shootPage } = __require(39);
+const { createPauseHold, isPauseKey } = __require(40);
+const { CHAT_CSS, createChat } = __require(41);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(42);
                                              
                                                     
+const { nativeSetTimeout, nativeClearTimeout } = __require(0);
 
                                  
                                   
@@ -15387,7 +15654,7 @@ function startPlayAsk(o                )                {
     // The short or the long placeholder (NARROW_PX) follows the window.
     win.addEventListener('resize', () => (render(), move?.render()));
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
-    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
+    smallTimer = nativeSetTimeout(() => mark.classList.add('small'), 5000);
     render();
   }
 
@@ -15671,7 +15938,7 @@ function startPlayAsk(o                )                {
   function fadeFor(s                 , sig        ) {
     if (!s || s.state !== 'fixed' || sig === dismissed) {
       if (fadeSig !== sig) {
-        win.clearTimeout(fadeTimer);
+        nativeClearTimeout(fadeTimer);
         fadeSig = '';
       }
       return;
@@ -15679,18 +15946,18 @@ function startPlayAsk(o                )                {
     if (fadeSig === sig) return;
     fadeSig = sig;
     line.classList.remove('fading');
-    win.clearTimeout(fadeTimer);
-    fadeTimer = win.setTimeout(lineDue, lineStayMs(s.text + (s.asked || '')));
+    nativeClearTimeout(fadeTimer);
+    fadeTimer = nativeSetTimeout(lineDue, lineStayMs(s.text + (s.asked || '')));
   }
   function lineDue() {
     // Held: the pointer or the keyboard is in it, it just left, or the field is open (the line is what they reply to).
     if (line.matches(':hover') || line.matches(':focus-within') || barOpen || win.performance.now() - leftAt < LINE_GRACE_MS) {
-      fadeTimer = win.setTimeout(lineDue, 500);
+      fadeTimer = nativeSetTimeout(lineDue, 500);
       return;
     }
     line.classList.add('fading');
     const reduce = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    fadeTimer = win.setTimeout(() => {
+    fadeTimer = nativeSetTimeout(() => {
       line.classList.remove('fading');
       dismissed = fadeSig;
       render();
@@ -15699,8 +15966,8 @@ function startPlayAsk(o                )                {
   function holdLine() {
     if (!line.classList.contains('fading')) return;
     line.classList.remove('fading');
-    win.clearTimeout(fadeTimer);
-    fadeTimer = win.setTimeout(lineDue, LINE_GRACE_MS);
+    nativeClearTimeout(fadeTimer);
+    fadeTimer = nativeSetTimeout(lineDue, LINE_GRACE_MS);
   }
 
   // ----- drawing: the corner mark, the field, the line -----
@@ -15843,8 +16110,8 @@ function startPlayAsk(o                )                {
     host.style.removeProperty('display');
     lift();
     mark.classList.remove('small');
-    win.clearTimeout(smallTimer);
-    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
+    nativeClearTimeout(smallTimer);
+    smallTimer = nativeSetTimeout(() => mark.classList.add('small'), 5000);
     render();
   }
 
@@ -15875,7 +16142,7 @@ function startPlayAsk(o                )                {
       dismissed = '';
       sending = false;
       sendFailed = false;
-      win.clearTimeout(fadeTimer);
+      nativeClearTimeout(fadeTimer);
       fadeSig = '';
       if (host) {
         // Not `hidden`: the host's inline `all: initial` would win over it. Out of the top layer too.
@@ -15899,7 +16166,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -16038,7 +16305,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -16091,7 +16358,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -16106,7 +16373,7 @@ __defs[45] = function (__exports) {
 // WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
 // the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
                                                                                                                         
-const { clipAt, motionAt } = __require(19);
+const { clipAt, motionAt } = __require(20);
 
 const CHANNELS                  = ['p', 'r', 's'];
 /** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
@@ -16429,7 +16696,7 @@ __def(__exports, "clock", () => clock);
 __def(__exports, "withClip", () => withClip);
 __def(__exports, "legacyOffsets", () => legacyOffsets);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -16454,10 +16721,10 @@ __defs[46] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(43);
-const { samePose } = __require(44);
-const { compose, legacyOffsets } = __require(45);
-const { motionRunner, resolveClip } = __require(19);
+const { hasLayer, orderOfLayer } = __require(44);
+const { samePose } = __require(45);
+const { compose, legacyOffsets } = __require(46);
+const { motionRunner, resolveClip } = __require(20);
 
                                                                                                                                   
                                                                                                    
@@ -16644,7 +16911,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -16683,7 +16950,7 @@ __defs[47] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(46);
+const { moveInPlay } = __require(47);
                                                    
 
                                  
@@ -16798,7 +17065,7 @@ function createPlaySwitch(d                )             {
 
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -16853,7 +17120,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -16935,7 +17202,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -16947,18 +17214,19 @@ __defs[50] = function (__exports) {
 // only wires them up.
 const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(13);
 const { installCore } = __require(16);
-const { installPlayClock } = __require(17);
-const { adapterFromPort2D } = __require(18);
-const { findDomUi, uiAdapterFromPort } = __require(21);
-const { runSelfCheck } = __require(22);
-const { createEditor } = __require(35);
-const { startPlayAsk } = __require(42);
-const { createPlaySwitch } = __require(47);
-const { arrangeInPlay, moveInPlay } = __require(46);
-const { applyPlacement, placementForLevel } = __require(19);
-const { pickLevel } = __require(48);
-const { watchEarlyTaps } = __require(49);
+const { installPlayClock } = __require(18);
+const { adapterFromPort2D } = __require(19);
+const { findDomUi, uiAdapterFromPort } = __require(22);
+const { runSelfCheck } = __require(23);
+const { createEditor } = __require(36);
+const { startPlayAsk } = __require(43);
+const { createPlaySwitch } = __require(48);
+const { arrangeInPlay, moveInPlay } = __require(47);
+const { applyPlacement, placementForLevel } = __require(20);
+const { pickLevel } = __require(49);
+const { watchEarlyTaps } = __require(50);
                                                     
+const { nativeSetTimeout } = __require(0);
 
                                 
                            
@@ -17119,7 +17387,7 @@ function startBridge(opts               )       {
       } catch {
         /* not ready */
       }
-      await new Promise((r) => win.setTimeout(r, 150));
+      await new Promise((r) => nativeSetTimeout(r, 150));
     }
     if (!a) return [];
     const shown = arrangeInPlay(a, file);
@@ -17192,7 +17460,7 @@ function startBridge(opts               )       {
         boot.on((t) => {
           if (t === 'hold') go();
         });
-        win.setTimeout(go, 1600);
+        nativeSetTimeout(go, 1600);
       } else coreReady();
     };
     prior.attach = (o                         ) => {
@@ -17343,7 +17611,7 @@ function startBridge(opts               )       {
       if (!adapter && i >= 6 && (uiOnly = findUi(null))) break;
       post({ type: 'studio:core/wait', reason: adapter ? 'no-objects' : 'no-adapter' });
       core.time.thaw();
-      await new Promise((r) => win.setTimeout(r, 150));
+      await new Promise((r) => nativeSetTimeout(r, 150));
       adapter = findAdapter();
     }
     core.time.freeze();
@@ -17384,7 +17652,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -17403,11 +17671,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(50);
+const { startBridge } = __require(51);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(51);
+__require(52);
 })();

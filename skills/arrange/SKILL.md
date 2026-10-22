@@ -519,7 +519,8 @@ for example "Reload the game: the rock should be left of the house, and the seco
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
 loads. Do not ask; look at the game (§3.3), set `done` and say so in one line ("Your layout is in. Reload the game to
-play it."). Copies and deletions (`added`, `removed`) are applied by the loader too.
+play it."). Copies and deletions (`added`, `removed`) still need you: the loader only shows them until the code has
+them (a look-alike copy, a hidden deletion), see "Copies and deletions".
 
 **Otherwise (the first save of a game without the loader): add the loader (Way 1) without asking**, then tell them,
 in this order:
@@ -592,8 +593,11 @@ For each key in `objects`:
   or an earlier entry of `added`). `p`, `r`, `s` are the copy's own pose (same meaning as in `objects`). Copies never
   appear in `objects`.
 - `removed` lists deleted objects by key, with `label` and `was` (the pose the game gives it) to find it in the code.
-- The loader does not create or delete objects. Put both into the **code**, then take `added` and `removed` out of
-  `placement.json` (keep `objects` and `order` if the user uses the loader).
+- Until then the loader shows them: it puts a clone of `from` under the copy's key at its pose, and hides a removed
+  object while it still stands at `was.p`. That is a stand-in only: the clone looks right but does not act (a copied
+  boat does not float, a copied coin does not spin or count), and the hidden object still runs. A key the code already
+  makes is left to the code. Put both into the **code**, then take `added` and `removed` out of `placement.json` (keep
+  `objects` and `order` if the user uses the loader).
 
 Add each copy **like the code already makes that kind of object**:
 

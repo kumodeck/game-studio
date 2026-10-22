@@ -11,6 +11,7 @@
 //   7. the game opened WITHOUT the editor (a plain static server): the title is where it was put, at that size
 //   8. back in the editor: U to the world, ⌘Z → the editor switches to the UI and the title goes back (one size
 //      step); ⌘Z ×2 → back to the game's own place; ⇧⌘Z ×3 → where it was saved; the world still moves (an arrow key)
+//   9. P → the window before Play (the lantern's move is not saved) → Try without saving: the UI as the game draws it
 // Phone 390×844 (touch): the switch is icons only over the game; tap UI, tap the title, drag it.
 // The game's UI over the world (a try of the editor, 2026-10-20, "the UI is always there, in the way"), in the PC and phone runs:
 //   - on the world it is hidden (filter opacity 0, no pointer) and an eye with a slash says so next to World | UI
@@ -313,6 +314,11 @@ try {
     await page.eval(`studioShell.actions.select(null)`);
     await page.eval(`document.activeElement?.blur?.()`);
     await key(page, 'p');
+    // The lantern's two steps above are not saved, so ▶ Play asks first (the window before Play, v0.1.17,
+    // test/studio-play-choice.browser.mjs). This test waited for Play without answering it and ran out of time here
+    // (polish-1022, 2026-10-22): answer "Try without saving", which plays with the change and keeps it unsaved.
+    await page.waitFor(`(() => { const g = document.querySelector('[data-part=unsaved-guard]'); return !!g && !g.hidden && g.dataset.kind === 'play'; })()`, 4000);
+    await page.eval(`document.querySelector('[data-part=unsaved-guard] [data-action=guard-discard]').click()`);
     await page.waitFor(`!${WIN}.document.getElementById('studio-edit-layer')`, 8000);
     const hp = await uiLook(page);
     assert.deepEqual([hp.title.filter, hp.start.filter, hp.start.pointer], ['none', 'none', 'auto'], 'playing: the UI as the game draws it');

@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeClock } from '../src/core/play-clock.ts';
+import { installTimerHold, makeTimerHold } from '../src/core/play-timers.ts';
 import { isPauseKey } from '../src/bridge/play-pause.ts';
 import { chatOnLine, historyOf, HISTORY_MAX, type ChatModel } from '../src/bridge/play-chat.ts';
 import { normalizeRequestInput, HANDOFF_LIMITS } from '../src/schema/handoff.mjs';
@@ -38,6 +39,153 @@ test('the clock: a pause takes no time, before or after', () => {
   // A frame timestamp from before the pause that arrives during it never reads later than the pause.
   c.stop();
   assert.ok(c.at(real + 100) <= c.at(real));
+});
+
+/**
+ * A pretend browser for the timer hold (core/play-timers.ts, polish-1022): its own clock and timer queue, moved on by
+ * hand. `advance(ms)` runs every browser timer due by then, in time order, as the event loop would.
+ */
+function fakeBrowser() {
+  let now = 0;
+  let next = 1;
+  const queue = new Map<number, { at: number; fn: () => void }>();
+  return {
+    natives: {
+      setTimeout: (fn: () => void, ms: number) => (queue.set(next, { at: now + ms, fn }), next++),
+      clearTimeout: (id: unknown) => void queue.delete(id as number),
+      now: () => now,
+    },
+    advance(ms: number) {
+      const end = now + ms;
+      for (;;) {
+        const due = [...queue.entries()].filter(([, t]) => t.at <= Math.max(end, now)).sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+        if (!due) break;
+        queue.delete(due[0]);
+        now = Math.max(now, due[1].at);
+        due[1].fn();
+      }
+      now = end;
+    },
+    /** Time passes with no timer run (the browser held the page); they run late at the next advance. */
+    sleep(ms: number) {
+      now += ms;
+    },
+    get now() {
+      return now;
+    },
+    get waiting() {
+      return queue.size;
+    },
+  };
+}
+
+test('the game\'s timers wait through a pause and go on with the time they had left', () => {
+  const b = fakeBrowser();
+  const h = makeTimerHold(b.natives);
+  const fired: string[] = [];
+  // An enemy every 2 s, a countdown tick in 1 s.
+  h.setInterval(() => fired.push(`spawn@${b.now}`), 2000);
+  h.setTimeout((what: unknown) => fired.push(`${what}@${b.now}`), 1000, 'tick');
+  b.advance(2500); // tick at 1000, spawn at 2000
+  assert.deepEqual(fired, ['tick@1000', 'spawn@2000']);
+  h.stop();
+  assert.equal(b.waiting, 0, 'stopped: nothing left with the browser');
+  b.advance(60_000); // a minute paused
+  assert.deepEqual(fired, ['tick@1000', 'spawn@2000'], 'nothing fires while stopped');
+  h.go();
+  // The spawner was 500 ms into its 2 s: the next one 1.5 s after Resume, then every 2 s.
+  b.advance(1499);
+  assert.equal(fired.length, 2, 'not before the time it had left');
+  b.advance(1);
+  assert.equal(fired[2], `spawn@${62_500 + 1500}`);
+  b.advance(2000);
+  assert.equal(fired[3], `spawn@${62_500 + 3500}`, 'then its usual period');
+});
+
+test('the game\'s timers: set or cleared while stopped, ids kept, string handlers, stop / go twice', () => {
+  const b = fakeBrowser();
+  const compiled: string[] = [];
+  const h = makeTimerHold(b.natives, (code) => () => compiled.push(code));
+  const fired: string[] = [];
+  const a = h.setTimeout(() => fired.push('a'), 100);
+  const c = h.setInterval(() => fired.push('c'), 50);
+  h.stop();
+  h.stop(); // twice: the first moment counts
+  const d = h.setTimeout(() => fired.push('d'), 10); // set while stopped: waits too
+  h.setTimeout('tick()', 20); // old code: a string
+  h.clear(a); // cleared while stopped: never fires
+  b.advance(1000);
+  assert.deepEqual(fired, []);
+  h.go();
+  h.go();
+  b.advance(10);
+  assert.deepEqual(fired, ['d'], 'the one set while paused fires after its own wait, counted from Resume');
+  b.advance(10);
+  assert.deepEqual(compiled, ['tick()']);
+  b.advance(30);
+  assert.deepEqual(fired, ['d', 'c'], 'the interval had all of its 50 ms left (stopped at once)');
+  h.clear(c);
+  b.advance(500);
+  assert.deepEqual(fired, ['d', 'c'], 'clearInterval (clear) stops it');
+  assert.equal(h.count, 0);
+  assert.ok(typeof d === 'number' && d > c, 'the hold\'s own ids, one pool for both kinds');
+  // No compile function (a strict page): a string handler does nothing, as with a CSP without unsafe-eval.
+  const plain = makeTimerHold(b.natives);
+  plain.setTimeout('tick()', 0);
+  b.advance(5);
+  assert.equal(plain.count, 0);
+});
+
+test('the game\'s timers: an interval far behind does not fire a burst, a 0 ms interval still waits', () => {
+  const b = fakeBrowser();
+  const h = makeTimerHold(b.natives);
+  let n = 0;
+  h.setInterval(() => n++, 0);
+  b.advance(10);
+  assert.ok(n >= 5 && n <= 11, `a 0 interval runs about once per ms (${n}), it does not spin in place`);
+  h.stop();
+  const m = makeTimerHold(b.natives);
+  let k = 0;
+  m.setInterval(() => k++, 100);
+  b.advance(1000);
+  assert.equal(k, 10, 'on time: ten ticks in a second');
+  // The browser held the page for a second (a background tab): one late tick, then the next a period later — not
+  // ten at once to catch up (the browser's own setInterval never does that either).
+  b.sleep(1000);
+  b.advance(0);
+  assert.equal(k, 11, 'one tick for the late second');
+  b.advance(99);
+  assert.equal(k, 11);
+  b.advance(1);
+  assert.equal(k, 12, 'then every 100 ms again');
+});
+
+test('on a page: the window\'s timers and Date.now are the game\'s, Date.now leaves out the stopped time', () => {
+  const b = fakeBrowser();
+  const clock = makeClock(b.natives.now);
+  const wall = 1_700_000_000_000;
+  const win = { Function, Date: { now: () => 0 } } as unknown as Window & typeof globalThis;
+  const g = win as unknown as Record<string, (...a: unknown[]) => unknown>;
+  const h = installTimerHold(win, { ...b.natives, dateNow: () => wall + b.now }, () => clock.at(b.now))!;
+  assert.ok(h);
+  assert.equal(g.setTimeout.name, 'setTimeout', 'named like the browser\'s');
+  let fired = 0;
+  g.setTimeout(() => fired++, 100);
+  b.advance(40);
+  assert.equal(win.Date.now(), wall + 40);
+  clock.stop();
+  h.stop();
+  b.advance(5000);
+  assert.equal(win.Date.now(), wall + 40, 'stopped: Date.now stays');
+  assert.equal(fired, 0);
+  clock.go();
+  h.go();
+  b.advance(60);
+  assert.equal(fired, 1, 'the timeout fires after its 60 ms left');
+  assert.equal(win.Date.now(), wall + 100, 'the 5 s stopped are left out');
+  g.clearTimeout(g.setTimeout(() => fired++, 10));
+  b.advance(50);
+  assert.equal(fired, 1, 'clearTimeout on the window clears the game\'s timer');
 });
 
 test('P pauses: by the character or the key, never with a modifier or while typing', () => {

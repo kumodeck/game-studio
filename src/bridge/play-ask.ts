@@ -28,6 +28,7 @@ import { CHAT_CSS, createChat, type Chat } from './play-chat.ts';
 import { createPlayMove, defaultHandlePx, MOVE_CSS, type PlayMove } from './play-move.ts';
 import type { Core } from '../core/index.ts';
 import type { RulesHolder } from '../core/rules.ts';
+import { nativeSetTimeout, nativeClearTimeout } from '../core/native.ts';
 
 export interface PlayAskOptions {
   win: Window & typeof globalThis;
@@ -446,7 +447,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     // The short or the long placeholder (NARROW_PX) follows the window.
     win.addEventListener('resize', () => (render(), move?.render()));
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
-    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
+    smallTimer = nativeSetTimeout(() => mark.classList.add('small'), 5000);
     render();
   }
 
@@ -730,7 +731,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   function fadeFor(s: PlayLine | null, sig: string) {
     if (!s || s.state !== 'fixed' || sig === dismissed) {
       if (fadeSig !== sig) {
-        win.clearTimeout(fadeTimer);
+        nativeClearTimeout(fadeTimer);
         fadeSig = '';
       }
       return;
@@ -738,18 +739,18 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     if (fadeSig === sig) return;
     fadeSig = sig;
     line.classList.remove('fading');
-    win.clearTimeout(fadeTimer);
-    fadeTimer = win.setTimeout(lineDue, lineStayMs(s.text + (s.asked || '')));
+    nativeClearTimeout(fadeTimer);
+    fadeTimer = nativeSetTimeout(lineDue, lineStayMs(s.text + (s.asked || '')));
   }
   function lineDue() {
     // Held: the pointer or the keyboard is in it, it just left, or the field is open (the line is what they reply to).
     if (line.matches(':hover') || line.matches(':focus-within') || barOpen || win.performance.now() - leftAt < LINE_GRACE_MS) {
-      fadeTimer = win.setTimeout(lineDue, 500);
+      fadeTimer = nativeSetTimeout(lineDue, 500);
       return;
     }
     line.classList.add('fading');
     const reduce = win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    fadeTimer = win.setTimeout(() => {
+    fadeTimer = nativeSetTimeout(() => {
       line.classList.remove('fading');
       dismissed = fadeSig;
       render();
@@ -758,8 +759,8 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   function holdLine() {
     if (!line.classList.contains('fading')) return;
     line.classList.remove('fading');
-    win.clearTimeout(fadeTimer);
-    fadeTimer = win.setTimeout(lineDue, LINE_GRACE_MS);
+    nativeClearTimeout(fadeTimer);
+    fadeTimer = nativeSetTimeout(lineDue, LINE_GRACE_MS);
   }
 
   // ----- drawing: the corner mark, the field, the line -----
@@ -902,8 +903,8 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     host.style.removeProperty('display');
     lift();
     mark.classList.remove('small');
-    win.clearTimeout(smallTimer);
-    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
+    nativeClearTimeout(smallTimer);
+    smallTimer = nativeSetTimeout(() => mark.classList.add('small'), 5000);
     render();
   }
 
@@ -934,7 +935,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       dismissed = '';
       sending = false;
       sendFailed = false;
-      win.clearTimeout(fadeTimer);
+      nativeClearTimeout(fadeTimer);
       fadeSig = '';
       if (host) {
         // Not `hidden`: the host's inline `all: initial` would win over it. Out of the top layer too.

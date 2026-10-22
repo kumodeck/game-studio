@@ -30,6 +30,7 @@ import { applyPlacement, placementForLevel } from '../loader/studio-placement.js
 import { pickLevel } from './levels.ts';
 import { watchEarlyTaps } from './early-press.ts';
 import type { RulesHolder } from '../core/rules.ts';
+import { nativeSetTimeout } from '../core/native.ts';
 
 export interface BridgeOptions {
   builtins: AdapterProbe[];
@@ -190,7 +191,7 @@ export function startBridge(opts: BridgeOptions): void {
       } catch {
         /* not ready */
       }
-      await new Promise((r) => win.setTimeout(r, 150));
+      await new Promise((r) => nativeSetTimeout(r, 150));
     }
     if (!a) return [];
     const shown = arrangeInPlay(a, file);
@@ -263,7 +264,7 @@ export function startBridge(opts: BridgeOptions): void {
         boot.on((t) => {
           if (t === 'hold') go();
         });
-        win.setTimeout(go, 1600);
+        nativeSetTimeout(go, 1600);
       } else coreReady();
     };
     prior.attach = (o: Record<string, unknown>) => {
@@ -414,7 +415,7 @@ export function startBridge(opts: BridgeOptions): void {
       if (!adapter && i >= 6 && (uiOnly = findUi(null))) break;
       post({ type: 'studio:core/wait', reason: adapter ? 'no-objects' : 'no-adapter' });
       core.time.thaw();
-      await new Promise((r) => win.setTimeout(r, 150));
+      await new Promise((r) => nativeSetTimeout(r, 150));
       adapter = findAdapter();
     }
     core.time.freeze();

@@ -18,3 +18,15 @@ export const nativeNow: () => number =
   typeof performance !== 'undefined' ? performance.now.bind(performance) : () => Date.now();
 export const nativeCancelRaf: (id: number) => void =
   typeof window !== 'undefined' ? window.cancelAnimationFrame.bind(window) : (id) => clearTimeout(id);
+/**
+ * The browser's own timers and wall clock, captured before ▶ Play's game clock (play-clock.ts → play-timers.ts) makes
+ * the window's setTimeout / setInterval / Date.now stop with the game (polish-1022, 2026-10-22: a game that steps from
+ * a timer or Date.now kept running through a pause and through Edit). Every timer of the studio itself in the game page
+ * (the line's fade, the long press, the self-check's waits, the three.js boot script's safety nets) uses these: on the
+ * window's ones it would wait for the game to go on, and a paused game never goes on by itself.
+ */
+export const nativeSetTimeout: (fn: (...a: never[]) => void, ms?: number) => number =
+  typeof window !== 'undefined' ? (window.setTimeout.bind(window) as (fn: (...a: never[]) => void, ms?: number) => number) : (fn, ms) => setTimeout(fn, ms) as unknown as number;
+export const nativeClearTimeout: (id: number | undefined) => void =
+  typeof window !== 'undefined' ? window.clearTimeout.bind(window) : (id) => clearTimeout(id as unknown as Parameters<typeof clearTimeout>[0]);
+export const nativeDateNow: () => number = Date.now.bind(Date);

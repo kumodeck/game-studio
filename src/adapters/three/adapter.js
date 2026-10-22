@@ -84,7 +84,8 @@ export function whenThreeReady({ timeoutMs = 20000 } = {}) {
       const renderer = boot.renderers.find((r) => r.domElement && r.domElement.isConnected) || boot.renderers[0];
       if (scene && renderer) return resolve(createThreeAdapter({ scene, renderer }));
       if (performance.now() - t0 > timeoutMs) return reject(new Error('studio: no three.js scene was rendered'));
-      setTimeout(tick, 50);
+      // The browser's own timer (boot.js): the window's one waits with a held game's clock (core/play-timers.ts).
+      (boot.setTimeout || setTimeout)(tick, 50);
     };
     tick();
   });

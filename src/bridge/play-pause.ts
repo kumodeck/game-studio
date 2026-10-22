@@ -6,14 +6,16 @@
 // - the frames: core time's freeze() (the same hold the editor uses in Edit), so every engine that draws through
 //   requestAnimationFrame stops — three.js setAnimationLoop, Pixi's Ticker, Phaser, hand-made loops;
 // - the clock: core/play-clock.ts takes the paused time out of performance.now() and the frame timestamps, so the first
-//   frame after Resume steps one frame, not the whole pause;
+//   frame after Resume steps one frame, not the whole pause; with it the game's setTimeout / setInterval wait and
+//   Date.now() stops (core/play-timers.ts, polish-1022), so a game stepped by a timer stops too;
 // - the sound: the game's AudioContexts are suspended and its playing <audio> / <video> paused; Resume brings back
 //   only what was playing (a context the game had suspended itself stays suspended);
 // - the input: no key press and no pointer reaches the game (the veil over it takes the pointer; play-ask.ts's first
 //   listener on the window drops the keys). Key RELEASES still reach it: a key held when P was pressed and let go
 //   during the pause would otherwise stay "down" in the game, and the hero would run on by itself after Resume.
 //
-// Not held (CONTRACT.md §3.5.1; a later stage): a game that steps only from setTimeout / setInterval, or from Date.now().
+// Not held (CONTRACT.md §3.5.1): new Date(), promises and microtasks, requestIdleCallback, a Worker's own timers.
+// Until polish-1022 (2026-10-22) a game stepped only by setTimeout / setInterval or Date.now() was not held either.
 import type { TimeControl } from '../contract.ts';
 import type { PlayClock } from '../core/play-clock.ts';
 

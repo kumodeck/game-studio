@@ -14,6 +14,7 @@ description: 1 行でゲームスタジオを入れ、/arrange でエディタ�
 
 - 手元のパソコンで動く **Claude Code**（Claude アプリかターミナル）か **Codex**。クラウドのセッションではプラグインが読み込まれません。
 - **Node.js 22.13 以降。** ターミナルで `node --version` を打つと分かります。古ければ [nodejs.org](https://nodejs.org) から最新の LTS を入れてください。
+  **Node.js は 22.23.4 以降（24 系なら 24.22.1 以降）に上げてください。** [2026 年 10 月のセキュリティの直し](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases)が入っています。
 
 ほかに入れるものはありません。
 

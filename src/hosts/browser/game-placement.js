@@ -61,6 +61,10 @@
   var nextId = 1;
   var realIds = {}; // our id -> the browser's id of the current try
   var realRaf = window.requestAnimationFrame.bind(window);
+  // The browser's own timers, taken before the edit script makes the window's wait with the game's clock
+  // (core/play-timers.ts): the 2 s cap must let go even when the editor holds the game.
+  var realTimeout = window.setTimeout.bind(window);
+  var realClearTimeout = window.clearTimeout.bind(window);
   var realCancel = window.cancelAnimationFrame.bind(window);
   window.requestAnimationFrame = function (cb) {
     var id = nextId++;
@@ -84,14 +88,14 @@
   function hold() {
     waiting++;
     var done = false;
-    var cap = setTimeout(release, 2000);
+    var cap = realTimeout(release, 2000);
     function release() {
       if (done) return;
       done = true;
-      clearTimeout(cap);
+      realClearTimeout(cap);
       waiting--;
     }
-    return function later() { setTimeout(release, 0); };
+    return function later() { realTimeout(release, 0); };
   }
 
   window.fetch = function (input, init) {
