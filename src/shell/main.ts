@@ -64,6 +64,7 @@ import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
+import { createMotionAsk } from './motion-ask.ts';
 import { motionLibrary } from './motion-library.ts';
 import { attachWorld, roundLib } from './motion-model.ts';
 import { icon, setButton } from './icons.ts';
@@ -274,6 +275,13 @@ export function start(host: StudioHost) {
     t: (k, v) => t(k, v),
     seen: (id) => hintSeen(id),
     markSeen: (id) => markHint(id),
+    // ✦ Ask AI on a motion (studio-motion-panel, motion-ask.ts): the chat box with the "object · motion" chip.
+    ask: host.offline ? undefined : (k, m) => askMotion(k, m),
+  });
+  // The motion the chat box is about (studio-motion-panel): set by ✦ Ask AI, gone once the screen shows something else.
+  const motionAsk = createMotionAsk({
+    picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
+    shown: (k) => timeline.shownName(k),
   });
   /**
    * Hints closed for good (studio-motion-flow: the timeline's first-time steps). Kept in this browser AND in the game's
@@ -1028,7 +1036,8 @@ export function start(host: StudioHost) {
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
     assets: () => (libraryShown() ? filePick : []),
-    motions: () => (libraryShown() ? libraryMotions.picked() : []),
+    // …or, in the Scene, the motion "Ask AI" was pressed on (the chip reads "crate · Hop", motion-ask.ts).
+    motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now()!.name] : []),
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
@@ -1153,9 +1162,10 @@ export function start(host: StudioHost) {
    * (`on`: keys with when / until), so "make this crate Hop when the player walks up" reaches the AI with both names.
    */
   function requestMotions(): { motions?: RequestMotion[] } {
-    if (!libraryShown()) return {};
+    const at = libraryShown() ? null : motionAsk.now();
+    if (!libraryShown() && !at) return {};
     const out: RequestMotion[] = [];
-    for (const name of libraryMotions.picked()) {
+    for (const name of at ? [at.use] : libraryMotions.picked()) {
       const m = motionLibrary.get(name);
       if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name) });
     }
@@ -1444,6 +1454,12 @@ export function start(host: StudioHost) {
     if (keys.length === 1) selectObject(keys[0]!);
     else selectMany(keys, keys[0]!);
   }
+  /** ✦ Ask AI on `key`'s motion: picked (no camera move), the chip names both, the cursor in the chat box. Nothing is sent. */
+  function askMotion(key: string, m: { name: string; use: string }) {
+    if (selected !== key || group.length > 1) selectObject(key);
+    motionAsk.set(key, m);
+    focusAsk();
+  }
   /** The ask box with the cursor in it (the menus' "Ask your AI…"); `text` is put in first, never sent. */
   function focusAsk(text?: string) {
     if (host.offline) return;
@@ -1485,6 +1501,8 @@ export function start(host: StudioHost) {
       // Drop follows the Height tool's rule (bridge/hold.ts canLift): a held ground no, a pillar the game slides yes.
       droppable: dim === '3d' && canDrop ? its.filter((i) => i.liftable !== false && (i.movable !== false || i.held === 'game')).length : undefined,
       ui: editLayer === 'ui' || undefined,
+      // studio-motion-panel: the one picked object's motion (3D world: the timeline's), for "Ask your AI about “Hop”…".
+      motion: !host.offline && its.length === 1 && editLayer === 'world' && dim === '3d' ? timeline.shownName(its[0]!.key) ?? undefined : undefined,
     });
     // A file's menu works on the picked files when the pressed one is among them ("Add 3 to scene"), else on it alone.
     const files = () => {
@@ -1494,6 +1512,7 @@ export function start(host: StudioHost) {
     const name = its.length > 1 ? t('ops.manyShort', { n: its.length }) : its[0] ? displayName(its[0], t) : '';
     const run: Record<string, () => void> = {
       ask: () => focusAsk(),
+      askMotion: () => its.length === 1 && timeline.askAbout(its[0]!.key),
       name: () => void askAi({ kind: 'name', text: '', objects: requestObjects(its.filter((i) => i.unstable).map((i) => i.key)) }),
       rename: () => focusAsk(t('ctx.renameText')),
       duplicate: () => copySelection(),
@@ -1519,7 +1538,7 @@ export function start(host: StudioHost) {
     const entries: MenuEntry[] = rows.map((r) => ('sep' in r ? r : {
       id: r.id,
       // The scene's "Ask your AI" says what it is about: the game, or the pick when something is picked.
-      label: r.id === 'ask' && place === 'scene' && picked.length ? t('ask.chipOne') : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label),
+      label: r.id === 'ask' && place === 'scene' && picked.length ? t('ask.chipOne') : r.id === 'askMotion' && its[0] ? t(r.label, { name: timeline.shownName(its[0].key) ?? '' }) : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label),
       key: r.key ? keyOf(r.key, mac) : '',
       disabled: r.disabled,
       run: run[r.id] ?? (() => undefined),

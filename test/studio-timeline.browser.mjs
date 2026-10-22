@@ -194,9 +194,14 @@ async function run(size, theme) {
         const back = (await j(PLATE)).keys.filter((k) => k.key === 'rowboat' && !k.ch);
         check(back.some((k) => Math.abs(k.t - 2) < 0.06), '⌘Z brings it back');
       } else check(false, 'the 2 s key is on the plate');
-      // The boat's motion goes back and forth (so ▶ Play below sees it moving whenever it looks).
+      // The boat's motion goes back and forth (so ▶ Play below sees it moving whenever it looks). Repeat is in the
+      // strip's ⋯ since studio-motion-panel (the one line keeps what is used every time).
+      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+      await sleep(300);
       await page.eval(`(() => { const s = document.querySelector('[data-part=tl-repeat]'); s.value = 'pingpong'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await sleep(300);
+      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+      await sleep(200);
       // 7. The buoy: New: Spin.
       await page.eval(`studioShell.actions.select('buoy')`);
       await sleep(600);

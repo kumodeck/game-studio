@@ -83,6 +83,8 @@ export const LIMITS = Object.freeze({
   // Bob, Spin), a cue name like a key (lower case, digits, -: written as is into the game's code), up to 1000 rounds.
   maxMotions: 64,
   maxRounds: 1000,
+  // studio-timeline-2 (2026-10-22): up to 4 ways a motion starts ("E or a click or walking in": a handful at most).
+  maxWhens: 4,
 });
 
 /** When a motion starts (contract MotionWhen.on). */
@@ -630,7 +632,7 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
     if (!isObject(c)) return fail(at, 'must be an object');
     // A Library motion (studio-motion-triggers) is a clip without "when"; an object's clip that uses one has no len /
     // repeat / keys of its own.
-    if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys'], at, fail);
+    if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys', 'tracks'], at, fail);
     else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until'], at, fail);
     else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys'], at, fail);
     const o = {};
@@ -661,43 +663,63 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
       else o.start = true;
     }
     if (!lib) readWhenUntil(c, o, n, bound, step, at, fail, false);
-    if (!isObject(c.keys)) {
-      fail(`${at}.keys`, 'must be an object');
-      return;
-    }
-    onlyFields(c.keys, ['p', 'r', 's'], `${at}.keys`, fail);
-    o.keys = {};
-    const widths = { p: n, r: n === 3 ? 3 : 1, s: n };
-    const range = { p: [bound, step], r: [LIMITS.maxClipAngle, LIMITS.stepAngle], s: [LIMITS.maxScale, LIMITS.stepScale] };
-    for (const ch of ['p', 'r', 's']) {
-      if (c.keys[ch] === undefined) continue;
-      const kw = `${at}.keys.${ch}`;
-      if (!Array.isArray(c.keys[ch]) || !c.keys[ch].length || c.keys[ch].length > LIMITS.maxClipKeys) {
-        fail(kw, `must be 1 to ${LIMITS.maxClipKeys} keys`);
-        continue;
+    // A scene motion (studio-timeline-2): keys per object (`tracks`) instead of one object's `keys`.
+    if (lib && c.tracks !== undefined) {
+      if (c.keys !== undefined) fail(`${at}.keys`, 'a motion has keys or tracks, not both');
+      const ks = isObject(c.tracks) ? Object.keys(c.tracks) : [];
+      if (!ks.length || ks.length > LIMITS.maxClips) return fail(`${at}.tracks`, `must be an object of 1 to ${LIMITS.maxClips} object keys`);
+      o.tracks = {};
+      for (const k of ks) {
+        if (!KEY_RE.test(k)) fail(`${at}.tracks`, `${JSON.stringify(k)}: key must match ` + KEY_RE);
+        else o.tracks[k] = readKeys(c.tracks[k], n, bound, step, len, `${at}.tracks[${JSON.stringify(k)}]`, fail);
       }
-      let last = -1;
-      const ks = c.keys[ch].map((k, j) => {
-        const kat = `${kw}[${j}]`;
-        if (!isObject(k)) return fail(kat, 'must be an object'), null;
-        onlyFields(k, ['t', 'v', 'ease'], kat, fail);
-        const t = readNumber(k.t, 0, LIMITS.maxClipLen, `${kat}.t`, fail);
-        if (t !== null && len !== null && t > len + 1e-9) return fail(`${kat}.t`, 'is after the clip’s end (len)'), null;
-        if (t !== null && round(t, LIMITS.stepTime) <= last) return fail(`${kat}.t`, 'keys must be in time order, one per moment'), null;
-        if (t !== null) last = round(t, LIMITS.stepTime);
-        if (!Array.isArray(k.v) || k.v.length !== widths[ch]) return fail(`${kat}.v`, `must be ${widths[ch]} numbers`), null;
-        const [max, st] = range[ch];
-        const vals = k.v.map((x, q) => readNumber(x, -max, max, `${kat}.v[${q}]`, fail));
-        if (k.ease !== undefined && !MOTION_EASES.includes(k.ease)) return fail(`${kat}.ease`, `must be one of ${MOTION_EASES.join(', ')}`), null;
-        if (t === null || vals.some((x) => x === null)) return null;
-        const key = { t: round(t, LIMITS.stepTime), v: vals.map((x) => round(x, st)) };
-        if (k.ease !== undefined) key.ease = k.ease;
-        return key;
-      });
-      if (ks.every((k) => k)) o.keys[ch] = ks;
-    }
+    } else o.keys = readKeys(c.keys, n, bound, step, len, `${at}.keys`, fail);
     if (o.name !== undefined && o.len !== undefined) out.push(o);
   });
+  return out;
+}
+
+// One object's keys per property (contract MotionKeys): 1–256 a property, strictly increasing in time within the
+// clip's length. Position keys may carry the path's handles (studio-timeline-2: `in` / `out`, offsets like `v`).
+function readKeys(v, n, bound, step, len, at, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail(at, 'must be an object');
+    return out;
+  }
+  onlyFields(v, ['p', 'r', 's'], at, fail);
+  const widths = { p: n, r: n === 3 ? 3 : 1, s: n };
+  const range = { p: [bound, step], r: [LIMITS.maxClipAngle, LIMITS.stepAngle], s: [LIMITS.maxScale, LIMITS.stepScale] };
+  for (const ch of ['p', 'r', 's']) {
+    if (v[ch] === undefined) continue;
+    const kw = `${at}.${ch}`;
+    if (!Array.isArray(v[ch]) || !v[ch].length || v[ch].length > LIMITS.maxClipKeys) {
+      fail(kw, `must be 1 to ${LIMITS.maxClipKeys} keys`);
+      continue;
+    }
+    let last = -1;
+    const [max, st] = range[ch];
+    const nums = (a, w) => (Array.isArray(a) && a.length === widths[ch] ? a.map((x, q) => readNumber(x, -max, max, `${w}[${q}]`, fail)) : (fail(w, `must be ${widths[ch]} numbers`), null));
+    const ks = v[ch].map((k, j) => {
+      const kat = `${kw}[${j}]`;
+      if (!isObject(k)) return fail(kat, 'must be an object'), null;
+      onlyFields(k, ch === 'p' ? ['t', 'v', 'ease', 'in', 'out'] : ['t', 'v', 'ease'], kat, fail);
+      const t = readNumber(k.t, 0, LIMITS.maxClipLen, `${kat}.t`, fail);
+      if (t !== null && len !== null && t > len + 1e-9) return fail(`${kat}.t`, 'is after the clip’s end (len)'), null;
+      if (t !== null && round(t, LIMITS.stepTime) <= last) return fail(`${kat}.t`, 'keys must be in time order, one per moment'), null;
+      if (t !== null) last = round(t, LIMITS.stepTime);
+      const vals = nums(k.v, `${kat}.v`);
+      if (k.ease !== undefined && !MOTION_EASES.includes(k.ease)) return fail(`${kat}.ease`, `must be one of ${MOTION_EASES.join(', ')}`), null;
+      const hs = ['in', 'out'].map((h) => (k[h] === undefined ? undefined : nums(k[h], `${kat}.${h}`)));
+      if (t === null || !vals || vals.some((x) => x === null) || hs.some((h) => h === null || (h && h.some((x) => x === null)))) return null;
+      const key = { t: round(t, LIMITS.stepTime), v: vals.map((x) => round(x, st)) };
+      if (k.ease !== undefined) key.ease = k.ease;
+      if (hs[0]) key.in = hs[0].map((x) => round(x, st));
+      if (hs[1]) key.out = hs[1].map((x) => round(x, st));
+      return key;
+    });
+    if (ks.every((k) => k)) out[ch] = ks;
+  }
   return out;
 }
 
@@ -705,7 +727,16 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
 // studio-timeline's words (a string) on a clip with keys of its own; a clip that uses a Library motion has the object.
 function readWhenUntil(c, o, n, bound, step, at, fail, uses) {
   const w = c.when;
-  if (w !== undefined) {
+  if (Array.isArray(w)) {
+    // A list (studio-timeline-2: "E or a click"): 2–4 ways, any one starts it.
+    if (w.length < 2 || w.length > LIMITS.maxWhens) fail(`${at}.when`, `a list of 2 to ${LIMITS.maxWhens} (one is written as itself)`);
+    const xs = w.slice(0, LIMITS.maxWhens).map((x, i) => {
+      const one = {};
+      readWhenUntil({ when: isObject(x) ? x : 0 }, one, n, bound, step, `${at}.when[${i}]`, fail, true);
+      return one.when;
+    });
+    if (xs.every((x) => x)) o.when = xs;
+  } else if (w !== undefined) {
     if (typeof w === 'string' && !uses) {
       if (w.length > LIMITS.maxClipWhen) fail(`${at}.when`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
       else if (c.start) fail(`${at}.when`, 'only for a clip that waits for a cue');

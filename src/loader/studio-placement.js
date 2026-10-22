@@ -192,7 +192,7 @@ export function playMotion(key, name) {
     const o = !lib ? null : k ? k.o : world && findByKey(world, key, !!world.isObject3D);
     if (!o) return false;
     if (!k) k = remember(key, o, !!world.isObject3D, []);
-    clip = { ...lib, use: name, when: { on: 'say' } };
+    clip = resolveClip({ use: name, when: { on: 'say' } }, library, key);
     k.clips.push(clip);
   }
   ensureRun().play(key, clip, performance.now());
@@ -226,7 +226,7 @@ function fire(ev) {
 /** An object's clip by name (for a game that moves the object itself: clipAt(clipOf('door', 'Open'), seconds)). */
 export function clipOf(key, name) {
   const k = known.get(key);
-  return (k && k.clips.find((c) => c.name === name)) || resolveClip(library.find((m) => m && m.name === name) ? { use: name } : null, library);
+  return (k && k.clips.find((c) => c.name === name)) || resolveClip(library.find((m) => m && m.name === name) ? { use: name } : null, library, key);
 }
 
 /**
@@ -235,20 +235,35 @@ export function clipOf(key, name) {
  */
 export function whenOf(c) {
   if (!c || typeof c !== 'object') return { on: 'say' };
-  const w = c.when;
+  const w = Array.isArray(c.when) ? c.when.find((x) => x && typeof x.on === 'string') : c.when;
   if (w && typeof w === 'object' && typeof w.on === 'string') return w;
   if (c.start === true || (c.use && w === undefined)) return { on: 'start' };
   return typeof w === 'string' && w.trim() ? { on: 'say', say: w } : { on: 'say' };
 }
 
-/** A clip as it plays: a `use` clip gets its Library motion's len / repeat / keys; null = bad, or a motion not there. */
-export function resolveClip(c, lib) {
+/**
+ * Every way a clip starts (studio-timeline-2, 2026-10-22: "E or a click"): `when` may be a list — any one of them
+ * starts it. One `when` (or none) is a list of one (whenOf's answer).
+ */
+export function whensOf(c) {
+  const ws = c && Array.isArray(c.when) ? c.when.filter((x) => x && typeof x.on === 'string') : [];
+  return ws.length ? ws : [whenOf(c)];
+}
+
+/**
+ * A clip as it plays: a `use` clip gets its Library motion's len / repeat / keys; null = bad, or a motion not there.
+ * A scene motion (studio-timeline-2: `tracks`, several objects in one motion) gives object `key` its own track, and
+ * `scene: true` (the runner then starts the scene's other objects with it). `when` = the first way it starts (as
+ * before), `whens` = all of them (whensOf: the runner's).
+ */
+export function resolveClip(c, lib, key) {
   if (!c || typeof c !== 'object') return null;
   if (typeof c.use === 'string') {
-    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && x.keys && typeof x.keys === 'object');
-    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: m.keys, when: whenOf(c), until: c.until } : null;
+    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && typeof (x.tracks || x.keys) === 'object');
+    const tr = m && m.tracks;
+    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: tr ? tr[key] || {} : m.keys, when: whenOf(c), whens: whensOf(c), until: c.until, scene: !!tr } : null;
   }
-  return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c) } : null;
+  return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c), whens: whensOf(c) } : null;
 }
 
 /**
@@ -258,6 +273,9 @@ export function resolveClip(c, lib) {
  *   objs: [{ key, clips }] with resolved clips (resolveClip). The rules:
  *   - a clip starts on its `when` (fire's event, or by itself: `time` after `after` seconds, `after` when that clip
  *     ends, `enter` when the player's position goes into the area: step's `where(who)`); again = from its start;
+ *     a list of `when`s: any one of them (studio-timeline-2);
+ *   - a scene clip (`scene`: one motion, several objects) that starts starts the scene's other objects at the same
+ *     moment, so they keep one time line whichever of them was triggered;
  *   - one clip per object plays: a new one takes over where the last one is (as playMotion always did);
  *   - `until.times` = after that many rounds (a loop: len; a pingpong: there and back; a once: its length),
  *     `until.cue` = when that cue fires; `then: 'reset'` puts it back on its first pose, else it stays where it is.
@@ -271,7 +289,10 @@ export function motionRunner(objs) {
   const inside = new Map();
   const ok = (v) => typeof v === 'number' && isFinite(v);
   const round = (c) => (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1);
-  const hits = (w, ev, key) => {
+  // A clip's ways to start (resolveClip's `whens`, studio-timeline-2; else its `when`, one or a list).
+  const ws = (c) => c.whens || (Array.isArray(c.when) ? c.when : c.when ? [c.when] : []);
+  const hits = (c, ev, key) => ws(c).some((w) => hit(w, ev, key));
+  const hit = (w, ev, key) => {
     if (!w || w.on !== ev.on) return false;
     if (ev.on === 'key') return w.key === ev.key;
     if (ev.on === 'cue') return w.cue === ev.cue;
@@ -279,9 +300,10 @@ export function motionRunner(objs) {
     if (ev.on === 'click' || ev.on === 'touch' || ev.on === 'enter' || ev.on === 'say') return ev.key === key && (ev.on !== 'say' || !ev.use || ev.use === w.use);
     return true;
   };
-  const play = (key, clip, now) => {
+  const play = (key, clip, now, alone) => {
     movers.set(key, { clip, t0: now });
     held.delete(key);
+    if (clip.scene && !alone) for (const o of list) if (o.key !== key) for (const c of o.clips) if (c.use === clip.use) play(o.key, c, now, true);
   };
   const end = (key, r, at, now, out) => {
     movers.delete(key);
@@ -294,7 +316,7 @@ export function motionRunner(objs) {
     let n = 0;
     if (ev.on === 'start') t0 = now;
     for (const { key, clips } of list) {
-      for (const c of clips) if (hits(c.when, ev, key)) (play(key, c, now), n++);
+      for (const c of clips) if (hits(c, ev, key)) (play(key, c, now), n++);
       const r = movers.get(key);
       if (ev.on === 'cue' && r && r.clip.until && r.clip.until.cue === ev.cue) {
         const out = new Map();
@@ -313,21 +335,19 @@ export function motionRunner(objs) {
       else movers.delete(key), held.delete(key);
     },
     /** Something still to watch: a clip playing, a timer not fired yet, an area. */
-    busy: () => movers.size > 0 || list.some(({ clips }) => clips.some((c) => (c.when && c.when.on === 'enter') || (c.when && c.when.on === 'time' && t0 !== null && !timed.has(c)))),
+    busy: () => movers.size > 0 || list.some(({ clips }) => clips.some((c) => ws(c).some((w) => w.on === 'enter' || (w.on === 'time' && t0 !== null && !timed.has(w))))),
     /** Where things are at `now` (ms): key → offsets ({ p, r, s }) for every object playing or holding its last pose. */
     step(now, where) {
       const out = new Map();
-      if (t0 !== null) for (const { key, clips } of list) for (const c of clips) {
-        const w = c.when;
-        if (w && w.on === 'time' && !timed.has(c) && (now - t0) / 1000 >= (ok(w.after) ? w.after : 0)) (timed.add(c), play(key, c, now));
+      if (t0 !== null) for (const { key, clips } of list) for (const c of clips) for (const w of ws(c)) {
+        if (w.on === 'time' && !timed.has(w) && (now - t0) / 1000 >= (ok(w.after) ? w.after : 0)) (timed.add(w), play(key, c, now));
       }
-      if (where) for (const { key, clips } of list) for (const c of clips) {
-        const w = c.when;
-        if (!w || w.on !== 'enter' || !w.area || !Array.isArray(w.area.p) || !Array.isArray(w.area.size)) continue;
+      if (where) for (const { key, clips } of list) for (const c of clips) for (const w of ws(c)) {
+        if (w.on !== 'enter' || !w.area || !Array.isArray(w.area.p) || !Array.isArray(w.area.size)) continue;
         const p = where(w.who || null);
         const isIn = !!p && w.area.p.every((v, i) => Math.abs((p[i] || 0) - v) <= Math.abs(w.area.size[i] || 0) / 2);
-        if (isIn && !inside.get(c)) play(key, c, now);
-        inside.set(c, isIn);
+        if (isIn && !inside.get(w)) play(key, c, now);
+        inside.set(w, isIn);
       }
       for (const [key, r] of [...movers]) {
         const t = Math.max(0, (now - r.t0) / 1000);
@@ -391,11 +411,35 @@ export function trackAt(keys, u, smooth) {
   if (ease === 'step') return a.v.slice();
   let f = b.t > a.t ? (u - a.t) / (b.t - a.t) : 1;
   if (ease === 'ease') f = f * f * (3 - 2 * f);
+  // A span with a handle bent by hand (studio-timeline-2: `out` of its start, `in` of its end) is a Bézier curve; the
+  // side without one takes the smooth curve's handle, so only what was bent changes.
+  if (smooth && (hOk(a.out, n) || hOk(b.in, n))) {
+    const o = handlesOf(ks, i).out, q = handlesOf(ks, i + 1).in, g = 1 - f;
+    return a.v.map((v, k) => g * g * g * v + 3 * g * g * f * (v + o[k]) + 3 * g * f * f * (b.v[k] + q[k]) + f * f * f * b.v[k]);
+  }
   if (!smooth || ks.length < 3) return a.v.map((v, k) => v + (b.v[k] - v) * f);
   const p0 = i > 0 && (ks[i - 1].ease || 'ease') !== 'step' ? ks[i - 1].v : a.v;
   const p3 = i + 2 < ks.length && (b.ease || 'ease') !== 'step' ? ks[i + 2].v : b.v;
   const f2 = f * f, f3 = f2 * f;
   return a.v.map((v, k) => 0.5 * (2 * v + (b.v[k] - p0[k]) * f + (2 * p0[k] - 5 * v + 4 * b.v[k] - p3[k]) * f2 + (3 * v - p0[k] - 3 * b.v[k] + p3[k]) * f3));
+}
+
+const hOk = (h, n) => Array.isArray(h) && h.length === n && h.every(isNum);
+
+/**
+ * Position key `i`'s two handles (offsets from its point): its own `in` / `out` (bent by hand; both 0 = a corner), else
+ * the smooth curve's — a sixth of the way from the key before to the key after, the Bézier form of the Catmull-Rom
+ * curve trackAt draws, so a handle grabbed for the first time starts where the path already is. null at the ends.
+ * Shared with the editor (shell/path-edit.ts), which draws these handles.
+ */
+export function handlesOf(ks, i) {
+  const k = ks[i], n = k.v.length, prev = ks[i - 1], next = ks[i + 1];
+  const p0 = prev && (prev.ease || 'ease') !== 'step' ? prev.v : k.v;
+  const p3 = next && (k.ease || 'ease') !== 'step' ? next.v : k.v;
+  return {
+    in: !prev ? null : hOk(k.in, n) ? k.in : k.v.map((_, j) => (prev.v[j] - p3[j]) / 6),
+    out: !next ? null : hOk(k.out, n) ? k.out : k.v.map((_, j) => (next.v[j] - p0[j]) / 6),
+  };
 }
 
 /**
@@ -521,14 +565,13 @@ function runMotion(root, data, n, three, report) {
   for (const key of Object.keys(motion)) {
     const m = motion[key], o = findByKey(root, key, three);
     if (!o || !m || typeof m !== 'object') continue;
-    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library)).filter(Boolean) : [];
+    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library, key)).filter(Boolean) : [];
     const old = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
     if (!clips.length && !old) continue;
     // The older path / spin plays at once, as a clip of the same shape (clipAt is not its maths: a frame function).
     const k = remember(key, o, three, clips);
     if (old) legacy.push([key, k, m]);
-    for (const c of clips) {
-      const w = c.when;
+    for (const c of clips) for (const w of c.whens) {
       if (w.on === 'click') clickable(key, o, three);
       if (w.on === 'enter' && !(w.who && findByKey(root, w.who, three)) && !player) warn2.push(key + ': no player for its area (setPlayer)');
       if (w.on === 'touch' || w.on === 'cue' || w.on === 'say') warn2.push(key + ' · ' + c.name + ': waits for the game (' + w.on + ')');

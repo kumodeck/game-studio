@@ -3,10 +3,12 @@
 // Cove (3D, a copy of the starter). The checks (PC light):
 //   1. a file of the timeline's first shape (the boat's clip with its own keys, start: true; the buoy's older spin)
 //      opens with its motions in the Library and nothing counted as changed;
-//   2. the timeline's second row: Starts "The game starts" for the boat; changed to "A key is pressed" (E), Stops
+//   2. the strip (one line since studio-motion-panel; Stops and Try in its ⋯): Starts "The game starts" for the boat; changed to "A key is pressed" (E), Stops
 //      after 2 rounds; the row's chip says so; the Try row gains an "E" ▶;
 //   3. Try: ▶ Game starts — the boat waits; ▶ E — the boat moves (the loader's own rules, motionRunner); Stop;
 //   4. Starts "The player enters an area": a box in the game, its point dragged moves the area (one undo step);
+//   4b. one line: no second row, no words field; ▷ by Starts tries E; ✦ Ask AI puts "Rowboat · Row" in the chat box
+//      with the cursor, a send carries the boat and Row (the chip stays); Starts "In the chat…" goes to the chat box too;
 //   5. the Library's Motion filter: 2 motions; the boat's "Row" picked shows its detail (on rowboat), "Attach to" puts it
 //      on the crate (the card's Motion menu then lists it, and "Take … off");
 //   6. the ask box names the picked motion; sending writes a request with `motions`;
@@ -14,7 +16,8 @@
 //   8. ▶ Play: the starter's loader waits, E (in the game) starts the boat.
 // And pictures (`--shots <dir> --no-checks`): PC 1280×800, the side window 400×900, a phone 390×844 × light and dark —
 // `1-when` (the boat starts when the player enters the pier's area: the box and the row), `2-try` (Try: E pressed, the
-// crate's Hop playing), `3-library` (the Motion filter, "Hop" picked with its detail).
+// crate's Hop playing), `3-library` (the Motion filter, "Hop" picked with its detail), `4-ask` (✦ Ask AI on the crate's
+// Hop: the chat box's "crate · Hop" chip with the person's words).
 //
 //   node test/studio-motion-triggers.browser.mjs [--shots <dir>] [--only pc,side,phone] [--themes light,dark] [--lang en|ja] [--no-checks]
 // Exit 1 on a failure.
@@ -97,10 +100,19 @@ async function run(size, theme) {
     const j = async (expr) => JSON.parse((await page.eval(expr)) || 'null');
     const state = () => j(`JSON.stringify(${TL}.state())`);
     const pose = (k) => j(`JSON.stringify(${DBG}.anchor(${JSON.stringify(k)}).pose)`);
-    const whenRow = () => j(`(() => { const r = document.querySelector('[data-part=tl-when-row]'); if (!r) return null;
-      return JSON.stringify({ starts: r.querySelector('[data-part=tl-starts]')?.value ?? null, stops: r.querySelector('[data-part=tl-stops]')?.value ?? null,
-        cues: [...r.querySelectorAll('[data-part=tl-cue]')].map((b) => ({ id: b.dataset.cue, on: b.classList.contains('on'), ai: b.classList.contains('ai') })),
+    // The strip is one line since studio-motion-panel: Starts on it, Stops and every cue to Try in its ⋯ (opened first).
+    const openMore = async () => {
+      if (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-more]'))`)) return;
+      await page.eval(`(document.querySelector('[data-part=tl-more-btn]') || { click() {} }).click()`);
+      await sleep(300);
+    };
+    const whenRow = async () => {
+      await openMore();
+      return j(`(() => { const r = document.querySelector('[data-part=tl-head]'); const m = document.querySelector('[data-part=tl-more]'); if (!r || !m) return null;
+      return JSON.stringify({ starts: r.querySelector('[data-part=tl-starts]')?.value ?? null, stops: m.querySelector('[data-part=tl-stops]')?.value ?? null,
+        cues: [...m.querySelectorAll('[data-part=tl-cue]')].map((b) => ({ id: b.dataset.cue, on: b.classList.contains('on'), ai: b.classList.contains('ai') })),
         chips: [...document.querySelectorAll('[data-part=tl-whenchip]')].map((c) => c.textContent) }); })()`);
+    };
     const fine = async (open) => size.id !== 'pc' && page.eval(`(() => { const d = document.querySelector('[data-part=card] details.fine'); if (d) d.open = ${open}; return true; })()`);
     const openTimeline = async (key) => {
       await page.eval(`studioShell.actions.select(${JSON.stringify(key)})`);
@@ -172,6 +184,32 @@ async function run(size, theme) {
       // Back to E (for Save and Play below).
       await page.eval(choose('tl-starts', 'key'));
       await sleep(500);
+      // 4b. One line (studio-motion-panel, a review of 2026-10-22): no second row; ▷ tries this motion; ✦ Ask AI → the chat box.
+      const line = await j(`(() => { const h = document.querySelector('[data-part=tl-head]'); return JSON.stringify({ h: h.getBoundingClientRect().height,
+        second: !!document.querySelector('[data-part=tl-when-row]'), when: !!document.querySelector('[data-part=tl-when]'), tryThis: (document.querySelector('[data-part=tl-try-this]') || {}).dataset?.cue ?? null,
+        ask: !!document.querySelector('[data-part=tl-ask]') }); })()`);
+      check(line && line.h <= 52 && !line.second && !line.when, `the strip is one line, no words field (${line?.h}px)`);
+      check(line?.tryThis === 'key:KeyE' && line.ask, `▷ by Starts tries E (${line?.tryThis}); ✦ Ask AI is on the line`);
+      await page.eval(`document.querySelector('[data-part=tl-ask]').click()`);
+      await sleep(600);
+      const asked = await j(`JSON.stringify({ chip: (document.querySelector('[data-part=ask] .ask-chip') || {}).textContent || '', focus: document.activeElement === document.querySelector('[data-part=ask] input'),
+        ph: (document.querySelector('[data-part=ask] input') || {}).placeholder || '' })`);
+      check(/· Row$/.test(asked.chip) && asked.focus, `✦ Ask AI: the chat box's chip "${asked.chip}", the cursor in it`);
+      await page.eval(`(() => { const i = document.querySelector('[data-part=ask] input'); i.value = 'Start it when the player walks up'; i.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('[data-part=ask]').requestSubmit(); return true; })()`);
+      await sleep(1500);
+      const askDir = join(root, '.studio/requests');
+      const mine = (existsSync(askDir) ? readdirSync(askDir) : []).filter((f) => f.includes('-ask-')).map((f) => JSON.parse(readFileSync(join(askDir, f), 'utf8'))).find((r) => /walks up$/.test(r.text));
+      check(mine?.motions?.[0]?.name === 'Row' && JSON.stringify(mine.objects).includes('rowboat'), `the request is about the boat and Row: ${JSON.stringify({ o: mine?.objects?.map?.((o) => o.key ?? o), m: mine?.motions })?.slice(0, 160)}`);
+      const after = await page.eval(`(document.querySelector('[data-part=ask] .ask-chip') || {}).textContent || ''`);
+      check(/· Row$/.test(after), `after sending, the chip stays for the next words ("${after}")`);
+      // Starts ▾ "In the chat, to your AI…": the chat box with the chip (no field on the line); then back to E.
+      await page.eval(choose('tl-starts', 'say'));
+      await sleep(600);
+      const said = await j(`JSON.stringify({ focus: document.activeElement === document.querySelector('[data-part=ask] input'), when: !!document.querySelector('[data-part=tl-when]') })`);
+      check(said.focus && !said.when, 'Starts ▾ "In the chat…": the cursor goes to the chat box, no field on the line');
+      await page.eval(choose('tl-starts', 'key'));
+      await sleep(500);
       // 5. The Library: Motion.
       await page.eval(`studioShell.actions.switchTool('library')`);
       await sleep(1200);
@@ -206,7 +244,7 @@ async function run(size, theme) {
       await sleep(1500);
       const reqDir = join(root, '.studio/requests');
       const reqs = existsSync(reqDir) ? readdirSync(reqDir).filter((f) => f.includes('-ask-')).map((f) => JSON.parse(readFileSync(join(reqDir, f), 'utf8'))) : [];
-      const req = reqs.find((r) => r.motions);
+      const req = reqs.find((r) => r.motions && /^Make the crate/.test(r.text));
       check(!!req && req.motions[0].name === 'Row' && req.motions[0].on.some((o) => o.key === 'crate'), `the request has motions: ${JSON.stringify(req?.motions)?.slice(0, 160)}`);
       // The card: the crate's Motion menu lists its motion, the Library's others, and "Take … off".
       await page.eval(`studioShell.actions.switchTool('placement')`);
@@ -250,6 +288,7 @@ async function run(size, theme) {
       // 2: Try — the game started (the buoy bobs), E pressed (the crate hops).
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(700);
+      await openMore();
       await page.eval(`document.querySelector('[data-part=tl-cue][data-cue=start]').click()`);
       await sleep(400);
       await page.eval(`document.querySelector('[data-part=tl-cue][data-cue="key:KeyE"]').click()`);
@@ -257,6 +296,14 @@ async function run(size, theme) {
       await shot(page, '2-try');
       await page.eval(`document.querySelector('[data-part=tl-try-stop]')?.click()`);
       await sleep(300);
+      // 4: ✦ Ask AI on the crate's Hop — the chat box's chip and the person's words (studio-motion-panel).
+      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+      await sleep(200);
+      await page.eval(`document.querySelector('[data-part=tl-ask]')?.click()`);
+      await sleep(500);
+      await page.eval(`(() => { const i = document.querySelector('[data-part=ask] input'); i.value = ${JSON.stringify(LANG === 'ja' ? 'プレイヤーが近づいたら動き出して' : 'Start it when the player walks up')}; i.dispatchEvent(new Event('input', { bubbles: true })); return true; })()`);
+      await sleep(300);
+      await shot(page, '4-ask');
       // 3: the Library, Motion, Hop picked.
       await page.eval(`studioShell.actions.switchTool('library')`);
       await sleep(1200);

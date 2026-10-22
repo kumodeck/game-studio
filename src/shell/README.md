@@ -195,3 +195,7 @@ and size (State for a button, Text with its px size, Color, Fill, Sample — the
 the Theme fold under the UI list (the game's CSS variables on `:root`); `ui-style-model.ts` the pure store (now, saved,
 the game's own; `set` / `setWas` / `theme` of placement.json; the validator's rules before a value is taken), with
 `ui-layer.ts` withLooks / withUi writing the file. `test/ui-edit-2.test.ts`, `test/studio-ui-edit-2.browser.mjs`.
+
+Since studio-motion-panel (2026-10-22) the plate's top is one line (▶ · time · ● · the motion · Starts ▷ · ⋯ · ✦ Ask AI · ⌄):
+`timeline-more.ts` is the ⋯ panel (Repeat, Stops, the other ways it starts, every cue to Try), and `motion-ask.ts` remembers
+the motion "Ask AI" was pressed on, so the chat box's chip reads "crate · Hop" and the request carries that motion.

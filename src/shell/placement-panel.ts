@@ -372,12 +372,19 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // took half the field). One object: its short name ("Black pillar", without "by the road" and "(left, 3rd)": the card
     // above says those, and the game lights it); several: only how many ("×4"). The whole names are its tooltip and
     // the field's label read aloud, so what goes to the AI stays clear; a mouse over it lights them in the game.
-    askChip.textContent = whole ? '' : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
+    // One object and one motion (the timeline's ✦ Ask AI, or a Library motion with an object picked; studio-motion-panel,
+    // a review of 2026-10-22): both names, "crate · Hop" — what the words are about, read in one go, instead of "×2".
+    const motionOnly = picks.filter((p) => p.startsWith('\u0000'));
+    const pair = !whole && !noObj && keys.length === 1 && files.length === 1 && motionOnly.length === 1;
+    askChip.textContent = whole ? '' : pair ? `${shortName(firstName)} · ${fileName(motionOnly[0]!)}` : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
+    askChip.classList.toggle('motion', pair);
+    // …and the field says what such words look like: when it starts, how fast (the strip's old "When? (for your AI)").
+    if (pair && !answer) askInput.placeholder = d.t('ask.motion');
     const allNames = [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files.map(fileName)];
     askChip.title = whole ? '' : allNames.slice(0, 12).join('\n') + (allNames.length > 12 ? '\n…' : '');
-    askInput.placeholder = ph;
+    if (!pair || answer) askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
-    askInput.setAttribute('aria-label', whole ? ph : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
+    askInput.setAttribute('aria-label', whole ? ph : pair ? d.t('ask.one', { name: askChip.textContent ?? '' }) : n > 1 ? d.t('ask.many', { n }) : d.t(noObj ? 'ask.oneFile' : 'ask.one', { name: firstName }));
     askEl.classList.toggle('whole', whole);
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);

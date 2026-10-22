@@ -38,10 +38,14 @@ function roundUntil(u: MotionUntil | undefined): MotionUntil | undefined {
   return x.times || x.cue || x.then ? x : undefined;
 }
 
-/** A Library motion as the file writes it (the same rounding as a clip's keys). */
+/** A Library motion as the file writes it (the same rounding as a clip's keys; a scene motion: each object's track). */
 export function roundLib(m: LibraryMotion, dim: Dim = '3d'): LibraryMotion {
-  const c = roundMotion({ clips: [{ ...m, start: undefined, when: undefined, keys: m.keys ?? {} }] }, dim)!.clips![0]!;
-  return { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}), keys: c.keys };
+  const one = (keys: MotionClip['keys']) => roundMotion({ clips: [{ ...m, start: undefined, when: undefined, keys: keys ?? {} }] }, dim)!.clips![0]!;
+  const c = one(m.keys);
+  const head = { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}) };
+  if (!m.tracks) return { ...head, keys: c.keys };
+  // The file has `tracks` instead of `keys` (LibraryMotion.keys stays {} in the editor; the cast leaves it out).
+  return { ...head, tracks: Object.fromEntries(Object.entries(m.tracks).map(([k, ks]) => [k, one(ks).keys])) } as LibraryMotion;
 }
 
 /** Same motion (the file's rounding), so a drag that ends where it began is not a change. */
@@ -66,10 +70,12 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
       if (c.use) {
         // An attachment (studio-motion-triggers): which Library motion, and when it starts / stops.
         const until = roundUntil(c.until);
+        // `when`: one, or a list of 2–4 (studio-timeline-2: "E or a click"); a list of one is written as itself.
+        const ws = Array.isArray(c.when) ? c.when.filter((w) => w && typeof w.on === 'string') : [];
         return {
           ...(c.name && c.name !== c.use ? { name: c.name } : {}),
           use: c.use,
-          when: roundWhen(whenOf(c) as MotionWhen, r, step),
+          when: ws.length > 1 ? ws.slice(0, 4).map((w) => roundWhen(w, r, step)) : roundWhen(whenOf(c) as MotionWhen, r, step),
           ...(until ? { until } : {}),
         } as MotionClip;
       }
@@ -79,7 +85,9 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
         const ks = c.keys?.[ch];
         if (!ks?.length) continue;
         const s = ch === 'p' ? step : 10000;
-        keys[ch] = ks.map((k) => ({ t: r(k.t, 1000), v: k.v.map((v) => r(v, s)), ...(k.ease && k.ease !== 'ease' ? { ease: k.ease } : {}) }));
+        // The path's handles (studio-timeline-2) only on position keys, rounded like the point itself.
+        keys[ch] = ks.map((k) => ({ t: r(k.t, 1000), v: k.v.map((v) => r(v, s)), ...(k.ease && k.ease !== 'ease' ? { ease: k.ease } : {}),
+          ...(ch === 'p' && k.in ? { in: k.in.map((v) => r(v, s)) } : {}), ...(ch === 'p' && k.out ? { out: k.out.map((v) => r(v, s)) } : {}) }));
       }
       return {
         name: c.name,
@@ -87,7 +95,7 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
         ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}),
         ...(c.start ? { start: true } : {}),
         ...(!c.start && typeof c.when === 'string' && c.when.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
-        ...(!c.start && c.when && typeof c.when === 'object' ? { when: roundWhen(c.when, r, step) } : {}),
+        ...(!c.start && c.when && typeof c.when === 'object' ? { when: Array.isArray(c.when) ? c.when.map((w) => roundWhen(w, r, step)) : roundWhen(c.when, r, step) } : {}),
         ...(roundUntil(c.until) ? { until: roundUntil(c.until) } : {}),
         keys,
       };

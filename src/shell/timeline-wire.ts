@@ -14,8 +14,10 @@
 //
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
-import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
-import { motionRunner, whenOf } from '../loader/studio-placement.js';
+import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionKey, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
+import { motionRunner, whenOf, whensOf } from '../loader/studio-placement.js';
+import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from './path-edit.ts';
+import { joinClip, likeScene, sceneMembers } from './scene-motion.ts';
 import { libOf, type MotionLibrary } from './motion-library.ts';
 import { motionCardRow } from './motion-card.ts';
 import type { MotionStore } from './motion-model.ts';
@@ -75,6 +77,11 @@ export interface TimelineDeps {
    */
   seen?(id: string): boolean;
   markSeen?(id: string): void;
+  /**
+   * studio-motion-panel (a review of 2026-10-22): ✦ Ask AI on a motion — the shell puts the "object · motion" chip in the chat box
+   * and the cursor there (`name` = the clip's name on screen, `use` = its Library motion). Absent = no AI here: no button.
+   */
+  ask?(key: string, motion: { name: string; use: string }): void;
 }
 
 /**
@@ -137,12 +144,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * in (`use` kept), so every edit below — keys, length, repeat — is a clip edit as before. A clip whose motion is not
    * in the Library (deleted) is left out.
    */
-  const resolve = (m: Motion | null): Motion | null => {
+  // A scene motion (studio-timeline-2: `tracks`) gives each object its own track as the clip's keys, marked `scene`.
+  const resolve = (key: string, m: Motion | null): Motion | null => {
     if (!m?.clips) return m;
     const clips = m.clips.flatMap((c) => {
       if (!c.use) return [c];
       const l = lib().get(c.use);
-      return l ? [{ ...c, name: c.name || c.use, len: l.len, repeat: l.repeat, keys: l.keys }] : [];
+      if (!l) return [];
+      return [{ ...c, name: c.name || c.use, len: l.len, repeat: l.repeat, keys: l.tracks ? structuredClone(l.tracks[key] ?? {}) : l.keys, ...(l.tracks ? { scene: true } : {}) }];
     });
     return clips.length ? { clips } : null;
   };
@@ -150,27 +159,69 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * The other way: each clip's len / repeat / keys go to its Library motion (named by `use`, or by its own name for a
    * clip made here), the object keeps { use, when, until }. A `start: true` from a template becomes when: start.
    */
+  // A scene clip writes only this object's track of the scene (the others' tracks stay); an object no longer in a scene
+  // loses its track there (taken out — and an undo of that puts it back through here).
   const put = (key: string, m: Motion | null) => {
-    if (!m?.clips?.length) return raw().set(key, m && !m.clips ? m : null);
+    if (!m?.clips?.length) {
+      raw().set(key, m && !m.clips ? m : null);
+      return dropTracks(key, new Set());
+    }
     const atts = m.clips.map((c) => {
       const use = c.use ?? c.name;
-      lib().set(use, libOf({ ...c, name: use }));
+      const l = lib().get(use);
+      if (c.scene || l?.tracks) lib().set(use, { ...libOf({ ...c, name: use }), keys: {}, tracks: { ...(l?.tracks ?? {}), [key]: structuredClone(c.keys) } });
+      else lib().set(use, libOf({ ...c, name: use }));
       const a: MotionClip = { name: c.name, use, len: c.len, when: (c.when && typeof c.when === 'object' ? c.when : whenOf(c)) as MotionWhen, keys: {} };
       if (c.until) a.until = c.until;
       return a;
     });
     raw().set(key, { clips: atts });
+    dropTracks(key, new Set(atts.map((a) => a.use!)));
   };
+  function dropTracks(key: string, keep: Set<string>) {
+    for (const l of lib().list()) {
+      if (!l.tracks || !(key in l.tracks) || keep.has(l.name)) continue;
+      const tracks = { ...l.tracks };
+      delete tracks[key];
+      lib().set(l.name, { ...l, tracks });
+    }
+  }
   /** The store as the timeline sees it (resolved clips); every edit below goes through it. */
-  const store = () => ({ get: (k: string) => resolve(raw().get(k)), set: put, keys: () => raw().keys() });
+  const store = () => ({ get: (k: string) => resolve(k, raw().get(k)), set: put, keys: () => raw().keys() });
   const dim = () => d.dim();
   const clipsOf = (key: string): MotionClip[] => store().get(key)?.clips ?? [];
   const clipOf = (key: string): MotionClip | null => {
     const cs = clipsOf(key);
     const want = chosen.get(key);
-    return cs.find((c) => c.name === want) ?? cs.find((c) => whenOf(c).on === 'start') ?? cs[0] ?? null;
+    // An open scene (studio-timeline-2) is what each of its objects shows.
+    return (scene && cs.find((c) => c.scene && c.use === scene)) || (cs.find((c) => c.name === want) ?? cs.find((c) => whenOf(c).on === 'start') ?? cs[0] ?? null);
   };
   const focus = () => d.picked() ?? (focusKey && d.place(focusKey) ? focusKey : null);
+  // ----- scene motions (studio-timeline-2; scene-motion.ts): one motion, several objects' rows -----
+  // The scene shown on the plate (its Library name), or null. While it is open the rows are its objects, the head acts
+  // on it (whichever object is picked), and an object picked that has no motion of its own can join it.
+  let scene: string | null = null;
+  const members = (name = scene) => (name ? sceneMembers(store(), name).filter((k) => !!d.place(k)) : []);
+  /** Open / close the scene as the pick changes: a picked object showing a scene clip opens it; an object with motions of its own (not in it) closes it. */
+  function syncScene() {
+    const p = d.picked();
+    if (scene && !members().length) scene = null;
+    if (scene && p && !members().includes(p) && clipsOf(p).length) scene = null;
+    if (!scene && p) {
+      const c = clipOf(p);
+      if (c?.scene) openScene(c.use!);
+    }
+  }
+  function openScene(name: string | null) {
+    scene = name;
+    if (name) for (const k of members(name)) chosen.set(k, name);
+  }
+  /** The object whose clip the head shows and edits: the focus, or with a scene open, a member (the picked one if it is). */
+  const head = () => {
+    if (!scene) return focus();
+    const ms = members(), p = d.picked();
+    return p && ms.includes(p) ? p : ms[0] ?? focus();
+  };
   const shown = () => open && d.usable();
   /** The keys with a motion that are in the scene now. */
   const moving = () => store().keys().filter((k) => !!d.place(k));
@@ -232,12 +283,18 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   const one = (key: string, m: Motion | null) => commit(new Map([[key, m]]), new Map([[key, store().get(key)]]), true);
   /** The focused object's clip changed by `f` (the head's menus). */
   const editClip = (f: (c: MotionClip) => MotionClip) => {
-    const key = focus();
+    const key = head();
     const c = key ? clipOf(key) : null;
     if (!key || !c) return;
-    const next = f(structuredClone(c));
-    chosen.set(key, next.name);
-    one(key, withClip(store().get(key), c.name, next));
+    const nx = f(structuredClone(c));
+    chosen.set(key, nx.name);
+    const next = new Map<string, Motion | null>([[key, withClip(store().get(key), c.name, nx)]]);
+    // A scene's length, repeat and "when" are the scene's: every object in it gets them (one undo step).
+    if (c.scene) for (const k of members(c.use)) if (k !== key) {
+      const x = clipsOf(k).find((y) => y.use === c.use);
+      if (x) next.set(k, withClip(store().get(k), x.name, likeScene(x, nx)));
+    }
+    commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
   };
 
   /**
@@ -249,6 +306,16 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (!place) return store().get(key);
     let m = store().get(key);
     let c = clipOf(key);
+    // A scene open and this object not in it (it has no motion of its own: syncScene): moving it with ● on puts it in
+    // the scene (Unity's Animation window records another object under the same Animator into the same clip).
+    if (scene && !c?.scene) {
+      const l = lib().get(scene);
+      const ms = members();
+      if (l?.tracks && ms.length) {
+        c = joinClip(l, clipOf(ms[0]!));
+        chosen.set(key, scene);
+      }
+    }
     if (!c) {
       // One name for the whole gesture: a live drag remakes this first clip at every pose (from the motion before it),
       // and the Library already holds the name it took on the first pose.
@@ -301,7 +368,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function tick() {
     if (!playing) return;
     const run = playing.from + (performance.now() - playing.t0) / 1000;
-    const c = focus() ? clipOf(focus()!) : null;
+    const c = head() ? clipOf(head()!) : null;
     const len = c?.len ?? span();
     const rep = c?.repeat ?? 'once';
     if (rep === 'loop') time = run % len;
@@ -323,7 +390,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function play() {
     if (!shown()) return;
     stopTry();
-    const c = focus() ? clipOf(focus()!) : null;
+    const c = head() ? clipOf(head()!) : null;
     // From the end of a `once`: back to the start (as any player does).
     if (c && (c.repeat ?? 'once') === 'once' && time >= c.len - 1e-3) time = 0;
     playing = { t0: performance.now(), from: time };
@@ -344,25 +411,54 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * room to go to 2 s and move something (the first key's moment), the length of a door opening or a lift's ride.
    */
   const span = () => {
-    const lens = [...rows().map((r) => r.clip?.len ?? 0), focus() ? clipOf(focus()!)?.len ?? 0 : 0].filter((x) => x > 0);
+    const lens = [...rows().map((r) => r.clip?.len ?? 0), head() ? clipOf(head()!)?.len ?? 0 : 0].filter((x) => x > 0);
     return lens.length ? Math.max(1, ...lens) : 4;
   };
 
   function rows() {
-    const keys = new Set(moving());
     const p = d.picked();
+    // A scene open: its objects only (and the picked one, which may join it).
+    const keys = new Set(scene ? members() : moving());
     if (p && d.place(p)) keys.add(p);
     const order = d.order();
     const at = (k: string) => {
       const i = order.indexOf(k);
       return i < 0 ? 1e9 : i;
     };
-    return [...keys].sort((a, b) => at(a) - at(b)).map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k) }));
+    const ms = scene ? members() : [];
+    return [...keys].sort((a, b) => at(a) - at(b)).map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: scene && !ms.includes(k) ? null : clipOf(k),
+      ...(scene ? { member: ms.includes(k) } : {}) }));
+  }
+
+  /** The picked position keys' point kind (the head's "Point ▾", studio-timeline-2): one kind, 'mixed', or null with none picked. */
+  function pointOf(): PointKind | 'mixed' | null {
+    const kinds = new Set<PointKind>();
+    for (const r of sel) {
+      if (r.ch !== 'p') continue;
+      const k = clipOf(r.key)?.keys.p?.find((x) => sameT(x.t, r.t));
+      if (k) kinds.add(pointKind(k));
+    }
+    return kinds.size ? (kinds.size === 1 ? [...kinds][0]! : 'mixed') : null;
+  }
+  /** The picked object's position keys changed by `f` (a handle, a corner, a key put on the path): one call, one undo step unless `live`. */
+  function editPath(key: string, f: (ks: MotionKey[]) => MotionKey[] | null, live?: { end: boolean }) {
+    const c = clipOf(key);
+    if (!c?.keys.p?.length) return;
+    if (live) begin(key);
+    const ks = f(c.keys.p);
+    if (!ks) return;
+    const nc: MotionClip = { ...structuredClone(c), keys: { ...structuredClone(c.keys), p: ks } };
+    const m = withClip(store().get(key), c.name, nc);
+    if (!live) return one(key, m);
+    const from = live.end ? finish() : before;
+    commit(new Map([[key, m]]), from, live.end);
   }
 
   function view(): TimelineView {
-    const key = focus();
+    syncScene();
+    const key = head();
     const c = key ? clipOf(key) : null;
+    const qs = cues();
     const eases = new Set<MotionEase>();
     for (const r of sel) {
       const k = clipOf(r.key)?.keys[r.ch]?.find((x) => sameT(x.t, r.t));
@@ -374,15 +470,20 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       ease: sel.length ? (eases.size === 1 ? [...eases][0]! : 'mixed') : null,
       narrow: d.narrow(),
       when: c ? (whenOf(c) as MotionWhen) : null,
+      whens: c ? (whensOf(c) as MotionWhen[]) : [],
+      scene: scene && c?.scene ? { name: scene, n: members().length } : null,
+      point: pointOf(),
+      // The line's ▷ (studio-motion-panel): the cue that starts this clip (its first way; "the game starts" for start / time).
+      tryId: key && c ? (qs.find((q) => q.hits.some(([k, n]) => k === key && n === c.name))?.id ?? null) : null,
       until: c?.until ?? null,
       uses: c ? usage(c.use ?? c.name).length : 0,
-      cues: cues().map((q) => ({ id: q.id, label: q.label, ai: q.ai, on: !!trying && q.hits.some(([k, n]) => trying!.run.playing().get(k) === n) })),
+      cues: qs.map((q) => ({ id: q.id, label: q.label, ai: q.ai, on: !!trying && q.hits.some(([k, n]) => trying!.run.playing().get(k) === n) })),
       trying: !!trying,
       cueNames: cueNames(),
       afterOpts: moving().flatMap((k) => clipsOf(k).filter((x) => !(k === key && x.name === c?.name)).map((x) => ({ key: k, use: x.use ?? x.name, label: `${d.label(k)} · ${x.name}` }))),
       rowWhen: (k: string) => {
         const x = clipOf(k);
-        return x ? { when: whenOf(x) as MotionWhen, until: x.until ?? null, repeat: x.repeat ?? 'once' } : null;
+        return x ? { when: whenOf(x) as MotionWhen, whens: whensOf(x) as MotionWhen[], until: x.until ?? null, repeat: x.repeat ?? 'once' } : null;
       },
       defaultArea: () => {
         const place = key ? d.place(key) : undefined;
@@ -414,10 +515,17 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
     const pose = shownPose(key)!;
-    let c = clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
+    const sl = scene && !clipOf(key)?.scene && members().length ? lib().get(scene) : null;
+    let c = (sl?.tracks ? joinClip(sl, clipOf(members()[0]!)) : null) ?? clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
-    for (const ch of chs.length ? chs : (['p'] as MotionChannel[])) c = setKey(c, ch, time, offsetOf(place, pose, ch, dim()));
+    for (const ch of chs.length ? chs : (['p'] as MotionChannel[])) {
+      // A new position key on the path where it already is keeps the path's shape (studio-timeline-2: insertAt cuts a
+      // bent span in two); a key already there, or the first one, is set from how the object shows now.
+      const ks = c.keys.p;
+      if (ch === 'p' && ks && ks.length > 1 && time <= c.len && !ks.some((k) => sameT(k.t, time))) c = { ...c, keys: { ...c.keys, p: insertAt(ks, time).keys } };
+      else c = setKey(c, ch, time, offsetOf(place, pose, ch, dim()));
+    }
     chosen.set(key, name);
     one(key, withClip(store().get(key), name, c));
     return true;
@@ -428,7 +536,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function renameLib(from: string, to: string, record = true): boolean {
     if (!lib().rename(from, to)) return false;
     const fix = (m: Motion | null): Motion | null => (m?.clips ? { clips: m.clips.map((c) => {
-      const w = c.when && typeof c.when === 'object' && c.when.on === 'after' && c.when.use === from ? { ...c.when, use: to } : c.when;
+      // `when` may be a list (studio-timeline-2): an "after" in it that waits for the renamed motion follows the name.
+      const one = (x: MotionWhen) => (x.on === 'after' && x.use === from ? { ...x, use: to } : x);
+      const w = Array.isArray(c.when) ? c.when.map(one) : c.when && typeof c.when === 'object' ? one(c.when) : c.when;
       return c.use === from ? { ...c, use: to, name: c.name === from ? to : c.name, when: w } : { ...c, when: w };
     }) } : m);
     for (const k of raw().keys()) raw().set(k, fix(raw().get(k)));
@@ -453,8 +563,15 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (!l || !d.place(key)) return false;
     if (clipsOf(key).some((c) => (c.use ?? c.name) === name)) return true;
     if (clipsOf(key).length >= MAX_CLIPS) return false;
-    const when: MotionWhen = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
     chosen.set(key, name);
+    // A scene motion dropped on an object: the object joins the scene (its own empty row, the scene's "when").
+    if (l.tracks) {
+      const ms = sceneMembers(store(), name);
+      openScene(name);
+      one(key, withClip(store().get(key), name, joinClip(l, ms[0] ? clipOf(ms[0]) : null)));
+      return true;
+    }
+    const when: MotionWhen = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
     one(key, withClip(store().get(key), name, { ...l, use: name, when }));
     return true;
   }
@@ -505,12 +622,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const cs = clipsOf(key);
     if (cs.length >= MAX_CLIPS) return;
     // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
-    const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
+    // A scene is named "Scene" (its menu line says what it is: "Scene — several objects").
+    const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : kind === 'scene' ? d.t('tl.scene.new') : d.t(`tl.tpl.${kind}`)), dim());
     // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
     c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
     chosen.set(key, c.name);
     openRows.add(key);
     time = 0;
+    scene = kind === 'scene' ? c.name : null;
     one(key, withClip(store().get(key), c.name, c));
   }
   /**
@@ -532,6 +651,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function show(key: string, name: string, attached = false) {
     focusKey = key;
     chosen.set(key, name);
+    scene = null;
+    if (lib().get(name)?.tracks) openScene(name);
     if (fresh) clearTimeout(fresh.timer);
     fresh = null;
     if (attached) {
@@ -570,8 +691,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     addCue('start', d.t('tl.try.start'), false, { on: 'start' });
     for (const key of moving()) {
       const name = d.label(key);
-      for (const c of clipsOf(key)) {
-        const w = whenOf(c) as MotionWhen;
+      for (const c of clipsOf(key)) for (const w of whensOf(c) as MotionWhen[]) {
         const hit: [string, string] = [key, c.name];
         if (w.on === 'start' || w.on === 'time') out.get('start')!.hits.push(hit);
         else if (w.on === 'key') addCue(`key:${w.key}`, keyName(w.key), false, { on: 'key', key: w.key }, hit);
@@ -593,7 +713,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const now = performance.now();
     if (!trying || id === 'start') {
       if (trying) cancelAnimationFrame(trying.raf);
-      const objs = moving().map((key) => ({ key, clips: clipsOf(key).map((c) => ({ ...c, when: whenOf(c) })) }));
+      const objs = moving().map((key) => ({ key, clips: clipsOf(key).map((c) => ({ ...c, when: whenOf(c), whens: whensOf(c) })) }));
       trying = { run: motionRunner(objs), t0: now, raf: 0 };
       trying.run.fire({ on: 'start' }, now);
       const loop = () => {
@@ -631,8 +751,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function cueNames(): string[] {
     const out = new Set<string>();
     for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) {
-      const w = whenOf(c) as MotionWhen;
-      if (w.on === 'cue') out.add(w.cue);
+      for (const w of whensOf(c) as MotionWhen[]) if (w.on === 'cue') out.add(w.cue);
       if (c.until?.cue) out.add(c.until.cue);
     }
     return [...out];
@@ -642,7 +761,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function sendArea(force = false) {
     const key = shown() ? d.picked() : null;
     const c = key ? clipOf(key) : null;
-    const w = c ? (whenOf(c) as MotionWhen) : null;
+    const w = c ? (whensOf(c) as MotionWhen[]).find((x) => x.on === 'enter') : null;
     const msg: ShellToBridge = key && w?.on === 'enter' && w.area
       ? { type: 'studio:timeline/area', key, area: structuredClone(w.area), label: d.t('tl.area.label', { size: w.area.size.map((v) => Math.round(v * 10) / 10).join(' × ') }) }
       : { type: 'studio:timeline/area', key: null };
@@ -668,7 +787,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     fold: () => setOpen(false),
     clip(value) {
-      const key = focus();
+      const key = head();
       if (!key) return;
       if (value.startsWith('new:')) newClip(key, value.slice(4) as Template);
       else if (value === 'delete') {
@@ -676,16 +795,24 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
         if (!c) return;
         chosen.delete(key);
         sel = sel.filter((r) => r.key !== key);
+        // A scene's "Delete" takes the whole scene off (every object in it: one undo step).
+        if (c.scene) {
+          const next = new Map(members(c.use).map((k) => [k, withClip(store().get(k), clipsOf(k).find((x) => x.use === c.use)!.name, null)] as [string, Motion | null]));
+          scene = null;
+          return commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
+        }
         one(key, withClip(store().get(key), c.name, null));
       } else if (clipsOf(key).some((c) => c.name === value)) {
         chosen.set(key, value);
+        const c = clipsOf(key).find((x) => x.name === value)!;
+        openScene(c.scene ? c.use! : null);
         sel = sel.filter((r) => r.key !== key);
         refresh();
         panel.render();
       }
     },
     rename(name) {
-      const key = focus();
+      const key = head();
       const c = key ? clipOf(key) : null;
       if (!key || !c) return;
       // The Library motion is renamed, with every object that uses it (the name is the asset's, not this object's).
@@ -706,7 +833,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     setWhen: (w) => editClip((c) => {
       // A "when" chosen: the "✓ attached" line has done its job.
       if (fresh) (clearTimeout(fresh.timer), (fresh = null));
-      const out: MotionClip = { ...c, when: w };
+      // A list of one is written as itself (studio-timeline-2: 2–4 = "any of these").
+      const out: MotionClip = { ...c, when: Array.isArray(w) ? (w.length > 1 ? w.slice(0, 4) : w[0]!) : w };
       delete out.start;
       return out;
     }),
@@ -716,6 +844,36 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       else delete out.until;
       return out;
     }),
+    // studio-timeline-2: the head's "Point ▾" on the picked position keys; a row's "+ Add" / "×" for a scene.
+    point(kind) {
+      const keys = new Set(sel.filter((r) => r.ch === 'p').map((r) => r.key));
+      const next = new Map<string, Motion | null>();
+      for (const key of keys) {
+        const c = clipOf(key);
+        if (!c?.keys.p) continue;
+        let ks = c.keys.p;
+        for (const r of sel) if (r.key === key && r.ch === 'p') {
+          const i = ks.findIndex((k) => sameT(k.t, r.t));
+          if (i >= 0) ks = setKind(ks, i, kind);
+        }
+        next.set(key, withClip(store().get(key), c.name, { ...c, keys: { ...c.keys, p: ks } }));
+      }
+      if (next.size) commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
+    },
+    join(key) {
+      const l = scene ? lib().get(scene) : null;
+      const ms = members();
+      if (!l?.tracks || !d.place(key) || ms.includes(key) || clipsOf(key).length >= MAX_CLIPS) return;
+      chosen.set(key, l.name);
+      one(key, withClip(store().get(key), l.name, joinClip(l, ms[0] ? clipOf(ms[0]) : null)));
+    },
+    leave(key) {
+      const c = scene ? clipsOf(key).find((x) => x.use === scene) : null;
+      if (!c) return;
+      sel = sel.filter((r) => r.key !== key);
+      chosen.delete(key);
+      one(key, withClip(store().get(key), c.name, null));
+    },
     tryCue: (id) => tryCue(id),
     tryStop: () => stopTry(),
     ease(e) {
@@ -770,7 +928,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       d.markSeen?.(COACH);
       panel.render();
     },
+    ...(d.ask ? { ask: () => askAbout(head()) } : {}),
   });
+  /** ✦ Ask AI about `key`'s motion on screen (the line's button, the card's Motion ▾): the shell's chat box takes it from here. */
+  function askAbout(key: string | null) {
+    const c = key ? clipOf(key) : null;
+    if (key && c) d.ask?.(key, { name: c.name, use: c.use ?? c.name });
+  }
 
   // Fold / open: the plate itself (PC: at the foot of the game; phone / side window: in the dock, above the card).
   panel.el.hidden = true;
@@ -798,7 +962,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const on = shown();
     if (panel.el.hidden === on) panel.el.hidden = !on;
     if (on) panel.render();
-    else if (playing) stop();
+    else {
+      panel.closeMore?.();
+      if (playing) stop();
+    }
     if (on !== wasShown) {
       wasShown = on;
       refresh(true);
@@ -855,6 +1022,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   return {
     el: panel.el,
     isOpen: () => open,
+    /** The motion `key` shows (on the plate and the card), by its name on screen — the chat box's chip follows it (studio-motion-panel). */
+    shownName: (key: string) => clipOf(key)?.name ?? null,
+    /** Right-click's "Ask your AI about “Hop”…" (studio-motion-panel): the same as the plate's ✦. */
+    askAbout: (key: string) => askAbout(key),
     setOpen,
     toggle: () => setOpen(!open),
     /** Draw again (the pick, the scene, the layout changed). */
@@ -926,12 +1097,40 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     onMessage(m: BridgeToShell): boolean {
       if (m.type === 'studio:timeline/area-moved') {
         const c = clipOf(m.key);
-        const w = c ? (whenOf(c) as MotionWhen) : null;
-        if (!c || w?.on !== 'enter') return true;
+        const w = c ? (whensOf(c) as MotionWhen[]).find((x) => x.on === 'enter') : null;
+        if (!c || !w) return true;
         begin(m.key);
-        const nc: MotionClip = { ...c, when: { ...w, area: { ...w.area, p: m.p.slice() } } };
+        // The area is the first "enter" of the clip's ways to start (studio-timeline-2: there may be several).
+        const ws = whensOf(c) as MotionWhen[];
+        const i = ws.findIndex((x) => x.on === 'enter');
+        const area = { p: m.p.slice(), size: (m.size ?? (ws[i] as Extract<MotionWhen, { on: 'enter' }>).area.size).slice() };
+        const list = ws.map((x, j) => (j === i ? { ...x, area } : x)) as MotionWhen[];
+        const nc: MotionClip = { ...c, when: list.length > 1 ? list : list[0]! };
         const from = m.end ? finish() : before;
         commit(new Map([[m.key, withClip(store().get(m.key), c.name, nc)]]), from, m.end);
+        return true;
+      }
+      // studio-timeline-2: the path's handles, a key put on its line, a point made a corner (path-edit.ts).
+      if (m.type === 'studio:timeline/handle') {
+        editPath(m.key, (ks) => (ks[m.i] ? bend(ks, m.i, m.side, m.h, m.alone) : null), { end: m.end });
+        return true;
+      }
+      if (m.type === 'studio:timeline/corner') {
+        editPath(m.key, (ks) => (ks[m.i] ? toggleCorner(ks, m.i) : null));
+        return true;
+      }
+      if (m.type === 'studio:timeline/insert') {
+        const c = clipOf(m.key);
+        if (!c?.keys.p?.length || !shown()) return true;
+        if (playing) stop();
+        const t = snapT(m.t, c.len, true);
+        editPath(m.key, (ks) => insertAt(ks, t).keys);
+        // The time line goes there and the new point is picked (its handles show).
+        time = t;
+        sel = [{ key: m.key, ch: 'p', t }];
+        focusKey = m.key;
+        refresh();
+        panel.render();
         return true;
       }
       if (m.type !== 'studio:timeline/point') return false;
@@ -997,6 +1196,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
           focusKey = key;
           setOpen(!open);
         },
+        ...(d.ask ? { ask: () => askAbout(key) } : {}),
       });
     },
     // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.

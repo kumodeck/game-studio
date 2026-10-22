@@ -16,10 +16,12 @@ Select something, then press **◆ Timeline** on its card (or find **Timeline** 
 
 ![The timeline under the game, with the boat’s keys and its path](media/timeline.webp)
 
+Its top is one line, with what you use every time: **▶** (or <kbd>Space</kbd>), the time and the motion’s **length**, **● Auto key**, the **motion** menu, **Starts**, then **⋯**, **✦ Ask AI** and **⌄** to fold it.
+
 - The **ruler** is time. Drag on it to see that moment. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
-- Set the motion’s **length** in seconds.
-- **Play** and **Pause** preview it (or <kbd>Space</kbd>).
+- Click the length after the time to type a new one, in seconds.
 - Each object has a row. Open it to see **Position**, **Angle** and **Size** on their own rows.
+- **⋯** has the rest: **Repeat**, **Stops**, other ways to start, and **Try**.
 
 ## Keys
 
@@ -42,23 +44,29 @@ To change keys, click them (<kbd>Shift</kbd> or <kbd>⌘</kbd> adds more, or dra
 
 In 3D, the object’s way through its position keys is drawn in the scene, with a dot for each key and a dashed line down to the ground. Drag a dot to move that key across the ground. <kbd>Shift</kbd>-drag moves it up and down.
 
+![A picked point of the boat’s path with its two handles, and the + on the line](media/motion-path.webp)
+
+- **Bend the path.** Select a key (on the timeline or its dot) and two **handles** show. Drag one to bend the path there; the other one follows. <kbd>Alt</kbd>-drag moves only one, for a sharp turn.
+- **Make a corner.** Double-click a dot (or choose **Point → Corner** at the top of the timeline). The path comes straight in and goes straight out. Double-click again for a smooth point.
+- **Add a key on the path.** Point at the line: a **+** follows it with the time. Click to set a key at that moment, without changing the path’s shape.
+
 ## How keys flow into each other
 
-Select keys and choose how they go on to the next one:
+Select keys and a **Keys** menu shows on the timeline’s top line. Choose how they go on to the next one:
 
 - **Ease in-out**: starts slow, ends slow. The default.
 - **Steady**: the same speed all the way.
 - **Jump**: stays put, then jumps to the next key.
 
-**Repeat** sets what happens at the end: **Once**, **Loop**, or **Back and forth**.
+**Repeat** (in **⋯**) sets what happens at the end: **Once**, **Loop**, or **Back and forth**.
 
 To start quickly, a new motion can begin from a template: **Back and forth**, **Round**, **Once** or **Spin**. Its keys are plain keys you can change.
 
 ## When it starts
 
-**Starts** chooses when a motion begins.
+**Starts**, on the timeline’s top line, chooses when a motion begins. The **▶** next to it tries that moment.
 
-![The timeline with Starts, Stops and Try: the rowboat starts when the player enters its area](media/motion-when.webp)
+![The timeline’s one line with Starts: the rowboat starts when the player enters its area](media/motion-when.webp)
 
 These play by themselves:
 
@@ -67,19 +75,37 @@ These play by themselves:
 - **A key is pressed**
 - **This is clicked / tapped**
 - **Another motion ends**
-- **The player enters an area**: a box shows in the scene. Drag its white point to place it (<kbd>Shift</kbd>-drag for up and down).
+- **The player enters an area**: a box shows in the scene. Drag its white point to place it (<kbd>Shift</kbd>-drag for up and down). Drag a corner to resize it from the opposite corner (<kbd>Shift</kbd>-drag for its height).
 
 These your AI connects in the game’s code:
 
 - **The player touches this**
 - **A cue**: a name your game sends, like “door-open”
-- **In my words…**: describe it, and your AI makes it happen
+- **In the chat, to your AI…**: the chat box at the bottom opens with this motion in it. Say when, like “when the player walks up,” and your AI makes it happen.
 
-**Stops** chooses when it ends: **Never**, **After some rounds**, or **A cue**. Then it **Stays there** or **Goes back**.
+In **⋯**, **+ or** adds another way to start, like “a key is pressed **or** this is clicked.” Any one of them starts it. **×** removes one. The top line then says **+1 more**.
+
+![Starts: a key is pressed, or the player enters an area — the area with its corners](media/motion-or.webp)
+
+**Stops** (in **⋯**) chooses when it ends: **Never**, **After some rounds**, or **A cue**. Then it **Stays there** or **Goes back**.
 
 ## Try it
 
-**Try** shows one ▶ for each way a motion can start in this scene, like “Game starts” or “Click boat.” Press one to run the scene as if that just happened. **Stop** ends it.
+The **▶** next to **Starts** runs the scene as if this motion’s start just happened. Press it again to stop.
+
+**Try** in **⋯** shows one ▶ for each way a motion can start in this scene, like “Game starts” or “Click boat.” Press one to run the scene as if that just happened. **Stop** ends it.
+
+## Scenes: several things in one motion
+
+A **scene** moves several objects together, like a short cutscene: the boat rows in, the buoy dips, the barrel rolls off the pier.
+
+![A scene with three objects on one timeline, and the crate’s + Add row](media/motion-scene.webp)
+
+1. In the motion menu at the top of the timeline, choose **New: Scene — several objects**. It starts with the selected object.
+2. Select another object. Its row says **+ Add crate to “Arrival”**. Press it, or just move the object with **Auto key** on.
+3. Each object has its own row of keys, on one time line. **Starts** and **Stops** are the scene’s: all of them start together.
+
+**×** on a row takes that object out of the scene. Dropping a scene from the Library onto an object adds that object to it.
 
 ## The motion Library
 
@@ -95,7 +121,9 @@ Every motion is in the Library, under **Motion**. Each tile draws the path and p
 
 You don’t have to set keys yourself. Two ways to use your AI:
 
-- **Use a motion you made.** Select it in the Library, press **Ask your AI…**, and say when it should play: “make the crate hop when the player walks up.” Your AI connects that moment in the game’s code.
+- **Use a motion you made.** Press **✦ Ask AI** on the timeline (or **Ask your AI about…** in the card’s motion menu, a right-click on the object, or the motion in the Library). The chat box at the bottom gets a chip with both names, like **crate · Hop**, and the cursor. Say what you want: “start it when the player walks up,” then “a bit slower.” Your AI connects that moment in the game’s code.
+
+![The chat box with the chip “crate · Hop” and the words “Start it when the player walks up”](media/motion-ask.webp)
 - **Describe it.** Select something and ask in the box at the bottom: “make the boat rock gently.” Your AI writes the movement into the game’s code. It plays in **▶ Play** and in the game, but it isn’t on the timeline.
 
 ## In the game

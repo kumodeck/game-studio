@@ -1201,8 +1201,17 @@ export type BridgeToShell =
    * undo step for the whole drag).
    */
   | { type: 'studio:timeline/point'; key: string; i: number; v: number[]; end: boolean }
-  /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. */
-  | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean }
+  /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. `size` (studio-timeline-2): a corner dragged — the area's new size (and middle). */
+  | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean; size?: number[] }
+  /**
+   * studio-timeline-2 (2026-10-22): a handle of a path point dragged in the game — position key `i`'s `in` or `out` is
+   * now `h` (an offset from the point); `alone` (Alt): the other handle keeps its own direction (else it lines up).
+   */
+  | { type: 'studio:timeline/handle'; key: string; i: number; side: 'in' | 'out'; h: number[]; alone: boolean; end: boolean }
+  /** studio-timeline-2: the path's line clicked at `t` seconds of the clip: a position key there (the shape kept). */
+  | { type: 'studio:timeline/insert'; key: string; t: number }
+  /** studio-timeline-2: a point of the path double-clicked: a corner, or smooth again. */
+  | { type: 'studio:timeline/corner'; key: string; i: number }
   /** Answer to placement/copy: the copies made (with their poses) and the keys that could not be copied. */
   | { type: 'studio:placement/added'; items: Array<{ key: string; from: string; pose: Pose; ghost?: boolean }>; failed: string[] }
   /** `size`: the side asked for (placement/thumbs), so the editor can tell a Library tile's picture from a list row's. */
@@ -1863,8 +1872,9 @@ export interface MotionClip {
   /**
    * When it starts (studio-motion-triggers, CONTRACT.md §4.1 "When a motion plays"). A string is studio-timeline's
    * shape (the person's words for the AI), read as `{ on: 'say', say }`. Absent on a clip with `use` = the game starts.
+   * A list (studio-timeline-2, 2026-10-22: "E or a click"): 2–4 of them, any one starts it. One is never a list.
    */
-  when?: MotionWhen | string;
+  when?: MotionWhen | MotionWhen[] | string;
   /** When it stops (absent = never: a once clip ends on its last pose, a loop / pingpong goes on). */
   until?: MotionUntil;
   /**
@@ -1873,6 +1883,11 @@ export interface MotionClip {
    * Library (timeline-wire.ts reads and writes the two together).
    */
   use?: string;
+  /**
+   * Inside the editor and the loader only, never in the file (studio-timeline-2): the clip's Library motion is a scene
+   * motion (`tracks`), and `keys` are this object's track of it.
+   */
+  scene?: boolean;
   keys: MotionKeys;
 }
 
@@ -1909,7 +1924,14 @@ export interface LibraryMotion {
   name: string;
   len: number;
   repeat?: MotionRepeat;
+  /** One object's keys. Empty ({}) in the editor for a scene motion; the file leaves it out then. */
   keys: MotionKeys;
+  /**
+   * A scene motion (studio-timeline-2, 2026-10-22: "several objects in one motion", a cutscene): keys per object key
+   * (1–16 objects) instead of `keys`. Every object in it is attached with the same `when` / `until`; the loader starts
+   * them all at the same moment when any one of them starts (and playMotion(anyOfThem, name) plays the whole scene).
+   */
+  tracks?: Record<string, MotionKeys>;
 }
 
 /**
@@ -1931,6 +1953,13 @@ export interface MotionKey {
   v: number[];
   /** How this key goes on to the next: linear (the same speed), ease (default: slow start, slow stop), step (jumps at the next key). */
   ease?: MotionEase;
+  /**
+   * Position keys only (studio-timeline-2, 2026-10-22): the path's handles at this point, as offsets from it (m / px):
+   * `in` towards the key before, `out` towards the key after. Absent = smooth (the curve through the points, as
+   * before); written once a handle was dragged. Both [0, 0(, 0)] = a corner.
+   */
+  in?: number[];
+  out?: number[];
 }
 export type MotionEase = 'linear' | 'ease' | 'step';
 export type MotionRepeat = 'pingpong' | 'loop' | 'once';

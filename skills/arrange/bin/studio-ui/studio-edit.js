@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.22 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.23 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4702,8 +4702,17 @@ const MSG_PREFIX = 'studio:';
                                    
      
                                                                                         
-                                                                                                                 
-                                                                                  
+                                                                                                                                                                                                  
+                                                                                                   
+     
+                                                                                                                       
+                                                                                                                    
+     
+                                                                                                                             
+                                                                                                                      
+                                                              
+                                                                                          
+                                                              
                                                                                                             
                                                                                                                                   
                                                                                                                           
@@ -5364,8 +5373,9 @@ const RESULT_FILES                         = {
      
                                                                                                                    
                                                                                                                         
+                                                                                                                 
      
-                             
+                                            
                                                                                                       
                       
      
@@ -5374,6 +5384,11 @@ const RESULT_FILES                         = {
                                                                   
      
                
+     
+                                                                                                                       
+                                                                 
+     
+                  
                    
  
 
@@ -5410,7 +5425,14 @@ const RESULT_FILES                         = {
                
               
                         
+                                                                                                     
                    
+     
+                                                                                                                     
+                                                                                                                       
+                                                                                                                     
+     
+                                      
  
 
 /**
@@ -5432,6 +5454,13 @@ const RESULT_FILES                         = {
               
                                                                                                                                         
                     
+     
+                                                                                                                       
+                                                                                                                
+                                                                             
+     
+                
+                 
  
                                                     
                                                         
@@ -7114,7 +7143,7 @@ function playMotion(key, name) {
     const o = !lib ? null : k ? k.o : world && findByKey(world, key, !!world.isObject3D);
     if (!o) return false;
     if (!k) k = remember(key, o, !!world.isObject3D, []);
-    clip = { ...lib, use: name, when: { on: 'say' } };
+    clip = resolveClip({ use: name, when: { on: 'say' } }, library, key);
     k.clips.push(clip);
   }
   ensureRun().play(key, clip, performance.now());
@@ -7148,7 +7177,7 @@ function fire(ev) {
 /** An object's clip by name (for a game that moves the object itself: clipAt(clipOf('door', 'Open'), seconds)). */
 function clipOf(key, name) {
   const k = known.get(key);
-  return (k && k.clips.find((c) => c.name === name)) || resolveClip(library.find((m) => m && m.name === name) ? { use: name } : null, library);
+  return (k && k.clips.find((c) => c.name === name)) || resolveClip(library.find((m) => m && m.name === name) ? { use: name } : null, library, key);
 }
 
 /**
@@ -7157,20 +7186,35 @@ function clipOf(key, name) {
  */
 function whenOf(c) {
   if (!c || typeof c !== 'object') return { on: 'say' };
-  const w = c.when;
+  const w = Array.isArray(c.when) ? c.when.find((x) => x && typeof x.on === 'string') : c.when;
   if (w && typeof w === 'object' && typeof w.on === 'string') return w;
   if (c.start === true || (c.use && w === undefined)) return { on: 'start' };
   return typeof w === 'string' && w.trim() ? { on: 'say', say: w } : { on: 'say' };
 }
 
-/** A clip as it plays: a `use` clip gets its Library motion's len / repeat / keys; null = bad, or a motion not there. */
-function resolveClip(c, lib) {
+/**
+ * Every way a clip starts (studio-timeline-2, 2026-10-22: "E or a click"): `when` may be a list — any one of them
+ * starts it. One `when` (or none) is a list of one (whenOf's answer).
+ */
+function whensOf(c) {
+  const ws = c && Array.isArray(c.when) ? c.when.filter((x) => x && typeof x.on === 'string') : [];
+  return ws.length ? ws : [whenOf(c)];
+}
+
+/**
+ * A clip as it plays: a `use` clip gets its Library motion's len / repeat / keys; null = bad, or a motion not there.
+ * A scene motion (studio-timeline-2: `tracks`, several objects in one motion) gives object `key` its own track, and
+ * `scene: true` (the runner then starts the scene's other objects with it). `when` = the first way it starts (as
+ * before), `whens` = all of them (whensOf: the runner's).
+ */
+function resolveClip(c, lib, key) {
   if (!c || typeof c !== 'object') return null;
   if (typeof c.use === 'string') {
-    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && x.keys && typeof x.keys === 'object');
-    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: m.keys, when: whenOf(c), until: c.until } : null;
+    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && typeof (x.tracks || x.keys) === 'object');
+    const tr = m && m.tracks;
+    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: tr ? tr[key] || {} : m.keys, when: whenOf(c), whens: whensOf(c), until: c.until, scene: !!tr } : null;
   }
-  return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c) } : null;
+  return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c), whens: whensOf(c) } : null;
 }
 
 /**
@@ -7180,6 +7224,9 @@ function resolveClip(c, lib) {
  *   objs: [{ key, clips }] with resolved clips (resolveClip). The rules:
  *   - a clip starts on its `when` (fire's event, or by itself: `time` after `after` seconds, `after` when that clip
  *     ends, `enter` when the player's position goes into the area: step's `where(who)`); again = from its start;
+ *     a list of `when`s: any one of them (studio-timeline-2);
+ *   - a scene clip (`scene`: one motion, several objects) that starts starts the scene's other objects at the same
+ *     moment, so they keep one time line whichever of them was triggered;
  *   - one clip per object plays: a new one takes over where the last one is (as playMotion always did);
  *   - `until.times` = after that many rounds (a loop: len; a pingpong: there and back; a once: its length),
  *     `until.cue` = when that cue fires; `then: 'reset'` puts it back on its first pose, else it stays where it is.
@@ -7193,7 +7240,10 @@ function motionRunner(objs) {
   const inside = new Map();
   const ok = (v) => typeof v === 'number' && isFinite(v);
   const round = (c) => (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1);
-  const hits = (w, ev, key) => {
+  // A clip's ways to start (resolveClip's `whens`, studio-timeline-2; else its `when`, one or a list).
+  const ws = (c) => c.whens || (Array.isArray(c.when) ? c.when : c.when ? [c.when] : []);
+  const hits = (c, ev, key) => ws(c).some((w) => hit(w, ev, key));
+  const hit = (w, ev, key) => {
     if (!w || w.on !== ev.on) return false;
     if (ev.on === 'key') return w.key === ev.key;
     if (ev.on === 'cue') return w.cue === ev.cue;
@@ -7201,9 +7251,10 @@ function motionRunner(objs) {
     if (ev.on === 'click' || ev.on === 'touch' || ev.on === 'enter' || ev.on === 'say') return ev.key === key && (ev.on !== 'say' || !ev.use || ev.use === w.use);
     return true;
   };
-  const play = (key, clip, now) => {
+  const play = (key, clip, now, alone) => {
     movers.set(key, { clip, t0: now });
     held.delete(key);
+    if (clip.scene && !alone) for (const o of list) if (o.key !== key) for (const c of o.clips) if (c.use === clip.use) play(o.key, c, now, true);
   };
   const end = (key, r, at, now, out) => {
     movers.delete(key);
@@ -7216,7 +7267,7 @@ function motionRunner(objs) {
     let n = 0;
     if (ev.on === 'start') t0 = now;
     for (const { key, clips } of list) {
-      for (const c of clips) if (hits(c.when, ev, key)) (play(key, c, now), n++);
+      for (const c of clips) if (hits(c, ev, key)) (play(key, c, now), n++);
       const r = movers.get(key);
       if (ev.on === 'cue' && r && r.clip.until && r.clip.until.cue === ev.cue) {
         const out = new Map();
@@ -7235,21 +7286,19 @@ function motionRunner(objs) {
       else movers.delete(key), held.delete(key);
     },
     /** Something still to watch: a clip playing, a timer not fired yet, an area. */
-    busy: () => movers.size > 0 || list.some(({ clips }) => clips.some((c) => (c.when && c.when.on === 'enter') || (c.when && c.when.on === 'time' && t0 !== null && !timed.has(c)))),
+    busy: () => movers.size > 0 || list.some(({ clips }) => clips.some((c) => ws(c).some((w) => w.on === 'enter' || (w.on === 'time' && t0 !== null && !timed.has(w))))),
     /** Where things are at `now` (ms): key → offsets ({ p, r, s }) for every object playing or holding its last pose. */
     step(now, where) {
       const out = new Map();
-      if (t0 !== null) for (const { key, clips } of list) for (const c of clips) {
-        const w = c.when;
-        if (w && w.on === 'time' && !timed.has(c) && (now - t0) / 1000 >= (ok(w.after) ? w.after : 0)) (timed.add(c), play(key, c, now));
+      if (t0 !== null) for (const { key, clips } of list) for (const c of clips) for (const w of ws(c)) {
+        if (w.on === 'time' && !timed.has(w) && (now - t0) / 1000 >= (ok(w.after) ? w.after : 0)) (timed.add(w), play(key, c, now));
       }
-      if (where) for (const { key, clips } of list) for (const c of clips) {
-        const w = c.when;
-        if (!w || w.on !== 'enter' || !w.area || !Array.isArray(w.area.p) || !Array.isArray(w.area.size)) continue;
+      if (where) for (const { key, clips } of list) for (const c of clips) for (const w of ws(c)) {
+        if (w.on !== 'enter' || !w.area || !Array.isArray(w.area.p) || !Array.isArray(w.area.size)) continue;
         const p = where(w.who || null);
         const isIn = !!p && w.area.p.every((v, i) => Math.abs((p[i] || 0) - v) <= Math.abs(w.area.size[i] || 0) / 2);
-        if (isIn && !inside.get(c)) play(key, c, now);
-        inside.set(c, isIn);
+        if (isIn && !inside.get(w)) play(key, c, now);
+        inside.set(w, isIn);
       }
       for (const [key, r] of [...movers]) {
         const t = Math.max(0, (now - r.t0) / 1000);
@@ -7313,11 +7362,35 @@ function trackAt(keys, u, smooth) {
   if (ease === 'step') return a.v.slice();
   let f = b.t > a.t ? (u - a.t) / (b.t - a.t) : 1;
   if (ease === 'ease') f = f * f * (3 - 2 * f);
+  // A span with a handle bent by hand (studio-timeline-2: `out` of its start, `in` of its end) is a Bézier curve; the
+  // side without one takes the smooth curve's handle, so only what was bent changes.
+  if (smooth && (hOk(a.out, n) || hOk(b.in, n))) {
+    const o = handlesOf(ks, i).out, q = handlesOf(ks, i + 1).in, g = 1 - f;
+    return a.v.map((v, k) => g * g * g * v + 3 * g * g * f * (v + o[k]) + 3 * g * f * f * (b.v[k] + q[k]) + f * f * f * b.v[k]);
+  }
   if (!smooth || ks.length < 3) return a.v.map((v, k) => v + (b.v[k] - v) * f);
   const p0 = i > 0 && (ks[i - 1].ease || 'ease') !== 'step' ? ks[i - 1].v : a.v;
   const p3 = i + 2 < ks.length && (b.ease || 'ease') !== 'step' ? ks[i + 2].v : b.v;
   const f2 = f * f, f3 = f2 * f;
   return a.v.map((v, k) => 0.5 * (2 * v + (b.v[k] - p0[k]) * f + (2 * p0[k] - 5 * v + 4 * b.v[k] - p3[k]) * f2 + (3 * v - p0[k] - 3 * b.v[k] + p3[k]) * f3));
+}
+
+const hOk = (h, n) => Array.isArray(h) && h.length === n && h.every(isNum);
+
+/**
+ * Position key `i`'s two handles (offsets from its point): its own `in` / `out` (bent by hand; both 0 = a corner), else
+ * the smooth curve's — a sixth of the way from the key before to the key after, the Bézier form of the Catmull-Rom
+ * curve trackAt draws, so a handle grabbed for the first time starts where the path already is. null at the ends.
+ * Shared with the editor (shell/path-edit.ts), which draws these handles.
+ */
+function handlesOf(ks, i) {
+  const k = ks[i], n = k.v.length, prev = ks[i - 1], next = ks[i + 1];
+  const p0 = prev && (prev.ease || 'ease') !== 'step' ? prev.v : k.v;
+  const p3 = next && (k.ease || 'ease') !== 'step' ? next.v : k.v;
+  return {
+    in: !prev ? null : hOk(k.in, n) ? k.in : k.v.map((_, j) => (prev.v[j] - p3[j]) / 6),
+    out: !next ? null : hOk(k.out, n) ? k.out : k.v.map((_, j) => (next.v[j] - p0[j]) / 6),
+  };
 }
 
 /**
@@ -7443,14 +7516,13 @@ function runMotion(root, data, n, three, report) {
   for (const key of Object.keys(motion)) {
     const m = motion[key], o = findByKey(root, key, three);
     if (!o || !m || typeof m !== 'object') continue;
-    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library)).filter(Boolean) : [];
+    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library, key)).filter(Boolean) : [];
     const old = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
     if (!clips.length && !old) continue;
     // The older path / spin plays at once, as a clip of the same shape (clipAt is not its maths: a frame function).
     const k = remember(key, o, three, clips);
     if (old) legacy.push([key, k, m]);
-    for (const c of clips) {
-      const w = c.when;
+    for (const c of clips) for (const w of c.whens) {
       if (w.on === 'click') clickable(key, o, three);
       if (w.on === 'enter' && !(w.who && findByKey(root, w.who, three)) && !player) warn2.push(key + ': no player for its area (setPlayer)');
       if (w.on === 'touch' || w.on === 'cue' || w.on === 'say') warn2.push(key + ' · ' + c.name + ': waits for the game (' + w.on + ')');
@@ -7863,10 +7935,12 @@ __def(__exports, "touch", () => touch);
 __def(__exports, "setPlayer", () => setPlayer);
 __def(__exports, "clipOf", () => clipOf);
 __def(__exports, "whenOf", () => whenOf);
+__def(__exports, "whensOf", () => whensOf);
 __def(__exports, "resolveClip", () => resolveClip);
 __def(__exports, "motionRunner", () => motionRunner);
 __def(__exports, "clipAt", () => clipAt);
 __def(__exports, "trackAt", () => trackAt);
+__def(__exports, "handlesOf", () => handlesOf);
 __def(__exports, "motionAt", () => motionAt);
 __def(__exports, "placementForLevel", () => placementForLevel);
 __def(__exports, "uiTextPart", () => uiTextPart);
@@ -12509,16 +12583,29 @@ __defs[35] = function (__exports) {
 // a dot never selects or drags what is under it; any other press goes on to input.ts untouched.
 // (This replaces motion.ts of motion-gui, the same day: its flat dotted path on the ground and its ▶ for one object.)
 //
+// studio-timeline-2 (2026-10-22): the path's shape by hand.
+//   - A picked point shows its two handles (a small square on a thin line; handlesOf = the loader's own, so a handle
+//     never seen before sits where the smooth curve already goes). Drag = timeline/handle (the other side lines up,
+//     Alt: only this one; Shift: up / down). Only picked points: handles on every point would bury the path.
+//   - A corner point (both handles 0) is drawn as a diamond; a double-click on a point makes / unmakes one
+//     (timeline/corner).
+//   - Over the path's line a dashed "+" follows the pointer with its time; a click there = timeline/insert (a key at
+//     that moment). The line's hit is a wide transparent stroke under the dots, so the dots still win.
+//   - The area's four floor corners are handles too: drag = its size from the opposite corner (Shift: its height).
 // Positions: the place and the keys are the object's PARENT space; toScreen / toGround speak the scene's. They agree
 // for objects at the top of the scene (every starter's); an object inside a moved group draws its path off by the
 // group's offset (stage 2).
                                                                                                                      
-const { trackAt } = __require(20);
+const { handlesOf, trackAt } = __require(20);
 
 const YOU = '#ff6b1a';
-const WORDS                                                               = {
-  en: { point: (t) => `Key at ${t} s: drag to move it, Shift+drag for up and down`, area: 'The area: drag to move it, Shift+drag for up and down' },
-  ja: { point: (t) => `${t} 秒のキー：引いて動かす・Shift で上下`, area: '範囲：引いて動かす・Shift で上下' },
+const WORDS                                                                                                                            = {
+  en: { point: (t) => `Key at ${t} s: drag to move it, Shift+drag for up and down · double-click: corner`, area: 'The area: drag to move it, Shift+drag for up and down',
+    handle: 'Handle: drag to bend the path · Alt: this side only · Shift: up / down', corner: 'Corner: drag to resize (the opposite corner stays) · Shift: height',
+    line: (t) => `Click to add a key at ${t} s` },
+  ja: { point: (t) => `${t} 秒のキー：引いて動かす・Shift で上下・ダブルクリックで角`, area: '範囲：引いて動かす・Shift で上下',
+    handle: '取っ手：引いて道を曲げる・Alt で片側だけ・Shift で上下', corner: '隅：引いて大きさを変える（反対の隅はそのまま）・Shift で高さ',
+    line: (t) => `押すと ${t} 秒にキー` },
 };
 
 const CSS = `
@@ -12526,6 +12613,7 @@ const CSS = `
 svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .hit { pointer-events: auto; cursor: grab; fill: transparent; }
 .hit.on { cursor: grabbing; }
+.line { pointer-events: stroke; cursor: copy; fill: none; stroke: transparent; }
 text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.5); stroke-width: 3px; }
 `;
 
@@ -12573,24 +12661,41 @@ function createTimelineView(d                  )               {
   let shown               = null;
   // The picked clip's area (studio-motion-triggers): a box in world space; its middle is a dot to drag (i = -1).
   let area                                                       = null;
-  let drag                                                                                                     = null;
+  // A drag: a point (i ≥ 0), the area's middle (i = -1), a handle (`side`), an area corner (`corner` 0–3), or a press on
+  // the line (`line`: a key there if it ends without moving). `moved` = past 3 px (a press that never moved posts nothing).
+  let drag                                                                                                                                                 
+                                                                                       = null;
   let drawn = '';
+  // The "+" on the line under the pointer (its screen point and the clip's time there), and the line's samples.
+  let ghost                                            = null;
+  let samples                                                   = [];
+  // The last press released on a point without moving (a second one soon after on the same point = a double-click).
+  let lastUp                                   = null;
 
   /** The curve's points in the scene: `samples` per span between keys (the loader's own maths). */
-  const curve = (s       , samples = 20)             => {
+  const curve = (s       , n = 20)                                    => {
     const ks = s.keys;
-    if (ks.length < 2) return ks.map((k) => k.v.map((v, i) => v + (s.base[i] ?? 0)));
-    const out             = [];
+    if (ks.length < 2) return ks.map((k) => ({ w: k.v.map((v, i) => v + (s.base[i] ?? 0)), t: k.t }));
+    const out                                    = [];
     for (let i = 0; i < ks.length - 1; i++) {
       const a = ks[i] .t, b = ks[i + 1] .t;
-      for (let j = 0; j < samples; j++) {
-        const v = trackAt(ks, a + ((b - a) * j) / samples, true)                   ;
-        if (v) out.push(v.map((x, k) => x + (s.base[k] ?? 0)));
+      for (let j = 0; j < n; j++) {
+        const t = a + ((b - a) * j) / n;
+        const v = trackAt(ks, t, true)                   ;
+        if (v) out.push({ w: v.map((x, k) => x + (s.base[k] ?? 0)), t });
       }
     }
-    out.push(ks[ks.length - 1] .v.map((v, k) => v + (s.base[k] ?? 0)));
+    const last = ks[ks.length - 1] ;
+    out.push({ w: last.v.map((v, k) => v + (s.base[k] ?? 0)), t: last.t });
     return out;
   };
+  /** A key's point in the scene, and its handle `side` (null at an end). */
+  const keyW = (s       , i        ) => s.keys[i] .v.map((v, j) => v + (s.base[j] ?? 0));
+  const handleW = (s       , i        , side              ) => {
+    const h = (handlesOf(s.keys, i)                                                 )[side];
+    return h ? keyW(s, i).map((v, j) => v + (h[j] ?? 0)) : null;
+  };
+  const isCorner = (k           ) => !!(k.in || k.out) && [k.in, k.out].every((h) => !h || Math.hypot(...h) < 1e-9);
 
   const draw = () => {
     const a = d.adapter();
@@ -12615,13 +12720,18 @@ function createTimelineView(d                  )               {
     if (!s) return;
     const pts = curve(s);
     const ground = (w          ) => [w[0] , s.base[1] , w[2] ];
-    const line = pts.map(scr);
-    const shadowLine = pts.map((w) => scr(ground(w)));
+    const line = pts.map((q) => scr(q.w));
+    samples = pts.map((q, i) => ({ p: line[i] , t: q.t }));
+    const shadowLine = pts.map((q) => scr(ground(q.w)));
     const keysW = s.keys.map((k) => k.v.map((v, i) => v + (s.base[i] ?? 0)));
     const keysS = keysW.map(scr);
     const dropS = keysW.map((w) => scr(ground(w)));
     const nowS = s.now ? scr(s.now.map((v, i) => v + (s.base[i] ?? 0))) : null;
-    const sig = JSON.stringify([line, keysS, nowS, s.sel, drag?.i ?? -1, d.lang(), hasArea ? areaSig(scr) : null]);
+    const hand = s.sel.flatMap((i) => (['in', 'out']         ).map((side) => {
+      const w = s.keys[i] ? handleW(s, i, side) : null;
+      return w ? { i, side, p: scr(w) } : null;
+    })).filter((x)                                                                     => !!x);
+    const sig = JSON.stringify([line, keysS, nowS, s.sel, drag?.i ?? -1, drag?.side ?? '', drag?.corner ?? -1, d.lang(), hasArea ? areaSig(scr) : null, hand, ghost, s.keys.map(isCorner)]);
     if (sig === drawn) return;
     drawn = sig;
     mount();
@@ -12679,10 +12789,48 @@ function createTimelineView(d                  )               {
     stroke(dd, 'rgba(0,0,0,.28)', 6);
     stroke(dd, YOU, 2.5);
     const coarse = win.matchMedia?.('(pointer: coarse)').matches;
+    // The line's own hit (under the dots): a press here puts a key at that moment (studio-timeline-2).
+    if (s.keys.length > 1) {
+      const lh = doc.createElementNS(NS, 'path');
+      lh.setAttribute('d', dd);
+      lh.setAttribute('class', 'line');
+      lh.setAttribute('stroke-width', coarse ? '24' : '14');
+      lh.setAttribute('data-line', '');
+      svg.append(lh);
+    }
+    if (ghost && !drag) {
+      const g = circle(ghost.p, 7, 'rgba(255,255,255,.55)', '#fff', 2);
+      g.setAttribute('stroke-dasharray', '3 2');
+      g.setAttribute('pointer-events', 'none');
+      const plus = doc.createElementNS(NS, 'text');
+      plus.setAttribute('x', (ghost.p[0] - 3.5).toFixed(1));
+      plus.setAttribute('y', (ghost.p[1] + 4).toFixed(1));
+      plus.textContent = '+';
+      const tl = doc.createElementNS(NS, 'text');
+      tl.setAttribute('x', (ghost.p[0] + 12).toFixed(1));
+      tl.setAttribute('y', (ghost.p[1] + 16).toFixed(1));
+      tl.textContent = `+ ${ghost.t.toFixed(1)}s`;
+      svg.append(plus, tl);
+    }
     keysS.forEach((p, i) => {
       if (!p) return;
       const on = s.sel.includes(i) || drag?.i === i;
-      circle(p, on ? 8.5 : 7, on ? YOU : '#fff', on ? '#fff' : YOU);
+      // A corner (both handles 0): a diamond, so its shape reads from the mark itself.
+      if (isCorner(s.keys[i] )) {
+        const r = on ? 7.5 : 6.5;
+        const dm = doc.createElementNS(NS, 'rect');
+        dm.setAttribute('x', (p[0] - r).toFixed(1));
+        dm.setAttribute('y', (p[1] - r).toFixed(1));
+        dm.setAttribute('width', String(2 * r));
+        dm.setAttribute('height', String(2 * r));
+        dm.setAttribute('rx', '1.5');
+        dm.setAttribute('transform', `rotate(45 ${p[0].toFixed(1)} ${p[1].toFixed(1)})`);
+        dm.setAttribute('fill', on ? YOU : '#fff');
+        dm.setAttribute('stroke', on ? '#fff' : YOU);
+        dm.setAttribute('stroke-width', '2.5');
+        dm.setAttribute('data-corner-point', String(i));
+        svg.append(dm);
+      } else circle(p, on ? 8.5 : 7, on ? YOU : '#fff', on ? '#fff' : YOU);
       const t = s.keys[i] .t;
       const label = doc.createElementNS(NS, 'text');
       label.setAttribute('x', (p[0] + 12).toFixed(1));
@@ -12700,8 +12848,40 @@ function createTimelineView(d                  )               {
       hit.append(tip);
     });
     if (nowS) circle(nowS, 5, 'none', YOU, 2);
+    // The picked points' handles, on top of everything (they are what a press there means).
+    for (const x of hand) {
+      const k = keysS[x.i];
+      // A handle on its point (a corner's, or one seen end-on) is not drawn: it would cover the point's own press
+      // (a double-click there makes the corner smooth again; Point ▾ does too).
+      if (!x.p || !k || Math.hypot(x.p[0] - k[0], x.p[1] - k[1]) < 10) continue;
+      stroke(`M${k[0].toFixed(1)} ${k[1].toFixed(1)}L${x.p[0].toFixed(1)} ${x.p[1].toFixed(1)}`, 'rgba(255,255,255,.95)', 1.4);
+      const on = drag?.i === x.i && drag.side === x.side;
+      square(x.p, on ? 6 : 5, on ? YOU : '#fff', on ? '#fff' : YOU);
+      const hit = circle(x.p, coarse ? 22 : 12, 'transparent');
+      hit.setAttribute('class', `hit${on ? ' on' : ''}`);
+      hit.setAttribute('data-handle', `${x.i}:${x.side}`);
+      hit.setAttribute('data-part', 'tl-handle');
+      hit.setAttribute('aria-label', WORDS[d.lang()].handle);
+      const tip = doc.createElementNS(NS, 'title');
+      tip.textContent = WORDS[d.lang()].handle;
+      hit.append(tip);
+    }
     if (hasArea) drawArea(scr);
   };
+  /** A small square (a handle, an area corner): `r` = half its side. */
+  function square(p                  , r        , fill        , ring        ) {
+    const q = doc.createElementNS(NS, 'rect');
+    q.setAttribute('x', (p[0] - r).toFixed(1));
+    q.setAttribute('y', (p[1] - r).toFixed(1));
+    q.setAttribute('width', String(2 * r));
+    q.setAttribute('height', String(2 * r));
+    q.setAttribute('rx', '1.5');
+    q.setAttribute('fill', fill);
+    q.setAttribute('stroke', ring);
+    q.setAttribute('stroke-width', '2');
+    svg.append(q);
+    return q;
+  }
 
   /** The area's 8 corners in the scene (bottom 4, then top 4). */
   const corners = (b            ) => {
@@ -12753,10 +12933,30 @@ function createTimelineView(d                  )               {
       t.textContent = area.label;
       svg.append(t);
     }
+    // The four floor corners (studio-timeline-2): drag = the size from the opposite corner, Shift = the height.
+    const coarse = win.matchMedia?.('(pointer: coarse)').matches;
+    for (let ci = 0; ci < 4; ci++) {
+      const p = c[ci];
+      if (!p) continue;
+      const on = drag?.corner === ci;
+      square(p, on ? 6 : 5, on ? YOU : '#fff', on ? '#fff' : YOU);
+      const ch = doc.createElementNS(NSs, 'circle');
+      ch.setAttribute('cx', p[0].toFixed(1));
+      ch.setAttribute('cy', p[1].toFixed(1));
+      ch.setAttribute('r', coarse ? '22' : '12');
+      ch.setAttribute('class', `hit${on ? ' on' : ''}`);
+      ch.setAttribute('data-corner', String(ci));
+      ch.setAttribute('data-part', 'tl-area-corner');
+      ch.setAttribute('aria-label', WORDS[d.lang()].corner);
+      const tip = doc.createElementNS(NSs, 'title');
+      tip.textContent = WORDS[d.lang()].corner;
+      ch.append(tip);
+      svg.append(ch);
+    }
     const hit = doc.createElementNS(NSs, 'circle');
     hit.setAttribute('cx', m[0].toFixed(1));
     hit.setAttribute('cy', m[1].toFixed(1));
-    hit.setAttribute('r', win.matchMedia?.('(pointer: coarse)').matches ? '22' : '16');
+    hit.setAttribute('r', coarse ? '22' : '16');
     hit.setAttribute('class', `hit${drag?.i === -1 ? ' on' : ''}`);
     hit.setAttribute('data-point', '-1');
     hit.setAttribute('data-part', 'tl-area');
@@ -12767,10 +12967,18 @@ function createTimelineView(d                  )               {
     svg.append(hit);
   }
 
-  // ----- dragging a key's dot -----
-  const pointOf = (e              )                => {
+  // ----- dragging a key's dot, a handle, the area or one of its corners; a press on the line -----
+  /** What a press is on: a point (≥ 0) / the area's middle (-1), a handle, an area corner, the line — or nothing of ours. */
+  const targetOf = (e       )                                                                                              => {
     for (const t of e.composedPath()) {
-      if (t instanceof Element && t.getAttribute('data-point') !== null && svg.contains(t)) return Number(t.getAttribute('data-point'));
+      if (!(t instanceof Element) || !svg.contains(t)) continue;
+      const hd = t.getAttribute('data-handle');
+      if (hd !== null) return { handle: [Number(hd.split(':')[0]), hd.split(':')[1]                ] };
+      const cn = t.getAttribute('data-corner');
+      if (cn !== null) return { corner: Number(cn) };
+      const pt = t.getAttribute('data-point');
+      if (pt !== null) return { point: Number(pt) };
+      if (t.hasAttribute('data-line')) return { line: true };
     }
     return null;
   };
@@ -12780,8 +12988,55 @@ function createTimelineView(d                  )               {
     if (e.cancelable) e.preventDefault();
   };
   const r3 = (v        ) => Math.round(v * 1000) / 1000;
+  /** Metres per screen px at world point `w`, measured one metre up (Shift: up / down). */
+  const mppAt = (w          ) => {
+    const a = d.adapter();
+    const p0 = a.toScreen?.(w), p1 = a.toScreen?.([w[0] , w[1]  + 1, w[2] ]);
+    const px = p0 && p1 ? Math.abs(p1[1] - p0[1]) : 0;
+    return px > 0.5 ? 1 / px : 0.02;
+  };
+  /** The line's sample nearest to the pointer (screen px), with its time; null farther than `max` px. */
+  const nearest = (x        , y        , max        ) => {
+    let best                                            = null, bd = max;
+    for (let j = 0; j < samples.length - 1; j++) {
+      const a = samples[j] , b = samples[j + 1] ;
+      if (!a.p || !b.p) continue;
+      // The closest point on the segment a–b (the samples are 20 per span: fine enough to read a time off).
+      const dx = b.p[0] - a.p[0], dy = b.p[1] - a.p[1];
+      const f = Math.max(0, Math.min(1, ((x - a.p[0]) * dx + (y - a.p[1]) * dy) / (dx * dx + dy * dy || 1)));
+      const px = a.p[0] + dx * f, py = a.p[1] + dy * f;
+      const dd = Math.hypot(px - x, py - y);
+      if (dd < bd) (bd = dd), (best = { p: [px, py], t: Math.round((a.t + (b.t - a.t) * f) * 20) / 20 });
+    }
+    return best;
+  };
   const moveTo = (e              , end         ) => {
-    if (drag && drag.i === -1 && area) {
+    if (!drag) return;
+    if (drag.corner !== undefined && area) {
+      // An area corner: the opposite floor corner stays; Shift = the height (the floor stays).
+      const b = area.a;
+      let p = b.p.slice(), size = b.size.slice();
+      if (drag.up || e.shiftKey) {
+        if (!drag.up) (drag.up = true), (drag.y0 = e.clientY), (drag.size0 = b.size.slice());
+        const hh = Math.max(0.2, r3((drag.size0 [1] ?? 0) + (drag.y0 - e.clientY) * drag.mpp));
+        size[1] = hh;
+        p[1] = r3(drag.floor  + hh / 2);
+      } else {
+        const hit = d.adapter().toGround?.(e.clientX, e.clientY, drag.floor);
+        const opp = corners(b)[(drag.corner + 2) % 4] ;
+        if (hit) {
+          const w = Math.max(0.2, Math.abs(hit[0]  - opp[0] )), dz = Math.max(0.2, Math.abs(hit[2]  - opp[2] ));
+          const sx = Math.sign(hit[0]  - opp[0] ) || 1, sz = Math.sign(hit[2]  - opp[2] ) || 1;
+          p = [r3(opp[0]  + (sx * w) / 2), b.p[1] , r3(opp[2]  + (sz * dz) / 2)];
+          size = [r3(w), b.size[1] , r3(dz)];
+        }
+      }
+      area = { ...area, a: { p, size } };
+      d.post({ type: 'studio:timeline/area-moved', key: area.key, p, size, end });
+      d.markDirty();
+      return;
+    }
+    if (drag.i === -1 && area) {
       const b = area.a;
       let p = b.p.slice();
       if (drag.up || e.shiftKey) {
@@ -12797,10 +13052,26 @@ function createTimelineView(d                  )               {
       d.markDirty();
       return;
     }
-    if (!drag || !shown) return;
+    if (!shown) return;
     const s = shown;
     const k = s.keys[drag.i];
     if (!k) return;
+    if (drag.side) {
+      // A handle: across the ground at its own height, or (Shift) up / down; an offset from its point.
+      const pt = keyW(s, drag.i);
+      let h = drag.start.slice();
+      if (drag.up || e.shiftKey) {
+        if (!drag.up) (drag.up = true), (drag.y0 = e.clientY), (drag.start = h.slice());
+        h[1] = r3((drag.start[1] ?? 0) + (drag.y0 - e.clientY) * drag.mpp);
+      } else {
+        const hit = d.adapter().toGround?.(e.clientX, e.clientY, drag.h);
+        if (hit) h = [r3(hit[0]  - pt[0] ), drag.start[1] ?? 0, r3(hit[2]  - pt[2] )];
+      }
+      s.keys[drag.i] = { ...k, [drag.side]: h };
+      d.post({ type: 'studio:timeline/handle', key: s.key, i: drag.i, side: drag.side, h, alone: e.altKey, end });
+      d.markDirty();
+      return;
+    }
     let v = k.v.slice();
     if (drag.up || e.shiftKey) {
       // Up / down: the screen's px turned into metres at the dot (measured when the drag began).
@@ -12815,43 +13086,77 @@ function createTimelineView(d                  )               {
     d.post({ type: 'studio:timeline/point', key: s.key, i: drag.i, v, end });
     d.markDirty();
   };
-  const onDown = (e              ) => {
-    const i = shown || area ? pointOf(e) : null;
-    if (i === -1 && area) {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      take(e);
-      const w = area.a.p;
-      const a = d.adapter();
-      const p0 = a.toScreen?.(w), p1 = a.toScreen?.([w[0] , w[1]  + 1, w[2] ]);
-      const px = p0 && p1 ? Math.abs(p1[1] - p0[1]) : 0;
-      drag = { i: -1, id: e.pointerId, h: w[1] ?? 0, up: e.shiftKey, y0: e.clientY, mpp: px > 0.5 ? 1 / px : 0.02, start: w.slice() };
-      drawn = '';
-      return;
-    }
-    if (i === null || !shown) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    take(e);
-    const k = shown.keys[i];
-    if (!k) return;
-    const w = k.v.map((v, j) => v + (shown .base[j] ?? 0));
-    // Metres per screen px at the dot, for Shift (up / down): one metre up, measured on screen.
-    const a = d.adapter();
-    const p0 = a.toScreen?.(w), p1 = a.toScreen?.([w[0] , w[1]  + 1, w[2] ]);
-    const px = p0 && p1 ? Math.abs(p1[1] - p0[1]) : 0;
-    drag = { i, id: e.pointerId, h: w[1] ?? 0, up: e.shiftKey, y0: e.clientY, mpp: px > 0.5 ? 1 / px : 0.02, start: k.v.slice() };
+  const begin = (e              , w          , more                                   ) => {
+    drag = { i: -2, id: e.pointerId, h: w[1] ?? 0, up: e.shiftKey, y0: e.clientY, mpp: mppAt(w), start: [], x0: e.clientX, yy0: e.clientY, moved: false, ...more };
+    ghost = null;
     drawn = '';
   };
-  const onMove = (e              ) => {
-    if (!drag || e.pointerId !== drag.id) return;
+  const onDown = (e              ) => {
+    const at = shown || area ? targetOf(e) : null;
+    if (!at || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    if (at.corner !== undefined && area) {
+      take(e);
+      const c = corners(area.a)[at.corner] ;
+      return begin(e, c, { corner: at.corner, floor: c[1], size0: area.a.size.slice() });
+    }
+    if (at.point === -1 && area) {
+      take(e);
+      return begin(e, area.a.p, { i: -1, start: area.a.p.slice() });
+    }
+    if (!shown) return;
+    if (at.handle) {
+      const [i, side] = at.handle;
+      const w = handleW(shown, i, side);
+      if (!w) return;
+      take(e);
+      return begin(e, w, { i, side, start: w.map((v, j) => v - keyW(shown , i)[j] ) });
+    }
+    if (at.line) {
+      take(e);
+      const n = nearest(e.clientX - root.getBoundingClientRect().left, e.clientY - root.getBoundingClientRect().top, 40);
+      return begin(e, [0, 0, 0], { line: n ? n.t : -1 });
+    }
+    if (at.point === undefined || at.point < 0) return;
+    const k = shown.keys[at.point];
+    if (!k) return;
     take(e);
-    moveTo(e, false);
+    begin(e, keyW(shown, at.point), { i: at.point, start: k.v.slice() });
+  };
+  const onMove = (e              ) => {
+    if (!drag) {
+      // The "+" on the line follows a mouse over it (studio-timeline-2). Not taken: the game's own hover goes on.
+      if (!shown || e.pointerType === 'touch') return;
+      const over = targetOf(e)?.line;
+      const r = root.getBoundingClientRect();
+      const g = over ? nearest(e.clientX - r.left, e.clientY - r.top, 40) : null;
+      if (JSON.stringify(g) !== JSON.stringify(ghost)) (ghost = g), (drawn = ''), d.markDirty();
+      return;
+    }
+    if (e.pointerId !== drag.id) return;
+    take(e);
+    if (!drag.moved && Math.hypot(e.clientX - drag.x0, e.clientY - drag.yy0) < 3) return;
+    drag.moved = true;
+    if (drag.line === undefined) moveTo(e, false);
   };
   const onUp = (e              ) => {
     if (!drag || e.pointerId !== drag.id) return;
     take(e);
-    moveTo(e, true);
+    const dg = drag;
+    if (dg.line !== undefined) {
+      // A press on the line that did not move: a key at that moment.
+      if (!dg.moved && dg.line >= 0 && shown) d.post({ type: 'studio:timeline/insert', key: shown.key, t: dg.line });
+    } else if (dg.moved) moveTo(e, true);
+    else if (dg.i >= 0 && !dg.side && shown) {
+      // A point pressed twice without moving (within 400 ms): a corner, or smooth again.
+      const now = performance.now();
+      if (lastUp && lastUp.i === dg.i && now - lastUp.at < 400) {
+        d.post({ type: 'studio:timeline/corner', key: shown.key, i: dg.i });
+        lastUp = null;
+      } else lastUp = { i: dg.i, at: now };
+    }
     drag = null;
     drawn = '';
+    d.markDirty();
   };
   win.addEventListener('pointerdown', onDown, opts);
   win.addEventListener('pointermove', onMove, opts);
@@ -12871,13 +13176,19 @@ function createTimelineView(d                  )               {
         }
         d.markDirty();
       } else if (msg.type === 'studio:timeline/area') {
-        if (!(drag?.i === -1 && area && msg.key === area.key)) area = msg.key && msg.area ? { key: msg.key, a: structuredClone(msg.area), label: msg.label ?? '' } : null;
+        const mine = (drag?.i === -1 || drag?.corner !== undefined) && area && msg.key === area.key;
+        // While the area or a corner is dragged, ours is newer (the label still follows the shell's).
+        if (mine) area = { ...area , label: msg.label ?? area .label };
+        else area = msg.key && msg.area ? { key: msg.key, a: structuredClone(msg.area), label: msg.label ?? '' } : null;
         drawn = '';
         d.markDirty();
       } else if (msg.type === 'studio:timeline/path') {
         // While a dot is dragged, the shell's echo of the same key keeps the dot under the finger (ours is newer).
-        if (drag && shown && msg.key === shown.key) {
+        // A handle's drag takes the shell's keys (the other handle lining up is worked out there); a point's keeps ours.
+        if (drag && shown && msg.key === shown.key && !drag.side) {
           shown = { ...shown, base: msg.base ?? shown.base, now: msg.now ?? null, sel: msg.sel ?? [] };
+        } else if (drag?.side && shown && msg.key === shown.key && msg.keys?.length) {
+          shown = { ...shown, base: msg.base ?? shown.base, keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] };
         } else {
           drag = null;
           shown = msg.key && msg.base && msg.keys?.length ? { key: msg.key, base: msg.base.slice(), keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] } : null;
@@ -12893,6 +13204,7 @@ function createTimelineView(d                  )               {
       shown = null;
       area = null;
       drag = null;
+      ghost = null;
       draw();
     },
   };
@@ -17289,8 +17601,9 @@ function toClips(m                           , dim     )                {
 
 // ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
 
-                                                                       
-const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin'];
+// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
+                                                                                 
+const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
 
 /**
  * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
@@ -17312,6 +17625,8 @@ function fromTemplate(kind          , name        , dim     )             {
       const r = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
       return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
     }
+    case 'scene':
+      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
     default:
       return { name, len: 2, repeat: 'once', keys: {} };
   }
@@ -17343,6 +17658,9 @@ function setKey(c            , ch               , t        , v          , ease  
   const ks = out.keys[ch] ?? [];
   const at = ks.findIndex((k) => sameT(k.t, t));
   const key            = { t: rt(t), v: v.slice(), ease: ease ?? (at >= 0 ? ks[at] .ease : undefined) ?? DEFAULT_EASE };
+  // A key set again keeps the path's handles it had (studio-timeline-2): moving a bent point keeps it bent.
+  if (at >= 0 && ks[at] .in) key.in = ks[at] .in .slice();
+  if (at >= 0 && ks[at] .out) key.out = ks[at] .out .slice();
   if (at >= 0) ks[at] = key;
   else if (ks.length < MAX_KEYS) ks.push(key);
   out.keys[ch] = sorted(ks);
@@ -17397,12 +17715,12 @@ function easeKeys(c            , key        , sel          , ease            )  
 }
 
 /** What ⌘C holds: keys by channel, their times from the earliest one copied (so ⌘V puts the first at the playhead). */
-                                                                                              
+                                                                                                                             
 
 function copyKeys(c            , key        , sel          )         {
   const mine = picks(sel, key);
   const out         = [];
-  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease });
+  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease, ...(k.in ? { in: k.in.slice() } : {}), ...(k.out ? { out: k.out.slice() } : {}) });
   const t0 = Math.min(...out.map((k) => k.dt));
   return out.map((k) => ({ ...k, dt: rt(k.dt - t0) }));
 }
@@ -17416,6 +17734,10 @@ function pasteKeys(c            , keys        , at        , dim     )           
     const t = rt(at + k.dt);
     if (t > MAX_LEN) continue;
     out = setKey(out, k.ch, t, k.v, k.ease);
+    // The handles come along (a bent point pasted is bent the same way).
+    const got = out.keys[k.ch] .find((x) => sameT(x.t, t)) ;
+    if (k.in) got.in = k.in.slice();
+    if (k.out) got.out = k.out.slice();
     pasted.push({ ch: k.ch, t });
   }
   return { clip: out, pasted };
@@ -17675,7 +17997,7 @@ function moveInPlay(a               , file                 , win                
     if (!it) continue;
     const dim      = it.pose.p.length === 3 ? '3d' : '2d';
     const mm = m          ;
-    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib)).filter(Boolean)                ) : [];
+    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib, key)).filter(Boolean)                ) : [];
     const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
     if (clips.length) clipped.push({ key, clips, base: structuredClone(flat(it.pose)), dim });
     else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
@@ -17684,7 +18006,8 @@ function moveInPlay(a               , file                 , win                
   const t0 = win.performance.now();
   const run = motionRunner(clipped.map((c) => ({ key: c.key, clips: c.clips })));
   run.fire({ on: 'start' }, t0);
-  if (clipped.some((c) => c.clips.some((x) => (x.when                               )?.on === 'key'))) {
+  // Any of a clip's ways to start (studio-timeline-2: `whens`, from resolveClip) may be a key.
+  if (clipped.some((c) => c.clips.some((x) => ((x                                                  ).whens ?? [x.when                   ]).some((w) => w?.on === 'key')))) {
     win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
   }
   const tick = (now        ) => {

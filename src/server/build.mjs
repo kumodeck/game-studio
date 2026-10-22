@@ -32,6 +32,9 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // a cue to stop), the Library's motions (`motions`, used by name) and the click test with the game's own camera.
 // 28 KB since UI stages 2–3 (studio-ui-edit-2, 2026-10-22): the card's text / size / colours / a button's state colours
 // (`ui.<key>.set`: one style sheet, the text part shared with the editor) and the theme's CSS variables; 23.0 → 26.2 KB.
+// 28 KB since the timeline's second stage (studio-timeline-2, 2026-10-22): the path's handles (a Bézier span where a
+// handle was bent, handlesOf shared with the editor), `when` as a list ("E or a click") and scene motions (`tracks`:
+// several objects in one motion, started together); 23.5 → 24.9 KB (over the 24 KB line).
 const LOADER_LIMIT = 28 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;

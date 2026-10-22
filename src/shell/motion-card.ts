@@ -36,6 +36,8 @@ export interface MotionCardDeps {
   make(): void;
   /** ◆ Timeline: open / fold it on this object. */
   toggle(): void;
+  /** studio-motion-panel: "✦ Ask your AI about it…" — the chat box gets the "object · motion" chip. Absent = no AI here. */
+  ask?(): void;
 }
 
 export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
@@ -72,10 +74,15 @@ export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
   }
   pick.append(mine);
   if (others.length && d.room()) attachMenu(pick);
+  if (c && d.ask) pick.append(h('option', { value: 'ask', text: `✦ ${d.t('motion.ask', { name: c.name })}` }));
   if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
   pick.addEventListener('change', () => {
     const v = pick.value;
-    if (v.startsWith('attach:')) d.attach(v.slice(7));
+    if (v === 'ask') {
+      // A menu line that does something, not a value: the menu shows the motion again (the chat box takes the cursor).
+      pick.value = c?.name ?? '';
+      d.ask?.();
+    } else if (v.startsWith('attach:')) d.attach(v.slice(7));
     else if (v === 'detach' && c) d.detach(c.name);
     else d.choose(v);
   });

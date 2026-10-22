@@ -87,6 +87,11 @@ export interface CtxFacts {
    * camera, so no Frame / Back to the opening view.
    */
   ui?: boolean;
+  /**
+   * object: the one picked object's motion on screen (studio-motion-panel): "Ask your AI about “Hop”…" puts the
+   * "object · motion" chip in the chat box. Absent = no motion, several picked, or no AI.
+   */
+  motion?: string;
 }
 
 export type CtxRow =
@@ -124,6 +129,7 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
     // the ask box, nothing is sent until Enter). Several named objects: no rename (one name for many is not a rename).
     if (!f.offline) {
       rows.push({ id: 'ask', label: 'ask.chipOne' });
+      if (f.motion && f.picked === 1) rows.push({ id: 'askMotion', label: 'ctx.askMotion' });
       if (f.unnamed > 0) rows.push({ id: 'name', label: f.picked > 1 ? 'ctx.nameMany' : 'ask.name' });
       else if (f.picked === 1) rows.push({ id: 'rename', label: 'ctx.rename' });
       rows.push(sep);

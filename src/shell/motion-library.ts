@@ -16,12 +16,16 @@
 // name with other keys becomes "Open 2". It is done for the saved copy too, so opening an old file is not a change.
 import type { LibraryMotion, Motion, MotionClip, PlacementFile } from '../contract.ts';
 
-/** A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). */
-export function libOf(c: Pick<MotionClip, 'name' | 'len' | 'repeat' | 'keys'>): LibraryMotion {
-  return { name: c.name, len: c.len, ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}), keys: structuredClone(c.keys ?? {}) };
+/**
+ * A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). A scene motion
+ * (studio-timeline-2: `tracks`, several objects' keys) keeps `keys` empty in the editor.
+ */
+export function libOf(c: Pick<MotionClip, 'name' | 'len' | 'repeat' | 'keys'> & { tracks?: LibraryMotion['tracks'] }): LibraryMotion {
+  return { name: c.name, len: c.len, ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}), keys: c.tracks ? {} : structuredClone(c.keys ?? {}),
+    ...(c.tracks ? { tracks: structuredClone(c.tracks) } : {}) };
 }
 
-const sig = (m: LibraryMotion) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys]);
+const sig = (m: LibraryMotion) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null]);
 
 export class MotionLibrary {
   private now = new Map<string, LibraryMotion>();
@@ -102,7 +106,8 @@ export class MotionLibrary {
 
   /** placement.json's `motions`, or undefined with none. `round` = the file's rounding (motion-model roundMotion). */
   result(round: (m: LibraryMotion) => LibraryMotion = (m) => m): LibraryMotion[] | undefined {
-    const out = [...this.now.values()].map((m) => round(structuredClone(m)));
+    // A scene motion left with no object (the last one taken out) is not written: the file's check wants 1–16.
+    const out = [...this.now.values()].filter((m) => !m.tracks || Object.keys(m.tracks).length).map((m) => round(structuredClone(m)));
     return out.length ? out : undefined;
   }
 

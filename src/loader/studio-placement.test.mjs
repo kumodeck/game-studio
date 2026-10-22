@@ -171,6 +171,25 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
     assert.equal(hop3.playing().has('crate'), false);
   });
 
+  // studio-timeline-2 (2026-10-22): the path's handles (a Bézier span only where one was bent), `when` as a list, scenes.
+  test(`${label}: handles — smooth spans unchanged, a bent span follows its handles, a corner comes straight in`, () => {
+    const { trackAt, handlesOf, motionRunner, resolveClip } = mod;
+    const ks = [{ t: 0, v: [0, 0, 0], ease: 'linear' }, { t: 1, v: [2, 1, 0], ease: 'linear' }, { t: 2, v: [4, 0, 0], ease: 'linear' }];
+    const smooth = trackAt(ks, 0.5, true);
+    const h = handlesOf(ks, 1);
+    assert.deepEqual(h.in.map((x) => +x.toFixed(4)), [-0.6667, 0, 0]);
+    const bent = ks.map((k, i) => (i === 1 ? { ...k, in: h.in, out: h.out } : k));
+    assert.deepEqual(trackAt(bent, 0.5, true).map((x) => +x.toFixed(6)), smooth.map((x) => +x.toFixed(6)), 'the smooth handles written out: the same curve');
+    const up = ks.map((k, i) => (i === 1 ? { ...k, in: [0, -2, 0], out: [0, 2, 0] } : k));
+    assert.ok(trackAt(up, 1.5, true)[1] > trackAt(ks, 1.5, true)[1] + 0.3, 'bent up: the span after rises');
+    const corner = ks.map((k, i) => (i === 1 ? { ...k, in: [0, 0, 0], out: [0, 0, 0] } : k));
+    assert.deepEqual(trackAt(corner, 1, true), [2, 1, 0]);
+    const lib = [{ name: 'Go', len: 1, tracks: { a: { p: [{ t: 0, v: [0, 0, 0], ease: 'linear' }, { t: 1, v: [1, 0, 0] }] }, b: { p: [{ t: 0, v: [0, 0, 0], ease: 'linear' }, { t: 1, v: [0, 1, 0] }] } } }];
+    const run = motionRunner(['a', 'b'].map((key) => ({ key, clips: [resolveClip({ use: 'Go', when: [{ on: 'cue', cue: 'go' }, { on: 'key', key: 'KeyG' }] }, lib, key)] })));
+    run.fire({ on: 'key', key: 'KeyG' }, 0);
+    assert.deepEqual([...run.playing().keys()], ['a', 'b'], 'the second way, and the whole scene');
+  });
+
   test(`${label}: motions in the file — use, key press, cue(), touch(), playMotion of a Library motion`, async () => {
     const s = threeScene();
     const frames = [];
@@ -443,6 +462,9 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
 
 // 28 KB since UI stages 2–3 (set / theme, 2026-10-22; 24 since motion triggers, 16 since the timeline, 12 since
 // motion-gui, 9 since UI stage 1, 6 before). The same limit as src/server/build.mjs LOADER_LIMIT.
+// 28 KB since the timeline's second stage (handles, `when` lists, scenes: studio-timeline-2, 2026-10-22; 24 since
+// motion triggers, 16 since the timeline, 12 since motion-gui, 9 since UI stage 1, 6 before). The same limit as
+// src/server/build.mjs LOADER_LIMIT.
 test('the built loader is under 28 KB', () => {
   assert.ok(readFileSync(BUILT).length < 28 * 1024);
 });

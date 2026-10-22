@@ -140,3 +140,11 @@ test('a phone: the menu opened by a finger stays 8 px above the card / ask box (
   // No floor: the window's bottom, as before.
   assert.deepEqual(placeMenu(195, 600, 224, 300, 390, 844, true), { left: 83, top: 284 });
 });
+
+test('an object with a motion: "Ask your AI about “Hop”…" under Ask (studio-motion-panel), not with several picked or no AI', () => {
+  const rows = contextRows('object', { ...base, motion: 'Hop' });
+  assert.deepEqual(ids(rows).slice(0, 4), ['ask', 'askMotion', 'rename', '—']);
+  assert.equal(translate('ja', row(rows, 'askMotion')!.label, { name: 'Hop' }), '「Hop」を AI に頼む…');
+  assert.ok(!ids(contextRows('object', { ...base, motion: 'Hop', picked: 2, movable: 2 })).includes('askMotion'), 'several picked');
+  assert.ok(!ids(contextRows('object', { ...base, motion: 'Hop', offline: true })).includes('askMotion'), 'the web demo has no AI');
+});

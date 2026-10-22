@@ -1379,15 +1379,39 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-pick .icon { position: absolute; right: 7px; width: 12px; height: 12px; color: var(--text-3); pointer-events: none; }
 .tl-pick.off { opacity: .5; }
 .tl-pick.off select { cursor: default; }
-.tl-when, .tl-rename { height: var(--h); width: 200px; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 10px; }
-.tl-when:focus, .tl-rename:focus { box-shadow: inset 0 0 0 1px var(--you); }
+.tl-rename { height: var(--h); width: 200px; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 10px; }
+.tl-rename:focus { box-shadow: inset 0 0 0 1px var(--you); }
 .tl-gap { flex: 1; }
-/* The clip's "when" (studio-motion-triggers, 2026-10-22): one small row under the head — Starts ▾ [field]  Stops ▾ …
-   Try ▶ ▶. Purple ✦ = your AI connects it in the game's code (shell.css rule 2: purple is the AI's); orange = playing. */
-.tl-when-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 0 8px 6px; min-height: 34px; }
-.tl-when-row .tl-pick select, .tl-when-row .tl-field, .tl-when-row .tl-keycap { height: 26px; }
-.tl-lbl { font-size: var(--fs-s); color: var(--text-2); margin: 0 2px 0 4px; white-space: nowrap; }
-.tl-lbl-stops { margin-left: 12px; }
+/* The clip's "when" (studio-motion-triggers; on the head's one line since studio-motion-panel, 2026-10-22: the strip was
+   three rows — a review of 2026-10-22 "cluttered, not organised"): Starts ▾ [field] ▷. Purple ✦ = your AI connects it in the
+   game's code / asks your AI (shell.css rule 2: purple is the AI's); orange = playing. */
+.tl-head .tl-field, .tl-head .tl-keycap { height: 28px; }
+.tl-lbl { font-size: var(--fs-s); color: var(--text-2); margin: 0 2px 0 8px; white-space: nowrap; }
+.tl-first { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tl-try-this { width: 28px; min-height: 28px; height: 28px; border-radius: var(--r); background: var(--raise); }
+.tl-try-this .icon { width: 11px; height: 11px; }
+.tl-try-this.ai { color: var(--ai-text); }
+.tl-try-this.on { background: var(--you-soft); color: var(--you-text, var(--you)); }
+.tl-or-more { height: 24px; padding: 0 8px; border-radius: 12px; font-size: var(--fs-s); color: var(--text-2); background: var(--raise); white-space: nowrap; }
+.tl-or-more:hover { color: var(--text); background: var(--raise-2); }
+/* ⋯ and ✦ Ask AI at the line's right end, before ⌄: ⋯ quiet (an icon), Ask AI in the AI's purple — the one thing on the
+   line that talks to the AI, so it looks like the chat box's ✦ below it. */
+.tl-more-btn.on { background: var(--raise-2); color: var(--text); }
+.tl-ask { height: var(--h); padding: 0 12px 0 10px; gap: 6px; border-radius: var(--r); background: var(--ai-soft); color: var(--ai-text); font-weight: 600; white-space: nowrap; }
+.tl-ask .icon { width: 13px; height: 13px; color: var(--ai); }
+.tl-ask:hover:not(:disabled) { background: var(--ai-soft); filter: brightness(1.15); }
+/* ⋯'s panel (timeline-more.ts): fixed over the page, above the ⋯ (the plate clips what is inside it). One label column,
+   then the controls; rows wrap inside on a phone. */
+.tl-more { position: fixed; z-index: 60; padding: 6px 12px 8px; border-radius: 14px; background: var(--glass-thick, var(--glass)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow), var(--plate-shadow); color: var(--text); font-size: var(--fs); animation: studio-rise var(--dur-in, .18s) var(--ease, ease); }
+.tl-more-row { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; }
+.tl-more-row + .tl-more-row { border-top: 1px solid var(--line); }
+.tl-more-k { flex: none; width: 84px; padding-top: 6px; font-size: var(--fs-s); color: var(--text-2); }
+.tl-more-v { flex: 1; min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.tl-more .tl-pick select, .tl-more .tl-field, .tl-more .tl-keycap { height: 28px; }
+.tl-more .tl-uses { margin: 4px 0 0; padding: 0; white-space: normal; }
+.tl-or-way { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tl-more .tl-or { margin-left: 0; }
 .tl-starts.ai select { color: var(--ai-text); }
 .tl-field { border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 8px; font-variant-numeric: tabular-nums; }
 .tl-field:focus { box-shadow: inset 0 0 0 1px var(--you); outline: none; }
@@ -1404,11 +1428,6 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-uses { font-size: var(--fs-s); color: var(--text-3); padding: 0 4px; white-space: nowrap; }
 .tl-whenchip { font-size: 11px; color: var(--text-2); background: var(--raise); border-radius: 6px; padding: 0 5px; margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
 .tl-whenchip.ai { color: var(--ai-text); background: var(--ai-soft); }
-.timeline.narrow .tl-when-row .tl-gap { display: none; }
-.timeline.narrow .tl-tries { flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-.timeline.narrow .tl-tries > .tl-lbl { display: none; }
-.timeline.narrow .tl-lbl-stops { margin-left: 4px; }
-.timeline.narrow .tl-when-row .tl-starts select { max-width: 230px; }
 .tl-body { display: grid; grid-template-columns: var(--tl-names) minmax(0, 1fr); max-height: calc(var(--tl-ruler) + 5 * var(--tl-row)); overflow: hidden auto;
   border-top: 1px solid var(--line); overscroll-behavior: contain; }
 .tl-names-col { min-width: 0; }
@@ -1444,24 +1463,67 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .timeline.rec .tl-cap { background: var(--rec); color: #fff; }
 .tl-box { position: absolute; z-index: 4; border: 1px solid var(--you); background: var(--you-soft); border-radius: 4px; pointer-events: none; }
 .tl-empty { margin: 0; padding: 8px 12px; color: var(--text-2); font-size: var(--fs-s); }
-/* Narrow (a phone, the side window): the names column is short, Auto key is its dot, the head wraps to two rows —
-   ▶, the time, ● and ⌄ on the first (what a thumb uses every time), the motion's menus under them; the key's ease only
-   while keys are picked; the rows say the object, not its motion's name (the menu above says it). */
+/* Narrow (a phone, the side window): the names column is short, Auto key is its dot, Ask AI is its ✦, the head wraps to
+   two rows — ▶, the time, ●, then ⋯ ✦ ⌄ at the right (what a thumb uses every time); the motion and its "when" under
+   them; the rows say the object, not its motion's name (the menu above says it). */
 .timeline.narrow { --tl-names: 96px; }
 .timeline.narrow .tl-head > * { order: 2; }
 .timeline.narrow .tl-head > .tl-play, .timeline.narrow .tl-head > .tl-time, .timeline.narrow .tl-head > .tl-auto { order: 0; }
-.timeline.narrow .tl-head > .tl-fold { order: 1; margin-left: auto; }
+.timeline.narrow .tl-head > .tl-more-btn { order: 1; margin-left: auto; }
+.timeline.narrow .tl-head > .tl-ask { order: 1; padding: 0; width: var(--h); justify-content: center; }
+.timeline.narrow .tl-head > .tl-ask .tl-ask-w { display: none; }
+.timeline.narrow .tl-head > .tl-fold { order: 1; }
+.timeline.narrow .tl-head:not(:has(> .tl-more-btn)) > .tl-fold { margin-left: auto; }
+.timeline.narrow .tl-head > .tl-lbl:not(.tl-first) { margin-left: 2px; }
+/* A phone's first row is ▶ · the time · ● · ⋯ · ✦ · ⌄ in 390 px (a try of 2026-10-22: with 40 px buttons and the time's
+   fixed width, ⌄ fell to a row of its own) — the three right-hand buttons a little narrower, the time as wide as it is. */
+.timeline.narrow .tl-head { gap: 2px; }
+.timeline.narrow .tl-now { min-width: 0; }
+.timeline.narrow .tl-head > .tl-more-btn, .timeline.narrow .tl-head > .tl-ask, .timeline.narrow .tl-head > .tl-fold { width: 36px; }
+/* The second row is the motion and its "when" — kept to one row: the menus a little narrower, "Starts" said by the menu
+   itself (its words are a moment: "The player enters…"), the field as wide as a size or a key. */
+.timeline.narrow .tl-head > .tl-lbl:not(.tl-first):not(.tl-ease-lbl) { display: none; }
+.timeline.narrow .tl-head .tl-starts select { max-width: 140px; }
+.timeline.narrow .tl-head .tl-clip-pick select { max-width: 100px; }
+.timeline.narrow .tl-head > .tl-field { max-width: 6.5em; }
+/* PC: always one line (a try of 2026-10-22: a scene with a point and keys picked pushed ✦ Ask AI and ⌄ to a second one).
+   The menus give way first — each shrinks to its words' start ("Ease in…"), the buttons never do. */
+.timeline:not(.narrow) .tl-head { flex-wrap: nowrap; }
+.timeline:not(.narrow) .tl-head > .tl-pick { flex: 0 1 auto; min-width: 64px; }
+.timeline:not(.narrow) .tl-head > .tl-pick select { max-width: 100%; text-overflow: ellipsis; }
+.timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-time, .timeline:not(.narrow) .tl-head > .tl-auto { flex: none; }
 .tl-break { display: none; }
 .timeline.narrow .tl-head > .tl-break { display: block; order: 1; flex-basis: 100%; height: 0; }
 .timeline.narrow .tl-head > .tl-gap { display: none; }
-.timeline.narrow .tl-ease-pick.off { display: none; }
 .timeline.narrow .tl-clipname { display: none; }
 .timeline.narrow .tl-auto-w { display: none; }
 .timeline.narrow .tl-auto { padding: 0; width: var(--h); }
 .timeline.narrow .tl-pick select { max-width: 150px; }
-.timeline.narrow .tl-when { width: 100%; order: 9; }
 .timeline.narrow .tl-body { max-height: calc(var(--tl-ruler) + 4 * var(--tl-row)); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-ruler: 32px; --tl-row: 36px; border-radius: 22px; }
+/* studio-timeline-2 (2026-10-22): several ways to start ("E or a click"), the path's Point menu, scene motions.
+   "or" is a word between two menus, not a control; "+ or" is quiet (an outline in your colour) until wanted; the scene
+   says what it is in the head (one chip, your colour: you made it) and its rows are the scene's objects; the picked
+   object outside it gets a dashed row that is the way in. */
+.tl-or-group { display: inline-flex; align-items: center; gap: 4px; flex-wrap: nowrap; min-width: 0; }
+.timeline.narrow .tl-or-group .tl-starts select { max-width: 190px; }
+.tl-or { font-size: var(--fs-s); color: var(--text-2); font-style: italic; margin: 0 2px 0 6px; white-space: nowrap; }
+.tl-or-x { width: 22px; min-height: 22px; padding: 0; color: var(--text-3); }
+.tl-or-x .icon { width: 11px; height: 11px; }
+.tl-or-add { height: 26px; padding: 0 9px; border-radius: 8px; font-size: var(--fs-s); font-weight: 600; color: var(--you-text, var(--you)); box-shadow: inset 0 0 0 1px var(--you-soft); white-space: nowrap; margin-left: 4px; }
+.tl-or-add:hover { background: var(--you-soft); }
+.tl-scene { font-size: var(--fs-s); font-weight: 600; color: var(--you-text, var(--you)); background: var(--you-soft); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.tl-leave { width: 20px; min-height: 20px; padding: 0; margin-left: auto; flex: none; color: var(--text-3); opacity: 0; transition: opacity var(--dur) var(--ease); }
+.tl-leave .icon { width: 10px; height: 10px; }
+/* No hover on a phone: the × shows on the picked row only (on every row it would eat the short names column). */
+.tl-name:hover .tl-leave, .tl-leave:focus-visible, .timeline.narrow .tl-name.picked .tl-leave { opacity: 1; }
+.timeline.narrow .tl-name:not(.picked) .tl-leave { display: none; }
+.tl-name.tl-join-name { color: var(--you-text, var(--you)); }
+.tl-lane.tl-join { display: flex; align-items: center; gap: 10px; padding-left: 8px; }
+.tl-join-btn { height: calc(var(--tl-row) - 6px); padding: 0 10px; border-radius: 8px; font-size: var(--fs-s); font-weight: 600; color: var(--you-text, var(--you));
+  border: 1px dashed var(--you); background: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tl-join-btn:hover { background: var(--you-soft); }
+.tl-join-or { font-size: var(--fs-s); color: var(--text-3); white-space: nowrap; }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-head button, .shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select { min-height: 40px; height: 40px; }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select { font-size: max(16px, var(--fs)); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-key::after { inset: -14px; }

@@ -751,6 +751,14 @@ motion can be on several objects. Each object says **which** motion it uses and 
   `cue('…')` there too); `then: "reset"` = back to its first pose (default: stays where it is).
 - A clip with `name` beside `use` is called by that name (`playMotion('chest', 'Open')`). A file of the timeline's
   first shape (keys inside each clip, `start: true`, `when` as words) is still played; the editor rewrites it.
+- **Several ways to start**: `when` may be a list (`[{ "on": "key", "key": "KeyE" }, { "on": "click" }]`) — **any one**
+  of them starts it. Wire each one that needs you (a `cue` in the list still needs your `cue('…')`).
+- **A scene motion** (`tracks` instead of `keys`: `{ "name": "Arrival", "len": 4, "tracks": { "rowboat": { "p": […] },
+  "buoy": { … } } }`) moves several objects together, a cutscene. Each object in it is attached with the same `when`;
+  the loader starts **all of them** when any one starts, and `playMotion('rowboat', 'Arrival')` (any of its objects)
+  plays the whole scene.
+- A position key may have `in` / `out`: the path's handles at that point (its shape, made in the editor; both
+  `[0, 0, 0]` = a corner). Leave them as they are; never write them yourself.
 
 **With the loader (Way 1)**:
 

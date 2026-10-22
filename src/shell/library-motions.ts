@@ -66,6 +66,7 @@ const repeatSign = (r: MotionRepeat | undefined) => (r === 'pingpong' ? '↔' : 
  * two nested squares (size keys).
  */
 export function motionPicture(m: LibraryMotion, px: number): { el: SVGSVGElement; play(on: boolean): void } {
+  if (m.tracks) return scenePicture(m, px);
   const svg = svgEl('svg', { viewBox: '0 0 100 100', width: px, height: px, class: 'lib-motion-pic', 'aria-hidden': 'true' }) as SVGSVGElement;
   const ks = m.keys.p ?? [];
   let toXY: ((v: number[]) => [number, number]) | null = null;
@@ -139,6 +140,48 @@ export function motionPicture(m: LibraryMotion, px: number): { el: SVGSVGElement
   };
 }
 
+/**
+ * A scene motion's picture (studio-timeline-2: several objects in one motion): a small dope sheet — one line per object
+ * (up to 4) with its keys as diamonds, and a time line that runs when `play` is called. WHY not the paths from above:
+ * each object's path is an offset from its own place, so drawn together they would all start in the middle and cross;
+ * what a scene adds is "these things, at these moments", which is the timeline's own picture.
+ */
+function scenePicture(m: LibraryMotion, px: number): { el: SVGSVGElement; play(on: boolean): void } {
+  const svg = svgEl('svg', { viewBox: '0 0 100 100', width: px, height: px, class: 'lib-motion-pic', 'aria-hidden': 'true' }) as SVGSVGElement;
+  const tracks = Object.values(m.tracks ?? {}).slice(0, 4);
+  const len = Math.max(0.1, m.len);
+  const x = (t: number) => 16 + (Math.min(t, len) / len) * 68;
+  const gap = 64 / Math.max(1, tracks.length);
+  tracks.forEach((ks, i) => {
+    const y = 18 + gap * (i + 0.5);
+    const ts = [...new Set((['p', 'r', 's'] as const).flatMap((ch) => (ks[ch] ?? []).map((k) => k.t)))].sort((a, b) => a - b);
+    svg.append(svgEl('path', { d: `M16 ${y}L84 ${y}`, stroke: 'currentColor', 'stroke-width': 1.2, opacity: 0.25 }));
+    if (ts.length > 1) svg.append(svgEl('path', { d: `M${x(ts[0]!)} ${y}L${x(ts[ts.length - 1]!)} ${y}`, stroke: 'currentColor', 'stroke-width': 2.2, opacity: 0.6 }));
+    for (const t of ts) svg.append(svgEl('rect', { x: x(t) - 3.5, y: y - 3.5, width: 7, height: 7, transform: `rotate(45 ${x(t)} ${y})`, class: 'lib-motion-key' }));
+  });
+  const head = svgEl('path', { d: '', class: 'lib-motion-dot', stroke: 'currentColor', 'stroke-width': 2 });
+  const place = (t: number) => head.setAttribute('d', `M${x(t).toFixed(1)} 14L${x(t).toFixed(1)} 86`);
+  place(len / 2);
+  svg.append(head);
+  let raf = 0;
+  return {
+    el: svg,
+    play(on) {
+      cancelAnimationFrame(raf);
+      if (!on) return place(len / 2);
+      const t0 = performance.now();
+      const loop = (now: number) => {
+        if (!svg.isConnected) return;
+        place(((now - t0) / 1000) % (len + 0.6));
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    },
+  };
+}
+/** How many keys a motion has (a scene: every object's). */
+const keyCount = (m: LibraryMotion) => [m.keys, ...Object.values(m.tracks ?? {})].reduce((n, ks) => n + (['p', 'r', 's'] as const).reduce((a, ch) => a + (ks?.[ch]?.length ?? 0), 0), 0);
+
 export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart {
   const pick = new Set<string>();
   let pickHook: (add: boolean) => void = () => undefined;
@@ -171,6 +214,8 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
         dataset: { kind: 'motion', motion: m.name } },
       h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
       h('span', { class: 'gsl-name' }, m.name, h('span', { class: 'lib-motion-len', text: ` ${(Math.round(m.len * 10) / 10).toFixed(1)} s ${repeatSign(m.repeat)}` })), meta);
+      // A scene (studio-timeline-2) says so on its tile: it moves several objects, dropping it on another adds that one.
+      if (m.tracks) meta.prepend(h('span', { class: 'lib-motion-scene', dataset: { part: 'motion-scene' }, text: `${d.t('lib.motion.scene', { n: Object.keys(m.tracks).length })} · ` }));
       d.holdable?.(tile, m.name);
       tile.addEventListener('pointerenter', () => pic.play(true));
       tile.addEventListener('pointerleave', () => pic.play(on));
@@ -196,7 +241,7 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
     const pic = motionPicture(m, 120);
     pic.play(true);
     const close = h('button', { type: 'button', class: 'gsl-btn gsl-close', 'aria-label': d.t('btn.close'), text: '×', onclick: () => (pick.clear(), d.changed()) });
-    const keys = (['p', 'r', 's'] as const).reduce((n, ch) => n + (m.keys[ch]?.length ?? 0), 0);
+    const keys = keyCount(m);
     const title = h('b', { text: m.name, title: d.t('lib.motion.renameTip'), class: 'lib-motion-title', dataset: { part: 'motion-title' } });
     const head = h('div', { class: 'gsl-dtitle' }, title,
       h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }),

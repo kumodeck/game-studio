@@ -122,8 +122,9 @@ export function toClips(m: Motion | null | undefined, dim: Dim): Motion | null {
 
 // ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
 
-export type Template = 'empty' | 'pingpong' | 'loop' | 'once' | 'spin';
-export const TEMPLATES: Template[] = ['empty', 'pingpong', 'loop', 'once', 'spin'];
+// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
+export type Template = 'empty' | 'pingpong' | 'loop' | 'once' | 'spin' | 'scene';
+export const TEMPLATES: Template[] = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
 
 /**
  * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
@@ -145,6 +146,8 @@ export function fromTemplate(kind: Template, name: string, dim: Dim): MotionClip
       const r = (a: number) => (dim === '3d' ? [0, a, 0] : [a]);
       return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
     }
+    case 'scene':
+      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
     default:
       return { name, len: 2, repeat: 'once', keys: {} };
   }
@@ -176,6 +179,9 @@ export function setKey(c: MotionClip, ch: MotionChannel, t: number, v: number[],
   const ks = out.keys[ch] ?? [];
   const at = ks.findIndex((k) => sameT(k.t, t));
   const key: MotionKey = { t: rt(t), v: v.slice(), ease: ease ?? (at >= 0 ? ks[at]!.ease : undefined) ?? DEFAULT_EASE };
+  // A key set again keeps the path's handles it had (studio-timeline-2): moving a bent point keeps it bent.
+  if (at >= 0 && ks[at]!.in) key.in = ks[at]!.in!.slice();
+  if (at >= 0 && ks[at]!.out) key.out = ks[at]!.out!.slice();
   if (at >= 0) ks[at] = key;
   else if (ks.length < MAX_KEYS) ks.push(key);
   out.keys[ch] = sorted(ks);
@@ -230,12 +236,12 @@ export function easeKeys(c: MotionClip, key: string, sel: KeyRef[], ease: Motion
 }
 
 /** What ⌘C holds: keys by channel, their times from the earliest one copied (so ⌘V puts the first at the playhead). */
-export type Copied = Array<{ ch: MotionChannel; dt: number; v: number[]; ease?: MotionEase }>;
+export type Copied = Array<{ ch: MotionChannel; dt: number; v: number[]; ease?: MotionEase; in?: number[]; out?: number[] }>;
 
 export function copyKeys(c: MotionClip, key: string, sel: KeyRef[]): Copied {
   const mine = picks(sel, key);
   const out: Copied = [];
-  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease });
+  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease, ...(k.in ? { in: k.in.slice() } : {}), ...(k.out ? { out: k.out.slice() } : {}) });
   const t0 = Math.min(...out.map((k) => k.dt));
   return out.map((k) => ({ ...k, dt: rt(k.dt - t0) }));
 }
@@ -249,6 +255,10 @@ export function pasteKeys(c: MotionClip, keys: Copied, at: number, dim: Dim): { 
     const t = rt(at + k.dt);
     if (t > MAX_LEN) continue;
     out = setKey(out, k.ch, t, k.v, k.ease);
+    // The handles come along (a bent point pasted is bent the same way).
+    const got = out.keys[k.ch]!.find((x) => sameT(x.t, t))!;
+    if (k.in) got.in = k.in.slice();
+    if (k.out) got.out = k.out.slice();
     pasted.push({ ch: k.ch, t });
   }
   return { clip: out, pasted };

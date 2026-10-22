@@ -405,6 +405,31 @@ Asked for: "a motion starts when an event happens, stops, or runs the whole game
   and into the request (`motions`, §3).
 - Save: one count per object whose clips changed and one per Library motion that changed.
 
+#### 1.9.2 The path's shape, several ways to start, scene motions (2026-10-22, studio-timeline-2)
+
+Asked for: the second stage of the timeline — the path's shape by hand, a key put on the path, "E or a click", a cutscene.
+
+- **Handles**: a position key may carry `in` / `out` (offsets from its point, the units of `v`): the path's Bézier
+  handles there. Absent = smooth (the Catmull-Rom curve through the points, as before — a span changes only where a
+  handle was bent); both 0 = a corner. The loader's `trackAt` draws a span as Bézier when either end has its handle,
+  taking the smooth handle (`handlesOf`: a sixth of the way between the neighbours) for the side without one; the
+  editor's `shell/path-edit.ts` bends (the other side lines up, Alt: alone), makes corners and puts keys on the path.
+- In the game (bridge → shell): `studio:timeline/handle { key, i, side: 'in' | 'out', h, alone, end }` (a handle of a
+  picked point dragged; live, one undo step), `studio:timeline/insert { key, t }` (the path's line clicked: a position
+  key at `t`, the shape kept — a bent span is cut in two with de Casteljau), `studio:timeline/corner { key, i }` (a point
+  double-clicked). The head shows **Point ▾** (smooth / corner) while a path point is picked.
+- **Several ways to start**: a clip's `when` may be a list of 2–4 (`whensOf` in the loader); any one starts it. The
+  timeline's second row: the first with its field, then "or" + each other one with its field and ×, then "+ or". The
+  area of an `enter` (wherever it is in the list) is drawn; its four floor corners resize it from the opposite corner
+  (Shift: its height): `studio:timeline/area-moved { key, p, size, end }`.
+- **Scene motions**: a Library motion with `tracks` (object key → keys, 1–16) instead of `keys`. Each object in it has
+  the usual attachment (`use`); the editor writes the same `when` / `until` / len / repeat to all of them (the head acts
+  on the scene). The loader's `resolveClip(c, lib, key)` gives each object its track (`scene: true`), and the runner
+  starts the scene's other objects at the same moment when one starts. On the timeline: the clip menu's "New: Scene —
+  several objects"; while a scene is open the rows are its objects, the picked object outside it gets "+ Add … to …"
+  (or joins when moved with Auto key on), × on a row takes an object out (its track goes; undo brings it back). A scene
+  motion dropped on an object from the Library puts that object in the scene. Shell side: `shell/scene-motion.ts`.
+
 ### 1.10 Levels (2026-10-22)
 
 Optional, added in contract 1 without changing anything else. A game with
@@ -1097,6 +1122,9 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   and played. The loader runs start / time / key / click / after / enter by itself (`motionRunner`, shared with the
   editor's Try) and exports `cue(name)`, `touch(key)`, `setPlayer(obj)` for the rest; `report.motionWaits` lists the
   clips that wait for the game's code.
+  Since studio-timeline-2 (§1.9.2): `when` may be a list of 2–4 (any one starts it); a position key may have `in` /
+  `out` (its path handles, the units of `v`; both 0 = a corner); a Library motion may have `tracks` (object key → keys,
+  1–16) instead of `keys` — a scene motion, whose objects all start together.
 - Optional (levels, 2026-10-22, §1.10): a game with several levels.
 
   ```json

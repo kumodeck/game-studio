@@ -170,7 +170,7 @@ export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window 
     if (!it) continue;
     const dim: Dim = it.pose.p.length === 3 ? '3d' : '2d';
     const mm = m as Motion;
-    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib)).filter(Boolean) as MotionClip[]) : [];
+    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib, key)).filter(Boolean) as MotionClip[]) : [];
     const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
     if (clips.length) clipped.push({ key, clips, base: structuredClone(flat(it.pose)), dim });
     else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
@@ -179,7 +179,8 @@ export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window 
   const t0 = win.performance.now();
   const run = motionRunner(clipped.map((c) => ({ key: c.key, clips: c.clips })));
   run.fire({ on: 'start' }, t0);
-  if (clipped.some((c) => c.clips.some((x) => (x.when as { on?: string } | undefined)?.on === 'key'))) {
+  // Any of a clip's ways to start (studio-timeline-2: `whens`, from resolveClip) may be a key.
+  if (clipped.some((c) => c.clips.some((x) => ((x as MotionClip & { whens?: Array<{ on: string }> }).whens ?? [x.when as { on?: string }]).some((w) => w?.on === 'key')))) {
     win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
   }
   const tick = (now: number) => {
