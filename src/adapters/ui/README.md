@@ -7,7 +7,8 @@ Purpose: the built-in DOM UI adapter — the game's HTML UI (title card, score, 
 - `adapter.js` — a `Port2D` over the elements marked `data-studio-key` (left out: `data-studio="false"`, not drawn,
   moved by the game itself). Moves and sizes them with the CSS `translate` / `scale` properties through the loader's
   `placeUi()` (`src/loader/studio-placement.js`), so the editor and the game place them the same way; pauses CSS
-  animations while editing.
+  animations while editing. Each element listed with its screen (`screen`: its container's `data-studio-screen`,
+  UI stage 2); the rest of stages 2–3 (screens shown, text, colours, states, theme) is the bridge's `ui-extras.ts`.
 - `index.ts` — `findDomUi()` (null when nothing is marked: then nothing changes for the game) and
   `uiAdapterFromPort()` (any UI port through `adapterFromPort2D`; also used for `studio.registerUI()` ports).
 

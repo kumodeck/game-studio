@@ -6,23 +6,50 @@
   <meta name="theme-color" content="#1d2340" />
   <title>Glow Garden — three.js + HTML UI example</title>
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2340; touch-action: none; font-family: system-ui, -apple-system, sans-serif; }
+    /* The theme: the UI's colours and fonts in one place (UI stage 3). The editor's Theme rows list these variables;
+       changing one recolours every rule that uses it. */
+    :root {
+      --glow: #ffcf6e;
+      --glow-hover: #ffe08f;
+      --glow-pressed: #f2b84f;
+      --ink: #fff6d8;
+      --ink-dark: #2a1d05;
+      --panel: rgba(10, 14, 32, 0.45);
+      --font-display: ui-serif, Georgia, serif;
+      --font-ui: system-ui, -apple-system, sans-serif;
+    }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #1d2340; touch-action: none; font-family: var(--font-ui); }
     canvas { display: block; }
+    /* A screen hidden by the game (the `hidden` attribute) stays hidden even when its own rule says display: grid. */
+    [data-studio-screen][hidden] { display: none; }
     /* The HUD: always on screen. */
-    .score { position: fixed; left: 20px; top: 16px; padding: 8px 14px; border-radius: 12px; background: rgba(10, 14, 32, 0.45);
-      color: #fff6d8; font: 600 16px/1.2 system-ui, sans-serif; letter-spacing: 0.02em; pointer-events: none; }
+    .score { position: fixed; left: 20px; top: 16px; padding: 8px 14px; border-radius: 12px; background: var(--panel);
+      color: var(--ink); font: 600 16px/1.2 var(--font-ui); letter-spacing: 0.02em; pointer-events: none; }
     .score b { font-variant-numeric: tabular-nums; }
     /* The title card, centred the common way: left/top 50 % and a transform. The editor's UI layer moves it with the
        CSS translate / scale properties, so this transform is never touched. */
-    .title-card { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; color: #fff6d8;
+    .title-card { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); text-align: center; color: var(--ink);
       pointer-events: none; text-shadow: 0 2px 18px rgba(255, 190, 90, 0.55); }
-    .title-card h1 { margin: 0; font: 700 clamp(36px, 8vw, 72px)/1 ui-serif, Georgia, serif; letter-spacing: 0.04em; }
-    .title-card p { margin: 10px 0 0; font: 500 16px/1.3 system-ui, sans-serif; opacity: 0.8; }
-    .start { position: fixed; left: 50%; bottom: 18%; translate: -50% 0; padding: 14px 34px; border: 0; border-radius: 999px;
-      background: #ffcf6e; color: #2a1d05; font: 700 18px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-      animation: glow 1.6s ease-in-out infinite alternate; }
+    .title-card h1 { margin: 0; font: 700 clamp(36px, 8vw, 72px)/1 var(--font-display); letter-spacing: 0.04em; }
+    .title-card p { margin: 10px 0 0; font: 500 16px/1.3 var(--font-ui); opacity: 0.8; }
+    /* The buttons: a normal, hovered, pressed and disabled look (the editor's card shows each one). */
+    .btn { padding: 14px 34px; border: 0; border-radius: 999px; background: var(--glow); color: var(--ink-dark);
+      font: 700 18px/1 var(--font-ui); cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
+    .btn:hover { background: var(--glow-hover); }
+    .btn:active { background: var(--glow-pressed); box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4); }
+    .btn:disabled { background: #6b6250; color: rgba(42, 29, 5, 0.6); cursor: default; box-shadow: none; animation: none; }
+    .start { position: fixed; left: 50%; bottom: 18%; translate: -50% 0; animation: glow 1.6s ease-in-out infinite alternate; }
     @keyframes glow { from { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); } to { box-shadow: 0 8px 34px rgba(255, 207, 110, 0.65); } }
-    .playing .title-card, .playing .start { display: none; }
+    /* Playing: a hint at the foot and a pause button in the top right corner. */
+    .hint { position: fixed; left: 50%; bottom: 24px; translate: -50% 0; margin: 0; padding: 6px 14px; border-radius: 999px;
+      background: var(--panel); color: var(--ink); font: 500 14px/1.3 var(--font-ui); pointer-events: none; white-space: nowrap; }
+    .pause-btn { position: fixed; right: 20px; top: 14px; padding: 10px 16px; font-size: 15px; }
+    /* Paused / game over: a panel in the middle over a darkened world. */
+    .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(8, 10, 24, 0.5); }
+    .panel { display: grid; justify-items: center; gap: 14px; padding: 28px 36px; border-radius: 20px; background: var(--panel);
+      color: var(--ink); text-align: center; backdrop-filter: blur(6px); }
+    .panel h2 { margin: 0; font: 700 40px/1.1 var(--font-display); letter-spacing: 0.03em; }
+    .panel p { margin: 0; font: 500 16px/1.3 var(--font-ui); opacity: 0.85; }
   </style>
   <script type="importmap">
     {
@@ -33,13 +60,35 @@
   </script>
 </head>
 <body>
-  <!-- data-studio-key: the UI the editor's UI layer can move (one key per element, on the box that moves). -->
-  <div class="score" data-studio-key="score">Glow <b id="score">0</b> / 5</div>
-  <div class="title-card" data-studio-key="title-card">
-    <h1>Glow Garden</h1>
-    <p>Tap the lanterns to light the garden</p>
+  <!-- data-studio-key: the UI the editor's UI layer can move (one key per element, on the box that moves).
+       data-studio-screen: the screens of the game (the editor lists them and shows one at a time).
+       data-studio-text: the words the card's Text row changes; data-studio-value: what the game writes (a score),
+       where the card's sample values go. -->
+  <div class="score" data-studio-key="score"><span data-studio-text>Glow</span> <b id="score" data-studio-value data-studio-sample="999,999">0</b> / 5</div>
+  <div data-studio-screen="title" id="title-screen">
+    <div class="title-card" data-studio-key="title-card">
+      <h1>Glow Garden</h1>
+      <p>Tap the lanterns to light the garden</p>
+    </div>
+    <button class="btn start" type="button" data-studio-key="start-button">Start</button>
   </div>
-  <button class="start" type="button" data-studio-key="start-button">Start</button>
+  <div data-studio-screen="play" id="play-screen" hidden>
+    <p class="hint" data-studio-key="play-hint">Tap a lantern to light it</p>
+    <button class="btn pause-btn" type="button" data-studio-key="pause-button">Pause</button>
+  </div>
+  <div class="overlay" data-studio-screen="pause" id="pause-screen" hidden>
+    <div class="panel" data-studio-key="pause-card">
+      <h2>Paused</h2>
+      <button class="btn" type="button" id="resume" data-studio-key="resume-button">Resume</button>
+    </div>
+  </div>
+  <div class="overlay" data-studio-screen="over" id="over-screen" hidden>
+    <div class="panel" data-studio-key="result-card">
+      <h2>The garden glows</h2>
+      <p>All five lanterns lit in <b id="time" data-studio-value data-studio-sample="9999">0</b> s</p>
+      <button class="btn" type="button" id="again" data-studio-key="again-button">Play again</button>
+    </div>
+  </div>
   <script type="module" src="game.js"></script>
 </body>
 </html>

@@ -36,6 +36,68 @@ export type ToolId = 'placement' | 'library';
 export type EditLayer = 'world' | 'ui';
 
 /**
+ * UI stages 2–3 (2026-10-22; CONTRACT.md §1.11): the game's UI screens, what an element says and how it looks.
+ * A button's looks other than its normal one: under the pointer (`:hover`), pressed (`:active`), not usable (`:disabled`).
+ */
+export type UiState = 'hover' | 'active' | 'disabled';
+/** What the card can change on a UI element: its main text, that text's size (CSS px) and colour, the box's fill. */
+export type UiPropName = 'text' | 'fontSize' | 'color' | 'background';
+/** One state's colours (a button's hover / pressed / disabled look): the only props a state has of its own. */
+export interface UiStateSet {
+  color?: string;
+  background?: string;
+}
+/**
+ * placement.json `ui.<key>.set` / `setWas`: what the person changed on the card, and the game's own values (the AI
+ * searches the code for those). Every field optional; a state's colours under "@hover" / "@active" / "@disabled".
+ */
+export interface UiStyleSet {
+  text?: string;
+  fontSize?: number;
+  color?: string;
+  background?: string;
+  '@hover'?: UiStateSet;
+  '@active'?: UiStateSet;
+  '@disabled'?: UiStateSet;
+}
+/** One screen of the game's UI: a container marked data-studio-screen="<id>" (title, play, pause, over, …). */
+export interface UiScreenInfo {
+  id: string;
+  /** data-studio-screen-label, when the game gives one (untrusted text: textContent only). */
+  label?: string;
+}
+/** A UI element as the card shows it (bridge ui-extras.ts → ShellToBridge ui/props). */
+export interface UiProps {
+  key: string;
+  /** The look on screen now (null = the normal one). */
+  state: UiState | null;
+  /** A button (or role=button): the card offers its states. */
+  button: boolean;
+  /** Its main text (data-studio-text, else its first text); null = none the card can change (mixed or no text). */
+  text: string | null;
+  fontSize: number | null;
+  color: string | null;
+  /** The box's fill; null = none (transparent: the card offers no fill, except for a button). */
+  background: string | null;
+  /** The game's own values (before any change of the editor's; for setWas and "↺"). */
+  was: UiStyleSet;
+  /**
+   * Sample values ("999,999", a long name: does the text still fit?): null = nothing to put one in. `now` = the sample shown, `hint` = the game's
+   * data-studio-sample, `value` = the target is a value the game writes (data-studio-value: a score), not words.
+   */
+  sample: { now: string | null; hint?: string; value: boolean } | null;
+}
+/** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
+export interface UiThemeVar {
+  name: string;
+  type: 'color' | 'font';
+  /** The value now (the editor's, when changed). */
+  value: string;
+  /** The game's own value. */
+  was: string;
+}
+
+/**
  * Pose of one movable object, in the object's PARENT space (what you would
  * type into the game code). This is the same shape that is stored per object
  * in placement.json, so undo/redo, messages and the saved file never need to
@@ -98,6 +160,11 @@ export interface Item {
   label: string;
   /** Free-form kind tags, e.g. ['mesh'], ['group'], ['sprite'], ['container']. */
   kinds: string[];
+  /**
+   * UI stage 2 (2026-10-22): the screen a UI element belongs to (the data-studio-screen of its container); absent =
+   * always on screen, and for every world object.
+   */
+  screen?: string;
   /**
    * Objects that share a group are shown once in the list as "label ×N".
    * Typically the model/texture source or the base name without a numeric suffix.
@@ -726,6 +793,8 @@ export interface Port2D {
     rotatable?: boolean;
     /** default true */
     scalable?: boolean;
+    /** A UI port (the UI seat): the screen the element is on (Item.screen); absent = always on screen. */
+    screen?: string;
   }>;
   /** Current pose (parent space): p = [x, y] px, r = radians clockwise, s = scale. */
   get(key: string): Pose | null;
@@ -983,6 +1052,20 @@ export type ShellToBridge =
    */
   | { type: 'studio:core/layer'; layer: EditLayer }
   /**
+   * UI stages 2–3 (2026-10-22, CONTRACT.md §1.11; only when core/ready listed `layers`): show one screen of the game's UI
+   * (`id` null = as the game shows it); a sample text in an element (null = its own); change a prop (null = the game's
+   * own value; `state` = that look's colour); show a button's look; change a theme variable (null = the game's own);
+   * ask for an element's props. The bridge answers ui/screens, ui/props, ui/theme. `quiet`: a value the file already holds, given again when
+   * editing starts (no ui/props back). Nothing here is the game's code:
+   * all of it goes at the end of editing, except `set` and `theme`, which stay as the editor's layout does.
+   */
+  | { type: 'studio:ui/screen'; id: string | null }
+  | { type: 'studio:ui/sample'; key: string; text: string | null }
+  | { type: 'studio:ui/set'; key: string; name: UiPropName; value: string | number | null; state?: UiState; quiet?: boolean }
+  | { type: 'studio:ui/state'; key: string | null; state: UiState | null }
+  | { type: 'studio:ui/theme-set'; name: string; value: string | null; quiet?: boolean }
+  | { type: 'studio:ui/props-get'; key: string }
+  /**
    * While the world is edited, the game's UI (data-studio-key) is hidden — off the picture and out of the pointer's
    * way — unless `on` (the shell's eye button / ⇧U, a try of the editor, 2026-10-20: "the UI is always there, in the way"). On: shown
    * faded, still not in the pointer's way. Only the editing look: nothing is saved and the game's code is untouched.
@@ -1091,6 +1174,12 @@ export type BridgeToShell =
   | { type: 'studio:core/levels'; levels: LevelInfo[]; current: string }
   /** `layer`: whose objects these are (UI stage 1; absent = the world, as before). */
   | { type: 'studio:placement/items'; items: Item[]; layer?: EditLayer }
+  /** UI stage 2: the game's screens and the one on screen (null = none of them is drawn). Sent when editing starts and after ui/screen. */
+  | { type: 'studio:ui/screens'; screens: UiScreenInfo[]; current: string | null; forced: boolean }
+  /** UI stages 2–3: the picked UI element's props (after a UI pick, ui/props-get, ui/set, ui/state, ui/sample). */
+  | { type: 'studio:ui/props'; props: UiProps }
+  /** UI stage 3: the game's theme variables (when editing starts and after ui/theme-set); [] = none. */
+  | { type: 'studio:ui/theme'; vars: UiThemeVar[] }
   | { type: 'studio:placement/selected'; key: string | null; item?: Item; keys?: string[] }
   /**
    * A pose changed by direct manipulation. One gesture ("one move" = from
@@ -1692,6 +1781,11 @@ export interface PlacementFile {
   /** With `ui`: the game's size [width, height] in CSS px when it was saved (for turning px into % / vw). */
   uiView?: [number, number];
   /**
+   * Optional (UI stage 3, 2026-10-22): CSS variables of the game's theme (--accent, --font-title…) changed in the
+   * editor, by name. Absent when none changed: older files keep their bytes.
+   */
+  theme?: Record<string, PlacementThemeEntry>;
+  /**
    * Optional (motion-gui, 2026-10-22): objects that move by themselves, by key (a game object or a copy in `added`;
    * never a key of `removed`). Absent when nothing moves, so older files stay byte for byte what they were. With
    * `levels`, each level has its own `motion` (PlacementLevel) and this one is absent (integrate3, 2026-10-22).
@@ -1848,6 +1942,20 @@ export interface PlacementUiEntry {
   s?: number;
   /** The element's text (first 40 characters): a clue for finding it in the code. */
   label?: string;
+  /** UI stage 2: the screen it belongs to (its container's data-studio-screen); absent = always on screen. */
+  screen?: string;
+  /** UI stage 3: what the card changed (text, size, colours; a button's state colours under "@hover" …). */
+  set?: UiStyleSet;
+  /** With `set`: the game's own values of the same fields (what the AI looks for in the code). */
+  setWas?: UiStyleSet;
+}
+
+/** placement.json `theme` (UI stage 3): one CSS variable of the game's theme, changed in the editor. */
+export interface PlacementThemeEntry {
+  /** The new value. */
+  v: string;
+  /** The game's own value (what the AI looks for in the CSS). */
+  was?: string;
 }
 
 export interface PlacementAdded extends Pose {
@@ -2070,6 +2178,13 @@ export const LIMITS = {
   maxUiCoord: 10_000,
   minUiScale: 0.1,
   maxUiScale: 10,
+  /** UI stage 3: a text on the card, a colour / theme value, the font size range (px), theme variables. */
+  maxUiText: 200,
+  maxUiColor: 64,
+  maxUiValue: 200,
+  minUiFont: 1,
+  maxUiFont: 500,
+  maxTheme: 100,
 } as const;
 
 /** Allowed characters of an object key. Names with other characters are mapped; the original stays in `label`. */

@@ -12,6 +12,14 @@
 // before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
 // with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
 //
+// `ui.<key>.set` and `theme` (UI stage 3, 2026-10-22): what the editor's card changed — the element's main text, that
+// text's size and colour, the box's fill, a button's colours when hovered / pressed / disabled — and the game's CSS
+// variables (--accent…). Applied here too, so the game shows them before the AI writes them into the code: the
+// colours and the fill through one style sheet (#studio-ui-set; a state's with !important, the way :hover beats
+// the normal look), set on the element itself when the game's own CSS is more specific; the text and its size on
+// the text itself (uiTextPart: data-studio-text, else the element's first own text). theme: style.setProperty on
+// <html>. `screen` (UI stage 2) says which screen an element is on: nothing to apply.
+//
 // `levels` (2026-10-22): a game with several levels gets one world part per level in the file. Pass the level being
 // built: applyPlacement(scene, './placement.json', { level: 'cave' }). Without `level`, a file with levels moves
 // nothing in the world (another level's layout must never land on this one); the UI is applied either way.
@@ -84,6 +92,7 @@ export async function applyPlacement(root, source = './placement.json', opts = {
     warn('not a placement file');
     return report;
   }
+  if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
@@ -623,7 +632,10 @@ function applyUi(doc, ui) {
     const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
     if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
     if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+    if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
   };
+  // Only for a file whose card changed something (a file of moves alone adds nothing to the page, as before).
+  const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
   doc.querySelectorAll('[data-studio-key]').forEach(put);
   for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
   // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
@@ -636,6 +648,120 @@ function applyUi(doc, ui) {
     }).observe(doc.documentElement, { childList: true, subtree: true });
   }
   return out;
+}
+
+const UI_COLOR = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+const UI_STATES = { '@hover': ':hover', '@active': ':active', '@disabled': ':disabled' };
+const okColor = (c) => typeof c === 'string' && UI_COLOR.test(c);
+
+/** The page's CSS variables changed in the editor (`theme`): on <html>, so every rule that uses them follows. */
+function applyTheme(doc, theme) {
+  for (const [name, e] of Object.entries(theme)) {
+    if (/^--[A-Za-z0-9_-]{1,60}$/.test(name) && e && typeof e.v === 'string' && !/[;{}<>]/.test(e.v)) doc.documentElement.style.setProperty(name, e.v);
+  }
+}
+
+/**
+ * One style sheet for the elements' colours (#studio-ui-set): each state's with !important (it must beat the normal
+ * look, the game's or the editor's), made once for the file. Colours that are not CSS colours are skipped; the key is a
+ * data-studio-key (key characters only), so the selectors are safe.
+ */
+function uiSheet(doc, ui) {
+  const rules = [];
+  for (const [k, e] of Object.entries(ui)) {
+    const set = e && e.set;
+    if (!set || typeof set !== 'object' || !/^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(k)) continue;
+    const sel = `[data-studio-key="${k}"]`;
+    for (const [st, pseudo] of Object.entries(UI_STATES)) {
+      const o = set[st];
+      if (!o || typeof o !== 'object') continue;
+      if (okColor(o.background)) rules.push(`${sel}${pseudo}{background-color:${o.background}!important}`);
+      if (okColor(o.color)) rules.push(`${sel}${pseudo},${sel}${pseudo} *{color:${o.color}!important}`);
+    }
+  }
+  const el = doc.createElement('style');
+  el.id = 'studio-ui-set';
+  el.textContent = rules.join('\n');
+  (doc.head || doc.documentElement).appendChild(el);
+  return el;
+}
+
+/**
+ * The normal look and the words of one element (`set`): see the top of the file. The fill (and the colour of a button,
+ * whose text is itself) goes in the sheet as a plain rule, so the game's own :hover / :active rules, more specific,
+ * still win while hovered or pressed; when the game's normal rule is more specific than that, on the element itself.
+ * The colour of a text inside the element (a title card's <h1>) and the size go on that text.
+ */
+function setUi(el, k, set, sheet) {
+  const part = uiTextPart(el);
+  const rule = (prop, css, v) => {
+    if (getComputedStyle(el)[prop] === cssColor(el, v)) return;
+    sheet.textContent += `\n[data-studio-key="${k}"]{${css}:${v}}`;
+    if (getComputedStyle(el)[prop] !== cssColor(el, v)) el.style[prop] = v;
+  };
+  if (part) {
+    if (typeof set.text === 'string') {
+      const n = uiTextNode(part);
+      if (n) n.data = keepSpace(n.data, set.text.slice(0, 200));
+    }
+    if (isNum(set.fontSize) && set.fontSize > 0) part.style.fontSize = `${set.fontSize}px`;
+    if (okColor(set.color)) {
+      if (part === el) rule('color', 'color', set.color);
+      else part.style.color = set.color;
+    }
+  }
+  if (okColor(set.background)) rule('backgroundColor', 'background-color', set.background);
+}
+
+/** A colour as getComputedStyle writes it (to tell whether a rule took). */
+function cssColor(el, c) {
+  const probe = el.ownerDocument.createElement('i');
+  probe.style.color = c;
+  probe.style.display = 'none';
+  el.ownerDocument.documentElement.appendChild(probe);
+  const v = getComputedStyle(probe).color;
+  probe.remove();
+  return v;
+}
+
+/** The new words in the old text node's place, keeping its spaces around (the HTML's line breaks). */
+function keepSpace(old, text) {
+  const m = /^(\s*)[\s\S]*?(\s*)$/.exec(old);
+  return (m ? m[1] : '') + text + (m ? m[2] : '');
+}
+
+/** The element's own non-blank text nodes (not inside its children). */
+function ownText(el) {
+  return Array.from(el.childNodes).filter((n) => n.nodeType === 3 && n.data.trim());
+}
+
+/**
+ * The text the card's Text / Size / Colour change, shared with the editor (src/bridge/ui-extras.ts) so both pick the
+ * same one: data-studio-text (on the element or inside it), else the first element, in page order, with words of its
+ * own (a title card's <h1>, a button itself). null when there is none, or when that element mixes words with what the
+ * game writes ("Glow <b>0</b> / 5": two text nodes around a value) — changing one piece of it would read wrong.
+ * Never inside data-studio-value (a score: the game's to write).
+ */
+export function uiTextPart(el) {
+  const mark = el.matches('[data-studio-text]') ? el : el.querySelector('[data-studio-text]');
+  const one = (e) => (ownText(e).length === 1 ? e : null);
+  if (mark) return one(mark);
+  const walk = (e) => {
+    if (e.matches('[data-studio-value]')) return undefined;
+    if (ownText(e).length) return e;
+    for (const c of e.children) {
+      const r = walk(c);
+      if (r) return r;
+    }
+    return undefined;
+  };
+  const p = walk(el);
+  return p ? one(p) : null;
+}
+
+/** The one text node of a uiTextPart(). */
+export function uiTextNode(part) {
+  return ownText(part)[0] || null;
 }
 
 // Per element: the translate / scale its stylesheet gives (read once, before anything is added) and the offset now.

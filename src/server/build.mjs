@@ -30,7 +30,9 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // 24 KB since motion triggers (studio-motion-triggers, 2026-10-22): when a motion starts and stops (motionRunner: the
 // game's start, a time, a key, a click on the object, another motion's end, an area, a touch, a named cue; N rounds,
 // a cue to stop), the Library's motions (`motions`, used by name) and the click test with the game's own camera.
-const LOADER_LIMIT = 24 * 1024;
+// 28 KB since UI stages 2–3 (studio-ui-edit-2, 2026-10-22): the card's text / size / colours / a button's state colours
+// (`ui.<key>.set`: one style sheet, the text part shared with the editor) and the theme's CSS variables; 23.0 → 26.2 KB.
+const LOADER_LIMIT = 28 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;

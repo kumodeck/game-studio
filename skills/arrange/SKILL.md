@@ -674,6 +674,39 @@ also to marked elements the game adds later, such as a game-over screen). A game
 Check after applying: reload the game **without the editor** (or Play) and compare with what the user saw; then open
 the editor, press **U** (World | UI) and see that Save shows no unsaved count.
 
+**Screens, looks and the theme** (`screen`, `set` / `setWas`, `theme`). The UI list's head picks a screen of the game
+(Title, Playing, Paused, Game over…, the containers marked `data-studio-screen`, §5); the card changes an element's
+text, the size and colour of that text, its fill, and a button's colours when hovered / pressed / disabled; "Theme"
+under the list changes the game's CSS variables. Saved with the element (and at the top for the theme):
+
+```json
+"ui": {
+  "result-card":  { "p": [0, 0], "screen": "over", "label": "The garden glows …",
+                    "set": { "text": "Garden lit!", "color": "#ffd9a0", "fontSize": 48 },
+                    "setWas": { "text": "The garden glows", "color": "#fff6d8", "fontSize": 40 } },
+  "start-button": { "p": [0, 0], "screen": "title",
+                    "set": { "@hover": { "background": "#ff8fb1" } }, "setWas": { "@hover": { "background": "#ffe08f" } } }
+},
+"theme": { "--glow": { "v": "#7fd1ff", "was": "#ffcf6e" } }
+```
+
+- `screen` = the `data-studio-screen` of the element's container: which screen to look in. Nothing to apply.
+- `p: [0, 0]` = not moved (only its look changed). `setWas` = the values the code has now: search for them.
+- `text` = the element's main words: its `data-studio-text`, else the first element in it with words of its own (the
+  `<h1>` of a title card, a button itself). `fontSize` (CSS px) and `color` are that text's; `background` is the
+  element's own box. `"@hover"` / `"@active"` / `"@disabled"` = the colours of its `:hover` / `:active` /
+  `:disabled` look (a button).
+- `theme`: a CSS variable on `:root` / `html`, by name; `was` = its value in the CSS now.
+
+The loader (Way 1) shows all of it already (the text, the colours through one style sheet, the theme on `<html>`).
+**Writing it into the code (Way 2):** change the words in the HTML (or in the code that writes them); the size and
+colour in the CSS rule of that text (`font-size`, `color`), the fill in the element's rule (`background`), a state's
+colours in its `:hover` / `:active` / `:disabled` rule (add one when there is none); a theme variable where `:root`
+declares it. Prefer a theme variable when the colour is one (change `--glow`, not every rule that uses it). Then take
+`set` / `setWas` out of that entry (the whole entry when `p` is `[0, 0]` and there is no `s`), and `theme` when it is
+done. **Sample values** (the card's "999,999", "a long name") are never in the file: they are the user checking that
+text fits. If they say a long one overflows, fix the CSS (a `max-width`, `text-overflow`, a smaller size) when asked.
+
 ### Motion (`motions`, `motion`)
 
 The editor has a **timeline** (like Unity's Animation window or Blender's Dope Sheet): the user moves the time line,
@@ -868,6 +901,26 @@ editor's **UI** layer when it carries `data-studio-key`:
   wrapper box around it instead.
 - Do not mix with a DOM board game's pieces (`examples/dom-board`): there `data-studio-key` marks world objects and
   the UI layer is off. `data-studio="false"` keeps an element out.
+
+**Screens and values** (the UI list's screen menu, the card's sample values):
+
+```html
+<div data-studio-screen="title">…the title card, the Start button…</div>
+<div data-studio-screen="play" hidden>…the hint, the Pause button…</div>
+<div class="overlay" data-studio-screen="over" hidden>…</div>
+<div class="score" data-studio-key="score"><span data-studio-text>Score</span> <b id="score" data-studio-value data-studio-sample="999,999">0</b></div>
+```
+
+- `data-studio-screen="<id>"` on the container of each screen (`title`, `play`, `pause`, `over`, or a name of the
+  game's own; `data-studio-screen-label="Shop"` for the words). UI outside every container is "always on screen". The
+  editor shows one screen at a time while editing (it takes `hidden` off it and hides the others) and puts them back
+  for Play: the game's code is not run for it. A screen hidden with `hidden` but given `display: flex|grid` by a class
+  needs `[data-studio-screen][hidden] { display: none; }` in the CSS, or it shows in the game too.
+- `data-studio-value` on what the game writes (a score, a timer, a name): the card's sample values go there, and the
+  Text row leaves it alone. `data-studio-sample="999,999"` = the first sample to offer. `data-studio-text` = the words
+  the Text row changes when the element has more than one text.
+- Colours and fonts: when the game's UI repeats the same colour in many rules, offer once to gather them into CSS
+  variables on `:root` (`--accent: #ffcf6e`): the editor's Theme then changes them all at once.
 
 ## 6. Read library.json and apply it
 

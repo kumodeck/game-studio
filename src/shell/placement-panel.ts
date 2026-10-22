@@ -56,6 +56,15 @@ export interface PlacementPanelDeps {
    * null (or absent) = the title as before.
    */
   levelSwitch?(): HTMLElement | null;
+  /**
+   * UI stage 2 (2026-10-22, ui-screens.ts): the UI list's head in a game with screens ("Title ⌄  1 of 4"); null (or
+   * absent) = "On screen" as before.
+   */
+  uiHead?(): HTMLElement | null;
+  /** UI stages 2–3 (ui-card.ts): a UI element's look rows, under its offset and size. Absent = none. */
+  uiLook?(key: string): HTMLElement[];
+  /** UI stage 3 (ui-theme.ts): the Theme fold under the UI list; null = a game without theme variables. */
+  uiFoot?(): HTMLElement | null;
   /** "⌘D", "⌫"… for tooltips. */
   shortcutOf(what: 'copy' | 'remove' | 'all'): string;
   /** A number was typed: apply as one undo step. */
@@ -173,7 +182,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   // The how-to paragraph and the colour key under the list went (rebrand):
   // a one-line first hint over the ask bar says it once (main.ts), and the
   // editor's colours have one meaning each (orange = you, violet = the AI).
-  const listScroll = h('div', { class: 'list-scroll' }, noName, list);
+  // The UI list's foot (the Theme fold, UI stage 3): scrolls with the list, after its last row.
+  const listFoot = h('div', { class: 'list-foot', dataset: { part: 'list-foot' } });
+  const listScroll = h('div', { class: 'list-scroll' }, noName, list, listFoot);
   // A mouse over a row lights its object (a "name ×N" heading: all of them) in the game; leaving the list puts it out.
   let hoverRow: Element | null = null;
   list.addEventListener('pointerover', (e) => {
@@ -676,6 +687,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
     if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...d.motion(key));
     fine.append(fields);
+    // A UI element's text, size, colours, states and sample values (UI stages 2–3): under its numbers, in the same fold.
+    if (d.uiLook && it.kinds.includes('ui')) fine.append(...d.uiLook(key));
     if (it.scalable && typeof it.defaultScale === 'number') {
       const target = it.defaultScale;
       fine.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'reset-size' }, text: `${d.t('placement.resetSize')} ×${target}`, onclick: () => {
@@ -938,7 +951,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
     const uiList = d.items().every((i) => i.kinds.includes('ui'));
     // A game with levels: the head names the level (and opens the levels' menu) instead (levels, 2026-10-22).
-    const lvl = uiList ? null : d.levelSwitch?.() ?? null;
+    // A game with screens (UI stage 2): the UI list's head names the screen shown, and opens the screens' menu.
+    const lvl = uiList ? d.uiHead?.() ?? null : d.levelSwitch?.() ?? null;
     listTools.append(lvl || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
@@ -946,6 +960,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
 
   const renderList = () => {
     renderListTools();
+    const items = d.items();
+    const foot = items.length && items.every((i) => i.kinds.includes('ui')) ? d.uiFoot?.() ?? null : null;
+    listFoot.replaceChildren(...(foot ? [foot] : []));
     list.replaceChildren();
     // Keep the card's picture registered (it is drawn before the list): before,
     // clearing everything here left the card's thumbnail empty when the

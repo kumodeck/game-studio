@@ -432,6 +432,44 @@ await applyPlacement(scene, './placement.json', { level: pick?.id ?? 'meadow' })
 - A game with one level (or that never calls it): nothing changes — no
   switch, no `levels` in the file.
 
+### 1.11 The UI's screens, looks and theme (2026-10-22, UI stages 2–3)
+
+The built-in DOM UI (§1.1, the UI seat) does more than move and size, all of it
+in the game page by the bridge (`src/bridge/ui-extras.ts`), none of it in the
+game's code:
+
+- **Screens.** Containers marked `data-studio-screen="<id>"` (KEY_RE: `title`,
+  `play`, `pause`, `over` or the game's own; `data-studio-screen-label` for
+  words). `ui/screens` lists them in page order with the one drawn now;
+  `ui/screen { id }` shows that one: the others get `display: none
+  !important`, it loses `hidden` and, when its CSS still hides it, gets the
+  display its own rules give it (else `block`). The old attribute and inline
+  values are kept and put back when editing ends (Play, §3.5.3). The UI's
+  list is then that screen's elements plus those outside every container
+  ("always on screen"); `Item.screen` says which.
+- **Looks.** `ui/set { key, name, value, state? }`: `text` (the element's
+  main words: `data-studio-text`, else the first element in it with words of
+  its own; none when that element mixes words with a value), `fontSize` and
+  `color` (of that text), `background` (the element); `state` = `hover` /
+  `active` / `disabled` for that look's `color` / `background`. `null` = the
+  game's own. Colours go in one style sheet (`#studio-ui-edit`; a state's
+  with `!important`), inline only when the game's normal rule is more
+  specific; they stay for Play (the layout), like a moved element.
+- **A button's look shown.** `ui/state { key, state }`: the page's `:hover` /
+  `:active` / `:disabled` rules that touch the element, copied onto
+  `[data-studio-state~="<state>"]`, and that attribute on it. Never the real
+  `disabled` (it would take no pointer). No transitions on marked elements
+  while the sheet is up.
+- **Sample values.** `ui/sample { key, text }`: the words shown in the
+  element's `data-studio-value` (else its main text) until `null` or the end
+  of editing. Never saved.
+- **Theme.** `ui/theme` lists the CSS variables declared on `:root` / `html`
+  whose value is a colour, or whose name says font; `ui/theme-set { name,
+  value }` sets one on `<html>` (`null` = the game's own). Stays for Play.
+- A game without these marks / variables gets none of the messages: the
+  editor is what it was (no screen head, no Theme, no look rows beyond what
+  the element has).
+
 ---
 
 ## 2. Messages (bridge ⇄ shell)
@@ -452,6 +490,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `core/game-error` | `{ message, where? }`: the game's own page threw (edit and Play, first 3 per load); the shell says what to do |
 | | `core/levels` | `{ levels: LevelInfo[], current }`: the game called `studio.levels()` (§1.10); `current` = the level this page shows |
 | | `placement/items` | `Item[]`; `layer?` whose list it is (UI stage 1; absent = the world). When editing starts in a game with a UI, the UI's list is sent once too, so its saved places are kept and shown |
+| | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`), when editing starts and after `ui/theme-set` (only when there are some) |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold? }` |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
@@ -465,6 +504,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `library/previewed` | `{ url, ok }` |
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
 | | `core/play` | `{ on, motion?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it, the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
+| | `ui/screen` · `ui/sample` · `ui/set` · `ui/state` · `ui/theme-set` · `ui/props-get` | UI stages 2–3 (§1.11; only after `core/ready` listed `layers`): show a screen (`id` null = as the game shows it); a sample text (`null` = its own); one look field (`name`, `value`, `state?`; `null` = the game's own; `quiet` = no `ui/props` back, for the values the file holds, given again when a page opens); a button's look; a theme variable; ask for an element's props |
 | | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
 | | `core/lang` | UI language for handle labels |
@@ -997,6 +1037,19 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   whatever the world's `dim`, also to marked elements the game adds later
   (`applyPlacement(document, url)` = the UI only); `report.ui = { applied,
   missing }`.
+- Optional (UI stages 2–3, 2026-10-22; §1.11): per `ui` entry, `screen` (the
+  element's `data-studio-screen`), `set` (what the card changed: `text` ≤ 200
+  characters, `fontSize` 1–500 px, `color`, `background`, and per state
+  `"@hover"` / `"@active"` / `"@disabled"`: `{ color?, background? }`) and
+  `setWas` (the game's own values of the same fields; only with `set`). An
+  element whose look changed but which did not move has `p: [0, 0]`. At the
+  top, `theme`: `{ "--glow": { "v": "#7fd1ff", "was": "#ffcf6e" } }` (≤ 100,
+  names `--[A-Za-z0-9_-]`, values ≤ 200 characters without `; { } < >`).
+  Colours are `#rgb`…`#rrggbbaa`, `rgb()` / `hsl()` with numbers, or a colour
+  word (≤ 64). All absent when nothing changed: older files keep their bytes.
+  `studio-placement.js` applies them: the theme on `<html>`, the text and its
+  size / colour on the text, the fills and a state's colours in one style
+  sheet (`#studio-ui-set`). Sample values are never written.
 
 - Optional (§1.9; motion-gui, then the timeline, 2026-10-22): objects that move by themselves, by key (a game object
   or an `added` copy; never a `removed` key), each with its named motions (`clips`):

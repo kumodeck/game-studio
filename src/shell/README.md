@@ -187,3 +187,11 @@ game page, and gives the card its Motion row (the object's motions and "◆ Time
 part (keys set / moved / deleted / copied, ease, templates, the older shape read as a clip, the pose at a time with the
 loader's `clipAt`); `motion-model.ts` what is remembered (each object's motion now and at the last save, inside the
 world's `PlacementModel`, written rounded). 3D only in stage 1.
+
+The UI's screens, looks and theme (UI stages 2–3, studio-ui-edit-2, 2026-10-22; CONTRACT.md §1.11): `ui-wire.ts` ties
+them to the bridge, undo and Save (main.ts only calls in). `ui-screens.ts` is the UI list's head in a game with screens
+("Title ⌄  1 of 4", the same button and menu as the levels' head); `ui-card.ts` the card's look rows under the offset
+and size (State for a button, Text with its px size, Color, Fill, Sample — the sample is never saved); `ui-theme.ts`
+the Theme fold under the UI list (the game's CSS variables on `:root`); `ui-style-model.ts` the pure store (now, saved,
+the game's own; `set` / `setWas` / `theme` of placement.json; the validator's rules before a value is taken), with
+`ui-layer.ts` withLooks / withUi writing the file. `test/ui-edit-2.test.ts`, `test/studio-ui-edit-2.browser.mjs`.

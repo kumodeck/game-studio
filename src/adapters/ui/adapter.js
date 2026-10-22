@@ -70,7 +70,9 @@ export function createUiPort(win, opts = {}) {
         const key = el.dataset.studioKey;
         if (seen.has(key) || (skip && skip.has(key)) || !usable(el)) continue;
         seen.add(key);
-        out.push({ key, label: label(el), kinds: ['ui', kind(el)], rotatable: false });
+        // The screen (UI stage 2, 2026-10-22): its container's data-studio-screen, saved with it (placement.json ui.screen).
+        const screen = el.closest('[data-studio-screen]')?.dataset.studioScreen;
+        out.push({ key, label: label(el), kinds: ['ui', kind(el)], rotatable: false, ...(screen && KEY.test(screen) ? { screen } : {}) });
       }
       return out;
     },

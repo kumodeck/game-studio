@@ -1,6 +1,7 @@
 /**
- * Glow Garden — a tiny three.js toy with an HTML UI over it: a title card, a Start button and a score.
- * Press Start, then tap the five lanterns to light them.
+ * Glow Garden — a tiny three.js toy with an HTML UI over it: a title card, a Start button and a score; while playing a
+ * hint and a Pause button, a pause panel, and a result panel when the five lanterns are lit.
+ * Press Start, then tap the five lanterns to light them (P or Esc pauses).
  *
  * Sample for KUMODeck Game Studio (UI stage 1, 2026-10-19), written to exercise:
  *   - the 3D world as usual (named objects: `userData.studioKey`)
@@ -9,6 +10,10 @@
  *   - a title card centred with transform: translate(-50%, -50%) and a button centred with the translate property
  *     (both must stay centred when moved / resized), and a CSS animation (paused while editing)
  *   - applyPlacement(scene) applying both the world (`objects`) and the UI (`ui`)
+ * and, for UI stages 2–3 (2026-10-22):
+ *   - four screens marked data-studio-screen (title, play, pause, over): the editor shows each one to edit it
+ *   - the score's number marked data-studio-value (the card's sample values go there), its word data-studio-text
+ *   - the colours and fonts as CSS variables (the editor's Theme rows) and buttons with :hover / :active / :disabled
  */
 
 import * as THREE from 'three';
@@ -78,11 +83,40 @@ const lanterns = [];
 await applyPlacement(scene, './placement.json');
 
 const scoreEl = document.getElementById('score');
+const timeEl = document.getElementById('time');
 let lit = 0;
-document.querySelector('.start').addEventListener('click', () => document.body.classList.add('playing'));
+let startedAt = 0;
+// One screen at a time (the pause panel over the playing HUD): the `hidden` attribute, as most HTML games do it.
+let screen = 'title';
+const show = (name) => {
+  screen = name;
+  for (const el of document.querySelectorAll('[data-studio-screen]')) el.hidden = !(el.dataset.studioScreen === name || (name === 'pause' && el.dataset.studioScreen === 'play'));
+};
+const play = () => {
+  if (screen === 'title' || screen === 'over') startedAt = performance.now();
+  show('play');
+};
+document.querySelector('.start').addEventListener('click', play);
+document.getElementById('resume').addEventListener('click', play);
+document.querySelector('.pause-btn').addEventListener('click', () => show('pause'));
+document.getElementById('again').addEventListener('click', () => {
+  for (const l of lanterns) {
+    l.userData.lit = false;
+    l.userData.glass.material.emissive.set(0x000000);
+    l.userData.glass.material.color.set(0x555566);
+  }
+  lit = 0;
+  scoreEl.textContent = '0';
+  play();
+});
+addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyP' && e.code !== 'Escape') return;
+  if (screen === 'play') show('pause');
+  else if (screen === 'pause') play();
+});
 const ray = new THREE.Raycaster();
 renderer.domElement.addEventListener('pointerdown', (e) => {
-  if (!document.body.classList.contains('playing')) return;
+  if (screen !== 'play') return;
   const r = renderer.domElement.getBoundingClientRect();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
   const hit = ray.intersectObjects(lanterns, true)[0];
@@ -92,6 +126,10 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   g.userData.glass.material.emissive.set(0xffc35a);
   g.userData.glass.material.color.set(0xffe2a0);
   scoreEl.textContent = String(++lit);
+  if (lit === lanterns.length) {
+    timeEl.textContent = String(Math.round((performance.now() - startedAt) / 100) / 10);
+    show('over');
+  }
 });
 
 function resize() {

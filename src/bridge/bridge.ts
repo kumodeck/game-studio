@@ -367,7 +367,10 @@ export function startBridge(opts: BridgeOptions): void {
    * the DOM (a port named 'dom', examples/dom-board): its pieces carry data-studio-key as world objects, and they
    * stay there; elements the world already lists are skipped for any game.
    */
+  // The UI found is the built-in DOM one (not a game's registerUI port): screens, text and colours apply (ui-extras.ts).
+  let uiDom = false;
   const findUi = (world: StudioAdapter | null): StudioAdapter | null => {
+    uiDom = false;
     for (const u of uiPorts) {
       try {
         if (u.built) return u.built;
@@ -386,7 +389,9 @@ export function startBridge(opts: BridgeOptions): void {
           return new Set<string>();
         }
       };
-      return findDomUi(core, win, skip);
+      const dom = findDomUi(core, win, skip);
+      uiDom = !!dom;
+      return dom;
     } catch (e) {
       console.warn('[studio] DOM UI adapter failed:', e);
       return null;
@@ -427,7 +432,7 @@ export function startBridge(opts: BridgeOptions): void {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
+    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):

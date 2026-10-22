@@ -199,6 +199,8 @@ export function adapterFromPort2D(port: Port2D, _core: Core, win: Window = windo
         layer: ps.z !== undefined ? parentOf.get(o.key) : undefined,
         backdrop: ps.z !== undefined && backdrops.has(o.key) ? true : undefined,
         pose: ps,
+        // A UI port's screen (UI stage 2); world ports never say one, so their items are what they were.
+        ...(o.screen ? { screen: o.screen } : {}),
       });
     }
     return out;

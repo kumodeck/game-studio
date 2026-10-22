@@ -84,6 +84,7 @@ import { bigChanges, createSafeSave } from './safe-save.ts';
 import { createUnsavedGuard, lostBy, playAsks, type GuardOp } from './unsaved-guard.ts';
 import { createLayerSwitch } from './layer-switch.ts';
 import { uiAsPlacement, uiEntries, withUi } from './ui-layer.ts';
+import { createUiWire } from './ui-wire.ts';
 import { barPress, gripEnd, readFold, writeFold } from './sheet-fold.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
@@ -794,6 +795,21 @@ export function start(host: StudioHost) {
       else levelsChanged(next === '');
     },
   });
+  // UI stages 2–3 (2026-10-22, ui-wire.ts): the screens' head of the UI list, the card's look rows, the Theme fold.
+  const uiWire = createUiWire({
+    t,
+    send: (m) => send(m),
+    push: (e) => undo.push(e),
+    changed: () => renderButtons(),
+    render: () => tool === 'placement' && page === 'tool' && placementPanel.render(),
+    onUi: () => editLayer === 'ui',
+    // The same place as the levels' menu: under the head, never over it.
+    openMenu: (entries, head) => {
+      ctxMenu.show(entries, head.left, head.bottom + 2, { place: 'screens', label: t('uiScreen.list') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      if (m.top < head.bottom && m.bottom > head.top) ctxMenu.el.style.top = `${Math.max(8, Math.round(head.top - m.height - 4))}px`;
+    },
+  });
   installTooltips(app);
   // A Library tile dragged onto the Scene row = its "Add to scene" ("use the Library", 2026-10-18). The row is the
   // drop target because the Library covers the game on PC (the game is not on screen to drop on); while a tile is
@@ -947,6 +963,9 @@ export function start(host: StudioHost) {
   const placementPanel = createPlacementPanel({
     t,
     levelSwitch: () => levelSwitch.render(),
+    uiHead: () => uiWire.head(),
+    uiLook: (k) => uiWire.look(k),
+    uiFoot: () => uiWire.foot(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
     hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
     items: () => items,
@@ -1622,7 +1641,8 @@ export function start(host: StudioHost) {
       return it ? displayName(it, t) : k;
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion' : 'move';
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion'
+      : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0]!) : t('undo.n', { n: keys.length }) });
   }
@@ -1740,6 +1760,7 @@ export function start(host: StudioHost) {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
+      else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -1757,7 +1778,7 @@ export function start(host: StudioHost) {
     }
     flush();
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && !c.kind.startsWith('motion')).map((c) => c.key));
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && (c.kind === 'add' || c.kind === 'remove')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]! : null;
@@ -2419,6 +2440,8 @@ export function start(host: StudioHost) {
   }
   /** The shell's side of a switch: that layer's model and list, nothing picked, no tool chosen. */
   function useLayer(l: EditLayer) {
+    // A button's look shown on the UI goes back to normal when the UI is left.
+    if (l !== 'ui') uiWire.picked(null);
     editLayer = l;
     model = l === 'ui' ? uiModel : worldModel;
     items = l === 'ui' ? uiItems : worldItems;
@@ -2539,6 +2562,8 @@ export function start(host: StudioHost) {
   function onBridge(m: BridgeToShell) {
     if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
+    // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
+    if (uiWire.handle(m)) return;
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -2564,7 +2589,11 @@ export function start(host: StudioHost) {
       case 'studio:core/ready': {
         // ▶ Play in the same page (fast switch): the page's editor put its tools away for Play (editing: false). Nothing
         // about the page changed; the shell is in Play already (togglePlay). Back in Edit, editing: true comes as usual.
-        if (playing && playHere && !m.editing) break;
+        if (playing && playHere && !m.editing) {
+          // The page put its screens, samples and button looks back for Play (ui-extras.ts end).
+          uiWire.pageReset();
+          break;
+        }
         // UI stage 1: which layers the game has (none listed = no UI: as before) and which one the bridge edits now.
         // A new game page (a reload, Play and back) always starts on the world.
         editLayers = m.layers && m.layers.length ? m.layers.slice() : null;
@@ -2675,6 +2704,9 @@ export function start(host: StudioHost) {
         if (m.layer === 'ui') {
           uiSeen = true;
           uiItems = m.items;
+          uiWire.noteItems(m.items);
+          // A new page: the looks and the theme the editor holds go back on it too (UI stage 3), before the moves.
+          if (!uiRestored) uiWire.replay();
           // A new page's UI shows the UI as its code makes it: the moves made before (saved or not) go back, as for the world below.
           const uiLost = uiRestored ? null : uiModel.notShown(m.items);
           uiRestored = true;
@@ -2806,6 +2838,7 @@ export function start(host: StudioHost) {
         break;
       }
       case 'studio:placement/selected':
+        uiWire.picked(m.key);
         selected = m.key;
         group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
         // With the Library on screen the game is hidden, so this is only the game's echo of a pick made in the
@@ -2952,14 +2985,15 @@ export function start(host: StudioHost) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + uiWire.model.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
    */
   const fileNow = (): PlacementFile => {
-    const f = levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
-      uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
+    // UI stages 2–3: each element's look and screen with its move, and the theme (ui-wire.ts; nothing for a game without them).
+    const f = levels.compose(withUi(worldModel.result(), uiWire.entries(uiSeen ? uiEntries(uiModel.result()) : fileUi ?? {}),
+      uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null, uiWire.model.themeResult()));
     // The Library's motions sit at the top, also with levels (studio-motion-triggers). Absent with none: same bytes.
     const motions = motionLibrary.result((m) => roundLib(m, dim));
     return motions ? { ...f, motions } : f;
@@ -3144,6 +3178,7 @@ export function start(host: StudioHost) {
           if (!r.ok) return r.error || 'placement';
           worldModel.markSaved();
           uiModel.markSaved();
+          uiWire.model.markSaved();
           levels.markSaved();
           motionLibrary.markSaved();
           written.placement = sig;
@@ -3471,6 +3506,7 @@ export function start(host: StudioHost) {
     bigShown.clear();
     placementRestored = false;
     uiRestored = false;
+    uiWire.pageReset();
     // What the game in the frame is built from (the host's signature of the files).
     loadedCode = code;
     gameTools = [];
@@ -3834,7 +3870,8 @@ export function start(host: StudioHost) {
     const mac = isMac();
     const nextUndo = describe(undo.peekUndo());
     const nextRedo = describe(undo.peekRedo());
-    unsavedKeys = model.changedKeys();
+    // The UI layer's rows also get the dot for a changed look (UI stage 3).
+    unsavedKeys = editLayer === 'ui' ? new Set([...model.changedKeys(), ...uiWire.model.changedKeys()]) : model.changedKeys();
     placementPanel.markRows();
     for (const b of undoBtns) {
       setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
@@ -4203,6 +4240,7 @@ export function start(host: StudioHost) {
       if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
       else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
+      uiWire.restore(saved);
       fileUi = saved?.ui;
       fileUiView = saved?.uiView;
       if (tools.library?.restore) tools.library.restore(await host.load('library').catch(() => null));

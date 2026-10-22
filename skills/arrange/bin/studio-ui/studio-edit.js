@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.20 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.21 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -3537,6 +3537,68 @@ const CONTRACT_VERSION = 1;
                                        
 
 /**
+ * UI stages 2–3 (2026-10-22; CONTRACT.md §1.11): the game's UI screens, what an element says and how it looks.
+ * A button's looks other than its normal one: under the pointer (`:hover`), pressed (`:active`), not usable (`:disabled`).
+ */
+                                                      
+/** What the card can change on a UI element: its main text, that text's size (CSS px) and colour, the box's fill. */
+                                                                      
+/** One state's colours (a button's hover / pressed / disabled look): the only props a state has of its own. */
+                             
+                 
+                      
+ 
+/**
+ * placement.json `ui.<key>.set` / `setWas`: what the person changed on the card, and the game's own values (the AI
+ * searches the code for those). Every field optional; a state's colours under "@hover" / "@active" / "@disabled".
+ */
+                             
+                
+                    
+                 
+                      
+                        
+                         
+                           
+ 
+/** One screen of the game's UI: a container marked data-studio-screen="<id>" (title, play, pause, over, …). */
+                               
+             
+                                                                                              
+                 
+ 
+/** A UI element as the card shows it (bridge ui-extras.ts → ShellToBridge ui/props). */
+                          
+              
+                                                        
+                        
+                                                               
+                  
+                                                                                                                   
+                      
+                          
+                       
+                                                                                                 
+                            
+                                                                                       
+                  
+     
+                                                                                                                                                  
+                                                                                                                 
+     
+                                                                       
+ 
+/** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
+                             
+               
+                         
+                                                    
+                
+                              
+              
+ 
+
+/**
  * Pose of one movable object, in the object's PARENT space (what you would
  * type into the game code). This is the same shape that is stored per object
  * in placement.json, so undo/redo, messages and the saved file never need to
@@ -3598,6 +3660,11 @@ const CONTRACT_VERSION = 1;
                                                                                          
                 
                                                                                   
+                  
+     
+                                                                                                                    
+                                                  
+     
                   
      
                                                                          
@@ -4227,6 +4294,8 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                         
                        
                        
+                                                                                                          
+                    
      
                                                                                       
                                 
@@ -4484,6 +4553,20 @@ const MSG_PREFIX = 'studio:';
      
                                                    
      
+                                                                                                                          
+                                                                                                                       
+                                                                                                                     
+                                                                                                                                             
+                                                                        
+                                                                                                            
+     
+                                                   
+                                                                  
+                                                                                                                             
+                                                                          
+                                                                                        
+                                                
+     
                                                                                                                     
                                                                                                                                       
                                                                                                                      
@@ -4592,6 +4675,12 @@ const MSG_PREFIX = 'studio:';
                                                                         
                                                                                       
                                                                         
+                                                                                                                                           
+                                                                                                   
+                                                                                                                   
+                                               
+                                                                                                        
+                                                   
                                                                                            
      
                                                                           
@@ -5193,6 +5282,11 @@ const RESULT_FILES                         = {
                                                                                                              
                             
      
+                                                                                                                  
+                                                                             
+     
+                                              
+     
                                                                                                                     
                                                                                                                  
                                                                                                                 
@@ -5349,6 +5443,20 @@ const RESULT_FILES                         = {
              
                                                                                      
                  
+                                                                                                              
+                  
+                                                                                                            
+                   
+                                                                                                  
+                      
+ 
+
+/** placement.json `theme` (UI stage 3): one CSS variable of the game's theme, changed in the editor. */
+                                      
+                       
+            
+                                                                 
+               
  
 
                                               
@@ -5571,6 +5679,13 @@ const LIMITS = {
   maxUiCoord: 10_000,
   minUiScale: 0.1,
   maxUiScale: 10,
+  /** UI stage 3: a text on the card, a colour / theme value, the font size range (px), theme variables. */
+  maxUiText: 200,
+  maxUiColor: 64,
+  maxUiValue: 200,
+  minUiFont: 1,
+  maxUiFont: 500,
+  maxTheme: 100,
 }         ;
 
 /** Allowed characters of an object key. Names with other characters are mapped; the original stays in `label`. */
@@ -6520,6 +6635,8 @@ function adapterFromPort2D(port        , _core      , win         = window)     
         layer: ps.z !== undefined ? parentOf.get(o.key) : undefined,
         backdrop: ps.z !== undefined && backdrops.has(o.key) ? true : undefined,
         pose: ps,
+        // A UI port's screen (UI stage 2); world ports never say one, so their items are what they were.
+        ...(o.screen ? { screen: o.screen } : {}),
       });
     }
     return out;
@@ -6817,6 +6934,14 @@ __defs[20] = function (__exports) {
 // before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
 // with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
 //
+// `ui.<key>.set` and `theme` (UI stage 3, 2026-10-22): what the editor's card changed — the element's main text, that
+// text's size and colour, the box's fill, a button's colours when hovered / pressed / disabled — and the game's CSS
+// variables (--accent…). Applied here too, so the game shows them before the AI writes them into the code: the
+// colours and the fill through one style sheet (#studio-ui-set; a state's with !important, the way :hover beats
+// the normal look), set on the element itself when the game's own CSS is more specific; the text and its size on
+// the text itself (uiTextPart: data-studio-text, else the element's first own text). theme: style.setProperty on
+// <html>. `screen` (UI stage 2) says which screen an element is on: nothing to apply.
+//
 // `levels` (2026-10-22): a game with several levels gets one world part per level in the file. Pass the level being
 // built: applyPlacement(scene, './placement.json', { level: 'cave' }). Without `level`, a file with levels moves
 // nothing in the world (another level's layout must never land on this one); the UI is applied either way.
@@ -6889,6 +7014,7 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
     warn('not a placement file');
     return report;
   }
+  if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
@@ -7428,7 +7554,10 @@ function applyUi(doc, ui) {
     const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
     if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
     if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+    if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
   };
+  // Only for a file whose card changed something (a file of moves alone adds nothing to the page, as before).
+  const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
   doc.querySelectorAll('[data-studio-key]').forEach(put);
   for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
   // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
@@ -7441,6 +7570,120 @@ function applyUi(doc, ui) {
     }).observe(doc.documentElement, { childList: true, subtree: true });
   }
   return out;
+}
+
+const UI_COLOR = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+const UI_STATES = { '@hover': ':hover', '@active': ':active', '@disabled': ':disabled' };
+const okColor = (c) => typeof c === 'string' && UI_COLOR.test(c);
+
+/** The page's CSS variables changed in the editor (`theme`): on <html>, so every rule that uses them follows. */
+function applyTheme(doc, theme) {
+  for (const [name, e] of Object.entries(theme)) {
+    if (/^--[A-Za-z0-9_-]{1,60}$/.test(name) && e && typeof e.v === 'string' && !/[;{}<>]/.test(e.v)) doc.documentElement.style.setProperty(name, e.v);
+  }
+}
+
+/**
+ * One style sheet for the elements' colours (#studio-ui-set): each state's with !important (it must beat the normal
+ * look, the game's or the editor's), made once for the file. Colours that are not CSS colours are skipped; the key is a
+ * data-studio-key (key characters only), so the selectors are safe.
+ */
+function uiSheet(doc, ui) {
+  const rules = [];
+  for (const [k, e] of Object.entries(ui)) {
+    const set = e && e.set;
+    if (!set || typeof set !== 'object' || !/^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(k)) continue;
+    const sel = `[data-studio-key="${k}"]`;
+    for (const [st, pseudo] of Object.entries(UI_STATES)) {
+      const o = set[st];
+      if (!o || typeof o !== 'object') continue;
+      if (okColor(o.background)) rules.push(`${sel}${pseudo}{background-color:${o.background}!important}`);
+      if (okColor(o.color)) rules.push(`${sel}${pseudo},${sel}${pseudo} *{color:${o.color}!important}`);
+    }
+  }
+  const el = doc.createElement('style');
+  el.id = 'studio-ui-set';
+  el.textContent = rules.join('\n');
+  (doc.head || doc.documentElement).appendChild(el);
+  return el;
+}
+
+/**
+ * The normal look and the words of one element (`set`): see the top of the file. The fill (and the colour of a button,
+ * whose text is itself) goes in the sheet as a plain rule, so the game's own :hover / :active rules, more specific,
+ * still win while hovered or pressed; when the game's normal rule is more specific than that, on the element itself.
+ * The colour of a text inside the element (a title card's <h1>) and the size go on that text.
+ */
+function setUi(el, k, set, sheet) {
+  const part = uiTextPart(el);
+  const rule = (prop, css, v) => {
+    if (getComputedStyle(el)[prop] === cssColor(el, v)) return;
+    sheet.textContent += `\n[data-studio-key="${k}"]{${css}:${v}}`;
+    if (getComputedStyle(el)[prop] !== cssColor(el, v)) el.style[prop] = v;
+  };
+  if (part) {
+    if (typeof set.text === 'string') {
+      const n = uiTextNode(part);
+      if (n) n.data = keepSpace(n.data, set.text.slice(0, 200));
+    }
+    if (isNum(set.fontSize) && set.fontSize > 0) part.style.fontSize = `${set.fontSize}px`;
+    if (okColor(set.color)) {
+      if (part === el) rule('color', 'color', set.color);
+      else part.style.color = set.color;
+    }
+  }
+  if (okColor(set.background)) rule('backgroundColor', 'background-color', set.background);
+}
+
+/** A colour as getComputedStyle writes it (to tell whether a rule took). */
+function cssColor(el, c) {
+  const probe = el.ownerDocument.createElement('i');
+  probe.style.color = c;
+  probe.style.display = 'none';
+  el.ownerDocument.documentElement.appendChild(probe);
+  const v = getComputedStyle(probe).color;
+  probe.remove();
+  return v;
+}
+
+/** The new words in the old text node's place, keeping its spaces around (the HTML's line breaks). */
+function keepSpace(old, text) {
+  const m = /^(\s*)[\s\S]*?(\s*)$/.exec(old);
+  return (m ? m[1] : '') + text + (m ? m[2] : '');
+}
+
+/** The element's own non-blank text nodes (not inside its children). */
+function ownText(el) {
+  return Array.from(el.childNodes).filter((n) => n.nodeType === 3 && n.data.trim());
+}
+
+/**
+ * The text the card's Text / Size / Colour change, shared with the editor (src/bridge/ui-extras.ts) so both pick the
+ * same one: data-studio-text (on the element or inside it), else the first element, in page order, with words of its
+ * own (a title card's <h1>, a button itself). null when there is none, or when that element mixes words with what the
+ * game writes ("Glow <b>0</b> / 5": two text nodes around a value) — changing one piece of it would read wrong.
+ * Never inside data-studio-value (a score: the game's to write).
+ */
+function uiTextPart(el) {
+  const mark = el.matches('[data-studio-text]') ? el : el.querySelector('[data-studio-text]');
+  const one = (e) => (ownText(e).length === 1 ? e : null);
+  if (mark) return one(mark);
+  const walk = (e) => {
+    if (e.matches('[data-studio-value]')) return undefined;
+    if (ownText(e).length) return e;
+    for (const c of e.children) {
+      const r = walk(c);
+      if (r) return r;
+    }
+    return undefined;
+  };
+  const p = walk(el);
+  return p ? one(p) : null;
+}
+
+/** The one text node of a uiTextPart(). */
+function uiTextNode(part) {
+  return ownText(part)[0] || null;
 }
 
 // Per element: the translate / scale its stylesheet gives (read once, before anything is added) and the offset now.
@@ -7626,6 +7869,8 @@ __def(__exports, "clipAt", () => clipAt);
 __def(__exports, "trackAt", () => trackAt);
 __def(__exports, "motionAt", () => motionAt);
 __def(__exports, "placementForLevel", () => placementForLevel);
+__def(__exports, "uiTextPart", () => uiTextPart);
+__def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
@@ -7706,7 +7951,9 @@ function createUiPort(win, opts = {}) {
         const key = el.dataset.studioKey;
         if (seen.has(key) || (skip && skip.has(key)) || !usable(el)) continue;
         seen.add(key);
-        out.push({ key, label: label(el), kinds: ['ui', kind(el)], rotatable: false });
+        // The screen (UI stage 2, 2026-10-22): its container's data-studio-screen, saved with it (placement.json ui.screen).
+        const screen = el.closest('[data-studio-screen]')?.dataset.studioScreen;
+        out.push({ key, label: label(el), kinds: ['ui', kind(el)], rotatable: false, ...(screen && KEY.test(screen) ? { screen } : {}) });
       }
       return out;
     },
@@ -12655,6 +12902,518 @@ __def(__exports, "createTimelineView", () => createTimelineView);
 };
 __defs[36] = function (__exports) {
 'use strict';
+// ui-extras.ts
+
+// UI stages 2–3 in the game page (studio-ui-edit-2, 2026-10-22; CONTRACT.md §1.11):
+// what the UI layer does besides moving and resizing — the game's screens, sample values, an element's text / size /
+// colours, a button's looks, and the theme's CSS variables. The editor (editor.ts) hands it every studio:ui/* message.
+//
+// The rule of the whole editor holds: nothing here is the game's code. Everything is undone at the end of editing
+// (end(): Play in the same page shows the game as its code makes it, and a reload forgets it anyway), EXCEPT `set` and
+// the theme: those are the person's layout, like a moved title, so they stay for Play — the loader (studio-placement.js)
+// gives the same look to the game from placement.json.
+//
+// Screens (stage 2): containers marked data-studio-screen="title|play|pause|over|…". Showing one = the others get
+// display: none !important, and the chosen one loses its `hidden` and, when its CSS still hides it, gets the display
+// its own rules give it (the last rule of the page that matches it with another display; else block). The old
+// attribute / inline values are kept and put back. The game's time stays frozen: its code never runs for this.
+//
+// Looks (stage 3): one style sheet in the game page (#studio-ui-edit), written again from the state on each change:
+//   - the person's colours as the loader writes them (a plain rule for the normal look, !important for a state's), so
+//     what the editor shows is what the game will show;
+//   - a button's look shown on request ("Hover" on the card): the page's :hover / :active / :disabled rules that touch
+//     that button, copied with the pseudo-class turned into [data-studio-state~="hover"] (CSS cannot be told "this is
+//     hovered"), and the attribute on the button. Never the real `disabled`: a disabled button takes no pointer, and the
+//     person must still be able to drag it;
+//   - no transitions on marked elements while this sheet is up (a 0.2 s colour fade would make the card read the colour
+//     halfway).
+// The text and its size go on the text itself (uiTextPart, shared with the loader); the colour of a text inside the
+// element too (inline); the colour of an element that is its own text (a button) and the fill in the sheet, inline only
+// when the game's own normal rule is more specific than one attribute (the same test as the loader's).
+                                                                                                                                       
+const { uiTextNode, uiTextPart } = __require(20);
+
+                               
+              
+                                 
+                                                                                          
+                 
+ 
+
+                           
+                                                                                               
+                
+                                                                                                                      
+              
+                                                                       
+                                      
+                                                                               
+                                     
+ 
+
+const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
+const THEME_NAME = /^--[A-Za-z0-9_-]{1,60}$/;
+const STATES            = ['hover', 'active', 'disabled'];
+const PSEUDO                          = { hover: /:hover\b/g, active: /:active\b/g, disabled: /:disabled\b/g };
+const PSEUDO_CSS                          = { hover: ':hover', active: ':active', disabled: ':disabled' };
+
+/** "rgb(255, 246, 216)" → "#fff6d8" (an alpha below 1 keeps the rgba() form: the colour field cannot show it). */
+function hexColor(c        )         {
+  const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+%?))?\s*\)$/.exec(c.trim());
+  if (!m) return c.trim();
+  const a = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]);
+  if (a < 1) return `rgba(${Math.round(+m[1] )}, ${Math.round(+m[2] )}, ${Math.round(+m[3] )}, ${Math.round(a * 1000) / 1000})`;
+  return '#' + [m[1], m[2], m[3]].map((v) => Math.max(0, Math.min(255, Math.round(+v ))).toString(16).padStart(2, '0')).join('');
+}
+const clear = (c        ) => /^rgba\([^)]*,\s*0\)$/.test(c.replace(/\s+/g, ' ')) || c === 'transparent';
+
+/** Split a selector list at its top-level commas (":is(a, b)" stays one). */
+function splitSelectors(s        )           {
+  const out           = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      out.push(s.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  out.push(s.slice(start).trim());
+  return out.filter(Boolean);
+}
+
+function createUiExtras(deps              )           {
+  const { win } = deps;
+  const doc = win.document;
+
+  // ---- the page's style rules (same-origin sheets only; a cross-origin one cannot be read and is skipped) ----
+  const styleRules = ()                 => {
+    const out                 = [];
+    const walk = (list             ) => {
+      for (const r of Array.from(list)) {
+        if ((r                ).selectorText !== undefined && (r                ).style) out.push(r                );
+        else if ((r                ).media && (r                ).cssRules) {
+          if (win.matchMedia((r                ).media.mediaText || 'all').matches) walk((r                ).cssRules);
+        } else if ((r                   ).cssRules) walk((r                   ).cssRules);
+      }
+    };
+    for (const sh of Array.from(doc.styleSheets)) {
+      if ((sh.ownerNode                  )?.id === 'studio-ui-edit' || (sh.ownerNode                  )?.id === 'studio-edit-layer') continue;
+      try {
+        walk(sh.cssRules);
+      } catch {
+        /* cross-origin: not readable */
+      }
+    }
+    return out;
+  };
+  const matches = (el         , sel        ) => {
+    try {
+      return el.matches(sel);
+    } catch {
+      return false;
+    }
+  };
+
+  // ---------------------------------------------------------------- screens
+  const screenEls = () => Array.from(doc.querySelectorAll             ('[data-studio-screen]')).filter((e) => KEY.test(e.dataset.studioScreen || ''));
+  const drawn = (e         ) => e.getClientRects().length > 0 && win.getComputedStyle(e).visibility !== 'hidden';
+  let forced                = null;
+  const kept = new Map                                                                                ();
+  const keep = (e             , props          ) => {
+    if (!kept.has(e)) kept.set(e, { hidden: e.getAttribute('hidden'), style: props.map((p) => [p, e.style.getPropertyValue(p), e.style.getPropertyPriority(p)]) });
+  };
+  const putBack = () => {
+    for (const [e, k] of kept) {
+      if (k.hidden === null) e.removeAttribute('hidden');
+      else e.setAttribute('hidden', k.hidden);
+      for (const [p, v, pr] of k.style) {
+        if (v) e.style.setProperty(p, v, pr);
+        else e.style.removeProperty(p);
+      }
+      if (!e.getAttribute('style')) e.removeAttribute('style');
+    }
+    kept.clear();
+  };
+  /** The display the page's own CSS gives this container when shown (not `none`), else block. */
+  const ownDisplay = (e             )         => {
+    let d = '';
+    for (const r of styleRules()) {
+      const v = r.style.getPropertyValue('display');
+      if (v && v !== 'none' && matches(e, r.selectorText)) d = v;
+    }
+    return d || 'block';
+  };
+  const showScreen = (id               ) => {
+    putBack();
+    forced = id;
+    if (id === null) return;
+    for (const e of screenEls()) {
+      keep(e, ['display', 'visibility', 'opacity']);
+      if (e.dataset.studioScreen !== id) {
+        e.style.setProperty('display', 'none', 'important');
+        continue;
+      }
+      e.removeAttribute('hidden');
+      if (win.getComputedStyle(e).display === 'none') e.style.setProperty('display', ownDisplay(e), 'important');
+      const cs = win.getComputedStyle(e);
+      if (cs.visibility === 'hidden') e.style.setProperty('visibility', 'visible', 'important');
+      if (cs.opacity === '0') e.style.setProperty('opacity', '1', 'important');
+    }
+  };
+  const screens = ()                 => {
+    const seen = new Set        ();
+    const out                 = [];
+    for (const e of screenEls()) {
+      const id = e.dataset.studioScreen ;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const label = (e.dataset.studioScreenLabel || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      out.push(label ? { id, label } : { id });
+    }
+    return out;
+  };
+  const current = ()                => forced ?? screenEls().find(drawn)?.dataset.studioScreen ?? null;
+  const postScreens = () => {
+    const list = screens();
+    if (list.length) deps.post({ type: 'studio:ui/screens', screens: list, current: current(), forced: forced !== null });
+  };
+
+  // ---------------------------------------------------------------- elements
+  const byKey = (key        )                => (KEY.test(key) ? Array.from(doc.querySelectorAll             (`[data-studio-key="${key}"]`)) : []);
+  const first = (key        ) => byKey(key).find((e) => e.getClientRects().length) || null;
+  const isButton = (e             ) => {
+    const tag = e.tagName.toLowerCase();
+    return tag === 'button' || e.getAttribute('role') === 'button' || (tag === 'input' && /^(button|submit|reset)$/.test((e                    ).type));
+  };
+  /** Where a sample value goes: the element's data-studio-value (a score's number), else its text. */
+  const sampleTarget = (e             )                                             => {
+    const v = e.matches('[data-studio-value]') ? e : e.querySelector             ('[data-studio-value]');
+    if (v) return { el: v, value: true };
+    const p = uiTextPart(e)                      ;
+    return p ? { el: p, value: false } : null;
+  };
+
+  // The person's values (key → name or "@hover.color" → value) and the game's own, read once before the first change.
+  const sets = new Map                                      ();
+  const was = new Map                                      ();
+  // Inline values this file wrote over, to put back when a value goes back to the game's (null).
+  const inlineWas = new Map                                  ();
+  const samples = new Map                                                             ();
+  let shown                                         = null;
+
+  const readNow = (e             )             => {
+    const part = uiTextPart(e)                      ;
+    const out             = {};
+    if (part) {
+      const n = uiTextNode(part)               ;
+      if (n) out.text = n.data.replace(/\s+/g, ' ').trim();
+      out.fontSize = Math.round(parseFloat(win.getComputedStyle(part).fontSize) * 10) / 10;
+      out.color = hexColor(win.getComputedStyle(part).color);
+    } else if (isButton(e)) out.color = hexColor(win.getComputedStyle(e).color);
+    const bg = win.getComputedStyle(e).backgroundColor;
+    if (!clear(bg)) out.background = hexColor(bg);
+    return out;
+  };
+  /** The game's own value of one field (`name` or "@hover.color"), read the first time it is asked. */
+  const wasOf = (key        , path        )                              => {
+    const m = was.get(key) || new Map                         ();
+    was.set(key, m);
+    if (!m.has(path)) {
+      const e = first(key);
+      if (!e) return undefined;
+      const [st, name] = path.startsWith('@') ? (path.slice(1).split('.')                         ) : [null, path              ];
+      let v                             ;
+      if (st) {
+        // The state's look as the game draws it: shown without the person's own colours for that state.
+        const keepShown = shown;
+        const own = sets.get(key);
+        const saved = own ? new Map(own) : null;
+        if (own) for (const k of [...own.keys()]) if (k.startsWith(`@${st}.`)) own.delete(k);
+        shown = { key, state: st };
+        paint();
+        v = readNow(e)[name                          ];
+        if (own && saved) for (const [k, x] of saved) own.set(k, x);
+        shown = keepShown;
+        paint();
+      } else v = readNow(e)[name];
+      if (v !== undefined) m.set(path, v);
+    }
+    return m.get(path);
+  };
+  const setInline = (e             , prop        , v               ) => {
+    const m = inlineWas.get(e) || new Map                ();
+    inlineWas.set(e, m);
+    if (!m.has(prop)) m.set(prop, e.style.getPropertyValue(prop));
+    if (v === null) {
+      const old = m.get(prop) || '';
+      if (old) e.style.setProperty(prop, old);
+      else e.style.removeProperty(prop);
+    } else e.style.setProperty(prop, v);
+  };
+
+  let sheet                          = null;
+  // While editing only: no transitions on marked elements (Play shows the game's own, with its fades).
+  let editingNow = false;
+  /** The style sheet (see the top): the person's colours, the shown state, no transitions. */
+  const paint = () => {
+    const rules           = [];
+    for (const [key, m] of sets) {
+      const sel = `[data-studio-key="${key}"]`;
+      const e = first(key);
+      const part = e ? (uiTextPart(e)                      ) : null;
+      if (m.has('background')) rules.push(`${sel}{background-color:${m.get('background')}}`);
+      if (m.has('color') && part === e) rules.push(`${sel}{color:${m.get('color')}}`);
+      for (const st of STATES) {
+        const on = `${sel}${PSEUDO_CSS[st]},${sel}[data-studio-state~="${st}"]`;
+        const bg = m.get(`@${st}.background`), c = m.get(`@${st}.color`);
+        if (bg !== undefined) rules.push(`${on}{background-color:${bg}!important}`);
+        if (c !== undefined) rules.push(`${sel}${PSEUDO_CSS[st]},${sel}${PSEUDO_CSS[st]} *,${sel}[data-studio-state~="${st}"],${sel}[data-studio-state~="${st}"] *{color:${c}!important}`);
+      }
+    }
+    // A shown state: the page's own rules for it, copied onto the attribute.
+    for (const e of Array.from(doc.querySelectorAll             ('[data-studio-state]'))) delete e.dataset.studioState;
+    if (shown) {
+      const els = byKey(shown.key);
+      for (const e of els) e.dataset.studioState = shown.state;
+      const re = PSEUDO[shown.state];
+      for (const r of styleRules()) {
+        if (!r.selectorText.includes(PSEUDO_CSS[shown.state])) continue;
+        const sels = splitSelectors(r.selectorText).filter((s) => {
+          re.lastIndex = 0;
+          if (!re.test(s)) return false;
+          const base = s.replace(re, '') || '*';
+          return els.some((e) => matches(e, base) || !!e.querySelector(base));
+        });
+        if (sels.length) rules.push(`${sels.map((s) => s.replace(re, `[data-studio-state~="${shown .state}"]`)).join(',')}{${r.style.cssText}}`);
+      }
+    }
+    if (!rules.length && !shown && !editingNow) {
+      sheet?.remove();
+      sheet = null;
+      return;
+    }
+    if (!sheet || !sheet.isConnected) {
+      sheet = doc.createElement('style');
+      sheet.id = 'studio-ui-edit';
+      (doc.head || doc.documentElement).appendChild(sheet);
+    }
+    sheet.textContent = [...(editingNow ? ['[data-studio-key],[data-studio-key] *{transition:none!important}'] : []), ...rules].join('\n');
+  };
+
+  /** One field of one element: the person's value, or (null) the game's own again. */
+  const setProp = (key        , name            , value                        , state          ) => {
+    const els = byKey(key);
+    if (!els.length) return;
+    const path = state ? `@${state}.${name}` : name;
+    if (state && name !== 'color' && name !== 'background') return;
+    wasOf(key, path); // read before the first change
+    const m = sets.get(key) || new Map                         ();
+    sets.set(key, m);
+    if (value === null) m.delete(path);
+    else m.set(path, value);
+    if (!m.size) sets.delete(key);
+    for (const e of els) {
+      const part = uiTextPart(e)                      ;
+      if (state) continue; // states are the sheet's
+      if (name === 'text' && part) {
+        const n = uiTextNode(part)               ;
+        if (!n) continue;
+        // A sample in the same text goes: the words typed are the real ones now.
+        const sm = samples.get(key);
+        if (sm && sm.node === n) {
+          n.data = sm.old;
+          samples.delete(key);
+        }
+        const old = was.get(key)?.get('text');
+        const words = value === null ? (typeof old === 'string' ? old : n.data.trim()) : String(value).slice(0, 200);
+        const sp = /^(\s*)[\s\S]*?(\s*)$/.exec(n.data);
+        n.data = (sp?.[1] ?? '') + words + (sp?.[2] ?? '');
+      } else if (name === 'fontSize' && part) setInline(part, 'font-size', value === null ? null : `${Number(value)}px`);
+      else if (name === 'color' && part && part !== e) setInline(part, 'color', value === null ? null : String(value));
+    }
+    paint();
+    // The game's normal rule more specific than one attribute: the value inline (as the loader does).
+    for (const e of els) {
+      const part = uiTextPart(e)                      ;
+      const check = (prop                              , v                             ) => {
+        if (v === undefined) return setInline(e, prop, null);
+        const now = hexColor(win.getComputedStyle(e).getPropertyValue(prop));
+        if (now !== hexColor(cssColor(String(v)))) setInline(e, prop, String(v));
+      };
+      if (!state && name === 'background') check('background-color', sets.get(key)?.get('background'));
+      if (!state && name === 'color' && part === e) check('color', sets.get(key)?.get('color'));
+    }
+  };
+  const probe = doc.createElement('i');
+  const cssColor = (c        ) => {
+    probe.style.color = '';
+    probe.style.color = c;
+    probe.style.display = 'none';
+    doc.documentElement.appendChild(probe);
+    const v = win.getComputedStyle(probe).color;
+    probe.remove();
+    return v;
+  };
+
+  const sample = (key        , text               ) => {
+    const e = first(key);
+    if (!e) return;
+    const old = samples.get(key);
+    if (old) {
+      if (old.node) old.node.data = old.old;
+      else old.el.textContent = old.old;
+      samples.delete(key);
+    }
+    if (text === null) return;
+    const t = sampleTarget(e);
+    if (!t) return;
+    const words = text.slice(0, 200);
+    if (t.value) {
+      samples.set(key, { el: t.el, node: null, old: t.el.textContent || '' });
+      t.el.textContent = words;
+    } else {
+      const n = uiTextNode(t.el)               ;
+      if (!n) return;
+      samples.set(key, { el: t.el, node: n, old: n.data });
+      const sp = /^(\s*)[\s\S]*?(\s*)$/.exec(n.data);
+      n.data = (sp?.[1] ?? '') + words + (sp?.[2] ?? '');
+    }
+  };
+
+  const props = (key        )                 => {
+    const e = first(key);
+    if (!e) return null;
+    const now = readNow(e);
+    const part = uiTextPart(e);
+    const st = shown && shown.key === key ? shown.state : null;
+    // A look shown: its game's own colours read first, so this answer already carries them.
+    if (st) for (const n of ['color', 'background']         ) wasOf(key, `@${st}.${n}`);
+    const w             = {};
+    for (const n of ['text', 'fontSize', 'color', 'background']         ) {
+      const v = wasOf(key, n);
+      if (v !== undefined) (w                           )[n] = v;
+    }
+    for (const s of STATES) {
+      const o                          = {};
+      for (const n of ['color', 'background']         ) if (was.get(key)?.has(`@${s}.${n}`)) o[n] = was.get(key) .get(`@${s}.${n}`);
+      if (Object.keys(o).length) (w                           )[`@${s}`] = o;
+    }
+    const t = sampleTarget(e);
+    const hint = (e.dataset.studioSample || t?.el.dataset.studioSample || '').slice(0, 200);
+    return {
+      key,
+      state: st,
+      button: isButton(e),
+      text: part ? now.text ?? null : null,
+      fontSize: part ? now.fontSize ?? null : null,
+      color: now.color ?? null,
+      background: now.background ?? null,
+      was: w,
+      sample: t ? { now: samples.get(key) ? (samples.get(key) .node ? samples.get(key) .node .data.trim() : samples.get(key) .el.textContent) : null, value: t.value, ...(hint ? { hint } : {}) } : null,
+    };
+  };
+  const postProps = (key        ) => {
+    const p = props(key);
+    if (p) deps.post({ type: 'studio:ui/props', props: p });
+  };
+
+  // ---------------------------------------------------------------- theme
+  const themeWas = new Map                ();
+  const themeVars = ()               => {
+    const names           = [];
+    for (const r of styleRules()) {
+      if (!splitSelectors(r.selectorText).some((s) => s === ':root' || s === 'html')) continue;
+      for (let i = 0; i < r.style.length; i++) {
+        const n = r.style[i] ;
+        if (n.startsWith('--') && THEME_NAME.test(n) && !names.includes(n)) names.push(n);
+      }
+    }
+    const cs = win.getComputedStyle(doc.documentElement);
+    const out               = [];
+    for (const name of names.slice(0, 100)) {
+      const value = cs.getPropertyValue(name).trim();
+      if (!value) continue;
+      if (!themeWas.has(name)) themeWas.set(name, value);
+      const type = /font|family|typeface/i.test(name) ? 'font' : (win                                 ).CSS?.supports?.('color', value) && !/^[\d.]+$/.test(value) ? 'color' : null;
+      if (!type) continue;
+      out.push({ name, type, value: type === 'color' ? hexColor(cssColor(value)) : value, was: type === 'color' ? hexColor(cssColor(themeWas.get(name) )) : themeWas.get(name)  });
+    }
+    return out;
+  };
+  const postTheme = () => {
+    const vars = themeVars();
+    if (vars.length) deps.post({ type: 'studio:ui/theme', vars });
+  };
+  const setTheme = (name        , value               ) => {
+    if (!THEME_NAME.test(name)) return;
+    if (!themeWas.has(name)) themeVars();
+    if (value === null) doc.documentElement.style.removeProperty(name);
+    else if (!/[;{}<>\\]/.test(value)) doc.documentElement.style.setProperty(name, value.slice(0, 200));
+  };
+
+  return {
+    begin() {
+      editingNow = true;
+      if (forced !== null) showScreen(forced);
+      paint();
+      postScreens();
+      postTheme();
+    },
+    end() {
+      editingNow = false;
+      for (const k of [...samples.keys()]) sample(k, null);
+      shown = null;
+      putBack();
+      paint();
+    },
+    props,
+    handle(msg) {
+      switch (msg.type) {
+        case 'studio:ui/screen':
+          showScreen(typeof msg.id === 'string' && KEY.test(msg.id) ? msg.id : null);
+          shown = null;
+          paint();
+          postScreens();
+          deps.relist();
+          return true;
+        case 'studio:ui/sample':
+          sample(msg.key, typeof msg.text === 'string' ? msg.text : null);
+          postProps(msg.key);
+          return true;
+        case 'studio:ui/set':
+          if (msg.name === 'text' || msg.name === 'fontSize' || msg.name === 'color' || msg.name === 'background') {
+            const v = msg.value === null ? null : msg.name === 'fontSize' ? Math.max(1, Math.min(500, Number(msg.value) || 0)) : String(msg.value);
+            setProp(msg.key, msg.name, v, msg.state && STATES.includes(msg.state) ? msg.state : undefined);
+          }
+          if (!msg.quiet) postProps(msg.key);
+          return true;
+        case 'studio:ui/state':
+          shown = msg.key && msg.state && STATES.includes(msg.state) ? { key: msg.key, state: msg.state } : null;
+          paint();
+          if (msg.key) postProps(msg.key);
+          return true;
+        case 'studio:ui/theme-set':
+          setTheme(msg.name, typeof msg.value === 'string' ? msg.value : null);
+          if (!msg.quiet) postTheme();
+          return true;
+        case 'studio:ui/props-get':
+          postProps(msg.key);
+          return true;
+        default:
+          return false;
+      }
+    },
+  };
+}
+
+__def(__exports, "hexColor", () => hexColor);
+__def(__exports, "createUiExtras", () => createUiExtras);
+};
+__defs[37] = function (__exports) {
+'use strict';
 // editor.ts
 
 // Edit session inside the game page: applies shell messages to the adapter,
@@ -12674,6 +13433,7 @@ const { createHoldState, withHold } = __require(26);
 const { drivenBetween, WATCH_MS } = __require(34);
 const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
 const { createTimelineView } = __require(35);
+const { createUiExtras } = __require(36);
 
                              
                                                                                                                      
@@ -12683,6 +13443,11 @@ const { createTimelineView } = __require(35);
                                                         
      
                             
+     
+                                                                                                                    
+                                                                                                                      
+     
+                  
                                                                                         
                      
                                                                                  
@@ -12795,6 +13560,24 @@ function createEditor(deps            )         {
     }
     deps.post(msg);
   };
+  // UI stages 2–3 (ui-extras.ts): another screen shown = the UI layer's list again, without a pick that is gone.
+  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), relist: () => {
+    if (!uiStack) return;
+    if (layer !== 'ui') {
+      try {
+        post({ type: 'studio:placement/items', items: uiStack.driven.list(), layer: 'ui' });
+      } catch {
+        /* listed when switched to */
+      }
+      return;
+    }
+    state.selected = null;
+    state.group = [];
+    refreshItems();
+    input?.selectionChanged();
+    postSelected();
+    dirtyFrame = true;
+  } }) : null;
   const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
@@ -12890,6 +13673,11 @@ function createEditor(deps            )         {
   const postSelected = () => {
     const item = state.items.find((i) => i.key === state.selected);
     post({ type: 'studio:placement/selected', key: state.selected, item, keys: state.group.slice() });
+    // A UI element picked: what the card's text / colour rows show (UI stages 2–3).
+    if (layer === 'ui' && state.selected && state.group.length <= 1) {
+      const p = uiExtras?.props(state.selected);
+      if (p) post({ type: 'studio:ui/props', props: p });
+    }
   };
   /**
    * Picked from the list: bring the object into view ONLY if it is not
@@ -13475,6 +14263,10 @@ function createEditor(deps            )         {
         }
       }
       state.editing = true;
+      // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
+      // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
+      uiExtras?.begin();
+      if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
       // even when the person never switches to the UI.
@@ -13544,6 +14336,8 @@ function createEditor(deps            )         {
       input?.detach();
       input = null;
       state.editing = false;
+      // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
+      uiExtras?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
           a.end();
@@ -13728,6 +14522,15 @@ function createEditor(deps            )         {
           if (msg.layer !== layer) timeline.clear();
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
+        case 'studio:ui/screen':
+        case 'studio:ui/sample':
+        case 'studio:ui/set':
+        case 'studio:ui/state':
+        case 'studio:ui/theme-set':
+        case 'studio:ui/props-get':
+          if (state.editing && uiStack) uiExtras?.handle(msg);
+          dirtyFrame = true;
+          break;
         case 'studio:core/ui-peek':
           uiPeek = !!msg.on;
           paintLayers();
@@ -13858,7 +14661,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -13921,7 +14724,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -14102,7 +14905,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -14314,7 +15117,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -14453,7 +15256,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -14473,7 +15276,7 @@ __defs[41] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(38);
+const { icon } = __require(39);
 
                            
                     
@@ -14800,7 +15603,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -14835,7 +15638,7 @@ __defs[42] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(36);
+const { createEditor } = __require(37);
 const { drivenBetween } = __require(34);
 const { nativeSetTimeout } = __require(0);
 
@@ -15201,7 +16004,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -15227,12 +16030,12 @@ __defs[43] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(37);
-const { icon } = __require(38);
-const { shootPage } = __require(39);
-const { createPauseHold, isPauseKey } = __require(40);
-const { CHAT_CSS, createChat } = __require(41);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(42);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(38);
+const { icon } = __require(39);
+const { shootPage } = __require(40);
+const { createPauseHold, isPauseKey } = __require(41);
+const { CHAT_CSS, createChat } = __require(42);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(43);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -16166,7 +16969,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -16305,7 +17108,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -16358,7 +17161,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -16696,7 +17499,7 @@ __def(__exports, "clock", () => clock);
 __def(__exports, "withClip", () => withClip);
 __def(__exports, "legacyOffsets", () => legacyOffsets);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -16721,9 +17524,9 @@ __defs[47] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(44);
-const { samePose } = __require(45);
-const { compose, legacyOffsets } = __require(46);
+const { hasLayer, orderOfLayer } = __require(45);
+const { samePose } = __require(46);
+const { compose, legacyOffsets } = __require(47);
 const { motionRunner, resolveClip } = __require(20);
 
                                                                                                                                   
@@ -16911,7 +17714,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -16950,7 +17753,7 @@ __defs[48] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(47);
+const { moveInPlay } = __require(48);
                                                    
 
                                  
@@ -17065,7 +17868,7 @@ function createPlaySwitch(d                )             {
 
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -17120,7 +17923,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -17202,7 +18005,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -17218,13 +18021,13 @@ const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
 const { findDomUi, uiAdapterFromPort } = __require(22);
 const { runSelfCheck } = __require(23);
-const { createEditor } = __require(36);
-const { startPlayAsk } = __require(43);
-const { createPlaySwitch } = __require(48);
-const { arrangeInPlay, moveInPlay } = __require(47);
+const { createEditor } = __require(37);
+const { startPlayAsk } = __require(44);
+const { createPlaySwitch } = __require(49);
+const { arrangeInPlay, moveInPlay } = __require(48);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(49);
-const { watchEarlyTaps } = __require(50);
+const { pickLevel } = __require(50);
+const { watchEarlyTaps } = __require(51);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -17563,7 +18366,10 @@ function startBridge(opts               )       {
    * the DOM (a port named 'dom', examples/dom-board): its pieces carry data-studio-key as world objects, and they
    * stay there; elements the world already lists are skipped for any game.
    */
+  // The UI found is the built-in DOM one (not a game's registerUI port): screens, text and colours apply (ui-extras.ts).
+  let uiDom = false;
   const findUi = (world                      )                       => {
+    uiDom = false;
     for (const u of uiPorts) {
       try {
         if (u.built) return u.built;
@@ -17582,7 +18388,9 @@ function startBridge(opts               )       {
           return new Set        ();
         }
       };
-      return findDomUi(core, win, skip);
+      const dom = findDomUi(core, win, skip);
+      uiDom = !!dom;
+      return dom;
     } catch (e) {
       console.warn('[studio] DOM UI adapter failed:', e);
       return null;
@@ -17623,7 +18431,7 @@ function startBridge(opts               )       {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
+    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):
@@ -17652,7 +18460,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -17671,11 +18479,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(51);
+const { startBridge } = __require(52);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(52);
+__require(53);
 })();

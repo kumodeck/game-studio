@@ -21,7 +21,14 @@ export type Change =
   /** A Library motion made, changed or deleted (studio-motion-triggers, 2026-10-22): `key` is its name. null = none. */
   | { kind: 'motion-lib'; key: string; from: LibraryMotion | null; to: LibraryMotion | null }
   /** A Library motion renamed (`key` = its new name), with every clip that uses it. */
-  | { kind: 'motion-rename'; key: string; from: string; to: string };
+  | { kind: 'motion-rename'; key: string; from: string; to: string }
+  /**
+   * UI stage 3 (2026-10-22, ui-style-model.ts): one field of a UI element's look changed on the card — `path` 'text',
+   * 'fontSize', 'color', 'background' or a state's '@hover.color'… null = the game's own value.
+   */
+  | { kind: 'ui-set'; key: string; path: string; from: string | number | null; to: string | number | null }
+  /** UI stage 3: a theme variable (`key` = its name, "--accent"). null = the game's own value. */
+  | { kind: 'ui-theme'; key: string; from: string | null; to: string | null };
 
 export interface UndoEntry {
   changes: Change[];
@@ -49,7 +56,8 @@ export class UndoStack {
 
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e: UndoEntry): boolean {
-    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion' && c.kind !== 'motion-lib' && c.kind !== 'motion-rename') || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    // A change from a value to the same value is nothing (every kind with a `to`: poses, motions, looks, the theme).
+    const changes = e.changes.filter((c) => !('to' in c) || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });

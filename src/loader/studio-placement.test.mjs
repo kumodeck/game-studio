@@ -441,8 +441,8 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
   });
 }
 
-// 16 KB since the timeline (clips, playMotion, 2026-10-22; 12 since motion-gui, 9 since UI stage 1, 6 before). The
-// same limit as src/server/build.mjs LOADER_LIMIT.
-test('the built loader is under 24 KB', () => {
-  assert.ok(readFileSync(BUILT).length < 24 * 1024);
+// 28 KB since UI stages 2–3 (set / theme, 2026-10-22; 24 since motion triggers, 16 since the timeline, 12 since
+// motion-gui, 9 since UI stage 1, 6 before). The same limit as src/server/build.mjs LOADER_LIMIT.
+test('the built loader is under 28 KB', () => {
+  assert.ok(readFileSync(BUILT).length < 28 * 1024);
 });

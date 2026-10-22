@@ -11,6 +11,7 @@
     { "id": "when", "test": "test/studio-motion-triggers.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
     { "id": "levels", "test": "test/studio-levels.browser.mjs", "args": [] },
     { "id": "ui", "test": "test/studio-ui-layer.browser.mjs", "args": ["--only", "pc"] },
+    { "id": "ui2", "test": "test/studio-ui-edit-2.browser.mjs", "args": ["--only", "pc", "--themes", "light"] },
     { "id": "kumo", "test": "test/studio-kumo.browser.mjs", "args": [] },
     { "id": "gen", "test": "test/studio-generate.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] }
   ],
@@ -29,6 +30,11 @@
     { "as": "motion-library", "run": "when", "file": "after-pc-light-3-library.png" },
     { "as": "levels", "run": "levels", "file": "after-pc-light-2-menu.png" },
     { "as": "ui-layer", "run": "ui", "file": "ui-pc-moved.png" },
+    { "as": "ui-screens", "run": "ui2", "file": "after-pc-light-screens.png" },
+    { "as": "ui-text", "run": "ui2", "file": "after-pc-light-text.png" },
+    { "as": "ui-states", "run": "ui2", "file": "after-pc-light-state.png" },
+    { "as": "ui-sample", "run": "ui2", "file": "after-pc-light-sample.png" },
+    { "as": "ui-theme", "run": "ui2", "file": "after-pc-light-theme.png" },
     { "as": "make-form", "run": "kumo", "file": "kumo-1280-{lang}-2-form.png" },
     { "as": "make-added", "run": "kumo", "file": "kumo-1280-{lang}-4-picture-added.png" },
     { "as": "make-sound", "run": "gen", "file": "gen-lantern-cove-pc-light-2-sound-form.png" }

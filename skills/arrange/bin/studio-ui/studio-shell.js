@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.20 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.21 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -50,6 +50,68 @@ const CONTRACT_VERSION = 1;
  * time; the top bar switches. Not the same as Item.layer (a 2D draw-order list).
  */
                                        
+
+/**
+ * UI stages 2–3 (2026-10-22; CONTRACT.md §1.11): the game's UI screens, what an element says and how it looks.
+ * A button's looks other than its normal one: under the pointer (`:hover`), pressed (`:active`), not usable (`:disabled`).
+ */
+                                                      
+/** What the card can change on a UI element: its main text, that text's size (CSS px) and colour, the box's fill. */
+                                                                      
+/** One state's colours (a button's hover / pressed / disabled look): the only props a state has of its own. */
+                             
+                 
+                      
+ 
+/**
+ * placement.json `ui.<key>.set` / `setWas`: what the person changed on the card, and the game's own values (the AI
+ * searches the code for those). Every field optional; a state's colours under "@hover" / "@active" / "@disabled".
+ */
+                             
+                
+                    
+                 
+                      
+                        
+                         
+                           
+ 
+/** One screen of the game's UI: a container marked data-studio-screen="<id>" (title, play, pause, over, …). */
+                               
+             
+                                                                                              
+                 
+ 
+/** A UI element as the card shows it (bridge ui-extras.ts → ShellToBridge ui/props). */
+                          
+              
+                                                        
+                        
+                                                               
+                  
+                                                                                                                   
+                      
+                          
+                       
+                                                                                                 
+                            
+                                                                                       
+                  
+     
+                                                                                                                                                  
+                                                                                                                 
+     
+                                                                       
+ 
+/** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
+                             
+               
+                         
+                                                    
+                
+                              
+              
+ 
 
 /**
  * Pose of one movable object, in the object's PARENT space (what you would
@@ -113,6 +175,11 @@ const CONTRACT_VERSION = 1;
                                                                                          
                 
                                                                                   
+                  
+     
+                                                                                                                    
+                                                  
+     
                   
      
                                                                          
@@ -742,6 +809,8 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                         
                        
                        
+                                                                                                          
+                    
      
                                                                                       
                                 
@@ -999,6 +1068,20 @@ const MSG_PREFIX = 'studio:';
      
                                                    
      
+                                                                                                                          
+                                                                                                                       
+                                                                                                                     
+                                                                                                                                             
+                                                                        
+                                                                                                            
+     
+                                                   
+                                                                  
+                                                                                                                             
+                                                                          
+                                                                                        
+                                                
+     
                                                                                                                     
                                                                                                                                       
                                                                                                                      
@@ -1107,6 +1190,12 @@ const MSG_PREFIX = 'studio:';
                                                                         
                                                                                       
                                                                         
+                                                                                                                                           
+                                                                                                   
+                                                                                                                   
+                                               
+                                                                                                        
+                                                   
                                                                                            
      
                                                                           
@@ -1708,6 +1797,11 @@ const RESULT_FILES                         = {
                                                                                                              
                             
      
+                                                                                                                  
+                                                                             
+     
+                                              
+     
                                                                                                                     
                                                                                                                  
                                                                                                                 
@@ -1864,6 +1958,20 @@ const RESULT_FILES                         = {
              
                                                                                      
                  
+                                                                                                              
+                  
+                                                                                                            
+                   
+                                                                                                  
+                      
+ 
+
+/** placement.json `theme` (UI stage 3): one CSS variable of the game's theme, changed in the editor. */
+                                      
+                       
+            
+                                                                 
+               
  
 
                                               
@@ -2086,6 +2194,13 @@ const LIMITS = {
   maxUiCoord: 10_000,
   minUiScale: 0.1,
   maxUiScale: 10,
+  /** UI stage 3: a text on the card, a colour / theme value, the font size range (px), theme variables. */
+  maxUiText: 200,
+  maxUiColor: 64,
+  maxUiValue: 200,
+  minUiFont: 1,
+  maxUiFont: 500,
+  maxTheme: 100,
 }         ;
 
 /** Allowed characters of an object key. Names with other characters are mapped; the original stays in `label`. */
@@ -2304,6 +2419,14 @@ const LIMITS = Object.freeze({
   minUiScale: 0.1,
   maxUiScale: 10,
   maxUiView: 100000,
+  // UI stages 2–3 (2026-10-22): a text typed on the card (200 characters: a title, a button, a line of a dialogue), a
+  // colour / a theme value (64 / 200: "#rrggbbaa", rgb(), a font list), a font size 1–500 px, 100 theme variables.
+  maxUiText: 200,
+  maxUiColor: 64,
+  maxUiValue: 200,
+  minUiFont: 1,
+  maxUiFont: 500,
+  maxTheme: 100,
   // `motion` (motion-gui, 2026-10-22): a path of at most 32 points (a patrol round a yard has 4–8; more is a curve, which
   // is stage 2), speeds up to 1 km/s or 100,000 px/s and spins up to 100 rad/s (16 turns a second): far beyond a
   // moving platform or a spinning coin, they stop a runaway field like the bounds above. Speeds round to 1 mm/s / 0.1
@@ -2426,7 +2549,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -2453,6 +2576,11 @@ function placement(data, fail) {
       }
     }
   } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
+  // `theme` (UI stage 3) is optional too, and on its own: a theme changed with no element moved is a file with `theme` only.
+  if (data.theme !== undefined) {
+    const theme = readTheme(data.theme, fail);
+    if (Object.keys(theme).length) out.theme = theme;
+  }
   // `levels` / `levelsWas` (2026-10-22, CONTRACT.md §4.1) are optional too: absent for every game with one level, so
   // its file keeps its bytes. Each level holds its own world part, read by the same rules as the top one.
   if (data.levels !== undefined) {
@@ -2650,7 +2778,7 @@ function readUi(v, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['p', 's', 'label'], where, fail);
+    onlyFields(e, ['p', 's', 'label', 'screen', 'set', 'setWas'], where, fail);
     if (!Array.isArray(e.p) || e.p.length !== 2) {
       fail(`${where}.p`, 'must be 2 numbers: [dx, dy] in CSS px');
       continue;
@@ -2666,7 +2794,114 @@ function readUi(v, fail) {
       const label = readLabel(e.label, `${where}.label`, fail);
       if (label) o.label = label;
     }
+    // UI stage 2: the screen (a data-studio-screen value: key characters).
+    if (e.screen !== undefined) {
+      if (typeof e.screen !== 'string' || !KEY_RE.test(e.screen)) fail(`${where}.screen`, 'must match ' + KEY_RE);
+      else o.screen = e.screen;
+    }
+    // UI stage 3: what the card changed, and the game's own values. `setWas` only travels with a `set`.
+    if (e.set !== undefined) {
+      const set = readUiSet(e.set, `${where}.set`, fail);
+      if (Object.keys(set).length) {
+        o.set = set;
+        if (e.setWas !== undefined) {
+          const was = readUiSet(e.setWas, `${where}.setWas`, fail);
+          if (Object.keys(was).length) o.setWas = was;
+        }
+      }
+    } else if (e.setWas !== undefined) readUiSet(e.setWas, `${where}.setWas`, fail);
     out[key] = o;
+  }
+  return out;
+}
+
+// A colour as CSS writes it: #rgb … #rrggbbaa, rgb()/rgba()/hsl()/hsla() with plain numbers, or a colour word. Never
+// anything that could end the declaration it is put in (the loader writes it into a style sheet for the states).
+const UI_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+// A theme value (a colour, a font list, a length): no ; { } < > \ (it goes into style.setProperty, and into the AI's CSS).
+const UI_VALUE_RE = /^[^;{}<>\\\u0000-\u001f\u007f]{1,200}$/;
+const THEME_NAME_RE = /^--[A-Za-z0-9_-]{1,60}$/;
+const UI_STATES = ['@hover', '@active', '@disabled'];
+
+function readUiColor(v, where, fail) {
+  if (typeof v !== 'string' || v.length > LIMITS.maxUiColor || !UI_COLOR_RE.test(v.trim())) {
+    fail(where, 'must be a CSS colour (#rrggbb, rgb(), hsl() or a colour name)');
+    return null;
+  }
+  return v.trim();
+}
+
+/** `set` / `setWas` of a UI element (UI stage 3): text, fontSize, color, background, and per state color / background. */
+function readUiSet(v, where, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail(where, 'must be an object');
+    return out;
+  }
+  onlyFields(v, ['text', 'fontSize', 'color', 'background', ...UI_STATES], where, fail);
+  if (v.text !== undefined) {
+    if (typeof v.text !== 'string') fail(`${where}.text`, 'must be a string');
+    else if (v.text.length > LIMITS.maxUiText) fail(`${where}.text`, `at most ${LIMITS.maxUiText} characters`);
+    else out.text = v.text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
+  }
+  if (v.fontSize !== undefined) {
+    const n = readNumber(v.fontSize, LIMITS.minUiFont, LIMITS.maxUiFont, `${where}.fontSize`, fail);
+    if (n !== null) out.fontSize = round(n, LIMITS.step2d);
+  }
+  for (const k of ['color', 'background']) {
+    if (v[k] === undefined) continue;
+    const c = readUiColor(v[k], `${where}.${k}`, fail);
+    if (c) out[k] = c;
+  }
+  for (const st of UI_STATES) {
+    if (v[st] === undefined) continue;
+    const w = `${where}[${JSON.stringify(st)}]`;
+    if (!isObject(v[st])) {
+      fail(w, 'must be an object');
+      continue;
+    }
+    onlyFields(v[st], ['color', 'background'], w, fail);
+    const o = {};
+    for (const k of ['color', 'background']) {
+      if (v[st][k] === undefined) continue;
+      const c = readUiColor(v[st][k], `${w}.${k}`, fail);
+      if (c) o[k] = c;
+    }
+    if (Object.keys(o).length) out[st] = o;
+  }
+  return out;
+}
+
+/** `theme` (UI stage 3): { "--accent": { v, was? } }, at most maxTheme, keys in order (same content = same bytes). */
+function readTheme(v, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('theme', 'must be an object keyed by CSS variable name (--accent)');
+    return out;
+  }
+  const names = Object.keys(v);
+  if (names.length > LIMITS.maxTheme) fail('theme', `at most ${LIMITS.maxTheme} variables`);
+  for (const name of names.slice(0, LIMITS.maxTheme)) {
+    const where = `theme[${JSON.stringify(name)}]`;
+    if (!THEME_NAME_RE.test(name)) {
+      fail(where, 'name must match ' + THEME_NAME_RE);
+      continue;
+    }
+    const e = v[name];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['v', 'was'], where, fail);
+    const val = (x, w) => (typeof x === 'string' && UI_VALUE_RE.test(x.trim()) ? x.trim() : (fail(w, 'must be a CSS value without ; { } < >'), null));
+    const nv = val(e.v, `${where}.v`);
+    if (nv === null) continue;
+    const o = { v: nv };
+    if (e.was !== undefined) {
+      const w = val(e.was, `${where}.was`);
+      if (w !== null) o.was = w;
+    }
+    out[name] = o;
   }
   return out;
 }
@@ -8070,6 +8305,14 @@ __defs[19] = function (__exports) {
 // before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
 // with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
 //
+// `ui.<key>.set` and `theme` (UI stage 3, 2026-10-22): what the editor's card changed — the element's main text, that
+// text's size and colour, the box's fill, a button's colours when hovered / pressed / disabled — and the game's CSS
+// variables (--accent…). Applied here too, so the game shows them before the AI writes them into the code: the
+// colours and the fill through one style sheet (#studio-ui-set; a state's with !important, the way :hover beats
+// the normal look), set on the element itself when the game's own CSS is more specific; the text and its size on
+// the text itself (uiTextPart: data-studio-text, else the element's first own text). theme: style.setProperty on
+// <html>. `screen` (UI stage 2) says which screen an element is on: nothing to apply.
+//
 // `levels` (2026-10-22): a game with several levels gets one world part per level in the file. Pass the level being
 // built: applyPlacement(scene, './placement.json', { level: 'cave' }). Without `level`, a file with levels moves
 // nothing in the world (another level's layout must never land on this one); the UI is applied either way.
@@ -8142,6 +8385,7 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
     warn('not a placement file');
     return report;
   }
+  if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
@@ -8681,7 +8925,10 @@ function applyUi(doc, ui) {
     const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
     if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
     if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+    if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
   };
+  // Only for a file whose card changed something (a file of moves alone adds nothing to the page, as before).
+  const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
   doc.querySelectorAll('[data-studio-key]').forEach(put);
   for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
   // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
@@ -8694,6 +8941,120 @@ function applyUi(doc, ui) {
     }).observe(doc.documentElement, { childList: true, subtree: true });
   }
   return out;
+}
+
+const UI_COLOR = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+const UI_STATES = { '@hover': ':hover', '@active': ':active', '@disabled': ':disabled' };
+const okColor = (c) => typeof c === 'string' && UI_COLOR.test(c);
+
+/** The page's CSS variables changed in the editor (`theme`): on <html>, so every rule that uses them follows. */
+function applyTheme(doc, theme) {
+  for (const [name, e] of Object.entries(theme)) {
+    if (/^--[A-Za-z0-9_-]{1,60}$/.test(name) && e && typeof e.v === 'string' && !/[;{}<>]/.test(e.v)) doc.documentElement.style.setProperty(name, e.v);
+  }
+}
+
+/**
+ * One style sheet for the elements' colours (#studio-ui-set): each state's with !important (it must beat the normal
+ * look, the game's or the editor's), made once for the file. Colours that are not CSS colours are skipped; the key is a
+ * data-studio-key (key characters only), so the selectors are safe.
+ */
+function uiSheet(doc, ui) {
+  const rules = [];
+  for (const [k, e] of Object.entries(ui)) {
+    const set = e && e.set;
+    if (!set || typeof set !== 'object' || !/^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(k)) continue;
+    const sel = `[data-studio-key="${k}"]`;
+    for (const [st, pseudo] of Object.entries(UI_STATES)) {
+      const o = set[st];
+      if (!o || typeof o !== 'object') continue;
+      if (okColor(o.background)) rules.push(`${sel}${pseudo}{background-color:${o.background}!important}`);
+      if (okColor(o.color)) rules.push(`${sel}${pseudo},${sel}${pseudo} *{color:${o.color}!important}`);
+    }
+  }
+  const el = doc.createElement('style');
+  el.id = 'studio-ui-set';
+  el.textContent = rules.join('\n');
+  (doc.head || doc.documentElement).appendChild(el);
+  return el;
+}
+
+/**
+ * The normal look and the words of one element (`set`): see the top of the file. The fill (and the colour of a button,
+ * whose text is itself) goes in the sheet as a plain rule, so the game's own :hover / :active rules, more specific,
+ * still win while hovered or pressed; when the game's normal rule is more specific than that, on the element itself.
+ * The colour of a text inside the element (a title card's <h1>) and the size go on that text.
+ */
+function setUi(el, k, set, sheet) {
+  const part = uiTextPart(el);
+  const rule = (prop, css, v) => {
+    if (getComputedStyle(el)[prop] === cssColor(el, v)) return;
+    sheet.textContent += `\n[data-studio-key="${k}"]{${css}:${v}}`;
+    if (getComputedStyle(el)[prop] !== cssColor(el, v)) el.style[prop] = v;
+  };
+  if (part) {
+    if (typeof set.text === 'string') {
+      const n = uiTextNode(part);
+      if (n) n.data = keepSpace(n.data, set.text.slice(0, 200));
+    }
+    if (isNum(set.fontSize) && set.fontSize > 0) part.style.fontSize = `${set.fontSize}px`;
+    if (okColor(set.color)) {
+      if (part === el) rule('color', 'color', set.color);
+      else part.style.color = set.color;
+    }
+  }
+  if (okColor(set.background)) rule('backgroundColor', 'background-color', set.background);
+}
+
+/** A colour as getComputedStyle writes it (to tell whether a rule took). */
+function cssColor(el, c) {
+  const probe = el.ownerDocument.createElement('i');
+  probe.style.color = c;
+  probe.style.display = 'none';
+  el.ownerDocument.documentElement.appendChild(probe);
+  const v = getComputedStyle(probe).color;
+  probe.remove();
+  return v;
+}
+
+/** The new words in the old text node's place, keeping its spaces around (the HTML's line breaks). */
+function keepSpace(old, text) {
+  const m = /^(\s*)[\s\S]*?(\s*)$/.exec(old);
+  return (m ? m[1] : '') + text + (m ? m[2] : '');
+}
+
+/** The element's own non-blank text nodes (not inside its children). */
+function ownText(el) {
+  return Array.from(el.childNodes).filter((n) => n.nodeType === 3 && n.data.trim());
+}
+
+/**
+ * The text the card's Text / Size / Colour change, shared with the editor (src/bridge/ui-extras.ts) so both pick the
+ * same one: data-studio-text (on the element or inside it), else the first element, in page order, with words of its
+ * own (a title card's <h1>, a button itself). null when there is none, or when that element mixes words with what the
+ * game writes ("Glow <b>0</b> / 5": two text nodes around a value) — changing one piece of it would read wrong.
+ * Never inside data-studio-value (a score: the game's to write).
+ */
+function uiTextPart(el) {
+  const mark = el.matches('[data-studio-text]') ? el : el.querySelector('[data-studio-text]');
+  const one = (e) => (ownText(e).length === 1 ? e : null);
+  if (mark) return one(mark);
+  const walk = (e) => {
+    if (e.matches('[data-studio-value]')) return undefined;
+    if (ownText(e).length) return e;
+    for (const c of e.children) {
+      const r = walk(c);
+      if (r) return r;
+    }
+    return undefined;
+  };
+  const p = walk(el);
+  return p ? one(p) : null;
+}
+
+/** The one text node of a uiTextPart(). */
+function uiTextNode(part) {
+  return ownText(part)[0] || null;
 }
 
 // Per element: the translate / scale its stylesheet gives (read once, before anything is added) and the offset now.
@@ -8879,6 +9240,8 @@ __def(__exports, "clipAt", () => clipAt);
 __def(__exports, "trackAt", () => trackAt);
 __def(__exports, "motionAt", () => motionAt);
 __def(__exports, "placementForLevel", () => placementForLevel);
+__def(__exports, "uiTextPart", () => uiTextPart);
+__def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
@@ -12536,6 +12899,44 @@ const en = {
   'uiLayer.offset': 'Offset',
   'uiLayer.size': 'Size',
   'uiLayer.sub': 'over the game',
+  // UI stage 2 (2026-10-22, ui-screens.ts): the UI list's head names the screen shown; pressing it lists the screens.
+  'uiScreen.list': 'Screens',
+  'uiScreen.switch': 'Screen: {name}. Press to show another screen of the game',
+  'uiScreen.none': 'No screen',
+  'uiScreen.title': 'Title',
+  'uiScreen.menu': 'Menu',
+  'uiScreen.play': 'Playing',
+  'uiScreen.hud': 'Playing',
+  'uiScreen.pause': 'Paused',
+  'uiScreen.over': 'Game over',
+  'uiScreen.gameover': 'Game over',
+  'uiScreen.win': 'You win',
+  'uiScreen.result': 'Results',
+  'uiScreen.settings': 'Settings',
+  'uiScreen.shop': 'Shop',
+  'uiScreen.level': 'Level select',
+  // UI stages 2–3 (ui-card.ts): a UI element's text, colors, a button's states and sample values on its card.
+  'uiLook.state': 'State',
+  'uiLook.state.normal': 'Normal',
+  'uiLook.state.hover': 'Hover',
+  'uiLook.state.active': 'Pressed',
+  'uiLook.state.disabled': 'Disabled',
+  'uiLook.text': 'Text',
+  'uiLook.size': 'Text size in px',
+  'uiLook.color': 'Color',
+  'uiLook.fill': 'Fill',
+  'uiLook.back': 'Back to the game’s own',
+  'uiLook.sample': 'Sample',
+  'uiLook.sample.long': 'A very long player name',
+  'uiLook.sample.empty': 'Empty',
+  'uiLook.sample.own': 'Your own sample',
+  'uiLook.sample.ownHint': 'Your own…',
+  'uiLook.sample.off': 'Show the game’s own text',
+  'uiLook.sample.note': 'Only while editing. Never saved.',
+  // UI stage 3 (ui-theme.ts): the game's CSS variables under the UI list.
+  'uiTheme.title': 'Theme',
+  'undo.look': 'change {name}’s look',
+  'undo.theme': 'change the theme',
   // The eye next to World | UI (layer-switch.ts): the game's UI is hidden while the world is edited.
   'uiPeek.name': "The game's UI",
   'uiPeek.pal.show': "Show the game's UI",
@@ -13147,6 +13548,41 @@ const ja                               = {
   'uiLayer.offset': 'ずれ',
   'uiLayer.size': '大きさ',
   'uiLayer.sub': 'ゲームの上',
+  'uiScreen.list': '画面',
+  'uiScreen.switch': '画面: {name}。押すとゲームのほかの画面を出す',
+  'uiScreen.none': '画面なし',
+  'uiScreen.title': 'タイトル',
+  'uiScreen.menu': 'メニュー',
+  'uiScreen.play': 'プレイ中',
+  'uiScreen.hud': 'プレイ中',
+  'uiScreen.pause': 'ポーズ',
+  'uiScreen.over': 'ゲームオーバー',
+  'uiScreen.gameover': 'ゲームオーバー',
+  'uiScreen.win': 'クリア',
+  'uiScreen.result': '結果',
+  'uiScreen.settings': '設定',
+  'uiScreen.shop': 'ショップ',
+  'uiScreen.level': 'ステージ選択',
+  'uiLook.state': '状態',
+  'uiLook.state.normal': '通常',
+  'uiLook.state.hover': '乗せた',
+  'uiLook.state.active': '押した',
+  'uiLook.state.disabled': '使えない',
+  'uiLook.text': '文字',
+  'uiLook.size': '文字の大きさ（px）',
+  'uiLook.color': '色',
+  'uiLook.fill': '塗り',
+  'uiLook.back': 'ゲームの元の値に戻す',
+  'uiLook.sample': '仮の値',
+  'uiLook.sample.long': 'とてもながいなまえのプレイヤー',
+  'uiLook.sample.empty': '空',
+  'uiLook.sample.own': '自分で入れる仮の値',
+  'uiLook.sample.ownHint': '自分で…',
+  'uiLook.sample.off': 'ゲームの文字に戻す',
+  'uiLook.sample.note': '編集の間だけ。保存しない。',
+  'uiTheme.title': 'テーマ',
+  'undo.look': '{name} の見た目を変更',
+  'undo.theme': 'テーマを変更',
   'uiPeek.name': 'ゲームの UI',
   'uiPeek.pal.show': 'ゲームの UI を見る',
   'uiPeek.pal.hide': 'ゲームの UI を隠す',
@@ -14594,6 +15030,15 @@ const { toneThumb } = __require(17);
                                             
      
                                      
+     
+                                                                                                                    
+                                     
+     
+                                
+                                                                                                        
+                                      
+                                                                                                           
+                                
                                  
                                                       
                                                     
@@ -14711,7 +15156,9 @@ function createPlacementPanel(d                    )                 {
   // The how-to paragraph and the colour key under the list went (rebrand):
   // a one-line first hint over the ask bar says it once (main.ts), and the
   // editor's colours have one meaning each (orange = you, violet = the AI).
-  const listScroll = h('div', { class: 'list-scroll' }, noName, list);
+  // The UI list's foot (the Theme fold, UI stage 3): scrolls with the list, after its last row.
+  const listFoot = h('div', { class: 'list-foot', dataset: { part: 'list-foot' } });
+  const listScroll = h('div', { class: 'list-scroll' }, noName, list, listFoot);
   // A mouse over a row lights its object (a "name ×N" heading: all of them) in the game; leaving the list puts it out.
   let hoverRow                 = null;
   list.addEventListener('pointerover', (e) => {
@@ -15214,6 +15661,8 @@ function createPlacementPanel(d                    )                 {
     // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
     if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...d.motion(key));
     fine.append(fields);
+    // A UI element's text, size, colours, states and sample values (UI stages 2–3): under its numbers, in the same fold.
+    if (d.uiLook && it.kinds.includes('ui')) fine.append(...d.uiLook(key));
     if (it.scalable && typeof it.defaultScale === 'number') {
       const target = it.defaultScale;
       fine.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'reset-size' }, text: `${d.t('placement.resetSize')} ×${target}`, onclick: () => {
@@ -15476,7 +15925,8 @@ function createPlacementPanel(d                    )                 {
     // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
     const uiList = d.items().every((i) => i.kinds.includes('ui'));
     // A game with levels: the head names the level (and opens the levels' menu) instead (levels, 2026-10-22).
-    const lvl = uiList ? null : d.levelSwitch?.() ?? null;
+    // A game with screens (UI stage 2): the UI list's head names the screen shown, and opens the screens' menu.
+    const lvl = uiList ? d.uiHead?.() ?? null : d.levelSwitch?.() ?? null;
     listTools.append(lvl || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
@@ -15484,6 +15934,9 @@ function createPlacementPanel(d                    )                 {
 
   const renderList = () => {
     renderListTools();
+    const items = d.items();
+    const foot = items.length && items.every((i) => i.kinds.includes('ui')) ? d.uiFoot?.() ?? null : null;
+    listFoot.replaceChildren(...(foot ? [foot] : []));
     list.replaceChildren();
     // Keep the card's picture registered (it is drawn before the list): before,
     // clearing everything here left the card's thumbnail empty when the
@@ -17200,7 +17653,14 @@ const { LIMITS } = __require(0);
                                                                                                                         
                                                                                              
                                                                                        
-                                                                     
+                                                                    
+     
+                                                                                                                      
+                                                                                                
+     
+                                                                                                           
+                                                                                                  
+                                                                              
 
                             
                     
@@ -17228,7 +17688,8 @@ class UndoStack {
 
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e           )          {
-    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion' && c.kind !== 'motion-lib' && c.kind !== 'motion-rename') || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    // A change from a value to the same value is nothing (every kind with a `to`: poses, motions, looks, the theme).
+    const changes = e.changes.filter((c) => !('to' in c) || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });
@@ -18631,7 +19092,7 @@ __defs[58] = function (__exports) {
 // world writes `objects` (with `was`, the numbers the AI searches the code for), the UI writes `ui` (offsets from
 // where the game's CSS puts the element: the original is always p [0, 0], s 1, and the key finds the element). So
 // the UI model is given its entries as `objects` with that `was`, and its result is turned back into `ui` here.
-                                                                      
+                                                                                                       
 
 /** The original of every UI element: where the game's own CSS puts it. */
 const ORIGIN = { p: [0, 0], r: 0, s: 1 };
@@ -18662,22 +19123,783 @@ function uiEntries(result               )                                   {
 }
 
 /**
- * The file to write: the world's file, plus `ui` and `uiView` when any UI element is off its original. Without one
- * the world's file comes back as it is — the same object, so a game without data-studio-key writes the same bytes
- * as before UI stage 1.
+ * UI stages 2–3 (2026-10-22): the moves (uiEntries) with what else the file says of each element — its look changed on
+ * the card (`set` / `setWas`, ui-style-model.ts) and its screen. An element whose look changed but which did not move is
+ * written at p [0, 0] (the schema wants a `p`; [0, 0] = "where the game's CSS puts it"). The screen is written for every
+ * entry whose element sits in a data-studio-screen container; `label` for a look-only entry from the list.
  */
-function withUi(world               , ui                                              , view                         )                {
-  if (!ui || !Object.keys(ui).length) return world;
-  const out                = { ...world, ui };
-  if (view && view[0] > 0 && view[1] > 0) out.uiView = [Math.round(view[0]), Math.round(view[1])];
+function withLooks(moves                                  , looks                                                          ,
+  screens                     , labels                     )                                   {
+  const out                                   = {};
+  for (const [k, e] of Object.entries(moves)) out[k] = { ...e };
+  for (const [k, l] of Object.entries(looks)) {
+    const label = labels.get(k);
+    const e = out[k] || { p: [0, 0], ...(label && label !== k ? { label } : {}) };
+    e.set = l.set;
+    if (l.setWas) e.setWas = l.setWas;
+    out[k] = e;
+  }
+  for (const [k, e] of Object.entries(out)) {
+    const sc = screens.get(k);
+    if (sc) e.screen = sc;
+  }
+  return out;
+}
+
+/**
+ * The file to write: the world's file, plus `ui` and `uiView` when any UI element is off its original, and `theme`
+ * when a theme variable changed (UI stage 3). Without either the world's file comes back as it is — the same object,
+ * so a game without data-studio-key writes the same bytes as before UI stage 1.
+ */
+function withUi(world               , ui                                              , view                         , theme                                      )                {
+  const hasUi = !!ui && Object.keys(ui).length > 0;
+  const hasTheme = !!theme && Object.keys(theme).length > 0;
+  if (!hasUi && !hasTheme) return world;
+  const out                = { ...world };
+  if (hasUi) {
+    out.ui = ui;
+    if (view && view[0] > 0 && view[1] > 0) out.uiView = [Math.round(view[0]), Math.round(view[1])];
+  }
+  if (hasTheme) out.theme = theme;
   return out;
 }
 
 __def(__exports, "uiAsPlacement", () => uiAsPlacement);
 __def(__exports, "uiEntries", () => uiEntries);
+__def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
 __defs[59] = function (__exports) {
+'use strict';
+// ui-card.ts
+
+// The UI element's card rows below its offset and size (UI stages 2–3, studio-ui-edit-2, 2026-10-22;
+// CONTRACT.md §1.11): what it says and how it looks, read from the game (the bridge's
+// ui/props) and changed in place.
+//
+//   State   Normal | Hover | Pressed | Disabled      (a button only: shows that look in the game)
+//   Text    [Glow Garden      ][72 px] ↺           (its main text and that text's size; not for words mixed with a value)
+//   Color   [■ #fff6d8]                ↺
+//   Fill    [■ #ffcf6e]                ↺              (a box with a fill, or a button)
+//   Sample  999,999 · Long name · Empty · [ … ] ×    (only while editing: never saved)
+//
+// The text's size sits in the Text row, not a row of its own: the card's "Size" above is already the element's scale
+// (1.00), and two rows called Size would read as one thing said twice.
+// The same rows as the numbers above them (.fields: a grey label, a value that gets a fill on hover): the card stays
+// one plate that grew, not a second panel (Ive: "the tools quieter than the game"). No new colour: the colour fields
+// show the game's colours, the editor's own are its greys. "↺" (the game's own value) only where a value was changed.
+// With a state other than Normal only Colour and Fill are shown: the state's own colours (a button's hover fill).
+//
+// Every change is one undo step and one Save count (main.ts: the ui-set change); a colour dragged in the picker shows
+// live in the game and becomes one step when the picker closes. Nothing here talks to the game: the deps do.
+                                                       
+const { h } = __require(16);
+const { icon } = __require(20);
+
+                             
+                                                                 
+                                                                            
+                                     
+                                                                  
+                                     
+                                                 
+                                                                             
+                                              
+                                                                                                                             
+                                                                                      
+                                                                  
+                                                 
+ 
+
+const STATES                        = [null, 'hover', 'active', 'disabled'];
+
+function createUiCard(d            ) {
+  let el                     = null;
+  let forKey                = null;
+
+  const row = (label        , part        , ...cells                           ) =>
+    [h('span', { class: 'f-l', text: label, dataset: { for: part } }), h('div', { class: 'f-cells ui-cells', dataset: { part } }, ...cells.filter((c)                   => !!c))];
+  const back = (key        , path        ) => (d.changed(key, path)
+    ? h('button', { type: 'button', class: 'icon-btn ui-back', dataset: { action: 'ui-back', path }, title: d.t('uiLook.back'), 'aria-label': d.t('uiLook.back'), onclick: () => d.set(key, path, null) }, icon('undo'))
+    : null);
+  /** A one-line field that commits on Enter / leaving it (Escape puts the value back). */
+  const textField = (value        , label        , commit                     , opts                                 ) => {
+    const input = h('input', { type: 'text', value, autocomplete: 'off', spellcheck: false, 'aria-label': label, dataset: { part: opts.part }, ...(opts.mode ? { inputmode: opts.mode } : {}) })                    ;
+    input.addEventListener('keydown', (e) => {
+      // The editor's own keys (⌘Z, arrows, Delete) must not act on the game while typing.
+      e.stopPropagation();
+      if (e.key === 'Enter') input.blur();
+      else if (e.key === 'Escape') {
+        input.value = value;
+        input.blur();
+      }
+    });
+    input.addEventListener('change', () => input.value !== value && commit(input.value));
+    return h('label', { class: 'num wide ui-text' }, input);
+  };
+  /** A colour: the swatch opens the system picker (live in the game while it moves), the text takes #rrggbb / rgb(). */
+  const colourField = (key        , path        , value        , label        ) => {
+    const hex6 = /^#[0-9a-f]{6}$/i.test(value) ? value : /^#[0-9a-f]{3}$/i.test(value) ? '#' + [...value.slice(1)].map((c) => c + c).join('') : '#000000';
+    const sw = h('input', { type: 'color', value: hex6, 'aria-label': label, dataset: { part: `${path}-swatch` } })                    ;
+    sw.addEventListener('input', () => d.set(key, path, sw.value, true));
+    sw.addEventListener('change', () => d.set(key, path, sw.value));
+    const txt = textField(value, label, (v) => d.set(key, path, v.trim()), { part: `${path}-text` });
+    return h('div', { class: 'ui-colour' }, h('span', { class: 'ui-swatch', style: `--c:${value}` }, sw), txt);
+  };
+
+  /** The rows for one UI element (empty when the bridge has said nothing of it yet, or it has nothing to change). */
+  function render(key        )                {
+    forKey = key;
+    const p = d.props(key);
+    if (!p) {
+      el = h('div', { class: 'fields ui-look', dataset: { part: 'ui-look', key }, hidden: true });
+      return [el];
+    }
+    const st = d.state(key);
+    const parts                = [];
+    if (p.button) {
+      const seg = h('div', { class: 'seg ui-states', role: 'radiogroup', 'aria-label': d.t('uiLook.state'), dataset: { part: 'ui-state' } },
+        ...STATES.map((s) => h('button', { type: 'button', role: 'radio', 'aria-checked': String(s === st), dataset: { state: s || 'normal' }, text: d.t(`uiLook.state.${s || 'normal'}`),
+          onclick: () => s !== st && d.setState(key, s) })));
+      parts.push(...row(d.t('uiLook.state'), 'ui-state-row', seg));
+    }
+    const pre = st ? `@${st}.` : '';
+    if (!st && p.text !== null) {
+      const size = p.fontSize !== null ? textField(String(Math.round(p.fontSize * 10) / 10), d.t('uiLook.size'), (v) => {
+        const n = parseFloat(v.replace(',', '.'));
+        if (Number.isFinite(n) && n >= 1 && n <= 500) d.set(key, 'fontSize', Math.round(n * 10) / 10);
+      }, { mode: 'decimal', part: 'ui-size' }) : null;
+      size?.classList.add('ui-px');
+      size?.append(h('span', { class: 'ui-unit', text: 'px' }));
+      // One ↺ for the row: the text and its size go back together.
+      const changed = d.changed(key, 'text') || d.changed(key, 'fontSize');
+      const undoRow = changed ? h('button', { type: 'button', class: 'icon-btn ui-back', dataset: { action: 'ui-back', path: 'text' }, title: d.t('uiLook.back'), 'aria-label': d.t('uiLook.back'),
+        onclick: () => {
+          if (d.changed(key, 'text')) d.set(key, 'text', null);
+          if (d.changed(key, 'fontSize')) d.set(key, 'fontSize', null);
+        } }, icon('undo')) : null;
+      parts.push(...row(d.t('uiLook.text'), 'ui-text-row', h('div', { class: 'ui-text-cells' }, textField(p.text, d.t('uiLook.text'), (v) => d.set(key, 'text', v), { part: 'ui-text' }), size), undoRow));
+    }
+    if (p.color !== null) parts.push(...row(d.t('uiLook.color'), 'ui-color-row', colourField(key, `${pre}color`, p.color, d.t('uiLook.color')), back(key, `${pre}color`)));
+    if (p.background !== null || p.button) parts.push(...row(d.t('uiLook.fill'), 'ui-fill-row', colourField(key, `${pre}background`, p.background ?? '#000000', d.t('uiLook.fill')), back(key, `${pre}background`)));
+    if (!st && p.sample) {
+      const s = p.sample;
+      // A value the game writes (a score, a timer) gets numbers; words get a long name. Both get Empty.
+      const picks = [s.hint, s.value ? '999,999' : d.t('uiLook.sample.long'), ''].filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i)            ;
+      const chips = picks.map((v) => h('button', { type: 'button', class: 'pill ui-sample', 'aria-pressed': String(s.now === v), dataset: { sample: v || 'empty' },
+        text: v === '' ? d.t('uiLook.sample.empty') : v, onclick: () => d.sample(key, s.now === v ? null : v) }));
+      const own = textField(s.now !== null && !picks.includes(s.now) ? s.now : '', d.t('uiLook.sample.own'), (v) => d.sample(key, v === '' ? null : v), { part: 'ui-sample-own' });
+      (own.querySelector('input')                    ).placeholder = d.t('uiLook.sample.ownHint');
+      const off = s.now !== null ? h('button', { type: 'button', class: 'icon-btn ui-back', dataset: { action: 'ui-sample-off' }, title: d.t('uiLook.sample.off'), 'aria-label': d.t('uiLook.sample.off'), onclick: () => d.sample(key, null) }, icon('close')) : null;
+      parts.push(...row(d.t('uiLook.sample'), 'ui-sample-row', h('div', { class: 'ui-samples' }, ...chips, own), off));
+      parts.push(h('p', { class: 'muted note-line ui-sample-note', dataset: { part: 'ui-sample-note' }, text: d.t('uiLook.sample.note') }));
+    }
+    el = h('div', { class: 'fields ui-look', dataset: { part: 'ui-look', key } }, ...parts);
+    if (!parts.length) el.hidden = true;
+    return [el];
+  }
+
+  return {
+    render,
+    /**
+     * New props came: draw the rows again in place — unless a field of them is being typed in (the typing wins; the
+     * rows are drawn when it is done) or the colour picker is open.
+     */
+    refresh(key        ) {
+      if (!el || !el.isConnected || forKey !== key) return false;
+      if (el.contains(document.activeElement)) return true;
+      const old = el;
+      const [next] = render(key);
+      old.replaceWith(next );
+      return true;
+    },
+  };
+}
+
+__def(__exports, "createUiCard", () => createUiCard);
+};
+__defs[60] = function (__exports) {
+'use strict';
+// ui-screens.ts
+
+// The UI list's head in a game with screens (UI stage 2, studio-ui-edit-2, 2026-10-22;
+// CONTRACT.md §1.11): "On screen" becomes the screen's name — "Title ⌄  1 of 4" — and pressing
+// it opens the screens' menu (the same plate as the right-click menu and the levels' menu): one row per screen, ✓ on
+// the one shown. Choosing one shows it in the game (the bridge's ui-extras.ts) and lists its elements.
+//
+// The same button as the level switch (level-switch.ts, its CSS class too): one way of saying "you are here, press to
+// go elsewhere" in the editor. No new colour, no tab bar: the words that said where you are become the way to go.
+//
+// Names: the game's data-studio-screen-label, else a known id in words (title → Title, play → Playing, pause →
+// Paused, over → Game over …, in the editor's language: i18n uiScreen.<id>), else the id as written.
+                                                   
+                                                   
+const { h } = __require(16);
+const { icon } = __require(20);
+
+                                
+                                                                 
+                                                      
+                       
+ 
+
+/** The ids with a word of their own (i18n uiScreen.<id>). */
+const KNOWN = ['title', 'menu', 'play', 'hud', 'pause', 'over', 'gameover', 'win', 'result', 'settings', 'shop', 'level'];
+
+function createUiScreens(d               ) {
+  let list                 = [];
+  let current                = null;
+
+  const nameOf = (s              ) => s.label || (KNOWN.includes(s.id.toLowerCase()) ? d.t(`uiScreen.${s.id.toLowerCase()}`) : s.id);
+  const entries = ()              => list.map((s) => ({ id: `screen:${s.id}`, label: nameOf(s), checked: s.id === current, run: () => s.id !== current && d.go(s.id) }));
+
+  return {
+    /** From the bridge's ui/screens. */
+    update(screens                , now               ) {
+      list = screens.slice(0, 50);
+      current = now;
+    },
+    /** The screen shown now (null = none of them). */
+    current: () => current,
+    has: () => list.length > 0,
+    entries,
+    /** The head for the UI list, or null for a game without screens ("On screen" as before). */
+    render()                     {
+      if (!list.length) return null;
+      const s = list.find((x) => x.id === current);
+      const name = s ? nameOf(s) : d.t('uiScreen.none');
+      const i = s ? list.indexOf(s) : -1;
+      const b = h('button', { type: 'button', class: 'level-switch screen-switch', dataset: { action: 'screens', part: 'screen-switch' }, 'aria-haspopup': 'menu', title: d.t('uiScreen.switch', { name }) },
+        h('span', { class: 'level-name', text: name }),
+        icon('chevronDown'),
+        i >= 0 ? h('span', { class: 'level-n mono', text: d.t('level.of', { n: i + 1, total: list.length }) }) : null);
+      b.addEventListener('click', () => d.openMenu(entries(), b.getBoundingClientRect()));
+      return b;
+    },
+  };
+}
+
+__def(__exports, "createUiScreens", () => createUiScreens);
+};
+__defs[61] = function (__exports) {
+'use strict';
+// ui-style-model.ts
+
+// What the card changed on the game's UI, and the theme (UI stage 3, studio-ui-edit-2, 2026-10-22;
+// CONTRACT.md §1.11, §4.1). Pure, no DOM, so it is unit-tested (test/ui-edit-2.test.ts).
+//
+// WHY its own store and not PlacementModel: a pose is one value per key with a `was` from the game, and every rule
+// of PlacementModel (copies, order, levels) is about poses. A look is a handful of named fields per key — the text,
+// its size and colour, the fill, a button's state colours — each changed on its own, each with the game's own
+// value. Kept by "path": 'text' | 'fontSize' | 'color' | 'background' | '@hover.color' | '@active.background' …,
+// and written to placement.json as `ui.<key>.set` / `setWas` (nested for the states) and `theme`.
+//
+// Like the poses: the current values, the last saved ones (what "Save · N" counts against), and the game's own
+// (`was`: from the file's setWas first — the game may already show the saved look through the loader — else what
+// the bridge read before the first change). A value back at the game's own is no change: not written, not counted.
+                                                                                              
+
+                            
+                           
+const STATES            = ['hover', 'active', 'disabled'];
+
+/** placement.json's nested shape → paths ("@hover": { color } → "@hover.color"). */
+function pathsOf(set                        )                   {
+  const out = new Map             ();
+  if (!set) return out;
+  for (const n of ['text', 'fontSize', 'color', 'background']         ) if (set[n] !== undefined) out.set(n, set[n] );
+  for (const st of STATES) {
+    const o = set[`@${st}`];
+    if (o) for (const n of ['color', 'background']         ) if (o[n] !== undefined) out.set(`@${st}.${n}`, o[n] );
+  }
+  return out;
+}
+
+/** Paths → placement.json's nested shape. */
+function setOf(m                  )             {
+  const out                          = {};
+  for (const [p, v] of m) {
+    if (p.startsWith('@')) {
+      const [st, n] = p.split('.')                    ;
+      const o = (out[st]                           ) || {};
+      o[n] = v;
+      out[st] = o;
+    } else out[p] = v;
+  }
+  return out              ;
+}
+
+/** Colours compared the way CSS means them ("#FFF" = "#ffffff"); text exactly; sizes to 0.1 px. */
+function sameVal(a                 , b                 )          {
+  if (a === undefined || b === undefined) return a === b;
+  if (typeof a === 'number' || typeof b === 'number') return Math.abs(Number(a) - Number(b)) < 0.05;
+  // Only colours are folded ("#FFF" = "#ffffff", "RGB(…)" = "rgb(…)"): a text "A" is not "a".
+  const colour = (s        ) => /^(#|rgba?\(|hsla?\()/i.test(s.trim());
+  if (!colour(a) || !colour(b)) return a === b;
+  const hex = (s        ) => {
+    const t = s.trim().toLowerCase().replace(/\s+/g, '');
+    return /^#[0-9a-f]{3}$/.test(t) ? '#' + [...t.slice(1)].map((c) => c + c).join('') : t;
+  };
+  return hex(a) === hex(b);
+}
+
+// The same rules as the validator (src/schema/studio-files.mjs readUiSet / readTheme): a value the card would let through
+// but the file would refuse must never reach the model — the whole Save would fail on it.
+const COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+const THEME_VALUE_RE = /^[^;{}<>\\\u0000-\u001f\u007f]{1,200}$/;
+
+/** Can this value be saved for this field? (text ≤ 200, a size 1–500 px, a CSS colour.) */
+function validLook(path        , v     )          {
+  const name = path.startsWith('@') ? path.split('.')[1] : path;
+  if (name === 'text') return typeof v === 'string' && v.length <= 200;
+  if (name === 'fontSize') return typeof v === 'number' && v >= 1 && v <= 500;
+  if (name === 'color' || name === 'background') return typeof v === 'string' && v.length <= 64 && COLOR_RE.test(v.trim());
+  return false;
+}
+/** Can this be saved as a theme variable's value? (`color`: also a CSS colour.) */
+function validTheme(v        , type                   )          {
+  return THEME_VALUE_RE.test(v.trim()) && (type !== 'color' || COLOR_RE.test(v.trim()));
+}
+
+class UiStyleModel {
+          cur = new Map                          ();
+          saved = new Map                          ();
+          was = new Map                          ();
+          themeCur = new Map                ();
+          themeSaved = new Map                ();
+          themeWas = new Map                ();
+
+  /** The saved file's looks (`ui.<key>.set` / `setWas`) and theme, as the current and saved values. */
+  restore(file                      )       {
+    this.cur.clear();
+    this.saved.clear();
+    this.was.clear();
+    this.themeCur.clear();
+    this.themeSaved.clear();
+    this.themeWas.clear();
+    for (const [k, e] of Object.entries(file?.ui || {})) {
+      const set = pathsOf(e.set);
+      if (!set.size) continue;
+      this.cur.set(k, new Map(set));
+      this.saved.set(k, new Map(set));
+      const w = pathsOf(e.setWas);
+      if (w.size) this.was.set(k, w);
+    }
+    for (const [n, e] of Object.entries(file?.theme || {})) {
+      this.themeCur.set(n, e.v);
+      this.themeSaved.set(n, e.v);
+      if (e.was !== undefined) this.themeWas.set(n, e.was);
+    }
+  }
+
+  /** The person's value (undefined = the game's own). */
+  value(key        , path        )                  {
+    return this.cur.get(key)?.get(path);
+  }
+  /** The game's own value, when known (the file's setWas, else what the bridge read). */
+  wasOf(key        , path        )                  {
+    return this.was.get(key)?.get(path);
+  }
+  /** What the bridge read as the game's own (ui/props `was`): kept for the paths the file does not already say. */
+  noteWas(key        , set            )       {
+    const m = this.was.get(key) || new Map             ();
+    for (const [p, v] of pathsOf(set)) if (!m.has(p)) m.set(p, v);
+    if (m.size) this.was.set(key, m);
+  }
+  /** Change one field; null (or the game's own value) = back to the game's. */
+  set(key        , path        , v            )       {
+    const m = this.cur.get(key) || new Map             ();
+    if (v === null || sameVal(v, this.wasOf(key, path))) m.delete(path);
+    else m.set(path, v);
+    if (m.size) this.cur.set(key, m);
+    else this.cur.delete(key);
+  }
+
+  theme(name        )                     {
+    return this.themeCur.get(name);
+  }
+  themeWasOf(name        )                     {
+    return this.themeWas.get(name);
+  }
+  noteThemeWas(name        , v        )       {
+    if (!this.themeWas.has(name)) this.themeWas.set(name, v);
+  }
+  setTheme(name        , v               )       {
+    if (v === null || sameVal(v, this.themeWas.get(name))) this.themeCur.delete(name);
+    else this.themeCur.set(name, v);
+  }
+
+          keyDirty(k        )          {
+    const a = this.cur.get(k) || new Map(), b = this.saved.get(k) || new Map();
+    if (a.size !== b.size) return true;
+    for (const [p, v] of a) if (!sameVal(v, b.get(p))) return true;
+    return false;
+  }
+          themeDirty()           {
+    const out           = [];
+    for (const n of new Set([...this.themeCur.keys(), ...this.themeSaved.keys()])) if (!sameVal(this.themeCur.get(n), this.themeSaved.get(n))) out.push(n);
+    return out;
+  }
+  /** Unsaved changes: one per element whose look changed, one per theme variable. */
+  dirty()         {
+    return this.changedKeys().size + this.themeDirty().length;
+  }
+  /** The elements whose look changed since the last save (a dot on their row). */
+  changedKeys()              {
+    const out = new Set        ();
+    for (const k of new Set([...this.cur.keys(), ...this.saved.keys()])) if (this.keyDirty(k)) out.add(k);
+    return out;
+  }
+  markSaved()       {
+    this.saved = new Map([...this.cur].map(([k, m]) => [k, new Map(m)]));
+    this.themeSaved = new Map(this.themeCur);
+  }
+
+  /** placement.json `ui.<key>` additions: `set` and (what is known of) `setWas`, for every element with a change. */
+  entries()                                                           {
+    const out                                                           = {};
+    for (const [k, m] of this.cur) {
+      if (!m.size) continue;
+      const w = new Map             ();
+      for (const p of m.keys()) {
+        const v = this.wasOf(k, p);
+        if (v !== undefined) w.set(p, v);
+      }
+      out[k] = w.size ? { set: setOf(m), setWas: setOf(w) } : { set: setOf(m) };
+    }
+    return out;
+  }
+  /** placement.json `theme`, or undefined when no variable differs from the game's. */
+  themeResult()                                                  {
+    if (!this.themeCur.size) return undefined;
+    const out                                      = {};
+    for (const [n, v] of this.themeCur) {
+      const w = this.themeWas.get(n);
+      out[n] = w !== undefined ? { v, was: w } : { v };
+    }
+    return out;
+  }
+  /** Every value the editor shows over the game's, to give the page again when editing starts (a reload, the AI's change). */
+  replay()                                                                                                            {
+    const sets                                                   = [];
+    for (const [key, m] of this.cur) for (const [path, value] of m) sets.push({ key, path, value });
+    return { sets, theme: [...this.themeCur].map(([name, value]) => ({ name, value })) };
+  }
+}
+
+__def(__exports, "pathsOf", () => pathsOf);
+__def(__exports, "setOf", () => setOf);
+__def(__exports, "sameVal", () => sameVal);
+__def(__exports, "validLook", () => validLook);
+__def(__exports, "validTheme", () => validTheme);
+__def(__exports, "UiStyleModel", () => UiStyleModel);
+};
+__defs[62] = function (__exports) {
+'use strict';
+// ui-theme.ts
+
+// "Theme" under the UI list (UI stage 3, studio-ui-edit-2, 2026-10-22; asked for as "change the theme's colours and
+// fonts and the whole UI follows — fixing buttons one by one is too much"; CONTRACT.md §1.11).
+// The game's CSS variables on :root / html (the bridge's ui/theme: colours and fonts only), one row each:
+//
+//   Theme  5                                        ⌄
+//     glow          [■ #ffcf6e]   ↺
+//     font-display  [ui-serif, Georgia, serif]
+//
+// A fold of the list's foot, closed until pressed (the list is what the column is for; the theme is changed now and
+// then). Rows read like the card's (.fields): the variable's name without its "--", grey; the value as the card shows
+// colours. Changing one recolours every rule that uses it at once (style.setProperty on the game's <html>); one undo
+// step and one Save count each (main.ts: the ui-theme change). A game without such variables has no Theme row at all
+// (the skill asks the AI, once, whether to gather its colours into variables).
+                                                 
+const { h } = __require(16);
+const { icon } = __require(20);
+
+                              
+                                                                 
+                       
+                                 
+                                                                                                                 
+                                                                
+ 
+
+function createUiTheme(d             ) {
+  let open = false;
+  let el                     = null;
+
+  const field = (v            ) => {
+    const input = h('input', { type: 'text', value: v.value, autocomplete: 'off', spellcheck: false, 'aria-label': v.name, dataset: { part: 'theme-text' } })                    ;
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') input.blur();
+      else if (e.key === 'Escape') {
+        input.value = v.value;
+        input.blur();
+      }
+    });
+    input.addEventListener('change', () => input.value.trim() && input.value !== v.value && d.set(v.name, input.value.trim()));
+    return h('label', { class: 'num wide ui-text' }, input);
+  };
+
+  function render()                     {
+    const vars = d.vars();
+    if (!vars.length) return (el = null);
+    const head = h('button', { type: 'button', class: 'ui-theme-head', 'aria-expanded': String(open), dataset: { action: 'ui-theme', part: 'ui-theme-head' },
+      onclick: () => {
+        open = !open;
+        const next = render();
+        if (next && el0) el0.replaceWith(next);
+      } },
+    h('span', { class: 'list-title', text: d.t('uiTheme.title') }), h('span', { class: 'count n mono', text: String(vars.length) }), icon(open ? 'chevronUp' : 'chevronDown'));
+    const body = h('div', { class: 'fields ui-theme-rows', dataset: { part: 'ui-theme-rows' }, hidden: !open });
+    for (const v of vars) {
+      const name = v.name.replace(/^--/, '');
+      const cells                = [];
+      if (v.type === 'color') {
+        const hex6 = /^#[0-9a-f]{6}$/i.test(v.value) ? v.value : '#000000';
+        const sw = h('input', { type: 'color', value: hex6, 'aria-label': name, dataset: { part: 'theme-swatch' } })                    ;
+        sw.addEventListener('input', () => d.set(v.name, sw.value, true));
+        sw.addEventListener('change', () => d.set(v.name, sw.value));
+        cells.push(h('div', { class: 'ui-colour' }, h('span', { class: 'ui-swatch', style: `--c:${v.value}` }, sw), field(v)));
+      } else cells.push(field(v));
+      if (d.changed(v.name)) cells.push(h('button', { type: 'button', class: 'icon-btn ui-back', dataset: { action: 'theme-back' }, title: d.t('uiLook.back'), 'aria-label': d.t('uiLook.back'), onclick: () => d.set(v.name, null) }, icon('undo')));
+      body.append(h('span', { class: 'f-l mono', title: v.name, text: name }), h('div', { class: 'f-cells ui-cells', dataset: { part: 'theme-row', name: v.name } }, ...cells));
+    }
+    const el0 = h('div', { class: 'ui-theme', dataset: { part: 'ui-theme', open: open ? 'on' : 'off' } }, head, body);
+    return (el = el0);
+  }
+
+  return {
+    render,
+    /** New values came: the rows again in place, unless one is being typed in or picked. */
+    refresh() {
+      if (!el || !el.isConnected || el.contains(document.activeElement)) return;
+      const old = el;
+      const next = render();
+      if (next) old.replaceWith(next);
+      else old.remove();
+    },
+  };
+}
+
+__def(__exports, "createUiTheme", () => createUiTheme);
+};
+__defs[63] = function (__exports) {
+'use strict';
+// ui-wire.ts
+
+// UI stages 2–3 in the shell (studio-ui-edit-2, 2026-10-22): the one place that ties the screens' head (ui-screens.ts),
+// the card's look rows (ui-card.ts), the Theme fold (ui-theme.ts) and their store (ui-style-model.ts) to the bridge
+// (studio:ui/* messages, ui-extras.ts there) and to undo / Save. main.ts only calls in (its 4,000 lines stay as they
+// were but for the calls): the placement panel's uiHead / uiLook / uiFoot, the bridge messages, undo's ui-set /
+// ui-theme changes, the Save count and the file.
+//
+// What is kept where:
+//   - the looks and the theme: the model (saved in placement.json, undone, counted);
+//   - the screen shown, a button's look shown, sample values: the game page only (the bridge puts them back at the
+//     end of editing) and here only to draw the card — never saved. A new game page starts without them.
+                                                                                                                                                    
+                                                   
+const { createUiCard } = __require(59);
+const { withLooks } = __require(58);
+const { createUiScreens } = __require(60);
+const { UiStyleModel, validLook, validTheme } = __require(61);
+const { createUiTheme } = __require(62);
+                                                   
+
+                             
+                                                                 
+                               
+                                                        
+                              
+                                                                                
+                  
+                                                                                       
+                 
+                                                      
+                                            
+                  
+ 
+
+// "Back to the game's own" is sent as the game's own value when the file knows it (setWas / the theme's was), not as
+// null: a page opened again has the saved look already (the game's loader gave it), so the bridge's own reading of
+// "the game's value" is the saved one there, and null would put that back.
+
+/** '@hover.color' → { state: 'hover', name: 'color' }; 'text' → { name: 'text' }. */
+const splitPath = (path        )                                        => {
+  if (!path.startsWith('@')) return { name: path               };
+  const [st, n] = path.slice(1).split('.')                         ;
+  return { state: st, name: n };
+};
+
+function createUiWire(d            ) {
+  const model = new UiStyleModel();
+  const props = new Map                 ();
+  let vars               = [];
+  // The screen of each UI element seen (an element of another screen keeps its screen when that screen is not shown),
+  // and its words (the `label` of an element written for its look alone).
+  const screenOf = new Map                ();
+  const labels = new Map                ();
+  // A button's look shown in the game (one element at a time) and the sample values shown (both: this page only).
+  let shown                                         = null;
+  const samples = new Map                ();
+  // A colour picker moving: the value before it opened, so its close is one undo step from there.
+  const liveFrom = new Map                                ();
+
+  const setLook = (key        , path        , value                        , live = false) => {
+    const { state, name } = splitPath(path);
+    // A value the file could not hold (a colour CSS does not know, a size out of range): not taken, the row redrawn.
+    if (value !== null && !validLook(path, typeof value === 'string' ? value.trim() : value)) {
+      if (!live) d.send({ type: 'studio:ui/props-get', key });
+      return;
+    }
+    if (typeof value === 'string' && name !== 'text') value = value.trim();
+    const id = `${key}\n${path}`;
+    if (live) {
+      if (!liveFrom.has(id)) liveFrom.set(id, model.value(key, path) ?? null);
+      d.send({ type: 'studio:ui/set', key, name, value, ...(state ? { state } : {}), quiet: true });
+      return;
+    }
+    const from = liveFrom.has(id) ? liveFrom.get(id)  : model.value(key, path) ?? null;
+    liveFrom.delete(id);
+    model.set(key, path, value);
+    const to = model.value(key, path) ?? null;
+    d.push({ changes: [{ kind: 'ui-set', key, path, from, to }] });
+    d.send({ type: 'studio:ui/set', key, name, value: to ?? model.wasOf(key, path) ?? null, ...(state ? { state } : {}) });
+    d.changed();
+  };
+  const setTheme = (name        , value               , live = false) => {
+    if (value !== null && !validTheme(value, vars.find((v) => v.name === name)?.type)) {
+      theme.refresh();
+      return;
+    }
+    if (value !== null) value = value.trim();
+    const id = `theme\n${name}`;
+    if (live) {
+      if (!liveFrom.has(id)) liveFrom.set(id, model.theme(name) ?? null);
+      d.send({ type: 'studio:ui/theme-set', name, value, quiet: true });
+      return;
+    }
+    const from = (liveFrom.has(id) ? liveFrom.get(id) : model.theme(name)) ?? null;
+    liveFrom.delete(id);
+    model.setTheme(name, value);
+    const to = model.theme(name) ?? null;
+    d.push({ changes: [{ kind: 'ui-theme', key: name, from: from === null ? null : String(from), to }] });
+    d.send({ type: 'studio:ui/theme-set', name, value: to ?? model.themeWasOf(name) ?? null });
+    d.changed();
+  };
+
+  const screens = createUiScreens({ t: d.t, openMenu: d.openMenu, go: (id) => d.send({ type: 'studio:ui/screen', id }) });
+  const card = createUiCard({
+    t: d.t,
+    props: (k) => props.get(k) ?? null,
+    state: (k) => (shown && shown.key === k ? shown.state : null),
+    setState: (k, s) => {
+      shown = s ? { key: k, state: s } : null;
+      d.send({ type: 'studio:ui/state', key: k, state: s });
+    },
+    changed: (k, path) => model.value(k, path) !== undefined,
+    set: setLook,
+    sample: (k, text) => {
+      if (text === null) samples.delete(k);
+      else samples.set(k, text);
+      d.send({ type: 'studio:ui/sample', key: k, text });
+    },
+  });
+  const theme = createUiTheme({
+    t: d.t,
+    vars: () => vars,
+    changed: (n) => model.theme(n) !== undefined,
+    set: setTheme,
+  });
+
+  return {
+    model,
+    head: () => screens.render(),
+    look: (key        ) => card.render(key),
+    foot: () => theme.render(),
+    /** The bridge's ui/* messages; false = not one of them. */
+    handle(m               )          {
+      if (m.type === 'studio:ui/screens') {
+        screens.update(m.screens, m.current);
+        if (d.onUi()) d.render();
+        return true;
+      }
+      if (m.type === 'studio:ui/props') {
+        props.set(m.props.key, m.props);
+        model.noteWas(m.props.key, m.props.was);
+        if (!card.refresh(m.props.key) && d.onUi()) d.render();
+        return true;
+      }
+      if (m.type === 'studio:ui/theme') {
+        const first = !vars.length;
+        vars = m.vars.slice(0, 100);
+        for (const v of vars) model.noteThemeWas(v.name, v.was);
+        if (first) d.render();
+        else theme.refresh();
+        return true;
+      }
+      return false;
+    },
+    /** A UI list came: each element's screen and words (written with a look of its own). */
+    noteItems(items        ) {
+      for (const it of items) {
+        if (it.screen) screenOf.set(it.key, it.screen);
+        labels.set(it.key, it.label);
+      }
+    },
+    /** The pick changed: a button's look shown on another element goes back to its normal one. */
+    picked(key               ) {
+      if (shown && shown.key !== key) {
+        d.send({ type: 'studio:ui/state', key: shown.key, state: null });
+        shown = null;
+      }
+    },
+    /** The game's page put its editing away (Play) or a new page came: what only lived in it is gone. */
+    pageReset() {
+      shown = null;
+      samples.clear();
+      liveFrom.clear();
+      props.clear();
+    },
+    /** A new page's UI: the looks and the theme the editor holds, given to it again (quietly: no props back). */
+    replay() {
+      const r = model.replay();
+      for (const n of r.theme) d.send({ type: 'studio:ui/theme-set', name: n.name, value: n.value, quiet: true });
+      for (const s of r.sets) {
+        const { state, name } = splitPath(s.path);
+        d.send({ type: 'studio:ui/set', key: s.key, name, value: s.value, ...(state ? { state } : {}), quiet: true });
+      }
+    },
+    /** Undo / redo of a look or a theme change (main.ts applyEntry). */
+    apply(c        , dir                 ) {
+      if (c.kind === 'ui-set') {
+        const v = dir === 'undo' ? c.from : c.to;
+        model.set(c.key, c.path, v);
+        const { state, name } = splitPath(c.path);
+        d.send({ type: 'studio:ui/set', key: c.key, name, value: model.value(c.key, c.path) ?? model.wasOf(c.key, c.path) ?? null, ...(state ? { state } : {}) });
+      } else if (c.kind === 'ui-theme') {
+        model.setTheme(c.key, dir === 'undo' ? c.from : c.to);
+        d.send({ type: 'studio:ui/theme-set', name: c.key, value: model.theme(c.key) ?? model.themeWasOf(c.key) ?? null });
+      }
+    },
+    /** The opened file: its looks, theme and screens. */
+    restore(file                      ) {
+      model.restore(file);
+      for (const [k, e] of Object.entries(file?.ui || {})) if (e.screen) screenOf.set(k, e.screen);
+    },
+    /** placement.json `ui`: the moves with each element's look and screen (ui-layer.ts withLooks). */
+    entries(moves                                  )                                   {
+      return withLooks(moves, model.entries(), screenOf, labels);
+    },
+  };
+}
+
+                                                     
+
+__def(__exports, "createUiWire", () => createUiWire);
+};
+__defs[64] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -18754,7 +19976,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[60] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -18814,7 +20036,8 @@ const { bigChanges, createSafeSave } = __require(55);
 const { createUnsavedGuard, lostBy, playAsks } = __require(56);
 const { createLayerSwitch } = __require(57);
 const { uiAsPlacement, uiEntries, withUi } = __require(58);
-const { barPress, gripEnd, readFold, writeFold } = __require(59);
+const { createUiWire } = __require(63);
+const { barPress, gripEnd, readFold, writeFold } = __require(64);
 
                                                                         
 
@@ -19524,6 +20747,21 @@ function start(host            ) {
       else levelsChanged(next === '');
     },
   });
+  // UI stages 2–3 (2026-10-22, ui-wire.ts): the screens' head of the UI list, the card's look rows, the Theme fold.
+  const uiWire = createUiWire({
+    t,
+    send: (m) => send(m),
+    push: (e) => undo.push(e),
+    changed: () => renderButtons(),
+    render: () => tool === 'placement' && page === 'tool' && placementPanel.render(),
+    onUi: () => editLayer === 'ui',
+    // The same place as the levels' menu: under the head, never over it.
+    openMenu: (entries, head) => {
+      ctxMenu.show(entries, head.left, head.bottom + 2, { place: 'screens', label: t('uiScreen.list') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      if (m.top < head.bottom && m.bottom > head.top) ctxMenu.el.style.top = `${Math.max(8, Math.round(head.top - m.height - 4))}px`;
+    },
+  });
   installTooltips(app);
   // A Library tile dragged onto the Scene row = its "Add to scene" ("use the Library", 2026-10-18). The row is the
   // drop target because the Library covers the game on PC (the game is not on screen to drop on); while a tile is
@@ -19677,6 +20915,9 @@ function start(host            ) {
   const placementPanel = createPlacementPanel({
     t,
     levelSwitch: () => levelSwitch.render(),
+    uiHead: () => uiWire.head(),
+    uiLook: (k) => uiWire.look(k),
+    uiFoot: () => uiWire.foot(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
     hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
     items: () => items,
@@ -20352,7 +21593,8 @@ function start(host            ) {
       return it ? displayName(it, t) : k;
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion' : 'move';
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion'
+      : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0] ) : t('undo.n', { n: keys.length }) });
   }
@@ -20470,6 +21712,7 @@ function start(host            ) {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
+      else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -20487,7 +21730,7 @@ function start(host            ) {
     }
     flush();
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && !c.kind.startsWith('motion')).map((c) => c.key));
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && (c.kind === 'add' || c.kind === 'remove')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]  : null;
@@ -21149,6 +22392,8 @@ function start(host            ) {
   }
   /** The shell's side of a switch: that layer's model and list, nothing picked, no tool chosen. */
   function useLayer(l           ) {
+    // A button's look shown on the UI goes back to normal when the UI is left.
+    if (l !== 'ui') uiWire.picked(null);
     editLayer = l;
     model = l === 'ui' ? uiModel : worldModel;
     items = l === 'ui' ? uiItems : worldItems;
@@ -21269,6 +22514,8 @@ function start(host            ) {
   function onBridge(m               ) {
     if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
+    // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
+    if (uiWire.handle(m)) return;
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -21294,7 +22541,11 @@ function start(host            ) {
       case 'studio:core/ready': {
         // ▶ Play in the same page (fast switch): the page's editor put its tools away for Play (editing: false). Nothing
         // about the page changed; the shell is in Play already (togglePlay). Back in Edit, editing: true comes as usual.
-        if (playing && playHere && !m.editing) break;
+        if (playing && playHere && !m.editing) {
+          // The page put its screens, samples and button looks back for Play (ui-extras.ts end).
+          uiWire.pageReset();
+          break;
+        }
         // UI stage 1: which layers the game has (none listed = no UI: as before) and which one the bridge edits now.
         // A new game page (a reload, Play and back) always starts on the world.
         editLayers = m.layers && m.layers.length ? m.layers.slice() : null;
@@ -21405,6 +22656,9 @@ function start(host            ) {
         if (m.layer === 'ui') {
           uiSeen = true;
           uiItems = m.items;
+          uiWire.noteItems(m.items);
+          // A new page: the looks and the theme the editor holds go back on it too (UI stage 3), before the moves.
+          if (!uiRestored) uiWire.replay();
           // A new page's UI shows the UI as its code makes it: the moves made before (saved or not) go back, as for the world below.
           const uiLost = uiRestored ? null : uiModel.notShown(m.items);
           uiRestored = true;
@@ -21536,6 +22790,7 @@ function start(host            ) {
         break;
       }
       case 'studio:placement/selected':
+        uiWire.picked(m.key);
         selected = m.key;
         group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
         // With the Library on screen the game is hidden, so this is only the game's echo of a pick made in the
@@ -21682,14 +22937,15 @@ function start(host            ) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + uiWire.model.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
    */
   const fileNow = ()                => {
-    const f = levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
-      uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
+    // UI stages 2–3: each element's look and screen with its move, and the theme (ui-wire.ts; nothing for a game without them).
+    const f = levels.compose(withUi(worldModel.result(), uiWire.entries(uiSeen ? uiEntries(uiModel.result()) : fileUi ?? {}),
+      uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null, uiWire.model.themeResult()));
     // The Library's motions sit at the top, also with levels (studio-motion-triggers). Absent with none: same bytes.
     const motions = motionLibrary.result((m) => roundLib(m, dim));
     return motions ? { ...f, motions } : f;
@@ -21874,6 +23130,7 @@ function start(host            ) {
           if (!r.ok) return r.error || 'placement';
           worldModel.markSaved();
           uiModel.markSaved();
+          uiWire.model.markSaved();
           levels.markSaved();
           motionLibrary.markSaved();
           written.placement = sig;
@@ -22201,6 +23458,7 @@ function start(host            ) {
     bigShown.clear();
     placementRestored = false;
     uiRestored = false;
+    uiWire.pageReset();
     // What the game in the frame is built from (the host's signature of the files).
     loadedCode = code;
     gameTools = [];
@@ -22564,7 +23822,8 @@ function start(host            ) {
     const mac = isMac();
     const nextUndo = describe(undo.peekUndo());
     const nextRedo = describe(undo.peekRedo());
-    unsavedKeys = model.changedKeys();
+    // The UI layer's rows also get the dot for a changed look (UI stage 3).
+    unsavedKeys = editLayer === 'ui' ? new Set([...model.changedKeys(), ...uiWire.model.changedKeys()]) : model.changedKeys();
     placementPanel.markRows();
     for (const b of undoBtns) {
       setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
@@ -22933,6 +24192,7 @@ function start(host            ) {
       if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
       else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
+      uiWire.restore(saved);
       fileUi = saved?.ui;
       fileUiView = saved?.uiView;
       if (tools.library?.restore) tools.library.restore(await host.load('library').catch(() => null));
@@ -22951,7 +24211,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[61] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -23130,19 +24390,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[62] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(60);
-const { createLocalHost } = __require(61);
+const { start } = __require(65);
+const { createLocalHost } = __require(66);
 
 start(createLocalHost());
 
 
 };
-__require(62);
+__require(67);
 })();

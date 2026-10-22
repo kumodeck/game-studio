@@ -52,6 +52,14 @@ export const LIMITS = Object.freeze({
   minUiScale: 0.1,
   maxUiScale: 10,
   maxUiView: 100000,
+  // UI stages 2–3 (2026-10-22): a text typed on the card (200 characters: a title, a button, a line of a dialogue), a
+  // colour / a theme value (64 / 200: "#rrggbbaa", rgb(), a font list), a font size 1–500 px, 100 theme variables.
+  maxUiText: 200,
+  maxUiColor: 64,
+  maxUiValue: 200,
+  minUiFont: 1,
+  maxUiFont: 500,
+  maxTheme: 100,
   // `motion` (motion-gui, 2026-10-22): a path of at most 32 points (a patrol round a yard has 4–8; more is a curve, which
   // is stage 2), speeds up to 1 km/s or 100,000 px/s and spins up to 100 rad/s (16 turns a second): far beyond a
   // moving platform or a spinning coin, they stop a runaway field like the bounds above. Speeds round to 1 mm/s / 0.1
@@ -174,7 +182,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -201,6 +209,11 @@ function placement(data, fail) {
       }
     }
   } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
+  // `theme` (UI stage 3) is optional too, and on its own: a theme changed with no element moved is a file with `theme` only.
+  if (data.theme !== undefined) {
+    const theme = readTheme(data.theme, fail);
+    if (Object.keys(theme).length) out.theme = theme;
+  }
   // `levels` / `levelsWas` (2026-10-22, CONTRACT.md §4.1) are optional too: absent for every game with one level, so
   // its file keeps its bytes. Each level holds its own world part, read by the same rules as the top one.
   if (data.levels !== undefined) {
@@ -398,7 +411,7 @@ function readUi(v, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['p', 's', 'label'], where, fail);
+    onlyFields(e, ['p', 's', 'label', 'screen', 'set', 'setWas'], where, fail);
     if (!Array.isArray(e.p) || e.p.length !== 2) {
       fail(`${where}.p`, 'must be 2 numbers: [dx, dy] in CSS px');
       continue;
@@ -414,7 +427,114 @@ function readUi(v, fail) {
       const label = readLabel(e.label, `${where}.label`, fail);
       if (label) o.label = label;
     }
+    // UI stage 2: the screen (a data-studio-screen value: key characters).
+    if (e.screen !== undefined) {
+      if (typeof e.screen !== 'string' || !KEY_RE.test(e.screen)) fail(`${where}.screen`, 'must match ' + KEY_RE);
+      else o.screen = e.screen;
+    }
+    // UI stage 3: what the card changed, and the game's own values. `setWas` only travels with a `set`.
+    if (e.set !== undefined) {
+      const set = readUiSet(e.set, `${where}.set`, fail);
+      if (Object.keys(set).length) {
+        o.set = set;
+        if (e.setWas !== undefined) {
+          const was = readUiSet(e.setWas, `${where}.setWas`, fail);
+          if (Object.keys(was).length) o.setWas = was;
+        }
+      }
+    } else if (e.setWas !== undefined) readUiSet(e.setWas, `${where}.setWas`, fail);
     out[key] = o;
+  }
+  return out;
+}
+
+// A colour as CSS writes it: #rgb … #rrggbbaa, rgb()/rgba()/hsl()/hsla() with plain numbers, or a colour word. Never
+// anything that could end the declaration it is put in (the loader writes it into a style sheet for the states).
+const UI_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+// A theme value (a colour, a font list, a length): no ; { } < > \ (it goes into style.setProperty, and into the AI's CSS).
+const UI_VALUE_RE = /^[^;{}<>\\\u0000-\u001f\u007f]{1,200}$/;
+const THEME_NAME_RE = /^--[A-Za-z0-9_-]{1,60}$/;
+const UI_STATES = ['@hover', '@active', '@disabled'];
+
+function readUiColor(v, where, fail) {
+  if (typeof v !== 'string' || v.length > LIMITS.maxUiColor || !UI_COLOR_RE.test(v.trim())) {
+    fail(where, 'must be a CSS colour (#rrggbb, rgb(), hsl() or a colour name)');
+    return null;
+  }
+  return v.trim();
+}
+
+/** `set` / `setWas` of a UI element (UI stage 3): text, fontSize, color, background, and per state color / background. */
+function readUiSet(v, where, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail(where, 'must be an object');
+    return out;
+  }
+  onlyFields(v, ['text', 'fontSize', 'color', 'background', ...UI_STATES], where, fail);
+  if (v.text !== undefined) {
+    if (typeof v.text !== 'string') fail(`${where}.text`, 'must be a string');
+    else if (v.text.length > LIMITS.maxUiText) fail(`${where}.text`, `at most ${LIMITS.maxUiText} characters`);
+    else out.text = v.text.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
+  }
+  if (v.fontSize !== undefined) {
+    const n = readNumber(v.fontSize, LIMITS.minUiFont, LIMITS.maxUiFont, `${where}.fontSize`, fail);
+    if (n !== null) out.fontSize = round(n, LIMITS.step2d);
+  }
+  for (const k of ['color', 'background']) {
+    if (v[k] === undefined) continue;
+    const c = readUiColor(v[k], `${where}.${k}`, fail);
+    if (c) out[k] = c;
+  }
+  for (const st of UI_STATES) {
+    if (v[st] === undefined) continue;
+    const w = `${where}[${JSON.stringify(st)}]`;
+    if (!isObject(v[st])) {
+      fail(w, 'must be an object');
+      continue;
+    }
+    onlyFields(v[st], ['color', 'background'], w, fail);
+    const o = {};
+    for (const k of ['color', 'background']) {
+      if (v[st][k] === undefined) continue;
+      const c = readUiColor(v[st][k], `${w}.${k}`, fail);
+      if (c) o[k] = c;
+    }
+    if (Object.keys(o).length) out[st] = o;
+  }
+  return out;
+}
+
+/** `theme` (UI stage 3): { "--accent": { v, was? } }, at most maxTheme, keys in order (same content = same bytes). */
+function readTheme(v, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('theme', 'must be an object keyed by CSS variable name (--accent)');
+    return out;
+  }
+  const names = Object.keys(v);
+  if (names.length > LIMITS.maxTheme) fail('theme', `at most ${LIMITS.maxTheme} variables`);
+  for (const name of names.slice(0, LIMITS.maxTheme)) {
+    const where = `theme[${JSON.stringify(name)}]`;
+    if (!THEME_NAME_RE.test(name)) {
+      fail(where, 'name must match ' + THEME_NAME_RE);
+      continue;
+    }
+    const e = v[name];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['v', 'was'], where, fail);
+    const val = (x, w) => (typeof x === 'string' && UI_VALUE_RE.test(x.trim()) ? x.trim() : (fail(w, 'must be a CSS value without ; { } < >'), null));
+    const nv = val(e.v, `${where}.v`);
+    if (nv === null) continue;
+    const o = { v: nv };
+    if (e.was !== undefined) {
+      const w = val(e.was, `${where}.was`);
+      if (w !== null) o.was = w;
+    }
+    out[name] = o;
   }
   return out;
 }

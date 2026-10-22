@@ -20,6 +20,7 @@ if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !
 warn('not a placement file');
 return report;
 }
+if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
 if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
 if (root && root.nodeType === 9) return report;
 if (data.dim !== dim) {
@@ -442,7 +443,9 @@ const put = (el) => {
 const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
 if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
 if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
+if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
 };
+const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
 doc.querySelectorAll('[data-studio-key]').forEach(put);
 for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
 if (typeof MutationObserver === 'function') {
@@ -454,6 +457,88 @@ n.querySelectorAll('[data-studio-key]').forEach(put);
 }).observe(doc.documentElement, { childList: true, subtree: true });
 }
 return out;
+}
+const UI_COLOR = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
+const UI_STATES = { '@hover': ':hover', '@active': ':active', '@disabled': ':disabled' };
+const okColor = (c) => typeof c === 'string' && UI_COLOR.test(c);
+function applyTheme(doc, theme) {
+for (const [name, e] of Object.entries(theme)) {
+if (/^--[A-Za-z0-9_-]{1,60}$/.test(name) && e && typeof e.v === 'string' && !/[;{}<>]/.test(e.v)) doc.documentElement.style.setProperty(name, e.v);
+}
+}
+function uiSheet(doc, ui) {
+const rules = [];
+for (const [k, e] of Object.entries(ui)) {
+const set = e && e.set;
+if (!set || typeof set !== 'object' || !/^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(k)) continue;
+const sel = `[data-studio-key="${k}"]`;
+for (const [st, pseudo] of Object.entries(UI_STATES)) {
+const o = set[st];
+if (!o || typeof o !== 'object') continue;
+if (okColor(o.background)) rules.push(`${sel}${pseudo}{background-color:${o.background}!important}`);
+if (okColor(o.color)) rules.push(`${sel}${pseudo},${sel}${pseudo} *{color:${o.color}!important}`);
+}
+}
+const el = doc.createElement('style');
+el.id = 'studio-ui-set';
+el.textContent = rules.join('\n');
+(doc.head || doc.documentElement).appendChild(el);
+return el;
+}
+function setUi(el, k, set, sheet) {
+const part = uiTextPart(el);
+const rule = (prop, css, v) => {
+if (getComputedStyle(el)[prop] === cssColor(el, v)) return;
+sheet.textContent += `\n[data-studio-key="${k}"]{${css}:${v}}`;
+if (getComputedStyle(el)[prop] !== cssColor(el, v)) el.style[prop] = v;
+};
+if (part) {
+if (typeof set.text === 'string') {
+const n = uiTextNode(part);
+if (n) n.data = keepSpace(n.data, set.text.slice(0, 200));
+}
+if (isNum(set.fontSize) && set.fontSize > 0) part.style.fontSize = `${set.fontSize}px`;
+if (okColor(set.color)) {
+if (part === el) rule('color', 'color', set.color);
+else part.style.color = set.color;
+}
+}
+if (okColor(set.background)) rule('backgroundColor', 'background-color', set.background);
+}
+function cssColor(el, c) {
+const probe = el.ownerDocument.createElement('i');
+probe.style.color = c;
+probe.style.display = 'none';
+el.ownerDocument.documentElement.appendChild(probe);
+const v = getComputedStyle(probe).color;
+probe.remove();
+return v;
+}
+function keepSpace(old, text) {
+const m = /^(\s*)[\s\S]*?(\s*)$/.exec(old);
+return (m ? m[1] : '') + text + (m ? m[2] : '');
+}
+function ownText(el) {
+return Array.from(el.childNodes).filter((n) => n.nodeType === 3 && n.data.trim());
+}
+export function uiTextPart(el) {
+const mark = el.matches('[data-studio-text]') ? el : el.querySelector('[data-studio-text]');
+const one = (e) => (ownText(e).length === 1 ? e : null);
+if (mark) return one(mark);
+const walk = (e) => {
+if (e.matches('[data-studio-value]')) return undefined;
+if (ownText(e).length) return e;
+for (const c of e.children) {
+const r = walk(c);
+if (r) return r;
+}
+return undefined;
+};
+const p = walk(el);
+return p ? one(p) : null;
+}
+export function uiTextNode(part) {
+return ownText(part)[0] || null;
 }
 const UI_STATE = Symbol.for('game-studio.ui');
 export function placeUi(el, p, s) {

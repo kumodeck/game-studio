@@ -6,7 +6,7 @@
 // world writes `objects` (with `was`, the numbers the AI searches the code for), the UI writes `ui` (offsets from
 // where the game's CSS puts the element: the original is always p [0, 0], s 1, and the key finds the element). So
 // the UI model is given its entries as `objects` with that `was`, and its result is turned back into `ui` here.
-import type { PlacementFile, PlacementUiEntry } from '../contract.ts';
+import type { PlacementFile, PlacementThemeEntry, PlacementUiEntry, UiStyleSet } from '../contract.ts';
 
 /** The original of every UI element: where the game's own CSS puts it. */
 const ORIGIN = { p: [0, 0], r: 0, s: 1 };
@@ -37,13 +37,43 @@ export function uiEntries(result: PlacementFile): Record<string, PlacementUiEntr
 }
 
 /**
- * The file to write: the world's file, plus `ui` and `uiView` when any UI element is off its original. Without one
- * the world's file comes back as it is — the same object, so a game without data-studio-key writes the same bytes
- * as before UI stage 1.
+ * UI stages 2–3 (2026-10-22): the moves (uiEntries) with what else the file says of each element — its look changed on
+ * the card (`set` / `setWas`, ui-style-model.ts) and its screen. An element whose look changed but which did not move is
+ * written at p [0, 0] (the schema wants a `p`; [0, 0] = "where the game's CSS puts it"). The screen is written for every
+ * entry whose element sits in a data-studio-screen container; `label` for a look-only entry from the list.
  */
-export function withUi(world: PlacementFile, ui: Record<string, PlacementUiEntry> | undefined, view: [number, number] | null): PlacementFile {
-  if (!ui || !Object.keys(ui).length) return world;
-  const out: PlacementFile = { ...world, ui };
-  if (view && view[0] > 0 && view[1] > 0) out.uiView = [Math.round(view[0]), Math.round(view[1])];
+export function withLooks(moves: Record<string, PlacementUiEntry>, looks: Record<string, { set: UiStyleSet; setWas?: UiStyleSet }>,
+  screens: Map<string, string>, labels: Map<string, string>): Record<string, PlacementUiEntry> {
+  const out: Record<string, PlacementUiEntry> = {};
+  for (const [k, e] of Object.entries(moves)) out[k] = { ...e };
+  for (const [k, l] of Object.entries(looks)) {
+    const label = labels.get(k);
+    const e = out[k] || { p: [0, 0], ...(label && label !== k ? { label } : {}) };
+    e.set = l.set;
+    if (l.setWas) e.setWas = l.setWas;
+    out[k] = e;
+  }
+  for (const [k, e] of Object.entries(out)) {
+    const sc = screens.get(k);
+    if (sc) e.screen = sc;
+  }
+  return out;
+}
+
+/**
+ * The file to write: the world's file, plus `ui` and `uiView` when any UI element is off its original, and `theme`
+ * when a theme variable changed (UI stage 3). Without either the world's file comes back as it is — the same object,
+ * so a game without data-studio-key writes the same bytes as before UI stage 1.
+ */
+export function withUi(world: PlacementFile, ui: Record<string, PlacementUiEntry> | undefined, view: [number, number] | null, theme?: Record<string, PlacementThemeEntry>): PlacementFile {
+  const hasUi = !!ui && Object.keys(ui).length > 0;
+  const hasTheme = !!theme && Object.keys(theme).length > 0;
+  if (!hasUi && !hasTheme) return world;
+  const out: PlacementFile = { ...world };
+  if (hasUi) {
+    out.ui = ui;
+    if (view && view[0] > 0 && view[1] > 0) out.uiView = [Math.round(view[0]), Math.round(view[1])];
+  }
+  if (hasTheme) out.theme = theme;
   return out;
 }

@@ -470,6 +470,46 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .motion-tl.on { background: var(--you-soft); color: var(--you-text); }
 .tl-diamond { width: 7px; height: 7px; transform: rotate(45deg); background: currentColor; border-radius: 1px; flex: none; }
 .f-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
+/* A UI element's look (UI stages 2–3, ui-card.ts): more rows of the same fill, under one hairline — the card grew, it
+   is not a second panel. A value, a ↺ at the row's end only where something was changed. The colour fields show the
+   GAME's colours (the swatch is the only colour the card has of its own: it is the thing being changed). */
+.ui-look { padding-top: 8px; border-top: 1px solid var(--line); }
+.ui-cells { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.ui-cells > :only-child { grid-column: 1 / -1; }
+.ui-text-cells { display: grid; grid-template-columns: minmax(0, 1fr) 64px; gap: 4px; min-width: 0; }
+.ui-text { cursor: text; }
+.ui-text input { font-variant-numeric: normal; }
+.ui-px input { text-align: right; padding-right: 2px; }
+.ui-unit { color: var(--text-3); font-size: var(--fs-s); padding-right: 6px; flex: none; }
+.ui-colour { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.ui-colour .num { flex: 1; }
+.ui-swatch { position: relative; flex: none; width: 16px; height: 16px; margin-left: 6px; border-radius: 4px; background: var(--c, transparent); box-shadow: inset 0 0 0 1px var(--line), 0 0 0 1px rgba(0, 0, 0, .06); overflow: hidden; }
+/* The system's colour picker opens from the swatch; its own box is not drawn (opacity), the swatch is. */
+.ui-swatch input { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); opacity: 0; cursor: pointer; border: 0; padding: 0; }
+.ui-back { width: 24px; height: 24px; min-height: 24px; }
+.ui-back .icon { width: 13px; height: 13px; }
+.ui-states { width: 100%; }
+/* Four looks in the 272 px card: tighter insides, so "Disabled" (and its translation) is never cut. The row takes the ↺ column too. */
+.ui-cells[data-part=ui-state-row] > .ui-states { grid-column: 1 / -1; }
+.ui-states button { padding: 0 2px; min-width: 0; white-space: nowrap; }
+/* Sample chips wrap under each other; the label stays by the first line. */
+.f-l[data-for=ui-sample-row] { align-self: start; padding-top: 2px; }
+.ui-cells[data-part=ui-sample-row] { align-items: start; }
+.ui-samples { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.ui-sample { border: 0; cursor: pointer; font-weight: 500; }
+.ui-sample[aria-pressed="true"] { background: var(--you-soft); color: var(--you-text); }
+.ui-samples .num { flex: 1 1 96px; height: 20px; min-height: 20px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); }
+.ui-samples .num input { font-size: var(--fs-s); }
+.ui-sample-note { grid-column: 2 / -1; color: var(--text-3); }
+/* The Theme fold under the UI list (UI stage 3, ui-theme.ts): the list's quiet head type; rows like the card's. */
+.list-foot:empty { display: none; }
+.list-foot { padding: 8px 0 12px; }
+.ui-theme-head { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0 12px; border-radius: var(--r); background: none; color: var(--text-3); }
+.ui-theme-head:hover { background: var(--raise); }
+.ui-theme-head .count { color: var(--text-3); font-size: var(--fs-s); }
+.ui-theme-head .icon { width: 12px; height: 12px; margin-left: auto; }
+.ui-theme-rows { grid-template-columns: 88px minmax(0, 1fr); padding: 2px 4px 0 12px; }
+.ui-theme-rows .f-l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--raise); }
 .seg button { min-height: 24px; height: 24px; border-radius: 6px; }
 .layer-seg button { width: 32px; padding: 0; color: var(--text-2); }
@@ -955,6 +995,11 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .fine > summary { position: absolute; top: 6px; right: 4px; width: 44px; height: 44px; display: grid; place-items: center; border-radius: 50%; color: var(--text-2); cursor: pointer; }
 .shell[data-layout="phone"] .fine[open] > summary { background: var(--raise-2); color: var(--text); }
 .shell[data-layout="phone"] .fields { grid-template-columns: 56px minmax(0, 1fr); gap: 6px 0; }
+/* Phone: a finger's 44 px for the look rows' presses too (ui-card.ts). */
+.shell[data-layout="phone"] .ui-states button, .shell[data-layout="phone"] .ui-sample { min-height: 36px; }
+.shell[data-layout="phone"] .ui-back { width: 44px; height: 44px; }
+.shell[data-layout="phone"] .ui-swatch { width: 24px; height: 24px; }
+.shell[data-layout="phone"] .ui-samples .num { height: 36px; }
 .shell[data-layout="phone"] .num { height: 40px; }
 .shell[data-layout="phone"] .num input { font-size: max(16px, var(--fs)); }
 .shell[data-layout="phone"] .motion-pick { height: 40px; }

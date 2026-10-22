@@ -15,6 +15,7 @@ import { createHoldState, withHold } from './hold.ts';
 import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
+import { createUiExtras } from './ui-extras.ts';
 
 export interface EditorDeps {
   /** The world's adapter as found (self-check runs on it, before game rules); null = an HTML-only game (UI only). */
@@ -24,6 +25,11 @@ export interface EditorDeps {
    * one adapter, no core/ready `layers`, no core/layer.
    */
   ui?: StudioAdapter | null;
+  /**
+   * UI stages 2–3 (2026-10-22, ui-extras.ts): screens, sample values, text / colours, button looks and the theme of
+   * the game's HTML UI. True only with the built-in DOM UI (bridge.ts); absent = the studio:ui/* messages do nothing.
+   */
+  uiDom?: boolean;
   /** Game rules (.studio/studio.json via the shell) and .studio/tools.js extensions. */
   rules: RulesHolder;
   /** Game tools registered so far (more may arrive later through register()). */
@@ -136,6 +142,24 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     deps.post(msg);
   };
+  // UI stages 2–3 (ui-extras.ts): another screen shown = the UI layer's list again, without a pick that is gone.
+  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), relist: () => {
+    if (!uiStack) return;
+    if (layer !== 'ui') {
+      try {
+        post({ type: 'studio:placement/items', items: uiStack.driven.list(), layer: 'ui' });
+      } catch {
+        /* listed when switched to */
+      }
+      return;
+    }
+    state.selected = null;
+    state.group = [];
+    refreshItems();
+    input?.selectionChanged();
+    postSelected();
+    dirtyFrame = true;
+  } }) : null;
   const state: EditState = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
@@ -231,6 +255,11 @@ export function createEditor(deps: EditorDeps): Editor {
   const postSelected = () => {
     const item = state.items.find((i) => i.key === state.selected);
     post({ type: 'studio:placement/selected', key: state.selected, item, keys: state.group.slice() });
+    // A UI element picked: what the card's text / colour rows show (UI stages 2–3).
+    if (layer === 'ui' && state.selected && state.group.length <= 1) {
+      const p = uiExtras?.props(state.selected);
+      if (p) post({ type: 'studio:ui/props', props: p });
+    }
   };
   /**
    * Picked from the list: bring the object into view ONLY if it is not
@@ -816,6 +845,10 @@ export function createEditor(deps: EditorDeps): Editor {
         }
       }
       state.editing = true;
+      // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
+      // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
+      uiExtras?.begin();
+      if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
       // even when the person never switches to the UI.
@@ -885,6 +918,8 @@ export function createEditor(deps: EditorDeps): Editor {
       input?.detach();
       input = null;
       state.editing = false;
+      // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
+      uiExtras?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
           a.end();
@@ -1068,6 +1103,15 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:core/layer':
           if (msg.layer !== layer) timeline.clear();
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
+          break;
+        case 'studio:ui/screen':
+        case 'studio:ui/sample':
+        case 'studio:ui/set':
+        case 'studio:ui/state':
+        case 'studio:ui/theme-set':
+        case 'studio:ui/props-get':
+          if (state.editing && uiStack) uiExtras?.handle(msg);
+          dirtyFrame = true;
           break;
         case 'studio:core/ui-peek':
           uiPeek = !!msg.on;
