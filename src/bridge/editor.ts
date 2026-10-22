@@ -55,6 +55,18 @@ export interface Editor {
   layer(): EditLayer;
   /** Tell the shell which adapter it is talking to (core/ready), as the bridge does once when the editor is made. */
   announce(): void;
+  /**
+   * ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): each layer's adapter as found (`raw`: its
+   * watch() keeps and puts back the whole scene) and with the editor's copies and deletions (`edits`: the poses Edit
+   * shows, copies included), so Play can start from the layout and Edit can put it back.
+   */
+  playLayers(): Array<{ raw: StudioAdapter; edits: StudioAdapter }>;
+  /**
+   * Settles once the editor's first moments are over: the watch of what the game moves (watchGame) and the self-check,
+   * which both move objects and put them back. Play waits for it: started in between, its start would be a moment of
+   * the watch, not the layout.
+   */
+  settled(): Promise<void>;
 }
 
 /** Shared state between the editor and the input layer. */
@@ -106,7 +118,17 @@ export function createEditor(deps: EditorDeps): Editor {
   // re-applied, a drag), so those are neither taken for the game's motion nor undone when the watch ends.
   let watchBase: Map<string, Pose> | null = null;
   const watchSet = new Set<string>(); // the keys the editor posed during the watch: put back after watch(false)
+  // While the self-check runs (it moves one object and puts it back where it found it, across several frames — seconds
+  // on a slow GPU): the poses the editor itself gives the world's objects meanwhile, given again after it. WHY (fast
+  // switch, 2026-10-22): a number typed on the card while the check ran was undone by the check's "put back" (the web
+  // demo, PC: the lighthouse typed to X -18 stood at -24 again). A new page at Play used to hide it; Play in the same
+  // page showed it in the game and back in Edit.
+  let checkSet: Map<string, Pose> | null = null;
   const post = (msg: BridgeToShell) => {
+    if (checkSet && layer === 'world') {
+      if (msg.type === 'studio:placement/moved') checkSet.set(msg.key, msg.pose);
+      else if (msg.type === 'studio:placement/moved-group') for (const m of msg.poses) checkSet.set(m.key, m.pose);
+    }
     // Only the world's moves: a UI key posed meanwhile is not a world object to put back (merge of 2026-10-19).
     if (watchBase && layer === 'world') {
       if (msg.type === 'studio:placement/moved') (watchBase.set(msg.key, msg.pose), watchSet.add(msg.key));
@@ -697,6 +719,8 @@ export function createEditor(deps: EditorDeps): Editor {
    * (raw.watch), not by core.time, so that count stays 0 there (found on the runner of that try, 2026-10-19).
    */
   let watched = false;
+  // The watch and the self-check of the first edit (settled()); resolved when there is neither.
+  let firstMoments: Promise<unknown> = Promise.resolve();
   const watchGame = async () => {
     if (watched) return;
     watched = true;
@@ -809,6 +833,7 @@ export function createEditor(deps: EditorDeps): Editor {
       if (!loopId) loopId = core.time.raf(frame);
       // Paused in Play: the game stays still (no watch) and no check (see EditorDeps.paused).
       const watching = deps.paused ? Promise.resolve() : watchGame();
+      if (!checked) firstMoments = watching;
       if (!checked && !deps.paused) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
@@ -820,11 +845,27 @@ export function createEditor(deps: EditorDeps): Editor {
         // would spoil while it runs.
         // The adapter of the layer edited first (the world's; a reload asking for the UI switches a moment later).
         const checkOn = raw;
-        void watching
+        firstMoments = watching
           .then(nextTurn)
           .then(nextTurn)
-          .then(() => runSelfCheck(checkOn, core, win))
-          .then((result) => post({ type: 'studio:core/check', result }));
+          .then(() => {
+            checkSet = new Map();
+            return runSelfCheck(checkOn, core, win).finally(() => {
+              const given = checkSet!;
+              checkSet = null;
+              if (!world) return;
+              for (const [k, p] of given) {
+                try {
+                  world.ruled.setPose(k, p);
+                } catch {
+                  /* gone meanwhile */
+                }
+              }
+              if (given.size) dirtyFrame = true;
+            });
+          })
+          .then((result) => post({ type: 'studio:core/check', result }))
+          .catch((e) => console.warn('[studio] self-check failed:', e));
       }
     } else {
       closeStepRun();
@@ -920,6 +961,8 @@ export function createEditor(deps: EditorDeps): Editor {
     },
     layer: () => layer,
     announce: ready,
+    playLayers: () => [world, uiStack].filter((x): x is Stack => !!x).map((x) => ({ raw: x.raw, edits: x.edits })),
+    settled: () => firstMoments.then(() => undefined),
     addTools(list) {
       toolHost.register(list);
       if (state.editing) toolHost.announce();

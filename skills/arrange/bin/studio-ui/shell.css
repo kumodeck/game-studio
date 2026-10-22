@@ -256,6 +256,19 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .top-actions .play .icon { width: 12px; height: 12px; }
 .top-actions .play kbd { background: none; padding: 0; margin-left: 2px; color: color-mix(in srgb, var(--solid-fg) 45%, transparent); }
 .top-actions > button:not(.play) { background: var(--raise); }
+/* Play's ▾, "Play from the start" (fast switch, 2026-10-22; main.ts playMoreBtn): one capsule with Play — the same
+   solid, a hairline between — so it reads as a part of Play, not a fourth button. Its arrow in Play's quiet kbd grey.
+   Not on a phone (the bar has no room; ⌘K / "…" lists it there). */
+.top-actions .play-split { display: inline-flex; align-items: stretch; }
+.top-actions .play-split > .play { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.top-actions .play-split > .play-more { background: var(--solid); color: color-mix(in srgb, var(--solid-fg) 60%, transparent); padding: 0 7px 0 6px;
+  border-top-left-radius: 0; border-bottom-left-radius: 0; box-shadow: inset 1px 0 0 color-mix(in srgb, var(--solid-fg) 18%, transparent); }
+.top-actions .play-split > .play-more:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); color: var(--solid-fg); }
+.top-actions .play-split > .play-more .icon { width: 14px; height: 14px; }
+.top-actions .play-split > .play-more[hidden] { display: none; }
+.top-actions .play-split > .play:has(+ .play-more[hidden]) { border-radius: var(--r); }
+.shell[data-layout="phone"] .top-actions .play-split > .play-more { display: none; }
+.shell[data-layout="phone"] .top-actions .play-split > .play { border-radius: var(--r); }
 /* The ONE Save, right beside ▶ Play while something is not saved (a try of v0.1.9, 2026-10-21; main.ts topSave,
    save-loud.ts): "Save · 3  ⌘S", in Edit and in Play. It was a second press of the Save in the game's corner (.save-fab,
    2026-10-20 → 21) — "why are there two buttons that do the same thing?" — and now is the only one.

@@ -32,6 +32,14 @@ export interface TimeOptions {
    * (core/play-clock.ts, pause 2026-10-22). Absent = the browser's own timestamp, as before.
    */
   stamp?: (t: number) => number;
+  /**
+   * ▶ Play in the same page (fast switch, 2026-10-22; bridge/play-switch.ts): the edit page's game clock, stopped with
+   * every freeze and going again with every thaw. WHY: an edit page holds the game for minutes; when it becomes Play,
+   * the game's first frame must step one frame, not the whole time spent editing (a 3-minute step: the boat across
+   * the cove, a timer run out). The first seconds' watch (editor.ts watchGame) thaws too, so the game's motion is still
+   * seen there. Absent (a Play page, outside the editor) = freezes leave the clock alone, as before.
+   */
+  clock?: { stop(): void; go(): void };
 }
 
 export interface TimeControlImpl extends TimeControl {
@@ -119,6 +127,7 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
   function freeze() {
     if (frozen) return;
     frozen = true;
+    opts.clock?.stop();
     for (const e of pending.values()) {
       if (e.real != null) {
         realCancel(e.real);
@@ -129,6 +138,7 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
   function thaw() {
     if (!frozen) return;
     frozen = false;
+    opts.clock?.go();
     for (const id of [...pending.keys()]) schedule(id);
   }
 

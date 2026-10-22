@@ -980,6 +980,21 @@ export type ShellToBridge =
    */
   | { type: 'studio:core/ui-peek'; on: boolean }
   /**
+   * ▶ Play and back in the same page (fast switch, 2026-10-22; a try of the editor: "every time I play and go back to edit it loads
+   * again — tedious"). Before, Play and Edit each opened the game page again (`?studio=edit` or not), and the edit page
+   * took seconds (the adapter, the list, the pictures). Now (bridge/play-switch.ts):
+   *   - `on: true`: the edit page becomes Play — the editor puts its tools away (as core/edit off: the game's own
+   *     camera and HUD, no handles), the game's frames, clock and sound go on from the edit layout, and the page says
+   *     play/hello as a Play page does (ask while playing, pause, move while paused). `motion`: the editor's draft
+   *     motions (placement.json `motion`, world part), played from their start as a Play page's loader would.
+   *   - `on: false`: the game is held (frames, clock, sound), every object goes back to where Play found it (what the
+   *     game moved while playing is not kept: Edit shows the layout), and the editor is up again on `viewState` (the
+   *     edit camera): core/ready `editing: true` and the list follow, as on a page that just opened.
+   * Only sent to a page whose editor is up. "Play from the start" (⌘K, Play's ▾) still opens a new page, for a game
+   * whose score, enemies or timers should start again.
+   */
+  | { type: 'studio:core/play'; on: boolean; motion?: Record<string, unknown>; viewState?: unknown }
+  /**
    * Ask while playing (§3.5): the editor answers the bridge's play/hello when an AI is behind the host (never in the
    * offline web demo, where nothing is shown). `words`: the overlay's strings in the person's language (the bridge
    * has no strings of its own). `mark: false` (a phone, Ive review 3 ④, 2026-10-20): the editor shows the way in

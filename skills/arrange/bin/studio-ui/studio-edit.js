@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.17 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.18 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4460,6 +4460,21 @@ const MSG_PREFIX = 'studio:';
      
                                                 
      
+                                                                                                                                    
+                                                                                                                        
+                                                                                     
+                                                                                                                  
+                                                                                                                      
+                                                                                                                   
+                                                                                                              
+                                                                                                                      
+                                                                                                                     
+                                                                                                     
+                                                                                                                    
+                                                       
+     
+                                                                                                    
+     
                                                                                                                      
                                                                                                                    
                                                                                                                  
@@ -5799,6 +5814,14 @@ const { nativeCancelRaf, nativeRaf } = __require(0);
                                                                                              
      
                                 
+     
+                                                                                                                       
+                                                                                                                      
+                                                                                                                   
+                                                                                                                        
+                                                                                                     
+     
+                                       
  
 
                                                       
@@ -5886,6 +5909,7 @@ function installTime(opts             )                  {
   function freeze() {
     if (frozen) return;
     frozen = true;
+    opts.clock?.stop();
     for (const e of pending.values()) {
       if (e.real != null) {
         realCancel(e.real);
@@ -5896,6 +5920,7 @@ function installTime(opts             )                  {
   function thaw() {
     if (!frozen) return;
     frozen = false;
+    opts.clock?.go();
     for (const id of [...pending.keys()]) schedule(id);
   }
 
@@ -12415,6 +12440,18 @@ const { createTimelineView } = __require(34);
                      
                                                                                                                      
                    
+     
+                                                                                                                 
+                                                                                                                     
+                                                                                         
+     
+                                                                    
+     
+                                                                                                                       
+                                                                                                                     
+                               
+     
+                           
  
 
 /** Shared state between the editor and the input layer. */
@@ -12466,7 +12503,17 @@ function createEditor(deps            )         {
   // re-applied, a drag), so those are neither taken for the game's motion nor undone when the watch ends.
   let watchBase                           = null;
   const watchSet = new Set        (); // the keys the editor posed during the watch: put back after watch(false)
+  // While the self-check runs (it moves one object and puts it back where it found it, across several frames — seconds
+  // on a slow GPU): the poses the editor itself gives the world's objects meanwhile, given again after it. WHY (fast
+  // switch, 2026-10-22): a number typed on the card while the check ran was undone by the check's "put back" (the web
+  // demo, PC: the lighthouse typed to X -18 stood at -24 again). A new page at Play used to hide it; Play in the same
+  // page showed it in the game and back in Edit.
+  let checkSet                           = null;
   const post = (msg               ) => {
+    if (checkSet && layer === 'world') {
+      if (msg.type === 'studio:placement/moved') checkSet.set(msg.key, msg.pose);
+      else if (msg.type === 'studio:placement/moved-group') for (const m of msg.poses) checkSet.set(m.key, m.pose);
+    }
     // Only the world's moves: a UI key posed meanwhile is not a world object to put back (merge of 2026-10-19).
     if (watchBase && layer === 'world') {
       if (msg.type === 'studio:placement/moved') (watchBase.set(msg.key, msg.pose), watchSet.add(msg.key));
@@ -13057,6 +13104,8 @@ function createEditor(deps            )         {
    * (raw.watch), not by core.time, so that count stays 0 there (found on the runner of that try, 2026-10-19).
    */
   let watched = false;
+  // The watch and the self-check of the first edit (settled()); resolved when there is neither.
+  let firstMoments                   = Promise.resolve();
   const watchGame = async () => {
     if (watched) return;
     watched = true;
@@ -13169,6 +13218,7 @@ function createEditor(deps            )         {
       if (!loopId) loopId = core.time.raf(frame);
       // Paused in Play: the game stays still (no watch) and no check (see EditorDeps.paused).
       const watching = deps.paused ? Promise.resolve() : watchGame();
+      if (!checked) firstMoments = watching;
       if (!checked && !deps.paused) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
@@ -13180,11 +13230,27 @@ function createEditor(deps            )         {
         // would spoil while it runs.
         // The adapter of the layer edited first (the world's; a reload asking for the UI switches a moment later).
         const checkOn = raw;
-        void watching
+        firstMoments = watching
           .then(nextTurn)
           .then(nextTurn)
-          .then(() => runSelfCheck(checkOn, core, win))
-          .then((result) => post({ type: 'studio:core/check', result }));
+          .then(() => {
+            checkSet = new Map();
+            return runSelfCheck(checkOn, core, win).finally(() => {
+              const given = checkSet ;
+              checkSet = null;
+              if (!world) return;
+              for (const [k, p] of given) {
+                try {
+                  world.ruled.setPose(k, p);
+                } catch {
+                  /* gone meanwhile */
+                }
+              }
+              if (given.size) dirtyFrame = true;
+            });
+          })
+          .then((result) => post({ type: 'studio:core/check', result }))
+          .catch((e) => console.warn('[studio] self-check failed:', e));
       }
     } else {
       closeStepRun();
@@ -13280,6 +13346,8 @@ function createEditor(deps            )         {
     },
     layer: () => layer,
     announce: ready,
+    playLayers: () => [world, uiStack].filter((x)             => !!x).map((x) => ({ raw: x.raw, edits: x.edits })),
+    settled: () => firstMoments.then(() => undefined),
     addTools(list) {
       toolHost.register(list);
       if (state.editing) toolHost.announce();
@@ -14563,6 +14631,12 @@ button.b .ic svg { width: 14px; height: 14px; }
                   
                                    
                  
+     
+                                                                                                                    
+                                                                                                                      
+                                                                                                                
+     
+                                             
  
 
 function createPlayMove(o                 )           {
@@ -14594,19 +14668,27 @@ function createPlayMove(o                 )           {
   // 150 ms for up to ~30 s after the first frame: a big scene on a slow machine lists late — Lantern Cove in the
   // headless test's software GL took more than the 5 s showFileEditsInPlay waits). A pause before that takes the
   // pause's own list.
-  void o.arranged.then(async (keys) => {
-    moving = new Set(keys);
-    await o.core.time.firstFrame();
-    for (let i = 0; i < 200 && !start && !atPause; i++) {
-      const a = o.adapter();
-      const l = a ? list(a) : [];
-      if (l.length) {
-        if (!atPause) start = new Map(l.map((it) => [it.key, it.pose]         ));
-        return;
+  // `run`: which Play this is (▶ Play in the same page, fast switch 2026-10-22: each Play of an edit page starts these
+  // again, restart() below); a look still going from an earlier Play stops.
+  let run = 0;
+  const findStart = (arranged                   ) => {
+    const mine0 = ++run;
+    void arranged.then(async (keys) => {
+      if (mine0 !== run) return;
+      moving = new Set(keys);
+      await o.core.time.firstFrame();
+      for (let i = 0; i < 200 && !start && !atPause && mine0 === run; i++) {
+        const a = o.adapter();
+        const l = a ? list(a) : [];
+        if (l.length) {
+          if (!atPause) start = new Map(l.map((it) => [it.key, it.pose]         ));
+          return;
+        }
+        await new Promise((r) => win.setTimeout(r, 150));
       }
-      await new Promise((r) => win.setTimeout(r, 150));
-    }
-  }).catch(() => {});
+    }).catch(() => {});
+  };
+  findStart(o.arranged);
 
   const card = el('div', 'card');
   card.dataset.part = 'pause-move-card';
@@ -14801,6 +14883,16 @@ function createPlayMove(o                 )           {
       why = new Map();
     },
     render: () => draw(),
+    restart(arranged) {
+      start = null;
+      mine.clear();
+      kept.clear();
+      moving = new Set();
+      atPause = null;
+      why = new Map();
+      pick = null;
+      findStart(arranged);
+    },
   };
 }
 
@@ -14860,6 +14952,21 @@ const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(41);
                      
                                                                                                                   
                                                                          
+     
+                                                                                                                        
+                                                                                                                         
+     
+                    
+ 
+
+/** What play-switch.ts needs of this module in an edit page. */
+                                
+                                                                                                                                      
+                                  
+                                                                                                                    
+                                          
+                                                                                                                       
+                
  
 
 // ---------------------------------------------------------------------------
@@ -15052,8 +15159,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
 
                                     
 
-function startPlayAsk(o                )       {
+function startPlayAsk(o                )                {
   const { win, parentOrigin } = o;
+  // Play in the same page (fast switch): false while the edit page is in Edit (see PlayAskOptions.standby).
+  let awake = !o.standby;
+  let arranged = o.move?.arranged ?? Promise.resolve([]            );
   const doc = win.document;
   keepWebGLPictures(win);
   // Made now, before the game's code: it keeps the AudioContexts the game makes so a pause can quiet them.
@@ -15129,6 +15239,8 @@ function startPlayAsk(o                )       {
   let fadeSig = '';
   let fadeTimer = 0;
   let leftAt = 0;
+  // The corner mark's words shrink after 5 s (build, and again after each reshow).
+  let smallTimer = 0;
   const w = (k        ) => (words && words[k]) || '';
   const spark = () => {
     const s = el('span', 'spark');
@@ -15145,7 +15257,7 @@ function startPlayAsk(o                )       {
 
   /** Over everything, full screen too: the top layer. Shown again after each full-screen change so it is on top. */
   const lift = () => {
-    if (!host) return;
+    if (!host || !awake) return;
     const p = host                                                                        ;
     if (typeof p.showPopover === 'function') {
       try {
@@ -15217,7 +15329,7 @@ function startPlayAsk(o                )       {
       if (o.move) {
         const mv = o.move;
         move = createPlayMove({
-          win, core: mv.core, rules: mv.rules, arranged: mv.arranged, adapter: () => findAdapter(), post, el, w,
+          win, core: mv.core, rules: mv.rules, arranged, adapter: () => findAdapter(), post, el, w,
           lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win),
           panel: () => (chat ? chat.parts[1]  : null), ignore: (e) => isOurs(e), changed: () => chat?.render(),
         });
@@ -15248,7 +15360,7 @@ function startPlayAsk(o                )       {
     // The short or the long placeholder (NARROW_PX) follows the window.
     win.addEventListener('resize', () => (render(), move?.render()));
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
-    win.setTimeout(() => mark.classList.add('small'), 5000);
+    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
     render();
   }
 
@@ -15657,6 +15769,8 @@ function startPlayAsk(o                )       {
 
   win.addEventListener('message', (ev              ) => {
     if (ev.source !== win.parent || ev.origin !== parentOrigin || !isStudioMessage(ev.data)) return;
+    // An edit page in Edit: Play's messages are not for it (a late play/state after the switch back, say).
+    if (!awake) return;
     const m = ev.data                 ;
     if (m.type === 'studio:play/on') {
       words = m.words;
@@ -15665,7 +15779,9 @@ function startPlayAsk(o                )       {
       if (typeof m.handlePx === 'number' && m.handlePx > 0) moveHandlePx = m.handlePx;
       markOn = m.mark !== false;
       // Sent again when the editor's layout changes (a phone turned, a window made narrow): only the mark changes.
-      if (host) render();
+      // An overlay put away by sleep() (Play in the same page, again): shown, its words in full for a few seconds again.
+      if (host && host.style.display === 'none') reshow();
+      else if (host) render();
       else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
     } else if (m.type === 'studio:play/open') {
@@ -15694,7 +15810,57 @@ function startPlayAsk(o                )       {
       }
     }
   });
-  post({ type: 'studio:play/hello' });
+  /** The overlay again after sleep(): as build() shows it the first time. */
+  function reshow() {
+    if (!host) return;
+    host.style.removeProperty('display');
+    lift();
+    mark.classList.remove('small');
+    win.clearTimeout(smallTimer);
+    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
+    render();
+  }
+
+  if (awake) post({ type: 'studio:play/hello' });
+  return {
+    hold,
+    wake(next) {
+      if (awake) return;
+      awake = true;
+      arranged = next;
+      move?.restart(next);
+      post({ type: 'studio:play/hello' });
+    },
+    sleep() {
+      if (!awake) return;
+      // Moving while paused: its editor goes first (the edit page's own editor comes up right after, play-switch.ts).
+      if (move?.on) move.stop();
+      if (hold?.paused && chat) {
+        chat.close();
+        pausedMoment = null;
+        chatId = '';
+        post({ type: 'studio:play/paused', on: false });
+      }
+      if (barOpen) closeBar();
+      awake = false;
+      words = null;
+      state = null;
+      dismissed = '';
+      sending = false;
+      sendFailed = false;
+      win.clearTimeout(fadeTimer);
+      fadeSig = '';
+      if (host) {
+        // Not `hidden`: the host's inline `all: initial` would win over it. Out of the top layer too.
+        host.style.setProperty('display', 'none');
+        try {
+          if (host.matches(':popover-open')) (host                                         ).hidePopover();
+        } catch {
+          /* no popovers */
+        }
+      }
+    },
+  };
 }
 
 __def(__exports, "LOG_ERRORS", () => LOG_ERRORS);
@@ -16391,8 +16557,11 @@ function arrangeInPlay(a               , file                 )         {
  * that waits for a cue does not play here: the cue is the game's code, which the AI writes. Keys the page's loader
  * already moves (the global set it keeps, src/loader) are left alone, so nothing moves twice. Call after arrangeInPlay
  * (the place is the arranged one). Returns the keys it moves.
+ * `live`: ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts) — false once the page is back in Edit, and
+ * the motions stop there (the page's loop would otherwise go on moving them under the editor). Absent = for the page's
+ * life, as a Play page always was.
  */
-function moveInPlay(a               , file                 , win                            )           {
+function moveInPlay(a               , file                 , win                            , live                )           {
   const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
   if (!motion) return [];
   const byLoader = (win                                                      )[Symbol.for('game-studio.motion')];
@@ -16422,6 +16591,7 @@ function moveInPlay(a               , file                 , win                
     win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
   }
   const tick = (now        ) => {
+    if (live && !live()) return;
     const t = Math.max(0, (now - t0) / 1000);
     for (const r of runs) {
       try {
@@ -16448,6 +16618,160 @@ __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
 __defs[47] = function (__exports) {
+'use strict';
+// play-switch.ts
+
+// ▶ Play and back in the same page (fast switch, 2026-10-22; a try of the editor: "every time I play and go back to edit it loads
+// again — tedious"). CONTRACT.md §3.5.2, contract.ts `studio:core/play`.
+//
+// Before: Play and Edit each opened the game page again (`?studio=edit` or not). Going back to Edit took seconds: the
+// game loads, the adapter is found, the list is made, every row's picture drawn again. Now the edit page itself becomes
+// Play and comes back:
+//
+//   Play (go)   1. wait for the editor's first moments (its watch of what the game moves, the self-check: both move
+//                  objects and put them back; a start in between would start from a moment of the watch)
+//               2. keep where everything stands — the edit layout: each layer's listed poses (copies included) and,
+//                  where the adapter can (three.js), the whole scene (watch(true), as the editor's own watch does)
+//               3. the editor puts its tools away (core/edit off: the game's own camera and HUD, no handles, no input)
+//               4. the draft's motions start (moveInPlay, as a Play page's loader would; see `live`)
+//               5. the game goes on: frames, clock (core/time.ts `clock`: the time spent editing is not a frame step),
+//                  sound (a pause's hold, when Edit held it); play-ask wakes (play/hello: ask, pause, move work as on a
+//                  Play page)
+//   Edit (back) 1. play-ask sleeps (Move, the chat, the field put away), the motions stop
+//               2. the game is held as a pause holds it (frames, clock, sound, the mouse let go)
+//               3. everything goes back to where Play found it: what the game moved while playing (the hero, an enemy,
+//                  the camera) is not kept. "Put in layout" from a pause is the shell's: it sends those after this.
+//               4. the editor is up again on the edit camera it had (core/edit on with the shell's view state)
+//
+// WHY "Play starts from the layout, Edit goes back to it" (the call made for this change, as recommended): Edit is where the
+// layout is made, so what Edit shows must be the layout, never "wherever the game left things" (a person would save a
+// moment of play as their layout without knowing). And Play from the same picture the person just arranged is what
+// they asked to see. What does NOT go back: the game's own state that is not an object's pose — the score, a timer, an
+// enemy's health, things the game made or took away while playing. For those, "Play from the start" (⌘K, Play's ▾)
+// opens a new page as Play always did.
+//
+// Not here (the shell decides, main.ts canPlayHere): a page whose editor is not up (still loading, no adapter), and a
+// draft with motions that wait for the game's cue (a page loaded for Edit never ran the loader's motions, so the
+// game's playMotion() finds nothing): those open a new Play page as before.
+                                                          
+                                             
+                                          
+const { moveInPlay } = __require(46);
+                                                   
+
+                                 
+                                  
+             
+                 
+                         
+ 
+
+                             
+                                                                                                                         
+                                                                                          
+                                                        
+                            
+ 
+
+function createPlaySwitch(d                )             {
+  const { win, core, editor, playAsk } = d;
+  let playing = false;
+  // Which Play this is: the motions of an earlier one stop (moveInPlay `live`).
+  let run = 0;
+  // Where Play found everything (go 2.), per layer.
+  let kept                                                                                    = [];
+  // The edit camera as it was at Play (the world's; the UI has none): exactly what Edit comes back to. The shell's kept
+  // view state (core/view-state) can lag a glide's last step, and a camera a hair off reads as "it moved".
+  let editView          = undefined;
+  let chain                = Promise.resolve();
+
+  const listOf = (a               ) => {
+    try {
+      return a.list();
+    } catch {
+      return [];
+    }
+  };
+
+  async function go(motion                                     ) {
+    if (playing) return;
+    await editor.settled();
+    playing = true;
+    const mine = ++run;
+    const layers = editor.playLayers();
+    try {
+      editView = editor.layer() === 'world' ? editor.driven.view.state() : undefined;
+    } catch {
+      editView = undefined;
+    }
+    kept = layers.map((l) => ({ ...l, poses: listOf(l.edits).map((i) => [i.key, structuredClone(i.pose)]                  ) }));
+    for (const l of layers) {
+      try {
+        l.raw.watch?.(true);
+      } catch {
+        /* the listed poses above still go back */
+      }
+    }
+    editor.handle({ type: 'studio:core/edit', on: false });
+    // The world's motions, through the editor's copies layer (a copy that moves is the editor's object). Its first
+    // listed layer is the world's when the game has one (editor.ts playLayers).
+    const world = layers[0]?.edits;
+    let moving           = [];
+    if (world && motion && typeof motion === 'object') {
+      try {
+        moving = moveInPlay(world, { motion }, win, () => run === mine && playing);
+      } catch (e) {
+        console.warn('[studio] Play: the motions could not start:', e);
+      }
+    }
+    playAsk.wake(Promise.resolve(moving));
+    // Held by a pause before (Edit holds the game with it, back below): its resume brings the sound back too.
+    if (playAsk.hold?.paused) playAsk.hold.resume();
+    else core.time.thaw();
+  }
+
+  function back(viewState         ) {
+    if (!playing) return;
+    playing = false;
+    run++;
+    playAsk.sleep();
+    if (playAsk.hold) playAsk.hold.pause();
+    else core.time.freeze();
+    for (const l of kept) {
+      try {
+        l.raw.watch?.(false);
+      } catch {
+        /* the listed poses below */
+      }
+    }
+    for (const l of kept) {
+      for (const [key, pose] of l.poses) {
+        try {
+          l.edits.setPose(key, pose);
+        } catch {
+          /* the game took it away: the others go back */
+        }
+      }
+    }
+    kept = [];
+    const view = editView !== undefined ? editView : viewState;
+    editView = undefined;
+    editor.handle({ type: 'studio:core/edit', on: true, viewState: view });
+  }
+
+  return {
+    get playing() {
+      return playing;
+    },
+    handle(m) {
+      chain = chain.then(() => (m.on ? go(m.motion) : back(m.viewState))).catch((e) => console.warn('[studio] Play / Edit switch failed:', e));
+    },
+  };
+}
+
+__def(__exports, "createPlaySwitch", () => createPlaySwitch);
+};
+__defs[48] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -16502,7 +16826,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -16584,7 +16908,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -16602,10 +16926,11 @@ const { findDomUi, uiAdapterFromPort } = __require(21);
 const { runSelfCheck } = __require(22);
 const { createEditor } = __require(35);
 const { startPlayAsk } = __require(42);
+const { createPlaySwitch } = __require(47);
 const { arrangeInPlay, moveInPlay } = __require(46);
 const { applyPlacement, placementForLevel } = __require(19);
-const { pickLevel } = __require(47);
-const { watchEarlyTaps } = __require(48);
+const { pickLevel } = __require(48);
+const { watchEarlyTaps } = __require(49);
                                                     
 
                                 
@@ -16638,8 +16963,11 @@ function startBridge(opts               )       {
   const inFrame = win.parent && win.parent !== win;
   // ▶ Play inside the editor: the game's clock, so a pause (P) takes no time (core/play-clock.ts). Before the core and
   // before any game code, so the game's first performance.now() and every frame's timestamp already go through it.
-  const playClock = !edit && inFrame ? installPlayClock(win) : null;
-  const core       = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win, ...(playClock ? { stamp: playClock.at } : {}) });
+  // In the edit page too since ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): there it stops with
+  // every hold of the game (time.ts `clock`), so the page that becomes Play steps one frame, not the minutes of Edit.
+  const playClock = inFrame ? installPlayClock(win) : null;
+  const core       = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win,
+    ...(playClock ? { stamp: playClock.at } : {}), ...(playClock && edit ? { clock: playClock } : {}) });
 
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.
@@ -16852,12 +17180,22 @@ function startBridge(opts               )       {
   if (inFrame) watchGameErrors();
   // ▶ Play inside the editor: ask your AI without stopping (play-ask.ts, §3.5). Installed now, before the game's code,
   // so the console is kept from its first line and the ask key is the first listener on the window.
-  if (!edit && inFrame) {
+  // In the edit page too, asleep (`standby`) until the page becomes Play (play-switch.ts, fast switch 2026-10-22): its
+  // key listener must be the first on the window, and the AudioContexts the game makes must be kept from the start.
+  let playAsk                       = null;
+  let playSwitch                    = null;
+  if (inFrame) {
     // For tests (test/studio-play-unsaved.browser.mjs), like `_debug` in edit mode: the page's objects as its adapter
     // lists them while playing, to compare with what the editor showed. Not enumerable, nothing else uses it.
     Object.defineProperty(api, '_play', {
       value: Object.freeze({
+        // Play in the same page (test/studio-fast-switch.browser.mjs): is this edit page playing now? A Play page: true.
+        playing: () => (edit ? !!playSwitch?.playing : true),
         list: () => {
+          // An edit page playing (fast switch): what it shows, through the editor's copies and deletions — the page's
+          // own objects as a Play page's draft would have made them.
+          const l = edit ? editorRef?.playLayers()[0] : null;
+          if (l) return l.edits.list();
           for (const p of [...gameProbes, ...opts.builtins]) {
             try {
               const a = p.found();
@@ -16871,10 +17209,11 @@ function startBridge(opts               )       {
       }),
       enumerable: false,
     });
-    const arranged = showFileEditsInPlay();
+    // The edit page shows the draft already (the editor's own work): nothing to arrange; Play gives its motions then.
+    const arranged = edit ? Promise.resolve([]            ) : showFileEditsInPlay();
     // Pause-move (stage 2): the editor that wakes in a paused game needs the core and the game's rules, and the draft's
     // motions (what the game page moves for the editor) to say "just for this moment" on them.
-    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins],
+    playAsk = startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], standby: edit,
       ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
   }
   if (!edit || !inFrame) return;
@@ -16897,6 +17236,11 @@ function startBridge(opts               )       {
     if (ev.source !== win.parent || ev.origin !== parentOrigin) return;
     if (!isStudioMessage(ev.data)) return;
     const msg = ev.data                 ;
+    // Play / Edit in this page (play-switch.ts): the shell sends it only once the editor is up.
+    if (msg.type === 'studio:core/play') {
+      playSwitch?.handle(msg);
+      return;
+    }
     if (editor) editor.handle(msg);
     else queue.push(msg);
   });
@@ -16986,6 +17330,7 @@ function startBridge(opts               )       {
     }
     editor = createEditor({ adapter, ui, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
+    if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):
     // where the handles of an object are, and what is selected.
     // Through the editor's layers, so copies, deletions and rules show as the shell sees them.
@@ -16995,14 +17340,14 @@ function startBridge(opts               )       {
     // The layer being edited now (UI stage 1: `layer()` says which; the world's unless switched).
     const ed = editor;
     const found = () => ed.driven;
-    Object.defineProperty(api, '_debug', {
-      value: Object.freeze({ anchor: (k        ) => found().anchor(k), list: () => found().list(), view: () => found().view.state(), foot: (k        ) => found().foot?.(k) ?? null,
-        middle: (k        ) => found().middle?.(k) ?? null, layer: () => ed.layer(),
-        // Snap to surfaces (test/studio-snap-surface.browser.mjs): bottom / surface heights, and a scene point on screen.
-        rest: (k        ) => found().rest?.(k) ?? null, toScreen: (p          ) => found().toScreen?.(p) ?? null,
-        under: (x        , y        ) => { try { return found().pickNear(x, y, 0)[0] ?? null; } catch { return null; } } }),
-      enumerable: false,
-    });
+    const debug = Object.freeze({ anchor: (k        ) => found().anchor(k), list: () => found().list(), view: () => found().view.state(), foot: (k        ) => found().foot?.(k) ?? null,
+      middle: (k        ) => found().middle?.(k) ?? null, layer: () => ed.layer(),
+      // Snap to surfaces (test/studio-snap-surface.browser.mjs): bottom / surface heights, and a scene point on screen.
+      rest: (k        ) => found().rest?.(k) ?? null, toScreen: (p          ) => found().toScreen?.(p) ?? null,
+      under: (x        , y        ) => { try { return found().pickNear(x, y, 0)[0] ?? null; } catch { return null; } } });
+    // Absent while this page plays (fast switch, 2026-10-22): the screen tests read "_debug there = the editor is up,
+    // gone = Play" (and `_play` for Play's list), as when Play was always another page.
+    Object.defineProperty(api, '_debug', { get: () => (playSwitch?.playing ? undefined : debug), enumerable: false });
     // core/ready (with `drop` for snap to surfaces, and the layers for UI stage 1): editor.ts ready().
     editor.announce();
     for (const m of queue.splice(0)) editor.handle(m);
@@ -17012,7 +17357,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -17031,11 +17376,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(49);
+const { startBridge } = __require(50);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(50);
+__require(51);
 })();

@@ -38,6 +38,21 @@ export interface PlayAskOptions {
   pause?: PauseParts;
   /** Moving things while paused (stage 2, play-move.ts): what its editor needs. Absent = no Move in the panel. */
   move?: { core: Core; rules: RulesHolder; arranged: Promise<string[]> };
+  /**
+   * ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): installed in an EDIT page, asleep — no hello, no
+   * overlay, no key taken — until the page becomes Play (wake()). Absent = a Play page: awake from the start, as before.
+   */
+  standby?: boolean;
+}
+
+/** What play-switch.ts needs of this module in an edit page. */
+export interface PlayAskHandle {
+  /** The pause's hold (frames, clock, sound): Edit holds the game with it too. null = no pause (outside the editor's frame clock). */
+  readonly hold: PauseHold | null;
+  /** The page became Play: say hello (the editor answers play/on), and a Move in a pause starts from `arranged`. */
+  wake(arranged: Promise<string[]>): void;
+  /** Back in Edit: Move, the chat, the field and the line put away, the overlay hidden; nothing taken until wake(). */
+  sleep(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,8 +245,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
 
 type Words = Record<string, string>;
 
-export function startPlayAsk(o: PlayAskOptions): void {
+export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
   const { win, parentOrigin } = o;
+  // Play in the same page (fast switch): false while the edit page is in Edit (see PlayAskOptions.standby).
+  let awake = !o.standby;
+  let arranged = o.move?.arranged ?? Promise.resolve([] as string[]);
   const doc = win.document;
   keepWebGLPictures(win);
   // Made now, before the game's code: it keeps the AudioContexts the game makes so a pause can quiet them.
@@ -307,6 +325,8 @@ export function startPlayAsk(o: PlayAskOptions): void {
   let fadeSig = '';
   let fadeTimer = 0;
   let leftAt = 0;
+  // The corner mark's words shrink after 5 s (build, and again after each reshow).
+  let smallTimer = 0;
   const w = (k: string) => (words && words[k]) || '';
   const spark = () => {
     const s = el('span', 'spark');
@@ -323,7 +343,7 @@ export function startPlayAsk(o: PlayAskOptions): void {
 
   /** Over everything, full screen too: the top layer. Shown again after each full-screen change so it is on top. */
   const lift = () => {
-    if (!host) return;
+    if (!host || !awake) return;
     const p = host as HTMLElement & { showPopover?: () => void; hidePopover?: () => void };
     if (typeof p.showPopover === 'function') {
       try {
@@ -395,7 +415,7 @@ export function startPlayAsk(o: PlayAskOptions): void {
       if (o.move) {
         const mv = o.move;
         move = createPlayMove({
-          win, core: mv.core, rules: mv.rules, arranged: mv.arranged, adapter: () => findAdapter(), post, el, w,
+          win, core: mv.core, rules: mv.rules, arranged, adapter: () => findAdapter(), post, el, w,
           lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win),
           panel: () => (chat ? chat.parts[1]! : null), ignore: (e) => isOurs(e), changed: () => chat?.render(),
         });
@@ -426,7 +446,7 @@ export function startPlayAsk(o: PlayAskOptions): void {
     // The short or the long placeholder (NARROW_PX) follows the window.
     win.addEventListener('resize', () => (render(), move?.render()));
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
-    win.setTimeout(() => mark.classList.add('small'), 5000);
+    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
     render();
   }
 
@@ -835,6 +855,8 @@ export function startPlayAsk(o: PlayAskOptions): void {
 
   win.addEventListener('message', (ev: MessageEvent) => {
     if (ev.source !== win.parent || ev.origin !== parentOrigin || !isStudioMessage(ev.data)) return;
+    // An edit page in Edit: Play's messages are not for it (a late play/state after the switch back, say).
+    if (!awake) return;
     const m = ev.data as ShellToBridge;
     if (m.type === 'studio:play/on') {
       words = m.words;
@@ -843,7 +865,9 @@ export function startPlayAsk(o: PlayAskOptions): void {
       if (typeof m.handlePx === 'number' && m.handlePx > 0) moveHandlePx = m.handlePx;
       markOn = m.mark !== false;
       // Sent again when the editor's layout changes (a phone turned, a window made narrow): only the mark changes.
-      if (host) render();
+      // An overlay put away by sleep() (Play in the same page, again): shown, its words in full for a few seconds again.
+      if (host && host.style.display === 'none') reshow();
+      else if (host) render();
       else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
     } else if (m.type === 'studio:play/open') {
@@ -872,5 +896,55 @@ export function startPlayAsk(o: PlayAskOptions): void {
       }
     }
   });
-  post({ type: 'studio:play/hello' });
+  /** The overlay again after sleep(): as build() shows it the first time. */
+  function reshow() {
+    if (!host) return;
+    host.style.removeProperty('display');
+    lift();
+    mark.classList.remove('small');
+    win.clearTimeout(smallTimer);
+    smallTimer = win.setTimeout(() => mark.classList.add('small'), 5000);
+    render();
+  }
+
+  if (awake) post({ type: 'studio:play/hello' });
+  return {
+    hold,
+    wake(next) {
+      if (awake) return;
+      awake = true;
+      arranged = next;
+      move?.restart(next);
+      post({ type: 'studio:play/hello' });
+    },
+    sleep() {
+      if (!awake) return;
+      // Moving while paused: its editor goes first (the edit page's own editor comes up right after, play-switch.ts).
+      if (move?.on) move.stop();
+      if (hold?.paused && chat) {
+        chat.close();
+        pausedMoment = null;
+        chatId = '';
+        post({ type: 'studio:play/paused', on: false });
+      }
+      if (barOpen) closeBar();
+      awake = false;
+      words = null;
+      state = null;
+      dismissed = '';
+      sending = false;
+      sendFailed = false;
+      win.clearTimeout(fadeTimer);
+      fadeSig = '';
+      if (host) {
+        // Not `hidden`: the host's inline `all: initial` would win over it. Out of the top layer too.
+        host.style.setProperty('display', 'none');
+        try {
+          if (host.matches(':popover-open')) (host as HTMLElement & { hidePopover(): void }).hidePopover();
+        } catch {
+          /* no popovers */
+        }
+      }
+    },
+  };
 }

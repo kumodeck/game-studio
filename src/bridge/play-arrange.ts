@@ -149,8 +149,11 @@ export function arrangeInPlay(a: StudioAdapter, file: PlayFile | null): number {
  * that waits for a cue does not play here: the cue is the game's code, which the AI writes. Keys the page's loader
  * already moves (the global set it keeps, src/loader) are left alone, so nothing moves twice. Call after arrangeInPlay
  * (the place is the arranged one). Returns the keys it moves.
+ * `live`: ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts) — false once the page is back in Edit, and
+ * the motions stop there (the page's loop would otherwise go on moving them under the editor). Absent = for the page's
+ * life, as a Play page always was.
  */
-export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window & typeof globalThis): string[] {
+export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window & typeof globalThis, live?: () => boolean): string[] {
   const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
   if (!motion) return [];
   const byLoader = (win as unknown as Record<symbol, Set<string> | undefined>)[Symbol.for('game-studio.motion')];
@@ -180,6 +183,7 @@ export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window 
     win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
   }
   const tick = (now: number) => {
+    if (live && !live()) return;
     const t = Math.max(0, (now - t0) / 1000);
     for (const r of runs) {
       try {

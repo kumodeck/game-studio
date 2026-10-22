@@ -463,6 +463,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
 | | `library/previewed` | `{ url, ok }` |
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
+| | `core/play` | `{ on, motion?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it, the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
 | | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
 | | `core/lang` | UI language for handle labels |
@@ -893,6 +894,33 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   `handlePx` (the strip's button size). Nothing else of the woken editor
   reaches the editor page. The world only: the game's HTML UI is not moved
   from a pause.
+
+#### 3.5.3 Play and Edit in the same page (2026-10-22, fast switch)
+
+- ▶ **Play** no longer opens the game page again: the edit page itself becomes
+  Play (`studio:core/play { on: true }`, `src/bridge/play-switch.ts`). The
+  editor puts its tools away (as `core/edit` off: the game's own camera and HUD,
+  no handles), the draft's motions start, the game's frames, clock and sound go
+  on, and the page says `studio:play/hello` — ask, pause and move work as on a
+  Play page. **Edit** (`on: false`) holds the game as a pause does, puts every
+  object back where Play found it and brings the editor back on the same
+  camera, pick, timeline and level, with no loading.
+- **Where Play starts**: from the edit layout (unsaved changes included). What
+  the game moved while playing (the player, an enemy, the camera) is not kept:
+  Edit always shows the layout. What does not go back is the game's own state
+  that is not an object's pose (a score, a timer, health, things it made or
+  removed); **Play from the start** (⌘K, Play's ▾) opens a new Play page as
+  Play always did.
+- The edit page's game clock stops with every hold of the game
+  (`core/time.ts` `clock`), so the first frame of Play steps one frame, not the
+  time spent editing.
+- A new Play page is still opened when the page's editor is not up (loading, no
+  adapter) and when a motion of the draft waits for the game's cue (a clip
+  without `start`: a page opened for Edit never ran the loader's motions).
+  `studio:play/reload` (the AI's fix) opens a new Play page; Edit after a new
+  Play page opens a new edit page, as before.
+- Screen tests: `__gameStudio._debug` is absent while the page plays (as on a
+  Play page), and `_play.playing()` says whether it plays.
 
 ---
 

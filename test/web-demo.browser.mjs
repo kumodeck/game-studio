@@ -420,7 +420,8 @@ async function run(browser, game, size, tag) {
     assert.ok(play, 'no ▶ Play button on screen');
     await touch(play);
     const hook = game === 'lantern-cove' ? '__cove' : '__ruins';
-    await page.waitFor(`!${FRAME}.contentWindow.location.search.includes('studio=edit') && !!${FRAME}.contentWindow.${hook}`, 60000);
+    // Playing: the page on screen itself since the fast switch (2026-10-22: `_play.playing()`), or a Play page (no studio=edit).
+    await page.waitFor(`(${FRAME}.contentWindow.__gameStudio?._play?.playing?.() === true || !${FRAME}.contentWindow.location.search.includes('studio=edit')) && !${FRAME}.contentWindow.__gameStudio?._debug && !!${FRAME}.contentWindow.${hook}`, 60000);
     const frames = game === 'lantern-cove' ? `${FRAME}.contentWindow.__cove.frames` : `${FRAME}.contentWindow.__ruins.stats().frames`;
     await page.waitFor(`${frames} > 3`, 60000);
     const f0 = await page.eval(frames);

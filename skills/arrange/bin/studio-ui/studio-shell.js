@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.17 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.18 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -995,6 +995,21 @@ const MSG_PREFIX = 'studio:';
                                                                                   
      
                                                 
+     
+                                                                                                                                    
+                                                                                                                        
+                                                                                     
+                                                                                                                  
+                                                                                                                      
+                                                                                                                   
+                                                                                                              
+                                                                                                                      
+                                                                                                                     
+                                                                                                     
+                                                                                                                    
+                                                       
+     
+                                                                                                    
      
                                                                                                                      
                                                                                                                    
@@ -12092,6 +12107,8 @@ const en = {
   'pal.askThis': 'Ask your AI: “{text}”',
   'pal.ex.name': 'Name the unnamed objects',
   'pal.play': 'Play the game',
+  'pal.playFresh': 'Play from the start',
+  'pal.playFresh.words': 'restart reload start over from the beginning new game score reset 最初から やり直し',
   'pal.assets': 'Open the Library',
   'pal.scene': 'Open the Scene',
   'pal.libraryWords': 'objects assets files',
@@ -12686,6 +12703,8 @@ const ja                               = {
   'pal.askThis': '「{text}」を AI に頼む',
   'pal.ex.name': '名前のない物に名前を付けて',
   'pal.play': '遊んでみる',
+  'pal.playFresh': '最初から遊ぶ',
+  'pal.playFresh.words': '最初から やり直し 読み直し リセット スコア restart reload start over',
   'pal.assets': 'ライブラリを開く',
   'pal.scene': 'シーンを開く',
   'pal.libraryWords': '物 素材 ファイル',
@@ -18671,7 +18690,21 @@ function start(host            ) {
   // (the game page draws nothing in its corner there). Pressed again while paused (it shows ▶ then), it resumes.
   const playPauseBtn = btn('play-pause', () => postGame({ type: 'studio:play/pause' }), { class: 'icon-btn play-pause', hidden: true, dataset: { action: 'play-pause', part: 'play-pause' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playPauseBtn, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  // Play's ▾ (fast switch, 2026-10-22): Play now goes on in the page on screen, from the layout, and Edit comes back
+  // to it without loading — so a game's score, enemies and timers carry on from the last Play's. "Play from the start"
+  // is the old Play (a new page), for when they should start again. Here and in ⌘K; a phone has it in ⌘K only (the bar
+  // has no room for one more button there, shell.css). One capsule with Play (a split button), so it reads as Play's own.
+  const playMoreBtn = btn('play-more', () => openPlayMenu(), { class: 'play-more', dataset: { action: 'play-more', part: 'play-more' }, 'aria-haspopup': 'menu' });
+  playMoreBtn.append(icon('chevronDown'));
+  const playSplit = h('div', { class: 'play-split' }, mk(playBtns, 'play', () => void togglePlay(), { class: 'play' }), playMoreBtn);
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playPauseBtn, playAskBtn, topSave, playSplit);
+  function openPlayMenu() {
+    const r = playMoreBtn.getBoundingClientRect();
+    ctxMenu.show([{ id: 'play-fresh', label: t('pal.playFresh'), run: () => void togglePlay(true) }], r.right, r.bottom + 4, { place: 'play', label: t('pal.playFresh') });
+    // Right-aligned under ▾: the menu's right edge on the button's.
+    const m = ctxMenu.el.getBoundingClientRect();
+    ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+  }
   // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
   // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
   // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
@@ -19381,7 +19414,9 @@ function start(host            ) {
     const mac = isMac();
     const act = (id        , label        , ic        , run            , hint         , words         ) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', togglePlay, 'P', t('btn.play'));
+    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), 'P', t('btn.play'));
+    // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
+    act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
     if (keys.length && editing) {
       act('copy', t('ops.copy'), 'copy', () => copySelection(), shortcutText('copy'), 'duplicate clone 複製');
       act('remove', t('ops.remove'), 'trash', () => removeSelection(), shortcutText('remove'), 'delete remove 削除');
@@ -19965,6 +20000,7 @@ function start(host            ) {
     app.dataset.help = uiPrefs.show.help ? 'on' : 'off';
     (header.querySelector('.adapter')               ).hidden = !uiPrefs.show.adapter;
     for (const b of playBtns) b.hidden = !uiPrefs.show.play;
+    playMoreBtn.hidden = !uiPrefs.show.play;
     langBtn.hidden = !uiPrefs.show.lang;
     // show.frame / show.next now decide whether ⌘K lists Show all / the Ideas (paletteRows).
     insetSent = '';
@@ -20648,6 +20684,9 @@ function start(host            ) {
         renderStatus();
         break;
       case 'studio:core/ready': {
+        // ▶ Play in the same page (fast switch): the page's editor put its tools away for Play (editing: false). Nothing
+        // about the page changed; the shell is in Play already (togglePlay). Back in Edit, editing: true comes as usual.
+        if (playing && playHere && !m.editing) break;
         // UI stage 1: which layers the game has (none listed = no UI: as before) and which one the bridge edits now.
         // A new game page (a reload, Play and back) always starts on the world.
         editLayers = m.layers && m.layers.length ? m.layers.slice() : null;
@@ -20670,14 +20709,7 @@ function start(host            ) {
           if (multi) send({ type: 'studio:placement/multi', on: true });
           send({ type: 'studio:core/ui', handlePx: handlePx(), theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark' });
           send({ type: 'studio:core/config', config: gameConfig });
-          const vs = store.get(VIEW_KEY);
-          let viewState         ;
-          try {
-            viewState = vs ? JSON.parse(vs) : undefined;
-          } catch {
-            viewState = undefined;
-          }
-          send({ type: 'studio:core/edit', on: true, viewState });
+          send({ type: 'studio:core/edit', on: true, viewState: keptView() });
           insetSent = '';
           sendInset();
         }
@@ -21293,6 +21325,10 @@ function start(host            ) {
   }
 
   let playing = false;
+  // ▶ Play in the same page (fast switch, 2026-10-22; togglePlay): the page on screen is the edit page playing, and
+  // where each object stood when Play started (for "Put in layout" while paused). False after any new page (loadGame).
+  let playHere = false;
+  let playFrom                           = null;
   // The first error the game's page threw since it was (re)loaded (studio:core/game-error), shown in the status line.
   let gameError                                             = null;
   // Play: the game as the editor shows it (every change is kept as a draft and goes along); what was written waits
@@ -21314,14 +21350,95 @@ function start(host            ) {
     if (a === 'save') return handOff();
     return true;
   }
-  async function togglePlay() {
+  /**
+   * ▶ Play / Edit. Since the fast switch (2026-10-22; a try of the editor: "every time I play and go back to edit it loads again —
+   * tedious"), both happen in the page on screen when its editor is up (canPlayHere): no new page, no loading. The game
+   * starts from the edit layout and Edit comes back to it (bridge/play-switch.ts says why, and what does not go back).
+   * `fresh`: "Play from the start" (⌘K, Play's ▾) — a new Play page, as Play always opened: the score, the enemies,
+   * the timers start again. From Play it opens the game again from its start, still in Play.
+   */
+  async function togglePlay(fresh = false) {
+    if (fresh && playing) {
+      loadGame();
+      return;
+    }
     if (!(await playChoice())) return;
     if (!playing) await keepNow(true);
     if (swapping) finishSwap();
     playing = !playing;
     if (playing) playSince = Date.now();
     palette.close();
-    loadGame();
+    if (playing && !fresh && canPlayHere()) playInPage();
+    else if (!playing && playHere) editInPage();
+    else loadGame();
+  }
+  /**
+   * Can ▶ Play happen in the page on screen? Its editor is up and has listed its objects (a page still loading, one
+   * with no adapter, a level being opened: a new page as before), and no motion of the draft waits for the game's cue
+   * (a clip without `start`: a page opened for Edit never ran the loader's motions, so the game's playMotion() would
+   * find nothing there — bridge/play-switch.ts).
+   */
+  function canPlayHere()          {
+    if (!bridgeAlive || phase !== 'ready' || !editing || swapping) return false;
+    const motion = worldModel.result().motion;
+    for (const m of Object.values(motion || {})) {
+      const clips = (m                                                      )?.clips;
+      if (Array.isArray(clips) && clips.some((c) => c && c.start !== true)) return false;
+    }
+    return true;
+  }
+  /** Play in the page on screen (see togglePlay). */
+  function playInPage() {
+    playHere = true;
+    // What "Put in layout" in a pause changes (play-move.ts): compared back in Edit (editInPage).
+    playFrom = new Map(worldItems.map((i) => [i.key, structuredClone(worldModel.pose(i.key) || i.pose)]));
+    // A Play page says hello again and starts unpaused — the same here.
+    playAskOn = false;
+    playPaused = false;
+    playMark = null;
+    editing = false;
+    phase = 'playing';
+    // The timeline open at a time other than 0 shows each moving object at its place + its clip there: back to the
+    // places first (refresh() sends the places once the timeline is not usable — `playing` above), or Play would start
+    // from that moment and Edit would come back to it. Its ▶ preview stops, as a new page stopped it (loadGame).
+    timeline.reset();
+    timeline.refresh(true);
+    send({ type: 'studio:core/play', on: true, motion: worldModel.result().motion });
+    renderAll();
+  }
+  /** Back to Edit in the same page: the layout, the camera, the pick, the timeline as they were. */
+  function editInPage() {
+    playHere = false;
+    const from = playFrom;
+    playFrom = null;
+    playAskOn = false;
+    playPaused = false;
+    playMark = null;
+    // 'ready' at once: the page answers with core/ready (editing) and its list within a frame or two, and a
+    // "loading" in between would be the flash this change takes away.
+    phase = 'ready';
+    send({ type: 'studio:core/play', on: false, viewState: keptView() });
+    // "Put in layout" while paused moved the model: the page puts things back where Play found them, then these.
+    for (const i of worldItems) {
+      const now = worldModel.pose(i.key);
+      const was = from?.get(i.key);
+      if (now && was && !samePose(now, was, worldDim)) send({ type: 'studio:placement/pose', key: i.key, pose: now });
+    }
+    // The stage is the game's size with the side panel again: the corners the panels cover, sent again.
+    insetSent = '';
+    sendInset();
+    renderAll();
+    // A change of the files while playing (the AI's fix) reloads softly now (pollStatus → softReload).
+    pollSoon();
+  }
+  /** The edit camera kept for the next page (core/view-state), or undefined. */
+  function keptView()          {
+    const vs = store.get(VIEW_KEY);
+    try {
+      return vs ? JSON.parse(vs) : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -21420,7 +21537,24 @@ function start(host            ) {
     keepSoon();
   }
 
+  /** The game page's address: the editor's (`?studio=edit`) or Play's, on the level shown. */
+  function gameSrc()         {
+    const u = new URL(gameUrl, location.href);
+    const [k, v] = LOCAL_PATHS.editFlag.split('=')                    ;
+    if (playing) u.searchParams.delete(k);
+    else u.searchParams.set(k, v);
+    if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
+    // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
+    if (levels.active && levels.current) {
+      u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
+      u.searchParams.set(LOCAL_PATHS.buildParam, levels.build(levels.current));
+    }
+    return u.href;
+  }
+
   function loadGame(soft = false) {
+    playHere = false;
+    playFrom = null;
     bridgeAlive = false;
     timeline.reset();
     // A new game page asks again (play/hello), and starts unpaused.
@@ -21460,17 +21594,7 @@ function start(host            ) {
     toolDirty.clear();
     renderToolsRow();
     if (!soft) phase = playing ? 'playing' : 'loading';
-    const u = new URL(gameUrl, location.href);
-    const [k, v] = LOCAL_PATHS.editFlag.split('=')                    ;
-    if (playing) u.searchParams.delete(k);
-    else u.searchParams.set(k, v);
-    if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
-    // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
-    if (levels.active && levels.current) {
-      u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
-      u.searchParams.set(LOCAL_PATHS.buildParam, levels.build(levels.current));
-    }
-    iframe.src = u.href;
+    iframe.src = gameSrc();
     renderAll();
   }
 
@@ -21883,6 +22007,8 @@ function start(host            ) {
       setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
       if (!phone()) b.append(h('kbd', { text: 'P' }));
     }
+    playMoreBtn.title = t('pal.playFresh');
+    playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));
     keepSoon();
   }
 

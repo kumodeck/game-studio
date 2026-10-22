@@ -117,6 +117,12 @@ export interface PlayMove {
   resumed(): void;
   /** The words again (play/on). */
   render(): void;
+  /**
+   * ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts): a new Play of the same page. Everything this
+   * module knew of the last one goes (where things were at its start, what the person moved, what went in the layout:
+   * the page is back at the edit layout), and `arranged` (the draft's motions started now) gives the new start.
+   */
+  restart(arranged: Promise<string[]>): void;
 }
 
 export function createPlayMove(o: PlayMoveOptions): PlayMove {
@@ -148,19 +154,27 @@ export function createPlayMove(o: PlayMoveOptions): PlayMove {
   // 150 ms for up to ~30 s after the first frame: a big scene on a slow machine lists late — Lantern Cove in the
   // headless test's software GL took more than the 5 s showFileEditsInPlay waits). A pause before that takes the
   // pause's own list.
-  void o.arranged.then(async (keys) => {
-    moving = new Set(keys);
-    await o.core.time.firstFrame();
-    for (let i = 0; i < 200 && !start && !atPause; i++) {
-      const a = o.adapter();
-      const l = a ? list(a) : [];
-      if (l.length) {
-        if (!atPause) start = new Map(l.map((it) => [it.key, it.pose] as const));
-        return;
+  // `run`: which Play this is (▶ Play in the same page, fast switch 2026-10-22: each Play of an edit page starts these
+  // again, restart() below); a look still going from an earlier Play stops.
+  let run = 0;
+  const findStart = (arranged: Promise<string[]>) => {
+    const mine0 = ++run;
+    void arranged.then(async (keys) => {
+      if (mine0 !== run) return;
+      moving = new Set(keys);
+      await o.core.time.firstFrame();
+      for (let i = 0; i < 200 && !start && !atPause && mine0 === run; i++) {
+        const a = o.adapter();
+        const l = a ? list(a) : [];
+        if (l.length) {
+          if (!atPause) start = new Map(l.map((it) => [it.key, it.pose] as const));
+          return;
+        }
+        await new Promise((r) => win.setTimeout(r, 150));
       }
-      await new Promise((r) => win.setTimeout(r, 150));
-    }
-  }).catch(() => {});
+    }).catch(() => {});
+  };
+  findStart(o.arranged);
 
   const card = el('div', 'card');
   card.dataset.part = 'pause-move-card';
@@ -355,6 +369,16 @@ export function createPlayMove(o: PlayMoveOptions): PlayMove {
       why = new Map();
     },
     render: () => draw(),
+    restart(arranged) {
+      start = null;
+      mine.clear();
+      kept.clear();
+      moving = new Set();
+      atPause = null;
+      why = new Map();
+      pick = null;
+      findStart(arranged);
+    },
   };
 }
 

@@ -7,7 +7,7 @@
 //      still there
 //   4. Save: placement.json has every level (Meadow's move, the copy with `from`, the rename with `labelWas`) and the
 //      code's order (`levelsWas`); Delete level on Summit goes to its neighbour and Save writes it as missing
-//   5. ▶ Play opens on the level shown
+//   5. ▶ Play plays the level shown (in the same page since the fast switch, 2026-10-22)
 //   6. a game without levels (examples/three-orb-garden): "In this scene", no switch, a saved move writes no `levels`
 // Then pictures of the head and its menu: PC 1280×800, a side window 420×800 (mouse), a phone 390×844 (touch), light
 // and dark.
@@ -158,9 +158,10 @@ async function flow() {
     f = placement();
     assert.deepEqual(f.levels.map((l) => l.id), ['meadow', 'cave-2', 'cave'], 'Summit is gone from levels');
     assert.deepEqual(f.levelsWas, ['meadow', 'cave', 'summit'], 'and still in the code\'s list (for the AI to delete)');
-    // 5. Play on the level shown.
+    // 5. Play on the level shown. Since the fast switch (2026-10-22) the page on screen itself plays (no new Play page):
+    // the shell is in Play, the page says so (`_play.playing()`), and it is the level shown.
     await p.press('[data-action=play]');
-    await p.page.waitFor(`!document.querySelector('iframe').src.includes('studio=edit') && document.querySelector('iframe').src.includes('studioLevel=cave')`, 8000);
+    await p.page.waitFor(`document.querySelector('.shell').dataset.playing === 'on' && ${WIN}.__gameStudio._play?.playing?.() === true && document.querySelector('iframe').src.includes('studioLevel=cave')`, 8000);
     await p.page.waitFor(`${WIN}.document.getElementById('level')?.textContent === 'Cave'`, 20000);
     console.log('ok levels: switch, copy, rename, move, delete, save, play');
   } finally {
