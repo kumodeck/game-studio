@@ -26,36 +26,29 @@
 //   it only adds files, and how light is light enough depends on how the game uses the model,
 //   which the AI can see and the editor can't.
 //
+// - The place to make things (generate-ui, 2026-10-22; the product request of 10/22: "3D, images, sound and so on each
+//   get a proper screen for making them"): five kinds (image, 3D, sound effect, music, voice line; the sounds through
+//   KUMODeck's audio route), example words one press puts in the box, a "Just made" card that shows the thing (▶ for
+//   a sound) with "Add to scene" / "Ask your AI…", and "Made here" from .studio/generated.json with Again / Change.
+//   No new button outside this box: the Library's head stays as it was. Kind data: gen-kinds.ts; card and history:
+//   gen-made.ts.
+//
 // Talks only to host.kumo (src/server/kumo.mjs on the local server). The page never sees a key.
 // Untrusted text (prompts, project names, KUMODeck's sentences) only goes through textContent.
 
-import type { KumoHost, KumoJob, KumoRefusal, KumoStatus, Lang } from '../../contract.ts';
+import type { KumoHost, KumoJob, KumoMade, KumoRefusal, KumoStatus, Lang, LibraryFileUse } from '../../contract.ts';
+import { DEFAULT_FORM, KINDS, KIND_WORDS, MAX_LEN, MUSIC_SECONDS, SFX_SECONDS, USUAL_SEC, VOICES, formFrom, isSound, priceOf, soundRequest } from './gen-kinds.ts';
+import type { Form, Kind, PictureQuality } from './gen-kinds.ts';
+import { madeCard, madeHistory } from './gen-made.ts';
 import { t } from './strings.ts';
 import type { StringKey } from './strings.ts';
 
-/** Prices before Make (USD, at cost). The same numbers as src/server/kumo.mjs kumoImagePrice / kumo3dPrice. */
-export function picturePrice(o: { side: number; quality: PictureQuality }): number {
-  const mp = Math.max(1, Math.ceil((o.side * o.side) / (1024 * 1024)));
-  if (o.quality === 'seamless') return 0.02 * mp;
-  if (o.quality === 'high') return 0.03 + 0.015 * (mp - 1);
-  return 0.003 * mp;
-}
-export const modelPrice = (texture: boolean) => (texture ? 0.2 : 0.1);
+export { USUAL_SEC };
 /** The server reserves whole cents, at least 1 (kumo.mjs kumoCents). */
 export const centsOf = (usd: number) => Math.max(1, Math.ceil(Math.round(usd * 1e6) / 1e4));
 export const usd = (n: number) => `$${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`;
 /** A balance (cents) in dollars: always 2 places ($0.05, not $0.050). */
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
-
-type PictureQuality = 'standard' | 'high' | 'seamless';
-type Kind = 'picture' | 'model';
-
-/**
- * How long one job usually takes, in seconds: the first real production run (2026-10-17) took
- * 18.8 s for a 1024 image and 182 s for a textured 3D model. Used for the words ("about 20
- * seconds") and to say "taking longer than usual" after twice as long. Change both together.
- */
-export const USUAL_SEC: Record<Kind, number> = { picture: 20, model: 180 };
 
 /**
  * A 3D file heavier than this gets the "heavy for a web game" line and the "make it lighter"
@@ -93,6 +86,10 @@ export interface AiMakeDeps {
   askLighter?(path: string, size: number): Promise<boolean>;
   /** Format a byte count the way the panel does. */
   formatSize?(n: number): string;
+  /** The file's address, for the card's image and ▶ (StudioHost.assetUrl). */
+  assetUrl?(path: string): string;
+  /** "Add to scene" / "Ask your AI…" on what was just made (the Library's own; absent = no buttons). */
+  files?: LibraryFileUse;
 }
 
 /** The line under Make: what happened, plus what is being waited for or what to do next. */
@@ -106,6 +103,8 @@ interface Note {
   heavy?: { path: string; size: number };
   /** "Make it lighter" was sent to the AI. */
   sent?: boolean;
+  /** What just landed: the "Just made" card (gen-made.ts). */
+  made?: { kind: Kind; path: string; size?: string; costUsdMicros?: number | null };
 }
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -134,36 +133,39 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
   root.append(box);
 
   let st: KumoStatus | null = null;
-  let kind: Kind = 'picture';
-  let quality: PictureQuality = 'standard';
-  let side = 1024;
-  let texture = true;
-  let prompt = '';
+  /** Every kind's choices in one object (gen-kinds.ts Form): switching kinds keeps the words and the choices. */
+  let form: Form = { ...DEFAULT_FORM };
   let busy = false;
+  /** After Again / Change: what gets the focus once the form is drawn again. */
+  let focusNext: 'make' | 'prompt' | null = null;
   /** Set when KUMODeck asked for the terms: the next Make sends acceptTerms (after the tick). */
   let askTerms = false;
   let agreed = false;
   let note: Note | null = null;
   const polling = new Set<string>();
-  /** When each piece of work started (picture: 'picture'; 3D: the job id). */
+  /** When each piece of work started (a picture or a sound, made within one request: 'now'; 3D: the job id). */
   const since = new Map<string, number>();
   let tick = 0;
+  /** The kind and words of the picture or sound being made now (the 'now' work). */
+  let nowKind: Kind = 'picture';
+  let nowFor = '';
+  /** Sound kinds only when the host can make sounds (an older host offers images and 3D). */
+  const kinds = () => KINDS.filter((k) => !isSound(k) || !!deps.kumo.makeSound);
 
-  const price = () => (kind === 'picture' ? picturePrice({ side, quality }) : modelPrice(texture));
+  const price = () => priceOf(form);
   const fmtSize = (n: number) => (deps.formatSize ? deps.formatSize(n) : `${Math.round(n / 104857.6) / 10} MB`);
 
   /** Everything being made now, oldest first. */
   function work(): AiWork[] {
     const out: AiWork[] = [];
-    const pic = since.get('picture');
-    if (pic !== undefined) out.push({ id: 'picture', kind: 'picture', prompt: pictureFor, since: pic });
+    const now = since.get('now');
+    if (now !== undefined) out.push({ id: 'now', kind: nowKind, prompt: nowFor, since: now });
     for (const j of st?.jobs || []) {
       const t0 = since.get(j.id);
       if (t0 !== undefined && !j.path && j.status !== 'failed' && j.status !== 'canceled') out.push({ id: j.id, kind: 'model', prompt: j.prompt, since: t0 });
     }
     return out;
   }
-  let pictureFor = '';
   function workChanged() {
     const w = work();
     deps.onWork?.(w);
@@ -185,23 +187,28 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
     }
   }
 
-  /** Read the credits again (after a job: what the panel shows must be what is left). */
+  /**
+   * Read the credits again (after a job: what the panel shows must be what is left), and the history: the server
+   * wrote the new line in .studio/generated.json when the file landed.
+   */
   async function refreshBalance() {
     const s = await deps.kumo.status().catch(() => null);
     if (s && st && typeof s.balanceCents === 'number') {
       st.balanceCents = s.balanceCents;
+      if (s.made) st.made = s.made;
       render();
     }
   }
 
-  /** The file is in assets/: say so, with its size, and the heavy line for a big 3D file. */
-  async function added(path: string, k: Kind) {
-    note = { text: L('aiAdded', { path }) };
+  /** The file is in assets/: say so, with its size, the "Just made" card, and the heavy line for a big 3D file. */
+  async function added(path: string, k: Kind, costUsdMicros: number | null = null) {
+    // The card says it (gen-made.ts); `text` stays for a host-less read of the note (and is not drawn with a card).
+    note = { text: L('aiAdded', { path }), made: { kind: k, path, costUsdMicros } };
     render();
     const info = await deps.onAdded(path);
     const size = info && typeof info.size === 'number' ? info.size : undefined;
-    if (note && note.text === L('aiAdded', { path }) && size) {
-      note = { text: L('aiAddedSize', { path, size: fmtSize(size) }) };
+    if (note && note.made?.path === path && size) {
+      note = { text: L('aiAddedSize', { path, size: fmtSize(size) }), made: { kind: k, path, size: fmtSize(size), costUsdMicros } };
       if (k === 'model' && size > HEAVY_MODEL_BYTES) note.heavy = { path, size };
       render();
     }
@@ -228,39 +235,45 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
   }
 
   async function make() {
-    if (busy || !prompt.trim()) return;
+    if (busy || !form.prompt.trim()) return;
     if (askTerms && !agreed) return;
     busy = true;
-    const k = kind;
-    note = k === 'picture' ? { text: L('aiMakingPicture'), wait: { id: 'picture', kind: 'picture' } } : { text: L('aiStartingModel') };
-    if (k === 'picture') {
-      since.set('picture', Date.now());
-      pictureFor = prompt.trim();
+    const f = { ...form };
+    const k = f.kind;
+    // A picture or a sound is made within the request: one 'now' piece of work with a clock. 3D starts a job.
+    note = k === 'model' ? { text: L('aiStartingModel') } : { text: L(KIND_WORDS[k].making), wait: { id: 'now', kind: k } };
+    if (k !== 'model') {
+      since.set('now', Date.now());
+      nowKind = k;
+      nowFor = f.prompt.trim();
       workChanged();
     }
     render();
     const acceptTerms = askTerms && agreed ? true : undefined;
     try {
-      if (k === 'picture') {
-        const r = await deps.kumo.makePicture({
-          prompt: prompt.trim(),
-          width: side,
-          height: side,
-          ...(quality === 'high' ? { quality: 'high' as const } : {}),
-          ...(quality === 'seamless' ? { tiling: 'both' as const } : {}),
-          ...(acceptTerms ? { acceptTerms } : {}),
-        });
-        since.delete('picture');
+      if (k !== 'model') {
+        const r = k === 'picture'
+          ? await deps.kumo.makePicture({
+              prompt: f.prompt.trim(),
+              width: f.side,
+              height: f.side,
+              ...(f.quality === 'high' ? { quality: 'high' as const } : {}),
+              ...(f.quality === 'seamless' ? { tiling: 'both' as const } : {}),
+              ...(acceptTerms ? { acceptTerms } : {}),
+            })
+          : await deps.kumo.makeSound!({ ...soundRequest(f), ...(acceptTerms ? { acceptTerms } : {}) });
+        since.delete('now');
         workChanged();
         if (!r.ok) refusal(r);
         else {
           askTerms = false;
           if (st && typeof r.balanceCents === 'number') st.balanceCents = r.balanceCents;
-          else void refreshBalance();
-          void added(r.path, 'picture');
+          // the history line is new either way (and the balance, when the answer had none)
+          void refreshBalance();
+          void added(r.path, k, r.costUsdMicros);
         }
       } else {
-        const r = await deps.kumo.makeModel({ prompt: prompt.trim(), texture, ...(acceptTerms ? { acceptTerms } : {}) });
+        const r = await deps.kumo.makeModel({ prompt: f.prompt.trim(), texture: f.texture, ...(acceptTerms ? { acceptTerms } : {}) });
         if (!r.ok) refusal(r);
         else {
           askTerms = false;
@@ -272,7 +285,7 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
         }
       }
     } finally {
-      if (since.delete('picture')) workChanged();
+      if (since.delete('now')) workChanged();
       busy = false;
       render();
     }
@@ -305,7 +318,7 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
         workChanged();
         render();
         if (r.path) {
-          void added(r.path, 'model');
+          void added(r.path, 'model', r.costUsdMicros);
           break;
         }
         if (r.status === 'failed' || r.status === 'canceled') {
@@ -338,7 +351,7 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
     if (step) line.append(document.createTextNode(`${step} · `));
     const clock = h('span', 'gsl-ai-clock', elapsed(t0));
     clock.dataset.since = String(t0);
-    line.append(clock, document.createTextNode(` · ${w.kind === 'picture' ? L('aiUsualPicture') : L('aiUsualModel')}`));
+    line.append(clock, document.createTextNode(` · ${L(KIND_WORDS[w.kind].usual)}`));
     const late = h('span', 'gsl-ai-late', ` ${L('aiLate')}`);
     late.hidden = Date.now() - t0 < 2 * usual * 1000;
     line.append(late);
@@ -410,71 +423,100 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
     if (!st.project) return renderPickProject(st);
     if (!st.fromFolder) box.append(h('p', 'gsl-muted', L('aiProject', { name: st.project.name })));
 
-    // kind
-    const kinds = h('div', 'gsl-ai-kinds');
-    kinds.setAttribute('role', 'group');
-    for (const k of ['picture', 'model'] as Kind[]) {
-      const b = h('button', 'gsl-chip', k === 'picture' ? L('aiPicture') : L('aiModel'));
+    // the kind: five chips (sounds only when the host can make them)
+    const kindRow = h('div', 'gsl-ai-kinds');
+    kindRow.setAttribute('role', 'group');
+    kindRow.setAttribute('aria-label', L('kindsLabel'));
+    for (const k of kinds()) {
+      const b = h('button', 'gsl-chip', L(KIND_WORDS[k].chip));
       b.type = 'button';
-      b.setAttribute('aria-pressed', String(kind === k));
+      b.dataset.kind = k;
+      b.setAttribute('aria-pressed', String(form.kind === k));
       b.addEventListener('click', () => {
-        kind = k;
+        form = { ...form, kind: k };
         render();
       });
-      kinds.append(b);
+      kindRow.append(b);
     }
-    box.append(kinds);
+    box.append(kindRow);
 
+    const kind = form.kind;
     const ta = h('textarea', 'gsl-ai-prompt');
     ta.rows = 3;
-    ta.maxLength = kind === 'picture' ? 1000 : 1024;
-    ta.placeholder = kind === 'picture' ? L('aiPicturePh') : L('aiModelPh');
+    ta.maxLength = MAX_LEN[kind];
+    ta.placeholder = L(KIND_WORDS[kind].ph);
     ta.setAttribute('aria-label', L('aiPromptLabel'));
-    ta.value = prompt;
+    ta.value = form.prompt;
     ta.addEventListener('input', () => {
-      prompt = ta.value;
+      form.prompt = ta.value;
+      // A voice line's price follows its length; the rest only needs Make to wake up.
+      if (kind === 'voice') updatePrice();
       makeBtn.disabled = !canMake();
     });
     box.append(ta);
 
+    // Example words (one press puts them in the box; nothing is sent). WHY: an empty box is the hardest part of
+    // "make with AI" — the examples show the size and tone of words that work, for the kind chosen.
+    const tryRow = h('p', 'gsl-muted gsl-ai-try');
+    tryRow.append(h('span', undefined, L('tryLabel')));
+    for (const key of KIND_WORDS[kind].examples) {
+      const words = L(key);
+      const b = h('button', 'gsl-link', words);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        form.prompt = words;
+        focusNext = 'prompt';
+        render();
+      });
+      tryRow.append(b);
+    }
+    box.append(tryRow);
+
     const opts = h('div', 'gsl-ai-opts');
-    if (kind === 'picture') {
-      const q = h('select', 'gsl-type');
-      q.setAttribute('aria-label', L('aiQuality'));
-      for (const [v, k] of [['standard', 'aiFast'], ['high', 'aiFine'], ['seamless', 'aiSeamless']] as const) {
-        const o = h('option', undefined, L(k));
-        o.value = v;
-        o.selected = quality === v;
-        q.append(o);
+    const select = (label: StringKey, values: readonly (string | number)[], cur: string | number, word: (v: string | number) => string, set: (v: string) => void) => {
+      const sel = h('select', 'gsl-type');
+      sel.setAttribute('aria-label', L(label));
+      // A value from the history that is not in the list (a hand-edited file) is still shown as chosen.
+      const all = values.includes(cur) ? values : [...values, cur];
+      for (const v of all) {
+        const o = h('option', undefined, word(v));
+        o.value = String(v);
+        o.selected = v === cur;
+        sel.append(o);
       }
-      q.addEventListener('change', () => {
-        quality = q.value as PictureQuality;
+      sel.addEventListener('change', () => {
+        set(sel.value);
         render();
       });
-      const s = h('select', 'gsl-type');
-      s.setAttribute('aria-label', L('aiSize'));
-      for (const n of [512, 1024, 2048]) {
-        const o = h('option', undefined, `${n} × ${n}`);
-        o.value = String(n);
-        o.selected = side === n;
-        s.append(o);
-      }
-      s.addEventListener('change', () => {
-        side = Number(s.value);
-        render();
-      });
-      opts.append(q, s);
-    } else {
+      return sel;
+    };
+    const check = (word: StringKey, on: boolean, set: (v: boolean) => void) => {
       const lab = h('label', 'gsl-ai-check');
       const cb = h('input');
       cb.type = 'checkbox';
-      cb.checked = texture;
+      cb.checked = on;
       cb.addEventListener('change', () => {
-        texture = cb.checked;
+        set(cb.checked);
         render();
       });
-      lab.append(cb, document.createTextNode(L('aiTexture')));
-      opts.append(lab);
+      lab.append(cb, document.createTextNode(L(word)));
+      return lab;
+    };
+    const secs = (v: string | number) => L('seconds', { n: v });
+    if (kind === 'picture') {
+      const qWord: Record<PictureQuality, StringKey> = { standard: 'aiFast', high: 'aiFine', seamless: 'aiSeamless' };
+      opts.append(
+        select('aiQuality', ['standard', 'high', 'seamless'], form.quality, (v) => L(qWord[v as PictureQuality]), (v) => (form.quality = v as PictureQuality)),
+        select('aiSize', [512, 1024, 2048], form.side, (v) => `${v} × ${v}`, (v) => (form.side = Number(v))),
+      );
+    } else if (kind === 'model') {
+      opts.append(check('aiTexture', form.texture, (v) => (form.texture = v)));
+    } else if (kind === 'sfx') {
+      opts.append(select('aiLength', SFX_SECONDS, form.sfxSec, secs, (v) => (form.sfxSec = Number(v))));
+    } else if (kind === 'music') {
+      opts.append(select('aiLength', MUSIC_SECONDS, form.musicSec, secs, (v) => (form.musicSec = Number(v))), check('aiLoop', form.loop, (v) => (form.loop = v)));
+    } else {
+      opts.append(select('aiVoice', VOICES, form.voice, (v) => L(`voice_${v}` as StringKey), (v) => (form.voice = v)));
     }
     box.append(opts);
 
@@ -498,43 +540,65 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
       box.append(tb);
     }
 
-    const cost = price();
-    const need = centsOf(cost);
-    const short = typeof st.balanceCents === 'number' && st.balanceCents < need;
-    const priceLine = h('p', short ? 'gsl-ai-bad' : 'gsl-muted', short
-      ? L('aiShort', { need: dollars(need), balance: dollars(st.balanceCents ?? 0) })
-      : kind === 'picture' ? L('aiPicturePrice', { price: usd(cost) }) : L('aiModelPrice', { price: usd(cost) }));
+    // The price of this one and the balance, before Make (a short balance stops here and says why).
+    const priceLine = h('p');
     box.append(priceLine);
-
-    const canMake = () => !busy && !short && !!prompt.trim() && (!askTerms || agreed);
-    const makeBtn = h('button', 'gsl-btn gsl-primary gsl-ai-make', busy ? L('aiMaking') : L('aiMake', { price: usd(cost) }));
+    const makeBtn = h('button', 'gsl-btn gsl-primary gsl-ai-make');
     makeBtn.type = 'button';
-    makeBtn.disabled = !canMake();
     makeBtn.addEventListener('click', () => void make());
     box.append(makeBtn);
+    let short = false;
+    const canMake = () => !busy && !short && !!form.prompt.trim() && (!askTerms || agreed);
+    function updatePrice() {
+      const cost = price();
+      const need = centsOf(cost);
+      short = typeof st?.balanceCents === 'number' && st.balanceCents < need;
+      priceLine.className = short ? 'gsl-ai-bad' : 'gsl-muted';
+      priceLine.textContent = short ? L('aiShort', { need: dollars(need), balance: dollars(st?.balanceCents ?? 0) }) : L(KIND_WORDS[kind].price, { price: usd(cost) });
+      makeBtn.textContent = busy ? L('aiMaking') : L('aiMake', { price: usd(cost) });
+      makeBtn.disabled = !canMake();
+    }
+    updatePrice();
 
     if (note) {
-      const p = h('p', note.bad ? 'gsl-ai-bad' : 'gsl-ai-note', note.text);
-      p.setAttribute('role', 'status');
-      box.append(p);
+      if (!note.made) {
+        const p = h('p', note.bad ? 'gsl-ai-bad' : 'gsl-ai-note', note.text);
+        p.setAttribute('role', 'status');
+        box.append(p);
+      }
       const wl = note.wait ? waitLine(note.wait) : null;
       if (wl) box.append(wl);
-      if (note.heavy) box.append(heavyBlock(note.heavy));
       if (note.detail) box.append(h('p', 'gsl-muted gsl-ai-detail', note.detail));
+      if (note.made) box.append(madeCard(note.made, { lang: deps.lang, assetUrl: deps.assetUrl, files: deps.files }));
+      if (note.heavy) box.append(heavyBlock(note.heavy));
     }
 
-    const jobs = (st.jobs || []).slice(-5).reverse();
-    if (jobs.length) {
-      const sec = h('div', 'gsl-section');
-      sec.append(h('h4', undefined, L('aiRecent')));
-      const ul = h('ul', 'gsl-files');
-      for (const j of jobs) {
-        const where = j.path ? j.path : j.status === 'failed' || j.status === 'canceled' ? L('aiJobFailed') : L('aiJobRunning');
-        ul.append(h('li', undefined, `${j.prompt} — ${where}`));
-      }
-      sec.append(ul);
-      box.append(sec);
+    const hist = madeHistory(st.jobs || [], st.made || [], {
+      lang: deps.lang,
+      assetUrl: deps.assetUrl,
+      again: (m) => fill(m, 'make'),
+      change: (m) => fill(m, 'prompt'),
+    });
+    if (hist) box.append(hist);
+
+    if (focusNext) {
+      const want = focusNext;
+      focusNext = null;
+      const el = want === 'make' ? makeBtn : ta;
+      el.focus();
+      if (el === ta) ta.setSelectionRange(ta.value.length, ta.value.length);
     }
+  }
+
+  /** Again / Change on a history line: its kind, words and choices back in the form. Nothing is sent. */
+  function fill(m: KumoMade, then: 'make' | 'prompt') {
+    // A sound line on a host that cannot make sounds stays where it is (no kind to show it in).
+    if (!kinds().includes(m.kind)) return;
+    form = formFrom(m, form);
+    focusNext = then;
+    note = null;
+    render();
+    box.querySelector('.gsl-ai-kinds')?.scrollIntoView({ block: 'nearest' });
   }
 
   function renderSignIn(s: KumoStatus) {

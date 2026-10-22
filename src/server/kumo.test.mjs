@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { startStudioServer } from './server.mjs';
-import { kumoImagePrice, kumo3dPrice, KUMO_3D_FACE_LIMIT } from './kumo.mjs';
+import { kumoImagePrice, kumo3dPrice, kumoSoundPrice, KUMO_3D_FACE_LIMIT, KUMO_SOUND_MODELS } from './kumo.mjs';
 
 const API = 'http://kumo.test';
 const TOKEN = 'kds_test_SECRET_do_not_leak_0123456789';
@@ -33,7 +33,20 @@ function fakeKumo({ balance = 500, terms = false } = {}) {
     if (p === '/v1/money/prepaid') return json(200, { balance: st.balance, owed: 0, currency: 'usd' });
     if (p === '/v1/projects') return json(200, { projects: [{ id: PROJECT, name: 'Canal' }, { id: OTHER, name: 'Other' }] });
     if (p === '/v1/platform/info') return json(200, { dashboardUrl: 'http://dash.test' });
-    const create = /^\/v1\/projects\/([^/]+)\/ai\/(image|3d)\/jobs$/.exec(p);
+    const create = /^\/v1\/projects\/([^/]+)\/ai\/(image|3d|audio)\/jobs$/.exec(p);
+    if (create && init.method === 'POST' && create[2] === 'audio') {
+      // A sound: made at once (the real audio route is sync), wav for sfx / music and mp3 for a voice line
+      const b = JSON.parse(init.body);
+      st.inputs.push({ task: b.task, model: b.routing?.model, ...b.input });
+      if (b.acceptTerms === true) st.terms = true;
+      if (!st.terms) return err(403, 'ai_terms_not_accepted', 'You must accept the AI terms');
+      if (st.balance < 1) return err(402, 'insufficient_credits', 'Not enough prepaid balance');
+      st.creates++;
+      st.balance -= 1;
+      const name = b.task === 'audio.voice' ? 'line.mp3' : b.task === 'audio.music' ? 'theme.wav' : 'coin.wav';
+      const job = { id: `0000000${st.creates}-0000-4000-8000-000000000000`, projectId: create[1], task: b.task, status: 'succeeded', costUsdMicros: 4000, assets: [{ id: `a${st.creates}`, files: [{ name, url: `/v1/projects/${create[1]}/ai/audio/assets/a${st.creates}/files/${name}` }] }] };
+      return json(200, { job });
+    }
     if (create && init.method === 'POST') {
       const b = JSON.parse(init.body);
       st.inputs.push(b.input);
@@ -60,6 +73,7 @@ function fakeKumo({ balance = 500, terms = false } = {}) {
       if (job.looks >= 2) job.status = 'succeeded';
       return json(200, { job: { ...job, assets: job.status === 'succeeded' ? job.assets : [] } });
     }
+    if (/\/files\/.*\.(wav|mp3)$/.test(p)) return new Response('RIFFSOUND', { status: 200, headers: { 'content-length': '9' } });
     if (/\/files\//.test(p)) return new Response(p.endsWith('.glb') ? 'glTF-BINARY' : 'JPEGBYTES', { status: 200, headers: { 'content-length': p.endsWith('.glb') ? '11' : '9' } });
     return err(404, 'not_found', p);
   };
@@ -234,6 +248,101 @@ test('no kumo.json: the person picks one of their projects; writes from another 
     const ok = await s.req('POST', 'kumo/image', { prompt: 'sky' });
     assert.equal(ok.status, 200);
     assert.ok(s.kumo.st.calls.some((c) => c.path === `/v1/projects/${OTHER}/ai/image/jobs`));
+  } finally {
+    await s.close();
+  }
+});
+
+// ---- Sounds and the history (generate-ui, 2026-10-22) ----
+
+test('sound prices shown before Make: the pinned models at cost (pricing.ts, read 2026-10-22)', () => {
+  assert.equal(kumoSoundPrice({ kind: 'sfx', durationSec: 2 }), 0.004);
+  assert.equal(kumoSoundPrice({ kind: 'sfx', durationSec: 5 }), 0.01);
+  assert.equal(kumoSoundPrice({ kind: 'music', durationSec: 60 }), 0.0376);
+  assert.equal(kumoSoundPrice({ kind: 'voice', text: 'a'.repeat(1000) }), 0.05);
+  assert.deepEqual(KUMO_SOUND_MODELS, { sfx: 'elevenlabs-sound-effects-v2', music: 'stable-audio-3-medium', voice: 'elevenlabs-turbo-v2.5' });
+});
+
+test('a sound effect, music and a voice line land in assets/ with the right task and model; the history keeps the words', async () => {
+  const s = await start();
+  try {
+    // the terms once, like a picture
+    const first = await s.req('POST', 'kumo/sound', { kind: 'sfx', prompt: 'coin pickup, bright chime', durationSec: 1 });
+    assert.equal(first.json.code, 'needs_terms');
+    const sfx = await s.req('POST', 'kumo/sound', { kind: 'sfx', prompt: 'coin pickup, bright chime', durationSec: 1, acceptTerms: true });
+    assert.equal(sfx.status, 200, JSON.stringify(sfx.json));
+    assert.equal(sfx.json.path, 'assets/coin.wav');
+    assert.equal(sfx.json.balanceCents, 499);
+    const music = await s.req('POST', 'kumo/sound', { kind: 'music', prompt: 'calm harbor theme' });
+    assert.equal(music.json.path, 'assets/theme.wav');
+    const voice = await s.req('POST', 'kumo/sound', { kind: 'voice', prompt: 'Welcome to the cove!', voice: 'warm' });
+    assert.equal(voice.json.path, 'assets/line.mp3');
+    assert.deepEqual(s.kumo.st.inputs.slice(1), [
+      { task: 'audio.sfx', model: 'elevenlabs-sound-effects-v2', prompt: 'coin pickup, bright chime', durationSec: 1 },
+      { task: 'audio.music', model: 'stable-audio-3-medium', prompt: 'calm harbor theme', durationSec: 30, loop: true },
+      { task: 'audio.voice', model: 'elevenlabs-turbo-v2.5', text: 'Welcome to the cove!', voice: 'warm' },
+    ]);
+    assert.ok(s.kumo.st.calls.some((c) => c.path === `/v1/projects/${PROJECT}/ai/audio/jobs`));
+    assert.deepEqual(await assetsOf(s.root), ['coin.wav', 'line.mp3', 'theme.wav']);
+
+    // .studio/generated.json: newest first, the words and options, no key, no KUMODeck address
+    const raw = await fs.readFile(path.join(s.root, '.studio/generated.json'), 'utf8');
+    assert.ok(!raw.includes(TOKEN) && !raw.includes(API));
+    const items = JSON.parse(raw).items;
+    assert.deepEqual(items.map((i) => [i.kind, i.prompt, i.path, i.options]), [
+      ['voice', 'Welcome to the cove!', 'assets/line.mp3', { voice: 'warm' }],
+      ['music', 'calm harbor theme', 'assets/theme.wav', { durationSec: 30, loop: true }],
+      ['sfx', 'coin pickup, bright chime', 'assets/coin.wav', { durationSec: 1 }],
+    ]);
+    assert.ok(items.every((i) => typeof i.at === 'string' && i.costUsdMicros === 4000));
+    // the editor gets it with the status ("Made here")
+    const st = await s.req('GET', 'kumo/status');
+    assert.deepEqual(st.json.made.map((i) => i.kind), ['voice', 'music', 'sfx']);
+  } finally {
+    await s.close();
+  }
+});
+
+test('a sound out of range or of an unknown kind is refused before KUMODeck is asked', async () => {
+  const s = await start({ terms: true });
+  try {
+    for (const b of [{ kind: 'sfx', prompt: 'x', durationSec: 30 }, { kind: 'music', prompt: 'x', durationSec: 2 }, { kind: 'voice', prompt: 'hi', voice: 'robot' }, { kind: 'video', prompt: 'x' }, { kind: 'voice', prompt: 'a'.repeat(501) }]) {
+      const r = await s.req('POST', 'kumo/sound', b);
+      assert.equal(r.status, 400, JSON.stringify(b));
+    }
+    assert.ok(!s.kumo.st.calls.some((c) => c.method === 'POST'));
+  } finally {
+    await s.close();
+  }
+});
+
+test('pictures and 3D models go into the history too (3D once, when the model lands)', async () => {
+  const s = await start({ terms: true });
+  try {
+    await s.req('POST', 'kumo/image', { prompt: 'night sky', quality: 'high', width: 512, height: 512 });
+    const r = await s.req('POST', 'kumo/model3d', { prompt: 'a low wooden treasure chest', texture: false });
+    await s.req('GET', `kumo/model3d/${r.json.id}`);
+    await s.req('GET', `kumo/model3d/${r.json.id}`);
+    const st = await s.req('GET', 'kumo/status');
+    assert.deepEqual(st.json.made.map((i) => [i.kind, i.prompt, i.options]), [
+      ['model', 'a low wooden treasure chest', { texture: false }],
+      ['picture', 'night sky', { side: 512, quality: 'high' }],
+    ]);
+  } finally {
+    await s.close();
+  }
+});
+
+test('a broken .studio/generated.json reads as empty; the next make starts it again', async () => {
+  const s = await start({ terms: true });
+  try {
+    await fs.mkdir(path.join(s.root, '.studio'), { recursive: true });
+    await fs.writeFile(path.join(s.root, '.studio/generated.json'), '{ not json');
+    const st = await s.req('GET', 'kumo/status');
+    assert.deepEqual(st.json.made, []);
+    await s.req('POST', 'kumo/sound', { kind: 'sfx', prompt: 'door creak' });
+    const again = await s.req('GET', 'kumo/status');
+    assert.deepEqual(again.json.made.map((i) => i.prompt), ['door creak']);
   } finally {
     await s.close();
   }

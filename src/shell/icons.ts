@@ -42,6 +42,8 @@ const PATHS: Record<string, string> = {
   look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
   play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
   stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+  // Pause while playing (2026-10-22): two bars, filled like play / stop.
+  pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   // The AI: a four-point spark.
   spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
   more: 'o 5 10|o 10 10|o 15 10',
@@ -76,6 +78,8 @@ const PATHS: Record<string, string> = {
   // The eye struck through: "the game's UI is hidden while you edit the world" (layer-switch.ts).
   eyeOff: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25|M4 16 16 4',
   plus: 'M10 4.5v11|M4.5 10h11',
+  // The plus without its upright: one point fewer on a motion's path (motion-gui, 2026-10-22).
+  minus: 'M4.5 10h11',
   // The plus turned 45°: close a note.
   close: 'M6 6l8 8|M14 6l-8 8',
   // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
@@ -98,7 +102,7 @@ const PATHS: Record<string, string> = {
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
-const FILLED = new Set(['play', 'stop', 'spark']);
+const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
 /** Icons whose LAST part is filled (the mark's front card). */
 const LAST_FILLED = new Set(['mark']);
 

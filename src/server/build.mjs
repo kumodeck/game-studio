@@ -23,7 +23,9 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // 9 KB since UI stage 1 (2026-10-19): it also places the HTML UI (`ui`, ~2.6 KB with the size correction that keeps
 // a resized element's middle; the 6 KB one was at 5.7 KB). It is copied into every game, so it stays small; the
 // limit keeps it from growing by accident.
-const LOADER_LIMIT = 9 * 1024;
+// 12 KB since motion-gui (2026-10-22): it also runs the motions made in the editor (`motion`, ~2.7 KB: the path maths
+// shared with the editor, the check of each entry and a frame loop); it went from 8.3 KB to 10.9 KB.
+const LOADER_LIMIT = 12 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;

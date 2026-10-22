@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.12 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.13 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -550,6 +550,25 @@ const CONTRACT_VERSION = 1;
                                                           
      
                                    
+     
+                                                                                                                  
+                                                                                                                    
+                                                                                                                     
+                                                                                                                    
+     
+                                                             
+ 
+
+/** One level as the game names it (studio.levels). `id` matches KEY_RE; `label` is what the person reads. */
+                            
+             
+                 
+ 
+
+/** What studio.levels() returns in the editor: the level shown (`id`) and the code's level to build for it. */
+                            
+             
+                
  
 
 // ---------------------------------------------------------------------------
@@ -895,6 +914,16 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                        
      
+                                                                                                                    
+                                                                                                                      
+                                                                                                                     
+                                                                                                                
+                                 
+     
+                                                                                              
+                                                                                                                              
+                                                                              
+     
                                                                                
                                                                                
                                                                               
@@ -969,8 +998,16 @@ const MSG_PREFIX = 'studio:';
                                 
                                                                                                                     
                                                          
-                                                                                     
-                                              
+     
+                                                                                                                       
+                                                              
+     
+                                 
+     
+                                                                                                                  
+                                                                                   
+     
+                                                           
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -1023,6 +1060,12 @@ const MSG_PREFIX = 'studio:';
                                                   
                                                                                                                
                                                                        
+     
+                                                                                                                  
+                                                                                                                       
+                                                                                                                  
+     
+                                                                        
                                                                                       
                                                                         
                                                                                            
@@ -1039,6 +1082,13 @@ const MSG_PREFIX = 'studio:';
                                                                          
      
                                                                                                                                                                                  
+     
+                                                                                                                   
+                                                        
+     
+                                                                                                
+                                                                                                                        
+                                                        
                                                                                                             
                                                                                                                                   
                                                                                                                           
@@ -1070,11 +1120,21 @@ const MSG_PREFIX = 'studio:';
                                                                                                               
      
                                                                                                                                        
-                                                                                          
+                                                                                         
+                                                                                                                     
+                                                             
+                                                                                     
+                                               
                                                                                
                                                 
                                                                                          
                                    
+
+/** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
+                           
+                    
+               
+ 
 
 /** Something near the player when they asked while playing (§3.5). */
                            
@@ -1205,6 +1265,15 @@ function isStudioMessage(x         )                     {
                                                                                            
                        
                           
+     
+                                                                                                                     
+                                                                                                                      
+                                                                                                                       
+                                                                                                                
+     
+                   
+                
+                       
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1381,7 +1450,30 @@ function isStudioMessage(x         )                     {
                                                  
                                        
                    
+     
+                                                                                                                   
+                                                                                          
+     
+                    
                                             
+ 
+
+/** The kinds "Make with AI" makes (generate-ui, 2026-10-22: sound effects, music and voice lines joined images and 3D). */
+                                                                       
+
+/** One line of the history (.studio/generated.json). */
+                           
+             
+                            
+             
+                 
+                                                                      
+                 
+                                                                                                                                          
+                                                     
+                 
+               
+                               
  
 
                           
@@ -1426,6 +1518,20 @@ function isStudioMessage(x         )                     {
                         
  
 
+/** One sound (generate-ui, 2026-10-22): KUMODeck's audio route, made within the request like a picture. */
+                                   
+                                  
+                                                                                                 
+                 
+                                     
+                       
+                                                 
+                 
+                                                              
+                 
+                        
+ 
+
                            
                                 
                                                              
@@ -1433,6 +1539,8 @@ function isStudioMessage(x         )                     {
                                                                        
                                                                                   
                                                                    
+                                                                                               
+                                                                                                                                                
  
 
 // ---------------------------------------------------------------------------
@@ -1541,7 +1649,57 @@ const RESULT_FILES                         = {
                                         
                                                                                                              
                             
+     
+                                                                                                                    
+                                                                                                                 
+                                                                                                                
+     
+                                  
+     
+                                                                                                                     
+                                                                                                                        
+                                                                                                                                   
+                                           
+     
+                            
+                                                                                                                                
+                       
  
+
+/** One level's part of placement.json (CONTRACT.md §4.1). */
+                                 
+             
+                 
+                                                                                
+                    
+                                                                                                                        
+                
+                                           
+                           
+                               
+                           
+                                                                                                          
+                                  
+ 
+
+/**
+ * How an object moves by itself (motion-gui, 2026-10-22; CONTRACT.md §4.1 `motion`). A path, a spin, or both.
+ * The loader runs it (src/loader/studio-placement.js motionAt), the editor previews it with the same maths.
+ */
+                         
+     
+                                                                                                                    
+                                                                             
+     
+                    
+                                                          
+                 
+                                                                                                                      
+                        
+                                                                                                                                           
+                
+ 
+                                                        
 
                                    
                                                                                                                            
@@ -1836,6 +1994,12 @@ const LOCAL_PATHS = {
    * Missing = the game's own origin (local host serves both from one origin).
    */
   parentParam: 'studioParent',
+  /**
+   * Levels (2026-10-22): query parameters on the game URL (edit and ▶ Play) with the level the editor shows and the
+   * code's level to build for it; studio.levels() returns them. Absent = the game's first level.
+   */
+  levelParam: 'studioLevel',
+  buildParam: 'studioBuild',
 }         ;
 
 __def(__exports, "CONTRACT_VERSION", () => CONTRACT_VERSION);
@@ -1953,6 +2117,7 @@ const LIMITS = Object.freeze({
   maxUrl: 2000,
   maxDepth: 8,
   maxOrders: 100, // sibling lists with a changed draw order (2D layers)
+  maxLevels: 100, // levels of one game (2026-10-22); each has its own 500 objects, the whole file its maxBytes
   // `ui` (the game's HTML UI moved in the editor's UI layer, UI stage 1, 2026-10-19): offsets in CSS px from where the
   // game's own CSS puts the element. 200 elements / 10,000 px / scale 0.1–10 are far beyond a real title screen or HUD;
   // they stop a runaway drag, like the bounds above.
@@ -1961,7 +2126,18 @@ const LIMITS = Object.freeze({
   minUiScale: 0.1,
   maxUiScale: 10,
   maxUiView: 100000,
+  // `motion` (motion-gui, 2026-10-22): a path of at most 32 points (a patrol round a yard has 4–8; more is a curve, which
+  // is stage 2), speeds up to 1 km/s or 100,000 px/s and spins up to 100 rad/s (16 turns a second): far beyond a
+  // moving platform or a spinning coin, they stop a runaway field like the bounds above. Speeds round to 1 mm/s / 0.1
+  // px/s, spins like angles.
+  maxMotionPoints: 32,
+  maxSpeed3d: 1000,
+  maxSpeed2d: 100000,
+  maxSpin: 100,
 });
+
+/** The ways a motion repeats (contract Motion.repeat). */
+const MOTION_REPEATS = Object.freeze(['pingpong', 'loop', 'once']);
 
 // Object keys (contract section "keys"): letters, digits and _ : # . - /, 1 to 80 chars.
 // "path:0/3/1" (position in the scene graph) and "tree#2" (second object named "tree") both fit.
@@ -2047,7 +2223,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -2060,9 +2236,52 @@ function placement(data, fail) {
     fail('objects', 'must be an object keyed by object key');
     return out;
   }
-  const keys = Object.keys(data.objects);
-  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
   if (dim !== '3d' && dim !== '2d') return out;
+  Object.assign(out, readWorld(data, dim, fail));
+  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
+  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
+  if (data.ui !== undefined) {
+    const ui = readUi(data.ui, fail);
+    if (Object.keys(ui).length) {
+      out.ui = ui;
+      if (data.uiView !== undefined) {
+        const view = readUiView(data.uiView, fail);
+        if (view) out.uiView = view;
+      }
+    }
+  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
+  // `levels` / `levelsWas` (2026-10-22, CONTRACT.md §4.1) are optional too: absent for every game with one level, so
+  // its file keeps its bytes. Each level holds its own world part, read by the same rules as the top one.
+  if (data.levels !== undefined) {
+    const levels = readLevels(data.levels, dim, fail);
+    if (levels.length) {
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      out.levels = levels;
+      if (data.levelsWas !== undefined) {
+        const was = readOrderedKeys(data.levelsWas, 'levelsWas', fail);
+        if (was) out.levelsWas = was;
+      }
+      // An editor-made level is built from a level the code has.
+      const code = new Set(out.levelsWas || levels.filter((l) => !l.from).map((l) => l.id));
+      for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
+    }
+  } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
+  return out;
+}
+
+/**
+ * One world part: `objects` (moves), `order`, `added`, `removed`, `motion` — the top of the file, or one level's (levels,
+ * where `objects` may be left out). Returns only the fields that have something, so equal content gives equal bytes.
+ */
+function readWorld(data, dim, fail, objectsOptional = false) {
+  const out = { objects: {} };
+  if (data.objects === undefined && objectsOptional) delete out.objects;
+  else if (!isObject(data.objects)) {
+    fail('objects', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(data.objects || {});
+  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
 
   for (const key of keys.slice(0, LIMITS.maxObjects)) {
     const where = `objects[${JSON.stringify(key)}]`;
@@ -2101,6 +2320,7 @@ function placement(data, fail) {
     if (entry.unstable === true || key.startsWith('path:')) o.unstable = true;
     out.objects[key] = o;
   }
+  if (out.objects && objectsOptional && !Object.keys(out.objects).length) delete out.objects;
   if (data.order !== undefined) {
     const order = readOrder(data.order, dim, fail);
     if (order.length) out.order = order;
@@ -2113,22 +2333,54 @@ function placement(data, fail) {
     const removed = readRemoved(data.removed, dim, fail);
     if (removed.length) out.removed = removed;
   }
-  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
-  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
-  if (data.ui !== undefined) {
-    const ui = readUi(data.ui, fail);
-    if (Object.keys(ui).length) {
-      out.ui = ui;
-      if (data.uiView !== undefined) {
-        const view = readUiView(data.uiView, fail);
-        if (view) out.uiView = view;
-      }
-    }
-  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
   // One key, one meaning: a copy is never also a moved object or a deleted one.
   const addedKeys = new Set((out.added || []).map((a) => a.key));
-  for (const k of addedKeys) if (Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
+  for (const k of addedKeys) if (out.objects && Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
   for (const r of out.removed || []) if (addedKeys.has(r.key)) fail(`removed`, `"${r.key}" is also in added`);
+  // `motion` is optional too: absent (every file before motion-gui) = the same bytes as before. A deleted object
+  // does not move.
+  if (data.motion !== undefined) {
+    const motion = readMotion(data.motion, dim, fail);
+    for (const r of out.removed || []) if (Object.hasOwn(motion, r.key)) fail(`motion`, `"${r.key}" is also in removed`);
+    if (Object.keys(motion).length) out.motion = motion;
+  }
+  return out;
+}
+
+// Where each read level stood in the file (a level listed twice is left out, so the list's own index would be off).
+const LEVEL_AT = new WeakMap();
+
+// Levels (2026-10-22): [{ id, label?, labelWas?, from?, objects?, added?, removed?, order?, motion? }]. The order is
+// kept: it is the person's order of the levels (the content), like a draw order's keys. Errors inside a level say which
+// one. `motion` is part of a level's world (integrate3, 2026-10-22): its keys are that level's objects ("boat" in Meadow
+// and in Cave are different boats), so it lives with the level's objects, never at the top next to `levels`.
+function readLevels(v, dim, fail) {
+  const list = optionalArray(v, 'levels', LIMITS.maxLevels, fail);
+  const out = [];
+  const seen = new Set();
+  list.forEach((item, i) => {
+    const where = `levels[${i}]`;
+    const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion'], where, fail);
+    if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
+    if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
+    seen.add(item.id);
+    const o = { id: item.id };
+    for (const f of ['label', 'labelWas']) {
+      if (item[f] === undefined) continue;
+      const label = readLabel(item[f], `${where}.${f}`, fail);
+      if (label) o[f] = label;
+    }
+    if (item.from !== undefined) {
+      if (typeof item.from !== 'string' || !KEY_RE.test(item.from)) fail(`${where}.from`, 'must match ' + KEY_RE);
+      else if (item.from === item.id) fail(`${where}.from`, 'is the level itself');
+      else o.from = item.from;
+    }
+    Object.assign(o, readWorld(item, dim, lfail, true));
+    LEVEL_AT.set(o, i);
+    out.push(o);
+  });
   return out;
 }
 
@@ -2200,6 +2452,72 @@ function readUi(v, fail) {
       if (label) o.label = label;
     }
     out[key] = o;
+  }
+  return out;
+}
+
+// How objects move by themselves (motion-gui, 2026-10-22): { "<key>": { path?, speed?, repeat?, spin? } }. `path` =
+// points as offsets from the object's place (dim's numbers, the start left out), `speed` along it, `repeat` how it goes
+// on; `spin` = radians per second round the up axis. A path without speed / repeat gets none written: the loader's
+// defaults (1 unit/s, pingpong) apply, but the editor always writes both so the AI reads them plainly.
+function readMotion(v, dim, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('motion', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(v);
+  if (keys.length > LIMITS.maxObjects) fail('motion', `at most ${LIMITS.maxObjects} objects`);
+  const n = dim === '3d' ? 3 : 2;
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  for (const key of keys.slice(0, LIMITS.maxObjects)) {
+    const where = `motion[${JSON.stringify(key)}]`;
+    if (!KEY_RE.test(key)) {
+      fail(where, 'key must match ' + KEY_RE);
+      continue;
+    }
+    const e = v[key];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['path', 'speed', 'repeat', 'spin'], where, fail);
+    const o = {};
+    if (e.path !== undefined) {
+      if (!Array.isArray(e.path) || !e.path.length || e.path.length > LIMITS.maxMotionPoints) {
+        fail(`${where}.path`, `must be 1 to ${LIMITS.maxMotionPoints} points`);
+      } else {
+        const pts = e.path.map((q, i) => {
+          if (!Array.isArray(q) || q.length !== n) {
+            fail(`${where}.path[${i}]`, `must be ${n} numbers`);
+            return null;
+          }
+          const p = q.map((x, k) => readNumber(x, -bound, bound, `${where}.path[${i}][${k}]`, fail));
+          return p.every((x) => x !== null) ? p.map((x) => round(x, step)) : null;
+        });
+        if (pts.every((q) => q)) o.path = pts;
+      }
+    }
+    if (e.speed !== undefined) {
+      const max = dim === '3d' ? LIMITS.maxSpeed3d : LIMITS.maxSpeed2d;
+      const sp = readNumber(e.speed, 0, max, `${where}.speed`, fail);
+      if (sp !== null && !(sp > 0)) fail(`${where}.speed`, 'must be more than 0');
+      else if (sp !== null) o.speed = round(sp, step);
+      if (e.path === undefined) fail(`${where}.speed`, 'only with a path');
+    }
+    if (e.repeat !== undefined) {
+      if (!MOTION_REPEATS.includes(e.repeat)) fail(`${where}.repeat`, `must be one of ${MOTION_REPEATS.join(', ')}`);
+      else o.repeat = e.repeat;
+      if (e.path === undefined) fail(`${where}.repeat`, 'only with a path');
+    }
+    if (e.spin !== undefined) {
+      const sp = readNumber(e.spin, -LIMITS.maxSpin, LIMITS.maxSpin, `${where}.spin`, fail);
+      if (sp !== null && round(sp, LIMITS.stepAngle) === 0) fail(`${where}.spin`, 'must not be 0 (leave it out)');
+      else if (sp !== null) o.spin = round(sp, LIMITS.stepAngle);
+    }
+    if (e.path === undefined && e.spin === undefined) fail(where, 'needs a path or a spin');
+    if (o.path || o.spin !== undefined) out[key] = o;
   }
   return out;
 }
@@ -2607,6 +2925,7 @@ function utf8Length(s) {
 }
 
 __def(__exports, "LIMITS", () => LIMITS);
+__def(__exports, "MOTION_REPEATS", () => MOTION_REPEATS);
 __def(__exports, "KEY_RE", () => KEY_RE);
 __def(__exports, "validateStudioFile", () => validateStudioFile);
 __def(__exports, "canonicalJSON", () => canonicalJSON);
@@ -3345,8 +3664,8 @@ const en = {
   aiOpen: 'Make with AI',
   aiTitle: 'Make with AI',
   aiChecking: 'Checking your KUMODeck sign-in…',
-  aiSignInWhy: 'Sign in with KUMODeck to make images and 3D models with AI. They’re paid for with your KUMODeck credits.',
-  aiExpired: 'Your KUMODeck sign-in expired. Sign in again to make images and 3D models.',
+  aiSignInWhy: 'Sign in with KUMODeck to make images, 3D models and sounds with AI. They’re paid for with your KUMODeck credits.',
+  aiExpired: 'Your KUMODeck sign-in expired. Sign in again to make images, 3D models and sounds.',
   aiSignInHow: 'Run this in a terminal, click Allow in the browser, then come back here.',
   aiCopy: 'Copy',
   aiCopied: 'Copied',
@@ -3360,8 +3679,8 @@ const en = {
   aiPicture: 'Image',
   aiModel: '3D model',
   aiPromptLabel: 'What to make',
-  aiPicturePh: 'Try: mossy stone wall, flat front view, soft light',
-  aiModelPh: 'Try: a low wooden treasure chest with iron bands',
+  aiPicturePh: 'Describe the image…',
+  aiModelPh: 'Describe the 3D model…',
   aiQuality: 'Quality',
   aiFast: 'Fast',
   aiFine: 'Fine detail',
@@ -3399,6 +3718,59 @@ const en = {
   aiTooMany: 'Too many requests. Wait a minute and try again.',
   aiUnreachable: 'Couldn’t reach KUMODeck.',
   aiFailed: 'Couldn’t make it.',
+  // The five kinds (generate-ui, 2026-10-22: gen-kinds.ts). Short: five chips share a 400 px side window.
+  kindPicture: 'Image',
+  kindModel: '3D',
+  kindSfx: 'Sound',
+  kindMusic: 'Music',
+  kindVoice: 'Voice',
+  kindsLabel: 'What to make',
+  aiSfxPh: 'Describe the sound…',
+  aiMusicPh: 'Describe the music…',
+  aiVoicePh: 'The words to say…',
+  // Example words: one press puts them in the box (nothing is sent). Things a small web game needs.
+  tryLabel: 'Try:',
+  exPicture1: 'Mossy stone wall, flat front view',
+  exPicture2: 'Night sky full of small stars',
+  exPicture3: 'Wooden sign that says HARBOR',
+  exModel1: 'Small wooden treasure chest',
+  exModel2: 'Stone lantern with a warm glow',
+  exModel3: 'Little rowing boat',
+  exSfx1: 'Coin pickup, bright chime',
+  exSfx2: 'Wooden door creaks open',
+  exSfx3: 'Soft footsteps on sand',
+  exMusic1: 'Calm seaside village, acoustic guitar',
+  exMusic2: 'Ruins at night, soft bells',
+  exMusic3: 'Fast chase, drums and flute',
+  exVoice1: 'Welcome to the cove!',
+  exVoice2: 'Follow the fireflies.',
+  exVoice3: 'You found the key!',
+  aiLength: 'Length',
+  seconds: '{n:1 second|# seconds}',
+  aiLoop: 'Loops (for background music)',
+  aiVoice: 'Voice',
+  voice_neutral: 'Neutral voice',
+  voice_bright: 'Bright voice',
+  voice_deep: 'Deep voice',
+  voice_warm: 'Warm voice',
+  voice_energetic: 'Energetic voice',
+  aiSfxPrice: 'One sound effect: {price}, paid with your credits. Takes about 10 seconds.',
+  aiMusicPrice: 'One piece of music: {price}, any length, paid with your credits. Takes up to a minute.',
+  aiVoicePrice: 'One voice line: {price}, paid with your credits. Takes about 10 seconds.',
+  aiUsualSfx: 'usually about 10 seconds',
+  aiUsualMusic: 'usually up to a minute',
+  aiUsualVoice: 'usually about 10 seconds',
+  aiMakingSound: 'Making the sound…',
+  aiMakingMusic: 'Making the music…',
+  aiMakingVoice: 'Making the voice line…',
+  // The card for what was just made (gen-made.ts)
+  madeTitle: 'Just made',
+  // The history (.studio/generated.json): Again / Change put a line back in the form; nothing is sent until Make.
+  madeHere: 'Made here',
+  again: 'Again',
+  againTip: 'The same words and choices back in the form. Nothing is made until you press Make.',
+  change: 'Change',
+  changeTip: 'The same words back in the box, to change them first. Nothing is made until you press Make.',
   // The shelf of files (plan 1 "objects and files on the same shelf", 2026-10-18): the card's line says how many objects
   // use the file (one file, many objects).
   usedByN: '{n:Used by 1 object|Used by # objects}',
@@ -3532,8 +3904,8 @@ const ja                                     = {
   aiOpen: 'AI で作る',
   aiTitle: 'AI で作る',
   aiChecking: 'KUMODeck のログインを確かめています…',
-  aiSignInWhy: 'KUMODeck でログインすると、画像や 3D モデルを AI で作れます。料金は KUMODeck のクレジットから払います。',
-  aiExpired: 'KUMODeck のログインが切れました。もう一度ログインすると、画像や 3D モデルを作れます。',
+  aiSignInWhy: 'KUMODeck でログインすると、画像・3D モデル・音を AI で作れます。料金は KUMODeck のクレジットから払います。',
+  aiExpired: 'KUMODeck のログインが切れました。もう一度ログインすると、画像・3D モデル・音を作れます。',
   aiSignInHow: 'ターミナルで実行し、ブラウザで「許可」を押してから、ここに戻ってください。',
   aiCopy: 'コピー',
   aiCopied: 'コピーしました',
@@ -3547,8 +3919,8 @@ const ja                                     = {
   aiPicture: '画像',
   aiModel: '3D モデル',
   aiPromptLabel: '作るもの',
-  aiPicturePh: '例: 苔むした石の壁、正面から、やわらかい光',
-  aiModelPh: '例: 鉄の帯がついた低い木の宝箱',
+  aiPicturePh: 'どんな画像か書いてください…',
+  aiModelPh: 'どんな 3D モデルか書いてください…',
   aiQuality: '質',
   aiFast: '速い',
   aiFine: '細かい',
@@ -3586,6 +3958,55 @@ const ja                                     = {
   aiTooMany: '短い間に頼みすぎです。1 分待ってからもう一度どうぞ。',
   aiUnreachable: 'KUMODeck につながりませんでした。',
   aiFailed: 'できませんでした。',
+  kindPicture: '画像',
+  kindModel: '3D',
+  kindSfx: '効果音',
+  kindMusic: 'BGM',
+  kindVoice: 'セリフ',
+  kindsLabel: '作る物',
+  aiSfxPh: 'どんな音か書いてください…',
+  aiMusicPh: 'どんな曲か書いてください…',
+  aiVoicePh: 'しゃべらせる言葉…',
+  tryLabel: '例:',
+  exPicture1: '苔むした石の壁、正面から',
+  exPicture2: '小さな星でいっぱいの夜空',
+  exPicture3: '「HARBOR」と書いた木の看板',
+  exModel1: '小さな木の宝箱',
+  exModel2: 'あたたかく光る石の灯籠',
+  exModel3: '小さな手こぎボート',
+  exSfx1: 'コインを拾う音、明るいチャイム',
+  exSfx2: '木の扉がきしんで開く',
+  exSfx3: '砂の上のやわらかい足音',
+  exMusic1: '静かな海辺の村、アコースティックギター',
+  exMusic2: '夜の遺跡、やさしい鐘',
+  exMusic3: '速い追いかけっこ、太鼓と笛',
+  exVoice1: 'ようこそ、ランタン入り江へ！',
+  exVoice2: 'ホタルについて行って。',
+  exVoice3: 'カギを見つけたね！',
+  aiLength: '長さ',
+  seconds: '{n} 秒',
+  aiLoop: 'ループする（BGM 向け）',
+  aiVoice: '声',
+  voice_neutral: 'ふつうの声',
+  voice_bright: '明るい声',
+  voice_deep: '低い声',
+  voice_warm: 'やわらかい声',
+  voice_energetic: '元気な声',
+  aiSfxPrice: '効果音 1 つ {price}・クレジットから。10 秒ほどでできます。',
+  aiMusicPrice: 'BGM 1 曲 {price}（長さによらず）・クレジットから。1 分ほどかかることがあります。',
+  aiVoicePrice: 'セリフ 1 つ {price}・クレジットから。10 秒ほどでできます。',
+  aiUsualSfx: 'ふつうは 10 秒ほど',
+  aiUsualMusic: 'ふつうは 1 分以内',
+  aiUsualVoice: 'ふつうは 10 秒ほど',
+  aiMakingSound: '効果音を作っています…',
+  aiMakingMusic: 'BGM を作っています…',
+  aiMakingVoice: 'セリフを作っています…',
+  madeTitle: 'できました',
+  madeHere: 'ここで作った物',
+  again: 'もう一度',
+  againTip: '同じ言葉と選び方をフォームに戻します。「作る」を押すまで何も作りません。',
+  change: '少し変える',
+  changeTip: '同じ言葉を欄に戻して、直してから作れます。「作る」を押すまで何も作りません。',
 };
 
 function t(lang      , key           , vars                                  )         {
@@ -3844,6 +4265,23 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 .gsl-ai-detail{font-size:12px;overflow-wrap:anywhere}
 .gsl-ai-wait{font-size:12px;font-variant-numeric:tabular-nums}
 .gsl-ai-late{color:var(--gsl-code)}
+.gsl-link{border:0;background:none;padding:0;color:var(--gsl-accent);font:inherit;cursor:pointer;text-align:left}
+.gsl-link:hover{text-decoration:underline}
+.gsl-ai-try{display:flex;flex-wrap:nowrap;align-items:center;gap:12px;font-size:12px;white-space:nowrap;overflow-x:auto;scrollbar-width:none}
+.gsl-ai-try::-webkit-scrollbar{display:none}
+.gsl-ai-try>*{flex:none}
+.gsl-ai-made{margin-top:0;padding-top:10px;border-top:1px solid var(--gsl-line)}
+.gsl-ai-made-row{display:flex;gap:10px;align-items:center;min-width:0}
+.gsl-ai-made-pic,.gsl-ai-made-icon{width:56px;height:56px;flex:none;border-radius:8px;object-fit:cover;background:var(--gsl-bg)}
+.gsl-ai-made-icon{display:grid;place-items:center;color:var(--gsl-muted);font-size:20px}
+.gsl-ai-made-what{display:flex;flex-direction:column;min-width:0}
+.gsl-ai-made-what b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsl-ai-play{width:32px;height:32px;min-height:32px;padding:0;border-radius:50%;flex:none;font-size:11px}
+.gsl-ai-lines{list-style:none;margin:0;padding:0}
+.gsl-ai-line{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:0 12px;align-items:center;padding:6px 0;border-top:1px solid var(--gsl-line)}
+.gsl-ai-words,.gsl-ai-where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gsl-ai-where{grid-column:1;font-size:12px}
+.gsl-ai-line-acts{grid-column:2;grid-row:1/span 2;display:flex;gap:12px;align-items:center;font-size:12px}
 .gsl-heavy{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .gsl-heavy p{margin:0;color:var(--gsl-code)}
 .gsl-thumb-wait .gsl-icon{animation:gsl-wait 1.6s ease-in-out infinite}
@@ -3873,6 +4311,335 @@ function injectStyles(doc           = document)       {
 __def(__exports, "injectStyles", () => injectStyles);
 };
 __defs[10] = function (__exports) {
+'use strict';
+// ../tools/library/gen-kinds.ts
+
+// The five kinds "Make with AI" makes, as data (generate-ui, 2026-10-22): images, 3D models, sound effects, music and
+// voice lines. The form (ai-make.ts) reads everything kind-specific from here — the price before Make, the usual wait,
+// the example words, the longest text — so adding a kind is one row here, one in the server (kumo.mjs) and its words
+// in strings.ts. Pure functions only: test/generate.test.ts runs them without a page.
+//
+// Prices are at cost, the same numbers as src/server/kumo.mjs (kumoImagePrice / kumo3dPrice / kumoSoundPrice), which
+// copy the KUMODeck server's price table. The server checks again (402), so a price here that drifted would only be
+// shown wrong, never charged wrong.
+
+                                                                              
+                                              
+
+                            
+                                                              
+
+/** In the order of the chips. Image and 3D first: they were the only two before, and people know where they are. */
+const KINDS                  = ['picture', 'model', 'sfx', 'music', 'voice'];
+const isSound = (k      )                                 => k === 'sfx' || k === 'music' || k === 'voice';
+
+/** What the form holds. One object for every kind, so switching kinds keeps the words and each kind's choices. */
+                       
+             
+                 
+                          
+               
+                   
+                                 
+                 
+                          
+                   
+                
+                
+ 
+
+const DEFAULT_FORM       = { kind: 'picture', prompt: '', quality: 'standard', side: 1024, texture: true, sfxSec: 2, musicSec: 30, loop: true, voice: 'neutral' };
+
+/**
+ * The lengths offered. Sound effects: 1 s (a click, a coin), 2 s (most effects; the default), 5 s (a door, a short
+ * ambience). Music: 15 / 30 / 60 s — the price is the same for any length (Stable Audio 3 Medium is per piece), so
+ * 30 s is the default only because a longer loop takes longer to make. KUMODeck takes sfx 0.5–10 s and music 5–120 s.
+ */
+const SFX_SECONDS = [1, 2, 5]         ;
+const MUSIC_SECONDS = [15, 30, 60]         ;
+/** The voices KUMODeck knows (the server's VOICE_PRESETS; kumo.mjs KUMO_VOICES). */
+const VOICES = ['neutral', 'bright', 'deep', 'warm', 'energetic']         ;
+
+/** The longest words each kind takes (the server's limits: a voice line is at most 500 characters). */
+const MAX_LEN                       = { picture: 1000, model: 1024, sfx: 1000, music: 1000, voice: 500 };
+
+/**
+ * How long one usually takes, in seconds, for "usually about …" and "taking longer than usual" (after twice this).
+ * picture 20 / model 180: the first real production run (2026-10-17, 18.8 s and 182 s). sfx / voice / music: not run
+ * for real yet (that costs money; stage 2) — from the providers' pages, a few seconds for an effect or a line and up
+ * to about a minute for music. Change the words in strings.ts (aiUsual*) with these.
+ */
+const USUAL_SEC                       = { picture: 20, model: 180, sfx: 10, music: 60, voice: 10 };
+
+/** Price of one, in US dollars (see the top of this file). */
+function priceOf(f      )         {
+  switch (f.kind) {
+    case 'picture': {
+      const mp = Math.max(1, Math.ceil((f.side * f.side) / (1024 * 1024)));
+      if (f.quality === 'seamless') return 0.02 * mp;
+      if (f.quality === 'high') return 0.03 + 0.015 * (mp - 1);
+      return 0.003 * mp;
+    }
+    case 'model':
+      return f.texture ? 0.2 : 0.1;
+    case 'sfx':
+      return 0.002 * f.sfxSec;
+    case 'music':
+      return 0.0376;
+    case 'voice':
+      return 0.00005 * Math.max(1, f.prompt.trim().length);
+  }
+}
+
+/** The request for a sound (only for the sound kinds). */
+function soundRequest(f      )                   {
+  const prompt = f.prompt.trim();
+  if (f.kind === 'sfx') return { kind: 'sfx', prompt, durationSec: f.sfxSec };
+  if (f.kind === 'music') return { kind: 'music', prompt, durationSec: f.musicSec, loop: f.loop };
+  return { kind: 'voice', prompt, voice: f.voice };
+}
+
+/**
+ * "Again" / "Change" on a line of the history: the same kind, words and choices back in the form. Choices the line
+ * does not have (an older line, a hand-edited file) keep what the form had; values out of range are left out, so the
+ * form never offers something KUMODeck refuses. Nothing is sent: the person presses Make, with the price on it.
+ */
+function formFrom(m          , f      )       {
+  const o = m.options || {};
+  const num = (v         , lo        , hi        , d        ) => (typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi ? v : d);
+  const next       = { ...f, kind: m.kind, prompt: m.prompt.slice(0, MAX_LEN[m.kind]) };
+  if (m.kind === 'picture') {
+    next.side = [512, 1024, 2048].includes(o.side          ) ? (o.side          ) : f.side;
+    next.quality = o.quality === 'high' || o.quality === 'seamless' || o.quality === 'standard' ? o.quality : f.quality;
+  }
+  if (m.kind === 'model' && typeof o.texture === 'boolean') next.texture = o.texture;
+  if (m.kind === 'sfx') next.sfxSec = num(o.durationSec, 0.5, 10, f.sfxSec);
+  if (m.kind === 'music') {
+    next.musicSec = num(o.durationSec, 5, 120, f.musicSec);
+    if (typeof o.loop === 'boolean') next.loop = o.loop;
+  }
+  if (m.kind === 'voice' && (VOICES                     ).includes(o.voice          )) next.voice = o.voice          ;
+  return next;
+}
+
+/** Words for each kind (strings.ts). */
+const KIND_WORDS                                                                                                                                          = {
+  picture: { chip: 'kindPicture', ph: 'aiPicturePh', price: 'aiPicturePrice', usual: 'aiUsualPicture', making: 'aiMakingPicture', examples: ['exPicture1', 'exPicture2', 'exPicture3'] },
+  model: { chip: 'kindModel', ph: 'aiModelPh', price: 'aiModelPrice', usual: 'aiUsualModel', making: 'aiStartingModel', examples: ['exModel1', 'exModel2', 'exModel3'] },
+  sfx: { chip: 'kindSfx', ph: 'aiSfxPh', price: 'aiSfxPrice', usual: 'aiUsualSfx', making: 'aiMakingSound', examples: ['exSfx1', 'exSfx2', 'exSfx3'] },
+  music: { chip: 'kindMusic', ph: 'aiMusicPh', price: 'aiMusicPrice', usual: 'aiUsualMusic', making: 'aiMakingMusic', examples: ['exMusic1', 'exMusic2', 'exMusic3'] },
+  voice: { chip: 'kindVoice', ph: 'aiVoicePh', price: 'aiVoicePrice', usual: 'aiUsualVoice', making: 'aiMakingVoice', examples: ['exVoice1', 'exVoice2', 'exVoice3'] },
+};
+
+__def(__exports, "KINDS", () => KINDS);
+__def(__exports, "isSound", () => isSound);
+__def(__exports, "DEFAULT_FORM", () => DEFAULT_FORM);
+__def(__exports, "SFX_SECONDS", () => SFX_SECONDS);
+__def(__exports, "MUSIC_SECONDS", () => MUSIC_SECONDS);
+__def(__exports, "VOICES", () => VOICES);
+__def(__exports, "MAX_LEN", () => MAX_LEN);
+__def(__exports, "USUAL_SEC", () => USUAL_SEC);
+__def(__exports, "priceOf", () => priceOf);
+__def(__exports, "soundRequest", () => soundRequest);
+__def(__exports, "formFrom", () => formFrom);
+__def(__exports, "KIND_WORDS", () => KIND_WORDS);
+};
+__defs[11] = function (__exports) {
+'use strict';
+// ../tools/library/gen-made.ts
+
+// What "Make with AI" shows after making (generate-ui, 2026-10-22): the "Just made" card and the "Made here" history.
+//
+// The card is the end of one flow — words → price → Make → wait → here it is → use it. It shows the thing itself
+// (the image, ▶ for a sound, the name for a 3D model whose turning picture is the grid's tile) and the same two
+// buttons a file's detail has, "Add to scene" and "Ask your AI…" (LibraryFileUse, "use the Library" 2026-10-18):
+// one way to hand a file to the AI, not a second one. Without an AI behind the host (the dev harness) there are no
+// buttons; the file is in assets/ either way.
+//
+// The history reads .studio/generated.json (src/server/generated.mjs) through the sign-in's status. Each line has
+// Again (the same kind, words and choices back in the form, focus on Make) and Change (the same, focus in the words).
+// Neither sends anything: money moves only on Make, where the price is written. WHY two buttons and not "Make again"
+// in one press: a press that spends without showing the price would be the only one in the editor that does.
+//
+// Untrusted text (prompts, file names) only goes through textContent.
+
+                                                                                 
+                                           
+const { KIND_WORDS } = __require(10);
+const { t } = __require(7);
+                                              
+
+function h                                       (tag   , cls         , text         )                           {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+const baseName = (p        ) => p.split('/').pop() || p;
+/** A cost in dollars from micro-dollars: $0.004, $0.01 (not $0.010), $0.20. */
+const costText = (micros        ) => {
+  const d = micros / 1e6;
+  return `$${d < 0.1 ? d.toFixed(3).replace(/(\.\d\d)0$/, '$1') : d.toFixed(2)}`;
+};
+
+                           
+             
+                                                                      
+                                  
+                                                                          
+                         
+ 
+
+/** One player for every ▶ in the box: a second ▶ stops the first (two sounds at once help nobody judge either). */
+let player                          = null;
+let playingPath                = null;
+
+function playButton(path        , d          )                    {
+  const L = (k           ) => t(d.lang, k);
+  const b = h('button', 'gsl-btn gsl-ai-play');
+  b.type = 'button';
+  const show = () => {
+    const on = playingPath === path;
+    b.textContent = on ? '■' : '▶';
+    b.setAttribute('aria-label', on ? L('stop') : L('play'));
+    b.setAttribute('aria-pressed', String(on));
+  };
+  show();
+  b.addEventListener('click', () => {
+    if (!d.assetUrl) return;
+    player ||= new Audio();
+    if (playingPath === path) {
+      player.pause();
+      playingPath = null;
+    } else {
+      player.src = d.assetUrl(path);
+      player.currentTime = 0;
+      playingPath = path;
+      void player.play().catch(() => {
+        playingPath = null;
+        show();
+      });
+      player.onended = () => {
+        playingPath = null;
+        // every ▶ in the box shows ▶ again
+        for (const el of document.querySelectorAll                   ('.gsl-ai-play')) {
+          el.textContent = '▶';
+          el.setAttribute('aria-pressed', 'false');
+        }
+      };
+    }
+    for (const el of document.querySelectorAll                   ('.gsl-ai-play')) {
+      el.textContent = '▶';
+      el.setAttribute('aria-pressed', 'false');
+    }
+    show();
+  });
+  return b;
+}
+
+/** The "Just made" card: the thing, its name, size and cost, and how to use it. */
+function madeCard(m                                                                            , d          )              {
+  const L = (k           , v                                  ) => t(d.lang, k, v);
+  // The card is the one line that says it worked (role status): no "Added …" sentence above it repeating the name
+  // and size (the first version had both, and read twice; the review of the pictures, 2026-10-22).
+  const card = h('div', 'gsl-section gsl-ai-made');
+  card.dataset.kind = m.kind;
+  card.setAttribute('role', 'status');
+  card.append(h('h4', undefined, L('madeTitle')));
+  const row = h('div', 'gsl-ai-made-row');
+  if (m.kind === 'picture' && d.assetUrl) {
+    const img = h('img', 'gsl-ai-made-pic');
+    img.src = d.assetUrl(m.path);
+    img.alt = '';
+    row.append(img);
+  } else if (m.kind === 'sfx' || m.kind === 'music' || m.kind === 'voice') {
+    row.append(playButton(m.path, d));
+  } else {
+    row.append(h('span', 'gsl-ai-made-icon', '◆'));
+  }
+  const what = h('div', 'gsl-ai-made-what');
+  what.append(h('b', undefined, baseName(m.path)));
+  // where it is, how big, what it cost: "assets/ · 4.7 KB · $0.004"
+  const folder = m.path.includes('/') ? m.path.slice(0, m.path.lastIndexOf('/') + 1) : '';
+  const bits = [folder, m.size, typeof m.costUsdMicros === 'number' ? costText(m.costUsdMicros) : ''].filter(Boolean).join(' · ');
+  if (bits) what.append(h('span', 'gsl-muted', bits));
+  row.append(what);
+  card.append(row);
+  if (d.files?.add || d.files?.ask) {
+    const acts = h('div', 'gsl-acts');
+    if (d.files.add) {
+      const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', L('addToScene'));
+      add.type = 'button';
+      add.addEventListener('click', () => d.files .add ([m.path]));
+      acts.append(add);
+    }
+    if (d.files.ask) {
+      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
+      ask.type = 'button';
+      ask.addEventListener('click', () => d.files .ask ([m.path]));
+      acts.append(ask);
+    }
+    card.append(acts);
+  }
+  return card;
+}
+
+/**
+ * "Made here": 3D models still being made (or that failed) in this run first, then the history, newest first.
+ * again / change: put a history line back in the form.
+ */
+function madeHistory(
+  jobs           ,
+  made            ,
+  d                                                                    ,
+)                     {
+  const L = (k           , v                                  ) => t(d.lang, k, v);
+  // A 3D job that landed is in the history already (generated.mjs writes it when the file lands).
+  const open = jobs.filter((j) => !j.path).slice(-3).reverse();
+  const lines = made.slice(0, 6);
+  if (!open.length && !lines.length) return null;
+  const sec = h('div', 'gsl-section gsl-ai-history');
+  sec.append(h('h4', undefined, L('madeHere')));
+  const ul = h('ul', 'gsl-ai-lines');
+  for (const j of open) {
+    const li = h('li', 'gsl-ai-line');
+    li.append(h('span', 'gsl-ai-words', j.prompt));
+    li.append(h('span', 'gsl-muted gsl-ai-where', `${L('kindModel')} · ${j.status === 'failed' || j.status === 'canceled' ? L('aiJobFailed') : L('aiJobRunning')}`));
+    ul.append(li);
+  }
+  for (const m of lines) {
+    const li = h('li', 'gsl-ai-line');
+    li.dataset.kind = m.kind;
+    const words = h('span', 'gsl-ai-words', m.prompt);
+    words.title = m.prompt;
+    // The words first (what the person remembers), then a quiet "Sound · assets/coin.wav". The kind was its own
+    // column first and cut the words to "Coin pickup, brig…" on a phone (the review of the pictures, 2026-10-22).
+    li.append(words);
+    const where = h('span', 'gsl-muted gsl-ai-where', `${L(KIND_WORDS[m.kind].chip)} · ${m.path}`);
+    li.append(where);
+    const acts = h('span', 'gsl-ai-line-acts');
+    if (m.kind === 'sfx' || m.kind === 'music' || m.kind === 'voice') acts.append(playButton(m.path, d));
+    const again = h('button', 'gsl-link gsl-ai-again-line', L('again'));
+    again.type = 'button';
+    again.title = L('againTip');
+    again.addEventListener('click', () => d.again(m));
+    const change = h('button', 'gsl-link gsl-ai-change', L('change'));
+    change.type = 'button';
+    change.title = L('changeTip');
+    change.addEventListener('click', () => d.change(m));
+    acts.append(again, change);
+    li.append(acts);
+    ul.append(li);
+  }
+  sec.append(ul);
+  return sec;
+}
+
+__def(__exports, "madeCard", () => madeCard);
+__def(__exports, "madeHistory", () => madeHistory);
+};
+__defs[12] = function (__exports) {
 'use strict';
 // ../tools/library/ai-make.ts
 
@@ -3904,36 +4671,29 @@ __defs[10] = function (__exports) {
 //   it only adds files, and how light is light enough depends on how the game uses the model,
 //   which the AI can see and the editor can't.
 //
+// - The place to make things (generate-ui, 2026-10-22; the product request of 10/22: "3D, images, sound and so on each
+//   get a proper screen for making them"): five kinds (image, 3D, sound effect, music, voice line; the sounds through
+//   KUMODeck's audio route), example words one press puts in the box, a "Just made" card that shows the thing (▶ for
+//   a sound) with "Add to scene" / "Ask your AI…", and "Made here" from .studio/generated.json with Again / Change.
+//   No new button outside this box: the Library's head stays as it was. Kind data: gen-kinds.ts; card and history:
+//   gen-made.ts.
+//
 // Talks only to host.kumo (src/server/kumo.mjs on the local server). The page never sees a key.
 // Untrusted text (prompts, project names, KUMODeck's sentences) only goes through textContent.
 
-                                                                                          
+                                                                                                                    
+const { DEFAULT_FORM, KINDS, KIND_WORDS, MAX_LEN, MUSIC_SECONDS, SFX_SECONDS, USUAL_SEC, VOICES, formFrom, isSound, priceOf, soundRequest } = __require(10);
+                                                                 
+const { madeCard, madeHistory } = __require(11);
 const { t } = __require(7);
                                               
 
-/** Prices before Make (USD, at cost). The same numbers as src/server/kumo.mjs kumoImagePrice / kumo3dPrice. */
-function picturePrice(o                                           )         {
-  const mp = Math.max(1, Math.ceil((o.side * o.side) / (1024 * 1024)));
-  if (o.quality === 'seamless') return 0.02 * mp;
-  if (o.quality === 'high') return 0.03 + 0.015 * (mp - 1);
-  return 0.003 * mp;
-}
-const modelPrice = (texture         ) => (texture ? 0.2 : 0.1);
+
 /** The server reserves whole cents, at least 1 (kumo.mjs kumoCents). */
 const centsOf = (usd        ) => Math.max(1, Math.ceil(Math.round(usd * 1e6) / 1e4));
 const usd = (n        ) => `$${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`;
 /** A balance (cents) in dollars: always 2 places ($0.05, not $0.050). */
 const dollars = (cents        ) => `$${(cents / 100).toFixed(2)}`;
-
-                                                       
-                                
-
-/**
- * How long one job usually takes, in seconds: the first real production run (2026-10-17) took
- * 18.8 s for a 1024 image and 182 s for a textured 3D model. Used for the words ("about 20
- * seconds") and to say "taking longer than usual" after twice as long. Change both together.
- */
-const USUAL_SEC                       = { picture: 20, model: 180 };
 
 /**
  * A 3D file heavier than this gets the "heavy for a web game" line and the "make it lighter"
@@ -3971,6 +4731,10 @@ const elapsed = (since        , now = Date.now()) => {
                                                             
                                                     
                                  
+                                                                              
+                                  
+                                                                                                        
+                         
  
 
 /** The line under Make: what happened, plus what is being waited for or what to do next. */
@@ -3984,6 +4748,8 @@ const elapsed = (since        , now = Date.now()) => {
                                          
                                               
                  
+                                                              
+                                                                                    
  
 
 function h                                       (tag   , cls         , text         )                           {
@@ -4012,36 +4778,39 @@ function mountAiMake(root             , deps            )                       
   root.append(box);
 
   let st                    = null;
-  let kind       = 'picture';
-  let quality                 = 'standard';
-  let side = 1024;
-  let texture = true;
-  let prompt = '';
+  /** Every kind's choices in one object (gen-kinds.ts Form): switching kinds keeps the words and the choices. */
+  let form       = { ...DEFAULT_FORM };
   let busy = false;
+  /** After Again / Change: what gets the focus once the form is drawn again. */
+  let focusNext                           = null;
   /** Set when KUMODeck asked for the terms: the next Make sends acceptTerms (after the tick). */
   let askTerms = false;
   let agreed = false;
   let note              = null;
   const polling = new Set        ();
-  /** When each piece of work started (picture: 'picture'; 3D: the job id). */
+  /** When each piece of work started (a picture or a sound, made within one request: 'now'; 3D: the job id). */
   const since = new Map                ();
   let tick = 0;
+  /** The kind and words of the picture or sound being made now (the 'now' work). */
+  let nowKind       = 'picture';
+  let nowFor = '';
+  /** Sound kinds only when the host can make sounds (an older host offers images and 3D). */
+  const kinds = () => KINDS.filter((k) => !isSound(k) || !!deps.kumo.makeSound);
 
-  const price = () => (kind === 'picture' ? picturePrice({ side, quality }) : modelPrice(texture));
+  const price = () => priceOf(form);
   const fmtSize = (n        ) => (deps.formatSize ? deps.formatSize(n) : `${Math.round(n / 104857.6) / 10} MB`);
 
   /** Everything being made now, oldest first. */
   function work()           {
     const out           = [];
-    const pic = since.get('picture');
-    if (pic !== undefined) out.push({ id: 'picture', kind: 'picture', prompt: pictureFor, since: pic });
+    const now = since.get('now');
+    if (now !== undefined) out.push({ id: 'now', kind: nowKind, prompt: nowFor, since: now });
     for (const j of st?.jobs || []) {
       const t0 = since.get(j.id);
       if (t0 !== undefined && !j.path && j.status !== 'failed' && j.status !== 'canceled') out.push({ id: j.id, kind: 'model', prompt: j.prompt, since: t0 });
     }
     return out;
   }
-  let pictureFor = '';
   function workChanged() {
     const w = work();
     deps.onWork?.(w);
@@ -4063,23 +4832,28 @@ function mountAiMake(root             , deps            )                       
     }
   }
 
-  /** Read the credits again (after a job: what the panel shows must be what is left). */
+  /**
+   * Read the credits again (after a job: what the panel shows must be what is left), and the history: the server
+   * wrote the new line in .studio/generated.json when the file landed.
+   */
   async function refreshBalance() {
     const s = await deps.kumo.status().catch(() => null);
     if (s && st && typeof s.balanceCents === 'number') {
       st.balanceCents = s.balanceCents;
+      if (s.made) st.made = s.made;
       render();
     }
   }
 
-  /** The file is in assets/: say so, with its size, and the heavy line for a big 3D file. */
-  async function added(path        , k      ) {
-    note = { text: L('aiAdded', { path }) };
+  /** The file is in assets/: say so, with its size, the "Just made" card, and the heavy line for a big 3D file. */
+  async function added(path        , k      , costUsdMicros                = null) {
+    // The card says it (gen-made.ts); `text` stays for a host-less read of the note (and is not drawn with a card).
+    note = { text: L('aiAdded', { path }), made: { kind: k, path, costUsdMicros } };
     render();
     const info = await deps.onAdded(path);
     const size = info && typeof info.size === 'number' ? info.size : undefined;
-    if (note && note.text === L('aiAdded', { path }) && size) {
-      note = { text: L('aiAddedSize', { path, size: fmtSize(size) }) };
+    if (note && note.made?.path === path && size) {
+      note = { text: L('aiAddedSize', { path, size: fmtSize(size) }), made: { kind: k, path, size: fmtSize(size), costUsdMicros } };
       if (k === 'model' && size > HEAVY_MODEL_BYTES) note.heavy = { path, size };
       render();
     }
@@ -4106,39 +4880,45 @@ function mountAiMake(root             , deps            )                       
   }
 
   async function make() {
-    if (busy || !prompt.trim()) return;
+    if (busy || !form.prompt.trim()) return;
     if (askTerms && !agreed) return;
     busy = true;
-    const k = kind;
-    note = k === 'picture' ? { text: L('aiMakingPicture'), wait: { id: 'picture', kind: 'picture' } } : { text: L('aiStartingModel') };
-    if (k === 'picture') {
-      since.set('picture', Date.now());
-      pictureFor = prompt.trim();
+    const f = { ...form };
+    const k = f.kind;
+    // A picture or a sound is made within the request: one 'now' piece of work with a clock. 3D starts a job.
+    note = k === 'model' ? { text: L('aiStartingModel') } : { text: L(KIND_WORDS[k].making), wait: { id: 'now', kind: k } };
+    if (k !== 'model') {
+      since.set('now', Date.now());
+      nowKind = k;
+      nowFor = f.prompt.trim();
       workChanged();
     }
     render();
     const acceptTerms = askTerms && agreed ? true : undefined;
     try {
-      if (k === 'picture') {
-        const r = await deps.kumo.makePicture({
-          prompt: prompt.trim(),
-          width: side,
-          height: side,
-          ...(quality === 'high' ? { quality: 'high'          } : {}),
-          ...(quality === 'seamless' ? { tiling: 'both'          } : {}),
-          ...(acceptTerms ? { acceptTerms } : {}),
-        });
-        since.delete('picture');
+      if (k !== 'model') {
+        const r = k === 'picture'
+          ? await deps.kumo.makePicture({
+              prompt: f.prompt.trim(),
+              width: f.side,
+              height: f.side,
+              ...(f.quality === 'high' ? { quality: 'high'          } : {}),
+              ...(f.quality === 'seamless' ? { tiling: 'both'          } : {}),
+              ...(acceptTerms ? { acceptTerms } : {}),
+            })
+          : await deps.kumo.makeSound ({ ...soundRequest(f), ...(acceptTerms ? { acceptTerms } : {}) });
+        since.delete('now');
         workChanged();
         if (!r.ok) refusal(r);
         else {
           askTerms = false;
           if (st && typeof r.balanceCents === 'number') st.balanceCents = r.balanceCents;
-          else void refreshBalance();
-          void added(r.path, 'picture');
+          // the history line is new either way (and the balance, when the answer had none)
+          void refreshBalance();
+          void added(r.path, k, r.costUsdMicros);
         }
       } else {
-        const r = await deps.kumo.makeModel({ prompt: prompt.trim(), texture, ...(acceptTerms ? { acceptTerms } : {}) });
+        const r = await deps.kumo.makeModel({ prompt: f.prompt.trim(), texture: f.texture, ...(acceptTerms ? { acceptTerms } : {}) });
         if (!r.ok) refusal(r);
         else {
           askTerms = false;
@@ -4150,7 +4930,7 @@ function mountAiMake(root             , deps            )                       
         }
       }
     } finally {
-      if (since.delete('picture')) workChanged();
+      if (since.delete('now')) workChanged();
       busy = false;
       render();
     }
@@ -4183,7 +4963,7 @@ function mountAiMake(root             , deps            )                       
         workChanged();
         render();
         if (r.path) {
-          void added(r.path, 'model');
+          void added(r.path, 'model', r.costUsdMicros);
           break;
         }
         if (r.status === 'failed' || r.status === 'canceled') {
@@ -4216,7 +4996,7 @@ function mountAiMake(root             , deps            )                       
     if (step) line.append(document.createTextNode(`${step} · `));
     const clock = h('span', 'gsl-ai-clock', elapsed(t0));
     clock.dataset.since = String(t0);
-    line.append(clock, document.createTextNode(` · ${w.kind === 'picture' ? L('aiUsualPicture') : L('aiUsualModel')}`));
+    line.append(clock, document.createTextNode(` · ${L(KIND_WORDS[w.kind].usual)}`));
     const late = h('span', 'gsl-ai-late', ` ${L('aiLate')}`);
     late.hidden = Date.now() - t0 < 2 * usual * 1000;
     line.append(late);
@@ -4288,71 +5068,100 @@ function mountAiMake(root             , deps            )                       
     if (!st.project) return renderPickProject(st);
     if (!st.fromFolder) box.append(h('p', 'gsl-muted', L('aiProject', { name: st.project.name })));
 
-    // kind
-    const kinds = h('div', 'gsl-ai-kinds');
-    kinds.setAttribute('role', 'group');
-    for (const k of ['picture', 'model']          ) {
-      const b = h('button', 'gsl-chip', k === 'picture' ? L('aiPicture') : L('aiModel'));
+    // the kind: five chips (sounds only when the host can make them)
+    const kindRow = h('div', 'gsl-ai-kinds');
+    kindRow.setAttribute('role', 'group');
+    kindRow.setAttribute('aria-label', L('kindsLabel'));
+    for (const k of kinds()) {
+      const b = h('button', 'gsl-chip', L(KIND_WORDS[k].chip));
       b.type = 'button';
-      b.setAttribute('aria-pressed', String(kind === k));
+      b.dataset.kind = k;
+      b.setAttribute('aria-pressed', String(form.kind === k));
       b.addEventListener('click', () => {
-        kind = k;
+        form = { ...form, kind: k };
         render();
       });
-      kinds.append(b);
+      kindRow.append(b);
     }
-    box.append(kinds);
+    box.append(kindRow);
 
+    const kind = form.kind;
     const ta = h('textarea', 'gsl-ai-prompt');
     ta.rows = 3;
-    ta.maxLength = kind === 'picture' ? 1000 : 1024;
-    ta.placeholder = kind === 'picture' ? L('aiPicturePh') : L('aiModelPh');
+    ta.maxLength = MAX_LEN[kind];
+    ta.placeholder = L(KIND_WORDS[kind].ph);
     ta.setAttribute('aria-label', L('aiPromptLabel'));
-    ta.value = prompt;
+    ta.value = form.prompt;
     ta.addEventListener('input', () => {
-      prompt = ta.value;
+      form.prompt = ta.value;
+      // A voice line's price follows its length; the rest only needs Make to wake up.
+      if (kind === 'voice') updatePrice();
       makeBtn.disabled = !canMake();
     });
     box.append(ta);
 
+    // Example words (one press puts them in the box; nothing is sent). WHY: an empty box is the hardest part of
+    // "make with AI" — the examples show the size and tone of words that work, for the kind chosen.
+    const tryRow = h('p', 'gsl-muted gsl-ai-try');
+    tryRow.append(h('span', undefined, L('tryLabel')));
+    for (const key of KIND_WORDS[kind].examples) {
+      const words = L(key);
+      const b = h('button', 'gsl-link', words);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        form.prompt = words;
+        focusNext = 'prompt';
+        render();
+      });
+      tryRow.append(b);
+    }
+    box.append(tryRow);
+
     const opts = h('div', 'gsl-ai-opts');
-    if (kind === 'picture') {
-      const q = h('select', 'gsl-type');
-      q.setAttribute('aria-label', L('aiQuality'));
-      for (const [v, k] of [['standard', 'aiFast'], ['high', 'aiFine'], ['seamless', 'aiSeamless']]         ) {
-        const o = h('option', undefined, L(k));
-        o.value = v;
-        o.selected = quality === v;
-        q.append(o);
+    const select = (label           , values                              , cur                 , word                                , set                     ) => {
+      const sel = h('select', 'gsl-type');
+      sel.setAttribute('aria-label', L(label));
+      // A value from the history that is not in the list (a hand-edited file) is still shown as chosen.
+      const all = values.includes(cur) ? values : [...values, cur];
+      for (const v of all) {
+        const o = h('option', undefined, word(v));
+        o.value = String(v);
+        o.selected = v === cur;
+        sel.append(o);
       }
-      q.addEventListener('change', () => {
-        quality = q.value                  ;
+      sel.addEventListener('change', () => {
+        set(sel.value);
         render();
       });
-      const s = h('select', 'gsl-type');
-      s.setAttribute('aria-label', L('aiSize'));
-      for (const n of [512, 1024, 2048]) {
-        const o = h('option', undefined, `${n} × ${n}`);
-        o.value = String(n);
-        o.selected = side === n;
-        s.append(o);
-      }
-      s.addEventListener('change', () => {
-        side = Number(s.value);
-        render();
-      });
-      opts.append(q, s);
-    } else {
+      return sel;
+    };
+    const check = (word           , on         , set                      ) => {
       const lab = h('label', 'gsl-ai-check');
       const cb = h('input');
       cb.type = 'checkbox';
-      cb.checked = texture;
+      cb.checked = on;
       cb.addEventListener('change', () => {
-        texture = cb.checked;
+        set(cb.checked);
         render();
       });
-      lab.append(cb, document.createTextNode(L('aiTexture')));
-      opts.append(lab);
+      lab.append(cb, document.createTextNode(L(word)));
+      return lab;
+    };
+    const secs = (v                 ) => L('seconds', { n: v });
+    if (kind === 'picture') {
+      const qWord                                    = { standard: 'aiFast', high: 'aiFine', seamless: 'aiSeamless' };
+      opts.append(
+        select('aiQuality', ['standard', 'high', 'seamless'], form.quality, (v) => L(qWord[v                  ]), (v) => (form.quality = v                  )),
+        select('aiSize', [512, 1024, 2048], form.side, (v) => `${v} × ${v}`, (v) => (form.side = Number(v))),
+      );
+    } else if (kind === 'model') {
+      opts.append(check('aiTexture', form.texture, (v) => (form.texture = v)));
+    } else if (kind === 'sfx') {
+      opts.append(select('aiLength', SFX_SECONDS, form.sfxSec, secs, (v) => (form.sfxSec = Number(v))));
+    } else if (kind === 'music') {
+      opts.append(select('aiLength', MUSIC_SECONDS, form.musicSec, secs, (v) => (form.musicSec = Number(v))), check('aiLoop', form.loop, (v) => (form.loop = v)));
+    } else {
+      opts.append(select('aiVoice', VOICES, form.voice, (v) => L(`voice_${v}`             ), (v) => (form.voice = v)));
     }
     box.append(opts);
 
@@ -4376,43 +5185,65 @@ function mountAiMake(root             , deps            )                       
       box.append(tb);
     }
 
-    const cost = price();
-    const need = centsOf(cost);
-    const short = typeof st.balanceCents === 'number' && st.balanceCents < need;
-    const priceLine = h('p', short ? 'gsl-ai-bad' : 'gsl-muted', short
-      ? L('aiShort', { need: dollars(need), balance: dollars(st.balanceCents ?? 0) })
-      : kind === 'picture' ? L('aiPicturePrice', { price: usd(cost) }) : L('aiModelPrice', { price: usd(cost) }));
+    // The price of this one and the balance, before Make (a short balance stops here and says why).
+    const priceLine = h('p');
     box.append(priceLine);
-
-    const canMake = () => !busy && !short && !!prompt.trim() && (!askTerms || agreed);
-    const makeBtn = h('button', 'gsl-btn gsl-primary gsl-ai-make', busy ? L('aiMaking') : L('aiMake', { price: usd(cost) }));
+    const makeBtn = h('button', 'gsl-btn gsl-primary gsl-ai-make');
     makeBtn.type = 'button';
-    makeBtn.disabled = !canMake();
     makeBtn.addEventListener('click', () => void make());
     box.append(makeBtn);
+    let short = false;
+    const canMake = () => !busy && !short && !!form.prompt.trim() && (!askTerms || agreed);
+    function updatePrice() {
+      const cost = price();
+      const need = centsOf(cost);
+      short = typeof st?.balanceCents === 'number' && st.balanceCents < need;
+      priceLine.className = short ? 'gsl-ai-bad' : 'gsl-muted';
+      priceLine.textContent = short ? L('aiShort', { need: dollars(need), balance: dollars(st?.balanceCents ?? 0) }) : L(KIND_WORDS[kind].price, { price: usd(cost) });
+      makeBtn.textContent = busy ? L('aiMaking') : L('aiMake', { price: usd(cost) });
+      makeBtn.disabled = !canMake();
+    }
+    updatePrice();
 
     if (note) {
-      const p = h('p', note.bad ? 'gsl-ai-bad' : 'gsl-ai-note', note.text);
-      p.setAttribute('role', 'status');
-      box.append(p);
+      if (!note.made) {
+        const p = h('p', note.bad ? 'gsl-ai-bad' : 'gsl-ai-note', note.text);
+        p.setAttribute('role', 'status');
+        box.append(p);
+      }
       const wl = note.wait ? waitLine(note.wait) : null;
       if (wl) box.append(wl);
-      if (note.heavy) box.append(heavyBlock(note.heavy));
       if (note.detail) box.append(h('p', 'gsl-muted gsl-ai-detail', note.detail));
+      if (note.made) box.append(madeCard(note.made, { lang: deps.lang, assetUrl: deps.assetUrl, files: deps.files }));
+      if (note.heavy) box.append(heavyBlock(note.heavy));
     }
 
-    const jobs = (st.jobs || []).slice(-5).reverse();
-    if (jobs.length) {
-      const sec = h('div', 'gsl-section');
-      sec.append(h('h4', undefined, L('aiRecent')));
-      const ul = h('ul', 'gsl-files');
-      for (const j of jobs) {
-        const where = j.path ? j.path : j.status === 'failed' || j.status === 'canceled' ? L('aiJobFailed') : L('aiJobRunning');
-        ul.append(h('li', undefined, `${j.prompt} — ${where}`));
-      }
-      sec.append(ul);
-      box.append(sec);
+    const hist = madeHistory(st.jobs || [], st.made || [], {
+      lang: deps.lang,
+      assetUrl: deps.assetUrl,
+      again: (m) => fill(m, 'make'),
+      change: (m) => fill(m, 'prompt'),
+    });
+    if (hist) box.append(hist);
+
+    if (focusNext) {
+      const want = focusNext;
+      focusNext = null;
+      const el = want === 'make' ? makeBtn : ta;
+      el.focus();
+      if (el === ta) ta.setSelectionRange(ta.value.length, ta.value.length);
     }
+  }
+
+  /** Again / Change on a history line: its kind, words and choices back in the form. Nothing is sent. */
+  function fill(m          , then                   ) {
+    // A sound line on a host that cannot make sounds stays where it is (no kind to show it in).
+    if (!kinds().includes(m.kind)) return;
+    form = formFrom(m, form);
+    focusNext = then;
+    note = null;
+    render();
+    box.querySelector('.gsl-ai-kinds')?.scrollIntoView({ block: 'nearest' });
   }
 
   function renderSignIn(s            ) {
@@ -4470,16 +5301,14 @@ function mountAiMake(root             , deps            )                       
   return api;
 }
 
-__def(__exports, "picturePrice", () => picturePrice);
-__def(__exports, "modelPrice", () => modelPrice);
+__def(__exports, "USUAL_SEC", () => USUAL_SEC);
 __def(__exports, "centsOf", () => centsOf);
 __def(__exports, "usd", () => usd);
-__def(__exports, "USUAL_SEC", () => USUAL_SEC);
 __def(__exports, "HEAVY_MODEL_BYTES", () => HEAVY_MODEL_BYTES);
 __def(__exports, "elapsed", () => elapsed);
 __def(__exports, "mountAiMake", () => mountAiMake);
 };
-__defs[11] = function (__exports) {
+__defs[13] = function (__exports) {
 'use strict';
 // ../tools/library/panel.ts
 
@@ -4507,7 +5336,7 @@ const { formatSize, t } = __require(7);
                                               
 const { atlasImageUrl, fontFamily, modelThumb } = __require(8);
 const { injectStyles } = __require(9);
-const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(10);
+const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(12);
                                            
 
                               
@@ -4860,6 +5689,10 @@ function mountLibrary(root    , deps             )              {
         },
         askLighter: deps.askAi ? (p, size) => askLighter(p, size) : undefined,
         formatSize: (n) => formatSize(deps.lang, n),
+        // The "Just made" card (generate-ui, 2026-10-22): its image / ▶, and the same "Add to scene" / "Ask your AI…"
+        // as a file's detail (one way to hand a file to the AI).
+        assetUrl: (p) => deps.host.assetUrl(p),
+        files: deps.files,
       })
     : null;
   wrap.append(chips, count, readFail, grid, detail, foot);
@@ -5036,8 +5869,10 @@ function mountLibrary(root    , deps             )              {
     for (const w of aiWork) {
       const tile = h('div', 'gsl-tile gsl-tile-making');
       tile.dataset.making = w.kind;
-      const thumb = h('div', `gsl-thumb gsl-thumb-${w.kind === 'model' ? 'model' : 'image'} gsl-thumb-wait`);
-      thumb.append(h('span', 'gsl-icon', TYPE_ICON[w.kind === 'model' ? 'model' : 'image'] ));
+      // sound effects, music and voice lines wait as sounds (generate-ui, 2026-10-22)
+      const type = w.kind === 'model' ? 'model' : w.kind === 'picture' ? 'image' : 'sound';
+      const thumb = h('div', `gsl-thumb gsl-thumb-${type} gsl-thumb-wait`);
+      thumb.append(h('span', 'gsl-icon', TYPE_ICON[type] ));
       const meta = h('span', 'gsl-meta');
       const clock = h('span', 'gsl-tag gsl-tag-making', L('makingTile', { time: elapsed(w.since) }));
       clock.dataset.since = String(w.since);
@@ -5657,7 +6492,7 @@ function mountLibrary(root    , deps             )              {
 __def(__exports, "DRAG_FILE", () => DRAG_FILE);
 __def(__exports, "mountLibrary", () => mountLibrary);
 };
-__defs[12] = function (__exports) {
+__defs[14] = function (__exports) {
 'use strict';
 // names.ts
 
@@ -5967,7 +6802,7 @@ __def(__exports, "isGuessed", () => isGuessed);
 __def(__exports, "uiName", () => uiName);
 __def(__exports, "displayName", () => displayName);
 };
-__defs[13] = function (__exports) {
+__defs[15] = function (__exports) {
 'use strict';
 // ../tools/library/index.ts
 
@@ -5984,12 +6819,12 @@ __defs[13] = function (__exports) {
 // cloud shell without changes.
 
                                                                                       
-const { mountLibrary } = __require(11);
+const { mountLibrary } = __require(13);
                                                            
 const { assetsOfKey, buildRows, normalizeList } = __require(5);
                                              
 const { t } = __require(7);
-const { displayName } = __require(12);
+const { displayName } = __require(14);
                                               
 
 let panel                     = null;
@@ -6351,7 +7186,7 @@ __def(__exports, "libraryAct", () => libraryAct);
 __def(__exports, "openAsset", () => openAsset);
 __def(__exports, "renderFilesOfObject", () => renderFilesOfObject);
 };
-__defs[14] = function (__exports) {
+__defs[16] = function (__exports) {
 'use strict';
 // dom.ts
 
@@ -6389,7 +7224,7 @@ function safeImageSrc(src                           )                {
 __def(__exports, "h", () => h);
 __def(__exports, "safeImageSrc", () => safeImageSrc);
 };
-__defs[15] = function (__exports) {
+__defs[17] = function (__exports) {
 'use strict';
 // thumb-tone.ts
 
@@ -6453,7 +7288,7 @@ __def(__exports, "LIGHT_AT", () => LIGHT_AT);
 __def(__exports, "isLightPicture", () => isLightPicture);
 __def(__exports, "toneThumb", () => toneThumb);
 };
-__defs[16] = function (__exports) {
+__defs[18] = function (__exports) {
 'use strict';
 // library-objects.ts
 
@@ -6488,9 +7323,9 @@ __defs[16] = function (__exports) {
 // as in the Scene). The tiles are draggable for that (application/x-studio-object = the tile's first key).
 // Names and file names are untrusted text: textContent only; pictures are the game's PNG data URLs (safeImageSrc).
                                                                       
-const { h, safeImageSrc } = __require(14);
-const { displayName } = __require(12);
-const { toneThumb } = __require(15);
+const { h, safeImageSrc } = __require(16);
+const { displayName } = __require(14);
+const { toneThumb } = __require(17);
 
                                      
                                                                  
@@ -6785,7 +7620,7 @@ __def(__exports, "DRAG_OBJECT", () => DRAG_OBJECT);
 __def(__exports, "TILE_PX_MAX", () => TILE_PX_MAX);
 __def(__exports, "createLibraryObjects", () => createLibraryObjects);
 };
-__defs[17] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -7039,7 +7874,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[18] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // pose-compare.ts
 
@@ -7092,7 +7927,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[19] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -7231,7 +8066,169 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[20] = function (__exports) {
+__defs[22] = function (__exports) {
+'use strict';
+// motion-model.ts
+
+// What the editor remembers about motions (motion-gui, 2026-10-22; CONTRACT.md §4.1 `motion`): each object's motion
+// now, and what the last save held. Pure logic, no DOM: unit-tested in test/motion.test.ts.
+//
+// WHY a store of its own and not more fields on PlacementModel: a motion is not a pose. It has its own "changed since
+// the save" (one Save count per object whose motion changed), its own undo change, and it is written to its own
+// part of placement.json. PlacementModel holds one of these and calls it from restore / result / dirty / markSaved,
+// so the pose logic there is untouched (other members of the team change that file the same week).
+//
+// Also here: the card's words for a motion ("kind"), the default speeds, and the "+" that adds a point — small pure
+// helpers the card (motion-row.ts) and the tests share.
+                                                                
+
+/** What the card's menu offers: none, the three path kinds, and spin. */
+                                                        
+
+/** The first speed of a new path: a walk (3D, 1.5 m/s) or 120 px/s (2D). Spin: 90° a second (a quarter turn). */
+const DEFAULT_SPEED                      = { '3d': 1.5, '2d': 120 };
+const DEFAULT_SPIN = Math.PI / 2;
+
+/** The card's kind for a motion: its path's repeat, else spin, else none. A motion with both shows its path. */
+function kindOf(m                           )             {
+  if (!m) return 'none';
+  if (m.path?.length) return m.repeat ?? 'pingpong';
+  return m.spin ? 'spin' : 'none';
+}
+
+/**
+ * The motion after the card's menu chose `kind`. Keeps what can be kept: the path when switching between back and
+ * forth / loop / once (the person's points are not thrown away), the spin when a path kind is chosen on a spinning
+ * object. A path kind with no path yet gets `path: []` — the bridge picks the first points in sight (motion/show
+ * `seed`) — or `fallback` points when there is no game to ask. null = no motion.
+ */
+function withKind(m                           , kind            , dim     , fallback             = [])                {
+  if (kind === 'none') return null;
+  if (kind === 'spin') return { spin: m?.spin || DEFAULT_SPIN };
+  const out         = { path: m?.path?.length ? m.path.map((p) => p.slice()) : fallback.map((p) => p.slice()), speed: m?.speed ?? DEFAULT_SPEED[dim], repeat: kind };
+  if (m?.spin) out.spin = m.spin;
+  return out;
+}
+
+/**
+ * The first points of a new path when the game cannot say what is in sight: 3 m (3D) / 150 px (2D) to the right; a
+ * loop gets a square (right, then away / down the screen, then back). The bridge's seed replaces them with points
+ * that are on screen.
+ */
+function fallbackPath(kind            , dim     )             {
+  const d = dim === '3d' ? 3 : 150;
+  const right = dim === '3d' ? [d, 0, 0] : [d, 0];
+  if (kind !== 'loop') return [right];
+  return dim === '3d' ? [right, [d, 0, -d], [0, 0, -d]] : [right, [d, d], [0, d]];
+}
+
+/**
+ * The "+" on the card: one more point. A loop gets it in the middle of its closing side (last point → start), so the
+ * round grows a corner where it is easiest to drag; a back-and-forth / once path is carried on past its end by half
+ * its last side (or by the first point's offset again, for a one-point path).
+ */
+function addPoint(m        )         {
+  const path = (m.path || []).map((p) => p.slice());
+  if (!path.length) return m;
+  const last = path[path.length - 1] ;
+  const prev = path.length > 1 ? path[path.length - 2]  : last.map(() => 0);
+  const next = m.repeat === 'loop' ? last.map((v) => v / 2) : last.map((v, i) => v + (v - prev[i] ) / 2);
+  if (path.length >= 32) return m;
+  return { ...m, path: [...path, next.map((v) => Math.round(v * 1000) / 1000)] };
+}
+
+/** The "−": the last point goes (a path keeps at least one). */
+function dropPoint(m        )         {
+  const path = m.path || [];
+  if (path.length <= 1) return m;
+  return { ...m, path: path.slice(0, -1).map((p) => p.slice()) };
+}
+
+/** Same motion (the file's rounding: 1 mm / 1e-4 rad), so a drag that ends where it began is not a change. */
+function sameMotion(a                           , b                           )          {
+  return JSON.stringify(roundMotion(a)) === JSON.stringify(roundMotion(b));
+}
+
+/** A motion as the file writes it (rounded, fields in one order), or null for none / an empty path with no spin. */
+function roundMotion(m                           , dim      = '3d')                {
+  if (!m) return null;
+  const step = dim === '3d' ? 1000 : 10;
+  const r = (v        , s        ) => {
+    const x = Math.round(v * s) / s;
+    return x === 0 ? 0 : x;
+  };
+  const out         = {};
+  if (m.path?.length) {
+    out.path = m.path.map((p) => p.map((v) => r(v, step)));
+    if (m.speed !== undefined) out.speed = r(m.speed, step);
+    if (m.repeat !== undefined) out.repeat = m.repeat;
+  }
+  if (m.spin) out.spin = r(m.spin, 10000);
+  return out.path || out.spin ? out : null;
+}
+
+class MotionStore {
+          now = new Map                ();
+          saved = new Map                ();
+
+  /** The saved file's motions (before the game lists its objects): they are what the editor starts from. */
+  restore(file                                    )       {
+    this.now.clear();
+    this.saved.clear();
+    for (const [k, m] of Object.entries(file || {})) {
+      this.now.set(k, structuredClone(m));
+      this.saved.set(k, structuredClone(m));
+    }
+  }
+
+  get(key        )                {
+    const m = this.now.get(key);
+    return m ? structuredClone(m) : null;
+  }
+
+  /** null = no motion. An empty path waiting for the bridge's seed is kept (and written to no file until it has points). */
+  set(key        , m               )       {
+    if (m) this.now.set(key, structuredClone(m));
+    else this.now.delete(key);
+  }
+
+  /** Keys whose motion differs from the last save (each is one Save count and a dot on its row). */
+  changedKeys()           {
+    const keys = new Set([...this.now.keys(), ...this.saved.keys()]);
+    return [...keys].filter((k) => !sameMotion(this.now.get(k), this.saved.get(k)));
+  }
+
+  /**
+   * The `motion` part of placement.json: every motion with points or a spin, rounded. `gone` = keys that are not in
+   * the scene any more (deleted): their motion is left out (the schema refuses a deleted key that moves).
+   */
+  result(dim     , gone                          )                                     {
+    const out                         = {};
+    for (const [k, m] of this.now) {
+      if (gone(k)) continue;
+      const r = roundMotion(m, dim);
+      if (r) out[k] = r;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+
+  markSaved()       {
+    this.saved = new Map([...this.now].map(([k, m]) => [k, structuredClone(m)]));
+  }
+}
+
+__def(__exports, "DEFAULT_SPEED", () => DEFAULT_SPEED);
+__def(__exports, "DEFAULT_SPIN", () => DEFAULT_SPIN);
+__def(__exports, "kindOf", () => kindOf);
+__def(__exports, "withKind", () => withKind);
+__def(__exports, "fallbackPath", () => fallbackPath);
+__def(__exports, "addPoint", () => addPoint);
+__def(__exports, "dropPoint", () => dropPoint);
+__def(__exports, "sameMotion", () => sameMotion);
+__def(__exports, "roundMotion", () => roundMotion);
+__def(__exports, "MotionStore", () => MotionStore);
+};
+__defs[23] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -7255,8 +8252,9 @@ __defs[20] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 __require(0);
-const { hasLayer, orderOfLayer } = __require(19);
-const { roundPose, samePose } = __require(18);
+const { hasLayer, orderOfLayer } = __require(21);
+const { roundPose, samePose } = __require(20);
+const { MotionStore } = __require(22);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -7331,6 +8329,11 @@ class PlacementModel {
           fileEdits                                                                                  = { copies: [], removes: [] };
   /** File copies that could not be made (their original is gone): kept on save, like orphans. */
           orphanAdded                   = [];
+  /**
+   * How objects move by themselves (motion-gui, 2026-10-22): its own store (motion-model.ts), read and written with the
+   * rest of the file. Each object whose motion changed is one Save count and a dot on its row.
+   */
+           motion = new MotionStore();
 
   /** Load the saved file (before the game reports its items). */
   restore(file                      )       {
@@ -7338,6 +8341,7 @@ class PlacementModel {
     this.fileOrders.clear();
     this.fileAdded = [];
     this.fileRemoved = [];
+    this.motion.restore(file?.motion);
     if (!file || !file.objects) return;
     if (file.dim) this.dim = file.dim;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
@@ -7701,7 +8705,7 @@ class PlacementModel {
     for (const k of this.savedCopies.keys()) if (!this.live.has(k)) n++;
     for (const k of this.removed) if (!this.savedRemoved.has(k)) n++;
     for (const k of this.savedRemoved) if (!this.removed.has(k)) n++;
-    return n + this.orderDirty().length;
+    return n + this.orderDirty().length + this.motion.changedKeys().length;
   }
 
   /**
@@ -7730,6 +8734,7 @@ class PlacementModel {
       // two lists; the rest are the moved ones.
       if (now.join('\n') !== was.join('\n')) for (const k of outOfOrder(was, now)) out.add(k);
     }
+    for (const k of this.motion.changedKeys()) out.add(k);
     return out;
   }
 
@@ -7769,6 +8774,8 @@ class PlacementModel {
     if (added.length) file.added = added;
     const removed = [...this.removed].sort().map((k) => this.removedMeta.get(k) || { key: k });
     if (removed.length) file.removed = removed;
+    const motion = this.motion.result(this.dim, (k) => this.isRemoved(k));
+    if (motion) file.motion = motion;
     return file;
   }
 
@@ -7778,14 +8785,15 @@ class PlacementModel {
     for (const k of this.live) this.savedCopies.set(k, roundPose(this.current.get(k) , this.dim));
     this.savedRemoved = new Set(this.removed);
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
+    this.motion.markSaved();
   }
 }
 
-__def(__exports, "roundPose", () => __require(18).roundPose);
-__def(__exports, "samePose", () => __require(18).samePose);
+__def(__exports, "roundPose", () => __require(20).roundPose);
+__def(__exports, "samePose", () => __require(20).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[21] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -7823,6 +8831,23 @@ const en = {
   'undo.copy': 'duplicate {name}',
   'undo.remove': 'delete {name}',
   'undo.edit': 'change {name}',
+  'undo.motion': 'change {name}’s motion',
+  // The card's Motion row (motion-gui, 2026-10-22; motion-row.ts): how an object moves by itself.
+  'motion.label': 'Motion',
+  'motion.none': 'None',
+  'motion.pingpong': 'Back and forth',
+  'motion.loop': 'Loop',
+  'motion.once': 'Once',
+  'motion.spin': 'Spin',
+  'motion.play': 'Play this motion here',
+  'motion.stop': 'Stop',
+  'motion.speed': 'Speed',
+  'motion.mPerSec': 'm/s',
+  'motion.pxPerSec': 'px/s',
+  'motion.degPerSec': '°/s',
+  'motion.less': 'One point fewer',
+  'motion.more': 'One more point (drag it in the game)',
+  'motion.points': '{n:1 point|# points}',
   'undo.n': '{n} objects',
   'tool.library': 'Library',
   'btn.undo': 'Undo',
@@ -7961,6 +8986,19 @@ const en = {
   'play.enterReloads': 'Enter reloads with the fix',
   'play.keep': 'Keep playing',
   'play.close': 'Close',
+  // Pause while playing (2026-10-22; bridge/play-pause.ts, play-chat.ts): P or ❚❚, then a small chat over the stopped game.
+  'play.pause': 'Pause',
+  'play.pauseTip': 'Pause (P) and talk to your AI about this moment',
+  'play.paused': 'Paused',
+  'play.resume': 'Resume',
+  'play.resumeTip': 'Back to the game where it stopped (P)',
+  'play.sees': 'Your AI sees this moment',
+  'play.seesError': '1 error',
+  'play.seesErrors': '# errors',
+  'play.chatPlaceholder': 'Ask about this moment…',
+  // Not "your AI gets the picture…" again: the line above it says so ("Your AI sees this moment").
+  'play.chatEmpty': 'Ask anything about what you see: why it happened, how it works, what to change.',
+  'play.send': 'Send',
   // Empty on purpose (the third design review, 5-3 / ⑩, 2026-10-20): the line after Save is one line, "Your request is
   // in. It goes into the game the next time your AI runs." + "Call your AI". "Your layout is saved" said what the top
   // bar's "✓ Saved" says. Emptied here, not taken out of main.ts renderAiLine(), which another fix of the same day
@@ -8140,6 +9178,16 @@ const en = {
   'app.brand': 'Studio',
   'list.title': 'In this scene',
   'list.titleUi': 'On screen',
+  // Levels (2026-10-22, level-switch.ts): the list's head names the level; pressing it opens the levels' menu.
+  'level.of': '{n} of {total}',
+  'level.switch': 'Level: {name}. Press to switch levels, or to copy, rename, reorder or delete them',
+  'level.menu': 'Levels',
+  'level.new': 'New level from {name}',
+  'level.rename': 'Rename…',
+  'level.renameLabel': 'Name of this level',
+  'level.up': 'Move up',
+  'level.down': 'Move down',
+  'level.delete': 'Delete level',
   'foot.palette': 'All actions',
   // The Save's tooltip (a try of v0.1.9, 2026-10-21): one sentence. The button itself says only "Save" (btn.save) — it said
   // "Save to game" for a day ("Save is hard to understand. Play works without it, so people won't notice it is needed"),
@@ -8315,6 +9363,22 @@ const ja                               = {
   'undo.copy': '{name} を複製',
   'undo.remove': '{name} を削除',
   'undo.edit': '{name} を変更',
+  'undo.motion': '{name} の動きを変更',
+  'motion.label': '動き',
+  'motion.none': 'なし',
+  'motion.pingpong': '行ったり来たり',
+  'motion.loop': 'ぐるっと回る',
+  'motion.once': '1 回だけ',
+  'motion.spin': 'その場で回る',
+  'motion.play': 'この動きをここで見る',
+  'motion.stop': '止める',
+  'motion.speed': '速さ',
+  'motion.mPerSec': 'm/秒',
+  'motion.pxPerSec': 'px/秒',
+  'motion.degPerSec': '°/秒',
+  'motion.less': '点を 1 つ減らす',
+  'motion.more': '点を 1 つ足す（ゲームの中で引く）',
+  'motion.points': '点 {n} 個',
   'undo.n': '{n} 個',
   'tool.library': 'ライブラリ',
   'btn.undo': '戻す',
@@ -8436,6 +9500,17 @@ const ja                               = {
   'play.enterReloads': 'Enter で直ったゲームに',
   'play.keep': 'このまま遊ぶ',
   'play.close': '閉じる',
+  'play.pause': '一時停止',
+  'play.pauseTip': '一時停止（P）して、この瞬間について AI と話す',
+  'play.paused': '一時停止中',
+  'play.resume': '続ける',
+  'play.resumeTip': '止めたところから続ける（P）',
+  'play.sees': 'AI はこの瞬間を見ます',
+  'play.seesError': 'エラー 1 件',
+  'play.seesErrors': 'エラー # 件',
+  'play.chatPlaceholder': 'この瞬間について聞く…',
+  'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
+  'play.send': '送る',
   'ai.savedSub': '', // empty on purpose: see the English table
   'ai.updating': 'ゲームを新しくしています…',
   'ai.undo': 'AI の直しを戻す',
@@ -8597,6 +9672,15 @@ const ja                               = {
   'app.brand': 'Studio',
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
+  'level.of': '{n} / {total}',
+  'level.switch': 'レベル: {name}。押すとレベルを切り替え・写す・名前を変える・並べ替え・消す',
+  'level.menu': 'レベル',
+  'level.new': '{name} を写して新しいレベル',
+  'level.rename': '名前を変える…',
+  'level.renameLabel': 'このレベルの名前',
+  'level.up': '上へ',
+  'level.down': '下へ',
+  'level.delete': 'レベルを消す',
   'foot.palette': 'すべての操作',
   'save.unsavedTip': '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）',
   'save.savedTip': '保存して AI に送りました',
@@ -8766,7 +9850,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[22] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // icons.ts
 
@@ -8814,6 +9898,8 @@ const PATHS                         = {
   look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
   play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
   stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+  // Pause while playing (2026-10-22): two bars, filled like play / stop.
+  pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   // The AI: a four-point spark.
   spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
   more: 'o 5 10|o 10 10|o 15 10',
@@ -8848,6 +9934,8 @@ const PATHS                         = {
   // The eye struck through: "the game's UI is hidden while you edit the world" (layer-switch.ts).
   eyeOff: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25|M4 16 16 4',
   plus: 'M10 4.5v11|M4.5 10h11',
+  // The plus without its upright: one point fewer on a motion's path (motion-gui, 2026-10-22).
+  minus: 'M4.5 10h11',
   // The plus turned 45°: close a note.
   close: 'M6 6l8 8|M14 6l-8 8',
   // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
@@ -8870,7 +9958,7 @@ const PATHS                         = {
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
-const FILLED = new Set(['play', 'stop', 'spark']);
+const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
 /** Icons whose LAST part is filled (the mark's front card). */
 const LAST_FILLED = new Set(['mark']);
 
@@ -8941,7 +10029,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[23] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -8961,8 +10049,8 @@ __defs[23] = function (__exports) {
 // - The agent checks with the user before signing in, uploading or changing code.
 // - No prices in the UI (they change); a link to the pricing page instead.
                                                                              
-const { h } = __require(14);
-const { icon } = __require(22);
+const { h } = __require(16);
+const { icon } = __require(25);
 
 /** The only place the KUMODeck site address appears in the shell. */
 const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
@@ -9044,7 +10132,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[24] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -9080,6 +10168,7 @@ const HANDOFF_LIMITS = Object.freeze({
   maxLogs: 30, // console lines: every error / warning plus the last few lines; more is noise the AI has to skip
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
+  maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -9264,6 +10353,21 @@ function playMoment(r, errors) {
   }
   if (r.fullscreen === true) out.fullscreen = true;
   if (Array.isArray(r.size) && r.size.length === 2 && r.size.every((v) => Number.isInteger(v) && v > 0 && v < 100000)) out.size = r.size.slice();
+  // Pause (2026-10-22): from the chat over a paused game. `chat` names the talk's first request (a "play" id); a bad one
+  // is dropped (the words still go). `history`: the talk so far, each turn one line, the last HANDOFF_LIMITS.maxHistory.
+  if (r.paused === true) {
+    out.paused = true;
+    if (typeof r.chat === 'string' && ID_OK.test(r.chat) && r.chat.includes('-play-')) out.chat = r.chat;
+    if (Array.isArray(r.history)) {
+      const hist = [];
+      for (const h of r.history.slice(-HANDOFF_LIMITS.maxHistory)) {
+        if (!h || (h.who !== 'you' && h.who !== 'ai')) continue;
+        const t = oneLine(h.text, HANDOFF_LIMITS.maxNote);
+        if (t) hist.push({ who: h.who, text: t });
+      }
+      if (hist.length) out.history = hist;
+    }
+  }
   return out;
 }
 
@@ -9352,7 +10456,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[25] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -9380,7 +10484,7 @@ __defs[25] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(24);
+const { statusCovers } = __require(27);
 
                                                                                                                                                                          
 
@@ -9523,7 +10627,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[26] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -9569,7 +10673,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[27] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -9648,7 +10752,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[28] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -9661,7 +10765,7 @@ __defs[28] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(25);
+const { moreIn } = __require(28);
 
                                 
                  
@@ -9715,14 +10819,16 @@ function playLine(i               )                  {
 
 /** The overlay's own words (the bridge has none), in the person's language. */
 function playWords(t                         )                         {
-  const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close'];
+  const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close',
+    // The pause and its chat (2026-10-22).
+    'pauseTip', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send'];
   return Object.fromEntries(keys.map((k) => [k, t(`play.${k}`)]));
 }
 
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[29] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -9785,7 +10891,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[30] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -9868,7 +10974,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[31] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -9876,9 +10982,9 @@ __defs[31] = function (__exports) {
 // Every change applies at once and is saved to .studio/ui.json (debounced by
 // the caller), so there is no separate Apply/Save step to forget.
                                                     
-const { h } = __require(14);
-const { icon } = __require(22);
-const { DEFAULT_UI, UI_LIMITS } = __require(30);
+const { h } = __require(16);
+const { icon } = __require(25);
+const { DEFAULT_UI, UI_LIMITS } = __require(33);
 
                                
                          
@@ -9961,14 +11067,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[32] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(19);
+const { hasLayer } = __require(21);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -10065,7 +11171,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[33] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -10205,7 +11311,151 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[34] = function (__exports) {
+__defs[37] = function (__exports) {
+'use strict';
+// motion-row.ts
+
+// The card's Motion row (motion-gui, 2026-10-22: asked for as "build an object's movement with the GUI").
+//
+// Under Position / Angle / Size, one more property of the object: how it moves by itself.
+//   Motion  [Back and forth ▾]  ▶          the menu: None, Back and forth, Loop, Once, Spin; ▶ plays it here
+//           1.5 m/s      − 2 +             speed (drag the unit to change it, or type), the path's points
+// The points themselves are dragged in the game (bridge/motion.ts draws them while the object is picked).
+//
+// WHY a row of the card and not a fifth button on the strip under the object: the strip is the hand's tools (move,
+// height, turn, size — what a drag does now); a motion is a property of the object, like its place, so it sits with
+// the place (design.md §1, plan B left out). WHY a native <select>: the four kinds are words, the platform's menu reads
+// them aloud, works with a finger and a keyboard, and needs no menu of our own on a card that already floats.
+// One element per job, no colour of its own (orange is the path in the game; the row is the card's grey).
+//
+// Built with h() and textContent only (CONTRACT.md §5). Pure DOM, no state: the card calls motionRow() on each render.
+                                                  
+const { h } = __require(16);
+const { icon } = __require(25);
+const { addPoint, dropPoint, kindOf, withKind } = __require(22);
+
+                                
+                                                                 
+             
+                                     
+     
+                                                                                                                       
+                                                                                                                      
+                                                      
+     
+                                                                                                                  
+                                                                      
+                           
+                                 
+ 
+
+const KINDS               = ['none', 'pingpong', 'loop', 'once', 'spin'];
+const DEG = 180 / Math.PI;
+
+/** The Motion row: label and cells for the card's `.fields` grid (two cells, or four with the second line). */
+function motionRow(d               , key        )                {
+  const m = d.motion(key);
+  const kind = kindOf(m);
+  const dim = d.dim();
+  const sel = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-kind' } });
+  for (const k of KINDS) {
+    const o = h('option', { value: k, text: d.t(`motion.${k}`) });
+    if (k === kind) o.selected = true;
+    sel.append(o);
+  }
+  sel.addEventListener('change', () => {
+    const want = sel.value              ;
+    const next = withKind(m, want, dim);
+    // A path kind with no points yet: the game picks the first ones where the person can see them (seed).
+    d.setMotion(key, next, { seed: !!next?.path && !next.path.length });
+  });
+  const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, sel, icon('chevronDown')));
+  const out                = [h('span', { class: 'f-l', text: d.t('motion.label') }), cells];
+  if (kind === 'none' || !m) return out;
+  // ▶ / ■: this object's motion, in the scene as it stands (nothing else moves; the game is not started).
+  const on = d.playing() === key;
+  const play = h('button', { type: 'button', class: `icon-btn motion-play${on ? ' on' : ''}`, 'aria-pressed': String(on), dataset: { action: 'motion-play', part: 'motion-play' },
+    title: d.t(on ? 'motion.stop' : 'motion.play'), 'aria-label': d.t(on ? 'motion.stop' : 'motion.play'), onclick: () => d.play(on ? null : key) }, icon(on ? 'stop' : 'play'));
+  cells.append(play);
+
+  // Second line: the speed, and the path's points (− n +).
+  const spin = kind === 'spin';
+  const unit = spin ? d.t('motion.degPerSec') : dim === '3d' ? d.t('motion.mPerSec') : d.t('motion.pxPerSec');
+  // Spin is shown in degrees a second (people say "a quarter turn a second", not 1.57 rad), written in radians.
+  const read = (x        ) => (spin ? (x.spin ?? 0) * DEG : x.speed ?? 0);
+  const write = (x        , v        )         => (spin ? { ...x, spin: v / DEG } : { ...x, speed: v });
+  const show = (v        ) => (spin ? String(Math.round(v)) : String(Math.round(v * 100) / 100));
+  const input = h('input', { type: 'text', inputmode: 'decimal', autocomplete: 'off', spellcheck: false, 'aria-label': `${d.t('motion.speed')} (${unit})`, dataset: { part: 'motion-speed' } });
+  input.value = show(read(m));
+  input.addEventListener('focus', () => input.select());
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') input.blur();
+  });
+  // A spin may turn either way (a minus turns it clockwise); a path speed is more than 0.
+  const ok = (v        ) => Number.isFinite(v) && (spin ? v !== 0 && Math.abs(v) <= 5000 : v > 0 && v <= (dim === '3d' ? 1000 : 100000));
+  input.addEventListener('change', () => {
+    const v = parseFloat(input.value.replace(',', '.'));
+    if (!ok(v)) {
+      input.value = show(read(m));
+      return;
+    }
+    d.setMotion(key, write(m, v));
+  });
+  // The unit is the handle, as the letters X / Y / Z are for the place: drag it left / right (Shift: finer).
+  const grab = h('span', { class: 'scrub motion-unit', text: unit, title: d.t('placement.scrub') });
+  const per = spin ? 1 : dim === '3d' ? 0.02 : 1;
+  let drag                                                  = null;
+  const valueAt = (e              ) => {
+    const v = drag .v + (e.clientX - drag .x) * per * (e.shiftKey ? 0.1 : 1);
+    const r = Math.round(v / (per / 10)) * (per / 10);
+    return spin ? r : Math.max(per / 10, r);
+  };
+  grab.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    grab.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, v: read(m), moved: false };
+    grab.classList.add('on');
+  });
+  grab.addEventListener('pointermove', (e) => {
+    if (!drag || (!drag.moved && Math.abs(e.clientX - drag.x) < 3)) return;
+    drag.moved = true;
+    const v = valueAt(e);
+    if (!ok(v)) return;
+    input.value = show(v);
+    d.setMotion(key, write(m, v), { live: true });
+  });
+  const finish = (e              , keep         ) => {
+    if (!drag) return;
+    const dr = drag;
+    grab.classList.remove('on');
+    if (!dr.moved) {
+      drag = null;
+      if (keep) input.focus();
+      return;
+    }
+    const v = valueAt(e);
+    drag = null;
+    d.setMotion(key, keep && ok(v) ? write(m, v) : m, { from: m });
+  };
+  grab.addEventListener('pointerup', (e) => finish(e, true));
+  grab.addEventListener('pointercancel', (e) => finish(e, false));
+  const speed = h('label', { class: 'num motion-speed' }, input, grab);
+  const line = h('div', { class: 'f-cells motion-more' }, speed);
+  if (!spin && m.path) {
+    const n = m.path.length;
+    const less = h('button', { type: 'button', class: 'icon-btn', disabled: n <= 1, title: d.t('motion.less'), 'aria-label': d.t('motion.less'), dataset: { action: 'motion-less' }, onclick: () => d.setMotion(key, dropPoint(m)) }, icon('minus'));
+    const more = h('button', { type: 'button', class: 'icon-btn', disabled: n >= 32, title: d.t('motion.more'), 'aria-label': d.t('motion.more'), dataset: { action: 'motion-more' }, onclick: () => d.setMotion(key, addPoint(m)) }, icon('plus'));
+    // The count says what − / + change; its words are the tooltip ("2 points"), the cell itself keeps one line.
+    line.append(h('span', { class: 'motion-points', title: d.t('motion.points', { n }), dataset: { part: 'motion-points' } }, less, h('span', { class: 'n', text: String(n), 'aria-label': d.t('motion.points', { n }) }), more));
+  }
+  out.push(h('span', { class: 'f-l' }), line);
+  return out;
+}
+
+__def(__exports, "motionRow", () => motionRow);
+};
+__defs[38] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -10236,13 +11486,14 @@ __defs[34] = function (__exports) {
 // presses (in the game and in the list) to add / take out instead of
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
-const { h, safeImageSrc } = __require(14);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(19);
-const { groupLayerPossible, sameKind } = __require(32);
-const { icon, setButton } = __require(22);
-const { tipText } = __require(33);
-const { displayName, isGuessed, nameParts } = __require(12);
-const { toneThumb } = __require(15);
+const { h, safeImageSrc } = __require(16);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(21);
+const { groupLayerPossible, sameKind } = __require(35);
+const { icon, setButton } = __require(25);
+const { tipText } = __require(36);
+const { displayName, isGuessed, nameParts } = __require(14);
+const { toneThumb } = __require(17);
+const { motionRow } = __require(37);
 
                                      
                                                                  
@@ -10262,6 +11513,11 @@ const { toneThumb } = __require(15);
                  
                                                                
                    
+     
+                                                                                                                    
+                                            
+     
+                                     
                                  
                                                       
                                                     
@@ -10313,6 +11569,8 @@ const { toneThumb } = __require(15);
                                                                   
                                                                                            
                                 
+                                                                                                                               
+                                            
  
 
                                  
@@ -10869,6 +12127,9 @@ function createPlacementPanel(d                    )                 {
           return p;
         }, '0.1', undefined, (v) => v.toFixed(2))));
     }
+    // Motion (motion-gui, 2026-10-22): how it moves by itself, one more property under its size. 3D only in stage 1
+    // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
+    if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...motionRow({ ...d.motion, t: d.t, dim: d.dim }, key));
     fine.append(fields);
     if (it.scalable && typeof it.defaultScale === 'number') {
       const target = it.defaultScale;
@@ -11131,7 +12392,9 @@ function createPlacementPanel(d                    )                 {
       onclick: () => d.setMulti(!on) });
     // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
     const uiList = d.items().every((i) => i.kinds.includes('ui'));
-    listTools.append(h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
+    // A game with levels: the head names the level (and opens the levels' menu) instead (levels, 2026-10-22).
+    const lvl = uiList ? null : d.levelSwitch?.() ?? null;
+    listTools.append(lvl || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };
@@ -11285,7 +12548,160 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[35] = function (__exports) {
+__defs[39] = function (__exports) {
+'use strict';
+// motion-wire.ts
+
+// The shell's side of motions (motion-gui, 2026-10-22): between the card's Motion row (motion-row.ts), the model
+// (motion-model.ts, inside the world's PlacementModel), undo, and the game page (bridge/motion.ts).
+//
+// WHY its own file: main.ts is 3,800 lines and four members change it the same week; this keeps main.ts to a few
+// calls (the card's deps, the bridge's two messages, one undo branch, the pick). Everything about motions that needs
+// the shell's state is here.
+//
+// What goes to the game page:
+//   motion/show  — the picked object's path (dots to drag), sent only when the pick or its motion changed (`sync`);
+//   motion/play  — the card's ▶ (one object, in the frozen scene) and its stop.
+// What comes back:
+//   motion/changed — a dragged point (live, then `end` = one undo step from the motion before the drag) or the first
+//                    points of a new path (`seed`: they replace the stand-in points of the step just recorded);
+//   motion/played  — the ▶ stopped by itself.
+                                                                                
+                                                     
+const { fallbackPath, kindOf, sameMotion } = __require(22);
+                                                     
+                                                   
+
+                                 
+                                                                        
+                     
+                  
+                               
+             
+                                                                                                                   
+                          
+                                                                   
+                  
+ 
+
+                             
+                                                    
+                                        
+                                                                                                                       
+                              
+                                                         
+                                       
+                                          
+                                                                            
+                                                                               
+                
+ 
+
+function createMotionWire(d                )             {
+  let playing                = null;
+  // What the game page shows now ("key\nmotion json"), so sync() sends only changes.
+  let shown = '';
+  // A point drag in progress: the motion before it (the undo step goes from here).
+  let dragFrom                                           = null;
+
+  const sync = (force = false, seed = false) => {
+    const key = d.picked();
+    const m = key ? d.store.get(key) : null;
+    const sig = `${key}\n${JSON.stringify(m)}`;
+    if (!force && !seed && sig === shown) return;
+    shown = sig;
+    d.send({ type: 'studio:motion/show', key: m ? key : null, motion: m, ...(seed ? { seed: true } : {}) });
+    if (playing && playing !== key) stop();
+  };
+  const stop = () => {
+    if (!playing) return;
+    playing = null;
+    d.send({ type: 'studio:motion/play', key: null });
+  };
+  const play = (key               ) => {
+    if (!key) return void (stop(), d.changed());
+    const m = d.store.get(key);
+    if (!m || kindOf(m) === 'none' || (m.path && !m.path.length)) return;
+    playing = key;
+    d.send({ type: 'studio:motion/play', key, motion: m });
+    d.changed();
+  };
+  /** One change from the card (or a drag's end): the store, one undo step, the game. */
+  const set = (key        , m               , opts                                                           = {}) => {
+    const before = d.store.get(key);
+    // No game to pick points in sight yet (the seed comes later or never): stand-in points so the motion is real now.
+    const next = m && m.path && !m.path.length ? { ...m, path: fallbackPath(kindOf(m), d.dim()) } : m;
+    d.store.set(key, next);
+    if (!opts.live) d.undo.push({ changes: [{ kind: 'motion', key, from: opts.from !== undefined ? opts.from : before, to: next }] });
+    sync(false, !!opts.seed);
+    // A new kind or speed while ▶ is on: play the new one from the start (the preview always shows what is set).
+    if (playing === key) {
+      if (next && kindOf(next) !== 'none') d.send({ type: 'studio:motion/play', key, motion: next });
+      else stop();
+    }
+    if (!opts.live) d.changed();
+  };
+
+  return {
+    row: {
+      motion: (k) => d.store.get(k),
+      setMotion: set,
+      playing: () => playing,
+      play,
+    },
+    sync: (force) => sync(force),
+    onMessage(m) {
+      if (m.type === 'studio:motion/played') {
+        if (playing && (m.key === null || m.key === playing)) {
+          playing = null;
+          d.changed();
+        }
+        return true;
+      }
+      if (m.type !== 'studio:motion/changed') return false;
+      const cur = d.store.get(m.key);
+      if (m.seed) {
+        // The first points picked in sight replace the stand-in ones of the step just recorded (one step, not two).
+        if (!cur?.path) return true;
+        const top = d.undo.peekUndo();
+        const c = top?.changes.length === 1 ? top.changes[0] : undefined;
+        if (c?.kind === 'motion' && c.key === m.key) c.to = structuredClone(m.motion);
+        d.store.set(m.key, m.motion);
+        shown = `${m.key}\n${JSON.stringify(d.store.get(m.key))}`;
+        d.changed();
+        return true;
+      }
+      if (!dragFrom || dragFrom.key !== m.key) dragFrom = { key: m.key, m: cur };
+      d.store.set(m.key, m.motion);
+      // The game drew the dot where the finger is: what it shows is this motion already.
+      shown = `${m.key}\n${JSON.stringify(d.store.get(m.key))}`;
+      if (playing === m.key) d.send({ type: 'studio:motion/play', key: m.key, motion: m.motion });
+      if (m.end) {
+        const from = dragFrom.m;
+        dragFrom = null;
+        if (!sameMotion(from, m.motion)) d.undo.push({ changes: [{ kind: 'motion', key: m.key, from, to: m.motion }] });
+        else d.store.set(m.key, from);
+        d.changed();
+      }
+      return true;
+    },
+    apply(c, dir) {
+      d.store.set(c.key, dir === 'undo' ? c.from : c.to);
+      if (playing === c.key) stop();
+      sync();
+      d.changed();
+    },
+    reset() {
+      playing = null;
+      shown = '';
+      dragFrom = null;
+    },
+  };
+}
+
+__def(__exports, "createMotionWire", () => createMotionWire);
+};
+__defs[40] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -11321,8 +12737,8 @@ __defs[35] = function (__exports) {
 // loses trust fastest, so the ask box's text is never touched by the ⌘K list now; "Ask your AI: “…”" in that list only
 // moves the words into the ask box (focused, not sent). Typing in the ask box still shows suggestions (the `typed`
 // mode below), and those still read the ask box: there the words were written in it on purpose.
-const { h } = __require(14);
-const { icon } = __require(22);
+const { h } = __require(16);
+const { icon } = __require(25);
 
                                                                         
 
@@ -11591,7 +13007,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[36] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -11692,7 +13108,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[37] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -11713,7 +13129,9 @@ const { LIMITS } = __require(0);
                                                                                
                                                           
                                                   
-                                    
+                                   
+                                                                                                                          
+                                                                            
 
                             
                     
@@ -11741,7 +13159,7 @@ class UndoStack {
 
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e           )          {
-    const changes = e.changes.filter((c) => c.kind !== 'pose' || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion') || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });
@@ -11774,6 +13192,12 @@ class UndoStack {
     return this.undone[this.undone.length - 1] ?? null;
   }
 
+  /** Forget every step (levels, 2026-10-22: a new level on screen starts its own history). */
+  clear()       {
+    this.done.length = 0;
+    this.undone.length = 0;
+  }
+
   get canUndo()          {
     return this.done.length > 0;
   }
@@ -11788,7 +13212,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[38] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -11908,7 +13332,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[39] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -11920,9 +13344,9 @@ __defs[39] = function (__exports) {
 // over the game, the game dimmed behind it as for ⌘K (one thing to look at), no colour, names in the text grey and
 // keys in the third grey, three columns on a PC (Edit · Tools · View), one on a phone. Only what applies to this game
 // (no Height in 2D, the draw-order keys only in 2D).
-const { h } = __require(14);
-const { icon } = __require(22);
-const { KEYMAP, keysOf } = __require(33);
+const { h } = __require(16);
+const { icon } = __require(25);
+const { KEYMAP, keysOf } = __require(36);
 
                                     
                          
@@ -11987,7 +13411,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[40] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -12015,7 +13439,7 @@ __defs[40] = function (__exports) {
 //   Enter / Space run it; any other key closes it and goes on to the editor (⌘Z still undoes).
 // - Dimmed rows stay in place and cannot be chosen (context-rows.ts says why).
 // - The camera never moves for it, and nothing it does sends what the floating panels cover (the strip stays put).
-const { h } = __require(14);
+const { h } = __require(16);
 
                            
              
@@ -12023,6 +13447,8 @@ const { h } = __require(14);
                                                                                      
                
                      
+                                                                                                                 
+                    
               
  
                                                  
@@ -12105,9 +13531,9 @@ function createContextMenu(d                 ) {
         el.append(h('div', { class: 'ctx-sep', role: 'separator' }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: 'ctx-row', role: 'menuitem', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined },
+      const btn = h('button', { type: 'button', class: 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
         h('span', { class: 'ctx-label', text: e.label }),
-        !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
+        e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
       btn.addEventListener('pointerenter', (ev) => {
         if ((ev                ).pointerType === 'mouse' && !e.disabled) highlight(i);
@@ -12212,7 +13638,391 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[41] = function (__exports) {
+__defs[46] = function (__exports) {
+'use strict';
+// levels.ts
+
+// The editor's levels (2026-10-22, "manage several levels"; CONTRACT.md §1.10). Pure logic,
+// no DOM, so it is unit-tested (test/levels.test.ts); level-switch.ts draws it, main.ts wires it in.
+//
+// What it holds: the levels in the PERSON'S order, each with its world part of placement.json (objects / added /
+// removed / order / motion — the same shapes the one-level file has at its top; `motion` joined in integrate3,
+// 2026-10-22, because a motion's keys are that level's objects) and how many of its changes are not saved.
+// The level being edited lives in main.ts's PlacementModel; the others wait here as files (`world`), and come back
+// into a fresh model when the person switches to them. WHY a model per visit and not one model for all: every part
+// of the PlacementModel (was / saved / copies / orders) is keyed by object key, and two levels share keys ("tree-1"
+// in Meadow and in Summit are different trees). A fresh model per level keeps every rule the one-level editor has.
+//
+// What the game has (its code's levels, studio.levels → core/levels) and what the person did (copy, rename, reorder,
+// delete) are kept apart, the way `was` and the pose are for an object: placement.json gets the person's list
+// (`levels`) and — only when the two differ — the code's (`levelsWas`), so the AI sees what to change in the code.
+//
+// A game with ONE level, or one that never calls studio.levels(): `active` stays false and compose() returns the file
+// as it is (the design's rule: nothing changes, not one byte).
+                                                                                    
+
+/** A level's world part: what placement.json has at its top for a game with one level. */
+                                                                                                  
+
+                             
+             
+                                                                   
+                 
+                                                                                                   
+                     
+                                                               
+                
+                   
+                                                                                                      
+                
+ 
+
+const emptyWorld = ()            => ({ objects: {} });
+
+/** The world part of a file, deep-copied (only the fields it has). */
+function worldOf(f                                                            )            {
+  const w            = { objects: structuredClone(f?.objects || {}) };
+  if (f?.added?.length) w.added = structuredClone(f.added);
+  if (f?.removed?.length) w.removed = structuredClone(f.removed);
+  if (f?.order?.length) w.order = structuredClone(f.order);
+  if (f?.motion && Object.keys(f.motion).length) w.motion = structuredClone(f.motion);
+  return w;
+}
+
+/** "Meadow 2" → "meadow-2": an id that fits a key (KEY_RE), lower case, at most 60 characters. */
+function slugOf(label        )         {
+  const s = label.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return s || 'level';
+}
+
+class Levels {
+  list               = [];
+  /** The level being edited now ('' = none yet). */
+  current = '';
+  /** The code's levels in the code's order (null until the game or the file said). */
+  code                  = null;
+  /** The code's levels the person deleted (they wait in `levelsWas` for the AI). */
+  deleted = new Set        ();
+  /** Copies, renames, moves and deletions not saved yet (each is one change on "Save · n"). */
+  structDirty = 0;
+  dim      = '3d';
+  /** True once the game has two levels or more (or the file already had levels): the switch shows, the file has `levels`. */
+  active = false;
+
+  /** The saved file, at the editor's start (before the game is on screen). */
+  load(file                      )       {
+    this.list = [];
+    this.deleted.clear();
+    this.code = null;
+    this.structDirty = 0;
+    this.active = false;
+    if (file?.dim) this.dim = file.dim;
+    if (!file?.levels?.length) return;
+    for (const l of file.levels) {
+      const e             = { id: l.id, world: worldOf(l), dirty: 0 };
+      // A code level keeps the code's name as `codeLabel` (the file's label, or its labelWas after a rename), so a
+      // file read back writes the same bytes; a level made in the editor has only the person's name.
+      if (l.from) {
+        e.from = l.from;
+        if (l.label) e.label = l.label;
+      } else {
+        const code = l.labelWas ?? l.label;
+        if (code) e.codeLabel = code;
+        if (l.labelWas && l.label) e.label = l.label;
+      }
+      this.list.push(e);
+    }
+    this.code = file.levelsWas ? file.levelsWas.slice() : this.list.filter((e) => !e.from).map((e) => e.id);
+    for (const id of this.code) if (!this.has(id)) this.deleted.add(id);
+    this.current = this.list[0] .id;
+    this.active = true;
+  }
+
+  has(id        )          {
+    return this.list.some((e) => e.id === id);
+  }
+  entry(id        )                         {
+    return this.list.find((e) => e.id === id);
+  }
+  index(id = this.current)         {
+    return this.list.findIndex((e) => e.id === id);
+  }
+  /** What the person reads: their name, else the code's, else the id. */
+  labelOf(id        )         {
+    const e = this.entry(id);
+    return e?.label || e?.codeLabel || id;
+  }
+  /** The code's level the game builds for `id`: itself when the code has it, else the level it was copied from. */
+  build(id        )         {
+    const e = this.entry(id);
+    if (!e || !e.from || (this.code && this.code.includes(id))) return id;
+    return e.from;
+  }
+
+  /**
+   * The game said its levels (core/levels, every page). `world` = the file's top world part, which belongs to the
+   * level on screen when the game had no levels in the file before. Returns true when the switch should be (re)drawn.
+   */
+  fromGame(levels             , current        , world            )          {
+    const ids = levels.map((l) => l.id);
+    if (!this.active && !this.list.length) {
+      // One level: nothing changes (no switch, the file keeps its bytes).
+      if (levels.length < 2) return false;
+      this.list = levels.map((l) => ({ id: l.id, ...(l.label ? { codeLabel: l.label } : {}), world: emptyWorld(), dirty: 0 }));
+      const e = this.entry(current);
+      if (e && world) e.world = structuredClone(world);
+    } else {
+      // The code may have changed under the editor (the AI applied a copy, a delete, a new level): keep the person's
+      // list, take what the code has now.
+      this.list = this.list.filter((e) => ids.includes(e.id) || (e.from && ids.includes(e.from)));
+      for (const l of levels) {
+        const e = this.entry(l.id);
+        if (e) {
+          if (l.label) e.codeLabel = l.label;
+          // A rename the AI has made in the code: the names agree now.
+          if (e.label && e.label === l.label) delete e.label;
+        } else if (!this.deleted.has(l.id)) this.list.push({ id: l.id, ...(l.label ? { codeLabel: l.label } : {}), world: emptyWorld(), dirty: 0 });
+      }
+      for (const id of [...this.deleted]) if (!ids.includes(id)) this.deleted.delete(id);
+    }
+    this.code = ids;
+    this.active = true;
+    if (this.has(current)) this.current = current;
+    else if (!this.has(this.current)) this.current = this.list[0]?.id || '';
+    return true;
+  }
+
+  /** The file a fresh PlacementModel restores for level `id` (its world part, the rest of `base`). */
+  viewOf(id        , base                       )                {
+    const w = this.entry(id)?.world || emptyWorld();
+    const f                = { version: 1, tool: 'placement', dim: base?.dim || this.dim, space: 'local', ...structuredClone(w) };
+    if (!f.objects) f.objects = {};
+    return f;
+  }
+
+  /** Keep the level being left: its world part as the model has it now, and its unsaved count added to what it had. */
+  stash(world           , dirtyNow        )       {
+    const e = this.entry(this.current);
+    if (!e) return;
+    e.world = worldOf(world);
+    e.dirty += dirtyNow;
+  }
+
+  /** Changes not saved that the live model does not count: every level's carried count and the list's own changes. */
+  dirtyElsewhere()         {
+    return this.list.reduce((n, e) => n + e.dirty, 0) + this.structDirty;
+  }
+
+  markSaved()       {
+    for (const e of this.list) e.dirty = 0;
+    this.structDirty = 0;
+  }
+
+  /**
+   * placement.json as it is written: `file` is the one-level file the editor makes for the level on screen (world
+   * part + ui); with levels, its world part goes into that level's entry and every level is listed.
+   */
+  compose(file               )                {
+    if (!this.active || !this.list.length) return file;
+    const now = worldOf(file);
+    const out                = { ...file, objects: {} };
+    delete out.added;
+    delete out.removed;
+    delete out.order;
+    delete out.motion;
+    out.levels = this.list.map((e) => {
+      const w = e.id === this.current ? now : e.world;
+      const l                 = { id: e.id };
+      const label = this.labelOf(e.id);
+      if (label !== e.id) l.label = label;
+      // Renamed in the editor: the code's name, for the AI to find (the id when the code gave no name).
+      if (!e.from && e.label && e.label !== (e.codeLabel ?? e.id)) l.labelWas = e.codeLabel ?? e.id;
+      if (e.from && !(this.code && this.code.includes(e.id))) l.from = e.from;
+      if (w.objects && Object.keys(w.objects).length) l.objects = structuredClone(w.objects);
+      if (w.added?.length) l.added = structuredClone(w.added);
+      if (w.removed?.length) l.removed = structuredClone(w.removed);
+      if (w.order?.length) l.order = structuredClone(w.order);
+      if (w.motion && Object.keys(w.motion).length) l.motion = structuredClone(w.motion);
+      return l;
+    });
+    // The code's order, only when the person's list says something else (an order, a copy, a delete, a rename).
+    const code = this.code || [];
+    const mine = out.levels.filter((l) => !l.from).map((l) => l.id);
+    if (code.length && (mine.join('\n') !== code.join('\n') || out.levels.some((l) => l.from || l.labelWas))) out.levelsWas = code.slice();
+    return out;
+  }
+
+  // ----- what the person does (each is one change until Save) -----
+
+  /**
+   * A new level copied from the one on screen (its world part = `world`, the live model's), right after it.
+   * Named "<name> 2" (3, 4… if taken); its id follows the name. Returns the new id.
+   */
+  copy(world           )         {
+    const src = this.entry(this.current);
+    if (!src) return '';
+    const base = this.labelOf(src.id).replace(/\s+\d+$/, '');
+    const taken = new Set([...this.list.map((e) => e.id), ...(this.code || []), ...this.deleted]);
+    const names = new Set(this.list.map((e) => this.labelOf(e.id)));
+    let n = 2;
+    while (names.has(`${base} ${n}`) || taken.has(slugOf(`${base} ${n}`))) n++;
+    const label = `${base} ${n}`;
+    const e             = { id: slugOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    this.list.splice(this.index() + 1, 0, e);
+    this.structDirty++;
+    return e.id;
+  }
+
+  /** A new name (trimmed, ≤ 120 characters); false = nothing changed. */
+  rename(id        , label        )          {
+    const e = this.entry(id);
+    const v = label.trim().slice(0, 120);
+    if (!e || !v || v === this.labelOf(id)) return false;
+    e.label = v;
+    this.structDirty++;
+    return true;
+  }
+
+  /** One place up (-1) or down (+1); false at an end. */
+  move(id        , by        )          {
+    const i = this.index(id), j = i + by;
+    if (i < 0 || j < 0 || j >= this.list.length) return false;
+    const [e] = this.list.splice(i, 1);
+    this.list.splice(j, 0, e );
+    this.structDirty++;
+    return true;
+  }
+
+  /** Delete a level (never the last one). Returns the level to show next when it was the one on screen, else ''. */
+  remove(id        )                {
+    const i = this.index(id);
+    if (i < 0 || this.list.length <= 1) return null;
+    this.list.splice(i, 1);
+    if (this.code?.includes(id)) this.deleted.add(id);
+    this.structDirty++;
+    if (id !== this.current) return '';
+    return this.list[Math.min(i, this.list.length - 1)] .id;
+  }
+}
+
+__def(__exports, "worldOf", () => worldOf);
+__def(__exports, "slugOf", () => slugOf);
+__def(__exports, "Levels", () => Levels);
+};
+__defs[47] = function (__exports) {
+'use strict';
+// level-switch.ts
+
+// The level switch (levels, 2026-10-22; CONTRACT.md §1.10). In a game with levels, the
+// list's head — "In this scene" — becomes the level's name: "Meadow ⌄  1 of 3". Pressing it opens the levels' menu
+// (the same plate as the right-click menu, context-menu.ts): every level (✓ on the one on screen), then New level from
+// Meadow, Rename…, Move up, Move down, Delete level. Rename turns the head into a text field in place.
+//
+// Look (the design's rule: the tools quieter than the game): no new button. The words that already said where you
+// are become the way to go somewhere else — the head keeps the list title's grey and size, the chevron is the
+// card's chevronDown, and "1 of 3" is the third grey. No colour: orange stays "what you picked".
+//
+// What each row does is main.ts's (it owns the game frame, the models and the draft); this file only draws and asks.
+                                                   
+const { h } = __require(16);
+const { icon } = __require(25);
+                                          
+
+                                  
+                                                                 
+                 
+     
+                                                                                                                   
+                                                     
+     
+                                                      
+                       
+               
+                                          
+                                     
+                           
+ 
+
+function createLevelSwitch(d                 ) {
+  let renaming = false;
+
+  const entries = ()              => {
+    const lv = d.levels;
+    const cur = lv.current;
+    const i = lv.index();
+    const rows              = lv.list.map((e) => ({ id: `level:${e.id}`, label: lv.labelOf(e.id), checked: e.id === cur, run: () => e.id !== cur && d.go(e.id) }));
+    rows.push(
+      { sep: true },
+      { id: 'level-new', label: d.t('level.new', { name: lv.labelOf(cur) }), run: () => d.copy() },
+      { id: 'level-rename', label: d.t('level.rename'), run: () => startRename() },
+      { id: 'level-up', label: d.t('level.up'), disabled: i <= 0, run: () => d.move(cur, -1) },
+      { id: 'level-down', label: d.t('level.down'), disabled: i < 0 || i >= lv.list.length - 1, run: () => d.move(cur, 1) },
+      { sep: true },
+      { id: 'level-delete', label: d.t('level.delete'), disabled: lv.list.length <= 1, run: () => d.remove(cur) },
+    );
+    return rows;
+  };
+
+  let el                     = null;
+  let field                          = null;
+  function startRename() {
+    renaming = true;
+    // The head is drawn again by the list (renderListTools); the field takes its place there.
+    const old = el;
+    const field = render();
+    if (field) old?.replaceWith(field);
+  }
+
+  /** The head for the list: the button, or the name field while renaming. null = a game without levels. */
+  function render()                     {
+    const lv = d.levels;
+    if (!lv.active || !lv.list.length) return (el = null);
+    const name = lv.labelOf(lv.current);
+    if (renaming) {
+      // The same field across redraws of the list (a picture arriving redraws its head): what is typed and the focus
+      // stay. A blur commits only when the field is still on the page and the focus went elsewhere.
+      if (field) {
+        requestAnimationFrame(() => field && document.activeElement !== field && field.focus());
+        return (el = field);
+      }
+      const input = (field = h('input', { type: 'text', class: 'level-rename', value: name, maxlength: '120', 'aria-label': d.t('level.renameLabel'), dataset: { part: 'level-rename' } })                    );
+      let done = false;
+      const finish = (keep         ) => {
+        if (done) return;
+        done = true;
+        renaming = false;
+        field = null;
+        const v = input.value.trim();
+        if (keep && v && v !== name) d.rename(lv.current, v);
+        else input.replaceWith(render() || h('span'));
+      };
+      input.addEventListener('keydown', (e) => {
+        // The editor's own keys (⌘Z, Delete, arrows…) must not act on the scene while typing a name.
+        e.stopPropagation();
+        if (e.key === 'Enter') finish(true);
+        else if (e.key === 'Escape') finish(false);
+      });
+      input.addEventListener('blur', () => setTimeout(() => input.isConnected && document.activeElement !== input && finish(true), 0));
+      requestAnimationFrame(() => {
+        input.focus();
+        input.select();
+      });
+      return (el = input);
+    }
+    const b = h('button', { type: 'button', class: 'level-switch', dataset: { action: 'levels', part: 'level-switch' }, 'aria-haspopup': 'menu', title: d.t('level.switch', { name }) },
+      h('span', { class: 'level-name', text: name }),
+      icon('chevronDown'),
+      h('span', { class: 'level-n mono', text: d.t('level.of', { n: lv.index() + 1, total: lv.list.length }) }));
+    b.addEventListener('click', () => d.openMenu(entries(), b.getBoundingClientRect()));
+    return (el = b);
+  }
+
+  return { render, entries, isRenaming: () => renaming };
+}
+
+__def(__exports, "createLevelSwitch", () => createLevelSwitch);
+};
+__defs[48] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -12402,7 +14212,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[42] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -12422,7 +14232,7 @@ __defs[42] = function (__exports) {
 // or save anyway. × / Escape go back to editing with nothing saved. Pure parts (bigChanges) are unit-tested in
 // test/safe-save.test.ts; the sheet is shown by test/fb-safe-shots.browser.mjs.
                                                       
-const { h } = __require(14);
+const { h } = __require(16);
 
                             
               
@@ -12513,7 +14323,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[43] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -12542,7 +14352,7 @@ __defs[43] = function (__exports) {
 // the strip over the game while playing ("This change isn't in the game yet [Save] ×"): the person already chose, so
 // Play says nothing more (the orange Save beside Play stays). Asked by main.ts togglePlay; the pure "when" is
 // playAsks() below, the screen in test/studio-play-choice.browser.mjs.
-const { h } = __require(14);
+const { h } = __require(16);
 
                                                                        
 
@@ -12670,7 +14480,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[44] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -12696,8 +14506,8 @@ __defs[44] = function (__exports) {
 // the bar's middle is World | UI and the eye; the words are the pointer's tooltip ("Show the game's UI  ⇧U"). Phone: a
 // finger's 44 px.
                                                 
-const { h } = __require(14);
-const { icon } = __require(22);
+const { h } = __require(16);
+const { icon } = __require(25);
 
                               
                   
@@ -12740,7 +14550,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[45] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -12798,7 +14608,7 @@ __def(__exports, "uiAsPlacement", () => uiAsPlacement);
 __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[46] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -12875,7 +14685,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[47] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -12894,41 +14704,44 @@ __defs[47] = function (__exports) {
 const { LOCAL_PATHS, UI, isStudioMessage } = __require(0);
 const { keyStep } = __require(1);
 const { validateLibrary, validatePlacement } = __require(3);
-const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } = __require(13);
-const { DRAG_FILE } = __require(11);
-const { createLibraryObjects, DRAG_OBJECT } = __require(16);
-const { rulesFor } = __require(17);
-const { samePose } = __require(20);
-const { h, safeImageSrc } = __require(14);
-const { detectLang, setExtraText, translate } = __require(21);
-const { NEXT_STEPS, renderNextSteps } = __require(23);
-const { statusCovers } = __require(24);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(25);
-const { bounces, saveLoud } = __require(26);
-const { askView: questionView } = __require(27);
-const { playLine, playWords } = __require(28);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(29);
-const { renderSettings } = __require(31);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(30);
-const { dropTarget, hasLayer, layerTarget } = __require(19);
-const { createPlacementPanel } = __require(34);
-const { icon, setButton } = __require(22);
-const { createPalette } = __require(35);
-const { fitPicture } = __require(36);
-const { PlacementModel } = __require(20);
-const { UndoStack, poseChange } = __require(37);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(32);
-const { displayName, forgetNames, noteItems, useNameLang } = __require(12);
-const { keyOf, tipText } = __require(33);
-const { installTooltips } = __require(38);
-const { createShortcutSheet } = __require(39);
-const { createContextMenu } = __require(40);
-const { contextRows } = __require(41);
-const { bigChanges, createSafeSave } = __require(42);
-const { createUnsavedGuard, lostBy, playAsks } = __require(43);
-const { createLayerSwitch } = __require(44);
-const { uiAsPlacement, uiEntries, withUi } = __require(45);
-const { barPress, gripEnd, readFold, writeFold } = __require(46);
+const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } = __require(15);
+const { DRAG_FILE } = __require(13);
+const { createLibraryObjects, DRAG_OBJECT } = __require(18);
+const { rulesFor } = __require(19);
+const { samePose } = __require(23);
+const { h, safeImageSrc } = __require(16);
+const { detectLang, setExtraText, translate } = __require(24);
+const { NEXT_STEPS, renderNextSteps } = __require(26);
+const { statusCovers } = __require(27);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(28);
+const { bounces, saveLoud } = __require(29);
+const { askView: questionView } = __require(30);
+const { playLine, playWords } = __require(31);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(32);
+const { renderSettings } = __require(34);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(33);
+const { dropTarget, hasLayer, layerTarget } = __require(21);
+const { createPlacementPanel } = __require(38);
+const { createMotionWire } = __require(39);
+const { icon, setButton } = __require(25);
+const { createPalette } = __require(40);
+const { fitPicture } = __require(41);
+const { PlacementModel } = __require(23);
+const { UndoStack, poseChange } = __require(42);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(35);
+const { displayName, forgetNames, noteItems, useNameLang } = __require(14);
+const { keyOf, tipText } = __require(36);
+const { installTooltips } = __require(43);
+const { createShortcutSheet } = __require(44);
+const { createContextMenu } = __require(45);
+const { Levels, worldOf } = __require(46);
+const { createLevelSwitch } = __require(47);
+const { contextRows } = __require(48);
+const { bigChanges, createSafeSave } = __require(49);
+const { createUnsavedGuard, lostBy, playAsks } = __require(50);
+const { createLayerSwitch } = __require(51);
+const { uiAsPlacement, uiEntries, withUi } = __require(52);
+const { barPress, gripEnd, readFold, writeFold } = __require(53);
 
                                                                         
 
@@ -13072,11 +14885,33 @@ function start(host            ) {
   const thumbAsked = new Map                ();
   // One model per layer (ui-layer.ts says why the UI's is a PlacementModel too); `model` is the edited layer's, so
   // every move, undo and card below works on whichever layer is on.
-  const worldModel = new PlacementModel();
+  // `let`: a game with levels gets a fresh world model per level shown (levels.ts says why).
+  let worldModel = new PlacementModel();
   const uiModel = new PlacementModel();
+  // Levels (2026-10-22): the level list and the levels not on screen; inactive for a game with one level.
+  const levels = new Levels();
+  // The opened file's top world part, for the level on screen when the game first says it has levels.
+  let startWorld                       ;
   let model = worldModel;
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
+  // Motions (motion-gui, 2026-10-22; motion-wire.ts): the card's Motion row, the path in the game, its ▶. The world's
+  // only, one object picked, while editing.
+  const motionWire = createMotionWire({
+    // A getter (integrate3, 2026-10-22): a game with levels gets a fresh worldModel per level (useLevelModel), so the
+    // wire must read the one on screen now, not the first one it was given.
+    get store() {
+      return worldModel.motion;
+    },
+    undo,
+    send: (m) => send(m),
+    dim: () => dim,
+    picked: () => (editing && editLayer === 'world' && group.length <= 1 ? selected : null),
+    changed: () => {
+      if (tool === 'placement' && page === 'tool') placementPanel.render();
+      renderButtons();
+    },
+  });
   const listeners = new Map                                         ();
   let placementRestored = false;
   // The same for the UI layer's first list of each page (UI stage 1): set false by loadGame().
@@ -13294,8 +15129,11 @@ function start(host            ) {
   // screen where this bar is gone. Undo / Redo step away while playing there (they are disabled in Play anyway) so the
   // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
   const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
+  // Pause while playing (2026-10-22, bridge/play-pause.ts) on the same narrow screens: ❚❚ left of ✦, for the same reason
+  // (the game page draws nothing in its corner there). Pressed again while paused (it shows ▶ then), it resumes.
+  const playPauseBtn = btn('play-pause', () => postGame({ type: 'studio:play/pause' }), { class: 'icon-btn play-pause', hidden: true, dataset: { action: 'play-pause', part: 'play-pause' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playPauseBtn, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
   // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
   // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
   // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
@@ -13538,6 +15376,27 @@ function start(host            ) {
     },
   });
   app.append(ctxMenu.catcher, ctxMenu.el);
+  // The list's head in a game with levels (level-switch.ts); what its rows do is below (goLevel and the rest).
+  const levelSwitch = createLevelSwitch({
+    t,
+    levels,
+    // Under the head from its left edge, for a finger too; where there is no room below (a phone's sheet), above it —
+    // never over it (a menu moved up to fit covered the head that says which level it is about).
+    openMenu: (entries, head) => {
+      ctxMenu.show(entries, head.left, head.bottom + 2, { place: 'levels', label: t('level.menu') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      if (m.top < head.bottom && m.bottom > head.top) ctxMenu.el.style.top = `${Math.max(8, Math.round(head.top - m.height - 4))}px`;
+    },
+    go: (id) => void goLevel(id),
+    copy: () => void goLevel(levels.copy(worldModel.result())),
+    rename: (id, label) => levelsChanged(levels.rename(id, label)),
+    move: (id, by) => levelsChanged(levels.move(id, by)),
+    remove: (id) => {
+      const next = levels.remove(id);
+      if (next) void goLevel(next, false);
+      else levelsChanged(next === '');
+    },
+  });
   installTooltips(app);
   // A Library tile dragged onto the Scene row = its "Add to scene" ("use the Library", 2026-10-18). The row is the
   // drop target because the Library covers the game on PC (the game is not on screen to drop on); while a tile is
@@ -13672,6 +15531,7 @@ function start(host            ) {
   // ----- tools -----
   const placementPanel = createPlacementPanel({
     t,
+    levelSwitch: () => levelSwitch.render(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
     hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
     items: () => items,
@@ -13726,6 +15586,7 @@ function start(host            ) {
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
+    motion: motionWire.row,
   });
 
   // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
@@ -14254,7 +16115,7 @@ function start(host            ) {
       return it ? displayName(it, t) : k;
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : 'move';
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0] ) : t('undo.n', { n: keys.length }) });
   }
@@ -14371,7 +16232,8 @@ function start(host            ) {
       if (c.kind === 'pose') {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
-      } else if ((c.kind === 'add') === (dir === 'redo')) {
+      } else if (c.kind === 'motion') motionWire.apply(c, dir);
+      else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
           model.addCopy(c.key, c.from, c.pose);
@@ -14388,7 +16250,7 @@ function start(host            ) {
     }
     flush();
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose').map((c) => c.key));
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && c.kind !== 'motion').map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]  : null;
@@ -14898,9 +16760,14 @@ function start(host            ) {
   let playAskOn = false;
   let playMark                 = null;
   let playNow                              = null;
+  // The game page is paused (play/paused): the phone's ❚❚ shows ▶. ✦ stays where it is (the buttons must not shift under
+  // the finger that pressed ❚❚); pressed while paused it takes the person to the chat's field.
+  let playPaused = false;
   function renderPlayAsk() {
     const show = playing && playAskOn && phone();
     playAskBtn.hidden = !show;
+    playPauseBtn.hidden = !show;
+    if (show) setButton(playPauseBtn, playPaused ? 'play' : 'pause', playPaused ? t('play.resume') : t('play.pause'), false, playPaused ? t('play.resumeTip') : t('play.pauseTip'));
     if (playing && playAskOn && playMark !== !phone()) {
       playMark = !phone();
       postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
@@ -15159,6 +17026,7 @@ function start(host            ) {
   };
 
   function onBridge(m               ) {
+    if (motionWire.onMessage(m)) return;
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -15259,9 +17127,15 @@ function start(host            ) {
       case 'studio:play/ask':
         if (playing && !host.offline) {
           void askAi({ kind: 'play', text: m.text, ...(m.shot ? { shot: m.shot } : {}), ...(m.view ? { view: m.view } : {}), ...(m.near ? { near: m.near } : {}),
-            ...(m.logs ? { logs: m.logs } : {}), ...(m.fullscreen ? { fullscreen: true } : {}), ...(m.size ? { size: m.size } : {}) })
-            .then((ok) => postGame({ type: 'studio:play/sent', ok }));
+            ...(m.logs ? { logs: m.logs } : {}), ...(m.fullscreen ? { fullscreen: true } : {}), ...(m.size ? { size: m.size } : {}),
+            // From the chat over a paused game (2026-10-22): the talk so far, and the id of its first message.
+            ...(m.paused ? { paused: true } : {}), ...(m.chat ? { chat: m.chat } : {}), ...(m.history?.length ? { history: m.history } : {}) })
+            .then((ok) => postGame({ type: 'studio:play/sent', ok, ...(ok && pending?.id ? { id: pending.id } : {}) }));
         }
+        break;
+      case 'studio:play/paused':
+        playPaused = playing && m.on;
+        renderPlayAsk();
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
@@ -15270,6 +17144,18 @@ function start(host            ) {
         // The person chose to see the fix: the game opens again from its new code, still in Play.
         if (playing) loadGame();
         break;
+      case 'studio:core/levels': {
+        // Levels (2026-10-22): the game said its levels. The first time (a file without levels), the opened file's
+        // world part is the level on screen's. A page that built another level than the one restored (it ignored
+        // the URL) gets that level's model, before its objects are listed.
+        const was = levels.current;
+        if (levels.fromGame(m.levels, m.current, startWorld)) {
+          startWorld = undefined;
+          if (was && was !== levels.current) useLevelModel(levels.current);
+          renderAll();
+        }
+        break;
+      }
       case 'studio:core/game-error':
         if (!gameError) gameError = { message: m.message, where: m.where };
         if (playing) showToast(t('status.gameErrorToast', { msg: m.message }), 8000);
@@ -15421,6 +17307,7 @@ function start(host            ) {
         } else if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
+        motionWire.sync();
         break;
       case 'studio:placement/moved':
         model.moved(m.key, m.pose);
@@ -15531,13 +17418,13 @@ function start(host            ) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty();
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere();
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
    */
-  const fileNow = ()                => withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
-    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null);
+  const fileNow = ()                => levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
+    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
   const dirtyCount = () => placementDirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
 
   // ----- the draft and Save (rebrand 2026-10-16, play test the same day) -----
@@ -15718,6 +17605,7 @@ function start(host            ) {
           if (!r.ok) return r.error || 'placement';
           worldModel.markSaved();
           uiModel.markSaved();
+          levels.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -15875,10 +17763,45 @@ function start(host            ) {
     sendMarks(true);
   }
 
+  // ----- levels (2026-10-22; levels.ts, level-switch.ts) -----
+  /** A fresh world model for level `id` (the editor's layer goes back to the world, as on any new game page). */
+  function useLevelModel(id        ) {
+    worldModel = new PlacementModel();
+    worldModel.restore(levels.viewOf(id));
+    if (editLayer !== 'ui') model = worldModel;
+  }
+  /**
+   * Show level `id`: the one on screen is kept (its layout and unsaved count, `keep`; false after it was deleted),
+   * the draft written (so the game's loader reads the new level's layout too), and the game opened on `id`. Like
+   * "Reload game" it asks first when a game tool's data would be lost. ⌘Z starts empty: a step of another level
+   * would change what is not on screen.
+   */
+  async function goLevel(id        , keep = true) {
+    if (!id || !levels.has(id)) return;
+    if (!(await confirmLoss('reload'))) return levelsChanged(true);
+    if (keep) levels.stash(worldModel.result(), worldModel.dirty());
+    levels.current = id;
+    useLevelModel(id);
+    undo.clear();
+    selected = null;
+    group = [];
+    await keepNow();
+    loadGame();
+    renderAll();
+  }
+  /** A rename / move / delete that keeps the level on screen: the head and the Save count again, the draft soon. */
+  function levelsChanged(changed         ) {
+    if (!changed) return;
+    renderAll();
+    keepSoon();
+  }
+
   function loadGame(soft = false) {
     bridgeAlive = false;
-    // A new game page asks again (play/hello).
+    motionWire.reset();
+    // A new game page asks again (play/hello), and starts unpaused.
     playAskOn = false;
+    playPaused = false;
     playMark = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
@@ -15918,6 +17841,11 @@ function start(host            ) {
     if (playing) u.searchParams.delete(k);
     else u.searchParams.set(k, v);
     if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
+    // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
+    if (levels.active && levels.current) {
+      u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
+      u.searchParams.set(LOCAL_PATHS.buildParam, levels.build(levels.current));
+    }
     iframe.src = u.href;
     renderAll();
   }
@@ -16629,7 +18557,9 @@ function start(host            ) {
       }
       const v = placement ? validatePlacement(placement) : null;
       const saved = v && v.ok ? v.value : null;
-      worldModel.restore(saved);
+      levels.load(saved);
+      if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
+      else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
       fileUi = saved?.ui;
       fileUiView = saved?.uiView;
@@ -16649,7 +18579,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[48] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -16699,6 +18629,7 @@ function createKumoHost(base        )           {
     makePicture: (req) => kumo('POST', 'image', req),
     makeModel: (req) => kumo('POST', 'model3d', req),
     job: (id) => kumo('GET', `model3d/${encodeURIComponent(id)}`),
+    makeSound: (req) => kumo('POST', 'sound', req),
   };
 }
 
@@ -16827,19 +18758,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[49] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(47);
-const { createLocalHost } = __require(48);
+const { start } = __require(54);
+const { createLocalHost } = __require(55);
 
 start(createLocalHost());
 
 
 };
-__require(49);
+__require(56);
 })();

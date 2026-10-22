@@ -12,6 +12,10 @@
 // before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
 // with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
 //
+// `levels` (2026-10-22): a game with several levels gets one world part per level in the file. Pass the level being
+// built: applyPlacement(scene, './placement.json', { level: 'cave' }). Without `level`, a file with levels moves
+// nothing in the world (another level's layout must never land on this one); the UI is applied either way.
+//
 // Call it once after the world is built and BEFORE physics bodies are created: an engine that
 // copies body positions into objects every frame would otherwise move them back.
 //
@@ -32,6 +36,16 @@
 // every object under the same key after the reorder.
 // Names are compared after the same clean-up the editor applies to make a key (characters outside
 // A-Z a-z 0-9 _ : # . - / become "_", at most 80 characters).
+//
+// `motion` (motion-gui, 2026-10-22: asked for as "build an object's movement with the GUI"): per key, a path the object
+// goes along and / or a spin, made in the editor's card. Run by this file from the game's own frames, so a game that
+// loads placement.json moves them without any code of its own:
+//   position = the place it was given (after `objects`) + motionAt(m, seconds).off
+//   angle    = the angle it was given + spin × seconds (three: rotation.y; Pixi: rotation)
+// NOT inside the editor (the page URL has studio=edit): there the editor owns every pose, plays one object's motion
+// itself (▶ on the card) and must see the place, not a point along the way. A game that writes the object's position
+// every frame itself (physics, its own update) wins over this; the skill tells the AI to put the motion into that code.
+// report.motion = the keys that move; stopMotion() stops them all (a game that wants to take over).
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -39,9 +53,10 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
 /**
  * @param {object} root  three.js Scene/Object3D or PixiJS Container (app.stage)
  * @param {string | object} [source]  URL of placement.json (default './placement.json') or its parsed content
+ * @param {{ level?: string }} [opts]  level: the id of the level being built (a game with levels)
  * @returns {Promise<{ applied: string[], missing: string[], unstable: string[], skipped: string[] }>}
  */
-export async function applyPlacement(root, source = './placement.json') {
+export async function applyPlacement(root, source = './placement.json', opts = {}) {
   const report = { applied: [], missing: [], unstable: [], skipped: [] };
   let data = source;
   if (typeof source === 'string') {
@@ -65,6 +80,13 @@ export async function applyPlacement(root, source = './placement.json') {
   if (data.dim !== dim) {
     warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
     return report;
+  }
+  if (Array.isArray(data.levels)) {
+    if (!(opts && opts.level)) {
+      warn('this file has levels: pass { level } to applyPlacement');
+      return report;
+    }
+    data = placementForLevel(data, opts.level);
   }
   const n = three ? 3 : 2;
   for (const key of Object.keys(data.objects)) {
@@ -99,9 +121,95 @@ export async function applyPlacement(root, source = './placement.json') {
     if (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);
   }
   if (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);
+  if (data.motion && typeof data.motion === 'object') runMotion(root, data.motion, n, three, report);
   if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
   if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
   return report;
+}
+
+// The keys moved by this file (any copy of it on the page): the editor's ▶ Play (bridge/play-arrange.ts) leaves them
+// alone, so an object is never moved twice. A global symbol, because the game and the editor each load their own copy.
+const MOVING = Symbol.for('game-studio.motion');
+let motionRuns = [];
+
+/** Stop every motion started by applyPlacement (the objects stay where they are now). */
+export function stopMotion() {
+  for (const r of motionRuns) r.stop = true;
+  motionRuns = [];
+  if (globalThis[MOVING]) globalThis[MOVING].clear();
+}
+
+/**
+ * Where a motion is after `t` seconds: `off` = the offset from the object's place (null without a path), `turn` = the
+ * angle added (spin × t), `done` = a `once` path has arrived. Shared with the editor (its ▶ preview and its ▶ Play), so
+ * the editor and the game move the same way. Path points are offsets from the place, the start ([0, 0(, 0)]) left out;
+ * constant speed along straight lines; `repeat` pingpong (default: there and back), loop (back to the start and round
+ * again), once (stops at the last point).
+ */
+export function motionAt(m, t) {
+  const out = { off: null, turn: 0, done: false };
+  if (!m || typeof m !== 'object') return out;
+  if (isNum(m.spin)) out.turn = m.spin * t;
+  const n = Array.isArray(m.path) && Array.isArray(m.path[0]) ? m.path[0].length : 0;
+  const path = n ? m.path.filter((q) => Array.isArray(q) && q.length === n && q.every(isNum)) : [];
+  if (!path.length) return out;
+  const rep = m.repeat === 'loop' || m.repeat === 'once' ? m.repeat : 'pingpong';
+  const pts = [path[0].map(() => 0), ...path];
+  if (rep === 'loop') pts.push(pts[0]);
+  const lens = pts.slice(1).map((q, i) => Math.hypot(...q.map((v, k) => v - pts[i][k])));
+  const total = lens.reduce((a, b) => a + b, 0);
+  let d = Math.max(0, (isNum(m.speed) && m.speed > 0 ? m.speed : 1) * t);
+  if (!(total > 0)) return (out.off = pts[0]), out;
+  if (rep === 'once') (out.done = d >= total), (d = Math.min(d, total));
+  else if (rep === 'loop') d %= total;
+  else (d %= 2 * total), (d = d > total ? 2 * total - d : d);
+  let i = 0;
+  while (i < lens.length - 1 && d > lens[i]) d -= lens[i++];
+  const f = lens[i] ? Math.min(1, d / lens[i]) : 0;
+  out.off = pts[i].map((v, k) => v + (pts[i + 1][k] - v) * f);
+  return out;
+}
+
+function runMotion(root, motion, n, three, report) {
+  if (typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search)) return;
+  const run = { list: [], stop: false };
+  for (const key of Object.keys(motion)) {
+    const m = motion[key], o = findByKey(root, key, three);
+    const ok = m && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
+    if (!o || !ok) continue;
+    run.list.push({ key, o, m, p: [o.position.x, o.position.y, o.position.z], r: three ? o.rotation.y : o.rotation });
+    (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+  }
+  if (!run.list.length || typeof requestAnimationFrame !== 'function') return;
+  report.motion = run.list.map((e) => e.key);
+  motionRuns.push(run);
+  const t0 = performance.now();
+  const tick = (now) => {
+    if (run.stop) return;
+    const t = Math.max(0, (now - t0) / 1000);
+    for (const e of run.list) {
+      const a = motionAt(e.m, t);
+      if (a.off) e.o.position.set(e.p[0] + a.off[0], e.p[1] + a.off[1], three ? e.p[2] + a.off[2] : undefined);
+      if (isNum(e.m.spin)) three ? (e.o.rotation.y = e.r + a.turn) : (e.o.rotation = e.r + a.turn);
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * The file as one level sees it (levels, 2026-10-22): that level's objects / added / removed / order / motion at the
+ * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects). A file without levels comes back as it is; a level the file does not list has nothing to apply.
+ */
+export function placementForLevel(data, id) {
+  if (!data || !Array.isArray(data.levels)) return data;
+  const l = data.levels.find((x) => x && x.id === id) || {};
+  const out = { ...data, objects: l.objects || {} };
+  for (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];
+  else delete out[k];
+  delete out.levels;
+  delete out.levelsWas;
+  return out;
 }
 
 function applyUi(doc, ui) {

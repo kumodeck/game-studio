@@ -28,6 +28,12 @@ in-game image preview that is not saved); "add" writes a NEW file under
   onto the Scene row (`DRAG_FILE`). On a phone the bar's buttons (Multi-select, Add files, Make with AI) fold into one
   "+" next to the search (the shell's phone CSS shows it), so the Library's head is two rows; tiles carry no
   Object / Asset tag (the second design review, 2026-10-19).
+- `ai-make.ts` — "Make with AI", the place to make things (generate-ui, 2026-10-22): five kinds (image, 3D,
+  sound effect, music, voice line) through the optional KUMODeck sign-in, example words, the price and balance
+  before Make, the wait with a clock, a "Just made" card (▶ / the image, "Add to scene", "Ask your AI…") and
+  "Made here" from `.studio/generated.json` with Again / Change (nothing is sent until Make).
+  `gen-kinds.ts` — the kinds as data (price, usual wait, examples, history line → form); `gen-made.ts` — the
+  card and the history.
 - `refs.ts` — names of asset files found in HTML/JS/CSS text, matched against
   the folder (`buildAssetList()` builds the contract's `listAssets()` answer).
 - `marks.ts` — one row per file from the three sources (folder, code, loads +
@@ -43,4 +49,4 @@ in-game image preview that is not saved); "add" writes a NEW file under
 - `dev/` — test doubles and samples for trying the tool before the real shell
   and server are joined (see `dev/README.md`).
 
-Unit tests: `node --experimental-strip-types --test test/library-data.test.ts`.
+Unit tests: `node --experimental-strip-types --test test/library-data.test.ts test/generate.test.ts`.

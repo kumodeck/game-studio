@@ -20,6 +20,7 @@
 import { type Dim, type Item, type PlacementAdded, type PlacementEntry, type PlacementFile, type PlacementOrder, type PlacementRemoved, type Pose } from '../contract.ts';
 import { hasLayer, orderOfLayer } from './layers.ts';
 import { roundPose, samePose } from './pose-compare.ts';
+import { MotionStore } from './motion-model.ts';
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -94,6 +95,11 @@ export class PlacementModel {
   private fileEdits: { copies: Array<{ key: string; from: string; pose: Pose }>; removes: string[] } = { copies: [], removes: [] };
   /** File copies that could not be made (their original is gone): kept on save, like orphans. */
   private orphanAdded: PlacementAdded[] = [];
+  /**
+   * How objects move by themselves (motion-gui, 2026-10-22): its own store (motion-model.ts), read and written with the
+   * rest of the file. Each object whose motion changed is one Save count and a dot on its row.
+   */
+  readonly motion = new MotionStore();
 
   /** Load the saved file (before the game reports its items). */
   restore(file: PlacementFile | null): void {
@@ -101,6 +107,7 @@ export class PlacementModel {
     this.fileOrders.clear();
     this.fileAdded = [];
     this.fileRemoved = [];
+    this.motion.restore(file?.motion);
     if (!file || !file.objects) return;
     if (file.dim) this.dim = file.dim;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
@@ -464,7 +471,7 @@ export class PlacementModel {
     for (const k of this.savedCopies.keys()) if (!this.live.has(k)) n++;
     for (const k of this.removed) if (!this.savedRemoved.has(k)) n++;
     for (const k of this.savedRemoved) if (!this.removed.has(k)) n++;
-    return n + this.orderDirty().length;
+    return n + this.orderDirty().length + this.motion.changedKeys().length;
   }
 
   /**
@@ -493,6 +500,7 @@ export class PlacementModel {
       // two lists; the rest are the moved ones.
       if (now.join('\n') !== was.join('\n')) for (const k of outOfOrder(was, now)) out.add(k);
     }
+    for (const k of this.motion.changedKeys()) out.add(k);
     return out;
   }
 
@@ -532,6 +540,8 @@ export class PlacementModel {
     if (added.length) file.added = added;
     const removed = [...this.removed].sort().map((k) => this.removedMeta.get(k) || { key: k });
     if (removed.length) file.removed = removed;
+    const motion = this.motion.result(this.dim, (k) => this.isRemoved(k));
+    if (motion) file.motion = motion;
     return file;
   }
 
@@ -541,5 +551,6 @@ export class PlacementModel {
     for (const k of this.live) this.savedCopies.set(k, roundPose(this.current.get(k)!, this.dim));
     this.savedRemoved = new Set(this.removed);
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
+    this.motion.markSaved();
   }
 }

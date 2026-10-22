@@ -60,6 +60,7 @@ import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
+import { createMotionWire } from './motion-wire.ts';
 import { icon, setButton } from './icons.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
@@ -71,6 +72,8 @@ import { keyOf, tipText } from './keymap.ts';
 import { installTooltips } from './tooltip.ts';
 import { createShortcutSheet } from './shortcuts.ts';
 import { createContextMenu, type MenuEntry } from './context-menu.ts';
+import { Levels, worldOf, type WorldPart } from './levels.ts';
+import { createLevelSwitch } from './level-switch.ts';
 import { contextRows, type CtxPlace } from './context-rows.ts';
 import { bigChanges, createSafeSave } from './safe-save.ts';
 import { createUnsavedGuard, lostBy, playAsks, type GuardOp } from './unsaved-guard.ts';
@@ -220,11 +223,33 @@ export function start(host: StudioHost) {
   const thumbAsked = new Map<string, string>();
   // One model per layer (ui-layer.ts says why the UI's is a PlacementModel too); `model` is the edited layer's, so
   // every move, undo and card below works on whichever layer is on.
-  const worldModel = new PlacementModel();
+  // `let`: a game with levels gets a fresh world model per level shown (levels.ts says why).
+  let worldModel = new PlacementModel();
   const uiModel = new PlacementModel();
+  // Levels (2026-10-22): the level list and the levels not on screen; inactive for a game with one level.
+  const levels = new Levels();
+  // The opened file's top world part, for the level on screen when the game first says it has levels.
+  let startWorld: WorldPart | undefined;
   let model = worldModel;
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
+  // Motions (motion-gui, 2026-10-22; motion-wire.ts): the card's Motion row, the path in the game, its ▶. The world's
+  // only, one object picked, while editing.
+  const motionWire = createMotionWire({
+    // A getter (integrate3, 2026-10-22): a game with levels gets a fresh worldModel per level (useLevelModel), so the
+    // wire must read the one on screen now, not the first one it was given.
+    get store() {
+      return worldModel.motion;
+    },
+    undo,
+    send: (m) => send(m),
+    dim: () => dim,
+    picked: () => (editing && editLayer === 'world' && group.length <= 1 ? selected : null),
+    changed: () => {
+      if (tool === 'placement' && page === 'tool') placementPanel.render();
+      renderButtons();
+    },
+  });
   const listeners = new Map<string, Set<(m: BridgeToShell) => void>>();
   let placementRestored = false;
   // The same for the UI layer's first list of each page (UI stage 1): set false by loadGame().
@@ -442,8 +467,11 @@ export function start(host: StudioHost) {
   // screen where this bar is gone. Undo / Redo step away while playing there (they are disabled in Play anyway) so the
   // bar keeps its room. ✦ is the editor's "ask your AI" sign (the ask field's spark), violet as the AI's hand.
   const playAskBtn = btn('play-ask', () => postGame({ type: 'studio:play/open' }), { class: 'icon-btn play-ask', hidden: true, dataset: { action: 'play-ask', part: 'play-ask' } });
+  // Pause while playing (2026-10-22, bridge/play-pause.ts) on the same narrow screens: ❚❚ left of ✦, for the same reason
+  // (the game page draws nothing in its corner there). Pressed again while paused (it shows ▶ then), it resumes.
+  const playPauseBtn = btn('play-pause', () => postGame({ type: 'studio:play/pause' }), { class: 'icon-btn play-pause', hidden: true, dataset: { action: 'play-pause', part: 'play-pause' } });
   // Play is the only white button on screen, so it is never looked for.
-  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
+  const topActions = h('div', { class: 'top-actions', dataset: { part: 'top-actions' } }, playPauseBtn, playAskBtn, topSave, mk(playBtns, 'play', togglePlay, { class: 'play' }));
   // Pressed with the mouse (or a finger): let go of the focus, so Edit / Play keeps no orange ring (the third design
   // review's ⑩, 2026-10-20). WHY a ring at all after a click: the focus stayed on the button, and the keys pressed next
   // (W A S D in the game, P) went to it — Chrome then shows :focus-visible as if it had been reached with Tab.
@@ -686,6 +714,27 @@ export function start(host: StudioHost) {
     },
   });
   app.append(ctxMenu.catcher, ctxMenu.el);
+  // The list's head in a game with levels (level-switch.ts); what its rows do is below (goLevel and the rest).
+  const levelSwitch = createLevelSwitch({
+    t,
+    levels,
+    // Under the head from its left edge, for a finger too; where there is no room below (a phone's sheet), above it —
+    // never over it (a menu moved up to fit covered the head that says which level it is about).
+    openMenu: (entries, head) => {
+      ctxMenu.show(entries, head.left, head.bottom + 2, { place: 'levels', label: t('level.menu') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      if (m.top < head.bottom && m.bottom > head.top) ctxMenu.el.style.top = `${Math.max(8, Math.round(head.top - m.height - 4))}px`;
+    },
+    go: (id) => void goLevel(id),
+    copy: () => void goLevel(levels.copy(worldModel.result())),
+    rename: (id, label) => levelsChanged(levels.rename(id, label)),
+    move: (id, by) => levelsChanged(levels.move(id, by)),
+    remove: (id) => {
+      const next = levels.remove(id);
+      if (next) void goLevel(next, false);
+      else levelsChanged(next === '');
+    },
+  });
   installTooltips(app);
   // A Library tile dragged onto the Scene row = its "Add to scene" ("use the Library", 2026-10-18). The row is the
   // drop target because the Library covers the game on PC (the game is not on screen to drop on); while a tile is
@@ -820,6 +869,7 @@ export function start(host: StudioHost) {
   // ----- tools -----
   const placementPanel = createPlacementPanel({
     t,
+    levelSwitch: () => levelSwitch.render(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
     hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
     items: () => items,
@@ -874,6 +924,7 @@ export function start(host: StudioHost) {
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
+    motion: motionWire.row,
   });
 
   // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
@@ -1402,7 +1453,7 @@ export function start(host: StudioHost) {
       return it ? displayName(it, t) : k;
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : 'move';
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0]!) : t('undo.n', { n: keys.length }) });
   }
@@ -1519,7 +1570,8 @@ export function start(host: StudioHost) {
       if (c.kind === 'pose') {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
-      } else if ((c.kind === 'add') === (dir === 'redo')) {
+      } else if (c.kind === 'motion') motionWire.apply(c, dir);
+      else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
           model.addCopy(c.key, c.from, c.pose);
@@ -1536,7 +1588,7 @@ export function start(host: StudioHost) {
     }
     flush();
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose').map((c) => c.key));
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && c.kind !== 'motion').map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]! : null;
@@ -2046,9 +2098,14 @@ export function start(host: StudioHost) {
   let playAskOn = false;
   let playMark: boolean | null = null;
   let playNow: ReturnType<typeof playLine> = null;
+  // The game page is paused (play/paused): the phone's ❚❚ shows ▶. ✦ stays where it is (the buttons must not shift under
+  // the finger that pressed ❚❚); pressed while paused it takes the person to the chat's field.
+  let playPaused = false;
   function renderPlayAsk() {
     const show = playing && playAskOn && phone();
     playAskBtn.hidden = !show;
+    playPauseBtn.hidden = !show;
+    if (show) setButton(playPauseBtn, playPaused ? 'play' : 'pause', playPaused ? t('play.resume') : t('play.pause'), false, playPaused ? t('play.resumeTip') : t('play.pauseTip'));
     if (playing && playAskOn && playMark !== !phone()) {
       playMark = !phone();
       postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
@@ -2307,6 +2364,7 @@ export function start(host: StudioHost) {
   };
 
   function onBridge(m: BridgeToShell) {
+    if (motionWire.onMessage(m)) return;
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -2407,9 +2465,15 @@ export function start(host: StudioHost) {
       case 'studio:play/ask':
         if (playing && !host.offline) {
           void askAi({ kind: 'play', text: m.text, ...(m.shot ? { shot: m.shot } : {}), ...(m.view ? { view: m.view } : {}), ...(m.near ? { near: m.near } : {}),
-            ...(m.logs ? { logs: m.logs } : {}), ...(m.fullscreen ? { fullscreen: true } : {}), ...(m.size ? { size: m.size } : {}) })
-            .then((ok) => postGame({ type: 'studio:play/sent', ok }));
+            ...(m.logs ? { logs: m.logs } : {}), ...(m.fullscreen ? { fullscreen: true } : {}), ...(m.size ? { size: m.size } : {}),
+            // From the chat over a paused game (2026-10-22): the talk so far, and the id of its first message.
+            ...(m.paused ? { paused: true } : {}), ...(m.chat ? { chat: m.chat } : {}), ...(m.history?.length ? { history: m.history } : {}) })
+            .then((ok) => postGame({ type: 'studio:play/sent', ok, ...(ok && pending?.id ? { id: pending.id } : {}) }));
         }
+        break;
+      case 'studio:play/paused':
+        playPaused = playing && m.on;
+        renderPlayAsk();
         break;
       case 'studio:play/answer':
         if (playing && !host.offline) void answerAi(m.text).then((ok) => postGame({ type: 'studio:play/sent', ok }));
@@ -2418,6 +2482,18 @@ export function start(host: StudioHost) {
         // The person chose to see the fix: the game opens again from its new code, still in Play.
         if (playing) loadGame();
         break;
+      case 'studio:core/levels': {
+        // Levels (2026-10-22): the game said its levels. The first time (a file without levels), the opened file's
+        // world part is the level on screen's. A page that built another level than the one restored (it ignored
+        // the URL) gets that level's model, before its objects are listed.
+        const was = levels.current;
+        if (levels.fromGame(m.levels, m.current, startWorld)) {
+          startWorld = undefined;
+          if (was && was !== levels.current) useLevelModel(levels.current);
+          renderAll();
+        }
+        break;
+      }
       case 'studio:core/game-error':
         if (!gameError) gameError = { message: m.message, where: m.where };
         if (playing) showToast(t('status.gameErrorToast', { msg: m.message }), 8000);
@@ -2569,6 +2645,7 @@ export function start(host: StudioHost) {
         } else if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
+        motionWire.sync();
         break;
       case 'studio:placement/moved':
         model.moved(m.key, m.pose);
@@ -2679,13 +2756,13 @@ export function start(host: StudioHost) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty();
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere();
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
    */
-  const fileNow = (): PlacementFile => withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
-    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null);
+  const fileNow = (): PlacementFile => levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
+    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
   const dirtyCount = () => placementDirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
 
   // ----- the draft and Save (rebrand 2026-10-16, play test the same day) -----
@@ -2866,6 +2943,7 @@ export function start(host: StudioHost) {
           if (!r.ok) return r.error || 'placement';
           worldModel.markSaved();
           uiModel.markSaved();
+          levels.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -3023,10 +3101,45 @@ export function start(host: StudioHost) {
     sendMarks(true);
   }
 
+  // ----- levels (2026-10-22; levels.ts, level-switch.ts) -----
+  /** A fresh world model for level `id` (the editor's layer goes back to the world, as on any new game page). */
+  function useLevelModel(id: string) {
+    worldModel = new PlacementModel();
+    worldModel.restore(levels.viewOf(id));
+    if (editLayer !== 'ui') model = worldModel;
+  }
+  /**
+   * Show level `id`: the one on screen is kept (its layout and unsaved count, `keep`; false after it was deleted),
+   * the draft written (so the game's loader reads the new level's layout too), and the game opened on `id`. Like
+   * "Reload game" it asks first when a game tool's data would be lost. ⌘Z starts empty: a step of another level
+   * would change what is not on screen.
+   */
+  async function goLevel(id: string, keep = true) {
+    if (!id || !levels.has(id)) return;
+    if (!(await confirmLoss('reload'))) return levelsChanged(true);
+    if (keep) levels.stash(worldModel.result(), worldModel.dirty());
+    levels.current = id;
+    useLevelModel(id);
+    undo.clear();
+    selected = null;
+    group = [];
+    await keepNow();
+    loadGame();
+    renderAll();
+  }
+  /** A rename / move / delete that keeps the level on screen: the head and the Save count again, the draft soon. */
+  function levelsChanged(changed: boolean) {
+    if (!changed) return;
+    renderAll();
+    keepSoon();
+  }
+
   function loadGame(soft = false) {
     bridgeAlive = false;
-    // A new game page asks again (play/hello).
+    motionWire.reset();
+    // A new game page asks again (play/hello), and starts unpaused.
     playAskOn = false;
+    playPaused = false;
     playMark = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
@@ -3066,6 +3179,11 @@ export function start(host: StudioHost) {
     if (playing) u.searchParams.delete(k);
     else u.searchParams.set(k, v);
     if (gameOrigin !== location.origin) u.searchParams.set(LOCAL_PATHS.parentParam, location.origin);
+    // A game with levels opens on the level shown (edit and Play alike; bridge/levels.ts reads these).
+    if (levels.active && levels.current) {
+      u.searchParams.set(LOCAL_PATHS.levelParam, levels.current);
+      u.searchParams.set(LOCAL_PATHS.buildParam, levels.build(levels.current));
+    }
     iframe.src = u.href;
     renderAll();
   }
@@ -3777,7 +3895,9 @@ export function start(host: StudioHost) {
       }
       const v = placement ? validatePlacement(placement) : null;
       const saved = v && v.ok ? v.value : null;
-      worldModel.restore(saved);
+      levels.load(saved);
+      if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
+      else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
       fileUi = saved?.ui;
       fileUiView = saved?.uiView;

@@ -182,8 +182,10 @@ export async function writeStudioNote(rootReal, name, text) {
  * requests/<id>.json: hand-offs to the AI (§3.4; the id comes from handoff.mjs, never from the
  * browser). status.json: written by the AI; the server only writes it for `studio.mjs --status`.
  * watch.json: the heartbeat of `studio.mjs --watch` while an AI watches (ai-watch.mjs).
+ * generated.json: what "Make with AI" made, with the words (generated.mjs; only the server writes it, 2026-10-22).
  */
-const STUDIO_WRITABLE = /^(requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+// chat/<id>.json (pause, 2026-10-22): the talk over a paused game, named by its first `play` request (play-chat.mjs).
+const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
 
 async function ensureRealDir(dir) {
   const check = async () => {
@@ -238,7 +240,8 @@ export async function readStudioFile(rootReal, rel, maxBytes) {
 
 /** Like readStudioFile, plus when the file was last written (ms): the AI's status (CONTRACT.md §3.4). */
 export async function readStudioFileInfo(rootReal, rel, maxBytes) {
-  if (!/^(adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/.test(rel)) return null;
+  // chat/<id>.json (pause, 2026-10-22): read back only to add a turn (play-chat.mjs); no route serves it.
+  if (!/^(generated\.json|adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json)$/.test(rel)) return null;
   let p = path.join(rootReal, '.studio');
   try {
     for (const part of ['', ...rel.split('/').slice(0, -1)]) {

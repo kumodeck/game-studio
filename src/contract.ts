@@ -534,6 +534,25 @@ export interface StudioGlobal {
    * `.studio/tools.js`, which the AI writes for the game.
    */
   extend(ext: GameExtension): void;
+  /**
+   * Levels (2026-10-22, CONTRACT.md §1.10): the levels the game's code has (ids, or { id, label }), in its order.
+   * Returns the level the editor shows now — `id` (its own; may be one made in the editor) and `build` (a level the
+   * code has: an editor-made level is built from the one it was copied from) — or null outside the editor, where the
+   * game picks its level itself. Optional on the type so `window.studio?.levels?.(…)` reads the same in old builds.
+   */
+  levels?(list: Array<string | LevelInfo>): LevelPick | null;
+}
+
+/** One level as the game names it (studio.levels). `id` matches KEY_RE; `label` is what the person reads. */
+export interface LevelInfo {
+  id: string;
+  label?: string;
+}
+
+/** What studio.levels() returns in the editor: the level shown (`id`) and the code's level to build for it. */
+export interface LevelPick {
+  id: string;
+  build: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +898,16 @@ export type ShellToBridge =
   /** "Make movable" on a held ground / road / sky (Item.held 'ground'): the tools work on it again for this session. */
   | { type: 'studio:placement/unhold'; keys: string[] }
   /**
+   * Motion (motion-gui, 2026-10-22; CONTRACT.md §1.9): draw this object's path in the game — a dotted line from the
+   * object through its points, a dot on each that can be dragged — or nothing (`key` null, or no path). Sent whenever
+   * the picked object or its motion changes. `seed`: the motion was just given a path kind and has no point yet; the
+   * bridge picks points that are in sight (to the object's right on screen, on its own height) and answers with
+   * motion/changed `seed: true`.
+   */
+  | { type: 'studio:motion/show'; key: string | null; motion?: Motion | null; seed?: boolean }
+  /** Play one object's motion in the frozen scene (the card's ▶), or stop (`key` null): the object goes back to its place. */
+  | { type: 'studio:motion/play'; key: string | null; motion?: Motion | null }
+  /**
    * One keyboard/button step on the selected object (arrows, Q/E, PageUp/Down,
    * +/-). `hold: true` marks auto-repeat: the bridge folds a run of held steps
    * into one undo step (ends when a non-hold step or another gesture arrives,
@@ -953,8 +982,16 @@ export type ShellToBridge =
   | { type: 'studio:play/open' }
   /** What the AI is doing about the play request, for the small line over the game (shell/play-ask.ts playLine). */
   | { type: 'studio:play/state'; state: PlayLine | null }
-  /** The request was kept (`ok`) or not, so the field can close or say it failed. */
-  | { type: 'studio:play/sent'; ok: boolean };
+  /**
+   * Pause while playing (2026-10-22): the editor's ❚❚ was pressed (phone, where the game page draws no corner): pause,
+   * or resume when paused — the same as P or the corner's ❚❚.
+   */
+  | { type: 'studio:play/pause' }
+  /**
+   * The request was kept (`ok`) or not, so the field can close or say it failed. `id`: the kept request's id (the
+   * chat over a paused game names its first one in the messages after it, `chat`).
+   */
+  | { type: 'studio:play/sent'; ok: boolean; id?: string };
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -1007,6 +1044,12 @@ export type BridgeToShell =
   | { type: 'studio:core/error'; message: string }
   /** The game's own page threw (an uncaught error or rejection), edit or Play; the first few per page load. */
   | { type: 'studio:core/game-error'; message: string; where?: string }
+  /**
+   * Levels (2026-10-22, CONTRACT.md §1.10): the game called studio.levels(list) — the levels its code has, in its
+   * order — and `current` = the one this page built (an editor-made level: its own id, not the one it was built from).
+   * Sent once per game page; a game that never calls studio.levels() never sends it (no level switch, as before).
+   */
+  | { type: 'studio:core/levels'; levels: LevelInfo[]; current: string }
   /** `layer`: whose objects these are (UI stage 1; absent = the world, as before). */
   | { type: 'studio:placement/items'; items: Item[]; layer?: EditLayer }
   | { type: 'studio:placement/selected'; key: string | null; item?: Item; keys?: string[] }
@@ -1023,6 +1066,13 @@ export type BridgeToShell =
    * every entry carries `from`. The shell records ONE undo step for all.
    */
   | { type: 'studio:placement/moved-group'; poses: Array<{ key: string; pose: Pose; from?: Pose }>; end?: boolean; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean }
+  /**
+   * A path point was dragged in the game (`end` false while the finger is down, true once at the release: one undo
+   * step), or the points picked for motion/show `seed`.
+   */
+  | { type: 'studio:motion/changed'; key: string; motion: Motion; end: boolean; seed?: boolean }
+  /** The card's ▶ stopped by itself (a `once` motion arrived, a press in the game, another pick): the ▶ shows again. */
+  | { type: 'studio:motion/played'; key: string | null }
   /** Answer to placement/copy: the copies made (with their poses) and the keys that could not be copied. */
   | { type: 'studio:placement/added'; items: Array<{ key: string; from: string; pose: Pose; ghost?: boolean }>; failed: string[] }
   /** `size`: the side asked for (placement/thumbs), so the editor can tell a Library tile's picture from a list row's. */
@@ -1054,11 +1104,21 @@ export type BridgeToShell =
    * Since 2026-10-20 the picture has the game's HTML UI in it too (bridge/play-shot.ts), not only the canvas.
    */
   | { type: 'studio:play/ask'; text: string; shot?: string; view?: { eye: [number, number, number]; target: [number, number, number] };
-      near?: PlayNear[]; logs?: PlayLog[]; fullscreen?: boolean; size?: [number, number] }
+      near?: PlayNear[]; logs?: PlayLog[]; fullscreen?: boolean; size?: [number, number];
+      /** Pause (2026-10-22): from the chat over a paused game (StudioRequestInput `paused` / `chat` / `history`). */
+      paused?: boolean; chat?: string; history?: ChatLine[] }
+  /** The game was paused (P, ❚❚) or resumed: the editor's ❚❚ (phone) shows which. */
+  | { type: 'studio:play/paused'; on: boolean }
   /** The person's answer to the AI's question, from the line over the game. */
   | { type: 'studio:play/answer'; text: string }
   /** Reload pressed over the game: open the game again (its new code), still playing. */
   | { type: 'studio:play/reload' };
+
+/** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
+export interface ChatLine {
+  who: 'you' | 'ai';
+  text: string;
+}
 
 /** Something near the player when they asked while playing (§3.5). */
 export interface PlayNear {
@@ -1189,6 +1249,15 @@ export interface StudioRequestInput {
   /** "play" only: the game was in full screen; `size` = the game page's size in CSS px. */
   fullscreen?: boolean;
   size?: [number, number];
+  /**
+   * "play" only (pause, 2026-10-22): the person PAUSED the game and is talking to the AI about the moment it stopped
+   * at, in a small chat over it. The first message carries the moment (`shot`, `view`, `near`, `logs`); each next one
+   * carries `chat` = the first one's id and `history` = the talk so far (≤ 12 turns, oldest first). The host keeps the
+   * whole talk as one file (local: `.studio/chat/<chat>.json`); the AI's replies are its status notes as usual.
+   */
+  paused?: boolean;
+  chat?: string;
+  history?: ChatLine[];
 }
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1365,7 +1434,30 @@ export interface KumoStatus {
   projects?: Array<{ id: string; name: string }>;
   /** 3D models started in this run. */
   jobs?: KumoJob[];
+  /**
+   * What was made in this game folder, newest first (.studio/generated.json, src/server/generated.mjs; generate-ui
+   * 2026-10-22): the editor's "Made here", whose Again / Change put one back in the form.
+   */
+  made?: KumoMade[];
   error?: { code: string; message: string };
+}
+
+/** The kinds "Make with AI" makes (generate-ui, 2026-10-22: sound effects, music and voice lines joined images and 3D). */
+export type KumoKind = 'picture' | 'model' | 'sfx' | 'music' | 'voice';
+
+/** One line of the history (.studio/generated.json). */
+export interface KumoMade {
+  id: string;
+  /** ISO time it landed. */
+  at: string;
+  kind: KumoKind;
+  /** The words it was made from (a voice line: the words it says). */
+  prompt: string;
+  /** What was chosen: picture { side, quality }, model { texture }, sfx { durationSec }, music { durationSec, loop }, voice { voice }. */
+  options: Record<string, string | number | boolean>;
+  /** assets/… */
+  path: string;
+  costUsdMicros: number | null;
 }
 
 export interface KumoJob {
@@ -1410,6 +1502,20 @@ export interface KumoModelRequest {
   acceptTerms?: boolean;
 }
 
+/** One sound (generate-ui, 2026-10-22): KUMODeck's audio route, made within the request like a picture. */
+export interface KumoSoundRequest {
+  kind: 'sfx' | 'music' | 'voice';
+  /** What it should sound like; for a voice line, the words it says (at most 500 characters). */
+  prompt: string;
+  /** sfx 0.5–10 s, music 5–120 s. */
+  durationSec?: number;
+  /** Music only: made to loop (default true). */
+  loop?: boolean;
+  /** Voice only: neutral, bright, deep, warm or energetic. */
+  voice?: string;
+  acceptTerms?: boolean;
+}
+
 export interface KumoHost {
   status(): Promise<KumoStatus>;
   pickProject(id: string): Promise<KumoStatus | KumoRefusal>;
@@ -1417,6 +1523,8 @@ export interface KumoHost {
   /** Starts a 3D model; then job(id) until it has a path or failed. */
   makeModel(r: KumoModelRequest): Promise<({ ok: true } & KumoJob) | KumoRefusal>;
   job(id: string): Promise<({ ok: true } & KumoJob) | KumoRefusal>;
+  /** One sound into assets/. Absent (an older host) = the editor offers images and 3D only. */
+  makeSound?(r: KumoSoundRequest): Promise<{ ok: true; path: string; costUsdMicros: number | null; balanceCents: number | null } | KumoRefusal>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1525,7 +1633,57 @@ export interface PlacementFile {
   ui?: Record<string, PlacementUiEntry>;
   /** With `ui`: the game's size [width, height] in CSS px when it was saved (for turning px into % / vw). */
   uiView?: [number, number];
+  /**
+   * Optional (motion-gui, 2026-10-22): objects that move by themselves, by key (a game object or a copy in `added`;
+   * never a key of `removed`). Absent when nothing moves, so older files stay byte for byte what they were. With
+   * `levels`, each level has its own `motion` (PlacementLevel) and this one is absent (integrate3, 2026-10-22).
+   */
+  motion?: Record<string, Motion>;
+  /**
+   * Optional (levels, 2026-10-22, CONTRACT.md §4.1): a game with several levels. Each level holds its own world part
+   * (`objects` / `added` / `removed` / `order` / `motion`, the same shapes as above); the list's order is the person's.
+   * With `levels`, the top `objects` is {} and the top has no added / removed / order / motion. Absent for a game with one level —
+   * its file is byte for byte what it was.
+   */
+  levels?: PlacementLevel[];
+  /** With `levels`, only when they differ from the code: the code's level ids in the code's order (a missing one = deleted). */
+  levelsWas?: string[];
 }
+
+/** One level's part of placement.json (CONTRACT.md §4.1). */
+export interface PlacementLevel {
+  id: string;
+  label?: string;
+  /** Renamed in the editor: the name the code gives it (for the AI to find). */
+  labelWas?: string;
+  /** Made in the editor (the code does not have it yet): the code's level it was copied from, which the game builds. */
+  from?: string;
+  objects?: Record<string, PlacementEntry>;
+  added?: PlacementAdded[];
+  removed?: PlacementRemoved[];
+  order?: PlacementOrder[];
+  /** This level's motions (motion-gui × levels, integrate3 2026-10-22): keys are this level's objects. */
+  motion?: Record<string, Motion>;
+}
+
+/**
+ * How an object moves by itself (motion-gui, 2026-10-22; CONTRACT.md §4.1 `motion`). A path, a spin, or both.
+ * The loader runs it (src/loader/studio-placement.js motionAt), the editor previews it with the same maths.
+ */
+export interface Motion {
+  /**
+   * The points it goes through, as offsets from the object's place (its pose `p`, parent space: [x, y, z] metres in
+   * 3D, [x, y] px in 2D). The start ([0, 0, 0]) is not written. 1–32 points.
+   */
+  path?: number[][];
+  /** Along the path: metres (3D) / px (2D) per second. */
+  speed?: number;
+  /** pingpong = there and back (default), loop = back to the start and round again, once = stop at the last point. */
+  repeat?: MotionRepeat;
+  /** Turning by itself round the up axis, radians per second (3D: rotation.y, positive = anticlockwise seen from above; 2D: the angle). */
+  spin?: number;
+}
+export type MotionRepeat = 'pingpong' | 'loop' | 'once';
 
 export interface PlacementUiEntry {
   /** [dx, dy] CSS px from where the game's own CSS puts the element (the CSS `translate` it gets). [0, -48] = 48 px up. */
@@ -1820,4 +1978,10 @@ export const LOCAL_PATHS = {
    * Missing = the game's own origin (local host serves both from one origin).
    */
   parentParam: 'studioParent',
+  /**
+   * Levels (2026-10-22): query parameters on the game URL (edit and ▶ Play) with the level the editor shows and the
+   * code's level to build for it; studio.levels() returns them. Absent = the game's first level.
+   */
+  levelParam: 'studioLevel',
+  buildParam: 'studioBuild',
 } as const;

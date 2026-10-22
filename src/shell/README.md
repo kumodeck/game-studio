@@ -178,3 +178,9 @@ the boss at the climax", and "when I pick something in the game, take me straigh
 - From the Scene: the card's **Show in Library →**, the object's menu (**Show in Library**, **Show its asset in Library**)
   and ⌘K open the Library on that object's detail (its file one press further); the camera never moves.
 `test/studio-library-use.browser.mjs`.
+
+Motion (motion-gui, 2026-10-22; CONTRACT.md §1.9): `motion-row.ts` is the card's Motion row under Size (None / Back
+and forth / Loop / Once / Spin, the speed, − n + for the points, ▶ / ■), `motion-model.ts` what is remembered (each
+object's motion now and at the last save, inside the world's `PlacementModel`; the card's helpers), `motion-wire.ts`
+the shell's side of it (one undo step per change, `motion/show` / `motion/play` to the game page, the bridge's
+`motion/changed` / `motion/played` back). 3D only in stage 1.

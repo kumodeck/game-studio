@@ -42,6 +42,74 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
   const mod = await import(file);
   const { applyPlacement, findByKey } = mod;
 
+  // motion (motion-gui, 2026-10-22): the maths shared with the editor, and the loader running it from the game's frames.
+  test(`${label}: motionAt — back and forth, loop, once, spin`, () => {
+    const { motionAt } = mod;
+    const close = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-9);
+    const pp = { path: [[4, 0, 0]], speed: 2, repeat: 'pingpong' };
+    assert.ok(close(motionAt(pp, 0).off, [0, 0, 0]));
+    assert.ok(close(motionAt(pp, 1).off, [2, 0, 0]));
+    assert.ok(close(motionAt(pp, 2).off, [4, 0, 0]));
+    assert.ok(close(motionAt(pp, 3).off, [2, 0, 0]), 'on its way back');
+    assert.ok(close(motionAt(pp, 4).off, [0, 0, 0]), 'back at the start');
+    // No repeat = pingpong; no speed = 1 unit a second.
+    assert.ok(close(motionAt({ path: [[4, 0, 0]] }, 5).off, [3, 0, 0]));
+    // A square loop of side 2 at 1 m/s: corners at 2, 4, 6 s, the start again at 8 s.
+    const sq = { path: [[2, 0, 0], [2, 0, 2], [0, 0, 2]], speed: 1, repeat: 'loop' };
+    assert.ok(close(motionAt(sq, 3).off, [2, 0, 1]));
+    assert.ok(close(motionAt(sq, 7).off, [0, 0, 1]), 'the closing side, back towards the start');
+    assert.ok(close(motionAt(sq, 9).off, [1, 0, 0]), 'and round again');
+    const once = { path: [[0, 0, 3]], speed: 1, repeat: 'once' };
+    assert.equal(motionAt(once, 1).done, false);
+    assert.ok(close(motionAt(once, 10).off, [0, 0, 3]));
+    assert.equal(motionAt(once, 10).done, true);
+    assert.equal(motionAt({ spin: 2 }, 1.5).turn, 3);
+    assert.equal(motionAt({ spin: 2 }, 1.5).off, null);
+    // 2D: the same with two numbers.
+    assert.ok(close(motionAt({ path: [[100, 0]], speed: 50 }, 1).off, [50, 0]));
+    // Bad input never throws.
+    assert.equal(motionAt(null, 1).off, null);
+    assert.equal(motionAt({ path: [['x']] }, 1).off, null);
+  });
+
+  test(`${label}: motion runs from the game's frames, not inside the editor`, async () => {
+    const s = threeScene();
+    const frames = [];
+    const keep = { raf: globalThis.requestAnimationFrame, loc: globalThis.location, now: performance.now };
+    let now = 1000;
+    performance.now = () => now;
+    globalThis.requestAnimationFrame = (cb) => frames.push(cb);
+    try {
+      globalThis.location = { search: '' };
+      const file = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: { hero: { p: [1, 0, 0] } },
+        motion: { hero: { path: [[0, 0, -4]], speed: 2, repeat: 'once' }, tree: { spin: 1 }, gone: { spin: 1 }, 'tree#2': { path: [[1, 2]] } } };
+      const report = await applyPlacement(s.scene, file);
+      assert.deepEqual(report.motion, ['hero', 'tree'], 'a missing key and a 2-number path in 3D are left out');
+      assert.deepEqual([s.marked.position.x, s.marked.position.z], [1, 0], 'not moved before the first frame');
+      now = 2000;
+      frames.shift()(now);
+      assert.deepEqual([s.marked.position.x, s.marked.position.y, s.marked.position.z], [1, 0, -2], 'the place + the path at 1 s');
+      assert.equal(s.tree1.rotation.y, 1);
+      assert.equal(frames.length, 1, 'asks for the next frame');
+      mod.stopMotion();
+      frames.shift()(3000);
+      assert.equal(frames.length, 0, 'stopMotion() stops it');
+      assert.equal(s.marked.position.z, -2);
+      // Inside the editor (studio=edit): the editor owns every pose, nothing runs.
+      globalThis.location = { search: '?studio=edit&parent=x' };
+      const s2 = threeScene();
+      const r2 = await applyPlacement(s2.scene, file);
+      assert.equal(r2.motion, undefined);
+      assert.equal(frames.length, 0);
+    } finally {
+      globalThis.requestAnimationFrame = keep.raf;
+      performance.now = keep.now;
+      if (keep.loc === undefined) delete globalThis.location;
+      else globalThis.location = keep.loc;
+      mod.stopMotion();
+    }
+  });
+
   test(`${label}: three.js — keys resolve by mark, name, name#n, userData and path`, () => {
     const s = threeScene();
     assert.equal(findByKey(s.scene, 'hero'), s.marked);
@@ -175,6 +243,39 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
     assert.equal(findByKey(stage, 'tree'), tree1);
   });
 
+  // Levels (2026-10-22): one world part per level; only the level passed is applied, none without `level`.
+  test(`${label}: levels — only the level being built is applied`, async () => {
+    const file = {
+      version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
+      levels: [
+        { id: 'meadow', objects: { tree: { p: [1, 0, 0] } } },
+        { id: 'cave', objects: { tree: { p: [9, 0, 0] } }, removed: [{ key: 'hero' }] },
+      ],
+    };
+    const warns = [];
+    const orig = console.warn;
+    console.warn = (m) => warns.push(m);
+    try {
+      const a = threeScene();
+      assert.deepEqual((await applyPlacement(a.scene, file, { level: 'cave' })).applied, ['tree', 'hero']);
+      assert.equal(a.tree1.position.x, 9);
+      assert.equal(a.marked.visible, false, 'the cave level deleted hero');
+      const b = threeScene();
+      assert.deepEqual((await applyPlacement(b.scene, file, { level: 'meadow' })).applied, ['tree']);
+      assert.equal(b.tree1.position.x, 1);
+      const c = threeScene();
+      assert.deepEqual((await applyPlacement(c.scene, file)).applied, [], 'no level given: nothing moves');
+      assert.equal(c.tree1.position.x, 0);
+      assert.match(warns.join('\n'), /pass \{ level \}/);
+      const d = threeScene();
+      assert.deepEqual((await applyPlacement(d.scene, file, { level: 'summit' })).applied, [], 'a level the file does not list');
+    } finally {
+      console.warn = orig;
+    }
+    assert.equal(mod.placementForLevel(file, 'cave').levels, undefined);
+    assert.deepEqual(mod.placementForLevel(file, 'cave').removed, [{ key: 'hero' }]);
+  });
+
   test(`${label}: never throws — missing file, bad JSON, wrong tool or dimension`, async () => {
     const orig = { fetch: globalThis.fetch, warn: console.warn };
     const warns = [];
@@ -201,7 +302,8 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
   });
 }
 
-// 9 KB since UI stage 1 (the `ui` part, 2026-10-19; was 6). The same limit as src/server/build.mjs LOADER_LIMIT.
-test('the built loader is under 9 KB', () => {
-  assert.ok(readFileSync(BUILT).length < 9 * 1024);
+// 12 KB since motion-gui (the `motion` part, 2026-10-22; 9 since UI stage 1, 6 before). The same limit as
+// src/server/build.mjs LOADER_LIMIT.
+test('the built loader is under 12 KB', () => {
+  assert.ok(readFileSync(BUILT).length < 12 * 1024);
 });

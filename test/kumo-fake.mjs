@@ -1,6 +1,7 @@
 // A small fake KUMODeck on 127.0.0.1 for "Make with AI" (src/server/kumo.mjs): the routes the
-// studio server calls, with a balance, the one-time AI terms, a picture made at once and a 3D model
-// done on the second look. Used by test/studio-kumo.browser.mjs and test/kumo-try.mjs. Nothing
+// studio server calls, with a balance, the one-time AI terms, a picture made at once, a 3D model
+// done on the second look and a sound made at once (the audio route, 2026-10-22 generate-ui). Used by
+// test/studio-kumo.browser.mjs, test/studio-generate.browser.mjs and test/kumo-try.mjs. Nothing
 // leaves the machine; the "token" is a made-up string.
 import http from 'node:http';
 
@@ -11,11 +12,23 @@ const PROJECT = FAKE_KUMO_PROJECT;
 
 /**
  * A small fake KUMODeck (the routes kumo.mjs calls). The 3D job is done on the second look.
- * delayMs: each look at a 3D job waits this long (the "Making…" tile and clock get time to show).
+ * delayMs: each look at a 3D job, and each sound, waits this long (the "Making…" tile and clock get time to show).
  * modelBytes: size of the 3D file (over 10 MB = the "heavy" line; the real AI model was 45.7 MB).
  */
+/** A real 0.3-second WAV (a soft 440 Hz tone), so the editor's ▶ can play what the fake made. */
+function wav() {
+  const rate = 8000, n = 2400;
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n * 2, 4); b.write('WAVE', 8); b.write('fmt ', 12);
+  b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) b.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 440 * i) / rate) * 3000 * (1 - i / n)), 44 + i * 2);
+  return b;
+}
+
 export async function fakeKumoServer({ delayMs = 0, modelBytes = 0 } = {}) {
-  // inputs: the input of every job asked for (the 3D one must carry faceLimit 5000: kumo.mjs KUMO_3D_FACE_LIMIT)
+  // inputs: the input of every job asked for (the 3D one must carry faceLimit 5000: kumo.mjs KUMO_3D_FACE_LIMIT;
+  // a sound carries its task and the pinned model: kumo.mjs KUMO_SOUND_MODELS)
   const st = { balance: 500, terms: false, n: 0, jobs: new Map(), posts: 0, inputs: [] };
   const srv = http.createServer(async (req, res) => {
     const chunks = [];
@@ -31,7 +44,26 @@ export async function fakeKumoServer({ delayMs = 0, modelBytes = 0 } = {}) {
     if (p === '/v1/money/prepaid') return json(200, { balance: st.balance, owed: 0, currency: 'usd' });
     if (p === '/v1/projects') return json(200, { projects: [{ id: PROJECT, name: 'Stars' }] });
     if (p === '/v1/platform/info') return json(200, { dashboardUrl: 'http://127.0.0.1:9/dashboard' });
-    const create = /^\/v1\/projects\/[^/]+\/ai\/(image|3d)\/jobs$/.exec(p);
+    const create = /^\/v1\/projects\/[^/]+\/ai\/(image|3d|audio)\/jobs$/.exec(p);
+    if (create && req.method === 'POST' && create[1] === 'audio') {
+      // Sounds are made at once, like a picture (the real audio route is sync: routes3d.ts FAMILY_AUDIO).
+      // 1 cent each here (the real ones are $0.002 / s, $0.05 / 1,000 characters or $0.0376 a piece: kumo.mjs kumoSoundPrice).
+      st.posts++;
+      st.inputs.push({ kind: 'audio', task: body.task, model: body.routing?.model, ...body.input });
+      if (body.acceptTerms === true) st.terms = true;
+      if (!st.terms) return json(403, { error: { code: 'ai_terms_not_accepted', message: 'You must accept the KUMODeck AI terms' } });
+      if (st.balance < 1) return json(402, { error: { code: 'insufficient_credits', message: 'Not enough' } });
+      // delayMs: the "Making…" line and tile get time to show (the real ones take seconds)
+      if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+      st.balance -= 1;
+      const id = `0000000${++st.n}-0000-4000-8000-000000000000`;
+      const stem = { 'audio.sfx': 'coin-pickup', 'audio.music': 'calm-harbor', 'audio.voice': 'welcome' }[body.task] || 'sound';
+      // the real voice lines come back as mp3 and the rest as wav (the server's pipelines.ts); all of them are wav bytes here
+      const file = { name: `${stem}${body.task === 'audio.voice' ? '.mp3' : '.wav'}`, url: `/v1/files/${id}.wav` };
+      const job = { id, status: 'succeeded', task: body.task, costUsdMicros: 10000, assets: [{ id: 'a', files: [file] }] };
+      st.jobs.set(id, job);
+      return json(200, { job });
+    }
     if (create && req.method === 'POST') {
       st.posts++;
       st.inputs.push({ kind: create[1], ...body.input });
@@ -55,7 +87,9 @@ export async function fakeKumoServer({ delayMs = 0, modelBytes = 0 } = {}) {
     }
     if (p.startsWith('/v1/files/')) {
       // a real 1×1 PNG for the picture (so the grid can show it), bytes for the model
-      const bytes = p.endsWith('.png')
+      const bytes = p.endsWith('.wav')
+        ? wav()
+        : p.endsWith('.png')
         ? Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64')
         : modelBytes ? Buffer.concat([Buffer.from('glTF-BINARY-FAKE'), Buffer.alloc(modelBytes - 16)]) : Buffer.from('glTF-BINARY-FAKE');
       res.writeHead(200, { 'content-length': String(bytes.length) });

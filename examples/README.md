@@ -10,6 +10,7 @@ Purpose: small sample games to try KUMODeck Game Studio on (and to test it). No 
 | `three-crates/` | three.js r186 | .glb models + clones, author marks (`studioKey`, `studioAsset`), an external texture, `studio.ready()` |
 | `three-tumble/` | three.js r186 | physics: placement applied before the bodies are built |
 | `phaser-v3-hop/` | Phaser 3.80.1 | the Phaser an AI writes first; the adapter's Phaser 3 camera path (added 2026-10-17) |
+| `three-isles/` | three.js r186 | three levels (Meadow, Cave, Summit): `studio.levels()` and `applyPlacement(…, { level })`, the editor's level switch (added 2026-10-22) |
 | `three-hud/` | three.js r186 | an HTML title card, Start button and score over the world, marked `data-studio-key`: the editor's UI layer (UI stage 1, added 2026-10-19) |
 
 Each game folder has `studio-placement.js`, the placement loader as the AI adds it to a game.

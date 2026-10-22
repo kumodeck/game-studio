@@ -32,6 +32,7 @@ import { icon, setButton } from './icons.ts';
 import { tipText } from './keymap.ts';
 import { displayName, isGuessed, nameParts } from './names.ts';
 import { toneThumb } from './thumb-tone.ts';
+import { motionRow, type MotionRowDeps } from './motion-row.ts';
 
 export interface PlacementPanelDeps {
   t(key: string, vars?: Record<string, string | number>): string;
@@ -51,6 +52,11 @@ export interface PlacementPanelDeps {
   remove(): void;
   /** Phone layout (no Shift key, no box: the hints say so). */
   phone(): boolean;
+  /**
+   * Levels (2026-10-22, level-switch.ts): the button that takes the place of "In this scene" in a game with levels;
+   * null (or absent) = the title as before.
+   */
+  levelSwitch?(): HTMLElement | null;
   /** "⌘D", "⌫"… for tooltips. */
   shortcutOf(what: 'copy' | 'remove' | 'all'): string;
   /** A number was typed: apply as one undo step. */
@@ -102,6 +108,8 @@ export interface PlacementPanelDeps {
   scrub?(key: string, pose: Pose, end: boolean, from: Pose): void;
   /** "Make movable" on a held ground / road / sky (Item.held 'ground', bridge/hold.ts). */
   unhold?(keys: string[]): void;
+  /** The Motion row under Size (motion-gui, 2026-10-22; motion-row.ts). Absent = no row (the UI layer, a build without it). */
+  motion?: Omit<MotionRowDeps, 't' | 'dim'>;
 }
 
 export interface PlacementPanel {
@@ -658,6 +666,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
           return p;
         }, '0.1', undefined, (v) => v.toFixed(2))));
     }
+    // Motion (motion-gui, 2026-10-22): how it moves by itself, one more property under its size. 3D only in stage 1
+    // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
+    if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...motionRow({ ...d.motion, t: d.t, dim: d.dim }, key));
     fine.append(fields);
     if (it.scalable && typeof it.defaultScale === 'number') {
       const target = it.defaultScale;
@@ -920,7 +931,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       onclick: () => d.setMulti(!on) });
     // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
     const uiList = d.items().every((i) => i.kinds.includes('ui'));
-    listTools.append(h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
+    // A game with levels: the head names the level (and opens the levels' menu) instead (levels, 2026-10-22).
+    const lvl = uiList ? null : d.levelSwitch?.() ?? null;
+    listTools.append(lvl || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };

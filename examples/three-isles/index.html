@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#a9d8e8" />
+  <title>Three Isles</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- three.js r186 (0.186.1) from a CDN, pinned via the import map. No build step. -->
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <div class="hud">
+    <div class="pill" id="level">Meadow</div>
+    <div class="pill"><b id="gems">0</b> / <b id="total">3</b> gems</div>
+  </div>
+  <p class="status">WASD / arrows · or drag · reach the flag</p>
+  <div id="stick" class="stick" hidden><div id="knob"></div></div>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

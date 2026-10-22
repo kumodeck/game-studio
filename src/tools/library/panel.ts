@@ -375,6 +375,10 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
         },
         askLighter: deps.askAi ? (p, size) => askLighter(p, size) : undefined,
         formatSize: (n) => formatSize(deps.lang, n),
+        // The "Just made" card (generate-ui, 2026-10-22): its image / ▶, and the same "Add to scene" / "Ask your AI…"
+        // as a file's detail (one way to hand a file to the AI).
+        assetUrl: (p) => deps.host.assetUrl(p),
+        files: deps.files,
       })
     : null;
   wrap.append(chips, count, readFail, grid, detail, foot);
@@ -551,8 +555,10 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     for (const w of aiWork) {
       const tile = h('div', 'gsl-tile gsl-tile-making');
       tile.dataset.making = w.kind;
-      const thumb = h('div', `gsl-thumb gsl-thumb-${w.kind === 'model' ? 'model' : 'image'} gsl-thumb-wait`);
-      thumb.append(h('span', 'gsl-icon', TYPE_ICON[w.kind === 'model' ? 'model' : 'image']!));
+      // sound effects, music and voice lines wait as sounds (generate-ui, 2026-10-22)
+      const type = w.kind === 'model' ? 'model' : w.kind === 'picture' ? 'image' : 'sound';
+      const thumb = h('div', `gsl-thumb gsl-thumb-${type} gsl-thumb-wait`);
+      thumb.append(h('span', 'gsl-icon', TYPE_ICON[type]!));
       const meta = h('span', 'gsl-meta');
       const clock = h('span', 'gsl-tag gsl-tag-making', L('makingTile', { time: elapsed(w.since) }));
       clock.dataset.since = String(w.since);

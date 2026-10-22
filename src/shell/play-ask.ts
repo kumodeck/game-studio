@@ -61,6 +61,8 @@ export function playLine(i: PlayLineInput): PlayLine | null {
 
 /** The overlay's own words (the bridge has none), in the person's language. */
 export function playWords(t: (key: string) => string): Record<string, string> {
-  const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close'];
+  const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close',
+    // The pause and its chat (2026-10-22).
+    'pauseTip', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send'];
   return Object.fromEntries(keys.map((k) => [k, t(`play.${k}`)]));
 }

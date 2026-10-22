@@ -30,6 +30,8 @@ export interface MenuItem {
   /** The key at the right end ("⌘D"), already spelled for this system; '' = none. */
   key?: string;
   disabled?: boolean;
+  /** The chosen one of a list (levels, 2026-10-22: the level on screen): a ✓ at the right end, on phones too. */
+  checked?: boolean;
   run(): void;
 }
 export type MenuEntry = MenuItem | { sep: true };
@@ -112,9 +114,9 @@ export function createContextMenu(d: ContextMenuDeps) {
         el.append(h('div', { class: 'ctx-sep', role: 'separator' }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: 'ctx-row', role: 'menuitem', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined },
+      const btn = h('button', { type: 'button', class: 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
         h('span', { class: 'ctx-label', text: e.label }),
-        !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
+        e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
       btn.addEventListener('pointerenter', (ev) => {
         if ((ev as PointerEvent).pointerType === 'mouse' && !e.disabled) highlight(i);

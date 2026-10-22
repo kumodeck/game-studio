@@ -27,6 +27,11 @@ export interface TimeOptions {
   /** Give up waiting for a first frame after this many ms (static or non-rAF games). */
   firstFrameTimeoutMs?: number;
   win?: Window & typeof globalThis;
+  /**
+   * ▶ Play inside the editor: the timestamp a game's frame callback gets, with the time spent paused taken out
+   * (core/play-clock.ts, pause 2026-10-22). Absent = the browser's own timestamp, as before.
+   */
+  stamp?: (t: number) => number;
 }
 
 export interface TimeControlImpl extends TimeControl {
@@ -84,7 +89,7 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
       pending.delete(id);
       gameFrames++;
       try {
-        e.cb(t);
+        e.cb(opts.stamp ? opts.stamp(t) : t);
       } finally {
         // The first game frame has run once its callback returned (it drew).
         // A microtask lets other callbacks of the same frame finish first.

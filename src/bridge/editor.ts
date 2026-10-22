@@ -13,6 +13,7 @@ import { firstToTouch, stepDetent } from './snap.ts';
 import { createHoldState, withHold } from './hold.ts';
 import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck } from './selfcheck.ts';
+import { createMotionView } from './motion.ts';
 
 export interface EditorDeps {
   /** The world's adapter as found (self-check runs on it, before game rules); null = an HTML-only game (UI only). */
@@ -103,6 +104,10 @@ export function createEditor(deps: EditorDeps): Editor {
     deps.post(msg);
   };
   const state: EditState = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
+  // Motion (motion-gui, 2026-10-22; motion.ts): the picked object's path and the card's ▶. Made here, before input.ts
+  // attaches, so a press on a path point reaches it first (motion.ts says why).
+  const motion = createMotionView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), inset: () => inset, lang: () => lang,
+    raf: (cb) => core.time.raf(cb), markDirty: () => (dirtyFrame = true) });
   let lang: Lang = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -184,6 +189,7 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     input?.frame();
     toolHost.frame();
+    motion.frame();
     dirtyFrame = false;
   };
 
@@ -971,7 +977,12 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:tool/saved':
           toolHost.saved(msg.ids);
           break;
+        case 'studio:motion/show':
+        case 'studio:motion/play':
+          if (state.editing && layer === 'world') motion.handle(msg);
+          break;
         case 'studio:core/edit':
+          if (!msg.on) motion.clear();
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -980,6 +991,7 @@ export function createEditor(deps: EditorDeps): Editor {
           }
           break;
         case 'studio:core/layer':
+          if (msg.layer !== layer) motion.clear();
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
         case 'studio:core/ui-peek':
@@ -1021,10 +1033,12 @@ export function createEditor(deps: EditorDeps): Editor {
           state.multi = !!msg.on;
           break;
         case 'studio:placement/copy':
+          motion.stopFor();
           closeStepRun();
           copy(msg.items, msg.at);
           break;
         case 'studio:placement/remove': {
+          motion.stopFor();
           closeStepRun();
           const gone = edits.removeKeys(msg.keys);
           if (gone.length) {
@@ -1043,6 +1057,8 @@ export function createEditor(deps: EditorDeps): Editor {
           refreshItems();
           break;
         case 'studio:placement/pose': {
+          // An undo / a typed number on the object the ▶ is moving: put it back first, then the new pose.
+          motion.stopFor(msg.key);
           // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
           // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.
           const other = msg.layer && msg.layer !== layer ? (msg.layer === 'ui' ? uiStack : world) : null;

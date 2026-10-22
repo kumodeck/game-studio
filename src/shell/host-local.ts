@@ -61,6 +61,7 @@ function createKumoHost(base: string): KumoHost {
     makePicture: (req) => kumo('POST', 'image', req),
     makeModel: (req) => kumo('POST', 'model3d', req),
     job: (id) => kumo('GET', `model3d/${encodeURIComponent(id)}`),
+    makeSound: (req) => kumo('POST', 'sound', req),
   };
 }
 

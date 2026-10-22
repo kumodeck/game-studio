@@ -1,4 +1,4 @@
-// Optional KUMODeck sign-in: make pictures and 3D models with AI, paid from the creator's KUMODeck
+// Optional KUMODeck sign-in: make pictures, 3D models and sounds with AI, paid from the creator's KUMODeck
 // prepaid balance (2026-10-16, the product decision: "a completely free AI game
 // editor; sign in to KUMO and picture / 3D generation can be used from your credits").
 //
@@ -24,12 +24,19 @@
 //
 // Prices shown before Make (fal and Tripo at cost, no markup; the same numbers as
 // the server's AI price table, pricing.ts, read 2026-10-15): see kumoImagePrice / kumo3dPrice.
+//
+// Sounds (generate-ui, 2026-10-22; the audio route mgmt opened on 10/20, /v1/projects/:id/ai/audio/*): sound
+// effects, music and voice lines, made inside one request like a picture (the server's routes3d.ts FAMILY_AUDIO is
+// sync). Prices: kumoSoundPrice (pricing.ts, read 2026-10-22).
+//
+// Every file that lands is also one line in .studio/generated.json (generated.mjs): what was made, with which words.
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Readable } from 'node:stream';
 import { addAsset, httpError } from './files.mjs';
+import { addGenerated, readGenerated } from './generated.mjs';
 
 /** The name the KUMODeck server looks for (routes3d.ts STUDIO_CLIENT_HEADER / STUDIO_CLIENT_NAME). Change both together. */
 const KUMO_CLIENT_HEADERS = { 'x-kumo-client': 'game-studio' };
@@ -67,6 +74,28 @@ export function kumo3dPrice(o) {
   return o.texture === false ? 0.1 : 0.2;
 }
 
+/**
+ * The model each kind of sound is made with, named in the request (routing.model; the ids are the server's
+ * modelMenu.ts, its ★ defaults on 2026-10-22). WHY name it: without a model the server may fall back to another
+ * candidate at another price, and the price on Make would be a guess. Change with kumoSoundPrice.
+ */
+export const KUMO_SOUND_MODELS = { sfx: 'elevenlabs-sound-effects-v2', music: 'stable-audio-3-medium', voice: 'elevenlabs-turbo-v2.5' };
+/** The KUMODeck task of each kind of sound (the server's tasks.ts). */
+const SOUND_TASKS = { sfx: 'audio.sfx', music: 'audio.music', voice: 'audio.voice' };
+/** The voices KUMODeck knows (the server's types.ts VOICE_PRESETS). */
+export const KUMO_VOICES = ['neutral', 'bright', 'deep', 'warm', 'energetic'];
+
+/**
+ * Price of one sound in US dollars, for the model in KUMO_SOUND_MODELS (pricing.ts, read 2026-10-22):
+ * sfx ElevenLabs Sound Effects v2 $0.002 a second; voice ElevenLabs Turbo v2.5 $0.05 per 1,000 characters;
+ * music Stable Audio 3 Medium $0.0376 a piece, whatever the length (up to 380 s).
+ */
+export function kumoSoundPrice(o) {
+  if (o.kind === 'sfx') return 0.002 * (o.durationSec || 2);
+  if (o.kind === 'voice') return 0.00005 * Math.max(1, String(o.text || '').length);
+  return 0.0376;
+}
+
 /** The server reserves whole cents, at least 1 (the server's credits.ts, reserveCents). */
 const kumoCents = (usd) => Math.max(1, Math.ceil(Math.round(usd * 1e6) / 1e4));
 
@@ -81,6 +110,8 @@ export function createKumo(o) {
   let pickedProject = null;
   /** 3D jobs started in this run: id -> { prompt, status, path, costUsdMicros }. A job's file is saved once. */
   const jobs = new Map();
+  /** The words and options of each 3D job, for its history line when the model lands (generated.mjs). */
+  const words = new Map();
 
   async function readJsonFile(p) {
     try {
@@ -177,7 +208,8 @@ export function createKumo(o) {
   async function status() {
     const lg = await login();
     if (!lg) return { signedIn: false, loginCommand: KUMO_LOGIN_COMMAND };
-    const base = { signedIn: true, email: lg.email, server: new URL(lg.api).host, loginCommand: KUMO_LOGIN_COMMAND, jobs: [...jobs].map(([id, j]) => ({ id, ...j })) };
+    // made: the history (.studio/generated.json), for "Made here". Local only: no KUMODeck call.
+    const base = { signedIn: true, email: lg.email, server: new URL(lg.api).host, loginCommand: KUMO_LOGIN_COMMAND, jobs: [...jobs].map(([id, j]) => ({ id, ...j })), made: (await readGenerated(o.rootReal)).slice(0, 20) };
     try {
       const [bal, list, dash] = await Promise.all([balance(lg), projects(lg), dashboardUrl(lg)]);
       const id = lg.projectId || pickedProject;
@@ -229,7 +261,7 @@ export function createKumo(o) {
 
   async function saveFile(lg, job) {
     const a = job.assets && job.assets[0];
-    const f = a && (a.files.find((x) => /\.(glb|png|jpe?g|webp)$/i.test(x.name)) || a.files[0]);
+    const f = a && (a.files.find((x) => /\.(glb|png|jpe?g|webp|wav|mp3|ogg)$/i.test(x.name)) || a.files[0]);
     if (!f || typeof f.url !== 'string' || !f.url.startsWith('/v1/')) throw kumoFail('no_file', 'The job finished without a file.');
     const buf = await getFile(lg, f.url);
     const rel = await addAsset(o.rootReal, f.name, Readable.from([buf]), buf.length);
@@ -253,6 +285,31 @@ export function createKumo(o) {
     const job = r.json.job;
     if (job.status !== 'succeeded') throw kumoFail(job.error?.code || 'failed', job.error?.message || `The picture was not made (${job.status}).`);
     const rel = await saveFile(lg, job);
+    const side = input.width;
+    await addGenerated(o.rootReal, { id: job.id, kind: 'picture', prompt: input.prompt, options: { side, quality: input.tiling !== 'none' ? 'seamless' : b.quality === 'high' ? 'high' : 'standard' }, path: rel, costUsdMicros: job.costUsdMicros ?? null });
+    return { path: rel, costUsdMicros: job.costUsdMicros ?? null, balanceCents: (await balance(lg).catch(() => null))?.cents ?? null };
+  }
+
+  /**
+   * One sound (sync on KUMODeck: seconds). b: { kind: sfx | music | voice, prompt (voice: the words to say),
+   * durationSec?, loop?, voice?, acceptTerms? }. Answers { path, costUsdMicros, balanceCents } like makeImage.
+   */
+  async function makeSound(b) {
+    const lg = await need();
+    const projectId = await needProject(lg);
+    const { kind, input, options } = kumoSoundInput(b);
+    await checkBalance(lg, kumoSoundPrice({ kind, ...input }));
+    const r = await call(lg, 'POST', `/v1/projects/${encodeURIComponent(projectId)}/ai/audio/jobs`, {
+      task: SOUND_TASKS[kind],
+      input,
+      routing: { model: KUMO_SOUND_MODELS[kind] },
+      ...(b.acceptTerms === true ? { acceptTerms: true } : {}),
+    });
+    if (r.status !== 200 && r.status !== 202) throw fromApi(r);
+    const job = r.json.job;
+    if (job.status !== 'succeeded') throw kumoFail(job.error?.code || 'failed', job.error?.message || `The sound was not made (${job.status}).`);
+    const rel = await saveFile(lg, job);
+    await addGenerated(o.rootReal, { id: job.id, kind, prompt: kind === 'voice' ? input.text : input.prompt, options, path: rel, costUsdMicros: job.costUsdMicros ?? null });
     return { path: rel, costUsdMicros: job.costUsdMicros ?? null, balanceCents: (await balance(lg).catch(() => null))?.cents ?? null };
   }
 
@@ -271,6 +328,8 @@ export function createKumo(o) {
     });
     if (r.status !== 200 && r.status !== 202) throw fromApi(r);
     jobs.set(r.json.job.id, { projectId, prompt: prompt.slice(0, 80), status: r.json.job.status, path: null, costUsdMicros: null });
+    // The whole words for the history (the list above keeps 80 characters for the "Recent" line).
+    words.set(r.json.job.id, { prompt, texture });
     return job3d(r.json.job.id);
   }
 
@@ -286,12 +345,16 @@ export function createKumo(o) {
     j.status = job.status;
     j.costUsdMicros = job.costUsdMicros ?? null;
     if (job.status === 'failed') j.error = { code: job.error?.code || 'failed', message: String(job.error?.message || '').slice(0, 300) };
-    if (job.status === 'succeeded' && !j.path) j.path = await saveFile(lg, job);
+    if (job.status === 'succeeded' && !j.path) {
+      j.path = await saveFile(lg, job);
+      const w = words.get(id);
+      if (w) await addGenerated(o.rootReal, { id, kind: 'model', prompt: w.prompt, options: { texture: w.texture }, path: j.path, costUsdMicros: j.costUsdMicros });
+    }
     return { id, ...j };
   }
 
   // login() stays inside: it holds the token, which must not leave this module
-  return { status, pickProject, makeImage, make3d, job3d };
+  return { status, pickProject, makeImage, make3d, job3d, makeSound };
 }
 
 /** The picture's input for KUMODeck (same limits as the server: tasks.ts pictureSide). */
@@ -308,6 +371,30 @@ function kumoImageInput(b) {
   const format = b.format === 'png' ? 'png' : 'jpeg';
   const name = typeof b.name === 'string' && /^[a-z0-9][a-z0-9_-]{0,47}$/.test(b.name) ? b.name : undefined;
   return { prompt: kumoText(b.prompt, 1000), width: side(b.width), height: side(b.height), tiling, format, ...(name ? { name } : {}) };
+}
+
+/**
+ * A sound's input for KUMODeck (the same limits as the server's tasks.ts, narrowed to what the editor offers), and
+ * the options kept in the history. Unknown kinds and out-of-range values are a 400 here, before any money is asked.
+ */
+function kumoSoundInput(b) {
+  const kind = String(b.kind || '');
+  if (!SOUND_TASKS[kind]) throw httpError(400, 'kind is sfx, music or voice');
+  if (kind === 'voice') {
+    // The words to say: at most 500 characters (tasks.ts audio.voice text)
+    const text = kumoText(b.prompt, 500);
+    const voice = b.voice === undefined ? 'neutral' : String(b.voice);
+    if (!KUMO_VOICES.includes(voice)) throw httpError(400, `voice is one of ${KUMO_VOICES.join(', ')}`);
+    return { kind, input: { text, voice }, options: { voice } };
+  }
+  const prompt = kumoText(b.prompt, 1000);
+  const durationSec = Number(b.durationSec ?? (kind === 'sfx' ? 2 : 30));
+  // sfx 0.5-10 s, music 5-120 s (tasks.ts)
+  const [lo, hi] = kind === 'sfx' ? [0.5, 10] : [5, 120];
+  if (!Number.isFinite(durationSec) || durationSec < lo || durationSec > hi) throw httpError(400, `durationSec is ${lo} to ${hi}`);
+  if (kind === 'sfx') return { kind, input: { prompt, durationSec }, options: { durationSec } };
+  const loop = b.loop !== false;
+  return { kind, input: { prompt, durationSec, loop }, options: { durationSec, loop } };
 }
 
 function kumoText(v, max) {

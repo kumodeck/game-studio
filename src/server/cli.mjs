@@ -38,6 +38,7 @@ import { startStudioServer } from './server.mjs';
 import { encodeQR, qrToTerminal } from './qr.mjs';
 import { runViewCheck, runGameShot } from './view-check.mjs';
 import { writeStudioFile } from './files.mjs';
+import { addChatTurn, chatIdOf } from './play-chat.mjs';
 import { normalizeStatus, isRequestId, AI_STATES } from '../schema/handoff.mjs';
 import { findStarters, pickStarter, copyStarter, noGameLine } from './starters.mjs';
 import { pickGamePage, scorePage, entryLine } from './find-game.mjs';
@@ -500,6 +501,19 @@ async function writeStatus(root, args) {
     note: args.note, at: new Date().toISOString(),
     choices: args.choices, about: args.about, before: args.before, after: args.after,
   });
+  // Pause (2026-10-22): a reply to a message of the chat over a paused game goes into that talk's file too
+  // (play-chat.mjs), before the request leaves the waiting list. Read from done/ when it was handled already.
+  if ((args.status === 'done' || args.status === 'failed' || args.status === 'asking') && st.note && st.request) {
+    let rec = pending.find((r) => r.id === st.request);
+    if (!rec) rec = await fs.readFile(path.join(root, '.studio', 'requests', 'done', `${st.request}.json`), 'utf8').then(JSON.parse, () => null);
+    const chatId = chatIdOf(rec);
+    if (chatId) {
+      const turn = { who: 'ai', text: st.note, at: st.at, request: st.request, state: st.state };
+      if (Number.isFinite(st.changed)) turn.changed = st.changed;
+      if (st.choices?.length) turn.choices = st.choices.slice();
+      await addChatTurn(realpathSync(root), chatId, turn);
+    }
+  }
   // done / failed: the requests up to this one are handled; move them out of the waiting list.
   if ((args.status === 'done' || args.status === 'failed') && pending.length) {
     const handled = pending.filter((r) => isRequestId(r.id) && (!request || r.id <= request)).map((r) => r.id);

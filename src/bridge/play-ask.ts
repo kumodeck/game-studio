@@ -23,12 +23,16 @@ import { isStudioMessage } from '../contract.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } from '../shell/line-fade.ts';
 import { icon } from '../shell/icons.ts';
 import { shootPage } from './play-shot.ts';
+import { createPauseHold, isPauseKey, type PauseHold, type PauseParts } from './play-pause.ts';
+import { CHAT_CSS, createChat, type Chat } from './play-chat.ts';
 
 export interface PlayAskOptions {
   win: Window & typeof globalThis;
   parentOrigin: string;
   /** The adapters to ask for the player's camera and what is near (game's first, then the built-ins). */
   probes: () => AdapterProbe[];
+  /** Pause while playing (play-pause.ts, 2026-10-22): the frames and the clock to hold. Absent = no pause. */
+  pause?: PauseParts;
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +217,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
   .mark.small { padding: 0 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .busy .dot, .busy .spark { animation: none; } .line { transition: none; } }
-`;
+/* The corner (pause, 2026-10-22): ❚❚ left of the mark, the same glass and height. The two sit in one row at the corner
+   so the button follows the mark when it grows (hover) or shrinks (after 5 s). */
+.corner { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.corner .mark { position: static; }
+` + CHAT_CSS;
 
 type Words = Record<string, string>;
 
@@ -221,6 +229,8 @@ export function startPlayAsk(o: PlayAskOptions): void {
   const { win, parentOrigin } = o;
   const doc = win.document;
   keepWebGLPictures(win);
+  // Made now, before the game's code: it keeps the AudioContexts the game makes so a pause can quiet them.
+  const hold: PauseHold | null = o.pause ? createPauseHold(win, o.pause) : null;
 
   // ----- the console, from the first line the game writes -----
   const logs: LogEntry[] = [];
@@ -266,6 +276,13 @@ export function startPlayAsk(o: PlayAskOptions): void {
   let host: HTMLElement | null = null;
   let root: ShadowRoot | null = null;
   let mark: HTMLButtonElement, bar: HTMLElement, input: HTMLInputElement, hint: HTMLElement, line: HTMLElement;
+  // Pause (2026-10-22): the corner's ❚❚, the chat over the paused game, and what the first message of a pause carries.
+  let pauseBtn: HTMLButtonElement | null = null;
+  let chat: Chat | null = null;
+  let pausedMoment: BridgeToShell | null = null;
+  let chatId = '';
+  // Which field is waiting for play/sent: the ✦ field's, or the chat's.
+  let sentTo: 'bar' | 'chat' = 'bar';
   let state: PlayLine | null = null;
   let barOpen = false;
   let sending = false;
@@ -355,7 +372,25 @@ export function startPlayAsk(o: PlayAskOptions): void {
     line.addEventListener('focusin', () => holdLine());
     line.addEventListener('pointerleave', () => (leftAt = win.performance.now()));
     line.addEventListener('focusout', () => (leftAt = win.performance.now()));
-    wrap.append(mark, line, bar);
+    const corner = el('div', 'corner');
+    if (hold) {
+      pauseBtn = el('button', 'pause glass') as HTMLButtonElement;
+      pauseBtn.type = 'button';
+      pauseBtn.dataset.part = 'pause-button';
+      pauseBtn.append(icon('pause'));
+      pauseBtn.addEventListener('click', () => void pauseNow());
+      chat = createChat({
+        doc, el, w,
+        send: (text, history) => void sendChat(text, history),
+        resume: () => resumeNow(),
+        reload: () => post({ type: 'studio:play/reload' }),
+      });
+      corner.append(pauseBtn);
+    }
+    corner.append(mark);
+    // The veil and the chat last: the ✦ field stays the overlay's first input (what reads the overlay finds it as
+    // before), and they are never shown with the line or the field anyway.
+    wrap.append(corner, line, bar, ...(chat ? chat.parts : []));
     root.append(style, wrap);
     // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
     // it leaves the overlay, so the overlay's own buttons still get it; a game listening in the capture phase on the
@@ -388,10 +423,29 @@ export function startPlayAsk(o: PlayAskOptions): void {
         // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
         // and Escape are read here. Letters still type (nothing prevents their default).
         e.stopImmediatePropagation();
-        if (type === 'keydown') fieldKey(e);
+        if (type === 'keydown') (hold?.paused ? chatKey(e) : fieldKey(e));
         return;
       }
-      if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
+      if (hold?.paused) {
+        // Paused: no key press reaches the game. Releases do (play-pause.ts: a key held at the pause must not stay
+        // down in the game). P or Escape resumes; any other key is the person reaching for the chat: it gets focus.
+        if (type === 'keyup') return;
+        e.stopImmediatePropagation();
+        if (type !== 'keydown') return;
+        if (isPauseKey(e, gameTyping()) || e.key === 'Escape') {
+          e.preventDefault();
+          resumeNow();
+        }
+        return;
+      }
+      if (type === 'keydown' && !barOpen && hold && isPauseKey(e, gameTyping())) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void pauseNow();
+      } else if (type !== 'keydown' && hold && !barOpen && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP') && !gameTyping()) {
+        // The release (and keypress) of the P that paused: not the game's either.
+        e.stopImmediatePropagation();
+      } else if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
         e.preventDefault();
         e.stopImmediatePropagation();
         openBar();
@@ -399,6 +453,17 @@ export function startPlayAsk(o: PlayAskOptions): void {
         e.stopImmediatePropagation();
       }
     }, true);
+  }
+  /** The chat's field while paused: Enter sends, Escape resumes (the words stay in the field for the next pause). */
+  function chatKey(e: KeyboardEvent) {
+    if (!chat || e.target !== host || !root || root.activeElement !== chat.input) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      resumeNow();
+    } else if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      chat.input.form?.requestSubmit();
+    }
   }
   function fieldKey(e: KeyboardEvent) {
     if (e.target !== host || !root || root.activeElement !== input) return;
@@ -445,6 +510,51 @@ export function startPlayAsk(o: PlayAskOptions): void {
     }
   }
 
+  // ----- pause (play-pause.ts holds the game; play-chat.ts is the talk over it) -----
+  async function pauseNow() {
+    if (!hold || !chat || !host || hold.paused) return;
+    // Words already typed in the ✦ field move to the chat (the person was about to ask; now they can talk).
+    const draft = barOpen ? input.value.trim() : '';
+    if (barOpen) closeBar();
+    hold.pause();
+    // The moment, taken at once: the picture is of the game as it stopped (the overlay is never in it), the console
+    // as it was. The first message of this pause carries it.
+    pausedMoment = await moment('');
+    chatId = '';
+    const logs = pausedMoment.type === 'studio:play/ask' ? pausedMoment.logs || [] : [];
+    const errs = logs.filter((l) => l.level === 'error').length;
+    const sees = errs ? `${w('sees')} · ${(errs === 1 ? w('seesError') : w('seesErrors')).replace('#', String(errs))}` : w('sees');
+    if (!hold.paused) return; // resumed while the picture was taken
+    chat.open(sees, draft);
+    post({ type: 'studio:play/paused', on: true });
+    render();
+  }
+  function resumeNow() {
+    if (!hold || !hold.paused) return;
+    hold.resume();
+    chat?.close();
+    pausedMoment = null;
+    post({ type: 'studio:play/paused', on: false });
+    render();
+    try {
+      win.focus();
+    } catch {
+      /* fine */
+    }
+  }
+  async function sendChat(text: string, history: Array<{ who: 'you' | 'ai'; text: string }>) {
+    sentTo = 'chat';
+    // The first message: the moment of the pause. The next ones: the talk so far and the first one's id; the moment
+    // is in that first record (and in .studio/chat/<id>.json), the game has not moved since.
+    const base: BridgeToShell = !chatId && pausedMoment && pausedMoment.type === 'studio:play/ask' ? { ...pausedMoment } : { type: 'studio:play/ask', text, size: [win.innerWidth, win.innerHeight] };
+    if (base.type !== 'studio:play/ask') return;
+    base.text = text;
+    base.paused = true;
+    if (chatId) base.chat = chatId;
+    if (history.length) base.history = history;
+    post(base);
+  }
+
   /** The state's line in reply to Enter on an empty field: a fix to load (Reload), or nothing to do. */
   async function submit() {
     const text = input.value.trim();
@@ -456,6 +566,7 @@ export function startPlayAsk(o: PlayAskOptions): void {
       return;
     }
     if (sending) return;
+    sentTo = 'bar';
     if (state && state.state === 'asking') {
       sending = true;
       post({ type: 'studio:play/answer', text });
@@ -569,7 +680,14 @@ export function startPlayAsk(o: PlayAskOptions): void {
     const s = state;
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
-    mark.hidden = barOpen || !(markOn || !!doc.fullscreenElement);
+    const paused = !!hold?.paused;
+    mark.hidden = barOpen || paused || !(markOn || !!doc.fullscreenElement);
+    if (pauseBtn) {
+      pauseBtn.hidden = mark.hidden;
+      pauseBtn.title = w('pauseTip');
+      pauseBtn.setAttribute('aria-label', w('pauseTip'));
+    }
+    chat?.render();
     bar.hidden = !barOpen;
     bar.classList.toggle('busy', sending);
     input.disabled = sending;
@@ -581,7 +699,8 @@ export function startPlayAsk(o: PlayAskOptions): void {
 
     line.replaceChildren();
     const sig = s ? JSON.stringify(s) : '';
-    line.hidden = !s || sig === dismissed;
+    // Paused: the chat says what the AI does (its replies are the same lines), so the line over the game waits.
+    line.hidden = !s || sig === dismissed || paused;
     fadeFor(s, sig);
     // A fix that waits for Reload after its line went: the corner dot says so (` or the mark, then Enter reloads).
     const waiting = !!s && s.state === 'fixed' && !!s.reload && line.hidden;
@@ -657,11 +776,21 @@ export function startPlayAsk(o: PlayAskOptions): void {
       else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
     } else if (m.type === 'studio:play/open') {
-      // The editor's ✦ (phone): the same as ` or the corner mark.
-      if (host && !barOpen) openBar();
+      // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the chat is the way to ask; its field.
+      if (hold?.paused && chat) chat.input.focus({ preventScroll: true });
+      else if (host && !barOpen) openBar();
+    } else if (m.type === 'studio:play/pause') {
+      // The editor's ❚❚ (phone): the same as P or the corner button.
+      if (hold?.paused) resumeNow();
+      else void pauseNow();
     } else if (m.type === 'studio:play/state') {
       state = m.state;
+      if (hold?.paused && chat) chat.line(m.state);
       render();
+    } else if (m.type === 'studio:play/sent' && sentTo === 'chat' && chat) {
+      sentTo = 'bar';
+      if (m.ok && m.id && !chatId) chatId = m.id;
+      chat.sent(m.ok);
     } else if (m.type === 'studio:play/sent') {
       sending = false;
       sendFailed = !m.ok;

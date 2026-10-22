@@ -8,14 +8,16 @@
 // front is ONE press of Undo. Changes are applied in order on redo and in
 // reverse order on undo (a group's draw-order moves only undo exactly
 // backwards, each one being "take it out, put it at that place").
-import { LIMITS, type Pose } from '../contract.ts';
+import { LIMITS, type Motion, type Pose } from '../contract.ts';
 
 export type Change =
   | { kind: 'pose'; key: string; from: Pose; to: Pose }
   /** A copy was made: undo deletes it again, redo brings it back at `pose`. */
   | { kind: 'add'; key: string; from: string; pose: Pose }
   /** An object was deleted: undo puts it back. */
-  | { kind: 'remove'; key: string };
+  | { kind: 'remove'; key: string }
+  /** Its motion changed (motion-gui, 2026-10-22): the card's menu, speed, + / −, or a path point dragged. null = none. */
+  | { kind: 'motion'; key: string; from: Motion | null; to: Motion | null };
 
 export interface UndoEntry {
   changes: Change[];
@@ -43,7 +45,7 @@ export class UndoStack {
 
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e: UndoEntry): boolean {
-    const changes = e.changes.filter((c) => c.kind !== 'pose' || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion') || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });
@@ -74,6 +76,12 @@ export class UndoStack {
   }
   peekRedo(): UndoEntry | null {
     return this.undone[this.undone.length - 1] ?? null;
+  }
+
+  /** Forget every step (levels, 2026-10-22: a new level on screen starts its own history). */
+  clear(): void {
+    this.done.length = 0;
+    this.undone.length = 0;
   }
 
   get canUndo(): boolean {

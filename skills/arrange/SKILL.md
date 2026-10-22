@@ -256,7 +256,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 | `studio: undone` | The person pressed **Undo AI change**: the editor already put the game's files back as they were before your last change | §3.1 (`undone`): do not redo it |
 | `studio: watching <n> waiting` | Your watch (`--watch`, below) started with requests waiting; they follow, one line each (with none waiting it prints nothing) | Handle them in order |
 | `studio: watch rest …` | Your watch ended on time (after 29 minutes), nothing is wrong | Start the same watch again at once (below). Say nothing |
-| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it | §3.1 (`play`): fix it without stopping their game |
+| `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game to talk with you about that moment | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused") |
 | `studio: answer` | The person answered your `asking` question in the editor (a button or their own words; the question and the request it is about follow) | §3.1 (`answer`): go on with that answer |
 | `studio: from the Game Studio editor …` | The plugin's hook woke you (below, "Woken by the editor"): the lines under it are requests, same words as above, each ending with the game folder in `[…]` | Handle them in order (§3.1), like watch lines |
 
@@ -310,10 +310,10 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
   between) rewrites the whole file.
   Stop the server when the user says they are finished: `studio.mjs <game folder> --stop`, never by name.
 - `.studio/` holds the adapter (keep it, commit it with the game) and hand-off notes (`check.md`, `next-step.md`,
-  `view-check.md` and `view-check/`, `shot/`, `requests/`, `play/` (pictures of requests made while playing), `status.json`, `watch.json`, `server.json`, logs; not game data) and
+  `view-check.md` and `view-check/`, `shot/`, `requests/`, `play/` (pictures of requests made while playing), `chat/` (talks over a paused game), `status.json`, `watch.json`, `server.json`, logs; not game data) and
   `undo/` (copies of the game's files from before each request, for **Undo AI change**; the newest 12 are kept). If
   the game has a `.gitignore`, add `.studio/*.md`, `.studio/*.log`, `.studio/view-check/`, `.studio/shot/`,
-  `.studio/requests/`, `.studio/play/`, `.studio/status.json`, `.studio/watch.json`, `.studio/server.json` and `.studio/undo/` to it.
+  `.studio/requests/`, `.studio/play/`, `.studio/chat/`, `.studio/status.json`, `.studio/watch.json`, `.studio/server.json` and `.studio/undo/` to it.
 
 ### 3.1 Requests from the editor, and telling the editor how it is going
 
@@ -326,11 +326,11 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
-| `play` | They asked **while playing** (▶ Play in the editor, often full screen) and are still playing. `text` = what they saw ("when I stop here the character vanishes": *here* is the moment below). `shot` = a picture of the game at that moment (`.studio/play/<id>.jpg`: **open it**). 3D: `view` = the player's own camera (`eye`, `target` 10 units ahead). `near` = what was near (3D: nearest in front of the camera, `d` in world units; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1 from the top left). `logs` = the game's console: errors and warnings (`level`), uncaught errors, the last lines, `ago` seconds before they asked. `fullscreen`, `size` | §3.1.1 |
+| `play` | They asked **while playing** (▶ Play in the editor, often full screen) and are still playing. `text` = what they saw ("when I stop here the character vanishes": *here* is the moment below). `shot` = a picture of the game at that moment (`.studio/play/<id>.jpg`: **open it**). 3D: `view` = the player's own camera (`eye`, `target` 10 units ahead). `near` = what was near (3D: nearest in front of the camera, `d` in world units; 2D: on screen, nearest the middle; `screen` = where in the picture, 0–1 from the top left). `logs` = the game's console: errors and warnings (`level`), uncaught errors, the last lines, `ago` seconds before they asked. `fullscreen`, `size`. `paused: true` = they paused the game and talk with you in a small chat over it: the first message has the moment above; the next ones have `chat` (the first one's id) and `history` (the talk so far) instead | §3.1.1 |
 | `undone` | They pressed **Undo AI change** (or **Redo**, said in `text`). The editor already put the game's files back; `files` lists what changed | Do **not** redo it or "fix" it. Forget the undone change (the code is as it was before it); say one line in your window and mark it handled: `--status done --request <id> --note "Okay, it's back to how it was"` (Redo: `"Okay, your change is back"`) |
 
 Tell the editor how it is going, so the user sees it there without switching windows. **Every request, every time,
@@ -427,6 +427,20 @@ get the fix the next time the game opens). So:
 Never rely on their run to check: the game in their window keeps their state and won't change until they press
 Reload. In your own window, one or two lines: what was wrong and what you changed.
 
+**Paused (`paused: true`, the line says `paused, chat …`).** They pressed P (or ❚❚): the game is stopped at the
+moment of the picture and they are **talking** with you in a small chat over it, waiting for your reply. It is a
+conversation, not a bug report:
+
+- **Answer in your `--note`**: `received`, then `--status done --request <id> --changed 0 --note "<your answer>"`. The
+  note is the reply they read in the chat (up to 300 characters, plain words, their language; no Markdown). Answer
+  what they asked ("why did I fall here?" → the cause, from the code and the picture), and say what you could change.
+- **Change code only when they ask for a change** ("make the jump higher", "fix it"); then as above (steps 3–5): the
+  reply sits next to **Reload** in the chat. A question is answered, not acted on.
+- **The talk so far**: `history` in the request (oldest first; `ai` turns are your earlier replies), and the whole talk
+  in `.studio/chat/<chat>.json` (both sides, plus the moment from the first message: `shot`, `view`, `near`, `logs`).
+  "This", "here" and "it" mean the paused moment.
+- A choice to make: `--status asking --choice …` as usual; their pick comes back as the next chat message.
+
 ### 3.2 Objects without a name: offer once, at the start
 
 When the first `studio: unnamed` line appears (or `--requests` / the editor list shows `path:` keys), and the user
@@ -498,6 +512,8 @@ for example "Reload the game: the rock should be left of the house, and the seco
   changes, whichever way below the user chose: see "Copies and deletions" after the two ways.
 - `ui` and `uiView` (optional): the game's **HTML UI** (title, score, buttons) the user moved or resized in the
   editor's UI layer. See "The UI (`ui`)" after "Copies and deletions".
+- `motion` (optional): objects the user made **move by themselves** in the editor (back and forth, a loop, once, a
+  spin). See "Motion (`motion`)" after "The UI".
 
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
@@ -652,6 +668,104 @@ also to marked elements the game adds later, such as a game-over screen). A game
 
 Check after applying: reload the game **without the editor** (or Play) and compare with what the user saw; then open
 the editor, press **U** (World | UI) and see that Save shows no unsaved count.
+
+### Motion (`motion`)
+
+On an object's card the user can choose how it **moves by itself**: back and forth between its place and a point,
+round a path (loop), along a path once, or spinning in place. They drag the path's points in the scene and watch it
+with ▶ before saving. It is saved by key:
+
+```json
+"motion": {
+  "rowboat": { "path": [[7, 0, -2]], "speed": 1.5, "repeat": "pingpong" },
+  "patrol":  { "path": [[4, 0, 0], [4, 0, -4], [0, 0, -4]], "speed": 2, "repeat": "loop" },
+  "coin":    { "spin": 3.1416 }
+}
+```
+
+- `path`: the points it goes through, as **offsets from the object's place** (its `p` in `objects`, or where the code
+  puts it when it is not there), in the parent's space: `[x, y, z]` in 3D, `[x, y]` px in 2D. The start (`[0, 0, 0]`)
+  is not written: `"path": [[7, 0, -2]]` = from its place to 7 right and 2 back, and back again.
+- `speed`: along the path, units per second. Straight lines, constant speed.
+- `repeat`: `pingpong` (there and back, forever), `loop` (from the last point straight back to the start, and round
+  again), `once` (stops at the last point).
+- `spin`: radians per second round the up axis (3D `rotation.y`, positive = anticlockwise seen from above; 2D the
+  angle, positive = clockwise). An object can have a path and a spin.
+
+**With the loader (Way 1)** there is nothing to write: `applyPlacement()` runs every motion from the game's own
+frames (position = place + offset; angle = its angle + spin × seconds) and returns their keys in `report.motion`;
+`stopMotion()` (exported next to it) stops them. Say so in one line ("The boat now goes back and forth. Press Play to
+see it."). Do it this way unless one of these is true:
+
+- **The code already sets that object's position or angle every frame** (its own update, a physics body, a tween):
+  the two would fight. Put the motion into that code instead (below) and take the key out of `motion`.
+- The user asks for the motion in the code, or it must react to the game (stop when the player stands on it, speed
+  up per level).
+
+**Writing it into the code (Way 2)**, per key: in the game's update loop, with `t` = seconds since the level started
+and `base` = the object's place,
+
+```js
+// pingpong along a path P = [[0,0,0], ...path], length L (sum of its sides), speed v:
+//   d = (v * t) % (2 * L); if (d > L) d = 2 * L - d;   then walk d along the sides of P
+// loop: P gets the start again at its end, d = (v * t) % L.   once: d = Math.min(v * t, L).
+object.position.set(base.x + off[0], base.y + off[1], base.z + off[2]);
+object.rotation.y = baseAngle + spin * t;
+```
+
+(The loader's `motionAt(m, t)` is that maths, exported: `const { off, turn } = motionAt(entry, t)`.) A moving
+platform the player rides needs its velocity too (move the player with it); a physics body moves with
+`setNextKinematicTranslation` (Rapier) or the engine's kinematic setter, not by setting the mesh. Then remove the key
+from `motion`.
+
+Check: ▶ Play in the editor (it plays the saved file and the draft) — the object moves as the user's ▶ showed it.
+
+### Levels (`levels`)
+
+A game with **several levels** (stages, worlds, rooms built one at a time) can show them all in the editor: the list's
+head becomes the level's name, and the user switches between levels, copies one into a new level, renames, reorders
+and deletes them. The editor only learns about levels from the game, with one call:
+
+```js
+const LEVELS = [{ id: 'meadow', label: 'Meadow' }, { id: 'cave', label: 'Cave' }]; // the code's levels, in order
+const pick = window.studio?.levels?.(LEVELS);       // in the editor: { id, build }; anywhere else: null
+const level = pick?.id ?? 'meadow';                 // the game's own choice when it is null
+buildLevel(pick?.build ?? level);                   // build: a level the code has (a copy is built from its original)
+await applyPlacement(scene, './placement.json', { level });
+```
+
+**Offer it** when the game has levels and the user asks about them ("let me edit level 2", "add a stage like this
+one"), or once when you first open the editor on such a game. Add those lines where the game picks its level at start
+(ids: letters, digits, `-`, `_`). A game whose levels are separate pages can call it on each page with the same list.
+Don't add it to a game with one level: nothing would change.
+
+`placement.json` then holds one entry per level, in the user's order; the top `objects` is `{}`:
+
+```json
+"levels": [
+  { "id": "meadow", "label": "Meadow", "objects": { "rock-1": { "p": [2, 0, 1], "was": { "p": [0, 0, 1] } } } },
+  { "id": "cave-2", "label": "Crystal Hall", "from": "cave", "added": [ … ] },
+  { "id": "cave", "label": "Cave" },
+  { "id": "summit", "label": "Top", "labelWas": "Summit" }
+],
+"levelsWas": ["meadow", "cave", "summit"]
+```
+
+- Each level's `objects` / `added` / `removed` / `order` / `motion` mean exactly what they mean at the top of a
+  one-level file (above); apply them to **that level's** code (Way 1 or Way 2, per level). A level's `motion` moves
+  that level's objects only (the top has no `motion` then).
+- `from`: a level the user made in the editor. Add it to the code as a copy of level `from`, with this `id` and
+  `label`, then apply its entries. Until you do, the editor and the loader build `from` and lay this level's entries
+  over it.
+- `labelWas`: the user renamed the level. Change the name in the code from `labelWas` to `label`; keep the `id`.
+- `levelsWas` (only when something differs): the code's order. Reorder the code's levels to the order of `levels`. An
+  id in `levelsWas` that is not in `levels` was **deleted**: ask once before you delete a level's code ("Delete the
+  Summit level from the code?"), since it cannot be seen again in the editor.
+- When applied, remove `from`, `labelWas` and `levelsWas`, and the applied entries (as above). A file whose levels are
+  all empty may be deleted.
+
+With the loader, `applyPlacement(…, { level })` applies only that level; without `{ level }` it moves nothing in the
+world (it warns), so a level's layout never lands on another level.
 
 ### Godot
 

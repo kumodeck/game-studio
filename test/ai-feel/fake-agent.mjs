@@ -70,6 +70,23 @@ for (const [key, x, z, s] of [['lighthouse-west', -38, -27, 0.7], ['lighthouse-e
   };
 }
 
+/**
+ * A reply in the chat over a paused game (pause, 2026-10-22; SKILL.md §3.1.1 "Paused"): an answer in the note, no code
+ * change. It names what the request says was nearest the player and how many turns came before, so a test can tell
+ * that the moment and the talk so far reached it.
+ */
+export function chatReplyFor(rec) {
+  const ja = rec.lang === 'ja';
+  const near = Array.isArray(rec.near) && rec.near[0] ? rec.near[0].label || rec.near[0].key : '';
+  const turns = Array.isArray(rec.history) ? rec.history.length : 0;
+  if (turns) {
+    return ja ? `（${turns} 件の話の続き）はい、変えるなら一か所だけです。直しましょうか？` : `(Following our ${turns} earlier messages) Yes: it is one line to change. Shall I?`;
+  }
+  return ja
+    ? `止めた瞬間を見ました。${near ? `いちばん近いのは「${near}」です。` : ''}ここではゲームのコードの通りに動いています。`
+    : `I see the moment you stopped at.${near ? ` Nearest you is "${near}".` : ''} It does what the code says here.`;
+}
+
 function edit(file, from, to) {
   const s = readFileSync(file, 'utf8');
   if (!s.includes(from)) throw new Error(`fake agent: "${from.slice(0, 40)}" not found in ${file}`);
@@ -98,6 +115,8 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
   createInterface({ input: watch.stdout }).on('line', (line) => {
     note(`line ${line}`);
     const ask = /^studio: request ask (\.studio\/requests\/(\S+)\.json)/.exec(line);
+    // Paused (2026-10-22): a chat message from over a paused game: answer, change nothing.
+    const paused = /^studio: request play (\.studio\/requests\/(\S+)\.json) .*\(paused, chat /.exec(line);
     const undone = /^studio: undone \.studio\/requests\/(\S+)\.json/.exec(line);
     if (ask) {
       queue = queue.then(async () => {
@@ -123,6 +142,24 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
         await sleep(gap.look); // §3.3: look at the game before reporting
         status('done', '--request', ask[2], '--changed', String(plan.changed), '--note', plan.done);
         note('done');
+      }).catch((e) => note(`error ${e.message}`));
+    } else if (paused) {
+      queue = queue.then(async () => {
+        let rec = {};
+        try {
+          rec = JSON.parse(readFileSync(join(folder, paused[1]), 'utf8'));
+        } catch {
+          /* handled already */
+        }
+        await sleep(gap.wake);
+        status('received', '--request', paused[2]);
+        note('received');
+        await sleep(gap.read);
+        status('working', '--request', paused[2], '--note', rec.lang === 'ja' ? 'この瞬間を見ています' : 'Looking at this moment');
+        note('working');
+        await sleep(gap.look);
+        status('done', '--request', paused[2], '--changed', '0', '--note', chatReplyFor(rec));
+        note('replied');
       }).catch((e) => note(`error ${e.message}`));
     } else if (undone) {
       queue = queue.then(async () => {

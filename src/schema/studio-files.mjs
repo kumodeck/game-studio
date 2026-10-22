@@ -41,6 +41,7 @@ export const LIMITS = Object.freeze({
   maxUrl: 2000,
   maxDepth: 8,
   maxOrders: 100, // sibling lists with a changed draw order (2D layers)
+  maxLevels: 100, // levels of one game (2026-10-22); each has its own 500 objects, the whole file its maxBytes
   // `ui` (the game's HTML UI moved in the editor's UI layer, UI stage 1, 2026-10-19): offsets in CSS px from where the
   // game's own CSS puts the element. 200 elements / 10,000 px / scale 0.1–10 are far beyond a real title screen or HUD;
   // they stop a runaway drag, like the bounds above.
@@ -49,7 +50,18 @@ export const LIMITS = Object.freeze({
   minUiScale: 0.1,
   maxUiScale: 10,
   maxUiView: 100000,
+  // `motion` (motion-gui, 2026-10-22): a path of at most 32 points (a patrol round a yard has 4–8; more is a curve, which
+  // is stage 2), speeds up to 1 km/s or 100,000 px/s and spins up to 100 rad/s (16 turns a second): far beyond a
+  // moving platform or a spinning coin, they stop a runaway field like the bounds above. Speeds round to 1 mm/s / 0.1
+  // px/s, spins like angles.
+  maxMotionPoints: 32,
+  maxSpeed3d: 1000,
+  maxSpeed2d: 100000,
+  maxSpin: 100,
 });
+
+/** The ways a motion repeats (contract Motion.repeat). */
+export const MOTION_REPEATS = Object.freeze(['pingpong', 'loop', 'once']);
 
 // Object keys (contract section "keys"): letters, digits and _ : # . - /, 1 to 80 chars.
 // "path:0/3/1" (position in the scene graph) and "tree#2" (second object named "tree") both fit.
@@ -135,7 +147,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -148,9 +160,52 @@ function placement(data, fail) {
     fail('objects', 'must be an object keyed by object key');
     return out;
   }
-  const keys = Object.keys(data.objects);
-  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
   if (dim !== '3d' && dim !== '2d') return out;
+  Object.assign(out, readWorld(data, dim, fail));
+  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
+  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
+  if (data.ui !== undefined) {
+    const ui = readUi(data.ui, fail);
+    if (Object.keys(ui).length) {
+      out.ui = ui;
+      if (data.uiView !== undefined) {
+        const view = readUiView(data.uiView, fail);
+        if (view) out.uiView = view;
+      }
+    }
+  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
+  // `levels` / `levelsWas` (2026-10-22, CONTRACT.md §4.1) are optional too: absent for every game with one level, so
+  // its file keeps its bytes. Each level holds its own world part, read by the same rules as the top one.
+  if (data.levels !== undefined) {
+    const levels = readLevels(data.levels, dim, fail);
+    if (levels.length) {
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      out.levels = levels;
+      if (data.levelsWas !== undefined) {
+        const was = readOrderedKeys(data.levelsWas, 'levelsWas', fail);
+        if (was) out.levelsWas = was;
+      }
+      // An editor-made level is built from a level the code has.
+      const code = new Set(out.levelsWas || levels.filter((l) => !l.from).map((l) => l.id));
+      for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
+    }
+  } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
+  return out;
+}
+
+/**
+ * One world part: `objects` (moves), `order`, `added`, `removed`, `motion` — the top of the file, or one level's (levels,
+ * where `objects` may be left out). Returns only the fields that have something, so equal content gives equal bytes.
+ */
+function readWorld(data, dim, fail, objectsOptional = false) {
+  const out = { objects: {} };
+  if (data.objects === undefined && objectsOptional) delete out.objects;
+  else if (!isObject(data.objects)) {
+    fail('objects', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(data.objects || {});
+  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
 
   for (const key of keys.slice(0, LIMITS.maxObjects)) {
     const where = `objects[${JSON.stringify(key)}]`;
@@ -189,6 +244,7 @@ function placement(data, fail) {
     if (entry.unstable === true || key.startsWith('path:')) o.unstable = true;
     out.objects[key] = o;
   }
+  if (out.objects && objectsOptional && !Object.keys(out.objects).length) delete out.objects;
   if (data.order !== undefined) {
     const order = readOrder(data.order, dim, fail);
     if (order.length) out.order = order;
@@ -201,22 +257,54 @@ function placement(data, fail) {
     const removed = readRemoved(data.removed, dim, fail);
     if (removed.length) out.removed = removed;
   }
-  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
-  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
-  if (data.ui !== undefined) {
-    const ui = readUi(data.ui, fail);
-    if (Object.keys(ui).length) {
-      out.ui = ui;
-      if (data.uiView !== undefined) {
-        const view = readUiView(data.uiView, fail);
-        if (view) out.uiView = view;
-      }
-    }
-  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
   // One key, one meaning: a copy is never also a moved object or a deleted one.
   const addedKeys = new Set((out.added || []).map((a) => a.key));
-  for (const k of addedKeys) if (Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
+  for (const k of addedKeys) if (out.objects && Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
   for (const r of out.removed || []) if (addedKeys.has(r.key)) fail(`removed`, `"${r.key}" is also in added`);
+  // `motion` is optional too: absent (every file before motion-gui) = the same bytes as before. A deleted object
+  // does not move.
+  if (data.motion !== undefined) {
+    const motion = readMotion(data.motion, dim, fail);
+    for (const r of out.removed || []) if (Object.hasOwn(motion, r.key)) fail(`motion`, `"${r.key}" is also in removed`);
+    if (Object.keys(motion).length) out.motion = motion;
+  }
+  return out;
+}
+
+// Where each read level stood in the file (a level listed twice is left out, so the list's own index would be off).
+const LEVEL_AT = new WeakMap();
+
+// Levels (2026-10-22): [{ id, label?, labelWas?, from?, objects?, added?, removed?, order?, motion? }]. The order is
+// kept: it is the person's order of the levels (the content), like a draw order's keys. Errors inside a level say which
+// one. `motion` is part of a level's world (integrate3, 2026-10-22): its keys are that level's objects ("boat" in Meadow
+// and in Cave are different boats), so it lives with the level's objects, never at the top next to `levels`.
+function readLevels(v, dim, fail) {
+  const list = optionalArray(v, 'levels', LIMITS.maxLevels, fail);
+  const out = [];
+  const seen = new Set();
+  list.forEach((item, i) => {
+    const where = `levels[${i}]`;
+    const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion'], where, fail);
+    if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
+    if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
+    seen.add(item.id);
+    const o = { id: item.id };
+    for (const f of ['label', 'labelWas']) {
+      if (item[f] === undefined) continue;
+      const label = readLabel(item[f], `${where}.${f}`, fail);
+      if (label) o[f] = label;
+    }
+    if (item.from !== undefined) {
+      if (typeof item.from !== 'string' || !KEY_RE.test(item.from)) fail(`${where}.from`, 'must match ' + KEY_RE);
+      else if (item.from === item.id) fail(`${where}.from`, 'is the level itself');
+      else o.from = item.from;
+    }
+    Object.assign(o, readWorld(item, dim, lfail, true));
+    LEVEL_AT.set(o, i);
+    out.push(o);
+  });
   return out;
 }
 
@@ -288,6 +376,72 @@ function readUi(v, fail) {
       if (label) o.label = label;
     }
     out[key] = o;
+  }
+  return out;
+}
+
+// How objects move by themselves (motion-gui, 2026-10-22): { "<key>": { path?, speed?, repeat?, spin? } }. `path` =
+// points as offsets from the object's place (dim's numbers, the start left out), `speed` along it, `repeat` how it goes
+// on; `spin` = radians per second round the up axis. A path without speed / repeat gets none written: the loader's
+// defaults (1 unit/s, pingpong) apply, but the editor always writes both so the AI reads them plainly.
+function readMotion(v, dim, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('motion', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(v);
+  if (keys.length > LIMITS.maxObjects) fail('motion', `at most ${LIMITS.maxObjects} objects`);
+  const n = dim === '3d' ? 3 : 2;
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  for (const key of keys.slice(0, LIMITS.maxObjects)) {
+    const where = `motion[${JSON.stringify(key)}]`;
+    if (!KEY_RE.test(key)) {
+      fail(where, 'key must match ' + KEY_RE);
+      continue;
+    }
+    const e = v[key];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['path', 'speed', 'repeat', 'spin'], where, fail);
+    const o = {};
+    if (e.path !== undefined) {
+      if (!Array.isArray(e.path) || !e.path.length || e.path.length > LIMITS.maxMotionPoints) {
+        fail(`${where}.path`, `must be 1 to ${LIMITS.maxMotionPoints} points`);
+      } else {
+        const pts = e.path.map((q, i) => {
+          if (!Array.isArray(q) || q.length !== n) {
+            fail(`${where}.path[${i}]`, `must be ${n} numbers`);
+            return null;
+          }
+          const p = q.map((x, k) => readNumber(x, -bound, bound, `${where}.path[${i}][${k}]`, fail));
+          return p.every((x) => x !== null) ? p.map((x) => round(x, step)) : null;
+        });
+        if (pts.every((q) => q)) o.path = pts;
+      }
+    }
+    if (e.speed !== undefined) {
+      const max = dim === '3d' ? LIMITS.maxSpeed3d : LIMITS.maxSpeed2d;
+      const sp = readNumber(e.speed, 0, max, `${where}.speed`, fail);
+      if (sp !== null && !(sp > 0)) fail(`${where}.speed`, 'must be more than 0');
+      else if (sp !== null) o.speed = round(sp, step);
+      if (e.path === undefined) fail(`${where}.speed`, 'only with a path');
+    }
+    if (e.repeat !== undefined) {
+      if (!MOTION_REPEATS.includes(e.repeat)) fail(`${where}.repeat`, `must be one of ${MOTION_REPEATS.join(', ')}`);
+      else o.repeat = e.repeat;
+      if (e.path === undefined) fail(`${where}.repeat`, 'only with a path');
+    }
+    if (e.spin !== undefined) {
+      const sp = readNumber(e.spin, -LIMITS.maxSpin, LIMITS.maxSpin, `${where}.spin`, fail);
+      if (sp !== null && round(sp, LIMITS.stepAngle) === 0) fail(`${where}.spin`, 'must not be 0 (leave it out)');
+      else if (sp !== null) o.spin = round(sp, LIMITS.stepAngle);
+    }
+    if (e.path === undefined && e.spin === undefined) fail(where, 'needs a path or a spin');
+    if (o.path || o.spin !== undefined) out[key] = o;
   }
   return out;
 }

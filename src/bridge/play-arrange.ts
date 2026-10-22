@@ -21,6 +21,7 @@
 import type { Dim, Pose, StudioAdapter } from '../contract.ts';
 import { hasLayer, orderOfLayer } from '../shell/layers.ts';
 import { samePose } from '../shell/pose-compare.ts';
+import { motionAt } from '../loader/studio-placement.js';
 
 type Entry = { p?: unknown; r?: unknown; s?: unknown; t?: unknown; was?: { p?: unknown; r?: unknown; s?: unknown; t?: unknown } };
 type Added = { key?: unknown; from?: unknown; p?: unknown; r?: unknown; s?: unknown; t?: unknown };
@@ -32,6 +33,7 @@ export interface PlayFile {
   added?: Added[];
   removed?: Removed[];
   order?: Order[];
+  motion?: Record<string, unknown>;
 }
 
 const nums = (v: unknown): v is number[] => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
@@ -134,4 +136,45 @@ export function arrangeInPlay(a: StudioAdapter, file: PlayFile | null): number {
     }
   }
   return shown;
+}
+
+/**
+ * The draft's motions in ▶ Play (motion-gui, 2026-10-22), for a game whose loader does not run them: a game the AI
+ * made before "add the loader", or one with an older copy of it. Every frame of the page (its own
+ * requestAnimationFrame: Play is not frozen), each object is put at its place + motionAt(t) through the adapter, as
+ * the loader would. Keys the page's loader already moves (the global set it keeps, src/loader) are left alone, so
+ * nothing moves twice. Call after arrangeInPlay (the place is the arranged one). Returns the keys it moves.
+ */
+export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window & typeof globalThis): string[] {
+  const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
+  if (!motion) return [];
+  const byLoader = (win as unknown as Record<symbol, Set<string> | undefined>)[Symbol.for('game-studio.motion')];
+  const items = a.list();
+  const runs: Array<{ key: string; m: { path?: number[][]; spin?: number }; base: Pose }> = [];
+  for (const [key, m] of Object.entries(motion)) {
+    if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
+    const it = items.find((i) => i.key === key);
+    const mm = m as { path?: unknown; spin?: unknown };
+    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === (it?.pose.p.length ?? 0));
+    if (!it || (!pathOk && !num(mm.spin))) continue;
+    runs.push({ key, m: m as { path?: number[][]; spin?: number }, base: structuredClone(flat(it.pose)) });
+  }
+  if (!runs.length) return [];
+  const t0 = win.performance.now();
+  const tick = (now: number) => {
+    const t = Math.max(0, (now - t0) / 1000);
+    for (const r of runs) {
+      const at = motionAt(r.m, t) as { off: number[] | null; turn: number };
+      const pose: Pose = { ...r.base, p: at.off ? r.base.p.map((v, i) => v + (at.off![i] ?? 0)) : r.base.p.slice() };
+      if (num(r.m.spin)) pose.r = (r.base.r ?? 0) + at.turn;
+      try {
+        a.setPose(r.key, pose);
+      } catch {
+        /* the game took it away: the others go on */
+      }
+    }
+    win.requestAnimationFrame(tick);
+  };
+  win.requestAnimationFrame(tick);
+  return runs.map((r) => r.key);
 }

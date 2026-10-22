@@ -98,7 +98,8 @@ async function run(mobile) {
     await shot('3-terms');
     assert.ok(await page.eval(`(() => { const c = document.querySelector('.gsl-ai-terms input[type=checkbox]'); c.click(); return c.checked; })()`));
     assert.ok(await page.eval(IN.click('.gsl-ai-make')));
-    await page.waitFor(`${IN.text('.gsl-ai-note')}.includes('star-sky.png')`);
+    // what landed: the "Just made" card (generate-ui 2026-10-22; before, a sentence in .gsl-ai-note)
+    await page.waitFor(`${IN.text('.gsl-ai-made')}.includes('star-sky.png')`);
     assert.deepEqual(assets(), [...before, 'star-sky.png'].sort());
     await page.waitFor(`[...document.querySelectorAll('.gsl-tile')].some(t => t.textContent.includes('star-sky.png') && t.querySelector('.gsl-tag-new'))`);
     assert.match(await page.eval(IN.text('.gsl-ai-acct')), /\$4\.99/);
@@ -128,7 +129,7 @@ async function run(mobile) {
     await page.waitFor(`${IN.text('.gsl-ai-acct')}.includes('$4.79')`, 10000);
     // Heavy: the line and the one button.
     await page.waitFor(IN.visible('.gsl-ai .gsl-heavy'), 10000);
-    if (!LANG) assert.match(await page.eval(IN.text('.gsl-ai-note')), /chest\.glb \(11 MB\)/);
+    if (!LANG) assert.match(await page.eval(IN.text('.gsl-ai-made')), /chest\.glb.*11 MB/);
     if (!LANG) assert.match(await page.eval(IN.text('.gsl-ai .gsl-heavy')), /11 MB is heavy for a web game/);
     await shot('5b-model-heavy');
     assert.equal(await unsaved(), 0, 'a made 3D file is not a change to save');

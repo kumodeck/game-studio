@@ -18,13 +18,15 @@ import {
   type StudioGlobal,
 } from '../contract.ts';
 import { installCore, type Core } from '../core/index.ts';
+import { installPlayClock } from '../core/play-clock.ts';
 import { adapterFromPort2D } from '../core/port2d.ts';
 import { findDomUi, uiAdapterFromPort } from '../adapters/ui/index.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk } from './play-ask.ts';
-import { arrangeInPlay, type PlayFile } from './play-arrange.ts';
-import { applyPlacement } from '../loader/studio-placement.js';
+import { arrangeInPlay, moveInPlay, type PlayFile } from './play-arrange.ts';
+import { applyPlacement, placementForLevel } from '../loader/studio-placement.js';
+import { pickLevel } from './levels.ts';
 import { watchEarlyTaps } from './early-press.ts';
 import type { RulesHolder } from '../core/rules.ts';
 
@@ -56,7 +58,10 @@ export function startBridge(opts: BridgeOptions): void {
   // Outside edit mode (e.g. the game opened directly while the server runs)
   // the script only publishes no-op API so `studio.ready()` calls are harmless.
   const inFrame = win.parent && win.parent !== win;
-  const core: Core = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win });
+  // ▶ Play inside the editor: the game's clock, so a pause (P) takes no time (core/play-clock.ts). Before the core and
+  // before any game code, so the game's first performance.now() and every frame's timestamp already go through it.
+  const playClock = !edit && inFrame ? installPlayClock(win) : null;
+  const core: Core = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win, ...(playClock ? { stamp: playClock.at } : {}) });
 
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.
@@ -106,6 +111,21 @@ export function startBridge(opts: BridgeOptions): void {
       uiPorts.push({ get: typeof port === 'function' ? port : () => port, built: null });
     },
     core,
+    // Levels (2026-10-22, bridge/levels.ts): the code's levels go to the editor (once per page), and the page builds
+    // the level the editor's URL asks for. Outside the editor's frame: null, the game picks its level itself.
+    levels(list) {
+      const r = pickLevel(list, win.location.href, !!inFrame);
+      if (!r) return null;
+      if (inFrame) {
+        try {
+          const msg: BridgeToShell = { type: 'studio:core/levels', levels: r.levels, current: r.pick.id };
+          win.parent.postMessage(msg, parentOrigin);
+        } catch {
+          /* parent gone */
+        }
+      }
+      return r.pick;
+    },
     extend(ext: GameExtension) {
       if (!ext || typeof ext !== 'object') return;
       rules.ext.push(ext);
@@ -136,6 +156,9 @@ export function startBridge(opts: BridgeOptions): void {
       return;
     }
     if (!file || typeof file !== 'object') return;
+    // A game with levels (2026-10-22): only the level this page shows (the URL's studioLevel; none = nothing moves).
+    if (Array.isArray((file as { levels?: unknown }).levels)) file = placementForLevel(file, new URL(win.location.href).searchParams.get(LOCAL_PATHS.levelParam) || '');
+    if (!file) return;
     if (file.ui && typeof file.ui === 'object') {
       try {
         await applyPlacement(win.document, { tool: 'placement', objects: {}, ui: file.ui });
@@ -143,7 +166,8 @@ export function startBridge(opts: BridgeOptions): void {
         /* the UI stays as the game draws it */
       }
     }
-    const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length;
+    const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length
+      || (file.motion && Object.keys(file.motion).length);
     if (!busy) return;
     await core.time.firstFrame();
     // The game may build its scene a little after its first frame (as in edit mode): look for up to ~5 s.
@@ -167,6 +191,9 @@ export function startBridge(opts: BridgeOptions): void {
     if (!a) return;
     const shown = arrangeInPlay(a, file);
     if (shown) console.info(`[studio] Play: ${shown} change${shown === 1 ? '' : 's'} from the editor shown (saved or not, not in the code yet)`);
+    // The draft's motions (motion-gui, 2026-10-22), for the objects the page's own loader does not move.
+    const moving = moveInPlay(a, file, win);
+    if (moving.length) console.info(`[studio] Play: ${moving.length} motion${moving.length === 1 ? '' : 's'} from the editor played (not in the code yet)`);
   }
 
   /**
@@ -237,7 +264,7 @@ export function startBridge(opts: BridgeOptions): void {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend'] as const) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend', 'levels'] as const) prior[k] = api[k];
     api.ready = prior.ready as () => void;
     api.attach = prior.attach as (o: Record<string, unknown>) => void;
   }
@@ -265,7 +292,7 @@ export function startBridge(opts: BridgeOptions): void {
       enumerable: false,
     });
     void showFileEditsInPlay();
-    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins] });
+    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], ...(playClock ? { pause: { time: core.time, clock: playClock } } : {}) });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.

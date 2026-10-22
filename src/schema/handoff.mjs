@@ -30,6 +30,7 @@ export const HANDOFF_LIMITS = Object.freeze({
   maxLogs: 30, // console lines: every error / warning plus the last few lines; more is noise the AI has to skip
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
+  maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -214,6 +215,21 @@ function playMoment(r, errors) {
   }
   if (r.fullscreen === true) out.fullscreen = true;
   if (Array.isArray(r.size) && r.size.length === 2 && r.size.every((v) => Number.isInteger(v) && v > 0 && v < 100000)) out.size = r.size.slice();
+  // Pause (2026-10-22): from the chat over a paused game. `chat` names the talk's first request (a "play" id); a bad one
+  // is dropped (the words still go). `history`: the talk so far, each turn one line, the last HANDOFF_LIMITS.maxHistory.
+  if (r.paused === true) {
+    out.paused = true;
+    if (typeof r.chat === 'string' && ID_OK.test(r.chat) && r.chat.includes('-play-')) out.chat = r.chat;
+    if (Array.isArray(r.history)) {
+      const hist = [];
+      for (const h of r.history.slice(-HANDOFF_LIMITS.maxHistory)) {
+        if (!h || (h.who !== 'you' && h.who !== 'ai')) continue;
+        const t = oneLine(h.text, HANDOFF_LIMITS.maxNote);
+        if (t) hist.push({ who: h.who, text: t });
+      }
+      if (hist.length) out.history = hist;
+    }
+  }
   return out;
 }
 

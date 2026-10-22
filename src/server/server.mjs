@@ -31,6 +31,7 @@ import {
   RESULT_FILES, resolveInside, mimeOf, injectEditScript, writeResultFile, readResultFile, writeStudioNote, readGameAdapter, readStudioFile, writeStudioFile,
   readStudioFileInfo, writeNextStep, addAsset, httpError,
 } from './files.mjs';
+import { addChatTurn, chatIdOf } from './play-chat.mjs';
 import { normalizeRequestInput, normalizeStatus, requestId, isRequestId, KUMODECK_STEP_IDS, FILE_STEP_IDS, HANDOFF_LIMITS } from '../schema/handoff.mjs';
 import { listAssets } from './assets.mjs';
 import { nextStepMarkdown, NEXT_STEP_IDS } from './next-steps.mjs';
@@ -290,6 +291,12 @@ async function handleApi(req, res, u, ctx) {
       if (!v.shot) delete v.shot;
     }
     const rec = await recordRequest(ctx, v, fixedId);
+    // Pause (2026-10-22): a message of the chat over a paused game; the talk is kept as one file (play-chat.mjs).
+    const chatId = chatIdOf({ ...v, id: rec.id });
+    if (chatId) {
+      await addChatTurn(ctx.rootReal, chatId, { who: 'you', text: v.text, at: new Date(rec.at).toISOString(), request: rec.id }, v);
+      v.chat = chatId;
+    }
     // The same line `studio.mjs --watch` prints for it (ai-watch.mjs), so either source reads alike.
     ctx.log(handoffLine(v, rec.path));
     // `watching`: is an AI's watch running right now? The editor says "your AI isn't watching" at
@@ -410,10 +417,10 @@ async function handleApi(req, res, u, ctx) {
     return res.end();
   }
 
-  // Optional KUMODeck sign-in (kumo.mjs): status, pick a project, make a picture / a 3D model.
-  // Answers never carry the KUMODeck key. A KUMODeck refusal (not signed in, terms, balance, ...)
-  // is 422 { error, code } so the editor can show it in the person's words.
-  const kumoRoute = /^kumo\/(status|project|image|model3d)(?:\/([0-9a-f-]{36}))?$/.exec(route);
+  // Optional KUMODeck sign-in (kumo.mjs): status, pick a project, make a picture / a 3D model / a sound
+  // (sound: generate-ui 2026-10-22). Answers never carry the KUMODeck key. A KUMODeck refusal (not signed in,
+  // terms, balance, ...) is 422 { error, code } so the editor can show it in the person's words.
+  const kumoRoute = /^kumo\/(status|project|image|model3d|sound)(?:\/([0-9a-f-]{36}))?$/.exec(route);
   if (kumoRoute) {
     const [, what, id] = kumoRoute;
     const body = async () => {
@@ -429,6 +436,7 @@ async function handleApi(req, res, u, ctx) {
       if (what === 'image' && m === 'POST' && !id) return sendJson(res, 200, await ctx.kumo.makeImage(await body()));
       if (what === 'model3d' && m === 'POST' && !id) return sendJson(res, 200, await ctx.kumo.make3d(await body()));
       if (what === 'model3d' && m === 'GET' && id) return sendJson(res, 200, await ctx.kumo.job3d(id));
+      if (what === 'sound' && m === 'POST' && !id) return sendJson(res, 200, await ctx.kumo.makeSound(await body()));
     } catch (e) {
       if (!e.kumoCode) throw e;
       return sendJson(res, 422, { error: e.message, code: e.kumoCode, ...(e.extra || {}) });

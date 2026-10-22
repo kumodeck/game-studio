@@ -87,6 +87,7 @@ const LIMITS = Object.freeze({
   maxUrl: 2000,
   maxDepth: 8,
   maxOrders: 100, // sibling lists with a changed draw order (2D layers)
+  maxLevels: 100, // levels of one game (2026-10-22); each has its own 500 objects, the whole file its maxBytes
   // `ui` (the game's HTML UI moved in the editor's UI layer, UI stage 1, 2026-10-19): offsets in CSS px from where the
   // game's own CSS puts the element. 200 elements / 10,000 px / scale 0.1–10 are far beyond a real title screen or HUD;
   // they stop a runaway drag, like the bounds above.
@@ -95,7 +96,18 @@ const LIMITS = Object.freeze({
   minUiScale: 0.1,
   maxUiScale: 10,
   maxUiView: 100000,
+  // `motion` (motion-gui, 2026-10-22): a path of at most 32 points (a patrol round a yard has 4–8; more is a curve, which
+  // is stage 2), speeds up to 1 km/s or 100,000 px/s and spins up to 100 rad/s (16 turns a second): far beyond a
+  // moving platform or a spinning coin, they stop a runaway field like the bounds above. Speeds round to 1 mm/s / 0.1
+  // px/s, spins like angles.
+  maxMotionPoints: 32,
+  maxSpeed3d: 1000,
+  maxSpeed2d: 100000,
+  maxSpin: 100,
 });
+
+/** The ways a motion repeats (contract Motion.repeat). */
+const MOTION_REPEATS = Object.freeze(['pingpong', 'loop', 'once']);
 
 // Object keys (contract section "keys"): letters, digits and _ : # . - /, 1 to 80 chars.
 // "path:0/3/1" (position in the scene graph) and "tree#2" (second object named "tree") both fit.
@@ -181,7 +193,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -194,9 +206,52 @@ function placement(data, fail) {
     fail('objects', 'must be an object keyed by object key');
     return out;
   }
-  const keys = Object.keys(data.objects);
-  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
   if (dim !== '3d' && dim !== '2d') return out;
+  Object.assign(out, readWorld(data, dim, fail));
+  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
+  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
+  if (data.ui !== undefined) {
+    const ui = readUi(data.ui, fail);
+    if (Object.keys(ui).length) {
+      out.ui = ui;
+      if (data.uiView !== undefined) {
+        const view = readUiView(data.uiView, fail);
+        if (view) out.uiView = view;
+      }
+    }
+  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
+  // `levels` / `levelsWas` (2026-10-22, CONTRACT.md §4.1) are optional too: absent for every game with one level, so
+  // its file keeps its bytes. Each level holds its own world part, read by the same rules as the top one.
+  if (data.levels !== undefined) {
+    const levels = readLevels(data.levels, dim, fail);
+    if (levels.length) {
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      out.levels = levels;
+      if (data.levelsWas !== undefined) {
+        const was = readOrderedKeys(data.levelsWas, 'levelsWas', fail);
+        if (was) out.levelsWas = was;
+      }
+      // An editor-made level is built from a level the code has.
+      const code = new Set(out.levelsWas || levels.filter((l) => !l.from).map((l) => l.id));
+      for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
+    }
+  } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
+  return out;
+}
+
+/**
+ * One world part: `objects` (moves), `order`, `added`, `removed`, `motion` — the top of the file, or one level's (levels,
+ * where `objects` may be left out). Returns only the fields that have something, so equal content gives equal bytes.
+ */
+function readWorld(data, dim, fail, objectsOptional = false) {
+  const out = { objects: {} };
+  if (data.objects === undefined && objectsOptional) delete out.objects;
+  else if (!isObject(data.objects)) {
+    fail('objects', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(data.objects || {});
+  if (keys.length > LIMITS.maxObjects) fail('objects', `at most ${LIMITS.maxObjects} objects`);
 
   for (const key of keys.slice(0, LIMITS.maxObjects)) {
     const where = `objects[${JSON.stringify(key)}]`;
@@ -235,6 +290,7 @@ function placement(data, fail) {
     if (entry.unstable === true || key.startsWith('path:')) o.unstable = true;
     out.objects[key] = o;
   }
+  if (out.objects && objectsOptional && !Object.keys(out.objects).length) delete out.objects;
   if (data.order !== undefined) {
     const order = readOrder(data.order, dim, fail);
     if (order.length) out.order = order;
@@ -247,22 +303,54 @@ function placement(data, fail) {
     const removed = readRemoved(data.removed, dim, fail);
     if (removed.length) out.removed = removed;
   }
-  // `ui` / `uiView` are optional: a file without them (every file before UI stage 1, and every game without
-  // data-studio-key) comes out exactly as before — same fields, same bytes. `uiView` only travels with a `ui`.
-  if (data.ui !== undefined) {
-    const ui = readUi(data.ui, fail);
-    if (Object.keys(ui).length) {
-      out.ui = ui;
-      if (data.uiView !== undefined) {
-        const view = readUiView(data.uiView, fail);
-        if (view) out.uiView = view;
-      }
-    }
-  } else if (data.uiView !== undefined) readUiView(data.uiView, fail);
   // One key, one meaning: a copy is never also a moved object or a deleted one.
   const addedKeys = new Set((out.added || []).map((a) => a.key));
-  for (const k of addedKeys) if (Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
+  for (const k of addedKeys) if (out.objects && Object.hasOwn(out.objects, k)) fail(`added`, `"${k}" is also in objects`);
   for (const r of out.removed || []) if (addedKeys.has(r.key)) fail(`removed`, `"${r.key}" is also in added`);
+  // `motion` is optional too: absent (every file before motion-gui) = the same bytes as before. A deleted object
+  // does not move.
+  if (data.motion !== undefined) {
+    const motion = readMotion(data.motion, dim, fail);
+    for (const r of out.removed || []) if (Object.hasOwn(motion, r.key)) fail(`motion`, `"${r.key}" is also in removed`);
+    if (Object.keys(motion).length) out.motion = motion;
+  }
+  return out;
+}
+
+// Where each read level stood in the file (a level listed twice is left out, so the list's own index would be off).
+const LEVEL_AT = new WeakMap();
+
+// Levels (2026-10-22): [{ id, label?, labelWas?, from?, objects?, added?, removed?, order?, motion? }]. The order is
+// kept: it is the person's order of the levels (the content), like a draw order's keys. Errors inside a level say which
+// one. `motion` is part of a level's world (integrate3, 2026-10-22): its keys are that level's objects ("boat" in Meadow
+// and in Cave are different boats), so it lives with the level's objects, never at the top next to `levels`.
+function readLevels(v, dim, fail) {
+  const list = optionalArray(v, 'levels', LIMITS.maxLevels, fail);
+  const out = [];
+  const seen = new Set();
+  list.forEach((item, i) => {
+    const where = `levels[${i}]`;
+    const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
+    if (!isObject(item)) return fail(where, 'must be an object');
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion'], where, fail);
+    if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
+    if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
+    seen.add(item.id);
+    const o = { id: item.id };
+    for (const f of ['label', 'labelWas']) {
+      if (item[f] === undefined) continue;
+      const label = readLabel(item[f], `${where}.${f}`, fail);
+      if (label) o[f] = label;
+    }
+    if (item.from !== undefined) {
+      if (typeof item.from !== 'string' || !KEY_RE.test(item.from)) fail(`${where}.from`, 'must match ' + KEY_RE);
+      else if (item.from === item.id) fail(`${where}.from`, 'is the level itself');
+      else o.from = item.from;
+    }
+    Object.assign(o, readWorld(item, dim, lfail, true));
+    LEVEL_AT.set(o, i);
+    out.push(o);
+  });
   return out;
 }
 
@@ -334,6 +422,72 @@ function readUi(v, fail) {
       if (label) o.label = label;
     }
     out[key] = o;
+  }
+  return out;
+}
+
+// How objects move by themselves (motion-gui, 2026-10-22): { "<key>": { path?, speed?, repeat?, spin? } }. `path` =
+// points as offsets from the object's place (dim's numbers, the start left out), `speed` along it, `repeat` how it goes
+// on; `spin` = radians per second round the up axis. A path without speed / repeat gets none written: the loader's
+// defaults (1 unit/s, pingpong) apply, but the editor always writes both so the AI reads them plainly.
+function readMotion(v, dim, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('motion', 'must be an object keyed by object key');
+    return out;
+  }
+  const keys = Object.keys(v);
+  if (keys.length > LIMITS.maxObjects) fail('motion', `at most ${LIMITS.maxObjects} objects`);
+  const n = dim === '3d' ? 3 : 2;
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  for (const key of keys.slice(0, LIMITS.maxObjects)) {
+    const where = `motion[${JSON.stringify(key)}]`;
+    if (!KEY_RE.test(key)) {
+      fail(where, 'key must match ' + KEY_RE);
+      continue;
+    }
+    const e = v[key];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['path', 'speed', 'repeat', 'spin'], where, fail);
+    const o = {};
+    if (e.path !== undefined) {
+      if (!Array.isArray(e.path) || !e.path.length || e.path.length > LIMITS.maxMotionPoints) {
+        fail(`${where}.path`, `must be 1 to ${LIMITS.maxMotionPoints} points`);
+      } else {
+        const pts = e.path.map((q, i) => {
+          if (!Array.isArray(q) || q.length !== n) {
+            fail(`${where}.path[${i}]`, `must be ${n} numbers`);
+            return null;
+          }
+          const p = q.map((x, k) => readNumber(x, -bound, bound, `${where}.path[${i}][${k}]`, fail));
+          return p.every((x) => x !== null) ? p.map((x) => round(x, step)) : null;
+        });
+        if (pts.every((q) => q)) o.path = pts;
+      }
+    }
+    if (e.speed !== undefined) {
+      const max = dim === '3d' ? LIMITS.maxSpeed3d : LIMITS.maxSpeed2d;
+      const sp = readNumber(e.speed, 0, max, `${where}.speed`, fail);
+      if (sp !== null && !(sp > 0)) fail(`${where}.speed`, 'must be more than 0');
+      else if (sp !== null) o.speed = round(sp, step);
+      if (e.path === undefined) fail(`${where}.speed`, 'only with a path');
+    }
+    if (e.repeat !== undefined) {
+      if (!MOTION_REPEATS.includes(e.repeat)) fail(`${where}.repeat`, `must be one of ${MOTION_REPEATS.join(', ')}`);
+      else o.repeat = e.repeat;
+      if (e.path === undefined) fail(`${where}.repeat`, 'only with a path');
+    }
+    if (e.spin !== undefined) {
+      const sp = readNumber(e.spin, -LIMITS.maxSpin, LIMITS.maxSpin, `${where}.spin`, fail);
+      if (sp !== null && round(sp, LIMITS.stepAngle) === 0) fail(`${where}.spin`, 'must not be 0 (leave it out)');
+      else if (sp !== null) o.spin = round(sp, LIMITS.stepAngle);
+    }
+    if (e.path === undefined && e.spin === undefined) fail(where, 'needs a path or a spin');
+    if (o.path || o.spin !== undefined) out[key] = o;
   }
   return out;
 }
@@ -925,8 +1079,10 @@ async function writeStudioNote(rootReal, name, text) {
  * requests/<id>.json: hand-offs to the AI (§3.4; the id comes from handoff.mjs, never from the
  * browser). status.json: written by the AI; the server only writes it for `studio.mjs --status`.
  * watch.json: the heartbeat of `studio.mjs --watch` while an AI watches (ai-watch.mjs).
+ * generated.json: what "Make with AI" made, with the words (generated.mjs; only the server writes it, 2026-10-22).
  */
-const STUDIO_WRITABLE = /^(requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+// chat/<id>.json (pause, 2026-10-22): the talk over a paused game, named by its first `play` request (play-chat.mjs).
+const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
 
 async function ensureRealDir(dir) {
   const check = async () => {
@@ -981,7 +1137,8 @@ async function readStudioFile(rootReal, rel, maxBytes) {
 
 /** Like readStudioFile, plus when the file was last written (ms): the AI's status (CONTRACT.md §3.4). */
 async function readStudioFileInfo(rootReal, rel, maxBytes) {
-  if (!/^(adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/.test(rel)) return null;
+  // chat/<id>.json (pause, 2026-10-22): read back only to add a turn (play-chat.mjs); no route serves it.
+  if (!/^(generated\.json|adapter\.js|tools\.js|studio\.json|status\.json|watch\.json|wake\.json|told\.json|open\.json|ui\/prefs\.json|ui\/studio\.css|ui\/shell\.js|data\/[a-z0-9][a-z0-9-]{0,39}\.json|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json)$/.test(rel)) return null;
   let p = path.join(rootReal, '.studio');
   try {
     for (const part of ['', ...rel.split('/').slice(0, -1)]) {
@@ -1106,6 +1263,63 @@ function httpError(status, message) {
   return e;
 }
 
+// ---- src/server/play-chat.mjs ----
+// The chat over a paused game, kept as one file (pause, 2026-10-22; CONTRACT.md §3.5.1).
+//
+// The person paused ▶ Play and talks to their AI about the moment it stopped at. Each message is a `play` request
+// marked `paused` (the first carries the moment, the next ones `chat` = the first one's id). This keeps the whole talk
+// in .studio/chat/<first id>.json, both sides, so the AI (or the person, later) reads one file instead of piecing it
+// together from requests and status lines:
+// - the person's turns: written by the server when it keeps the request (server.mjs, POST /request);
+// - the AI's turns: written by `studio.mjs --status done|asking|failed --request <id> --note …` (cli.mjs), the same
+//   note the editor shows as the reply.
+// Either side may write first or alone (an AI that writes status.json by hand adds no turn; the request still has
+// `history`), so every write reads the file again and adds to it.
+
+
+/** Turns kept in one chat file: a talk this long is a different conversation. */
+const CHAT_TURNS_KEPT = 200;
+
+/** The chat a request belongs to: its `chat`, or itself when it is the first message of a pause. Else null. */
+function chatIdOf(rec) {
+  if (!rec || rec.kind !== 'play' || rec.paused !== true) return null;
+  return typeof rec.chat === 'string' && rec.chat ? rec.chat : rec.id || null;
+}
+
+/**
+ * The file's next content (pure, test/pause.test.ts): `old` as read (null / broken = a new talk), the turn added.
+ * `first`: what the talk's first request carries, written into a new file (the moment: picture, camera, near, logs).
+ */
+function chatWithTurn(old, id, turn, first = {}) {
+  let c = null;
+  try {
+    c = old ? JSON.parse(old) : null;
+  } catch {
+    c = null;
+  }
+  if (!c || typeof c !== 'object' || c.id !== id || !Array.isArray(c.turns)) {
+    c = { version: 1, id, at: turn.at, paused: true };
+    for (const k of ['shot', 'view', 'near', 'logs', 'size', 'fullscreen']) if (first[k] !== undefined) c[k] = first[k];
+    c.turns = [];
+  }
+  // The same turn twice (a status written again for the same request and words): once.
+  const dup = c.turns.some((t) => t && t.who === turn.who && t.request === turn.request && t.text === turn.text);
+  if (!dup) c.turns.push(turn);
+  if (c.turns.length > CHAT_TURNS_KEPT) c.turns = c.turns.slice(-CHAT_TURNS_KEPT);
+  return JSON.stringify(c, null, 2) + '\n';
+}
+
+/** Add one turn to .studio/chat/<id>.json; returns its path, or null (never throws: the talk is a record, not a gate). */
+async function addChatTurn(rootReal, id, turn, first) {
+  const rel = `chat/${id}.json`;
+  try {
+    const old = await readStudioFile(rootReal, rel, 512 * 1024).catch(() => null);
+    return await writeStudioFile(rootReal, rel, chatWithTurn(old, id, turn, first));
+  } catch {
+    return null;
+  }
+}
+
 // ---- src/schema/handoff.mjs ----
 // Hand-offs between the editor and the user's AI agent (contract 3.4): "requests" the person
 // sends from the editor (ask about these objects, name this object, a next step, a save) and the
@@ -1139,6 +1353,7 @@ const HANDOFF_LIMITS = Object.freeze({
   maxLogs: 30, // console lines: every error / warning plus the last few lines; more is noise the AI has to skip
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
+  maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -1323,6 +1538,21 @@ function playMoment(r, errors) {
   }
   if (r.fullscreen === true) out.fullscreen = true;
   if (Array.isArray(r.size) && r.size.length === 2 && r.size.every((v) => Number.isInteger(v) && v > 0 && v < 100000)) out.size = r.size.slice();
+  // Pause (2026-10-22): from the chat over a paused game. `chat` names the talk's first request (a "play" id); a bad one
+  // is dropped (the words still go). `history`: the talk so far, each turn one line, the last HANDOFF_LIMITS.maxHistory.
+  if (r.paused === true) {
+    out.paused = true;
+    if (typeof r.chat === 'string' && ID_OK.test(r.chat) && r.chat.includes('-play-')) out.chat = r.chat;
+    if (Array.isArray(r.history)) {
+      const hist = [];
+      for (const h of r.history.slice(-HANDOFF_LIMITS.maxHistory)) {
+        if (!h || (h.who !== 'you' && h.who !== 'ai')) continue;
+        const t = oneLine(h.text, HANDOFF_LIMITS.maxNote);
+        if (t) hist.push({ who: h.who, text: t });
+      }
+      if (hist.length) out.history = hist;
+    }
+  }
   return out;
 }
 
@@ -1982,13 +2212,81 @@ function penalty(m) {
 }
 
 // ---- src/server/embedded.mjs ----
-const EMBEDDED_FILES = {"host.js":"// The local implementation of the host interface (contract 3), used by the editor shell in the\n// browser. The server serves this file at /__studio/host.js.\n//\n// Every place the editor can run (this local server now, a hosted version later) provides the same\n// six methods; only this file knows that \"local\" means plain HTTP calls to the server that served\n// the page. Authentication is the session cookie the server set when the page was opened with the\n// one-time pass, so nothing secret appears in this file or in the shell.\n\nconst API = '/__studio/api';\n\nasync function call(method, url, body, headers) {\n  const res = await fetch(url, { method, body, headers, cache: 'no-store', credentials: 'same-origin' });\n  let data = null;\n  try {\n    data = await res.json();\n  } catch {\n    // Non-JSON error page (for example a proxy); fall through with data = null.\n  }\n  if (!res.ok) {\n    const err = new Error((data && data.error) || `HTTP ${res.status}`);\n    err.status = res.status;\n    err.details = data && data.details;\n    throw err;\n  }\n  return data;\n}\n\n/** @returns {import('../contract').StudioHost & { listMissing(): Promise<object[]>, nextStep(id: string): Promise<{ ok: boolean }>, lanQrUrl(): string | null }} */\nexport function createLocalHost() {\n  let lan = null;\n  return {\n    /** Where the game is and which origin its messages come from. */\n    async open() {\n      const r = await call('GET', `${API}/open`);\n      lan = r.lanUrl || null;\n      return { gameUrl: r.gameUrl, origin: r.origin };\n    },\n\n    /** The current placement.json / library.json, or null when there is none (or it is invalid). */\n    async load(tool) {\n      const r = await call('GET', `${API}/files/${encodeURIComponent(tool)}`);\n      return r.value;\n    },\n\n    /** Validate and write. Never throws for a refused file: the shell shows `error`. */\n    async save(tool, json) {\n      try {\n        const r = await call('PUT', `${API}/files/${encodeURIComponent(tool)}`, JSON.stringify(json), {\n          'content-type': 'application/json',\n        });\n        return { ok: true, path: r.path };\n      } catch (e) {\n        const details = Array.isArray(e.details) ? `: ${e.details.join('; ')}` : '';\n        return { ok: false, error: e.message + details };\n      }\n    },\n\n    /** Asset files in the folder with the code files that mention each one. */\n    async listAssets() {\n      const r = await call('GET', `${API}/assets`);\n      return r.assets;\n    },\n\n    /** URL the shell and the game can load an asset from. */\n    assetUrl(p) {\n      return '/' + String(p).split('/').map(encodeURIComponent).join('/');\n    },\n\n    /** Add a new file under assets/. Never overwrites: a taken name gets \"-2\", \"-3\", ... */\n    async addAsset(file) {\n      const r = await call('POST', `${API}/assets?name=${encodeURIComponent(file.name)}`, file, {\n        'content-type': 'application/octet-stream',\n      });\n      return { path: r.path };\n    },\n\n    // ---- Not in the contract yet (proposed): extra data the local server can give cheaply. ----\n\n    /** Names mentioned in code that match no file (\"missing\" in the library). */\n    async listMissing() {\n      const r = await call('GET', `${API}/assets`);\n      return r.missing;\n    },\n\n    /** Hand a \"next step\" to the agent: writes .studio/next-step.md and prints one line. */\n    async nextStep(id) {\n      await call('POST', `${API}/next-step`, JSON.stringify({ id }), { 'content-type': 'application/json' });\n      return { ok: true };\n    },\n\n    /** Hand a request to the AI (contract 3.4): kept as .studio/requests/<id>.json. */\n    async request(r) {\n      const v = await call('POST', `${API}/request`, JSON.stringify(r), { 'content-type': 'application/json' });\n      return { ok: true, id: v.id, at: v.at };\n    },\n\n    /** The AI's latest status (.studio/status.json) and when it was written. */\n    async status() {\n      return call('GET', `${API}/status`);\n    },\n\n    /** With --lan: URL of an SVG QR code for opening the editor on a phone. Call open() first. */\n    lanQrUrl() {\n      return lan ? `${API}/lan-qr.svg` : null;\n    },\n  };\n}\n","fallback.html":"<!doctype html>\n<!--\n  Fallback page of the local studio server.\n\n  Shown only when the built editor UI is not next to studio.mjs (while developing, or if the build\n  is missing). It is not the editor: it shows the game and lets a person or a test save the two\n  result files by hand, through the same host interface the real editor uses. That keeps the\n  server testable end to end on its own.\n\n  Every name shown here comes from the user's folder and is untrusted: it is only ever set with\n  textContent, never as HTML.\n-->\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>Game Studio (files server)</title>\n  <style>\n    :root { color-scheme: light dark; --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --line: #d9d9d4; --accent: #2f6fde; --ok: #1d7d3a; --bad: #b3261e; }\n    @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ececea; --muted: #a0a09a; --line: #34342f; --accent: #6e9cff; --ok: #5cc27a; --bad: #ff8a80; } }\n    * { box-sizing: border-box; }\n    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; height: 100vh; display: grid; grid-template-columns: 1fr 360px; }\n    main { min-width: 0; display: flex; flex-direction: column; }\n    header { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }\n    header b { font-size: 15px; }\n    header span { color: var(--muted); font-size: 12px; }\n    iframe { flex: 1; width: 100%; border: 0; background: #000; }\n    aside { border-left: 1px solid var(--line); overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }\n    h2 { font-size: 13px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }\n    textarea { width: 100%; min-height: 130px; font: 12px/1.4 ui-monospace, monospace; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }\n    button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }\n    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }\n    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }\n    .msg { font-size: 12px; min-height: 1.4em; overflow-wrap: anywhere; }\n    .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }\n    ul { margin: 0; padding-left: 18px; font-size: 12px; } li { overflow-wrap: anywhere; }\n    li small { color: var(--muted); }\n    img.qr { width: 160px; height: 160px; background: #fff; }\n    @media (max-width: 720px) {\n      body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }\n      main { height: 55vh; }\n      aside { border-left: 0; border-top: 1px solid var(--line); }\n    }\n  </style>\n</head>\n<body>\n  <main>\n    <header><b>Game Studio</b><span>files server · the editor UI is not built, this page saves the files by hand</span></header>\n    <iframe id=\"game\" title=\"Game\"></iframe>\n  </main>\n  <aside>\n    <section>\n      <h2>placement.json</h2>\n      <textarea id=\"placement\" spellcheck=\"false\" aria-label=\"placement.json\"></textarea>\n      <div class=\"row\"><button class=\"primary\" id=\"save-placement\">Save placement</button><button id=\"reload\">Reload game</button></div>\n      <div class=\"msg\" id=\"msg-placement\" role=\"status\"></div>\n    </section>\n    <section>\n      <h2>library.json</h2>\n      <textarea id=\"library\" spellcheck=\"false\" aria-label=\"library.json\"></textarea>\n      <div class=\"row\"><button class=\"primary\" id=\"save-library\">Save library</button></div>\n      <div class=\"msg\" id=\"msg-library\" role=\"status\"></div>\n    </section>\n    <section>\n      <h2>Assets</h2>\n      <ul id=\"assets\"></ul>\n      <div class=\"row\"><input type=\"file\" id=\"file\" aria-label=\"Add an asset\" /></div>\n      <div class=\"msg\" id=\"msg-assets\" role=\"status\"></div>\n    </section>\n    <section>\n      <h2>Next step</h2>\n      <div class=\"row\" id=\"steps\"></div>\n      <div class=\"msg\" id=\"msg-steps\" role=\"status\"></div>\n    </section>\n    <section id=\"lan\" hidden>\n      <h2>Open on your phone</h2>\n      <img class=\"qr\" id=\"qr\" alt=\"QR code with the link to this editor\" />\n    </section>\n  </aside>\n  <script type=\"module\">\n    import { createLocalHost } from './host.js';\n    const host = createLocalHost();\n    const $ = (id) => document.getElementById(id);\n    const say = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'bad'); };\n\n    const opened = await host.open();\n    $('game').src = opened.gameUrl;\n    $('reload').onclick = () => { $('game').src = opened.gameUrl; };\n    const qr = host.lanQrUrl();\n    if (qr) { $('qr').src = qr; $('lan').hidden = false; }\n\n    const empty = {\n      placement: { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {} },\n      library: { version: 1, tool: 'library', replace: [], added: [], unused: [] },\n    };\n    for (const tool of ['placement', 'library']) {\n      const value = await host.load(tool);\n      $(tool).value = JSON.stringify(value || empty[tool], null, 2);\n      $('save-' + tool).onclick = async () => {\n        let json;\n        try { json = JSON.parse($(tool).value); } catch (e) { return say('msg-' + tool, 'Not valid JSON: ' + e.message, false); }\n        const r = await host.save(tool, json);\n        if (!r.ok) return say('msg-' + tool, r.error, false);\n        say('msg-' + tool, 'Saved ' + r.path, true);\n        $(tool).value = JSON.stringify(await host.load(tool), null, 2);\n        if (tool === 'placement') $('game').src = opened.gameUrl; // play with the new positions\n      };\n    }\n\n    async function showAssets() {\n      const list = $('assets');\n      list.textContent = '';\n      for (const a of await host.listAssets()) {\n        const li = document.createElement('li');\n        li.textContent = a.path + ' ';\n        const small = document.createElement('small');\n        small.textContent = `${a.type} · ${a.refsInCode.length ? 'used in ' + a.refsInCode.join(', ') : 'not in code'}`;\n        li.append(small);\n        list.append(li);\n      }\n      for (const m of await host.listMissing()) {\n        const li = document.createElement('li');\n        li.textContent = m.ref + ' ';\n        const small = document.createElement('small');\n        small.textContent = 'missing · named in ' + m.in.join(', ');\n        li.append(small);\n        list.append(li);\n      }\n    }\n    await showAssets();\n    $('file').onchange = async (e) => {\n      const f = e.target.files[0];\n      if (!f) return;\n      try { const r = await host.addAsset(f); say('msg-assets', 'Added ' + r.path, true); await showAssets(); }\n      catch (err) { say('msg-assets', err.message, false); }\n      e.target.value = '';\n    };\n\n    const steps = { publish: 'Publish to KUMODeck', multiplayer: 'Add online multiplayer', 'save-data': 'Add save data', 'ai-assets': 'Make 3D / images with AI' };\n    for (const [id, label] of Object.entries(steps)) {\n      const b = document.createElement('button');\n      b.textContent = label;\n      b.onclick = async () => {\n        try { await host.nextStep(id); say('msg-steps', 'Your AI has the instructions (.studio/next-step.md). Go back to it to continue.', true); }\n        catch (err) { say('msg-steps', err.message, false); }\n      };\n      $('steps').append(b);\n    }\n  </script>\n</body>\n</html>\n","studio-placement.js":"// KUMODeck Game Studio placement loader (MIT). Applies placement.json to a three.js Scene or PixiJS stage.\nconst KEY_CHARS = /[^A-Za-z0-9_:#.\\-\\/]/g;\nconst cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');\nexport async function applyPlacement(root, source = './placement.json') {\nconst report = { applied: [], missing: [], unstable: [], skipped: [] };\nlet data = source;\nif (typeof source === 'string') {\ntry {\nconst res = await fetch(source, { cache: 'no-cache' });\nif (!res.ok) return report;\ndata = await res.json();\n} catch (e) {\nwarn('could not read ' + source + ' (' + e.message + ')');\nreturn report;\n}\n}\nconst three = !!(root && root.isObject3D);\nconst dim = three ? '3d' : '2d';\nif (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {\nwarn('not a placement file');\nreturn report;\n}\nif (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);\nif (root && root.nodeType === 9) return report;\nif (data.dim !== dim) {\nwarn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');\nreturn report;\n}\nconst n = three ? 3 : 2;\nfor (const key of Object.keys(data.objects)) {\nconst e = data.objects[key];\nif (e && e.unstable) report.unstable.push(key);\nconst obj = findByKey(root, key, three);\nif (!obj) report.missing.push(key);\nelse if (put(obj, e, n, three)) report.applied.push(key);\nelse report.skipped.push(key);\n}\nfor (const a of Array.isArray(data.added) ? data.added : []) {\nif (!a || typeof a.key !== 'string' || findByKey(root, a.key, three)) continue;\nconst src = typeof a.from === 'string' && findByKey(root, a.from, three);\nconst c = src && src.parent && copyOf(src, three);\nif (!c || !put(c, a, n, three)) {\nreport.missing.push(a.key);\ncontinue;\n}\nif (three) (c.userData.studioKey = a.key), src.parent.add(c);\nelse (c.studioKey = a.key), src.parent.addChildAt(c, src.parent.getChildIndex(src) + 1);\nreport.applied.push(a.key);\n}\nfor (const r of Array.isArray(data.removed) ? data.removed : []) {\nconst o = r && typeof r.key === 'string' && findByKey(root, r.key, three);\nconst w = o && r.was && r.was.p;\nif (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);\n}\nif (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);\nif (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));\nif (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));\nreturn report;\n}\nfunction applyUi(doc, ui) {\nconst out = { applied: [], missing: [] };\nconst put = (el) => {\nconst k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];\nif (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;\nif (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);\n};\ndoc.querySelectorAll('[data-studio-key]').forEach(put);\nfor (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);\nif (typeof MutationObserver === 'function') {\nnew MutationObserver((list) => {\nfor (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) {\nif (n.dataset.studioKey) put(n);\nn.querySelectorAll('[data-studio-key]').forEach(put);\n}\n}).observe(doc.documentElement, { childList: true, subtree: true });\n}\nreturn out;\n}\nconst UI_STATE = Symbol.for('game-studio.ui');\nexport function placeUi(el, p, s) {\nlet st = el[UI_STATE];\nif (!st) {\nif (el.style.translate || el.style.scale) return false;\nconst cs = getComputedStyle(el);\nst = el[UI_STATE] = { t: cssParts(cs.translate), s: cssParts(cs.scale), p: [0, 0], v: 1 };\n}\nst.p = [p[0], p[1]];\nst.v = s;\nconst t = st.t, b = st.s ? st.s.map((x) => parseFloat(x) / (x.endsWith('%') ? 100 : 1)) : [1];\nconst bx = b[0], by = b[1] === undefined ? bx : b[1];\nlet x = p[0], y = p[1];\nif (s !== 1) {\nconst cs = getComputedStyle(el);\nconst m = /^matrix(3d)?\\(([^)]+)\\)/.exec(cs.transform);\nconst v = m ? m[2].split(',').map(Number) : null;\nconst [a, bb, c, d, e, f] = !v ? [1, 0, 0, 1, 0, 0] : m[1] ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;\nconst o = (cs.transformOrigin || '').split(' ').map(parseFloat);\nconst ux = (el.offsetWidth || 0) / 2 - (o[0] || 0), uy = (el.offsetHeight || 0) / 2 - (o[1] || 0);\nif (el.offsetWidth !== undefined && (m || cs.transform === 'none')) {\nx -= (s - 1) * bx * (a * ux + c * uy + e);\ny -= (s - 1) * by * (bb * ux + d * uy + f);\n}\nif (!st.ro && typeof ResizeObserver === 'function') (st.ro = new ResizeObserver(() => placeUi(el, st.p, st.v))).observe(el);\n}\nconst none = !x && !y && s === 1;\nel.style.translate = none ? '' : t ? `calc(${t[0]} + ${x}px) calc(${t[1] || '0px'} + ${y}px)${t[2] ? ' ' + t[2] : ''}` : `${x}px ${y}px`;\nel.style.scale = s === 1 ? '' : st.s ? `${bx * s} ${by * s}${b[2] === undefined ? '' : ' ' + b[2]}` : String(s);\nreturn true;\n}\nexport function uiOffset(el) {\nconst st = el[UI_STATE];\nreturn st ? { p: st.p.slice(), s: st.v } : { p: [0, 0], s: 1 };\n}\nfunction cssParts(v) {\nreturn !v || v === 'none' ? null : v.match(/(?:[^\\s(]|\\([^)]*\\))+/g);\n}\nfunction put(obj, e, n, three) {\nconst p = e && e.p;\nconst s = e && e.s;\nconst okP = p === undefined || (Array.isArray(p) && p.length === n && p.every(isNum));\nconst okR = e && (e.r === undefined || isNum(e.r)) && (e.t === undefined || (three && Array.isArray(e.t) && e.t.length === 2 && e.t.every(isNum)));\nconst okS = s === undefined || (isNum(s) && s !== 0) || (Array.isArray(s) && s.length === n && s.every(isNum));\nif (!okP || !okR || !okS) return false;\nif (p) obj.position.set(p[0], p[1], p[2]);\nif (e.r !== undefined) {\nif (three) obj.rotation.y = e.r;\nelse obj.rotation = e.r;\n}\nif (three && e.t !== undefined) {\nobj.rotation.x = e.t[0];\nobj.rotation.z = e.t[1];\n}\nif (s !== undefined) {\nif (Array.isArray(s)) obj.scale.set(s[0], s[1], s[2]);\nelse if (three) obj.scale.setScalar(s);\nelse obj.scale.set(s, s);\n}\nreturn true;\n}\nfunction copyOf(o, three) {\ntry {\nif (three || typeof o.clone === 'function') return o.clone();\nreturn o.texture ? new o.constructor(o.texture) : null;\n} catch (e) {\nreturn null;\n}\n}\nfunction applyOrder(root, order, report) {\nconst lists = [];\nfor (const g of order) {\nconst objs = g && Array.isArray(g.keys) ? g.keys.map((k) => [k, findByKey(root, k, false)]).filter((x) => x[1]) : [];\nconst parent = objs.length && objs[0][1].parent;\nconst mine = objs.filter((x) => x[1].parent === parent);\nif (parent && mine.length > 1) lists.push([parent, mine]);\n}\nfor (const [, mine] of lists) for (const [k, o] of mine) if (!o.studioKey && (k.startsWith('path:') || k.includes('#'))) o.studioKey = k;\nfor (const [parent, mine] of lists) {\nconst slots = mine.map((x) => parent.getChildIndex(x[1])).sort((a, b) => a - b);\nfor (const [, o] of mine) parent.removeChild(o);\nmine.forEach((x, i) => parent.addChildAt(x[1], slots[i]));\n}\nif (lists.length) report.applied.push('order');\n}\nexport function findByKey(root, key, three = !!(root && root.isObject3D)) {\nconst mark = (o) => (three ? o.userData && o.userData.studioKey : o.studioKey);\nlet found = null;\nwalk(root, (o) => {\nif (!found && mark(o) === key) found = o;\nreturn !found;\n});\nif (found) return found;\nif (key.startsWith('path:')) {\nlet o = root;\nfor (const i of key.slice(5).split('/')) {\no = o && o.children && o.children[Number(i)];\nif (!o || !/^\\d+$/.test(i)) return null;\n}\nreturn o;\n}\nconst m = /^(.*)#(\\d+)$/.exec(key);\nconst name = m ? m[1] : key;\nlet want = m ? Number(m[2]) : 1;\nwalk(root, (o) => {\nif (found) return false;\nif (cleanName(three ? o.name : o.studioKey ? '' : o.label) === name) {\nif (--want === 0) found = o;\nreturn 'skip';\n}\nreturn true;\n});\nif (found || !three) return found;\nwalk(root, (o) => {\nconst u = o.userData;\nif (!found && u && (String(u.id) === key || cleanName(u.name) === key)) found = o;\nreturn !found;\n});\nreturn found;\n}\nfunction walk(root, visit) {\nconst stack = (root.children || []).slice().reverse();\nwhile (stack.length) {\nconst o = stack.pop();\nconst r = visit(o);\nif (r === false) return;\nif (r !== 'skip' && o.children) for (let i = o.children.length - 1; i >= 0; i--) stack.push(o.children[i]);\n}\n}\nfunction isNum(v) {\nreturn typeof v === 'number' && isFinite(v);\n}\nfunction warn(msg) {\nconsole.warn('[studio] placement.json: ' + msg);\n}\n"};
+const EMBEDDED_FILES = {"host.js":"// The local implementation of the host interface (contract 3), used by the editor shell in the\n// browser. The server serves this file at /__studio/host.js.\n//\n// Every place the editor can run (this local server now, a hosted version later) provides the same\n// six methods; only this file knows that \"local\" means plain HTTP calls to the server that served\n// the page. Authentication is the session cookie the server set when the page was opened with the\n// one-time pass, so nothing secret appears in this file or in the shell.\n\nconst API = '/__studio/api';\n\nasync function call(method, url, body, headers) {\n  const res = await fetch(url, { method, body, headers, cache: 'no-store', credentials: 'same-origin' });\n  let data = null;\n  try {\n    data = await res.json();\n  } catch {\n    // Non-JSON error page (for example a proxy); fall through with data = null.\n  }\n  if (!res.ok) {\n    const err = new Error((data && data.error) || `HTTP ${res.status}`);\n    err.status = res.status;\n    err.details = data && data.details;\n    throw err;\n  }\n  return data;\n}\n\n/** @returns {import('../contract').StudioHost & { listMissing(): Promise<object[]>, nextStep(id: string): Promise<{ ok: boolean }>, lanQrUrl(): string | null }} */\nexport function createLocalHost() {\n  let lan = null;\n  return {\n    /** Where the game is and which origin its messages come from. */\n    async open() {\n      const r = await call('GET', `${API}/open`);\n      lan = r.lanUrl || null;\n      return { gameUrl: r.gameUrl, origin: r.origin };\n    },\n\n    /** The current placement.json / library.json, or null when there is none (or it is invalid). */\n    async load(tool) {\n      const r = await call('GET', `${API}/files/${encodeURIComponent(tool)}`);\n      return r.value;\n    },\n\n    /** Validate and write. Never throws for a refused file: the shell shows `error`. */\n    async save(tool, json) {\n      try {\n        const r = await call('PUT', `${API}/files/${encodeURIComponent(tool)}`, JSON.stringify(json), {\n          'content-type': 'application/json',\n        });\n        return { ok: true, path: r.path };\n      } catch (e) {\n        const details = Array.isArray(e.details) ? `: ${e.details.join('; ')}` : '';\n        return { ok: false, error: e.message + details };\n      }\n    },\n\n    /** Asset files in the folder with the code files that mention each one. */\n    async listAssets() {\n      const r = await call('GET', `${API}/assets`);\n      return r.assets;\n    },\n\n    /** URL the shell and the game can load an asset from. */\n    assetUrl(p) {\n      return '/' + String(p).split('/').map(encodeURIComponent).join('/');\n    },\n\n    /** Add a new file under assets/. Never overwrites: a taken name gets \"-2\", \"-3\", ... */\n    async addAsset(file) {\n      const r = await call('POST', `${API}/assets?name=${encodeURIComponent(file.name)}`, file, {\n        'content-type': 'application/octet-stream',\n      });\n      return { path: r.path };\n    },\n\n    // ---- Not in the contract yet (proposed): extra data the local server can give cheaply. ----\n\n    /** Names mentioned in code that match no file (\"missing\" in the library). */\n    async listMissing() {\n      const r = await call('GET', `${API}/assets`);\n      return r.missing;\n    },\n\n    /** Hand a \"next step\" to the agent: writes .studio/next-step.md and prints one line. */\n    async nextStep(id) {\n      await call('POST', `${API}/next-step`, JSON.stringify({ id }), { 'content-type': 'application/json' });\n      return { ok: true };\n    },\n\n    /** Hand a request to the AI (contract 3.4): kept as .studio/requests/<id>.json. */\n    async request(r) {\n      const v = await call('POST', `${API}/request`, JSON.stringify(r), { 'content-type': 'application/json' });\n      return { ok: true, id: v.id, at: v.at };\n    },\n\n    /** The AI's latest status (.studio/status.json) and when it was written. */\n    async status() {\n      return call('GET', `${API}/status`);\n    },\n\n    /** With --lan: URL of an SVG QR code for opening the editor on a phone. Call open() first. */\n    lanQrUrl() {\n      return lan ? `${API}/lan-qr.svg` : null;\n    },\n  };\n}\n","fallback.html":"<!doctype html>\n<!--\n  Fallback page of the local studio server.\n\n  Shown only when the built editor UI is not next to studio.mjs (while developing, or if the build\n  is missing). It is not the editor: it shows the game and lets a person or a test save the two\n  result files by hand, through the same host interface the real editor uses. That keeps the\n  server testable end to end on its own.\n\n  Every name shown here comes from the user's folder and is untrusted: it is only ever set with\n  textContent, never as HTML.\n-->\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>Game Studio (files server)</title>\n  <style>\n    :root { color-scheme: light dark; --bg: #f6f6f4; --fg: #1d1d1b; --muted: #6b6b66; --line: #d9d9d4; --accent: #2f6fde; --ok: #1d7d3a; --bad: #b3261e; }\n    @media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ececea; --muted: #a0a09a; --line: #34342f; --accent: #6e9cff; --ok: #5cc27a; --bad: #ff8a80; } }\n    * { box-sizing: border-box; }\n    body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, sans-serif; height: 100vh; display: grid; grid-template-columns: 1fr 360px; }\n    main { min-width: 0; display: flex; flex-direction: column; }\n    header { padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }\n    header b { font-size: 15px; }\n    header span { color: var(--muted); font-size: 12px; }\n    iframe { flex: 1; width: 100%; border: 0; background: #000; }\n    aside { border-left: 1px solid var(--line); overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }\n    h2 { font-size: 13px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }\n    textarea { width: 100%; min-height: 130px; font: 12px/1.4 ui-monospace, monospace; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }\n    button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }\n    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }\n    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }\n    .msg { font-size: 12px; min-height: 1.4em; overflow-wrap: anywhere; }\n    .msg.ok { color: var(--ok); } .msg.bad { color: var(--bad); }\n    ul { margin: 0; padding-left: 18px; font-size: 12px; } li { overflow-wrap: anywhere; }\n    li small { color: var(--muted); }\n    img.qr { width: 160px; height: 160px; background: #fff; }\n    @media (max-width: 720px) {\n      body { grid-template-columns: 1fr; grid-template-rows: 55vh auto; height: auto; }\n      main { height: 55vh; }\n      aside { border-left: 0; border-top: 1px solid var(--line); }\n    }\n  </style>\n</head>\n<body>\n  <main>\n    <header><b>Game Studio</b><span>files server · the editor UI is not built, this page saves the files by hand</span></header>\n    <iframe id=\"game\" title=\"Game\"></iframe>\n  </main>\n  <aside>\n    <section>\n      <h2>placement.json</h2>\n      <textarea id=\"placement\" spellcheck=\"false\" aria-label=\"placement.json\"></textarea>\n      <div class=\"row\"><button class=\"primary\" id=\"save-placement\">Save placement</button><button id=\"reload\">Reload game</button></div>\n      <div class=\"msg\" id=\"msg-placement\" role=\"status\"></div>\n    </section>\n    <section>\n      <h2>library.json</h2>\n      <textarea id=\"library\" spellcheck=\"false\" aria-label=\"library.json\"></textarea>\n      <div class=\"row\"><button class=\"primary\" id=\"save-library\">Save library</button></div>\n      <div class=\"msg\" id=\"msg-library\" role=\"status\"></div>\n    </section>\n    <section>\n      <h2>Assets</h2>\n      <ul id=\"assets\"></ul>\n      <div class=\"row\"><input type=\"file\" id=\"file\" aria-label=\"Add an asset\" /></div>\n      <div class=\"msg\" id=\"msg-assets\" role=\"status\"></div>\n    </section>\n    <section>\n      <h2>Next step</h2>\n      <div class=\"row\" id=\"steps\"></div>\n      <div class=\"msg\" id=\"msg-steps\" role=\"status\"></div>\n    </section>\n    <section id=\"lan\" hidden>\n      <h2>Open on your phone</h2>\n      <img class=\"qr\" id=\"qr\" alt=\"QR code with the link to this editor\" />\n    </section>\n  </aside>\n  <script type=\"module\">\n    import { createLocalHost } from './host.js';\n    const host = createLocalHost();\n    const $ = (id) => document.getElementById(id);\n    const say = (id, text, ok) => { const el = $(id); el.textContent = text; el.className = 'msg ' + (ok ? 'ok' : 'bad'); };\n\n    const opened = await host.open();\n    $('game').src = opened.gameUrl;\n    $('reload').onclick = () => { $('game').src = opened.gameUrl; };\n    const qr = host.lanQrUrl();\n    if (qr) { $('qr').src = qr; $('lan').hidden = false; }\n\n    const empty = {\n      placement: { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {} },\n      library: { version: 1, tool: 'library', replace: [], added: [], unused: [] },\n    };\n    for (const tool of ['placement', 'library']) {\n      const value = await host.load(tool);\n      $(tool).value = JSON.stringify(value || empty[tool], null, 2);\n      $('save-' + tool).onclick = async () => {\n        let json;\n        try { json = JSON.parse($(tool).value); } catch (e) { return say('msg-' + tool, 'Not valid JSON: ' + e.message, false); }\n        const r = await host.save(tool, json);\n        if (!r.ok) return say('msg-' + tool, r.error, false);\n        say('msg-' + tool, 'Saved ' + r.path, true);\n        $(tool).value = JSON.stringify(await host.load(tool), null, 2);\n        if (tool === 'placement') $('game').src = opened.gameUrl; // play with the new positions\n      };\n    }\n\n    async function showAssets() {\n      const list = $('assets');\n      list.textContent = '';\n      for (const a of await host.listAssets()) {\n        const li = document.createElement('li');\n        li.textContent = a.path + ' ';\n        const small = document.createElement('small');\n        small.textContent = `${a.type} · ${a.refsInCode.length ? 'used in ' + a.refsInCode.join(', ') : 'not in code'}`;\n        li.append(small);\n        list.append(li);\n      }\n      for (const m of await host.listMissing()) {\n        const li = document.createElement('li');\n        li.textContent = m.ref + ' ';\n        const small = document.createElement('small');\n        small.textContent = 'missing · named in ' + m.in.join(', ');\n        li.append(small);\n        list.append(li);\n      }\n    }\n    await showAssets();\n    $('file').onchange = async (e) => {\n      const f = e.target.files[0];\n      if (!f) return;\n      try { const r = await host.addAsset(f); say('msg-assets', 'Added ' + r.path, true); await showAssets(); }\n      catch (err) { say('msg-assets', err.message, false); }\n      e.target.value = '';\n    };\n\n    const steps = { publish: 'Publish to KUMODeck', multiplayer: 'Add online multiplayer', 'save-data': 'Add save data', 'ai-assets': 'Make 3D / images with AI' };\n    for (const [id, label] of Object.entries(steps)) {\n      const b = document.createElement('button');\n      b.textContent = label;\n      b.onclick = async () => {\n        try { await host.nextStep(id); say('msg-steps', 'Your AI has the instructions (.studio/next-step.md). Go back to it to continue.', true); }\n        catch (err) { say('msg-steps', err.message, false); }\n      };\n      $('steps').append(b);\n    }\n  </script>\n</body>\n</html>\n","studio-placement.js":"// KUMODeck Game Studio placement loader (MIT). Applies placement.json to a three.js Scene or PixiJS stage.\nconst KEY_CHARS = /[^A-Za-z0-9_:#.\\-\\/]/g;\nconst cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');\nexport async function applyPlacement(root, source = './placement.json', opts = {}) {\nconst report = { applied: [], missing: [], unstable: [], skipped: [] };\nlet data = source;\nif (typeof source === 'string') {\ntry {\nconst res = await fetch(source, { cache: 'no-cache' });\nif (!res.ok) return report;\ndata = await res.json();\n} catch (e) {\nwarn('could not read ' + source + ' (' + e.message + ')');\nreturn report;\n}\n}\nconst three = !!(root && root.isObject3D);\nconst dim = three ? '3d' : '2d';\nif (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {\nwarn('not a placement file');\nreturn report;\n}\nif (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);\nif (root && root.nodeType === 9) return report;\nif (data.dim !== dim) {\nwarn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');\nreturn report;\n}\nif (Array.isArray(data.levels)) {\nif (!(opts && opts.level)) {\nwarn('this file has levels: pass { level } to applyPlacement');\nreturn report;\n}\ndata = placementForLevel(data, opts.level);\n}\nconst n = three ? 3 : 2;\nfor (const key of Object.keys(data.objects)) {\nconst e = data.objects[key];\nif (e && e.unstable) report.unstable.push(key);\nconst obj = findByKey(root, key, three);\nif (!obj) report.missing.push(key);\nelse if (put(obj, e, n, three)) report.applied.push(key);\nelse report.skipped.push(key);\n}\nfor (const a of Array.isArray(data.added) ? data.added : []) {\nif (!a || typeof a.key !== 'string' || findByKey(root, a.key, three)) continue;\nconst src = typeof a.from === 'string' && findByKey(root, a.from, three);\nconst c = src && src.parent && copyOf(src, three);\nif (!c || !put(c, a, n, three)) {\nreport.missing.push(a.key);\ncontinue;\n}\nif (three) (c.userData.studioKey = a.key), src.parent.add(c);\nelse (c.studioKey = a.key), src.parent.addChildAt(c, src.parent.getChildIndex(src) + 1);\nreport.applied.push(a.key);\n}\nfor (const r of Array.isArray(data.removed) ? data.removed : []) {\nconst o = r && typeof r.key === 'string' && findByKey(root, r.key, three);\nconst w = o && r.was && r.was.p;\nif (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);\n}\nif (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);\nif (data.motion && typeof data.motion === 'object') runMotion(root, data.motion, n, three, report);\nif (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));\nif (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));\nreturn report;\n}\nconst MOVING = Symbol.for('game-studio.motion');\nlet motionRuns = [];\nexport function stopMotion() {\nfor (const r of motionRuns) r.stop = true;\nmotionRuns = [];\nif (globalThis[MOVING]) globalThis[MOVING].clear();\n}\nexport function motionAt(m, t) {\nconst out = { off: null, turn: 0, done: false };\nif (!m || typeof m !== 'object') return out;\nif (isNum(m.spin)) out.turn = m.spin * t;\nconst n = Array.isArray(m.path) && Array.isArray(m.path[0]) ? m.path[0].length : 0;\nconst path = n ? m.path.filter((q) => Array.isArray(q) && q.length === n && q.every(isNum)) : [];\nif (!path.length) return out;\nconst rep = m.repeat === 'loop' || m.repeat === 'once' ? m.repeat : 'pingpong';\nconst pts = [path[0].map(() => 0), ...path];\nif (rep === 'loop') pts.push(pts[0]);\nconst lens = pts.slice(1).map((q, i) => Math.hypot(...q.map((v, k) => v - pts[i][k])));\nconst total = lens.reduce((a, b) => a + b, 0);\nlet d = Math.max(0, (isNum(m.speed) && m.speed > 0 ? m.speed : 1) * t);\nif (!(total > 0)) return (out.off = pts[0]), out;\nif (rep === 'once') (out.done = d >= total), (d = Math.min(d, total));\nelse if (rep === 'loop') d %= total;\nelse (d %= 2 * total), (d = d > total ? 2 * total - d : d);\nlet i = 0;\nwhile (i < lens.length - 1 && d > lens[i]) d -= lens[i++];\nconst f = lens[i] ? Math.min(1, d / lens[i]) : 0;\nout.off = pts[i].map((v, k) => v + (pts[i + 1][k] - v) * f);\nreturn out;\n}\nfunction runMotion(root, motion, n, three, report) {\nif (typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search)) return;\nconst run = { list: [], stop: false };\nfor (const key of Object.keys(motion)) {\nconst m = motion[key], o = findByKey(root, key, three);\nconst ok = m && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));\nif (!o || !ok) continue;\nrun.list.push({ key, o, m, p: [o.position.x, o.position.y, o.position.z], r: three ? o.rotation.y : o.rotation });\n(globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);\n}\nif (!run.list.length || typeof requestAnimationFrame !== 'function') return;\nreport.motion = run.list.map((e) => e.key);\nmotionRuns.push(run);\nconst t0 = performance.now();\nconst tick = (now) => {\nif (run.stop) return;\nconst t = Math.max(0, (now - t0) / 1000);\nfor (const e of run.list) {\nconst a = motionAt(e.m, t);\nif (a.off) e.o.position.set(e.p[0] + a.off[0], e.p[1] + a.off[1], three ? e.p[2] + a.off[2] : undefined);\nif (isNum(e.m.spin)) three ? (e.o.rotation.y = e.r + a.turn) : (e.o.rotation = e.r + a.turn);\n}\nrequestAnimationFrame(tick);\n};\nrequestAnimationFrame(tick);\n}\nexport function placementForLevel(data, id) {\nif (!data || !Array.isArray(data.levels)) return data;\nconst l = data.levels.find((x) => x && x.id === id) || {};\nconst out = { ...data, objects: l.objects || {} };\nfor (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];\nelse delete out[k];\ndelete out.levels;\ndelete out.levelsWas;\nreturn out;\n}\nfunction applyUi(doc, ui) {\nconst out = { applied: [], missing: [] };\nconst put = (el) => {\nconst k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];\nif (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;\nif (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);\n};\ndoc.querySelectorAll('[data-studio-key]').forEach(put);\nfor (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);\nif (typeof MutationObserver === 'function') {\nnew MutationObserver((list) => {\nfor (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) {\nif (n.dataset.studioKey) put(n);\nn.querySelectorAll('[data-studio-key]').forEach(put);\n}\n}).observe(doc.documentElement, { childList: true, subtree: true });\n}\nreturn out;\n}\nconst UI_STATE = Symbol.for('game-studio.ui');\nexport function placeUi(el, p, s) {\nlet st = el[UI_STATE];\nif (!st) {\nif (el.style.translate || el.style.scale) return false;\nconst cs = getComputedStyle(el);\nst = el[UI_STATE] = { t: cssParts(cs.translate), s: cssParts(cs.scale), p: [0, 0], v: 1 };\n}\nst.p = [p[0], p[1]];\nst.v = s;\nconst t = st.t, b = st.s ? st.s.map((x) => parseFloat(x) / (x.endsWith('%') ? 100 : 1)) : [1];\nconst bx = b[0], by = b[1] === undefined ? bx : b[1];\nlet x = p[0], y = p[1];\nif (s !== 1) {\nconst cs = getComputedStyle(el);\nconst m = /^matrix(3d)?\\(([^)]+)\\)/.exec(cs.transform);\nconst v = m ? m[2].split(',').map(Number) : null;\nconst [a, bb, c, d, e, f] = !v ? [1, 0, 0, 1, 0, 0] : m[1] ? [v[0], v[1], v[4], v[5], v[12], v[13]] : v;\nconst o = (cs.transformOrigin || '').split(' ').map(parseFloat);\nconst ux = (el.offsetWidth || 0) / 2 - (o[0] || 0), uy = (el.offsetHeight || 0) / 2 - (o[1] || 0);\nif (el.offsetWidth !== undefined && (m || cs.transform === 'none')) {\nx -= (s - 1) * bx * (a * ux + c * uy + e);\ny -= (s - 1) * by * (bb * ux + d * uy + f);\n}\nif (!st.ro && typeof ResizeObserver === 'function') (st.ro = new ResizeObserver(() => placeUi(el, st.p, st.v))).observe(el);\n}\nconst none = !x && !y && s === 1;\nel.style.translate = none ? '' : t ? `calc(${t[0]} + ${x}px) calc(${t[1] || '0px'} + ${y}px)${t[2] ? ' ' + t[2] : ''}` : `${x}px ${y}px`;\nel.style.scale = s === 1 ? '' : st.s ? `${bx * s} ${by * s}${b[2] === undefined ? '' : ' ' + b[2]}` : String(s);\nreturn true;\n}\nexport function uiOffset(el) {\nconst st = el[UI_STATE];\nreturn st ? { p: st.p.slice(), s: st.v } : { p: [0, 0], s: 1 };\n}\nfunction cssParts(v) {\nreturn !v || v === 'none' ? null : v.match(/(?:[^\\s(]|\\([^)]*\\))+/g);\n}\nfunction put(obj, e, n, three) {\nconst p = e && e.p;\nconst s = e && e.s;\nconst okP = p === undefined || (Array.isArray(p) && p.length === n && p.every(isNum));\nconst okR = e && (e.r === undefined || isNum(e.r)) && (e.t === undefined || (three && Array.isArray(e.t) && e.t.length === 2 && e.t.every(isNum)));\nconst okS = s === undefined || (isNum(s) && s !== 0) || (Array.isArray(s) && s.length === n && s.every(isNum));\nif (!okP || !okR || !okS) return false;\nif (p) obj.position.set(p[0], p[1], p[2]);\nif (e.r !== undefined) {\nif (three) obj.rotation.y = e.r;\nelse obj.rotation = e.r;\n}\nif (three && e.t !== undefined) {\nobj.rotation.x = e.t[0];\nobj.rotation.z = e.t[1];\n}\nif (s !== undefined) {\nif (Array.isArray(s)) obj.scale.set(s[0], s[1], s[2]);\nelse if (three) obj.scale.setScalar(s);\nelse obj.scale.set(s, s);\n}\nreturn true;\n}\nfunction copyOf(o, three) {\ntry {\nif (three || typeof o.clone === 'function') return o.clone();\nreturn o.texture ? new o.constructor(o.texture) : null;\n} catch (e) {\nreturn null;\n}\n}\nfunction applyOrder(root, order, report) {\nconst lists = [];\nfor (const g of order) {\nconst objs = g && Array.isArray(g.keys) ? g.keys.map((k) => [k, findByKey(root, k, false)]).filter((x) => x[1]) : [];\nconst parent = objs.length && objs[0][1].parent;\nconst mine = objs.filter((x) => x[1].parent === parent);\nif (parent && mine.length > 1) lists.push([parent, mine]);\n}\nfor (const [, mine] of lists) for (const [k, o] of mine) if (!o.studioKey && (k.startsWith('path:') || k.includes('#'))) o.studioKey = k;\nfor (const [parent, mine] of lists) {\nconst slots = mine.map((x) => parent.getChildIndex(x[1])).sort((a, b) => a - b);\nfor (const [, o] of mine) parent.removeChild(o);\nmine.forEach((x, i) => parent.addChildAt(x[1], slots[i]));\n}\nif (lists.length) report.applied.push('order');\n}\nexport function findByKey(root, key, three = !!(root && root.isObject3D)) {\nconst mark = (o) => (three ? o.userData && o.userData.studioKey : o.studioKey);\nlet found = null;\nwalk(root, (o) => {\nif (!found && mark(o) === key) found = o;\nreturn !found;\n});\nif (found) return found;\nif (key.startsWith('path:')) {\nlet o = root;\nfor (const i of key.slice(5).split('/')) {\no = o && o.children && o.children[Number(i)];\nif (!o || !/^\\d+$/.test(i)) return null;\n}\nreturn o;\n}\nconst m = /^(.*)#(\\d+)$/.exec(key);\nconst name = m ? m[1] : key;\nlet want = m ? Number(m[2]) : 1;\nwalk(root, (o) => {\nif (found) return false;\nif (cleanName(three ? o.name : o.studioKey ? '' : o.label) === name) {\nif (--want === 0) found = o;\nreturn 'skip';\n}\nreturn true;\n});\nif (found || !three) return found;\nwalk(root, (o) => {\nconst u = o.userData;\nif (!found && u && (String(u.id) === key || cleanName(u.name) === key)) found = o;\nreturn !found;\n});\nreturn found;\n}\nfunction walk(root, visit) {\nconst stack = (root.children || []).slice().reverse();\nwhile (stack.length) {\nconst o = stack.pop();\nconst r = visit(o);\nif (r === false) return;\nif (r !== 'skip' && o.children) for (let i = o.children.length - 1; i >= 0; i--) stack.push(o.children[i]);\n}\n}\nfunction isNum(v) {\nreturn typeof v === 'number' && isFinite(v);\n}\nfunction warn(msg) {\nconsole.warn('[studio] placement.json: ' + msg);\n}\n"};
 function embedded(name) {
   return EMBEDDED_FILES[name];
 }
 
+// ---- src/server/generated.mjs ----
+// What "Make with AI" made in this game folder: .studio/generated.json (generate-ui, 2026-10-22; the product request of 10/22:
+// "3D, images, sound and so on each get a proper screen for making them", the brief asks for a history: what was made,
+// with which words, make it again, change it a little).
+//
+// One line per file that landed in assets/: the kind, the words, the options, the file and what it cost. The editor's
+// "Made here" list reads it (kumo.mjs status), its Again / Change put a line back in the form (nothing is sent until
+// Make), and the person's AI can read it to know what a file was made from ("make another one like the coin sound").
+//
+// WHY a file and not memory: the 3D jobs list (kumo.mjs `jobs`) is lost on restart, and "what did I ask for last
+// week" is the question the history answers. WHY .studio/: it is the editor's own folder in the game (never served to
+// the game, never read by the game's code), and only this server writes it (files.mjs STUDIO_WRITABLE; there is no
+// route that takes it from the browser). No keys and no KUMODeck URLs go in it — only what the person typed and chose.
+
+
+
+/** Newest first, at most this many (a busy week of making is well under it; the file stays a few tens of KB). */
+const GENERATED_MAX = 200;
+/** What the editor shows and Again / Change can fill: kinds of the form (ai-make.ts / gen-kinds.ts Kind). */
+const GENERATED_KINDS = ['picture', 'model', 'sfx', 'music', 'voice'];
+const MAX_BYTES = 512 * 1024;
+
+/** The list, newest first. A missing or hand-broken file reads as empty (the editor must still open). */
+async function readGenerated(rootReal) {
+  const text = await readStudioFile(rootReal, 'generated.json', MAX_BYTES).catch(() => null);
+  if (!text) return [];
+  try {
+    const v = JSON.parse(text);
+    return Array.isArray(v?.items) ? v.items.filter(isItem).slice(0, GENERATED_MAX) : [];
+  } catch {
+    return [];
+  }
+}
+
+function isItem(x) {
+  return !!x && typeof x === 'object' && GENERATED_KINDS.includes(x.kind) && typeof x.prompt === 'string' && typeof x.path === 'string';
+}
+
+/** One write at a time per folder: two makes landing together (a sound while a 3D model finishes) must both stay. */
+const chains = new Map();
+
+/**
+ * Add one line at the top. item: { id, kind, prompt, options, path, costUsdMicros }; `at` is added here.
+ * Never throws: the file is already in assets/, and a history that could not be written must not turn that into
+ * an error on screen (it is logged by the caller's log only when it matters).
+ */
+function addGenerated(rootReal, item) {
+  const prev = chains.get(rootReal) || Promise.resolve();
+  const next = prev.then(async () => {
+    const items = await readGenerated(rootReal);
+    const line = {
+      id: String(item.id || ''),
+      at: new Date().toISOString(),
+      kind: item.kind,
+      prompt: String(item.prompt).slice(0, 1024),
+      options: item.options && typeof item.options === 'object' ? item.options : {},
+      path: item.path,
+      costUsdMicros: typeof item.costUsdMicros === 'number' ? item.costUsdMicros : null,
+    };
+    // The same job twice (a 3D job looked at again after it landed) is one line.
+    const rest = items.filter((x) => !line.id || x.id !== line.id);
+    await writeStudioFile(rootReal, 'generated.json', JSON.stringify({ version: 1, items: [line, ...rest].slice(0, GENERATED_MAX) }, null, 2) + '\n');
+    return line;
+  }).catch(() => null);
+  chains.set(rootReal, next);
+  return next;
+}
+
 // ---- src/server/kumo.mjs ----
-// Optional KUMODeck sign-in: make pictures and 3D models with AI, paid from the creator's KUMODeck
+// Optional KUMODeck sign-in: make pictures, 3D models and sounds with AI, paid from the creator's KUMODeck
 // prepaid balance (2026-10-16, the product decision: "a completely free AI game
 // editor; sign in to KUMO and picture / 3D generation can be used from your credits").
 //
@@ -2014,6 +2312,13 @@ function embedded(name) {
 //
 // Prices shown before Make (fal and Tripo at cost, no markup; the same numbers as
 // the server's AI price table, pricing.ts, read 2026-10-15): see kumoImagePrice / kumo3dPrice.
+//
+// Sounds (generate-ui, 2026-10-22; the audio route mgmt opened on 10/20, /v1/projects/:id/ai/audio/*): sound
+// effects, music and voice lines, made inside one request like a picture (the server's routes3d.ts FAMILY_AUDIO is
+// sync). Prices: kumoSoundPrice (pricing.ts, read 2026-10-22).
+//
+// Every file that lands is also one line in .studio/generated.json (generated.mjs): what was made, with which words.
+
 
 
 
@@ -2057,6 +2362,28 @@ function kumo3dPrice(o) {
   return o.texture === false ? 0.1 : 0.2;
 }
 
+/**
+ * The model each kind of sound is made with, named in the request (routing.model; the ids are the server's
+ * modelMenu.ts, its ★ defaults on 2026-10-22). WHY name it: without a model the server may fall back to another
+ * candidate at another price, and the price on Make would be a guess. Change with kumoSoundPrice.
+ */
+const KUMO_SOUND_MODELS = { sfx: 'elevenlabs-sound-effects-v2', music: 'stable-audio-3-medium', voice: 'elevenlabs-turbo-v2.5' };
+/** The KUMODeck task of each kind of sound (the server's tasks.ts). */
+const SOUND_TASKS = { sfx: 'audio.sfx', music: 'audio.music', voice: 'audio.voice' };
+/** The voices KUMODeck knows (the server's types.ts VOICE_PRESETS). */
+const KUMO_VOICES = ['neutral', 'bright', 'deep', 'warm', 'energetic'];
+
+/**
+ * Price of one sound in US dollars, for the model in KUMO_SOUND_MODELS (pricing.ts, read 2026-10-22):
+ * sfx ElevenLabs Sound Effects v2 $0.002 a second; voice ElevenLabs Turbo v2.5 $0.05 per 1,000 characters;
+ * music Stable Audio 3 Medium $0.0376 a piece, whatever the length (up to 380 s).
+ */
+function kumoSoundPrice(o) {
+  if (o.kind === 'sfx') return 0.002 * (o.durationSec || 2);
+  if (o.kind === 'voice') return 0.00005 * Math.max(1, String(o.text || '').length);
+  return 0.0376;
+}
+
 /** The server reserves whole cents, at least 1 (the server's credits.ts, reserveCents). */
 const kumoCents = (usd) => Math.max(1, Math.ceil(Math.round(usd * 1e6) / 1e4));
 
@@ -2071,6 +2398,8 @@ function createKumo(o) {
   let pickedProject = null;
   /** 3D jobs started in this run: id -> { prompt, status, path, costUsdMicros }. A job's file is saved once. */
   const jobs = new Map();
+  /** The words and options of each 3D job, for its history line when the model lands (generated.mjs). */
+  const words = new Map();
 
   async function readJsonFile(p) {
     try {
@@ -2167,7 +2496,8 @@ function createKumo(o) {
   async function status() {
     const lg = await login();
     if (!lg) return { signedIn: false, loginCommand: KUMO_LOGIN_COMMAND };
-    const base = { signedIn: true, email: lg.email, server: new URL(lg.api).host, loginCommand: KUMO_LOGIN_COMMAND, jobs: [...jobs].map(([id, j]) => ({ id, ...j })) };
+    // made: the history (.studio/generated.json), for "Made here". Local only: no KUMODeck call.
+    const base = { signedIn: true, email: lg.email, server: new URL(lg.api).host, loginCommand: KUMO_LOGIN_COMMAND, jobs: [...jobs].map(([id, j]) => ({ id, ...j })), made: (await readGenerated(o.rootReal)).slice(0, 20) };
     try {
       const [bal, list, dash] = await Promise.all([balance(lg), projects(lg), dashboardUrl(lg)]);
       const id = lg.projectId || pickedProject;
@@ -2219,7 +2549,7 @@ function createKumo(o) {
 
   async function saveFile(lg, job) {
     const a = job.assets && job.assets[0];
-    const f = a && (a.files.find((x) => /\.(glb|png|jpe?g|webp)$/i.test(x.name)) || a.files[0]);
+    const f = a && (a.files.find((x) => /\.(glb|png|jpe?g|webp|wav|mp3|ogg)$/i.test(x.name)) || a.files[0]);
     if (!f || typeof f.url !== 'string' || !f.url.startsWith('/v1/')) throw kumoFail('no_file', 'The job finished without a file.');
     const buf = await getFile(lg, f.url);
     const rel = await addAsset(o.rootReal, f.name, Readable.from([buf]), buf.length);
@@ -2243,6 +2573,31 @@ function createKumo(o) {
     const job = r.json.job;
     if (job.status !== 'succeeded') throw kumoFail(job.error?.code || 'failed', job.error?.message || `The picture was not made (${job.status}).`);
     const rel = await saveFile(lg, job);
+    const side = input.width;
+    await addGenerated(o.rootReal, { id: job.id, kind: 'picture', prompt: input.prompt, options: { side, quality: input.tiling !== 'none' ? 'seamless' : b.quality === 'high' ? 'high' : 'standard' }, path: rel, costUsdMicros: job.costUsdMicros ?? null });
+    return { path: rel, costUsdMicros: job.costUsdMicros ?? null, balanceCents: (await balance(lg).catch(() => null))?.cents ?? null };
+  }
+
+  /**
+   * One sound (sync on KUMODeck: seconds). b: { kind: sfx | music | voice, prompt (voice: the words to say),
+   * durationSec?, loop?, voice?, acceptTerms? }. Answers { path, costUsdMicros, balanceCents } like makeImage.
+   */
+  async function makeSound(b) {
+    const lg = await need();
+    const projectId = await needProject(lg);
+    const { kind, input, options } = kumoSoundInput(b);
+    await checkBalance(lg, kumoSoundPrice({ kind, ...input }));
+    const r = await call(lg, 'POST', `/v1/projects/${encodeURIComponent(projectId)}/ai/audio/jobs`, {
+      task: SOUND_TASKS[kind],
+      input,
+      routing: { model: KUMO_SOUND_MODELS[kind] },
+      ...(b.acceptTerms === true ? { acceptTerms: true } : {}),
+    });
+    if (r.status !== 200 && r.status !== 202) throw fromApi(r);
+    const job = r.json.job;
+    if (job.status !== 'succeeded') throw kumoFail(job.error?.code || 'failed', job.error?.message || `The sound was not made (${job.status}).`);
+    const rel = await saveFile(lg, job);
+    await addGenerated(o.rootReal, { id: job.id, kind, prompt: kind === 'voice' ? input.text : input.prompt, options, path: rel, costUsdMicros: job.costUsdMicros ?? null });
     return { path: rel, costUsdMicros: job.costUsdMicros ?? null, balanceCents: (await balance(lg).catch(() => null))?.cents ?? null };
   }
 
@@ -2261,6 +2616,8 @@ function createKumo(o) {
     });
     if (r.status !== 200 && r.status !== 202) throw fromApi(r);
     jobs.set(r.json.job.id, { projectId, prompt: prompt.slice(0, 80), status: r.json.job.status, path: null, costUsdMicros: null });
+    // The whole words for the history (the list above keeps 80 characters for the "Recent" line).
+    words.set(r.json.job.id, { prompt, texture });
     return job3d(r.json.job.id);
   }
 
@@ -2276,12 +2633,16 @@ function createKumo(o) {
     j.status = job.status;
     j.costUsdMicros = job.costUsdMicros ?? null;
     if (job.status === 'failed') j.error = { code: job.error?.code || 'failed', message: String(job.error?.message || '').slice(0, 300) };
-    if (job.status === 'succeeded' && !j.path) j.path = await saveFile(lg, job);
+    if (job.status === 'succeeded' && !j.path) {
+      j.path = await saveFile(lg, job);
+      const w = words.get(id);
+      if (w) await addGenerated(o.rootReal, { id, kind: 'model', prompt: w.prompt, options: { texture: w.texture }, path: j.path, costUsdMicros: j.costUsdMicros });
+    }
     return { id, ...j };
   }
 
   // login() stays inside: it holds the token, which must not leave this module
-  return { status, pickProject, makeImage, make3d, job3d };
+  return { status, pickProject, makeImage, make3d, job3d, makeSound };
 }
 
 /** The picture's input for KUMODeck (same limits as the server: tasks.ts pictureSide). */
@@ -2298,6 +2659,30 @@ function kumoImageInput(b) {
   const format = b.format === 'png' ? 'png' : 'jpeg';
   const name = typeof b.name === 'string' && /^[a-z0-9][a-z0-9_-]{0,47}$/.test(b.name) ? b.name : undefined;
   return { prompt: kumoText(b.prompt, 1000), width: side(b.width), height: side(b.height), tiling, format, ...(name ? { name } : {}) };
+}
+
+/**
+ * A sound's input for KUMODeck (the same limits as the server's tasks.ts, narrowed to what the editor offers), and
+ * the options kept in the history. Unknown kinds and out-of-range values are a 400 here, before any money is asked.
+ */
+function kumoSoundInput(b) {
+  const kind = String(b.kind || '');
+  if (!SOUND_TASKS[kind]) throw httpError(400, 'kind is sfx, music or voice');
+  if (kind === 'voice') {
+    // The words to say: at most 500 characters (tasks.ts audio.voice text)
+    const text = kumoText(b.prompt, 500);
+    const voice = b.voice === undefined ? 'neutral' : String(b.voice);
+    if (!KUMO_VOICES.includes(voice)) throw httpError(400, `voice is one of ${KUMO_VOICES.join(', ')}`);
+    return { kind, input: { text, voice }, options: { voice } };
+  }
+  const prompt = kumoText(b.prompt, 1000);
+  const durationSec = Number(b.durationSec ?? (kind === 'sfx' ? 2 : 30));
+  // sfx 0.5-10 s, music 5-120 s (tasks.ts)
+  const [lo, hi] = kind === 'sfx' ? [0.5, 10] : [5, 120];
+  if (!Number.isFinite(durationSec) || durationSec < lo || durationSec > hi) throw httpError(400, `durationSec is ${lo} to ${hi}`);
+  if (kind === 'sfx') return { kind, input: { prompt, durationSec }, options: { durationSec } };
+  const loop = b.loop !== false;
+  return { kind, input: { prompt, durationSec, loop }, options: { durationSec, loop } };
 }
 
 function kumoText(v, max) {
@@ -2713,7 +3098,9 @@ function handoffLine(rec, relPath) {
   // and how many errors the console had, so the line alone says "look at the picture and the log".
   if (v.kind === 'play') {
     const errs = Array.isArray(v.logs) ? v.logs.filter((l) => l && l.level === 'error').length : 0;
-    const bits = ['while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    // Paused (2026-10-22): they stopped the game to talk; the line names the chat file, which has the whole talk.
+    const chatId = v.paused === true ? (typeof v.chat === 'string' && v.chat ? v.chat : String(relPath).replace(/^.*\/|\.json$/g, '')) : '';
+    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {
@@ -2863,6 +3250,7 @@ function whichAi(o) {
 //   /__studio/api/...     JSON API (see handleApi)
 //   /__studio/<file>      other files of the built UI (studio-edit.js, shell assets)
 //   /<anything else>      the game folder; HTML responses get the edit script injected
+
 
 
 
@@ -3129,6 +3517,12 @@ async function handleApi(req, res, u, ctx) {
       if (!v.shot) delete v.shot;
     }
     const rec = await recordRequest(ctx, v, fixedId);
+    // Pause (2026-10-22): a message of the chat over a paused game; the talk is kept as one file (play-chat.mjs).
+    const chatId = chatIdOf({ ...v, id: rec.id });
+    if (chatId) {
+      await addChatTurn(ctx.rootReal, chatId, { who: 'you', text: v.text, at: new Date(rec.at).toISOString(), request: rec.id }, v);
+      v.chat = chatId;
+    }
     // The same line `studio.mjs --watch` prints for it (ai-watch.mjs), so either source reads alike.
     ctx.log(handoffLine(v, rec.path));
     // `watching`: is an AI's watch running right now? The editor says "your AI isn't watching" at
@@ -3249,10 +3643,10 @@ async function handleApi(req, res, u, ctx) {
     return res.end();
   }
 
-  // Optional KUMODeck sign-in (kumo.mjs): status, pick a project, make a picture / a 3D model.
-  // Answers never carry the KUMODeck key. A KUMODeck refusal (not signed in, terms, balance, ...)
-  // is 422 { error, code } so the editor can show it in the person's words.
-  const kumoRoute = /^kumo\/(status|project|image|model3d)(?:\/([0-9a-f-]{36}))?$/.exec(route);
+  // Optional KUMODeck sign-in (kumo.mjs): status, pick a project, make a picture / a 3D model / a sound
+  // (sound: generate-ui 2026-10-22). Answers never carry the KUMODeck key. A KUMODeck refusal (not signed in,
+  // terms, balance, ...) is 422 { error, code } so the editor can show it in the person's words.
+  const kumoRoute = /^kumo\/(status|project|image|model3d|sound)(?:\/([0-9a-f-]{36}))?$/.exec(route);
   if (kumoRoute) {
     const [, what, id] = kumoRoute;
     const body = async () => {
@@ -3268,6 +3662,7 @@ async function handleApi(req, res, u, ctx) {
       if (what === 'image' && m === 'POST' && !id) return sendJson(res, 200, await ctx.kumo.makeImage(await body()));
       if (what === 'model3d' && m === 'POST' && !id) return sendJson(res, 200, await ctx.kumo.make3d(await body()));
       if (what === 'model3d' && m === 'GET' && id) return sendJson(res, 200, await ctx.kumo.job3d(id));
+      if (what === 'sound' && m === 'POST' && !id) return sendJson(res, 200, await ctx.kumo.makeSound(await body()));
     } catch (e) {
       if (!e.kumoCode) throw e;
       return sendJson(res, 422, { error: e.message, code: e.kumoCode, ...(e.extra || {}) });
@@ -4870,6 +5265,7 @@ function browserLine(opened) {
 
 
 
+
 const HELP = `Usage: node studio.mjs <game folder> [options]
 
 Opens the game in the KUMODeck Game Studio editor. Saving writes placement.json and
@@ -5324,6 +5720,19 @@ async function writeStatus(root, args) {
     note: args.note, at: new Date().toISOString(),
     choices: args.choices, about: args.about, before: args.before, after: args.after,
   });
+  // Pause (2026-10-22): a reply to a message of the chat over a paused game goes into that talk's file too
+  // (play-chat.mjs), before the request leaves the waiting list. Read from done/ when it was handled already.
+  if ((args.status === 'done' || args.status === 'failed' || args.status === 'asking') && st.note && st.request) {
+    let rec = pending.find((r) => r.id === st.request);
+    if (!rec) rec = await fs.readFile(path.join(root, '.studio', 'requests', 'done', `${st.request}.json`), 'utf8').then(JSON.parse, () => null);
+    const chatId = chatIdOf(rec);
+    if (chatId) {
+      const turn = { who: 'ai', text: st.note, at: st.at, request: st.request, state: st.state };
+      if (Number.isFinite(st.changed)) turn.changed = st.changed;
+      if (st.choices?.length) turn.choices = st.choices.slice();
+      await addChatTurn(realpathSync(root), chatId, turn);
+    }
+  }
   // done / failed: the requests up to this one are handled; move them out of the waiting list.
   if ((args.status === 'done' || args.status === 'failed') && pending.length) {
     const handled = pending.filter((r) => isRequestId(r.id) && (!request || r.id <= request)).map((r) => r.id);

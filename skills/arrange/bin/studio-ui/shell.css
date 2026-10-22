@@ -314,6 +314,16 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .list-hint { display: block; width: 100%; padding: 4px 0 0; font-size: var(--fs-s); }
 .list-tools:has(.list-hint) { flex-wrap: wrap; }
 .list-scroll { min-height: 0; }
+/* Levels (2026-10-22, level-switch.ts): in a game with levels the list's head names the level — the title's grey,
+   size and weight, so it reads as the same heading — and pressing it opens the levels' menu. No fill until hovered. */
+.level-switch { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; min-height: 22px; margin-left: -6px; padding: 0 6px; border-radius: 6px;
+  color: var(--text-2); font-size: var(--fs-s); font-weight: 600; }
+.level-switch:hover, .shell[data-menu="levels"] .level-switch { background: var(--raise-3); color: var(--text); }
+.level-switch .level-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.level-switch .icon { flex: none; width: 12px; height: 12px; color: var(--text-3); }
+.level-switch .level-n { flex: none; margin-left: 2px; color: var(--text-3); font-weight: 500; }
+.level-rename { min-width: 0; width: 160px; height: 24px; margin-left: -6px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 6px;
+  background: var(--studio-card); color: var(--text); font: inherit; font-size: var(--fs-s); font-weight: 600; }
 .objects { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; position: relative; }
 .obj { height: var(--h); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: var(--r); cursor: pointer; white-space: nowrap; min-width: 0; color: var(--text); user-select: none; -webkit-user-select: none; }
 .obj:hover { background: var(--raise); }
@@ -429,6 +439,22 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .num input { flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; background: none; color: var(--text); font: 400 var(--fs) var(--sans); font-variant-numeric: tabular-nums; padding: 0 6px 0 0; outline: none; -moz-appearance: textfield; }
 .num input::-webkit-inner-spin-button, .num input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .num.wide { padding-left: 8px; }
+/* Motion (motion-gui, 2026-10-22; motion-row.ts): one more row of the card, read like the numbers above it — a quiet
+   menu that lights on hover like a number, the ▶ an icon button, no colour but orange once it plays (your hand). The
+   native <select> is kept (the platform's menu, read aloud, a finger's), only its box is the card's. */
+.motion-cells, .motion-more { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+.motion-pick { position: relative; display: flex; align-items: center; height: var(--h); min-width: 0; border-radius: 6px; }
+.motion-pick:hover { background: var(--raise); }
+.motion-pick select { appearance: none; -webkit-appearance: none; width: 100%; height: 100%; min-width: 0; border: 0; border-radius: 6px; background: none; color: var(--text);
+  font: 400 var(--fs) var(--sans); padding: 0 24px 0 8px; cursor: pointer; outline: none; text-overflow: ellipsis; }
+.motion-pick select:focus-visible { box-shadow: inset 0 0 0 1px var(--you); }
+.motion-pick .icon { position: absolute; right: 6px; width: 14px; height: 14px; color: var(--text-3); pointer-events: none; }
+.motion-play.on, .motion-play.on:hover:not(:disabled) { color: var(--you); }
+.motion-speed { cursor: text; padding-left: 8px; }
+.motion-speed .motion-unit { padding-right: 8px; font-weight: 400; color: var(--text-3); }
+.motion-points { display: inline-flex; align-items: center; }
+.motion-points .icon-btn { width: 24px; height: 24px; min-height: 24px; }
+.motion-points .n { margin: 0; min-width: 2ch; text-align: center; color: var(--text-2); }
 .f-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--raise); }
 .seg button { min-height: 24px; height: 24px; border-radius: 6px; }
@@ -601,6 +627,15 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .assets-page .gsl-ai .gsl-btn:not(.gsl-primary) { background: var(--plate); }
 .assets-page .gsl-ai .gsl-close { width: var(--h); padding: 0; }
 .assets-page .gsl-ai-terms { border-top-color: var(--line-2); }
+/* The place to make things (generate-ui, 2026-10-22): example words and Again / Change are quiet text, the card and the
+   history are divided by the same hairline as the terms. The ▶ is the Library's own play button (solid). */
+.assets-page .gsl-ai .gsl-link, .assets-page .gsl-ai .gsl-link:hover { color: var(--text-2); background: none; min-height: 0; height: auto; }
+.assets-page .gsl-ai .gsl-link:hover { color: var(--text); text-decoration: none; }
+.assets-page .gsl-ai-made, .assets-page .gsl-ai-line { border-top-color: var(--line-2); }
+.assets-page .gsl-ai-made-pic, .assets-page .gsl-ai-made-icon { background: var(--plate); border-radius: var(--r); }
+.assets-page .gsl-ai .gsl-btn.gsl-ai-play { background: var(--solid); color: var(--solid-fg); width: var(--h); height: var(--h); min-height: var(--h); padding: 0; border-radius: 50%; }
+/* A phone's touch size, but a round ▶ (the phone's 44 px rule for buttons made it a pill). */
+.shell[data-layout="phone"] .assets-page .gsl-ai .gsl-btn.gsl-ai-play { width: 44px; height: 44px; }
 .assets-page .gsl-count { grid-area: count; color: var(--text-3); font-size: var(--fs-s); }
 /* "Couldn't read the folder (…)." + Try again shares the count's cell: the count is empty while it shows. */
 .assets-page .gsl-readfail { grid-area: count; justify-self: start; max-width: 560px; border: 0; border-radius: var(--R); background: var(--raise); box-shadow: inset 3px 0 0 var(--gsl-missing); padding: 10px 10px 10px 14px; }
@@ -773,6 +808,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .top-actions > button.play-ask .icon { width: 18px; height: 18px; filter: drop-shadow(0 0 3px color-mix(in srgb, var(--ai) 45%, transparent)); }
 .top-actions > button.play-ask[data-state="busy"] .icon { animation: studio-pulse 1.2s var(--ease) infinite; }
 .top-actions > button.play-ask[data-state="ready"] .icon { filter: drop-shadow(0 0 2px var(--ai)) drop-shadow(0 0 6px color-mix(in srgb, var(--ai) 80%, transparent)); }
+/* Pause (2026-10-22): ❚❚ left of ✦, no plate either; the text colour, not the AI's (pausing is the person's, not the AI's). */
+.top-actions > button.play-pause { background: none; color: var(--text); }
+.top-actions > button.play-pause .icon { width: 16px; height: 16px; }
 /* Play is drawn 36 high (a 44 capsule filled the 48 bar edge to edge) and pressed 44 high (::after). */
 .shell[data-layout="phone"] .top-actions .play { min-height: 36px; padding: 0 14px 0 12px; font-size: var(--fs-s); }
 .shell[data-layout="phone"] .top-actions > button.top-save { min-height: 36px; padding: 0 14px; font-size: var(--fs-s); }
@@ -828,6 +866,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* A grid, not a wrapping flex row: a wrapping row pushed the "…" button down to a line of its own. */
 .shell[data-layout="phone"] .side-head-tools, .shell[data-layout="phone"] .side-head-tools .list-tools { display: contents; }
 .shell[data-layout="phone"] .side-head-tools .list-title { display: none; }
+/* Levels: on a phone the level's head is the sheet head's second row, at the left, a finger high. */
+.shell[data-layout="phone"] .side-head-tools .level-switch, .shell[data-layout="phone"] .side-head-tools .level-rename { grid-area: 2 / 1 / 3 / -1; justify-self: start; min-height: 36px; margin: 2px 0 0 4px; }
 .shell[data-layout="phone"] .side-head-tools .toggle { grid-area: 1 / 2; justify-self: end; display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell[data-layout="phone"] .side-head-tools .list-hint { grid-area: 3 / 1 / 4 / -1; padding: 4px; }
 /* The narrowest phones (280–340): the switch and "…" alone fill the row, so Multi-select takes a short row of its
@@ -890,6 +930,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .fields { grid-template-columns: 56px minmax(0, 1fr); gap: 6px 0; }
 .shell[data-layout="phone"] .num { height: 40px; }
 .shell[data-layout="phone"] .num input { font-size: max(16px, var(--fs)); }
+.shell[data-layout="phone"] .motion-pick { height: 40px; }
+.shell[data-layout="phone"] .motion-pick select { font-size: max(16px, var(--fs)); }
+.shell[data-layout="phone"] .motion-play, .shell[data-layout="phone"] .motion-points .icon-btn { width: 44px; height: 44px; min-height: 44px; }
 .shell[data-layout="phone"] .layer-seg button { width: 44px; height: 40px; min-height: 40px; }
 .shell[data-layout="phone"] .f-row { grid-template-columns: 56px minmax(0, 1fr) auto; }
 .shell[data-layout="phone"] .card-body > .link-btn, .shell[data-layout="phone"] .note-line .link-btn { min-height: 44px; }
@@ -1138,6 +1181,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctx-key { margin-left: auto; flex: none; color: var(--text-3); }
 .ctx-row:disabled .ctx-key { opacity: .6; }
+/* The chosen one of a list (the level on screen): the check in the text colour, not the third grey of a key. */
+.ctx-key.ctx-check { color: var(--text); padding-left: 16px; }
 .ctx-sep { flex: none; height: .5px; margin: 4px 10px; background: var(--line-2); }
 .shell[data-layout="phone"] .ctx-menu { min-width: 224px; padding: 8px; border-radius: var(--R); }
 .shell[data-layout="phone"] .ctx-row { border-radius: calc(var(--R) - 8px); padding: 0 12px; }

@@ -345,6 +345,70 @@ the editor offers all three with every adapter.
   made this way looks like its original but does not act like it until the
   AI adds it to the code.
 
+### 1.9 Motion (2026-10-22, motion-gui)
+
+How an object moves by itself, made on its card (3D in stage 1): back and
+forth between its place and a point, round a path, along it once, or a
+spin. Saved as `motion` (§4.1); the loader runs it in the game.
+
+- Card: a Motion row under Size (`shell/motion-row.ts`): None / Back and
+  forth / Loop / Once / Spin, the speed (m/s, °/s; drag the unit or type),
+  − n + for the path's points, ▶ / ■. Each change is one undo step
+  (`Change` kind `motion`) and one Save count per object.
+- `studio:motion/show { key, motion, seed? }` (shell → bridge): draw the
+  picked object's path (only that one) — a dotted orange line from it
+  through its points, a white dot with an orange ring on each. Sent when
+  the pick or its motion changes. `seed`: a path kind was just chosen; the
+  bridge picks the first points in sight (to the object's side on screen
+  that the card does not cover, on its height; a loop gets a square) and
+  answers `motion/changed { seed: true }`, which replaces the stand-in
+  points of the undo step just recorded.
+- A dot is dragged on the ground at its own height (`toGround`); the bridge
+  takes that press before the input layer (its window listeners are added
+  first), sends `motion/changed { end: false }` while it moves and
+  `{ end: true }` once (one undo step from before the drag).
+- `studio:motion/play { key, motion }` / `{ key: null }`: ▶ / ■. The bridge
+  keeps the object's pose and puts it at place + `motionAt(t)` each frame
+  through the copy/delete layer (no game rules: a grid snap would make it
+  jump); ■ puts the pose back exactly. Nothing is reported as moved. A press
+  elsewhere in the game, another pick, a pose / copy / delete, the end of
+  editing stop it; the bridge then sends `studio:motion/played`.
+- Positions are the parent's space and the screen maths the scene's: right
+  for objects at the top of the scene; a path inside a moved group is drawn
+  off by the group's offset (stage 2).
+- ▶ Play: the page's loader runs the draft's motions; for the keys it does
+  not (no loader, an older one) the bridge does, the same way
+  (`play-arrange.ts` `moveInPlay`). The loader lists what it moves in a
+  global set (`Symbol.for('game-studio.motion')`) so nothing moves twice.
+  Inside the editor (`studio=edit`) the loader runs none.
+
+### 1.10 Levels (2026-10-22)
+
+Optional, added in contract 1 without changing anything else. A game with
+several levels says which ones its code has, and builds the one the editor
+asks for:
+
+```js
+const pick = window.studio?.levels?.([{ id: 'meadow', label: 'Meadow' }, 'cave']); // ids or { id, label }
+buildLevel(pick?.build ?? 'meadow');                                                  // null outside the editor
+await applyPlacement(scene, './placement.json', { level: pick?.id ?? 'meadow' });
+```
+
+- `studio.levels(list)` returns `{ id, build }` inside the editor's frame
+  (edit and ▶ Play), `null` anywhere else (the game picks its own level).
+  `id` = the level shown (it may be one the person made in the editor);
+  `build` = a level the code has (for an editor-made level, the one it was
+  copied from). It also sends `core/levels` (once per page).
+- The shell puts the level on the game URL: `studioLevel=<id>` and
+  `studioBuild=<code id>` (`LOCAL_PATHS.levelParam` / `buildParam`); none =
+  the list's first level. Ids match `KEY_RE`.
+- The shell keeps one placement model per level shown; ⌘Z starts empty on a
+  new level. Motions (§1.9) are a level's own, like its poses (integrate3). Copy, rename, reorder and delete are list changes (one Save
+  count each) written to `placement.json` (§4.1); the code changes are the
+  AI's.
+- A game with one level (or that never calls it): nothing changes — no
+  switch, no `levels` in the file.
+
 ---
 
 ## 2. Messages (bridge ⇄ shell)
@@ -363,6 +427,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `core/key` | Key pressed while the game frame has focus |
 | | `core/error` | Adapter threw |
 | | `core/game-error` | `{ message, where? }`: the game's own page threw (edit and Play, first 3 per load); the shell says what to do |
+| | `core/levels` | `{ levels: LevelInfo[], current }`: the game called `studio.levels()` (§1.10); `current` = the level this page shows |
 | | `placement/items` | `Item[]`; `layer?` whose list it is (UI stage 1; absent = the world). When editing starts in a game with a UI, the UI's list is sent once too, so its saved places are kept and shown |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold? }` |
@@ -750,6 +815,35 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   `player()` for a 3D engine. A canvas that holds pictures from another site
   without CORS cannot be read: then no picture, the rest still goes.
 
+#### 3.5.1 Pause and talk (2026-10-22)
+
+- **P** in the game (or **❚❚** left of the corner mark; on a phone, ❚❚ in the
+  editor's top bar, `studio:play/pause`) pauses the game:
+  `src/bridge/play-pause.ts` freezes the frames (core time, as in Edit), stops
+  the game's clock (`src/core/play-clock.ts`: the paused time is taken out of
+  `performance.now()` and the frame timestamps, so Resume steps one frame, not
+  the whole pause), suspends the game's AudioContexts and pauses its playing
+  `<audio>` / `<video>`. No key press or pointer reaches the game while paused;
+  key releases do (a key held at the pause does not stay down). Not held: a
+  game stepped only by `setTimeout` / `setInterval` or by `Date.now()`.
+- Over the paused game, a small chat (`src/bridge/play-chat.ts`, same shadow
+  root and top layer). Each message is a `play` request with `paused: true`; the
+  first carries the moment taken when the game stopped, the next ones `chat`
+  (the first one's id) and `history` (≤ 12 turns). The AI's replies are its
+  status notes, through the same `play/state` lines (`done` / `failed` /
+  `asking` become a reply; `received` / `working` the "looking" row); Reload
+  and "More in Claude" as on the line. P, Escape or **Resume** goes back to the
+  game where it stopped.
+- The host keeps the talk as `.studio/chat/<first id>.json` (`{ version, id,
+  at, paused, shot, view, near, logs, size, turns: [{ who: "you" | "ai", text,
+  at, request, state?, changed?, choices? }] }`): the person's turns when it
+  keeps a request, the AI's when `studio.mjs --status done|asking|failed
+  --request <id> --note …` names a request of the talk. The line reads
+  `studio: request play <path> "<words>" (paused, chat .studio/chat/<id>.json, picture …)`.
+- Messages: shell → bridge `studio:play/pause`; bridge → shell
+  `studio:play/paused` (`on`); `play/ask` carries `paused`, `chat`, `history`;
+  `play/sent` carries the kept request's `id`.
+
 ---
 
 ## 4. Result files
@@ -818,6 +912,52 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   whatever the world's `dim`, also to marked elements the game adds later
   (`applyPlacement(document, url)` = the UI only); `report.ui = { applied,
   missing }`.
+
+- Optional (motion-gui, 2026-10-22, §1.9): objects that move by themselves,
+  by key (a game object or an `added` copy; never a `removed` key):
+
+  ```json
+  "motion": {
+    "rowboat": { "path": [[7, 0, -2]], "speed": 1.5, "repeat": "pingpong" },
+    "buoy":    { "spin": 1.5708 }
+  }
+  ```
+
+  `path` = 1–32 points as offsets from the object's place (its `p`, else
+  the code's), parent space, `dim`'s numbers; the start `[0, 0(, 0)]` is not
+  written. `speed` = units per second along it (> 0, ≤ 1000 m/s / 100 000
+  px/s; with a path only), `repeat` = `pingpong` (default) | `loop` | `once`
+  (with a path only), `spin` = rad/s round the up axis (3D `rotation.y`,
+  + = anticlockwise from above; 2D the angle; ≠ 0, |spin| ≤ 100). A path, a
+  spin or both. Rounded like poses (1 mm / 0.1 px, 1e-4 rad). Absent when
+  nothing moves: older files are byte for byte the same. The loader runs it
+  from the game's frames (`position = place + motionAt(m, t).off`, `angle +=
+  spin × t`), reports `report.motion` (keys) and exports `motionAt` and
+  `stopMotion()`.
+- Optional (levels, 2026-10-22, §1.10): a game with several levels.
+
+  ```json
+  "objects": {},
+  "levels": [
+    { "id": "meadow", "label": "Meadow", "objects": { "rock-1": { "p": [2, 0, 1], "was": { "p": [0, 0, 1] } } } },
+    { "id": "cave-2", "label": "Crystal Hall", "from": "cave" },
+    { "id": "summit", "label": "Top", "labelWas": "Summit" }
+  ],
+  "levelsWas": ["meadow", "cave", "summit"]
+  ```
+
+  `levels` in the person's order; each has its own `objects` / `added` /
+  `removed` / `order` / `motion` (same rules as the top; `objects` left out
+  when empty), and the top `objects` is `{}` with no `added` / `removed` /
+  `order` / `motion` (a motion's keys are that level's objects; integrate3,
+  2026-10-22).
+  `from` = made in the editor, built from that code level (must be one of
+  the code's). `labelWas` = the code's name after a rename. `levelsWas` =
+  the code's ids in its order, written only when the list differs from it
+  (an id missing from `levels` = deleted). `ui` stays at the top (shared by
+  every level). ≤ 100 levels. The loader applies a level only when given
+  `{ level }`; `placementForLevel(file, id)` gives one level's view. Absent
+  for a game with one level: its file keeps its bytes.
 
 ### 4.2 library.json
 

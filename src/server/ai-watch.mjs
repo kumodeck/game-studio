@@ -126,7 +126,9 @@ export function handoffLine(rec, relPath) {
   // and how many errors the console had, so the line alone says "look at the picture and the log".
   if (v.kind === 'play') {
     const errs = Array.isArray(v.logs) ? v.logs.filter((l) => l && l.level === 'error').length : 0;
-    const bits = ['while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
+    // Paused (2026-10-22): they stopped the game to talk; the line names the chat file, which has the whole talk.
+    const chatId = v.paused === true ? (typeof v.chat === 'string' && v.chat ? v.chat : String(relPath).replace(/^.*\/|\.json$/g, '')) : '';
+    const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {

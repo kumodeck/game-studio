@@ -19,12 +19,14 @@ dependencies). It is the local implementation of the host interface (contract 3)
 - `server.mjs` - HTTP: pass + cookie, Host check, routes, API
 - `ai-watch.mjs` - `--watch` (one line per request, the heartbeat `.studio/watch.json`) and reading it back as "is an AI watching" (AI feel, 2026-10-16)
 - `which-ai.mjs` - which AI is behind the editor (Claude / Codex / unknown), from the wake hook and the environment it was started in: the AI line's "More in Claude" (2026-10-21)
+- `play-chat.mjs` - the chat over a paused game kept as `.studio/chat/<first request id>.json`: the person's turns (server, POST /request) and the AI's (`--status … --note`) (2026-10-22)
 - `ai-undo.mjs` - the game files' signature (the editor reloads the game when it changes) and the snapshots in `.studio/undo/` behind "Undo AI change"
 - `files.mjs` - what may be served or written (inside the folder only, no dot-files, no overwrites)
 - `assets.mjs` - asset list with `refsInCode` and names in code that match no file
 - `next-steps.mjs` - text written to `.studio/next-step.md` for the "next step" menu
 - `view-check.mjs` - `--check-view`: headless Chrome shoots the game in the editor and played normally, compares; writes `.studio/view-check.md`
-- `kumo.mjs` - optional KUMODeck sign-in: reads the CLI's `~/.kumo/credentials.json`, makes AI pictures / 3D models through KUMODeck and adds them to `assets/` (the key never leaves this process)
+- `kumo.mjs` - optional KUMODeck sign-in: reads the CLI's `~/.kumo/credentials.json`, makes AI pictures / 3D models / sounds (sound effects, music, voice lines) through KUMODeck and adds them to `assets/` (the key never leaves this process)
+- `generated.mjs` - the history of what "Make with AI" made: `.studio/generated.json` (kind, words, options, file, cost; newest first, at most 200)
 - `qr.mjs` - QR encoder for `--lan` (terminal and SVG)
 - `local-host.client.js` - the browser side of the host interface, served at `/__studio/host.js`
 - `fallback.html` - page shown at `/__studio/` when no built editor UI is next to studio.mjs

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.12 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.13 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4001,6 +4001,25 @@ const CONTRACT_VERSION = 1;
                                                           
      
                                    
+     
+                                                                                                                  
+                                                                                                                    
+                                                                                                                     
+                                                                                                                    
+     
+                                                             
+ 
+
+/** One level as the game names it (studio.levels). `id` matches KEY_RE; `label` is what the person reads. */
+                            
+             
+                 
+ 
+
+/** What studio.levels() returns in the editor: the level shown (`id`) and the code's level to build for it. */
+                            
+             
+                
  
 
 // ---------------------------------------------------------------------------
@@ -4346,6 +4365,16 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                        
      
+                                                                                                                    
+                                                                                                                      
+                                                                                                                     
+                                                                                                                
+                                 
+     
+                                                                                              
+                                                                                                                              
+                                                                              
+     
                                                                                
                                                                                
                                                                               
@@ -4420,8 +4449,16 @@ const MSG_PREFIX = 'studio:';
                                 
                                                                                                                     
                                                          
-                                                                                     
-                                              
+     
+                                                                                                                       
+                                                              
+     
+                                 
+     
+                                                                                                                  
+                                                                                   
+     
+                                                           
 
 /**
  * The one line over the game while playing (§3.5). `state`: looking = sent, the AI has it; fixing = it works on it;
@@ -4474,6 +4511,12 @@ const MSG_PREFIX = 'studio:';
                                                   
                                                                                                                
                                                                        
+     
+                                                                                                                  
+                                                                                                                       
+                                                                                                                  
+     
+                                                                        
                                                                                       
                                                                         
                                                                                            
@@ -4490,6 +4533,13 @@ const MSG_PREFIX = 'studio:';
                                                                          
      
                                                                                                                                                                                  
+     
+                                                                                                                   
+                                                        
+     
+                                                                                                
+                                                                                                                        
+                                                        
                                                                                                             
                                                                                                                                   
                                                                                                                           
@@ -4521,11 +4571,21 @@ const MSG_PREFIX = 'studio:';
                                                                                                               
      
                                                                                                                                        
-                                                                                          
+                                                                                         
+                                                                                                                     
+                                                             
+                                                                                     
+                                               
                                                                                
                                                 
                                                                                          
                                    
+
+/** One turn of the chat over a paused game, as a request carries the talk so far (pause, 2026-10-22). */
+                           
+                    
+               
+ 
 
 /** Something near the player when they asked while playing (§3.5). */
                            
@@ -4656,6 +4716,15 @@ function isStudioMessage(x         )                     {
                                                                                            
                        
                           
+     
+                                                                                                                     
+                                                                                                                      
+                                                                                                                       
+                                                                                                                
+     
+                   
+                
+                       
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -4832,7 +4901,30 @@ function isStudioMessage(x         )                     {
                                                  
                                        
                    
+     
+                                                                                                                   
+                                                                                          
+     
+                    
                                             
+ 
+
+/** The kinds "Make with AI" makes (generate-ui, 2026-10-22: sound effects, music and voice lines joined images and 3D). */
+                                                                       
+
+/** One line of the history (.studio/generated.json). */
+                           
+             
+                            
+             
+                 
+                                                                      
+                 
+                                                                                                                                          
+                                                     
+                 
+               
+                               
  
 
                           
@@ -4877,6 +4969,20 @@ function isStudioMessage(x         )                     {
                         
  
 
+/** One sound (generate-ui, 2026-10-22): KUMODeck's audio route, made within the request like a picture. */
+                                   
+                                  
+                                                                                                 
+                 
+                                     
+                       
+                                                 
+                 
+                                                              
+                 
+                        
+ 
+
                            
                                 
                                                              
@@ -4884,6 +4990,8 @@ function isStudioMessage(x         )                     {
                                                                        
                                                                                   
                                                                    
+                                                                                               
+                                                                                                                                                
  
 
 // ---------------------------------------------------------------------------
@@ -4992,7 +5100,57 @@ const RESULT_FILES                         = {
                                         
                                                                                                              
                             
+     
+                                                                                                                    
+                                                                                                                 
+                                                                                                                
+     
+                                  
+     
+                                                                                                                     
+                                                                                                                        
+                                                                                                                                   
+                                           
+     
+                            
+                                                                                                                                
+                       
  
+
+/** One level's part of placement.json (CONTRACT.md §4.1). */
+                                 
+             
+                 
+                                                                                
+                    
+                                                                                                                        
+                
+                                           
+                           
+                               
+                           
+                                                                                                          
+                                  
+ 
+
+/**
+ * How an object moves by itself (motion-gui, 2026-10-22; CONTRACT.md §4.1 `motion`). A path, a spin, or both.
+ * The loader runs it (src/loader/studio-placement.js motionAt), the editor previews it with the same maths.
+ */
+                         
+     
+                                                                                                                    
+                                                                             
+     
+                    
+                                                          
+                 
+                                                                                                                      
+                        
+                                                                                                                                           
+                
+ 
+                                                        
 
                                    
                                                                                                                            
@@ -5287,6 +5445,12 @@ const LOCAL_PATHS = {
    * Missing = the game's own origin (local host serves both from one origin).
    */
   parentParam: 'studioParent',
+  /**
+   * Levels (2026-10-22): query parameters on the game URL (edit and ▶ Play) with the level the editor shows and the
+   * code's level to build for it; studio.levels() returns them. Absent = the game's first level.
+   */
+  levelParam: 'studioLevel',
+  buildParam: 'studioBuild',
 }         ;
 
 __def(__exports, "CONTRACT_VERSION", () => CONTRACT_VERSION);
@@ -5470,6 +5634,11 @@ const { nativeCancelRaf, nativeRaf } = __require(0);
                                                                                         
                                
                                    
+     
+                                                                                                               
+                                                                                             
+     
+                                
  
 
                                                       
@@ -5527,7 +5696,7 @@ function installTime(opts             )                  {
       pending.delete(id);
       gameFrames++;
       try {
-        e.cb(t);
+        e.cb(opts.stamp ? opts.stamp(t) : t);
       } finally {
         // The first game frame has run once its callback returned (it drew).
         // A microtask lets other callbacks of the same frame finish first.
@@ -5630,6 +5799,89 @@ function installCore(opts             )       {
 __def(__exports, "installCore", () => installCore);
 };
 __defs[17] = function (__exports) {
+'use strict';
+// ../core/play-clock.ts
+
+// The game's clock while playing inside the editor, so a pause takes no time (pause, 2026-10-22).
+//
+// WHY: freezing the frames (time.ts) is not enough. Engines measure the time between frames from performance.now()
+// (three.js Timer / Clock) or from the timestamp requestAnimationFrame hands them (Pixi's Ticker, Phaser, a hand-made
+// `t / 600`). After a one-minute pause the first frame would see a 60 s step: the boat jumps across the cove, a timer
+// runs out, a physics step explodes. Here the time spent paused is taken out of both, so the game's next frame sees
+// one ordinary frame's step.
+//
+// Only in ▶ Play inside the editor (bridge.ts installs it before any game code, so the game's first look at
+// performance.now already goes through it). Date.now() is left alone: it is wall time (saves, "last played"), and a
+// game that steps with it is rare (CONTRACT.md §3.5.1 lists what a pause does not stop).
+
+                            
+                                                                        
+               
+             
+                            
+                                                                                                           
+                        
+                                                                                                                     
+                    
+                                     
+                           
+ 
+
+/** The pure part (test/pause.test.ts): real time in, game time out. */
+function makeClock(real              ) {
+  let skipped = 0;
+  let stoppedAt                = null;
+  return {
+    stop() {
+      if (stoppedAt === null) stoppedAt = real();
+    },
+    go() {
+      if (stoppedAt === null) return;
+      skipped += Math.max(0, real() - stoppedAt);
+      stoppedAt = null;
+    },
+    get stopped() {
+      return stoppedAt !== null;
+    },
+    get skipped() {
+      return skipped;
+    },
+    /** While stopped every time reads as the moment it stopped; never earlier than that. */
+    at(t        ) {
+      if (stoppedAt !== null) return Math.min(t, stoppedAt) - skipped;
+      return t - skipped;
+    },
+  };
+}
+
+function installPlayClock(win                            )            {
+  const perf = win.performance;
+  const realNow = perf.now.bind(perf);
+  const c = makeClock(realNow);
+  try {
+    // An own property on the instance: Performance.prototype.now stays the browser's (other frames, workers).
+    Object.defineProperty(perf, 'now', { value: function now() { return c.at(realNow()); }, configurable: true, writable: true });
+  } catch {
+    /* a locked-down page: the rAF timestamps are still shifted (time.ts) */
+  }
+  return {
+    stop: c.stop,
+    go: c.go,
+    get stopped() {
+      return c.stopped;
+    },
+    get skipped() {
+      return c.skipped;
+    },
+    at: c.at,
+    realNow,
+  };
+}
+
+__def(__exports, "makeClock", () => makeClock);
+__def(__exports, "installPlayClock", () => installPlayClock);
+};
+__defs[18] = function (__exports) {
 'use strict';
 // ../core/port2d.ts
 
@@ -6113,7 +6365,7 @@ __def(__exports, "BACKDROP_NAME", () => BACKDROP_NAME);
 __def(__exports, "backdropRun", () => backdropRun);
 __def(__exports, "adapterFromPort2D", () => adapterFromPort2D);
 };
-__defs[18] = function (__exports) {
+__defs[19] = function (__exports) {
 'use strict';
 // ../loader/studio-placement.js
 
@@ -6130,6 +6382,10 @@ __defs[18] = function (__exports) {
 // stays centred. A translate / scale the game's stylesheet already gives is kept (the offset is added to it). Applied
 // before the world, whatever the world's dim, and also to elements the game adds later (a game-over screen built
 // with innerHTML): only when the file has a `ui`, so other games pay nothing. report.ui = { applied, missing }.
+//
+// `levels` (2026-10-22): a game with several levels gets one world part per level in the file. Pass the level being
+// built: applyPlacement(scene, './placement.json', { level: 'cave' }). Without `level`, a file with levels moves
+// nothing in the world (another level's layout must never land on this one); the UI is applied either way.
 //
 // Call it once after the world is built and BEFORE physics bodies are created: an engine that
 // copies body positions into objects every frame would otherwise move them back.
@@ -6151,6 +6407,16 @@ __defs[18] = function (__exports) {
 // every object under the same key after the reorder.
 // Names are compared after the same clean-up the editor applies to make a key (characters outside
 // A-Z a-z 0-9 _ : # . - / become "_", at most 80 characters).
+//
+// `motion` (motion-gui, 2026-10-22: asked for as "build an object's movement with the GUI"): per key, a path the object
+// goes along and / or a spin, made in the editor's card. Run by this file from the game's own frames, so a game that
+// loads placement.json moves them without any code of its own:
+//   position = the place it was given (after `objects`) + motionAt(m, seconds).off
+//   angle    = the angle it was given + spin × seconds (three: rotation.y; Pixi: rotation)
+// NOT inside the editor (the page URL has studio=edit): there the editor owns every pose, plays one object's motion
+// itself (▶ on the card) and must see the place, not a point along the way. A game that writes the object's position
+// every frame itself (physics, its own update) wins over this; the skill tells the AI to put the motion into that code.
+// report.motion = the keys that move; stopMotion() stops them all (a game that wants to take over).
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -6158,9 +6424,10 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
 /**
  * @param {object} root  three.js Scene/Object3D or PixiJS Container (app.stage)
  * @param {string | object} [source]  URL of placement.json (default './placement.json') or its parsed content
+ * @param {{ level?: string }} [opts]  level: the id of the level being built (a game with levels)
  * @returns {Promise<{ applied: string[], missing: string[], unstable: string[], skipped: string[] }>}
  */
-async function applyPlacement(root, source = './placement.json') {
+async function applyPlacement(root, source = './placement.json', opts = {}) {
   const report = { applied: [], missing: [], unstable: [], skipped: [] };
   let data = source;
   if (typeof source === 'string') {
@@ -6184,6 +6451,13 @@ async function applyPlacement(root, source = './placement.json') {
   if (data.dim !== dim) {
     warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
     return report;
+  }
+  if (Array.isArray(data.levels)) {
+    if (!(opts && opts.level)) {
+      warn('this file has levels: pass { level } to applyPlacement');
+      return report;
+    }
+    data = placementForLevel(data, opts.level);
   }
   const n = three ? 3 : 2;
   for (const key of Object.keys(data.objects)) {
@@ -6218,9 +6492,95 @@ async function applyPlacement(root, source = './placement.json') {
     if (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);
   }
   if (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);
+  if (data.motion && typeof data.motion === 'object') runMotion(root, data.motion, n, three, report);
   if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
   if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
   return report;
+}
+
+// The keys moved by this file (any copy of it on the page): the editor's ▶ Play (bridge/play-arrange.ts) leaves them
+// alone, so an object is never moved twice. A global symbol, because the game and the editor each load their own copy.
+const MOVING = Symbol.for('game-studio.motion');
+let motionRuns = [];
+
+/** Stop every motion started by applyPlacement (the objects stay where they are now). */
+function stopMotion() {
+  for (const r of motionRuns) r.stop = true;
+  motionRuns = [];
+  if (globalThis[MOVING]) globalThis[MOVING].clear();
+}
+
+/**
+ * Where a motion is after `t` seconds: `off` = the offset from the object's place (null without a path), `turn` = the
+ * angle added (spin × t), `done` = a `once` path has arrived. Shared with the editor (its ▶ preview and its ▶ Play), so
+ * the editor and the game move the same way. Path points are offsets from the place, the start ([0, 0(, 0)]) left out;
+ * constant speed along straight lines; `repeat` pingpong (default: there and back), loop (back to the start and round
+ * again), once (stops at the last point).
+ */
+function motionAt(m, t) {
+  const out = { off: null, turn: 0, done: false };
+  if (!m || typeof m !== 'object') return out;
+  if (isNum(m.spin)) out.turn = m.spin * t;
+  const n = Array.isArray(m.path) && Array.isArray(m.path[0]) ? m.path[0].length : 0;
+  const path = n ? m.path.filter((q) => Array.isArray(q) && q.length === n && q.every(isNum)) : [];
+  if (!path.length) return out;
+  const rep = m.repeat === 'loop' || m.repeat === 'once' ? m.repeat : 'pingpong';
+  const pts = [path[0].map(() => 0), ...path];
+  if (rep === 'loop') pts.push(pts[0]);
+  const lens = pts.slice(1).map((q, i) => Math.hypot(...q.map((v, k) => v - pts[i][k])));
+  const total = lens.reduce((a, b) => a + b, 0);
+  let d = Math.max(0, (isNum(m.speed) && m.speed > 0 ? m.speed : 1) * t);
+  if (!(total > 0)) return (out.off = pts[0]), out;
+  if (rep === 'once') (out.done = d >= total), (d = Math.min(d, total));
+  else if (rep === 'loop') d %= total;
+  else (d %= 2 * total), (d = d > total ? 2 * total - d : d);
+  let i = 0;
+  while (i < lens.length - 1 && d > lens[i]) d -= lens[i++];
+  const f = lens[i] ? Math.min(1, d / lens[i]) : 0;
+  out.off = pts[i].map((v, k) => v + (pts[i + 1][k] - v) * f);
+  return out;
+}
+
+function runMotion(root, motion, n, three, report) {
+  if (typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search)) return;
+  const run = { list: [], stop: false };
+  for (const key of Object.keys(motion)) {
+    const m = motion[key], o = findByKey(root, key, three);
+    const ok = m && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
+    if (!o || !ok) continue;
+    run.list.push({ key, o, m, p: [o.position.x, o.position.y, o.position.z], r: three ? o.rotation.y : o.rotation });
+    (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+  }
+  if (!run.list.length || typeof requestAnimationFrame !== 'function') return;
+  report.motion = run.list.map((e) => e.key);
+  motionRuns.push(run);
+  const t0 = performance.now();
+  const tick = (now) => {
+    if (run.stop) return;
+    const t = Math.max(0, (now - t0) / 1000);
+    for (const e of run.list) {
+      const a = motionAt(e.m, t);
+      if (a.off) e.o.position.set(e.p[0] + a.off[0], e.p[1] + a.off[1], three ? e.p[2] + a.off[2] : undefined);
+      if (isNum(e.m.spin)) three ? (e.o.rotation.y = e.r + a.turn) : (e.o.rotation = e.r + a.turn);
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+/**
+ * The file as one level sees it (levels, 2026-10-22): that level's objects / added / removed / order / motion at the
+ * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects). A file without levels comes back as it is; a level the file does not list has nothing to apply.
+ */
+function placementForLevel(data, id) {
+  if (!data || !Array.isArray(data.levels)) return data;
+  const l = data.levels.find((x) => x && x.id === id) || {};
+  const out = { ...data, objects: l.objects || {} };
+  for (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];
+  else delete out[k];
+  delete out.levels;
+  delete out.levelsWas;
+  return out;
 }
 
 function applyUi(doc, ui) {
@@ -6414,11 +6774,14 @@ function warn(msg) {
 }
 
 __def(__exports, "applyPlacement", () => applyPlacement);
+__def(__exports, "stopMotion", () => stopMotion);
+__def(__exports, "motionAt", () => motionAt);
+__def(__exports, "placementForLevel", () => placementForLevel);
 __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
 };
-__defs[19] = function (__exports) {
+__defs[20] = function (__exports) {
 'use strict';
 // ../adapters/ui/adapter.js
 
@@ -6439,7 +6802,7 @@ __defs[19] = function (__exports) {
 // UI in stage 1: rotatable false). parentToScreen maps that offset space to the screen: origin = where the middle
 // of the element would be at offset 0, one offset px = k screen px (k = the zoom of the parent, e.g. a HUD scaled to
 // fit the window).
-const { placeUi, uiOffset } = __require(18);
+const { placeUi, uiOffset } = __require(19);
 
 const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
 /** Scale bounds of a UI element: the same as placement.json `ui` (src/schema LIMITS.minUiScale / maxUiScale). */
@@ -6558,7 +6921,7 @@ function createUiPort(win, opts = {}) {
 
 __def(__exports, "createUiPort", () => createUiPort);
 };
-__defs[20] = function (__exports) {
+__defs[21] = function (__exports) {
 'use strict';
 // ../adapters/ui/index.ts
 
@@ -6572,8 +6935,8 @@ __defs[20] = function (__exports) {
 // The UI seat (CONTRACT.md §1.1): the bridge asks the game's own studio.registerUI() ports first, then this one.
                                                                
                                                 
-const { adapterFromPort2D } = __require(17);
-const { createUiPort } = __require(19);
+const { adapterFromPort2D } = __require(18);
+const { createUiPort } = __require(20);
 
 /** A UI-seat adapter from any Port2D (the built-in DOM one, or a game's registerUI port). */
 function uiAdapterFromPort(port        , core      , win        )                {
@@ -6594,7 +6957,7 @@ function findDomUi(core      , win        , skip                    )           
 __def(__exports, "uiAdapterFromPort", () => uiAdapterFromPort);
 __def(__exports, "findDomUi", () => findDomUi);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -6836,7 +7199,7 @@ function fmt(p                      )         {
 __def(__exports, "mainCanvas", () => mainCanvas);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[22] = function (__exports) {
+__defs[23] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -7090,7 +7453,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[23] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -7405,7 +7768,7 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // hold.ts
 
@@ -7517,7 +7880,7 @@ __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -7545,7 +7908,7 @@ __defs[25] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
-const { canLift } = __require(24);
+const { canLift } = __require(25);
 
                                
                  
@@ -7919,7 +8282,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -8141,7 +8504,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -8194,7 +8557,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -9117,7 +9480,7 @@ __def(__exports, "moreFromEvent", () => moreFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -9275,7 +9638,7 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // snap.ts
 
@@ -9376,7 +9739,7 @@ __def(__exports, "stepDetent", () => stepDetent);
 __def(__exports, "freeHeld", () => freeHeld);
 __def(__exports, "firstToTouch", () => firstToTouch);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -9468,15 +9831,15 @@ __defs[31] = function (__exports) {
 //   once (no need to move the pointer).
 const { UI } = __require(13);
                                              
-const { keyStep } = __require(27);
+const { keyStep } = __require(28);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(28);
+const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(29);
                                                      
-const { createRiseButtons } = __require(29);
-const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(30);
-const { canLift } = __require(24);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(25);
+const { createRiseButtons } = __require(30);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(31);
+const { canLift } = __require(25);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(26);
 
                             
                          
@@ -10940,7 +11303,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -10998,7 +11361,353 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
+'use strict';
+// motion.ts
+
+// Motion in the game page (motion-gui, 2026-10-22; CONTRACT.md §1.9): the picked object's path drawn over the game, its
+// points dragged by hand, and the card's ▶ — that one object moving in the frozen scene.
+//
+// What is drawn (only for the picked object, only while it has a path; nothing else's path: the scene stays quiet):
+//   a dotted orange line from the object through its points (back to the object for a loop), a small orange dot where
+//   it starts, and a white dot with an orange ring on each point — the ring of the picked object's outline, the colour
+//   of "your hand" (handles.ts). The dot is the handle: drag it and the point follows on the ground at its own height
+//   (adapter.toGround), the line with it; letting go is one undo step (the shell records it).
+// WHY DOM in a shadow root, as handles.ts: the same look and hit in every engine, out of reach of the game's CSS.
+// WHY the press is taken here before input.ts sees it: this file's window listeners are added when the editor is made,
+// before input.ts attaches its own (capture listeners on one target run in the order they were added), so a press on
+// a dot never selects or drags what is under it; any other press goes on to input.ts untouched (and stops the ▶).
+//
+// ▶ (motion/play): the object's place is kept, then every frame it is put at place + motionAt(t) (the loader's own
+// maths, src/loader, so the editor shows exactly what the game will do) through the copy/delete layer — not the game
+// rules layer: a grid snap would make the motion jump, and the rules are about where a hand puts things. Stop puts the
+// place back exactly. Nothing is reported as moved: the preview is not an edit.
+//
+// Positions: `p` and the path are the object's PARENT space; toScreen / toGround speak the scene's. They agree for
+// objects at the top of the scene (every starter's). An object inside a moved group draws its path off by the group's
+// offset (design.md §5, stage 2).
+                                                                                                                     
+const { motionAt } = __require(19);
+
+const YOU = '#ff6b1a';
+const WORDS                                                 = {
+  en: { point: (i) => `Point ${i}: drag to move it` },
+  ja: { point: (i) => `点 ${i}：引いて動かす` },
+};
+
+const CSS = `
+.root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483646; }
+svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.hit { pointer-events: auto; cursor: grab; fill: transparent; }
+.hit.on { cursor: grabbing; }
+`;
+
+                                 
+                                  
+                                                                                               
+                           
+                                                                                                    
+                         
+                               
+                                                                                                                        
+                 
+               
+                                                                                    
+                                       
+                    
+ 
+
+                             
+                                   
+                                                                         
+                
+                                                                                               
+                
+                                                                                                      
+                              
+ 
+
+function createMotionView(d                )             {
+  const { win } = d;
+  const doc = win.document;
+  const host = doc.createElement('div');
+  host.setAttribute('data-studio-ui', '');
+  host.setAttribute('data-studio-motion', '');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = doc.createElement('style');
+  style.textContent = CSS;
+  const root = doc.createElement('div');
+  root.className = 'root';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = doc.createElementNS(NS, 'svg')                 ;
+  root.append(svg);
+  shadow.append(style, root);
+  let mounted = false;
+  const mount = () => {
+    if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
+  };
+
+  let shown                                         = null;
+  let play                                                                 = null;
+  let drag                                                              = null;
+  // The last picture drawn (so a frame that changes nothing draws nothing).
+  let drawn = '';
+
+  const poseOf = (key        )              => {
+    try {
+      return d.adapter().anchor(key)?.pose ?? null;
+    } catch {
+      return null;
+    }
+  };
+  /** Where the object's path starts: its place (kept while the ▶ plays, when the object itself is on its way). */
+  const baseOf = (key        )                  => (play?.key === key ? play.base.p : poseOf(key)?.p) ?? null;
+
+  const stop = (tell         ) => {
+    if (!play) return;
+    const p = play;
+    play = null;
+    try {
+      d.poser().setPose(p.key, p.base);
+    } catch {
+      /* the object is gone (deleted, the page changing): nothing to put back */
+    }
+    d.markDirty();
+    if (tell) d.post({ type: 'studio:motion/played', key: null });
+  };
+
+  const draw = () => {
+    const a = d.adapter();
+    const key = shown?.key;
+    const path = shown?.motion.path;
+    const base = key && path?.length ? baseOf(key) : null;
+    if (!key || !path?.length || !base || !a.toScreen) {
+      // By what is on screen, not by `drawn` (handle() empties that to force the next picture).
+      if (svg.firstChild) svg.replaceChildren();
+      drawn = '';
+      return;
+    }
+    const world = [base, ...path.map((q) => q.map((v, i) => v + (base[i] ?? 0)))];
+    const pts = world.map((w) => a.toScreen (w));
+    const sig = JSON.stringify(pts) + (drag ? drag.i : '');
+    if (sig === drawn) return;
+    drawn = sig;
+    mount();
+    svg.replaceChildren();
+    const ring = shown .motion.repeat === 'loop' ? [...pts, pts[0] ] : pts;
+    // The line: a faint dark halo under a dotted orange line (readable on any colour, as the outline's halo is).
+    let dpath = '';
+    let pen = false;
+    for (const p of ring) {
+      if (!p) {
+        pen = false;
+        continue;
+      }
+      dpath += `${pen ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+      pen = true;
+    }
+    const line = (stroke        , width        , dash         ) => {
+      const el = doc.createElementNS(NS, 'path');
+      el.setAttribute('d', dpath);
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', stroke);
+      el.setAttribute('stroke-width', String(width));
+      el.setAttribute('stroke-linecap', 'round');
+      el.setAttribute('stroke-linejoin', 'round');
+      if (dash) el.setAttribute('stroke-dasharray', dash);
+      svg.append(el);
+    };
+    line('rgba(0,0,0,.28)', 5);
+    line(YOU, 2, '1 7');
+    const dot = (p                  , r        , fill        , stroke         ) => {
+      const c = doc.createElementNS(NS, 'circle');
+      c.setAttribute('cx', p[0].toFixed(1));
+      c.setAttribute('cy', p[1].toFixed(1));
+      c.setAttribute('r', String(r));
+      c.setAttribute('fill', fill);
+      if (stroke) (c.setAttribute('stroke', stroke), c.setAttribute('stroke-width', '2.5'));
+      svg.append(c);
+      return c;
+    };
+    if (pts[0]) dot(pts[0], 3.5, YOU);
+    const coarse = win.matchMedia?.('(pointer: coarse)').matches;
+    pts.slice(1).forEach((p, i) => {
+      if (!p) return;
+      dot(p, drag?.i === i ? 8 : 7, '#fff', YOU);
+      // The hit area is bigger than the dot: 32 px across with a mouse, 44 with a finger.
+      const hit = dot(p, coarse ? 22 : 16, 'transparent');
+      hit.setAttribute('class', `hit${drag?.i === i ? ' on' : ''}`);
+      hit.setAttribute('data-point', String(i));
+      hit.setAttribute('role', 'button');
+      hit.setAttribute('aria-label', WORDS[d.lang()].point(i + 1));
+      const tip = doc.createElementNS(NS, 'title');
+      tip.textContent = WORDS[d.lang()].point(i + 1);
+      hit.append(tip);
+    });
+  };
+
+  /**
+   * The first points of a new path, where the person can see them: to the object's right on screen (left when the
+   * card covers the right), on the ground at the object's own height. A loop gets a square: right, then away (up the
+   * screen), then back. Kept as given when the game cannot tell (no toGround, the sky).
+   */
+  const seed = (key        , m        )                => {
+    const a = d.adapter();
+    let an                = null;
+    try {
+      an = a.anchor(key);
+    } catch {
+      an = null;
+    }
+    const base = an?.pose.p;
+    if (!an || !base || !a.toGround) return null;
+    const [cx, cy] = an.center;
+    const step = Math.max(90, Math.min(220, (an.size || 80) * 1.2));
+    const ins = d.inset();
+    const right = cx + step < win.innerWidth - ins.right - 40;
+    const sx = right ? step : -step;
+    const up = cy - step * 0.6 > ins.top + 40 ? -step * 0.6 : step * 0.6;
+    const shots                          = m.repeat === 'loop' ? [[cx + sx, cy], [cx + sx, cy + up], [cx, cy + up]] : [[cx + sx, cy]];
+    const out             = [];
+    for (const [x, y] of shots) {
+      const hit = a.toGround(x, y, base[1] ?? 0);
+      if (!hit) return null;
+      const off = hit.map((v, i) => Math.round((v - (base[i] ?? 0)) * 1000) / 1000);
+      // Further than 200 m (a point at the horizon) is not "in sight": keep the stand-in points.
+      if (Math.hypot(...off) > 200) return null;
+      out.push(off);
+    }
+    if (out.every((q) => Math.hypot(...q) < 0.05)) return null;
+    return { ...m, path: out };
+  };
+
+  // ----- dragging a point -----
+  const pointOf = (e              )                => {
+    for (const t of e.composedPath()) {
+      if (t instanceof Element && t.getAttribute('data-point') !== null && svg.contains(t)) return Number(t.getAttribute('data-point'));
+    }
+    return null;
+  };
+  const opts = { capture: true, passive: false }                           ;
+  const take = (e       ) => {
+    e.stopImmediatePropagation();
+    if (e.cancelable) e.preventDefault();
+  };
+  const moveTo = (e              , end         ) => {
+    if (!drag || !shown) return;
+    const a = d.adapter();
+    const hit = a.toGround?.(e.clientX, e.clientY, drag.h);
+    const m = shown.motion;
+    if (hit && m.path) {
+      const path = m.path.map((q) => q.slice());
+      const old = path[drag.i] ;
+      const r = (v        ) => Math.round(v * 1000) / 1000;
+      // 3D: across the ground only, the point keeps its height (raising points is stage 2). 2D: where the finger is.
+      path[drag.i] = old.length === 3 ? [r(hit[0]  - drag.base[0] ), old[1] ?? 0, r(hit[2]  - (drag.base[2] ?? 0))] : [r(hit[0]  - drag.base[0] ), r(hit[1]  - (drag.base[1] ?? 0))];
+      shown = { key: shown.key, motion: { ...m, path } };
+    }
+    d.post({ type: 'studio:motion/changed', key: shown.key, motion: structuredClone(shown.motion), end });
+    d.markDirty();
+  };
+  const onDown = (e              ) => {
+    const i = shown ? pointOf(e) : null;
+    if (i === null || !shown) {
+      // A press anywhere else in the game ends the ▶ (the person is about to do something else), then goes on.
+      if (play) stop(true);
+      return;
+    }
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    take(e);
+    const base = baseOf(shown.key);
+    const q = shown.motion.path?.[i];
+    if (!base || !q) return;
+    drag = { i, id: e.pointerId, h: (base[1] ?? 0) + (q[1] ?? 0), base };
+    drawn = '';
+  };
+  const onMove = (e              ) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    take(e);
+    moveTo(e, false);
+  };
+  const onUp = (e              ) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    take(e);
+    moveTo(e, true);
+    drag = null;
+    drawn = '';
+  };
+  win.addEventListener('pointerdown', onDown, opts);
+  win.addEventListener('pointermove', onMove, opts);
+  win.addEventListener('pointerup', onUp, opts);
+  win.addEventListener('pointercancel', onUp, opts);
+
+  return {
+    handle(msg) {
+      if (msg.type === 'studio:motion/show') {
+        drag = null;
+        shown = msg.key && msg.motion?.path?.length ? { key: msg.key, motion: structuredClone(msg.motion) } : null;
+        if (play && play.key !== msg.key) stop(true);
+        if (msg.seed && msg.key && msg.motion?.path) {
+          const m = seed(msg.key, msg.motion);
+          if (m) {
+            shown = { key: msg.key, motion: m };
+            d.post({ type: 'studio:motion/changed', key: msg.key, motion: structuredClone(m), end: true, seed: true });
+          }
+        }
+        drawn = '';
+        d.markDirty();
+      } else if (msg.type === 'studio:motion/play') {
+        const again = play && play.key === msg.key ? play.base : null;
+        if (play && !again) stop(false);
+        if (!msg.key || !msg.motion) return void stop(false);
+        const pose = again ?? poseOf(msg.key);
+        if (!pose) return void d.post({ type: 'studio:motion/played', key: null });
+        play = { key: msg.key, motion: structuredClone(msg.motion), base: structuredClone(pose), t0: win.performance.now() };
+        if (shown?.key === msg.key && msg.motion.path?.length) shown = { key: msg.key, motion: structuredClone(msg.motion) };
+        d.markDirty();
+      }
+    },
+    frame() {
+      if (play) {
+        const t = (win.performance.now() - play.t0) / 1000;
+        const at = motionAt(play.motion, t)                                                         ;
+        const b = play.base;
+        const pose       = { ...b, p: at.off ? b.p.map((v, i) => v + (at.off [i] ?? 0)) : b.p.slice() };
+        if (play.motion.spin) pose.r = (b.r ?? 0) + at.turn;
+        try {
+          d.poser().setPose(play.key, pose);
+        } catch {
+          stop(true);
+        }
+        d.markDirty();
+        // `once` arrived: stay at the end a moment so the eye sees where it stops, then back to the place.
+        if (at.done && t > lastLeg(play.motion) + 0.8) stop(true);
+      }
+      draw();
+    },
+    clear() {
+      stop(false);
+      shown = null;
+      drag = null;
+      draw();
+    },
+    stopFor(key) {
+      if (play && (!key || key === play.key)) stop(true);
+    },
+  };
+}
+
+/** Seconds a `once` path takes (its length over its speed). */
+function lastLeg(m        )         {
+  const pts = [m.path [0] .map(() => 0), ...m.path ];
+  let len = 0;
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(...pts[i] .map((v, k) => v - pts[i - 1] [k] ));
+  return len / (m.speed && m.speed > 0 ? m.speed : 1);
+}
+
+__def(__exports, "createMotionView", () => createMotionView);
+};
+__defs[35] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -11007,16 +11716,17 @@ __defs[33] = function (__exports) {
 // changes back. Pointer gestures and handles are attached by input.ts.
 const { UI } = __require(13);
                                              
-const { withRules } = __require(22);
-const { withEdits } = __require(23);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(25);
-const { createToolHost } = __require(26);
-const { attachInput, tappableAt } = __require(31);
+const { withRules } = __require(23);
+const { withEdits } = __require(24);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(26);
+const { createToolHost } = __require(27);
+const { attachInput, tappableAt } = __require(32);
                                                   
-const { firstToTouch, stepDetent } = __require(30);
-const { createHoldState, withHold } = __require(24);
-const { drivenBetween, WATCH_MS } = __require(32);
-const { runSelfCheck } = __require(21);
+const { firstToTouch, stepDetent } = __require(31);
+const { createHoldState, withHold } = __require(25);
+const { drivenBetween, WATCH_MS } = __require(33);
+const { runSelfCheck } = __require(22);
+const { createMotionView } = __require(34);
 
                              
                                                                                                                      
@@ -11107,6 +11817,10 @@ function createEditor(deps            )         {
     deps.post(msg);
   };
   const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
+  // Motion (motion-gui, 2026-10-22; motion.ts): the picked object's path and the card's ▶. Made here, before input.ts
+  // attaches, so a press on a path point reaches it first (motion.ts says why).
+  const motion = createMotionView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), inset: () => inset, lang: () => lang,
+    raf: (cb) => core.time.raf(cb), markDirty: () => (dirtyFrame = true) });
   let lang       = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -11188,6 +11902,7 @@ function createEditor(deps            )         {
     }
     input?.frame();
     toolHost.frame();
+    motion.frame();
     dirtyFrame = false;
   };
 
@@ -11975,7 +12690,12 @@ function createEditor(deps            )         {
         case 'studio:tool/saved':
           toolHost.saved(msg.ids);
           break;
+        case 'studio:motion/show':
+        case 'studio:motion/play':
+          if (state.editing && layer === 'world') motion.handle(msg);
+          break;
         case 'studio:core/edit':
+          if (!msg.on) motion.clear();
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -11984,6 +12704,7 @@ function createEditor(deps            )         {
           }
           break;
         case 'studio:core/layer':
+          if (msg.layer !== layer) motion.clear();
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
         case 'studio:core/ui-peek':
@@ -12025,10 +12746,12 @@ function createEditor(deps            )         {
           state.multi = !!msg.on;
           break;
         case 'studio:placement/copy':
+          motion.stopFor();
           closeStepRun();
           copy(msg.items, msg.at);
           break;
         case 'studio:placement/remove': {
+          motion.stopFor();
           closeStepRun();
           const gone = edits.removeKeys(msg.keys);
           if (gone.length) {
@@ -12047,6 +12770,8 @@ function createEditor(deps            )         {
           refreshItems();
           break;
         case 'studio:placement/pose': {
+          // An undo / a typed number on the object the ▶ is moving: put it back first, then the new pose.
+          motion.stopFor(msg.key);
           // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
           // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.
           const other = msg.layer && msg.layer !== layer ? (msg.layer === 'ui' ? uiStack : world) : null;
@@ -12115,7 +12840,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[34] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -12178,7 +12903,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[35] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -12226,6 +12951,8 @@ const PATHS                         = {
   look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
   play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
   stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+  // Pause while playing (2026-10-22): two bars, filled like play / stop.
+  pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
   // The AI: a four-point spark.
   spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
   more: 'o 5 10|o 10 10|o 15 10',
@@ -12260,6 +12987,8 @@ const PATHS                         = {
   // The eye struck through: "the game's UI is hidden while you edit the world" (layer-switch.ts).
   eyeOff: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25|M4 16 16 4',
   plus: 'M10 4.5v11|M4.5 10h11',
+  // The plus without its upright: one point fewer on a motion's path (motion-gui, 2026-10-22).
+  minus: 'M4.5 10h11',
   // The plus turned 45°: close a note.
   close: 'M6 6l8 8|M14 6l-8 8',
   // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
@@ -12282,7 +13011,7 @@ const PATHS                         = {
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
-const FILLED = new Set(['play', 'stop', 'spark']);
+const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
 /** Icons whose LAST part is filled (the mark's front card). */
 const LAST_FILLED = new Set(['mark']);
 
@@ -12353,7 +13082,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[36] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -12565,7 +13294,460 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[37] = function (__exports) {
+__defs[39] = function (__exports) {
+'use strict';
+// play-pause.ts
+
+// Pause while playing (2026-10-22: "pause where something bothers you and chat with the AI"): what stops the
+// game, and what puts it back exactly where it was. The chat over the paused game is play-chat.ts; the key, the
+// corner button and the messages are wired in play-ask.ts. CONTRACT.md §3.5.1.
+//
+// What a pause holds:
+// - the frames: core time's freeze() (the same hold the editor uses in Edit), so every engine that draws through
+//   requestAnimationFrame stops — three.js setAnimationLoop, Pixi's Ticker, Phaser, hand-made loops;
+// - the clock: core/play-clock.ts takes the paused time out of performance.now() and the frame timestamps, so the first
+//   frame after Resume steps one frame, not the whole pause;
+// - the sound: the game's AudioContexts are suspended and its playing <audio> / <video> paused; Resume brings back
+//   only what was playing (a context the game had suspended itself stays suspended);
+// - the input: no key press and no pointer reaches the game (the veil over it takes the pointer; play-ask.ts's first
+//   listener on the window drops the keys). Key RELEASES still reach it: a key held when P was pressed and let go
+//   during the pause would otherwise stay "down" in the game, and the hero would run on by itself after Resume.
+//
+// Not held (CONTRACT.md §3.5.1; a later stage): a game that steps only from setTimeout / setInterval, or from Date.now().
+                                                  
+                                                       
+
+                             
+                                                        
+                                                    
+ 
+
+/** Is this key press "pause / resume"? P with no modifier, never while the game's own text field (or ours) has focus. */
+function isPauseKey(e                                                                                                               , typing         )          {
+  if (typing || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return false;
+  // By the character (p / P with Shift), or the physical key when a layout or an IME gives another character for it
+  // (a Japanese keyboard in kana input gives a kana for the P key).
+  return e.key === 'p' || e.key === 'P' || e.code === 'KeyP';
+}
+
+                     
+                
+                           
+                          
+ 
+
+/**
+ * Keep every AudioContext the game makes (the constructor is wrapped before any game code), so a pause can quiet it.
+ * Weak: a context the game drops is not kept alive by this list.
+ */
+function watchAudio(win                            )                    {
+  const made                            = [];
+  const g = win                                      ;
+  for (const name of ['AudioContext', 'webkitAudioContext']) {
+    const Orig = g[name]                                                    ;
+    if (typeof Orig !== 'function' || (Orig                               ).__studioPause) continue;
+    // A subclass, not a function: `new AudioContext()` and `instanceof AudioContext` both keep working, and an engine
+    // that subclasses it (rare) still gets a real context.
+    const Kept = class extends (Orig                                   ) {
+      constructor(...a           ) {
+        super(...a);
+        if (typeof WeakRef === 'function') made.push(new WeakRef(this                        ));
+      }
+    };
+    Object.defineProperty(Kept, 'name', { value: Orig.name });
+    (Kept                                         ).__studioPause = true;
+    try {
+      g[name] = Kept;
+    } catch {
+      /* read-only global: sound keeps playing in a pause, nothing else changes */
+    }
+  }
+  return () => made.map((r) => r.deref()).filter((c)                 => !!c);
+}
+
+                            
+                           
+                                                      
+                   
+                               
+                    
+ 
+
+function createPauseHold(win                            , parts            )            {
+  const doc = win.document;
+  const contexts = watchAudio(win);
+  let paused = false;
+  // What the pause itself stopped, so Resume brings back only that.
+  let quieted              = [];
+  let stilled                     = [];
+  let wasFrozen = false;
+
+  return {
+    get paused() {
+      return paused;
+    },
+    pause() {
+      if (paused) return false;
+      paused = true;
+      // Frozen already (the editor's own hold, a game still loading): leave it frozen on Resume too.
+      wasFrozen = parts.time.frozen;
+      parts.time.freeze();
+      parts.clock.stop();
+      quieted = contexts().filter((c) => c.state === 'running');
+      for (const c of quieted) c.suspend().catch(() => {});
+      stilled = [...doc.querySelectorAll('audio, video')].filter((m)                        => {
+        const e = m                    ;
+        return !e.paused && !e.ended;
+      });
+      for (const m of stilled) {
+        try {
+          m.pause();
+        } catch {
+          /* fine */
+        }
+      }
+      // A first-person game holds the mouse: let go, so the person can use the chat.
+      try {
+        if (doc.pointerLockElement) doc.exitPointerLock();
+      } catch {
+        /* nothing locked */
+      }
+      return true;
+    },
+    resume() {
+      if (!paused) return false;
+      paused = false;
+      parts.clock.go();
+      if (!wasFrozen) parts.time.thaw();
+      for (const c of quieted) c.resume().catch(() => {});
+      for (const m of stilled) m.play().catch(() => {});
+      quieted = [];
+      stilled = [];
+      return true;
+    },
+  };
+}
+
+__def(__exports, "isPauseKey", () => isPauseKey);
+__def(__exports, "createPauseHold", () => createPauseHold);
+};
+__defs[40] = function (__exports) {
+'use strict';
+// play-chat.ts
+
+// The chat over a paused game (pause, 2026-10-22; CONTRACT.md §3.5.1).
+//
+// The person pressed P (or ❚❚) in ▶ Play: the game is held where it was (play-pause.ts) and this panel opens over it —
+// on the right on a wide screen, as a sheet at the foot on a narrow one. They write, their AI answers, as many times as
+// they like; P or "Resume" goes back to the game exactly where it stopped.
+//
+// WHY no new path to the AI: each message is the same `play` request as the ✦ field's (play-ask.ts), marked `paused`.
+// The first one carries the moment taken when the game stopped (picture, player's camera, what was near, the console);
+// the next ones carry the talk so far (`history`) and the first one's id (`chat`), so the AI reads one record and
+// knows the whole conversation (the host also keeps it as .studio/chat/<id>.json). The AI's replies are the same
+// status line the editor already turns into the line over the game (shell/play-ask.ts playLine): its `done` /
+// `asking` / `failed` note becomes a reply here, its `received` / `working` the "looking" row while it works.
+//
+// Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
+// reach it. No colour but the AI's violet, as everywhere in the editor.
+                                               
+const { icon } = __require(37);
+
+                           
+                    
+               
+                                                                                                       
+                            
+                     
+                   
+                
+ 
+
+/** The turns the next request carries (`history`): the last 12, each cut to 300 characters (HANDOFF_LIMITS). */
+const HISTORY_MAX = 12;
+function historyOf(turns            )                                             {
+  return turns.slice(-HISTORY_MAX).map((t) => ({ who: t.who, text: t.text.length > 300 ? t.text.slice(0, 299) + '…' : t.text }));
+}
+
+/**
+ * The pure part (test/pause.test.ts): what a new line from the editor does to the chat.
+ * - `awaiting`: a message was kept (play/sent ok) and its answer has not come yet. Only then does a finished line
+ *   (fixed / failed / asking) become a NEW reply: before the request is kept, the editor may still be showing the
+ *   previous request's line, which is already in the chat.
+ * - A finished line while not awaiting updates the last reply in place (the AI's files settled and Reload appeared,
+ *   "More in Claude" came) — never a second copy of it.
+ * - looking / fixing / kept: the row under the talk that says the AI is on it (`live`); a reply clears it. Always
+ *   shown: the editor sends these only for the latest request made in this Play, which is the person's own.
+ */
+                            
+                    
+                    
+                        
+ 
+function chatOnLine(m           , s                 )            {
+  if (!s) return { ...m, live: null };
+  const finished = s.state === 'fixed' || s.state === 'failed' || s.state === 'asking';
+  if (!finished) return { ...m, live: s };
+  const turn           = { who: 'ai', text: s.text, state: s.state };
+  if (s.choices?.length) turn.choices = s.choices.slice();
+  if (s.reload) turn.reload = true;
+  if (s.more) turn.more = s.more;
+  if (m.awaiting) return { turns: [...m.turns, turn], awaiting: false, live: null };
+  const last = m.turns[m.turns.length - 1];
+  if (last && last.who === 'ai') return { turns: [...m.turns.slice(0, -1), turn], awaiting: false, live: null };
+  return { ...m, live: null };
+}
+
+const CHAT_CSS = `
+.veil { position: absolute; inset: 0; pointer-events: auto; background: rgba(8, 8, 14, .22); }
+/* As tall as the talk, up to the game's height (the first look had it full height: a dark slab with one line of help in
+   its middle, over a third of the game the person had stopped to look at). */
+.chat { position: absolute; top: 14px; right: 14px; max-height: calc(100% - 28px); width: min(360px, calc(100% - 28px)); pointer-events: auto;
+  border-radius: 16px; display: flex; flex-direction: column; overflow: hidden; }
+.chat .top { display: flex; align-items: center; gap: 10px; padding: 12px 10px 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.chat .title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.chat .title b { font-weight: 600; font-size: 14px; }
+.chat .title .sees { color: rgba(255,255,255,.55); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat .talk { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
+.chat .empty { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; }
+.chat .you { align-self: flex-end; max-width: 85%; background: rgba(255,255,255,.12); padding: 7px 11px; border-radius: 12px 12px 4px 12px;
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat .ai { align-self: stretch; display: flex; gap: 9px; }
+.chat .ai .dot { margin-top: 5px; }
+.chat .ai .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat .ai .said { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+.chat .ai.failed .said { color: rgba(255,255,255,.75); }
+.chat .ai .more { color: rgba(255,255,255,.5); font-size: 12px; }
+.chat .ai .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.chat .live { display: flex; gap: 9px; align-items: center; color: rgba(255,255,255,.7); }
+.chat .live .dot { animation: pulse 1.1s ease-in-out infinite; }
+.chat form { display: flex; align-items: center; gap: 8px; margin: 0 10px 10px; padding: 6px 6px 6px 12px; border-radius: 12px;
+  background: rgba(255,255,255,.07); border: 1px solid rgba(139,124,255,.45); }
+.chat form:focus-within { box-shadow: 0 0 0 3px rgba(139,124,255,.18); }
+.chat form input { all: unset; flex: 1; min-width: 0; font: 500 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; padding: 5px 0; }
+.chat form input::placeholder { color: rgba(255,255,255,.5); }
+.chat .send { all: unset; cursor: pointer; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: #8b7cff; color: #fff; flex: none; }
+.chat .send:disabled { background: rgba(255,255,255,.12); color: rgba(255,255,255,.4); cursor: default; }
+.chat .send svg { width: 14px; height: 14px; stroke-width: 2px; }
+.chat .send:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
+button.b .k { opacity: .55; font-weight: 500; margin-left: 6px; font-size: 11px; }
+.pause { pointer-events: auto; width: 32px; height: 32px; border-radius: 16px; display: grid;
+  place-items: center; cursor: pointer; color: inherit; transition: opacity .3s; opacity: .92; }
+.pause:hover { opacity: 1; }
+.pause svg { width: 14px; height: 14px; }
+.pause:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
+@media (max-width: 639px) {
+  .chat { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 55%; border-radius: 16px 16px 0 0; border-bottom: 0; }
+  .chat form { margin-bottom: max(10px, env(safe-area-inset-bottom)); }
+}
+@media (pointer: coarse) {
+  .pause { width: 44px; height: 44px; border-radius: 22px; }
+  .chat .send { width: 36px; height: 36px; }
+  button.b .k { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .chat .live .dot { animation: none; } }
+`;
+
+                              
+                
+                                                          
+                                                                                                              
+                           
+                                                                                
+                 
+                 
+ 
+
+                       
+                                                                    
+                                
+                                   
+                                                                                                             
+                                           
+                
+                           
+                         
+                                 
+                          
+                                                              
+                 
+ 
+
+function createChat(o             )       {
+  const { el, w } = o;
+  let model            = { turns: [], awaiting: false, live: null };
+  let open = false;
+  let sending = false;
+  let sendFailed = false;
+  let sees = '';
+
+  const veil = el('div', 'veil');
+  veil.dataset.part = 'pause-veil';
+  veil.hidden = true;
+  const panel = el('section', 'chat glass');
+  panel.dataset.part = 'pause-chat';
+  panel.hidden = true;
+  panel.setAttribute('role', 'dialog');
+  const top = el('div', 'top');
+  const title = el('div', 'title');
+  const head = el('b', '');
+  const seesEl = el('span', 'sees');
+  title.append(head, seesEl);
+  const resumeBtn = el('button', 'b', '')                     ;
+  resumeBtn.type = 'button';
+  resumeBtn.dataset.action = 'pause-resume';
+  resumeBtn.addEventListener('click', () => o.resume());
+  top.append(title, resumeBtn);
+  const talk = el('div', 'talk');
+  talk.setAttribute('aria-live', 'polite');
+  const form = el('form', '');
+  const input = el('input', '')                    ;
+  input.type = 'text';
+  input.maxLength = 500;
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.setAttribute('enterkeyhint', 'send');
+  const sendBtn = el('button', 'send')                     ;
+  sendBtn.type = 'submit';
+  sendBtn.append(icon('send'));
+  form.append(input, sendBtn);
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    submit(input.value);
+  });
+  input.addEventListener('input', () => {
+    sendFailed = false;
+    sendBtn.disabled = !input.value.trim() || sending;
+  });
+  panel.append(top, talk, form);
+
+  function submit(text        ) {
+    const t = text.trim();
+    if (!t || sending) return;
+    sending = true;
+    sendFailed = false;
+    // The talk so far goes with it (the AI's question included, so a choice answers it).
+    const history = historyOf(model.turns);
+    model = { ...model, turns: [...model.turns, { who: 'you', text: t }], live: null };
+    input.value = '';
+    render();
+    o.send(t, history);
+  }
+
+  function render() {
+    veil.hidden = !open;
+    panel.hidden = !open;
+    if (!open) return;
+    // Words only: a 12 px ❚❚ before "Paused" read as a stray mark (design pass, 2026-10-22).
+    head.textContent = w('paused');
+    seesEl.textContent = sees;
+    resumeBtn.replaceChildren(o.doc.createTextNode(w('resume')), el('span', 'k', 'P'));
+    resumeBtn.title = w('resumeTip');
+    input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : w('chatPlaceholder');
+    input.disabled = sending;
+    sendBtn.disabled = sending || !input.value.trim();
+    sendBtn.setAttribute('aria-label', w('send'));
+    talk.replaceChildren();
+    if (!model.turns.length) talk.append(el('div', 'empty', w('chatEmpty')));
+    model.turns.forEach((t, i) => {
+      if (t.who === 'you') {
+        talk.append(el('div', 'you', t.text));
+        return;
+      }
+      const row = el('div', `ai${t.state === 'failed' ? ' failed' : ''}`);
+      row.dataset.part = 'pause-reply';
+      const body = el('div', 'body');
+      body.append(el('div', 'said', t.text));
+      const last = i === model.turns.length - 1;
+      const acts = el('div', 'acts');
+      // Choices answer only the question still open (the last turn): an old question's buttons would answer nothing.
+      if (last && t.state === 'asking' && t.choices) {
+        t.choices.forEach((c, n) => {
+          const b = el('button', n === 0 ? 'b primary' : 'b', c)                     ;
+          b.type = 'button';
+          b.addEventListener('click', () => submit(c));
+          acts.append(b);
+        });
+      }
+      if (last && t.reload) {
+        const b = el('button', 'b primary', w('reload'))                     ;
+        b.type = 'button';
+        b.dataset.action = 'pause-reload';
+        b.title = w('reloadTip');
+        b.addEventListener('click', () => o.reload());
+        acts.append(b);
+      }
+      if (acts.childNodes.length) body.append(acts);
+      // "More in Claude": words, not a button (a web page cannot bring the AI's window forward), as the line's.
+      if (last && t.more) body.append(el('div', 'more', t.more));
+      row.append(el('span', 'dot'), body);
+      talk.append(row);
+    });
+    const live = model.live;
+    if (live && (live.state === 'looking' || live.state === 'fixing' || live.state === 'kept')) {
+      const row = el('div', 'live');
+      row.dataset.part = 'pause-live';
+      row.append(el('span', 'dot'), el('span', '', live.text));
+      talk.append(row);
+    }
+    talk.scrollTop = talk.scrollHeight;
+  }
+
+  return {
+    parts: [veil, panel],
+    input,
+    get isOpen() {
+      return open;
+    },
+    get busy() {
+      return sending;
+    },
+    open(s, draft) {
+      // A new pause is a new moment, so a new talk (showing the last one is for a later stage).
+      model = { turns: [], awaiting: false, live: null };
+      sending = false;
+      sendFailed = false;
+      sees = s;
+      open = true;
+      input.value = draft || '';
+      render();
+      input.focus({ preventScroll: true });
+    },
+    close() {
+      open = false;
+      input.blur();
+      render();
+    },
+    line(s) {
+      model = chatOnLine(model, s);
+      render();
+    },
+    sent(ok) {
+      sending = false;
+      if (ok) model = { ...model, awaiting: true };
+      else {
+        // Not kept: the words go back in the field to send again.
+        sendFailed = true;
+        const last = model.turns[model.turns.length - 1];
+        if (last && last.who === 'you') {
+          input.value = last.text;
+          model = { ...model, turns: model.turns.slice(0, -1) };
+        }
+      }
+      render();
+      if (open) input.focus({ preventScroll: true });
+    },
+    render,
+  };
+}
+
+__def(__exports, "HISTORY_MAX", () => HISTORY_MAX);
+__def(__exports, "historyOf", () => historyOf);
+__def(__exports, "chatOnLine", () => chatOnLine);
+__def(__exports, "CHAT_CSS", () => CHAT_CSS);
+__def(__exports, "createChat", () => createChat);
+};
+__defs[41] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -12591,15 +13773,19 @@ __defs[37] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                              
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(34);
-const { icon } = __require(35);
-const { shootPage } = __require(36);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(36);
+const { icon } = __require(37);
+const { shootPage } = __require(38);
+const { createPauseHold, isPauseKey } = __require(39);
+const { CHAT_CSS, createChat } = __require(40);
 
                                  
                                   
                        
                                                                                                          
                                
+                                                                                                              
+                     
  
 
 // ---------------------------------------------------------------------------
@@ -12784,7 +13970,11 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
   .mark.small { padding: 0 17px; }
 }
 @media (prefers-reduced-motion: reduce) { .busy .dot, .busy .spark { animation: none; } .line { transition: none; } }
-`;
+/* The corner (pause, 2026-10-22): ❚❚ left of the mark, the same glass and height. The two sit in one row at the corner
+   so the button follows the mark when it grows (hover) or shrinks (after 5 s). */
+.corner { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
+.corner .mark { position: static; }
+` + CHAT_CSS;
 
                                     
 
@@ -12792,6 +13982,8 @@ function startPlayAsk(o                )       {
   const { win, parentOrigin } = o;
   const doc = win.document;
   keepWebGLPictures(win);
+  // Made now, before the game's code: it keeps the AudioContexts the game makes so a pause can quiet them.
+  const hold                   = o.pause ? createPauseHold(win, o.pause) : null;
 
   // ----- the console, from the first line the game writes -----
   const logs             = [];
@@ -12837,6 +14029,13 @@ function startPlayAsk(o                )       {
   let host                     = null;
   let root                    = null;
   let mark                   , bar             , input                  , hint             , line             ;
+  // Pause (2026-10-22): the corner's ❚❚, the chat over the paused game, and what the first message of a pause carries.
+  let pauseBtn                           = null;
+  let chat              = null;
+  let pausedMoment                       = null;
+  let chatId = '';
+  // Which field is waiting for play/sent: the ✦ field's, or the chat's.
+  let sentTo                 = 'bar';
   let state                  = null;
   let barOpen = false;
   let sending = false;
@@ -12926,7 +14125,25 @@ function startPlayAsk(o                )       {
     line.addEventListener('focusin', () => holdLine());
     line.addEventListener('pointerleave', () => (leftAt = win.performance.now()));
     line.addEventListener('focusout', () => (leftAt = win.performance.now()));
-    wrap.append(mark, line, bar);
+    const corner = el('div', 'corner');
+    if (hold) {
+      pauseBtn = el('button', 'pause glass')                     ;
+      pauseBtn.type = 'button';
+      pauseBtn.dataset.part = 'pause-button';
+      pauseBtn.append(icon('pause'));
+      pauseBtn.addEventListener('click', () => void pauseNow());
+      chat = createChat({
+        doc, el, w,
+        send: (text, history) => void sendChat(text, history),
+        resume: () => resumeNow(),
+        reload: () => post({ type: 'studio:play/reload' }),
+      });
+      corner.append(pauseBtn);
+    }
+    corner.append(mark);
+    // The veil and the chat last: the ✦ field stays the overlay's first input (what reads the overlay finds it as
+    // before), and they are never shown with the line or the field anyway.
+    wrap.append(corner, line, bar, ...(chat ? chat.parts : []));
     root.append(style, wrap);
     // A press on the overlay is not a press in the game (a game that shoots on click must not shoot). Stopped where
     // it leaves the overlay, so the overlay's own buttons still get it; a game listening in the capture phase on the
@@ -12959,10 +14176,29 @@ function startPlayAsk(o                )       {
         // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
         // and Escape are read here. Letters still type (nothing prevents their default).
         e.stopImmediatePropagation();
-        if (type === 'keydown') fieldKey(e);
+        if (type === 'keydown') (hold?.paused ? chatKey(e) : fieldKey(e));
         return;
       }
-      if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
+      if (hold?.paused) {
+        // Paused: no key press reaches the game. Releases do (play-pause.ts: a key held at the pause must not stay
+        // down in the game). P or Escape resumes; any other key is the person reaching for the chat: it gets focus.
+        if (type === 'keyup') return;
+        e.stopImmediatePropagation();
+        if (type !== 'keydown') return;
+        if (isPauseKey(e, gameTyping()) || e.key === 'Escape') {
+          e.preventDefault();
+          resumeNow();
+        }
+        return;
+      }
+      if (type === 'keydown' && !barOpen && hold && isPauseKey(e, gameTyping())) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        void pauseNow();
+      } else if (type !== 'keydown' && hold && !barOpen && (e.key === 'p' || e.key === 'P' || e.code === 'KeyP') && !gameTyping()) {
+        // The release (and keypress) of the P that paused: not the game's either.
+        e.stopImmediatePropagation();
+      } else if (type === 'keydown' && !barOpen && isAskKey(e, gameTyping())) {
         e.preventDefault();
         e.stopImmediatePropagation();
         openBar();
@@ -12970,6 +14206,17 @@ function startPlayAsk(o                )       {
         e.stopImmediatePropagation();
       }
     }, true);
+  }
+  /** The chat's field while paused: Enter sends, Escape resumes (the words stay in the field for the next pause). */
+  function chatKey(e               ) {
+    if (!chat || e.target !== host || !root || root.activeElement !== chat.input) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      resumeNow();
+    } else if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
+      e.preventDefault();
+      chat.input.form?.requestSubmit();
+    }
   }
   function fieldKey(e               ) {
     if (e.target !== host || !root || root.activeElement !== input) return;
@@ -13016,6 +14263,51 @@ function startPlayAsk(o                )       {
     }
   }
 
+  // ----- pause (play-pause.ts holds the game; play-chat.ts is the talk over it) -----
+  async function pauseNow() {
+    if (!hold || !chat || !host || hold.paused) return;
+    // Words already typed in the ✦ field move to the chat (the person was about to ask; now they can talk).
+    const draft = barOpen ? input.value.trim() : '';
+    if (barOpen) closeBar();
+    hold.pause();
+    // The moment, taken at once: the picture is of the game as it stopped (the overlay is never in it), the console
+    // as it was. The first message of this pause carries it.
+    pausedMoment = await moment('');
+    chatId = '';
+    const logs = pausedMoment.type === 'studio:play/ask' ? pausedMoment.logs || [] : [];
+    const errs = logs.filter((l) => l.level === 'error').length;
+    const sees = errs ? `${w('sees')} · ${(errs === 1 ? w('seesError') : w('seesErrors')).replace('#', String(errs))}` : w('sees');
+    if (!hold.paused) return; // resumed while the picture was taken
+    chat.open(sees, draft);
+    post({ type: 'studio:play/paused', on: true });
+    render();
+  }
+  function resumeNow() {
+    if (!hold || !hold.paused) return;
+    hold.resume();
+    chat?.close();
+    pausedMoment = null;
+    post({ type: 'studio:play/paused', on: false });
+    render();
+    try {
+      win.focus();
+    } catch {
+      /* fine */
+    }
+  }
+  async function sendChat(text        , history                                            ) {
+    sentTo = 'chat';
+    // The first message: the moment of the pause. The next ones: the talk so far and the first one's id; the moment
+    // is in that first record (and in .studio/chat/<id>.json), the game has not moved since.
+    const base                = !chatId && pausedMoment && pausedMoment.type === 'studio:play/ask' ? { ...pausedMoment } : { type: 'studio:play/ask', text, size: [win.innerWidth, win.innerHeight] };
+    if (base.type !== 'studio:play/ask') return;
+    base.text = text;
+    base.paused = true;
+    if (chatId) base.chat = chatId;
+    if (history.length) base.history = history;
+    post(base);
+  }
+
   /** The state's line in reply to Enter on an empty field: a fix to load (Reload), or nothing to do. */
   async function submit() {
     const text = input.value.trim();
@@ -13027,6 +14319,7 @@ function startPlayAsk(o                )       {
       return;
     }
     if (sending) return;
+    sentTo = 'bar';
     if (state && state.state === 'asking') {
       sending = true;
       post({ type: 'studio:play/answer', text });
@@ -13140,7 +14433,14 @@ function startPlayAsk(o                )       {
     const s = state;
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
-    mark.hidden = barOpen || !(markOn || !!doc.fullscreenElement);
+    const paused = !!hold?.paused;
+    mark.hidden = barOpen || paused || !(markOn || !!doc.fullscreenElement);
+    if (pauseBtn) {
+      pauseBtn.hidden = mark.hidden;
+      pauseBtn.title = w('pauseTip');
+      pauseBtn.setAttribute('aria-label', w('pauseTip'));
+    }
+    chat?.render();
     bar.hidden = !barOpen;
     bar.classList.toggle('busy', sending);
     input.disabled = sending;
@@ -13152,7 +14452,8 @@ function startPlayAsk(o                )       {
 
     line.replaceChildren();
     const sig = s ? JSON.stringify(s) : '';
-    line.hidden = !s || sig === dismissed;
+    // Paused: the chat says what the AI does (its replies are the same lines), so the line over the game waits.
+    line.hidden = !s || sig === dismissed || paused;
     fadeFor(s, sig);
     // A fix that waits for Reload after its line went: the corner dot says so (` or the mark, then Enter reloads).
     const waiting = !!s && s.state === 'fixed' && !!s.reload && line.hidden;
@@ -13228,11 +14529,21 @@ function startPlayAsk(o                )       {
       else if (doc.body) build();
       else doc.addEventListener('DOMContentLoaded', build, { once: true });
     } else if (m.type === 'studio:play/open') {
-      // The editor's ✦ (phone): the same as ` or the corner mark.
-      if (host && !barOpen) openBar();
+      // The editor's ✦ (phone): the same as ` or the corner mark. Paused: the chat is the way to ask; its field.
+      if (hold?.paused && chat) chat.input.focus({ preventScroll: true });
+      else if (host && !barOpen) openBar();
+    } else if (m.type === 'studio:play/pause') {
+      // The editor's ❚❚ (phone): the same as P or the corner button.
+      if (hold?.paused) resumeNow();
+      else void pauseNow();
     } else if (m.type === 'studio:play/state') {
       state = m.state;
+      if (hold?.paused && chat) chat.line(m.state);
       render();
+    } else if (m.type === 'studio:play/sent' && sentTo === 'chat' && chat) {
+      sentTo = 'bar';
+      if (m.ok && m.id && !chatId) chatId = m.id;
+      chat.sent(m.ok);
     } else if (m.type === 'studio:play/sent') {
       sending = false;
       sendFailed = !m.ok;
@@ -13255,7 +14566,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[38] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -13394,7 +14705,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[39] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -13447,7 +14758,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[40] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -13472,8 +14783,9 @@ __defs[40] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                
-const { hasLayer, orderOfLayer } = __require(38);
-const { samePose } = __require(39);
+const { hasLayer, orderOfLayer } = __require(42);
+const { samePose } = __require(43);
+const { motionAt } = __require(19);
 
                                                                                                                                   
                                                                                                    
@@ -13485,6 +14797,7 @@ const { samePose } = __require(39);
                   
                       
                   
+                                   
  
 
 const nums = (v         )                => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
@@ -13589,9 +14902,106 @@ function arrangeInPlay(a               , file                 )         {
   return shown;
 }
 
+/**
+ * The draft's motions in ▶ Play (motion-gui, 2026-10-22), for a game whose loader does not run them: a game the AI
+ * made before "add the loader", or one with an older copy of it. Every frame of the page (its own
+ * requestAnimationFrame: Play is not frozen), each object is put at its place + motionAt(t) through the adapter, as
+ * the loader would. Keys the page's loader already moves (the global set it keeps, src/loader) are left alone, so
+ * nothing moves twice. Call after arrangeInPlay (the place is the arranged one). Returns the keys it moves.
+ */
+function moveInPlay(a               , file                 , win                            )           {
+  const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
+  if (!motion) return [];
+  const byLoader = (win                                                      )[Symbol.for('game-studio.motion')];
+  const items = a.list();
+  const runs                                                                              = [];
+  for (const [key, m] of Object.entries(motion)) {
+    if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
+    const it = items.find((i) => i.key === key);
+    const mm = m                                      ;
+    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === (it?.pose.p.length ?? 0));
+    if (!it || (!pathOk && !num(mm.spin))) continue;
+    runs.push({ key, m: m                                        , base: structuredClone(flat(it.pose)) });
+  }
+  if (!runs.length) return [];
+  const t0 = win.performance.now();
+  const tick = (now        ) => {
+    const t = Math.max(0, (now - t0) / 1000);
+    for (const r of runs) {
+      const at = motionAt(r.m, t)                                          ;
+      const pose       = { ...r.base, p: at.off ? r.base.p.map((v, i) => v + (at.off [i] ?? 0)) : r.base.p.slice() };
+      if (num(r.m.spin)) pose.r = (r.base.r ?? 0) + at.turn;
+      try {
+        a.setPose(r.key, pose);
+      } catch {
+        /* the game took it away: the others go on */
+      }
+    }
+    win.requestAnimationFrame(tick);
+  };
+  win.requestAnimationFrame(tick);
+  return runs.map((r) => r.key);
+}
+
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
+__def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[41] = function (__exports) {
+__defs[45] = function (__exports) {
+'use strict';
+// levels.ts
+
+// studio.levels(list) on the game page (levels, 2026-10-22; CONTRACT.md §1.10). Pure, so it is unit-tested.
+//
+// The game says which levels its code has; the editor's URL (studioLevel / studioBuild, set by the shell's loadGame)
+// says which one to show. The answer is { id, build }: `id` = the level the editor shows (it may be one made in the
+// editor, which the code does not have yet), `build` = the code's level to build for it (an editor-made level is built
+// from the level it was copied from, and placement.json's entry for `id` is laid over it).
+//
+// WHY the URL and not a message: the game picks its level while it starts, before the editor could answer anything,
+// and a page opened again (a reload, ▶ Play, the AI's change) must come back on the same level by itself.
+// WHY null outside the editor's frame: in the shipped game (or the game opened on its own) the game's own progress
+// picks the level; the studio must not.
+const { KEY_RE, LOCAL_PATHS } = __require(13);
+
+/** The game's list, cleaned: ids that fit a key (KEY_RE), each once, labels as text (≤ 120 characters). */
+function cleanLevels(list         )              {
+  const out              = [];
+  const seen = new Set        ();
+  for (const x of Array.isArray(list) ? list.slice(0, 100) : []) {
+    const id = typeof x === 'string' ? x : x && typeof x === 'object' ? (x                    ).id : null;
+    if (typeof id !== 'string' || !KEY_RE.test(id) || seen.has(id)) continue;
+    seen.add(id);
+    const label = x && typeof x === 'object' ? (x                       ).label : undefined;
+    out.push(typeof label === 'string' && label.trim() ? { id, label: label.trim().slice(0, 120) } : { id });
+  }
+  return out;
+}
+
+/**
+ * What studio.levels() answers, and the list sent to the editor; null = not in the editor's frame, or no levels.
+ * A URL that names a level the code does not have and no `build` it has falls back to the first level.
+ */
+function pickLevel(list         , href        , inFrame         )                                                  {
+  const levels = cleanLevels(list);
+  if (!levels.length || !inFrame) return null;
+  const ids = new Set(levels.map((l) => l.id));
+  let q                 ;
+  try {
+    q = new URL(href).searchParams;
+  } catch {
+    q = new URLSearchParams();
+  }
+  const want = q.get(LOCAL_PATHS.levelParam) || '';
+  const build = q.get(LOCAL_PATHS.buildParam) || '';
+  if (ids.has(build) && KEY_RE.test(want)) return { levels, pick: { id: want, build } };
+  if (ids.has(want)) return { levels, pick: { id: want, build: want } };
+  return { levels, pick: { id: levels[0] .id, build: levels[0] .id } };
+}
+
+__def(__exports, "cleanLevels", () => cleanLevels);
+__def(__exports, "pickLevel", () => pickLevel);
+};
+__defs[46] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -13673,7 +15083,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[42] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -13685,14 +15095,16 @@ __defs[42] = function (__exports) {
 // only wires them up.
 const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(13);
 const { installCore } = __require(16);
-const { adapterFromPort2D } = __require(17);
-const { findDomUi, uiAdapterFromPort } = __require(20);
-const { runSelfCheck } = __require(21);
-const { createEditor } = __require(33);
-const { startPlayAsk } = __require(37);
-const { arrangeInPlay } = __require(40);
-const { applyPlacement } = __require(18);
-const { watchEarlyTaps } = __require(41);
+const { installPlayClock } = __require(17);
+const { adapterFromPort2D } = __require(18);
+const { findDomUi, uiAdapterFromPort } = __require(21);
+const { runSelfCheck } = __require(22);
+const { createEditor } = __require(35);
+const { startPlayAsk } = __require(41);
+const { arrangeInPlay, moveInPlay } = __require(44);
+const { applyPlacement, placementForLevel } = __require(19);
+const { pickLevel } = __require(45);
+const { watchEarlyTaps } = __require(46);
                                                     
 
                                 
@@ -13723,7 +15135,10 @@ function startBridge(opts               )       {
   // Outside edit mode (e.g. the game opened directly while the server runs)
   // the script only publishes no-op API so `studio.ready()` calls are harmless.
   const inFrame = win.parent && win.parent !== win;
-  const core       = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win });
+  // ▶ Play inside the editor: the game's clock, so a pause (P) takes no time (core/play-clock.ts). Before the core and
+  // before any game code, so the game's first performance.now() and every frame's timestamp already go through it.
+  const playClock = !edit && inFrame ? installPlayClock(win) : null;
+  const core       = installCore({ freezeAfterFirstFrame: edit && !!inFrame, firstFrameTimeoutMs: 4000, win, ...(playClock ? { stamp: playClock.at } : {}) });
 
   // Probes registered by the game folder (.studio/adapter.js) go first so an
   // AI-written adapter can override a built-in one.
@@ -13773,6 +15188,21 @@ function startBridge(opts               )       {
       uiPorts.push({ get: typeof port === 'function' ? port : () => port, built: null });
     },
     core,
+    // Levels (2026-10-22, bridge/levels.ts): the code's levels go to the editor (once per page), and the page builds
+    // the level the editor's URL asks for. Outside the editor's frame: null, the game picks its level itself.
+    levels(list) {
+      const r = pickLevel(list, win.location.href, !!inFrame);
+      if (!r) return null;
+      if (inFrame) {
+        try {
+          const msg                = { type: 'studio:core/levels', levels: r.levels, current: r.pick.id };
+          win.parent.postMessage(msg, parentOrigin);
+        } catch {
+          /* parent gone */
+        }
+      }
+      return r.pick;
+    },
     extend(ext               ) {
       if (!ext || typeof ext !== 'object') return;
       rules.ext.push(ext);
@@ -13803,6 +15233,9 @@ function startBridge(opts               )       {
       return;
     }
     if (!file || typeof file !== 'object') return;
+    // A game with levels (2026-10-22): only the level this page shows (the URL's studioLevel; none = nothing moves).
+    if (Array.isArray((file                        ).levels)) file = placementForLevel(file, new URL(win.location.href).searchParams.get(LOCAL_PATHS.levelParam) || '');
+    if (!file) return;
     if (file.ui && typeof file.ui === 'object') {
       try {
         await applyPlacement(win.document, { tool: 'placement', objects: {}, ui: file.ui });
@@ -13810,7 +15243,8 @@ function startBridge(opts               )       {
         /* the UI stays as the game draws it */
       }
     }
-    const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length;
+    const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length
+      || (file.motion && Object.keys(file.motion).length);
     if (!busy) return;
     await core.time.firstFrame();
     // The game may build its scene a little after its first frame (as in edit mode): look for up to ~5 s.
@@ -13834,6 +15268,9 @@ function startBridge(opts               )       {
     if (!a) return;
     const shown = arrangeInPlay(a, file);
     if (shown) console.info(`[studio] Play: ${shown} change${shown === 1 ? '' : 's'} from the editor shown (saved or not, not in the code yet)`);
+    // The draft's motions (motion-gui, 2026-10-22), for the objects the page's own loader does not move.
+    const moving = moveInPlay(a, file, win);
+    if (moving.length) console.info(`[studio] Play: ${moving.length} motion${moving.length === 1 ? '' : 's'} from the editor played (not in the code yet)`);
   }
 
   /**
@@ -13904,7 +15341,7 @@ function startBridge(opts               )       {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend']         ) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend', 'levels']         ) prior[k] = api[k];
     api.ready = prior.ready              ;
     api.attach = prior.attach                                        ;
   }
@@ -13932,7 +15369,7 @@ function startBridge(opts               )       {
       enumerable: false,
     });
     void showFileEditsInPlay();
-    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins] });
+    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], ...(playClock ? { pause: { time: core.time, clock: playClock } } : {}) });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.
@@ -14069,7 +15506,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[43] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -14088,11 +15525,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(42);
+const { startBridge } = __require(47);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(43);
+__require(48);
 })();
