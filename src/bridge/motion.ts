@@ -21,6 +21,7 @@
 // offset (design.md §5, stage 2).
 import type { Anchor, BridgeToShell, Inset, Lang, Motion, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { motionAt } from '../loader/studio-placement.js';
+import { nativeNow } from '../core/native.ts';
 
 const YOU = '#ff6b1a';
 const WORDS: Record<Lang, { point: (i: number) => string }> = {
@@ -295,14 +296,14 @@ export function createMotionView(d: MotionViewDeps): MotionView {
         if (!msg.key || !msg.motion) return void stop(false);
         const pose = again ?? poseOf(msg.key);
         if (!pose) return void d.post({ type: 'studio:motion/played', key: null });
-        play = { key: msg.key, motion: structuredClone(msg.motion), base: structuredClone(pose), t0: win.performance.now() };
+        play = { key: msg.key, motion: structuredClone(msg.motion), base: structuredClone(pose), t0: nativeNow() };
         if (shown?.key === msg.key && msg.motion.path?.length) shown = { key: msg.key, motion: structuredClone(msg.motion) };
         d.markDirty();
       }
     },
     frame() {
       if (play) {
-        const t = (win.performance.now() - play.t0) / 1000;
+        const t = (nativeNow() - play.t0) / 1000;
         const at = motionAt(play.motion, t) as { off: number[] | null; turn: number; done: boolean };
         const b = play.base;
         const pose: Pose = { ...b, p: at.off ? b.p.map((v, i) => v + (at.off![i] ?? 0)) : b.p.slice() };

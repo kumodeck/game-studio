@@ -165,3 +165,57 @@ test('the overlay has every word of the pause, in both languages', () => {
     assert.ok(w.seesErrors!.includes('#'));
   }
 });
+
+// ----- stage 2: moving things while paused (src/bridge/play-move.ts) -----
+import { momentWhy, poseWords, samePose } from '../src/bridge/play-move.ts';
+
+test('moving while paused: what can go in the layout, and what is the game\'s for this moment only', () => {
+  const start = new Map([
+    ['crate', { p: [1, 0, 2], r: 0 }],
+    ['boat', { p: [5, 0, 5], r: 0.5 }],
+    ['pine', { p: [0, 0, 0], r: 0 }],
+    ['spun', { p: [3, 0, 3], r: 0 }],
+  ]);
+  const mine = new Map<string, { p: number[]; r?: number }>();
+  const moving = new Set(['spun']);
+  // Where Play started: still.
+  assert.equal(momentWhy('crate', { p: [1, 0, 2], r: 0 }, start, mine, moving, '3d'), null);
+  // Float noise is not motion (observe.ts' smallest change).
+  assert.equal(momentWhy('crate', { p: [1 + 1e-5, 0, 2], r: 0 }, start, mine, moving, '3d'), null);
+  // The game sailed it: this moment only.
+  assert.equal(momentWhy('boat', { p: [7, 0, 4], r: 0.5 }, start, mine, moving, '3d'), 'game');
+  // Bobbing (height) or turning only is the game's too: its place now is mid-motion.
+  assert.equal(momentWhy('boat', { p: [5, 0.2, 5], r: 0.5 }, start, mine, moving, '3d'), 'game');
+  assert.equal(momentWhy('pine', { p: [0, 0, 0], r: 0.1 }, start, mine, moving, '3d'), 'game');
+  // Made by the game since Play started (an enemy, a bullet).
+  assert.equal(momentWhy('bullet#3', { p: [0, 1, 0] }, start, mine, moving, '3d'), 'new');
+  // A motion from the editor's draft moves it.
+  assert.equal(momentWhy('spun', { p: [3, 0, 3], r: 0 }, start, mine, moving, '3d'), 'motion');
+  // The person moved the crate in an earlier pause: that place is theirs, not the game's.
+  mine.set('crate', { p: [4, 0, 2], r: 0 });
+  assert.equal(momentWhy('crate', { p: [4, 0, 2], r: 0 }, start, mine, moving, '3d'), null);
+  // 2D: half a pixel is noise, more is motion.
+  const s2 = new Map([['urn', { p: [100, 200] }]]);
+  assert.equal(momentWhy('urn', { p: [100.2, 200] }, s2, new Map(), new Set(), '2d'), null);
+  assert.equal(momentWhy('urn', { p: [104, 200] }, s2, new Map(), new Set(), '2d'), 'game');
+});
+
+test('moving while paused: the card\'s numbers and "the same place"', () => {
+  assert.equal(poseWords({ p: [8.46, 0, 9.6] }, '3d'), 'X 8.5 · Y 0.0 · Z 9.6');
+  assert.equal(poseWords({ p: [120.4, 39.6] }, '2d'), 'X 120 · Y 40');
+  assert.equal(poseWords({ p: [2.5, -0.01, 10.6] }, '3d'), 'X 2.5 · Y 0.0 · Z 10.6', 'no "-0.0"');
+  assert.equal(samePose({ p: [1, 2, 3], r: 0 }, { p: [1, 2, 3], r: 0 }, '3d'), true);
+  assert.equal(samePose({ p: [1, 2, 3], r: 0 }, { p: [1.5, 2, 3], r: 0 }, '3d'), false);
+  assert.equal(samePose({ p: [1, 2, 3], s: 1 }, { p: [1, 2, 3], s: 1.2 }, '3d'), false);
+  assert.equal(samePose(undefined, undefined, '3d'), true);
+  assert.equal(samePose({ p: [1, 2, 3] }, undefined, '3d'), false);
+});
+
+test('moving while paused: its words, in both languages', () => {
+  for (const lang of ['en', 'ja'] as const) {
+    const w = playWords((k) => translate(lang, k));
+    for (const k of ['move', 'moveTip', 'talk', 'talkTip', 'movePick', 'moveHow', 'moveOnly', 'moveMoment', 'moveMomentWhy', 'moveIn', 'toLayout', 'toLayoutTip', 'putBack', 'putBackTip']) {
+      assert.ok(w[k] && w[k] !== `play.${k}`, `${lang} play.${k}`);
+    }
+  }
+});

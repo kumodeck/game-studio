@@ -844,6 +844,32 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   `studio:play/paused` (`on`); `play/ask` carries `paused`, `chat`, `history`;
   `play/sent` carries the kept request's `id`.
 
+#### 3.5.2 Move things while paused (2026-10-22, stage 2)
+
+- **Move** in the paused panel (or **M** outside its field) wakes the editor
+  inside the paused game page (`src/bridge/play-move.ts`, `createEditor` with
+  `paused: true`): the same pick, outline, strip and snap as Edit, on the
+  objects where they stopped, seen from the player's camera (no saved edit
+  view, no "everything in frame"). The game is never let run (no watch of what
+  it moves, no self-check); key releases still reach it. **Chat** (or Escape
+  with nothing picked) goes back to the talk; P resumes.
+- **Resume** goes on from where the objects now are. A place is "only in this
+  play" until the person presses **Put in layout** on the card: the bridge then
+  sends `studio:placement/moved` with `end` and `from`, exactly as a move in
+  Edit — an unsaved change (Save · N, the draft, ▶ Play's "Save and play / Try
+  without saving", Undo in Edit). **Put back** returns it to where it was at
+  the pause (and takes it out of the layout again if it was put there in this
+  pause).
+- **Just for this moment**: an object the game moves itself has no Put in
+  layout — anything that moved since Play started (or since the person last
+  left it), anything not there when Play started, anything a motion of the
+  editor's draft moves (observe.ts' smallest change counts). Its place now is
+  a point mid-run; kept, the next start would put it there.
+- `studio:play/on` carries `config` (the game rules, for what is locked) and
+  `handlePx` (the strip's button size). Nothing else of the woken editor
+  reaches the editor page. The world only: the game's HTML UI is not moved
+  from a pause.
+
 ---
 
 ## 4. Result files

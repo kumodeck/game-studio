@@ -18,13 +18,16 @@
 // the corner mark is there for every keyboard and for touch.
 //
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
-import type { AdapterProbe, BridgeToShell, PlayLine, PlayLog, PlayNear, ShellToBridge, StudioAdapter } from '../contract.ts';
+import type { AdapterProbe, BridgeToShell, GameConfig, PlayLine, PlayLog, PlayNear, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { isStudioMessage } from '../contract.ts';
 import { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } from '../shell/line-fade.ts';
 import { icon } from '../shell/icons.ts';
 import { shootPage } from './play-shot.ts';
 import { createPauseHold, isPauseKey, type PauseHold, type PauseParts } from './play-pause.ts';
 import { CHAT_CSS, createChat, type Chat } from './play-chat.ts';
+import { createPlayMove, defaultHandlePx, MOVE_CSS, type PlayMove } from './play-move.ts';
+import type { Core } from '../core/index.ts';
+import type { RulesHolder } from '../core/rules.ts';
 
 export interface PlayAskOptions {
   win: Window & typeof globalThis;
@@ -33,6 +36,8 @@ export interface PlayAskOptions {
   probes: () => AdapterProbe[];
   /** Pause while playing (play-pause.ts, 2026-10-22): the frames and the clock to hold. Absent = no pause. */
   pause?: PauseParts;
+  /** Moving things while paused (stage 2, play-move.ts): what its editor needs. Absent = no Move in the panel. */
+  move?: { core: Core; rules: RulesHolder; arranged: Promise<string[]> };
 }
 
 // ---------------------------------------------------------------------------
@@ -221,7 +226,7 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
    so the button follows the mark when it grows (hover) or shrinks (after 5 s). */
 .corner { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .corner .mark { position: static; }
-` + CHAT_CSS;
+` + CHAT_CSS + MOVE_CSS;
 
 type Words = Record<string, string>;
 
@@ -279,6 +284,11 @@ export function startPlayAsk(o: PlayAskOptions): void {
   // Pause (2026-10-22): the corner's ❚❚, the chat over the paused game, and what the first message of a pause carries.
   let pauseBtn: HTMLButtonElement | null = null;
   let chat: Chat | null = null;
+  // Stage 2: moving things while paused (the editor in the paused page, its card in the panel), and what play/on gave it.
+  let move: PlayMove | null = null;
+  let moveConfig: GameConfig | null = null;
+  let moveHandlePx = 0;
+  let lang: 'en' | 'ja' = 'en';
   let pausedMoment: BridgeToShell | null = null;
   let chatId = '';
   // Which field is waiting for play/sent: the ✦ field's, or the chat's.
@@ -334,6 +344,9 @@ export function startPlayAsk(o: PlayAskOptions): void {
     if (host) return;
     host = doc.createElement('game-studio-play');
     host.setAttribute('popover', 'manual');
+    // Kept when an adapter hides the game's own HUD for editing (three.js hideOverlays, data-studio-keep): moving things
+    // while paused (play-move.ts) wakes the editor, and this overlay holds its panel.
+    host.setAttribute('data-studio-keep', '');
     // The popover's own box: invisible and click-through; only the parts inside take the pointer.
     host.style.cssText = 'all:initial;position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647;';
     root = host.attachShadow({ mode: 'open' });
@@ -379,11 +392,21 @@ export function startPlayAsk(o: PlayAskOptions): void {
       pauseBtn.dataset.part = 'pause-button';
       pauseBtn.append(icon('pause'));
       pauseBtn.addEventListener('click', () => void pauseNow());
+      if (o.move) {
+        const mv = o.move;
+        move = createPlayMove({
+          win, core: mv.core, rules: mv.rules, arranged: mv.arranged, adapter: () => findAdapter(), post, el, w,
+          lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win),
+          panel: () => (chat ? chat.parts[1]! : null), ignore: (e) => isOurs(e), changed: () => chat?.render(),
+        });
+      }
+      const m = move;
       chat = createChat({
         doc, el, w,
         send: (text, history) => void sendChat(text, history),
         resume: () => resumeNow(),
         reload: () => post({ type: 'studio:play/reload' }),
+        ...(m ? { move: { card: m.card, on: () => m.on, picked: () => m.picked(), can: () => !!findAdapter(), toggle: () => toggleMove() } } : {}),
       });
       corner.append(pauseBtn);
     }
@@ -401,7 +424,7 @@ export function startPlayAsk(o: PlayAskOptions): void {
     (doc.body || doc.documentElement).appendChild(host);
     lift();
     // The short or the long placeholder (NARROW_PX) follows the window.
-    win.addEventListener('resize', () => render());
+    win.addEventListener('resize', () => (render(), move?.render()));
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
     win.setTimeout(() => mark.classList.add('small'), 5000);
     render();
@@ -418,6 +441,21 @@ export function startPlayAsk(o: PlayAskOptions): void {
   for (const type of ['keydown', 'keyup', 'keypress'] as const) {
     win.addEventListener(type, (e: KeyboardEvent) => {
       if (!words) return;
+      // Moving while paused: the keys are the editor's (M / H / T / S, arrows, Escape…) unless the chat's field has them.
+      if (hold?.paused && move?.on && !(isOurs(e) && root?.activeElement === chat?.input)) {
+        if (type === 'keydown' && isPauseKey(e, gameTyping())) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          resumeNow();
+        } else if (type === 'keydown' && e.key === 'Escape' && !move.picked()) {
+          // Escape: the editor drops its tool, then the pick; with nothing picked it takes the person back to the talk.
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          toggleMove();
+        } else if (isOurs(e)) e.stopImmediatePropagation();
+        // Anything else goes on to the editor's input (input.ts), which keeps it from the game.
+        return;
+      }
       if (isOurs(e)) {
         // The field's keys are handled here and go no further: stopping them at the window in the capture phase is
         // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
@@ -435,6 +473,10 @@ export function startPlayAsk(o: PlayAskOptions): void {
         if (isPauseKey(e, gameTyping()) || e.key === 'Escape') {
           e.preventDefault();
           resumeNow();
+        } else if (move && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.ctrlKey && !e.metaKey && !e.altKey && !gameTyping()) {
+          // M: Move (its tooltip says so), as the editor's own key for the Move tool.
+          e.preventDefault();
+          toggleMove();
         }
         return;
       }
@@ -529,8 +571,34 @@ export function startPlayAsk(o: PlayAskOptions): void {
     post({ type: 'studio:play/paused', on: true });
     render();
   }
+  /** Move ↔ Chat in the paused panel (play-move.ts). */
+  function toggleMove() {
+    if (!move || !chat || !hold?.paused) return;
+    if (move.on) {
+      move.stop();
+      chat.render();
+      chat.input.focus({ preventScroll: true });
+      return;
+    }
+    chat.input.blur();
+    (root?.activeElement as HTMLElement | null)?.blur();
+    if (!move.start()) return;
+    chat.render();
+    // The keys go to the page (the editor's), not to a button of the panel that kept the focus.
+    try {
+      win.focus();
+    } catch {
+      /* fine */
+    }
+  }
   function resumeNow() {
     if (!hold || !hold.paused) return;
+    // The editor goes first (its own frame loop and the adapter's edit view end), then the game runs on from where the
+    // objects now are.
+    if (move) {
+      move.stop();
+      move.resumed();
+    }
     hold.resume();
     chat?.close();
     pausedMoment = null;
@@ -770,6 +838,9 @@ export function startPlayAsk(o: PlayAskOptions): void {
     const m = ev.data as ShellToBridge;
     if (m.type === 'studio:play/on') {
       words = m.words;
+      lang = m.lang === 'ja' ? 'ja' : 'en';
+      if (m.config !== undefined) moveConfig = m.config ?? null;
+      if (typeof m.handlePx === 'number' && m.handlePx > 0) moveHandlePx = m.handlePx;
       markOn = m.mark !== false;
       // Sent again when the editor's layout changes (a phone turned, a window made narrow): only the mark changes.
       if (host) render();

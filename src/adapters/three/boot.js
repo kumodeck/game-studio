@@ -397,6 +397,9 @@
   state.release = release;
   state.watch = watch;
   state.nativeRAF = nativeRAF;
+  // The browser's own clock (boot runs before ▶ Play's game clock, play-clock.ts, stops performance.now() in a pause):
+  // the edit view's glides and the turn pivot time themselves with it, also in a paused game (pause-move, 2026-10-22).
+  state.now = performance.now.bind(performance);
   state.on = function (fn) { state.listeners.push(fn); };
   state.kindOf = kindOf;
   state.absUrl = absUrl;

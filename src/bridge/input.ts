@@ -86,6 +86,7 @@
 //   once (no need to move the pointer).
 import { UI, type Anchor, type BridgeToShell, type Item, type FlyKey, type Inset, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
+import { nativeNow } from '../core/native.ts';
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
@@ -111,6 +112,10 @@ export interface InputDeps {
   /** Game tools (.studio/tools.js): get pointer presses first while one is on. */
   tools: ToolHost;
   markDirty: () => void;
+  /** Pause-move (bridge/play-move.ts): events none of the listeners here may touch (the paused game's own panel). */
+  ignore?: (e: Event) => boolean;
+  /** Pause-move: key releases reach the game (not blocked), so no key stays down in it after Resume. */
+  passKeyUp?: boolean;
 }
 
 export interface InputHandle {
@@ -347,7 +352,7 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
   const flyStart = () => {
     if (flyFrame) return;
-    flyLast = win.performance.now();
+    flyLast = nativeNow();
     flyFrame = core.time.raf(flyStep);
   };
   /** Every key let go (or the page lost them): stop, and tell the shell where the view ended (kept across reloads). */
@@ -868,7 +873,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     const rd = riseUi?.fromEvent(e);
     if (rd) {
       if (handles.menuOpen()) menu(null);
-      const t0 = win.performance.now();
+      const t0 = nativeNow();
       mode = { kind: 'rise', dir: rd, t0, follow: false };
       riseLast = 0;
       riseUi!.setActive(rd);
@@ -1292,24 +1297,34 @@ export function attachInput(deps: InputDeps): InputHandle {
       markDirty();
     }
   };
-  win.addEventListener('pointerdown', onDown, opts);
-  // Before onMove: its block() stops the other listeners on window.
-  win.addEventListener('pointermove', onHover, opts);
-  win.addEventListener('pointermove', onMove, opts);
-  win.addEventListener('pointerout', onLeave, opts);
-  win.addEventListener('pointerup', onUp, opts);
-  win.addEventListener('pointercancel', onUp, opts);
-  // The other ways a release comes (onLost above). Not blocked: lostpointercapture is the browser's own bookkeeping,
-  // and the click is blocked by `block` (added below, after this one: it stops the listeners after it).
-  win.addEventListener('lostpointercapture', onLost, opts);
-  win.addEventListener('click', onClickEnd, opts);
+  // The window's listeners, in this order (added in it, taken off in it by detach()). `ignore` (pause-move, 2026-10-22):
+  // a press on the paused game's own panel is not a press in the game — skipped by every listener here, so it reaches
+  // the panel's buttons (block() would stop it at the window). Without `ignore` each listener is the function itself.
+  const skip = deps.ignore;
+  const g = <E extends Event>(fn: (e: E) => void) => (skip ? (e: E) => void (skip(e) || fn(e)) : fn) as EventListener;
+  const winListeners: Array<[string, EventListener]> = [
+    ['pointerdown', g(onDown)],
+    // Before onMove: its block() stops the other listeners on window.
+    ['pointermove', g(onHover)],
+    ['pointermove', g(onMove)],
+    ['pointerout', g(onLeave)],
+    ['pointerup', g(onUp)],
+    ['pointercancel', g(onUp)],
+    // The other ways a release comes (onLost above). Not blocked: lostpointercapture is the browser's own bookkeeping,
+    // and the click is blocked by `block` (added below, after this one: it stops the listeners after it).
+    ['lostpointercapture', g(onLost)],
+    ['click', g(onClickEnd)],
+    ['wheel', g(onWheel)],
+    ['keydown', g(onKey)],
+    ['blur', g(onBlur)],
+    // Before the blocking listener for keyup (it stops the others on window): Space let go ends "Space held".
+    ['keyup', g(onKeyUp)],
+    // `passKeyUp` (pause-move): key releases still reach the game, as the pause promises (play-pause.ts: a key held at
+    // the pause must not stay down in the game after Resume).
+    ...blocked.filter((t) => !(deps.passKeyUp && t === 'keyup')).map((t): [string, EventListener] => [t, g(block)]),
+  ];
+  for (const [t, fn] of winListeners) win.addEventListener(t, fn, opts);
   for (const w of above) for (const t of ['pointerup', 'mouseup'] as const) w.addEventListener(t, onUpAbove, { capture: true });
-  win.addEventListener('wheel', onWheel, opts);
-  win.addEventListener('keydown', onKey, opts);
-  win.addEventListener('blur', onBlur, opts);
-  // Before the blocking listener for keyup (it stops the others on window): Space let go ends "Space held".
-  win.addEventListener('keyup', onKeyUp, opts);
-  for (const t of blocked) win.addEventListener(t, block, opts);
 
   // Pictures of the originals for stand-in copies, one capture per original.
   const ghostPics = new Map<string, { src: string | null; w: number; h: number; r: number; s: number } | 'wait'>();
@@ -1365,7 +1380,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       return null;
     }
     const sig = keys.join('\n') + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + JSON.stringify(adapter.view.state());
-    const now = win.performance.now();
+    const now = nativeNow();
     if (sig !== c.sig && now - c.at > 40) {
       try {
         c.shape = adapter.silhouette(keys);
@@ -1530,21 +1545,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       endGesture();
       win.clearTimeout(pressTimer);
       win.clearTimeout(menuTimer);
-      win.removeEventListener('pointerdown', onDown, opts);
-      win.removeEventListener('pointermove', onMove, opts);
-      win.removeEventListener('pointermove', onHover, opts);
-      win.removeEventListener('pointerout', onLeave, opts);
-      win.removeEventListener('pointerup', onUp, opts);
-      win.removeEventListener('pointercancel', onUp, opts);
-      win.removeEventListener('lostpointercapture', onLost, opts);
-      win.removeEventListener('click', onClickEnd, opts);
+      for (const [t, fn] of winListeners) win.removeEventListener(t, fn, opts);
       for (const w of above) for (const t of ['pointerup', 'mouseup'] as const) w.removeEventListener(t, onUpAbove, { capture: true });
-      win.removeEventListener('wheel', onWheel, opts);
-      win.removeEventListener('keydown', onKey, opts);
-      win.removeEventListener('blur', onBlur, opts);
-      win.removeEventListener('keyup', onKeyUp, opts);
       win.clearTimeout(hintTimer);
-      for (const t of blocked) win.removeEventListener(t, block, opts);
       handles.destroy();
       if (riseFrame) core.time.cancelRaf(riseFrame);
       if (flyFrame) core.time.cancelRaf(flyFrame);

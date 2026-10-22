@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.13 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.14 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -993,7 +993,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                      
      
-                                                                                         
+                                                                                        
+         
+                                                                                                                     
+                                                                                                                     
+         
+                                                     
                                                                                                       
                                 
                                                                                                                     
@@ -8999,6 +9004,23 @@ const en = {
   // Not "your AI gets the picture…" again: the line above it says so ("Your AI sees this moment").
   'play.chatEmpty': 'Ask anything about what you see: why it happened, how it works, what to change.',
   'play.send': 'Send',
+  // Pause-move (2026-10-22, bridge/play-move.ts): move things where the game stopped. "Only in this play" until the
+  // person puts a place in the layout (then it is an unsaved change like any in Edit: Save · N). What the game moves
+  // itself says "Just for this moment" and has no "Put in layout" (the next start would put it mid-run).
+  'play.move': 'Move',
+  'play.moveTip': 'Move things where the game stopped (M)',
+  'play.talk': 'Chat',
+  'play.talkTip': 'Back to the chat',
+  'play.movePick': 'Pick something to move',
+  'play.moveHow': 'Drag it, or use the strip under it. The game goes on from there when you resume.',
+  'play.moveOnly': 'Only in this play',
+  'play.moveMoment': 'Just for this moment',
+  'play.moveMomentWhy': 'The game moves this itself, so it can’t stay here.',
+  'play.moveIn': 'In your layout · Save to keep it',
+  'play.toLayout': 'Put in layout',
+  'play.toLayoutTip': 'Keep this place, as a move in Edit would (Save · N)',
+  'play.putBack': 'Put back',
+  'play.putBackTip': 'Back where it was when you paused',
   // Empty on purpose (the third design review, 5-3 / ⑩, 2026-10-20): the line after Save is one line, "Your request is
   // in. It goes into the game the next time your AI runs." + "Call your AI". "Your layout is saved" said what the top
   // bar's "✓ Saved" says. Emptied here, not taken out of main.ts renderAiLine(), which another fix of the same day
@@ -9511,6 +9533,20 @@ const ja                               = {
   'play.chatPlaceholder': 'この瞬間について聞く…',
   'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
   'play.send': '送る',
+  'play.move': '動かす',
+  'play.moveTip': '止めた所で物を動かす（M）',
+  'play.talk': '話す',
+  'play.talkTip': 'チャットに戻る',
+  'play.movePick': '動かす物を選ぶ',
+  'play.moveHow': '引くか、下の帯で動かします。続けると、そこから動きます。',
+  'play.moveOnly': 'この遊びだけ',
+  'play.moveMoment': 'この瞬間だけ',
+  'play.moveMomentWhy': 'ゲームが自分で動かす物なので、ここには残りません。',
+  'play.moveIn': '配置に入れました · 保存で残ります',
+  'play.toLayout': '配置に入れる',
+  'play.toLayoutTip': 'この位置を残す（編集で動かしたのと同じ・保存 · N）',
+  'play.putBack': '元に戻す',
+  'play.putBackTip': '止めた時の位置に戻す',
   'ai.savedSub': '', // empty on purpose: see the English table
   'ai.updating': 'ゲームを新しくしています…',
   'ai.undo': 'AI の直しを戻す',
@@ -9900,6 +9936,8 @@ const PATHS                         = {
   stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
   // Pause while playing (2026-10-22): two bars, filled like play / stop.
   pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
+  // Pause-move (2026-10-22): the strip's own Move sign (bridge/handles.ts), four ways out of the middle.
+  move: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
   // The AI: a four-point spark.
   spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
   more: 'o 5 10|o 10 10|o 15 10',
@@ -10821,7 +10859,10 @@ function playLine(i               )                  {
 function playWords(t                         )                         {
   const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close',
     // The pause and its chat (2026-10-22).
-    'pauseTip', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send'];
+    'pauseTip', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send',
+    // Moving things while paused (2026-10-22, bridge/play-move.ts).
+    'move', 'moveTip', 'talk', 'talkTip', 'movePick', 'moveHow', 'moveOnly', 'moveMoment', 'moveMomentWhy', 'moveIn', 'toLayout', 'toLayoutTip',
+    'putBack', 'putBackTip'];
   return Object.fromEntries(keys.map((k) => [k, t(`play.${k}`)]));
 }
 
@@ -16770,7 +16811,7 @@ function start(host            ) {
     if (show) setButton(playPauseBtn, playPaused ? 'play' : 'pause', playPaused ? t('play.resume') : t('play.pause'), false, playPaused ? t('play.resumeTip') : t('play.pauseTip'));
     if (playing && playAskOn && playMark !== !phone()) {
       playMark = !phone();
-      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
+      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
     }
     if (!show) return;
     setButton(playAskBtn, 'spark', t('play.ask'), false, t('play.askTip'));
@@ -17119,7 +17160,7 @@ function start(host            ) {
         if (playing && !host.offline) {
           playAskOn = true;
           playMark = !phone();
-          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
+          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
           sendPlayLine(true);
           renderPlayAsk();
         }

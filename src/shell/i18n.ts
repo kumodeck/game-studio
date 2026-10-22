@@ -200,6 +200,23 @@ const en = {
   // Not "your AI gets the picture…" again: the line above it says so ("Your AI sees this moment").
   'play.chatEmpty': 'Ask anything about what you see: why it happened, how it works, what to change.',
   'play.send': 'Send',
+  // Pause-move (2026-10-22, bridge/play-move.ts): move things where the game stopped. "Only in this play" until the
+  // person puts a place in the layout (then it is an unsaved change like any in Edit: Save · N). What the game moves
+  // itself says "Just for this moment" and has no "Put in layout" (the next start would put it mid-run).
+  'play.move': 'Move',
+  'play.moveTip': 'Move things where the game stopped (M)',
+  'play.talk': 'Chat',
+  'play.talkTip': 'Back to the chat',
+  'play.movePick': 'Pick something to move',
+  'play.moveHow': 'Drag it, or use the strip under it. The game goes on from there when you resume.',
+  'play.moveOnly': 'Only in this play',
+  'play.moveMoment': 'Just for this moment',
+  'play.moveMomentWhy': 'The game moves this itself, so it can’t stay here.',
+  'play.moveIn': 'In your layout · Save to keep it',
+  'play.toLayout': 'Put in layout',
+  'play.toLayoutTip': 'Keep this place, as a move in Edit would (Save · N)',
+  'play.putBack': 'Put back',
+  'play.putBackTip': 'Back where it was when you paused',
   // Empty on purpose (the third design review, 5-3 / ⑩, 2026-10-20): the line after Save is one line, "Your request is
   // in. It goes into the game the next time your AI runs." + "Call your AI". "Your layout is saved" said what the top
   // bar's "✓ Saved" says. Emptied here, not taken out of main.ts renderAiLine(), which another fix of the same day
@@ -712,6 +729,20 @@ const ja: Partial<Record<Key, string>> = {
   'play.chatPlaceholder': 'この瞬間について聞く…',
   'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
   'play.send': '送る',
+  'play.move': '動かす',
+  'play.moveTip': '止めた所で物を動かす（M）',
+  'play.talk': '話す',
+  'play.talkTip': 'チャットに戻る',
+  'play.movePick': '動かす物を選ぶ',
+  'play.moveHow': '引くか、下の帯で動かします。続けると、そこから動きます。',
+  'play.moveOnly': 'この遊びだけ',
+  'play.moveMoment': 'この瞬間だけ',
+  'play.moveMomentWhy': 'ゲームが自分で動かす物なので、ここには残りません。',
+  'play.moveIn': '配置に入れました · 保存で残ります',
+  'play.toLayout': '配置に入れる',
+  'play.toLayoutTip': 'この位置を残す（編集で動かしたのと同じ・保存 · N）',
+  'play.putBack': '元に戻す',
+  'play.putBackTip': '止めた時の位置に戻す',
   'ai.savedSub': '', // empty on purpose: see the English table
   'ai.updating': 'ゲームを新しくしています…',
   'ai.undo': 'AI の直しを戻す',

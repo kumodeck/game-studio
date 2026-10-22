@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.13 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.14 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -24,10 +24,19 @@ __defs[0] = function (__exports) {
 // this module first so the capture happens before any other wrapper.
 const nativeRaf                                       =
   typeof window !== 'undefined' ? window.requestAnimationFrame.bind(window) : (cb) => setTimeout(() => cb(performance.now()), 16)                     ;
+/**
+ * The browser's own clock, captured before ▶ Play's game clock (play-clock.ts) takes the paused time out of
+ * performance.now(). The editor's own timing (the outline's redraw gap, glides, holds) uses it: woken in a paused game
+ * (bridge/play-move.ts, 2026-10-22) it read the game's stopped clock, so the outline never redrew after a drag
+ * ("40 ms since the last one" never came).
+ */
+const nativeNow               =
+  typeof performance !== 'undefined' ? performance.now.bind(performance) : () => Date.now();
 const nativeCancelRaf                       =
   typeof window !== 'undefined' ? window.cancelAnimationFrame.bind(window) : (id) => clearTimeout(id);
 
 __def(__exports, "nativeRaf", () => nativeRaf);
+__def(__exports, "nativeNow", () => nativeNow);
 __def(__exports, "nativeCancelRaf", () => nativeCancelRaf);
 };
 __defs[1] = function (__exports) {
@@ -433,6 +442,9 @@ __defs[1] = function (__exports) {
   state.release = release;
   state.watch = watch;
   state.nativeRAF = nativeRAF;
+  // The browser's own clock (boot runs before ▶ Play's game clock, play-clock.ts, stops performance.now() in a pause):
+  // the edit view's glides and the turn pivot time themselves with it, also in a paused game (pause-move, 2026-10-22).
+  state.now = performance.now.bind(performance);
   state.on = function (fn) { state.listeners.push(fn); };
   state.kindOf = kindOf;
   state.absUrl = absUrl;
@@ -2216,7 +2228,8 @@ function createThreeAdapter({ scene, renderer, camera }) {
   function glideTo(from, to, done, stop) {
     view.set(from);
     const gen = ++glide;
-    const t0 = performance.now();
+    const now = boot.now || (() => performance.now());
+    const t0 = now();
     const MS = 600;
     const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
     const lerp = (a, b, k) => a + (b - a) * k;
@@ -2224,7 +2237,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
     const yawTo = from.yaw + Math.atan2(Math.sin(to.yaw - from.yaw), Math.cos(to.yaw - from.yaw));
     const step = () => {
       if (gen !== glide || !editing || (stop && stop())) return;
-      const t = Math.min(1, (performance.now() - t0) / MS);
+      const t = Math.min(1, (now() - t0) / MS);
       const k = ease(t);
       view.set({
         target: [0, 1, 2].map((i) => lerp(from.target[i], to.target[i], k)),
@@ -2850,7 +2863,7 @@ function createThreeAdapter({ scene, renderer, camera }) {
       tiltOf(o);
       tippedHere.add(o);
       scene.updateMatrixWorld(true);
-      const now = performance.now();
+      const now = boot.now ? boot.now() : performance.now();
       let c;
       if (turnPivot && turnPivot.o === o && now - turnPivot.at < 400) c = turnPivot.c;
       else {
@@ -4444,7 +4457,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                      
      
-                                                                                         
+                                                                                        
+         
+                                                                                                                     
+                                                                                                                     
+         
+                                                     
                                                                                                       
                                 
                                                                                                                     
@@ -9831,6 +9849,7 @@ __defs[32] = function (__exports) {
 //   once (no need to move the pointer).
 const { UI } = __require(13);
                                              
+const { nativeNow } = __require(0);
 const { keyStep } = __require(28);
                                              
                                                 
@@ -9856,6 +9875,10 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                                                                   
                   
                         
+                                                                                                                     
+                                 
+                                                                                                        
+                      
  
 
                               
@@ -10092,7 +10115,7 @@ function attachInput(deps           )              {
   };
   const flyStart = () => {
     if (flyFrame) return;
-    flyLast = win.performance.now();
+    flyLast = nativeNow();
     flyFrame = core.time.raf(flyStep);
   };
   /** Every key let go (or the page lost them): stop, and tell the shell where the view ended (kept across reloads). */
@@ -10613,7 +10636,7 @@ function attachInput(deps           )              {
     const rd = riseUi?.fromEvent(e);
     if (rd) {
       if (handles.menuOpen()) menu(null);
-      const t0 = win.performance.now();
+      const t0 = nativeNow();
       mode = { kind: 'rise', dir: rd, t0, follow: false };
       riseLast = 0;
       riseUi .setActive(rd);
@@ -11037,24 +11060,34 @@ function attachInput(deps           )              {
       markDirty();
     }
   };
-  win.addEventListener('pointerdown', onDown, opts);
-  // Before onMove: its block() stops the other listeners on window.
-  win.addEventListener('pointermove', onHover, opts);
-  win.addEventListener('pointermove', onMove, opts);
-  win.addEventListener('pointerout', onLeave, opts);
-  win.addEventListener('pointerup', onUp, opts);
-  win.addEventListener('pointercancel', onUp, opts);
-  // The other ways a release comes (onLost above). Not blocked: lostpointercapture is the browser's own bookkeeping,
-  // and the click is blocked by `block` (added below, after this one: it stops the listeners after it).
-  win.addEventListener('lostpointercapture', onLost, opts);
-  win.addEventListener('click', onClickEnd, opts);
+  // The window's listeners, in this order (added in it, taken off in it by detach()). `ignore` (pause-move, 2026-10-22):
+  // a press on the paused game's own panel is not a press in the game — skipped by every listener here, so it reaches
+  // the panel's buttons (block() would stop it at the window). Without `ignore` each listener is the function itself.
+  const skip = deps.ignore;
+  const g =                  (fn                ) => (skip ? (e   ) => void (skip(e) || fn(e)) : fn)                 ;
+  const winListeners                                 = [
+    ['pointerdown', g(onDown)],
+    // Before onMove: its block() stops the other listeners on window.
+    ['pointermove', g(onHover)],
+    ['pointermove', g(onMove)],
+    ['pointerout', g(onLeave)],
+    ['pointerup', g(onUp)],
+    ['pointercancel', g(onUp)],
+    // The other ways a release comes (onLost above). Not blocked: lostpointercapture is the browser's own bookkeeping,
+    // and the click is blocked by `block` (added below, after this one: it stops the listeners after it).
+    ['lostpointercapture', g(onLost)],
+    ['click', g(onClickEnd)],
+    ['wheel', g(onWheel)],
+    ['keydown', g(onKey)],
+    ['blur', g(onBlur)],
+    // Before the blocking listener for keyup (it stops the others on window): Space let go ends "Space held".
+    ['keyup', g(onKeyUp)],
+    // `passKeyUp` (pause-move): key releases still reach the game, as the pause promises (play-pause.ts: a key held at
+    // the pause must not stay down in the game after Resume).
+    ...blocked.filter((t) => !(deps.passKeyUp && t === 'keyup')).map((t)                          => [t, g(block)]),
+  ];
+  for (const [t, fn] of winListeners) win.addEventListener(t, fn, opts);
   for (const w of above) for (const t of ['pointerup', 'mouseup']         ) w.addEventListener(t, onUpAbove, { capture: true });
-  win.addEventListener('wheel', onWheel, opts);
-  win.addEventListener('keydown', onKey, opts);
-  win.addEventListener('blur', onBlur, opts);
-  // Before the blocking listener for keyup (it stops the others on window): Space let go ends "Space held".
-  win.addEventListener('keyup', onKeyUp, opts);
-  for (const t of blocked) win.addEventListener(t, block, opts);
 
   // Pictures of the originals for stand-in copies, one capture per original.
   const ghostPics = new Map                                                                                     ();
@@ -11110,7 +11143,7 @@ function attachInput(deps           )              {
       return null;
     }
     const sig = keys.join('\n') + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + JSON.stringify(adapter.view.state());
-    const now = win.performance.now();
+    const now = nativeNow();
     if (sig !== c.sig && now - c.at > 40) {
       try {
         c.shape = adapter.silhouette(keys);
@@ -11275,21 +11308,9 @@ function attachInput(deps           )              {
       endGesture();
       win.clearTimeout(pressTimer);
       win.clearTimeout(menuTimer);
-      win.removeEventListener('pointerdown', onDown, opts);
-      win.removeEventListener('pointermove', onMove, opts);
-      win.removeEventListener('pointermove', onHover, opts);
-      win.removeEventListener('pointerout', onLeave, opts);
-      win.removeEventListener('pointerup', onUp, opts);
-      win.removeEventListener('pointercancel', onUp, opts);
-      win.removeEventListener('lostpointercapture', onLost, opts);
-      win.removeEventListener('click', onClickEnd, opts);
+      for (const [t, fn] of winListeners) win.removeEventListener(t, fn, opts);
       for (const w of above) for (const t of ['pointerup', 'mouseup']         ) w.removeEventListener(t, onUpAbove, { capture: true });
-      win.removeEventListener('wheel', onWheel, opts);
-      win.removeEventListener('keydown', onKey, opts);
-      win.removeEventListener('blur', onBlur, opts);
-      win.removeEventListener('keyup', onKeyUp, opts);
       win.clearTimeout(hintTimer);
-      for (const t of blocked) win.removeEventListener(t, block, opts);
       handles.destroy();
       if (riseFrame) core.time.cancelRaf(riseFrame);
       if (flyFrame) core.time.cancelRaf(flyFrame);
@@ -11388,6 +11409,7 @@ __defs[34] = function (__exports) {
 // offset (design.md §5, stage 2).
                                                                                                                      
 const { motionAt } = __require(19);
+const { nativeNow } = __require(0);
 
 const YOU = '#ff6b1a';
 const WORDS                                                 = {
@@ -11662,14 +11684,14 @@ function createMotionView(d                )             {
         if (!msg.key || !msg.motion) return void stop(false);
         const pose = again ?? poseOf(msg.key);
         if (!pose) return void d.post({ type: 'studio:motion/played', key: null });
-        play = { key: msg.key, motion: structuredClone(msg.motion), base: structuredClone(pose), t0: win.performance.now() };
+        play = { key: msg.key, motion: structuredClone(msg.motion), base: structuredClone(pose), t0: nativeNow() };
         if (shown?.key === msg.key && msg.motion.path?.length) shown = { key: msg.key, motion: structuredClone(msg.motion) };
         d.markDirty();
       }
     },
     frame() {
       if (play) {
-        const t = (win.performance.now() - play.t0) / 1000;
+        const t = (nativeNow() - play.t0) / 1000;
         const at = motionAt(play.motion, t)                                                         ;
         const b = play.base;
         const pose       = { ...b, p: at.off ? b.p.map((v, i) => v + (at.off [i] ?? 0)) : b.p.slice() };
@@ -11716,6 +11738,7 @@ __defs[35] = function (__exports) {
 // changes back. Pointer gestures and handles are attached by input.ts.
 const { UI } = __require(13);
                                              
+const { nativeNow } = __require(0);
 const { withRules } = __require(23);
 const { withEdits } = __require(24);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(26);
@@ -11745,6 +11768,16 @@ const { createMotionView } = __require(34);
                                      
                                                                                                                             
                         
+     
+                                                                                                                    
+                                                                                                                    
+                                                                                                                   
+                                                                                                                        
+                                                                                                
+     
+                   
+                                                                                                        
+                                 
  
 
                          
@@ -12073,11 +12106,11 @@ function createEditor(deps            )         {
     }
     // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
     adapter.view.restore(from);
-    const t0 = win.performance.now();
+    const t0 = nativeNow();
     let done = 0;
     const tick = () => {
       if (gen !== panGlide || !state.editing) return;
-      const t = Math.min(1, (win.performance.now() - t0) / GLIDE_MS);
+      const t = Math.min(1, (nativeNow() - t0) / GLIDE_MS);
       const e = 1 - (1 - t) ** 3;
       adapter.view.pan(total[0] * (e - done), total[1] * (e - done));
       done = e;
@@ -12128,7 +12161,7 @@ function createEditor(deps            )         {
     state.group = state.selected ? [state.selected] : [];
     if (state.selected && focus) {
       focusIfHidden(state.selected);
-      listPick = { key: state.selected, at: win.performance.now() };
+      listPick = { key: state.selected, at: nativeNow() };
     } else {
       panGlide = 0;
       listPick = null;
@@ -12471,7 +12504,9 @@ function createEditor(deps            )         {
       // input is attached (below).
       const early = deps.earlyTaps?.take() ?? null;
       const earlyKey = early ? (tappableAt(adapter, state.items, win, early.x, early.y, early.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null) : null;
-      if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
+      // Paused in Play: the view the person paused on (three.js begin() stands the edit camera where the player's was).
+      if (deps.paused) { /* keep it */ }
+      else if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
       else {
         // The opening view: the game's own camera when the adapter has one (three.js, polish pass 2026-10-16),
         // else everything in frame. Told to the shell at once, so a reload opens on it too (the three.js state
@@ -12507,8 +12542,9 @@ function createEditor(deps            )         {
       toolHost.announce();
       paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
-      const watching = watchGame();
-      if (!checked) {
+      // Paused in Play: the game stays still (no watch) and no check (see EditorDeps.paused).
+      const watching = deps.paused ? Promise.resolve() : watchGame();
+      if (!checked && !deps.paused) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
         checked = true;
@@ -12551,7 +12587,8 @@ function createEditor(deps            )         {
     const inPost = (m               ) => {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
-    input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true) });
+    input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
+      ...(deps.paused ? { passKeyUp: true } : {}), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -12644,7 +12681,7 @@ function createEditor(deps            )         {
             // The one exception: a list pick's own card made the sheet rise within 1 s of the pick. That is still
             // "show me what I picked from the list" (the same slide-if-hidden), not the sheet moving the camera.
             const lp = listPick;
-            if (grew && lp && lp.key === state.selected && win.performance.now() - lp.at < 1000) {
+            if (grew && lp && lp.key === state.selected && nativeNow() - lp.at < 1000) {
               listPick = null;
               win.setTimeout(() => {
                 if (state.selected === lp.key) focusIfHidden(lp.key);
@@ -12953,6 +12990,8 @@ const PATHS                         = {
   stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
   // Pause while playing (2026-10-22): two bars, filled like play / stop.
   pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
+  // Pause-move (2026-10-22): the strip's own Move sign (bridge/handles.ts), four ways out of the middle.
+  move: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
   // The AI: a four-point spark.
   spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
   more: 'o 5 10|o 10 10|o 15 10',
@@ -13556,6 +13595,11 @@ button.b .k { opacity: .55; font-weight: 500; margin-left: 6px; font-size: 11px;
                                                                                 
                  
                  
+     
+                                                                                                                   
+                                                                                                
+     
+                                                                                                 
  
 
                        
@@ -13597,7 +13641,15 @@ function createChat(o             )       {
   resumeBtn.type = 'button';
   resumeBtn.dataset.action = 'pause-resume';
   resumeBtn.addEventListener('click', () => o.resume());
-  top.append(title, resumeBtn);
+  // "Move" left of Resume: the panel's one other way, so both are where the eye already is (design.md §5).
+  const moveBtn = o.move ? (el('button', 'b', '')                     ) : null;
+  if (moveBtn && o.move) {
+    moveBtn.type = 'button';
+    moveBtn.dataset.action = 'pause-move';
+    const m = o.move;
+    moveBtn.addEventListener('click', () => m.toggle());
+  }
+  top.append(title, ...(moveBtn ? [moveBtn] : []), resumeBtn);
   const talk = el('div', 'talk');
   talk.setAttribute('aria-live', 'polite');
   const form = el('form', '');
@@ -13619,7 +13671,7 @@ function createChat(o             )       {
     sendFailed = false;
     sendBtn.disabled = !input.value.trim() || sending;
   });
-  panel.append(top, talk, form);
+  panel.append(top, talk, form, ...(o.move ? [o.move.card] : []));
 
   function submit(text        ) {
     const t = text.trim();
@@ -13635,12 +13687,30 @@ function createChat(o             )       {
   }
 
   function render() {
-    veil.hidden = !open;
+    const moving = !!o.move?.on();
+    // Moving: no veil (the objects are what the person looks at, and the presses go to them) and the card in the
+    // talk's place. The talk is kept as it was for "Chat".
+    veil.hidden = !open || moving;
     panel.hidden = !open;
+    panel.classList.toggle('moving', moving);
     if (!open) return;
     // Words only: a 12 px ❚❚ before "Paused" read as a stray mark (design pass, 2026-10-22).
     head.textContent = w('paused');
-    seesEl.textContent = sees;
+    // Moving: the line under "Paused" says what to do (the card says what happened to the picked one).
+    seesEl.textContent = moving ? w('movePick') : sees;
+    talk.hidden = moving;
+    form.hidden = moving;
+    if (o.move) o.move.card.hidden = !moving;
+    if (moveBtn) {
+      moveBtn.replaceChildren();
+      const ic = el('span', 'ic');
+      ic.append(icon(moving ? 'spark' : 'move'));
+      moveBtn.append(ic, o.doc.createTextNode(moving ? w('talk') : w('move')));
+      moveBtn.title = moving ? w('talkTip') : w('moveTip');
+      moveBtn.setAttribute('aria-pressed', String(moving));
+      // Nothing to move with (no adapter found for this game): no button that would do nothing.
+      moveBtn.hidden = !moving && !o.move .can();
+    }
     resumeBtn.replaceChildren(o.doc.createTextNode(w('resume')), el('span', 'k', 'P'));
     resumeBtn.title = w('resumeTip');
     input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : w('chatPlaceholder');
@@ -13749,6 +13819,382 @@ __def(__exports, "createChat", () => createChat);
 };
 __defs[41] = function (__exports) {
 'use strict';
+// play-move.ts
+
+// Move things where the game stopped (pause stage 2, 2026-10-22: "stop in the middle of the game and move things").
+//
+// The person paused ▶ Play (play-pause.ts) and pressed "Move" in the pause panel (or M). The editor's own editor
+// (editor.ts, the one Edit uses) wakes up INSIDE the paused game page: the same pick, the same orange outline, the same
+// strip under the object (move · height · turn · size), the same snap onto surfaces. Everything stays where it was at
+// the pause — the camera too: the view is the player's, not the edit camera (EditorDeps.paused).
+//
+// What happens after (design.md §5):
+//   - Resume: the game goes on from where things now stand (the objects themselves were moved; nothing to apply).
+//   - "Put in layout": that object's place goes to the editor as a move made in Edit would (studio:placement/moved,
+//     with `end` and `from`) — an unsaved change like any other: Save · N counts it, the draft carries it, ▶ Play asks
+//     "Save and play / Try without saving" about it next time, and Edit shows it. Nothing else does that: a place not
+//     put in the layout lives only in this play ("Only in this play") and is gone when the game opens again.
+//   - What the game moves itself — an enemy, a bullet, a boat the game sails, a motion given in Edit — says "Just for
+//     this moment" and has no "Put in layout": its place now is a point in the middle of a run, and kept, the next
+//     start would put it there (and the game would move it away again at once). Found by comparing where each object
+//     is at the pause with where it was when Play started (or where the person last left it): anything that moved by
+//     itself in between, anything the game made since (not there at the start), and anything the draft's motions move.
+//   - "Put back": where it was at the pause.
+//
+// WHY not the editor page's own Edit mode (send the shell to Edit): Edit opens a new game page — the moment (the enemy
+// mid-jump, the ball in the air) would be gone, which is the whole point of pausing. And the game can be full screen,
+// where only its own page shows: so the card lives in the pause panel, in the game page, like the chat.
+//
+// WHY nothing of the editor's chatter reaches the editor page: its messages are Edit's (core/ready says "editing",
+// view-state would replace the edit camera kept for Edit, core/key would run the editor's shortcuts — P there is ▶
+// Play). Only "Put in layout" goes out, as the one message Edit itself sends for a move.
+                                                                                                                       
+const { UI } = __require(13);
+                                             
+                                                    
+const { createEditor } = __require(35);
+const { drivenBetween } = __require(33);
+
+/** One pose as observe.ts compares them (it reads only key and pose). */
+const one = (key        , pose      ) => [{ key, pose }                   ];
+
+/** Why an object can only be moved for this moment (null = it can go in the layout). */
+                                                         
+
+/**
+ * The pure part (test/pause.test.ts): can this object's place go in the layout? `start` = the poses when Play started
+ * (after the editor's draft was shown), `mine` = where the person left objects in an earlier pause of this play (the
+ * game did not move those: the person did), `moving` = the keys the draft's motions move, `now` = its pose at the pause.
+ */
+function momentWhy(key        , now      , start                   , mine                   , moving             , dim             )            {
+  if (moving.has(key)) return 'motion';
+  const was = mine.get(key) ?? start.get(key);
+  if (!was) return 'new';
+  return drivenBetween(one(key, was), one(key, now), dim).size ? 'game' : null;
+}
+
+/** Two poses the same, as the editor counts it (observe.ts' smallest change). */
+function samePose(a                  , b                  , dim             )          {
+  if (!a || !b) return a === b;
+  return !drivenBetween(one('k', a), one('k', b), dim).size;
+}
+
+/** "X 8.5 · Y 0.0 · Z 9.6" (3D, metres) / "X 120 · Y 40" (2D, px): the card's numbers, as Edit's card rounds them. */
+function poseWords(p      , dim             )         {
+  // `+ 0` after rounding: no "-0.0" for a height a hair under the ground.
+  const n = (v                    ) => (dim === '3d' ? (Math.round((v ?? 0) * 10) / 10 + 0).toFixed(1) : String(Math.round(v ?? 0) + 0));
+  return dim === '3d' ? `X ${n(p.p[0])} · Y ${n(p.p[1])} · Z ${n(p.p[2])}` : `X ${n(p.p[0])} · Y ${n(p.p[1])}`;
+}
+
+const MOVE_CSS = `
+.chat .card { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.chat .card .name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat .card .nums { color: rgba(255,255,255,.55); font: 500 12px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.chat .card .why { color: rgba(255,255,255,.7); line-height: 1.45; }
+.chat .card .why b { font-weight: 600; color: #f4f4f6; }
+.chat .card .acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.chat .card .hint { color: rgba(255,255,255,.55); font-size: 12px; line-height: 1.45; }
+/* "Put in layout" is the person's own hand (orange, as Edit's outline and Save), not the AI's violet. */
+.chat .card button.b.keep { background: #ff6b1a; color: #fff; }
+.chat .card button.b.keep:hover { background: #ff7d36; }
+button.b.on { background: rgba(255,255,255,.22); }
+button.b .ic { display: inline-grid; vertical-align: -2px; margin-right: 6px; }
+button.b .ic svg { width: 14px; height: 14px; }
+`;
+
+                                  
+                                  
+             
+                     
+                                                                                   
+                                      
+                                                                                                      
+                              
+                                                             
+                                   
+                                                                                                              
+                           
+                   
+                                  
+                         
+                                                                      
+                                  
+                                                                     
+                                
+                                                
+                      
+ 
+
+                           
+                                                     
+                       
+                                 
+                             
+                                                                                                
+                    
+                                                                                               
+                   
+                                                                     
+               
+                                                                                              
+                  
+                                   
+                 
+ 
+
+function createPlayMove(o                 )           {
+  const { win, el, w } = o;
+  let editor                = null;
+  let editorOf                       = null;
+  let on = false;
+  // Play's start, the person's own places, and the motions (see momentWhy).
+  let start                           = null;
+  const mine = new Map              ();
+  let moving = new Set        ();
+  // This pause: each object's pose at the pause and why it is "this moment only" (computed once per pause, before any
+  // drag), the objects moved since, and what went in the layout (its pose then).
+  let atPause                           = null;
+  let why = new Map                   ();
+  const kept = new Map              ();
+  let pick                = null;
+  const items = new Map              ();
+  let insetSig = '';
+
+  const list = (a               )         => {
+    try {
+      return a.list();
+    } catch {
+      return [];
+    }
+  };
+  // Where everything was when Play started: once the draft is shown and the game lists its objects (looked for every
+  // 150 ms for up to ~30 s after the first frame: a big scene on a slow machine lists late — Lantern Cove in the
+  // headless test's software GL took more than the 5 s showFileEditsInPlay waits). A pause before that takes the
+  // pause's own list.
+  void o.arranged.then(async (keys) => {
+    moving = new Set(keys);
+    await o.core.time.firstFrame();
+    for (let i = 0; i < 200 && !start && !atPause; i++) {
+      const a = o.adapter();
+      const l = a ? list(a) : [];
+      if (l.length) {
+        if (!atPause) start = new Map(l.map((it) => [it.key, it.pose]         ));
+        return;
+      }
+      await new Promise((r) => win.setTimeout(r, 150));
+    }
+  }).catch(() => {});
+
+  const card = el('div', 'card');
+  card.dataset.part = 'pause-move-card';
+
+  const dimOf = () => editorOf?.dim ?? '3d';
+  const poseNow = (key        )                   => {
+    const a = editor?.driven;
+    if (!a) return undefined;
+    return list(a).find((i) => i.key === key)?.pose;
+  };
+
+  /** The editor's messages: the card follows the pick and the moves; nothing goes to the editor page. */
+  const fromEditor = (m               ) => {
+    if (m.type === 'studio:placement/selected') {
+      pick = m.key;
+      if (m.item) items.set(m.item.key, m.item);
+      draw();
+    } else if (m.type === 'studio:placement/items') {
+      for (const it of m.items) items.set(it.key, it);
+    } else if (m.type === 'studio:placement/moved') {
+      if (m.key === pick) draw();
+    } else if (m.type === 'studio:placement/moved-group') {
+      if (m.poses.some((p) => p.key === pick)) draw();
+    }
+  };
+
+  const tell = (m               ) => editor?.handle(m);
+
+  /** What the panel covers, so the strip and the camera-height buttons stay clear of it (Edit's core/ui inset). */
+  const sendInset = () => {
+    const p = o.panel();
+    if (!p || !on) return;
+    const r = p.getBoundingClientRect();
+    const W = win.innerWidth, H = win.innerHeight;
+    // A sheet across the foot (narrow screens) covers the bottom; the card at the top right covers the right.
+    const inset        = r.width > W * 0.7 ? { top: 0, right: 0, bottom: Math.max(0, Math.round(H - r.top)), left: 0 } : { top: 0, right: Math.max(0, Math.round(W - r.left)), bottom: 0, left: 0 };
+    const sig = JSON.stringify(inset);
+    if (sig === insetSig) return;
+    insetSig = sig;
+    tell({ type: 'studio:core/ui', handlePx: o.handlePx(), theme: 'dark', inset });
+  };
+
+  function button(cls        , text        , tip        , action        , fn            ) {
+    const b = el('button', `b ${cls}`.trim(), text)                     ;
+    b.type = 'button';
+    b.title = tip;
+    b.dataset.action = action;
+    b.addEventListener('click', (e) => {
+      fn();
+      // Pressed with the mouse or a finger: the keys go back to the game page (the editor's M / T / arrows), not to the
+      // panel. From the keyboard (Enter on it: detail 0) the focus stays.
+      if (e.detail > 0) b.blur();
+    });
+    return b;
+  }
+
+  function putInLayout(key        ) {
+    const pose = poseNow(key);
+    if (!pose) return;
+    // `from`: where the editor page has it now (what Undo in Edit goes back to) — the last place put in the layout in
+    // this play, else Play's start (the draft and the code, as the game opened).
+    const from = kept.get(key) ?? start?.get(key) ?? atPause?.get(key);
+    o.post({ type: 'studio:placement/moved', key, pose, end: true, ...(from ? { from } : {}) });
+    kept.set(key, pose);
+    draw();
+  }
+  function putBack(key        ) {
+    const to = atPause?.get(key);
+    if (!to) return;
+    tell({ type: 'studio:placement/pose', key, pose: to });
+    // Put in the layout during this pause: the layout goes back with it (to the editor page, one more move — its Undo
+    // in Edit steps through both).
+    const k = kept.get(key);
+    if (k && !samePose(k, to, dimOf())) {
+      o.post({ type: 'studio:placement/moved', key, pose: to, end: true, from: k });
+      kept.delete(key);
+    }
+    draw();
+  }
+
+  function draw() {
+    card.replaceChildren();
+    if (!on) return;
+    const key = pick;
+    if (!key) {
+      card.append(el('div', 'hint', w('moveHow')));
+      done();
+      return;
+    }
+    const it = items.get(key);
+    const pose = poseNow(key) ?? it?.pose;
+    const dim = dimOf();
+    card.append(el('div', 'name', it?.label || key));
+    if (pose) card.append(el('div', 'nums', poseWords(pose, dim)));
+    const moved = !!pose && !samePose(pose, atPause?.get(key), dim);
+    const acts = el('div', 'acts');
+    const reason = why.get(key) ?? null;
+    if (reason) {
+      const p = el('div', 'why');
+      p.dataset.part = 'pause-move-moment';
+      p.append(el('b', '', w('moveMoment')), o.win.document.createTextNode(' · ' + w('moveMomentWhy')));
+      card.append(p);
+    } else {
+      const inLayout = !!pose && kept.has(key) && samePose(kept.get(key), pose, dim);
+      if (inLayout) {
+        const p = el('div', 'why', w('moveIn'));
+        p.dataset.part = 'pause-move-in';
+        card.append(p);
+      } else if (moved) {
+        const p = el('div', 'why', w('moveOnly'));
+        p.dataset.part = 'pause-move-only';
+        card.append(p);
+        acts.append(button('keep', w('toLayout'), w('toLayoutTip'), 'pause-to-layout', () => putInLayout(key)));
+      } else card.append(el('div', 'hint', w('moveHow')));
+    }
+    if (moved) acts.append(button('', w('putBack'), w('putBackTip'), 'pause-put-back', () => putBack(key)));
+    if (acts.childNodes.length) card.append(acts);
+    done();
+  }
+  /** The panel drawn with the new card, then what it covers now (a phone's sheet grows with the card: the strip under
+   * the pick must stay above it — measured before the card was drawn, the strip sat under the sheet's top). */
+  function done() {
+    o.changed();
+    sendInset();
+  }
+
+  return {
+    get on() {
+      return on;
+    },
+    card,
+    picked: () => !!pick,
+    start() {
+      if (on) return true;
+      const a = o.adapter();
+      if (!a) return false;
+      if (!editor || editorOf !== a) {
+        editorOf = a;
+        // The world only: the game's HTML UI is not moved from a pause (it is laid out by the page, not by a moment).
+        editor = createEditor({ adapter: a, ui: null, core: o.core, win, post: fromEditor, rules: o.rules, tools: [], paused: true, ignore: o.ignore });
+        // For tests (test/studio-pause.browser.mjs), like `_debug` in Edit and `_play`: where an object is on screen,
+        // what is right under a point, and why it is "this moment only". Not enumerable, nothing else uses it.
+        const api = (win                                        ).__gameStudio;
+        const ed = editor;
+        if (api && !Object.prototype.hasOwnProperty.call(api, '_move')) {
+          Object.defineProperty(api, '_move', {
+            value: Object.freeze({
+              anchor: (k        ) => ed.driven.anchor(k),
+              // `r`: the pick's own slack (UI.pickRadiusMouse / Touch) to ask what a press there picks; 0 = right under it.
+              under: (x        , y        , r = 0) => { try { return ed.driven.pickNear(x, y, r)[0] ?? null; } catch { return null; } },
+              list: () => list(ed.driven),
+              why: (k        ) => why.get(k) ?? null,
+            }),
+            enumerable: false,
+          });
+        }
+      }
+      // Once per pause, before any drag: each object's pose now, and which ones the game moves itself.
+      if (!atPause) {
+        const now = list(a);
+        atPause = new Map(now.map((i) => [i.key, i.pose]         ));
+        if (!start) start = new Map(atPause);
+        why = new Map(now.map((i) => [i.key, momentWhy(i.key, i.pose, start , mine, moving, a.dim)]         ));
+      }
+      on = true;
+      insetSig = '';
+      tell({ type: 'studio:core/lang', lang: o.lang() });
+      tell({ type: 'studio:core/config', config: o.config() });
+      tell({ type: 'studio:core/edit', on: true });
+      sendInset();
+      draw();
+      return true;
+    },
+    stop() {
+      if (!on) return;
+      tell({ type: 'studio:placement/select', key: null });
+      tell({ type: 'studio:core/edit', on: false });
+      on = false;
+      pick = null;
+      draw();
+    },
+    resumed() {
+      // What the person moved stays theirs: the next pause does not take it for the game's own motion.
+      if (atPause && editorOf) {
+        for (const it of list(editorOf)) {
+          const was = atPause.get(it.key);
+          if (why.get(it.key) || !was || samePose(was, it.pose, editorOf.dim)) continue;
+          mine.set(it.key, it.pose);
+        }
+      }
+      atPause = null;
+      why = new Map();
+    },
+    render: () => draw(),
+  };
+}
+
+/** The strip's button size when the editor page did not say (play/on handlePx): Edit's, bigger for a finger. */
+function defaultHandlePx(win        )         {
+  return win.matchMedia && win.matchMedia('(pointer: coarse)').matches ? UI.handlePxPhone : UI.handlePx;
+}
+
+__def(__exports, "momentWhy", () => momentWhy);
+__def(__exports, "samePose", () => samePose);
+__def(__exports, "poseWords", () => poseWords);
+__def(__exports, "MOVE_CSS", () => MOVE_CSS);
+__def(__exports, "createPlayMove", () => createPlayMove);
+__def(__exports, "defaultHandlePx", () => defaultHandlePx);
+};
+__defs[42] = function (__exports) {
+'use strict';
 // play-ask.ts
 
 // Ask your AI while you play (CONTRACT.md §3.5, 2026-10-20: "develop while you play, full screen").
@@ -13771,13 +14217,16 @@ __defs[41] = function (__exports) {
 // the corner mark is there for every keyboard and for touch.
 //
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
-                                                                                                                             
+                                                                                                                                         
 const { isStudioMessage } = __require(13);
 const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(36);
 const { icon } = __require(37);
 const { shootPage } = __require(38);
 const { createPauseHold, isPauseKey } = __require(39);
 const { CHAT_CSS, createChat } = __require(40);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(41);
+                                             
+                                                    
 
                                  
                                   
@@ -13786,6 +14235,8 @@ const { CHAT_CSS, createChat } = __require(40);
                                
                                                                                                               
                      
+                                                                                                                  
+                                                                         
  
 
 // ---------------------------------------------------------------------------
@@ -13974,7 +14425,7 @@ button.b:focus-visible, .mark:focus-visible { outline: 2px solid #8b7cff; outlin
    so the button follows the mark when it grows (hover) or shrinks (after 5 s). */
 .corner { position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; gap: 8px; pointer-events: none; }
 .corner .mark { position: static; }
-` + CHAT_CSS;
+` + CHAT_CSS + MOVE_CSS;
 
                                     
 
@@ -14032,6 +14483,11 @@ function startPlayAsk(o                )       {
   // Pause (2026-10-22): the corner's ❚❚, the chat over the paused game, and what the first message of a pause carries.
   let pauseBtn                           = null;
   let chat              = null;
+  // Stage 2: moving things while paused (the editor in the paused page, its card in the panel), and what play/on gave it.
+  let move                  = null;
+  let moveConfig                    = null;
+  let moveHandlePx = 0;
+  let lang              = 'en';
   let pausedMoment                       = null;
   let chatId = '';
   // Which field is waiting for play/sent: the ✦ field's, or the chat's.
@@ -14087,6 +14543,9 @@ function startPlayAsk(o                )       {
     if (host) return;
     host = doc.createElement('game-studio-play');
     host.setAttribute('popover', 'manual');
+    // Kept when an adapter hides the game's own HUD for editing (three.js hideOverlays, data-studio-keep): moving things
+    // while paused (play-move.ts) wakes the editor, and this overlay holds its panel.
+    host.setAttribute('data-studio-keep', '');
     // The popover's own box: invisible and click-through; only the parts inside take the pointer.
     host.style.cssText = 'all:initial;position:fixed;inset:0;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;background:transparent;overflow:visible;pointer-events:none;z-index:2147483647;';
     root = host.attachShadow({ mode: 'open' });
@@ -14132,11 +14591,21 @@ function startPlayAsk(o                )       {
       pauseBtn.dataset.part = 'pause-button';
       pauseBtn.append(icon('pause'));
       pauseBtn.addEventListener('click', () => void pauseNow());
+      if (o.move) {
+        const mv = o.move;
+        move = createPlayMove({
+          win, core: mv.core, rules: mv.rules, arranged: mv.arranged, adapter: () => findAdapter(), post, el, w,
+          lang: () => lang, config: () => moveConfig, handlePx: () => moveHandlePx || defaultHandlePx(win),
+          panel: () => (chat ? chat.parts[1]  : null), ignore: (e) => isOurs(e), changed: () => chat?.render(),
+        });
+      }
+      const m = move;
       chat = createChat({
         doc, el, w,
         send: (text, history) => void sendChat(text, history),
         resume: () => resumeNow(),
         reload: () => post({ type: 'studio:play/reload' }),
+        ...(m ? { move: { card: m.card, on: () => m.on, picked: () => m.picked(), can: () => !!findAdapter(), toggle: () => toggleMove() } } : {}),
       });
       corner.append(pauseBtn);
     }
@@ -14154,7 +14623,7 @@ function startPlayAsk(o                )       {
     (doc.body || doc.documentElement).appendChild(host);
     lift();
     // The short or the long placeholder (NARROW_PX) follows the window.
-    win.addEventListener('resize', () => render());
+    win.addEventListener('resize', () => (render(), move?.render()));
     // "Ask your AI `" for a few seconds when Play starts, then only the dot and the key: seen once, then out of the way.
     win.setTimeout(() => mark.classList.add('small'), 5000);
     render();
@@ -14171,6 +14640,21 @@ function startPlayAsk(o                )       {
   for (const type of ['keydown', 'keyup', 'keypress']         ) {
     win.addEventListener(type, (e               ) => {
       if (!words) return;
+      // Moving while paused: the keys are the editor's (M / H / T / S, arrows, Escape…) unless the chat's field has them.
+      if (hold?.paused && move?.on && !(isOurs(e) && root?.activeElement === chat?.input)) {
+        if (type === 'keydown' && isPauseKey(e, gameTyping())) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          resumeNow();
+        } else if (type === 'keydown' && e.key === 'Escape' && !move.picked()) {
+          // Escape: the editor drops its tool, then the pick; with nothing picked it takes the person back to the talk.
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          toggleMove();
+        } else if (isOurs(e)) e.stopImmediatePropagation();
+        // Anything else goes on to the editor's input (input.ts), which keeps it from the game.
+        return;
+      }
       if (isOurs(e)) {
         // The field's keys are handled here and go no further: stopping them at the window in the capture phase is
         // the only way to keep them from a game's own listeners, and it also keeps them from the field's, so Enter
@@ -14188,6 +14672,10 @@ function startPlayAsk(o                )       {
         if (isPauseKey(e, gameTyping()) || e.key === 'Escape') {
           e.preventDefault();
           resumeNow();
+        } else if (move && (e.key === 'm' || e.key === 'M' || e.code === 'KeyM') && !e.ctrlKey && !e.metaKey && !e.altKey && !gameTyping()) {
+          // M: Move (its tooltip says so), as the editor's own key for the Move tool.
+          e.preventDefault();
+          toggleMove();
         }
         return;
       }
@@ -14282,8 +14770,34 @@ function startPlayAsk(o                )       {
     post({ type: 'studio:play/paused', on: true });
     render();
   }
+  /** Move ↔ Chat in the paused panel (play-move.ts). */
+  function toggleMove() {
+    if (!move || !chat || !hold?.paused) return;
+    if (move.on) {
+      move.stop();
+      chat.render();
+      chat.input.focus({ preventScroll: true });
+      return;
+    }
+    chat.input.blur();
+    (root?.activeElement                      )?.blur();
+    if (!move.start()) return;
+    chat.render();
+    // The keys go to the page (the editor's), not to a button of the panel that kept the focus.
+    try {
+      win.focus();
+    } catch {
+      /* fine */
+    }
+  }
   function resumeNow() {
     if (!hold || !hold.paused) return;
+    // The editor goes first (its own frame loop and the adapter's edit view end), then the game runs on from where the
+    // objects now are.
+    if (move) {
+      move.stop();
+      move.resumed();
+    }
     hold.resume();
     chat?.close();
     pausedMoment = null;
@@ -14523,6 +15037,9 @@ function startPlayAsk(o                )       {
     const m = ev.data                 ;
     if (m.type === 'studio:play/on') {
       words = m.words;
+      lang = m.lang === 'ja' ? 'ja' : 'en';
+      if (m.config !== undefined) moveConfig = m.config ?? null;
+      if (typeof m.handlePx === 'number' && m.handlePx > 0) moveHandlePx = m.handlePx;
       markOn = m.mark !== false;
       // Sent again when the editor's layout changes (a phone turned, a window made narrow): only the mark changes.
       if (host) render();
@@ -14566,7 +15083,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -14705,7 +15222,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -14758,7 +15275,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -14783,8 +15300,8 @@ __defs[44] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                
-const { hasLayer, orderOfLayer } = __require(42);
-const { samePose } = __require(43);
+const { hasLayer, orderOfLayer } = __require(43);
+const { samePose } = __require(44);
 const { motionAt } = __require(19);
 
                                                                                                                                   
@@ -14946,7 +15463,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -15001,7 +15518,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -15083,7 +15600,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -15100,11 +15617,11 @@ const { adapterFromPort2D } = __require(18);
 const { findDomUi, uiAdapterFromPort } = __require(21);
 const { runSelfCheck } = __require(22);
 const { createEditor } = __require(35);
-const { startPlayAsk } = __require(41);
-const { arrangeInPlay, moveInPlay } = __require(44);
+const { startPlayAsk } = __require(42);
+const { arrangeInPlay, moveInPlay } = __require(45);
 const { applyPlacement, placementForLevel } = __require(19);
-const { pickLevel } = __require(45);
-const { watchEarlyTaps } = __require(46);
+const { pickLevel } = __require(46);
+const { watchEarlyTaps } = __require(47);
                                                     
 
                                 
@@ -15224,18 +15741,18 @@ function startBridge(opts               )       {
    * loader's own applyPlacement(document, …) (placeUi: the same offset set again, never added), the world's through the
    * page's adapter once it lists its objects.
    */
-  async function showFileEditsInPlay() {
+  async function showFileEditsInPlay()                    {
     let file                                     = null;
     try {
       const res = await fetch(new URL('placement.json', win.location.href).href, { cache: 'no-cache' });
       if (res.ok) file = await res.json();
     } catch {
-      return;
+      return [];
     }
-    if (!file || typeof file !== 'object') return;
+    if (!file || typeof file !== 'object') return [];
     // A game with levels (2026-10-22): only the level this page shows (the URL's studioLevel; none = nothing moves).
     if (Array.isArray((file                        ).levels)) file = placementForLevel(file, new URL(win.location.href).searchParams.get(LOCAL_PATHS.levelParam) || '');
-    if (!file) return;
+    if (!file) return [];
     if (file.ui && typeof file.ui === 'object') {
       try {
         await applyPlacement(win.document, { tool: 'placement', objects: {}, ui: file.ui });
@@ -15245,7 +15762,7 @@ function startBridge(opts               )       {
     }
     const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length
       || (file.motion && Object.keys(file.motion).length);
-    if (!busy) return;
+    if (!busy) return [];
     await core.time.firstFrame();
     // The game may build its scene a little after its first frame (as in edit mode): look for up to ~5 s.
     let a                       = null;
@@ -15265,12 +15782,14 @@ function startBridge(opts               )       {
       }
       await new Promise((r) => win.setTimeout(r, 150));
     }
-    if (!a) return;
+    if (!a) return [];
     const shown = arrangeInPlay(a, file);
     if (shown) console.info(`[studio] Play: ${shown} change${shown === 1 ? '' : 's'} from the editor shown (saved or not, not in the code yet)`);
     // The draft's motions (motion-gui, 2026-10-22), for the objects the page's own loader does not move.
     const moving = moveInPlay(a, file, win);
     if (moving.length) console.info(`[studio] Play: ${moving.length} motion${moving.length === 1 ? '' : 's'} from the editor played (not in the code yet)`);
+    // The keys those motions move: a pause shows them as "just for this moment" (play-move.ts).
+    return moving;
   }
 
   /**
@@ -15368,8 +15887,11 @@ function startBridge(opts               )       {
       }),
       enumerable: false,
     });
-    void showFileEditsInPlay();
-    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], ...(playClock ? { pause: { time: core.time, clock: playClock } } : {}) });
+    const arranged = showFileEditsInPlay();
+    // Pause-move (stage 2): the editor that wakes in a paused game needs the core and the game's rules, and the draft's
+    // motions (what the game page moves for the editor) to say "just for this moment" on them.
+    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins],
+      ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.
@@ -15506,7 +16028,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -15525,11 +16047,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(47);
+const { startBridge } = __require(48);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(48);
+__require(49);
 })();

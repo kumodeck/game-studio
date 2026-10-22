@@ -3,6 +3,7 @@
 // changes back. Pointer gestures and handles are attached by input.ts.
 import { UI, type BridgeToShell, type EditLayer, type GameTool, type GroupScaleMode, type Inset, type Item, type Lang, type Pose, type ShellToBridge, type StudioAdapter, type TurnAxis } from '../contract.ts';
 import type { Core } from '../core/index.ts';
+import { nativeNow } from '../core/native.ts';
 import { withRules, type RulesHolder } from '../core/rules.ts';
 import { withEdits } from '../core/edits.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift, type GroupSession } from './group.ts';
@@ -32,6 +33,16 @@ export interface EditorDeps {
   post: (msg: BridgeToShell) => void;
   /** Taps made in the game before the editor was ready (early-press.ts): the first begin picks what the last one was on. */
   earlyTaps?: EarlyTaps;
+  /**
+   * Pause-move (bridge/play-move.ts, 2026-10-22): this editor wakes inside ▶ Play while the game is paused, to move
+   * things where they stopped. Then: the view stays the player's (no saved edit view, no "everything in frame": the
+   * picture is the one the person paused on), the game is never let run (no watch of what it moves: the pause is a
+   * promise that the game stands still), no self-check (it moves an object and reads it back, for the editor's report),
+   * and key releases reach the game (input.ts passKeyUp). Absent = the editor as it always was.
+   */
+  paused?: boolean;
+  /** Pause-move: events the input must leave alone (the pause panel's own presses; input.ts ignore). */
+  ignore?: (e: Event) => boolean;
 }
 
 export interface Editor {
@@ -360,11 +371,11 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
     adapter.view.restore(from);
-    const t0 = win.performance.now();
+    const t0 = nativeNow();
     let done = 0;
     const tick = () => {
       if (gen !== panGlide || !state.editing) return;
-      const t = Math.min(1, (win.performance.now() - t0) / GLIDE_MS);
+      const t = Math.min(1, (nativeNow() - t0) / GLIDE_MS);
       const e = 1 - (1 - t) ** 3;
       adapter.view.pan(total[0] * (e - done), total[1] * (e - done));
       done = e;
@@ -415,7 +426,7 @@ export function createEditor(deps: EditorDeps): Editor {
     state.group = state.selected ? [state.selected] : [];
     if (state.selected && focus) {
       focusIfHidden(state.selected);
-      listPick = { key: state.selected, at: win.performance.now() };
+      listPick = { key: state.selected, at: nativeNow() };
     } else {
       panGlide = 0;
       listPick = null;
@@ -758,7 +769,9 @@ export function createEditor(deps: EditorDeps): Editor {
       // input is attached (below).
       const early = deps.earlyTaps?.take() ?? null;
       const earlyKey = early ? (tappableAt(adapter, state.items, win, early.x, early.y, early.type === 'mouse' ? UI.pickRadiusMouse : UI.pickRadiusTouch)[0] ?? null) : null;
-      if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
+      // Paused in Play: the view the person paused on (three.js begin() stands the edit camera where the player's was).
+      if (deps.paused) { /* keep it */ }
+      else if (viewState !== undefined && adapter.view.restore) adapter.view.restore(viewState);
       else {
         // The opening view: the game's own camera when the adapter has one (three.js, polish pass 2026-10-16),
         // else everything in frame. Told to the shell at once, so a reload opens on it too (the three.js state
@@ -794,8 +807,9 @@ export function createEditor(deps: EditorDeps): Editor {
       toolHost.announce();
       paintLayers();
       if (!loopId) loopId = core.time.raf(frame);
-      const watching = watchGame();
-      if (!checked) {
+      // Paused in Play: the game stays still (no watch) and no check (see EditorDeps.paused).
+      const watching = deps.paused ? Promise.resolve() : watchGame();
+      if (!checked && !deps.paused) {
         // Self-check once, in edit mode (3D adapters only know screen
         // positions once their edit camera exists).
         checked = true;
@@ -838,7 +852,8 @@ export function createEditor(deps: EditorDeps): Editor {
     const inPost = (m: BridgeToShell) => {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
-    input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true) });
+    input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
+      ...(deps.paused ? { passKeyUp: true } : {}), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -931,7 +946,7 @@ export function createEditor(deps: EditorDeps): Editor {
             // The one exception: a list pick's own card made the sheet rise within 1 s of the pick. That is still
             // "show me what I picked from the list" (the same slide-if-hidden), not the sheet moving the camera.
             const lp = listPick;
-            if (grew && lp && lp.key === state.selected && win.performance.now() - lp.at < 1000) {
+            if (grew && lp && lp.key === state.selected && nativeNow() - lp.at < 1000) {
               listPick = null;
               win.setTimeout(() => {
                 if (state.selected === lp.key) focusIfHidden(lp.key);

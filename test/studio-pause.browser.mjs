@@ -24,6 +24,18 @@
 //       the foot; the same button (now ▶) resumes.
 // dark  the editor in its dark look (PC and phone), paused with a reply (photos only, plus the basic checks).
 // --before <dir>: only photos of ▶ Play with an older build's editor (`skills/arrange/bin/studio-ui` of that build).
+//
+// Stage 2, moving things while paused (bridge/play-move.ts, 2026-10-22):
+// move   Lantern Cove PC: P, then Move in the panel: no veil, the card says to pick, the game still held. A still object
+//        (the cottage, the pier…) picked and dragged: it moved, the card says "Only in this play" with Put in layout
+//        and Put back, the game's frames and clock still held. Put in layout: Save · 1 in the editor's top bar.
+//        Something the game moves itself (a boat): "Just for this moment", no Put in layout; dragged, then Put back:
+//        where it was at the pause. P: the game goes on with the moved objects where they were left. Edit: the one put
+//        in the layout is there (the editor's draft), Save · 1 still.
+// move2d Firefly Ruins (Pixi 2D): the same pick, drag, Put in layout.
+// moveglow Glow Garden (three.js + HTML UI): Move, a pick and a drag.
+// movenarrow phone 390×844 (touch) and the side window 400×900, light and dark: Move from the sheet, a tap, a drag.
+// movedark PC dark: photos of the card.
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -389,6 +401,190 @@ async function darkPc() {
   }
 }
 
+// ----- stage 2: moving things while paused -----
+
+/** Objects of the paused game that can be pressed right now: on screen, clear of the panel, nothing in front of them. */
+async function movable(page, moment, mobile = false) {
+  return j(page, `JSON.stringify((() => { const m = ${GW}.__gameStudio._move; const f = ${FR}.getBoundingClientRect();
+    const c = ${Q('[data-part=pause-chat]')}.getBoundingClientRect(); const out = [];
+    for (const it of m.list()) {
+      const why = m.why(it.key); if (!!why !== ${!!moment} || it.held || it.backdrop || it.movable === false) continue;
+      const a = m.anchor(it.key); if (!a || !a.visible) continue; const [x, y] = a.center;
+      if (x < 40 || y < 70 || x > f.width - 40 || y > f.height - 90) continue;
+      if (x > c.left - 60 && x < c.right + 10 && y > c.top - 60 && y < c.bottom + 60) continue;
+      // What a press there picks (the pick's slack included: a thin lamp post in front of a sea stack picks the stack).
+      if (m.under(x, y) !== it.key || m.under(x, y, ${mobile ? 28 : 12}) !== it.key) continue;
+      out.push({ key: it.key, label: it.label, x: f.left + x, y: f.top + y, why, size: a.size, pose: it.pose });
+    }
+    return out.sort((a, b) => Math.abs(a.size - 90) - Math.abs(b.size - 90)); })())`);
+}
+const poseOf = (page, key) => j(page, `JSON.stringify(${GW}.__gameStudio._move.list().find((i) => i.key === ${JSON.stringify(key)})?.pose || null)`);
+const playPose = (page, key) => j(page, `JSON.stringify(${GW}.__gameStudio._play.list().find((i) => i.key === ${JSON.stringify(key)})?.pose || null)`);
+const gap = (a, b) => Math.hypot(...a.p.map((v, i) => v - (b.p[i] ?? 0)));
+const MOVE_UI = `JSON.stringify((() => { const r = ${OV}.shadowRoot; const q = (s) => r.querySelector(s); const card = q('[data-part=pause-move-card]');
+  const f = ${FR}.getBoundingClientRect(); const box = (e) => { if (!e || e.hidden || !e.offsetParent) return null; const b = e.getBoundingClientRect(); return { x: f.left + b.left + b.width / 2, y: f.top + b.top + b.height / 2 }; };
+  return { card: !!card && !card.hidden, text: card ? card.textContent : '', veil: !q('[data-part=pause-veil]').hidden, sees: q('.chat .sees').textContent,
+    only: !!q('[data-part=pause-move-only]'), moment: !!q('[data-part=pause-move-moment]'), inLayout: !!q('[data-part=pause-move-in]'),
+    toLayout: box(q('[data-action=pause-to-layout]')), putBack: box(q('[data-action=pause-put-back]')), move: box(q('[data-action=pause-move]')),
+    talk: !q('.chat .talk').hidden }; })())`;
+const saveCount = (page) => page.eval(`(() => { const b = [...document.querySelectorAll('[data-action=save]')].find((e) => e.offsetParent); return b ? b.textContent : ''; })()`);
+
+/** Pause, then Move (P and the panel's button, or the phone's ❚❚ and a tap). Returns the move UI. */
+async function pauseAndMove(page, layout) {
+  if (layout.mobile || layout.width < 640) {
+    const b = await j(page, `JSON.stringify((() => { const p = document.querySelector('[data-action=play-pause]').getBoundingClientRect(); return { x: p.left + p.width / 2, y: p.top + p.height / 2 }; })())`);
+    if (layout.mobile) await page.tap(b.x, b.y);
+    else await page.click(b.x, b.y);
+  } else {
+    await page.click(640, 260);
+    await keyIn(page, 'p', 'KeyP', 'p');
+  }
+  await page.waitFor(`JSON.parse(${IN.ui}).chat`, 5000);
+  const u = await j(page, MOVE_UI);
+  assert.ok(u.move, 'Move in the pause panel');
+  if (layout.mobile) await page.tap(u.move.x, u.move.y);
+  else await page.click(u.move.x, u.move.y);
+  await page.waitFor(`JSON.parse(${MOVE_UI}).card`, 5000);
+  return j(page, MOVE_UI);
+}
+
+/** Pick `o` and drag it by (dx, dy) px: the mouse, or a finger on a phone. */
+// Pick, then drag, as in Edit (a drag on an object not picked looks around). The two presses far enough apart in time
+// that they are not a double tap (which frames the object: the camera moves, the object does not).
+async function pickAndDrag(page, o, dx, dy, mobile) {
+  if (mobile) await page.tap(o.x, o.y);
+  else await page.click(o.x, o.y);
+  // Picked: the card names it.
+  await until(async () => (await j(page, MOVE_UI)).text.includes(o.label), 3000, `${o.label} picked`);
+  await sleep(800);
+  if (mobile) await page.touchDrag(o.x, o.y, o.x + dx, o.y + dy, 10);
+  else await page.mouseDrag(o.x, o.y, o.x + dx, o.y + dy, 10);
+  await sleep(400);
+}
+
+async function moveCove() {
+  console.log('move: Lantern Cove, PC 1280×800 — move things while paused');
+  const g = await open('starters/lantern-cove', LAYOUTS.pc);
+  const { root, page, shot } = g;
+  try {
+    await page.eval(IN.probe);
+    // Long enough for Play's start to be taken (play-move.ts). Then the game "moves" the barrel by itself (as a game's
+    // own code would: Lantern Cove's floats only drift when pushed), so a pause finds it moved since the start.
+    await sleep(2500);
+    await page.eval(`(() => { const sc = ${GW}.__studioThree.scenes[0]; let b = null; sc.traverse((o) => { if (!b && o.name === 'barrel') b = o; }); if (b) b.position.x += 1.2; return !!b; })()`);
+    await sleep(300);
+    let u = await pauseAndMove(page, LAYOUTS.pc);
+    assert.equal(u.veil, false, 'no veil while moving: the objects are what the person looks at');
+    assert.equal(u.talk, false, 'the card takes the talk\'s place');
+    assert.match(u.sees, ja ? /動かす物を選ぶ/ : /Pick something to move/);
+    let h = await held(page, 800);
+    assert.ok(h.frames <= 1 && h.clock === 0, `still paused with the editor up (${h.frames} frames, clock +${h.clock})`);
+    await shot('move', 'pick');
+    // A still object: moved, then put in the layout.
+    const still = (await movable(page, false))[0];
+    assert.ok(still, 'something still to move');
+    await pickAndDrag(page, still, -90, 30, false);
+    const moved = await poseOf(page, still.key);
+    // The orange outline went with it (the editor's own clock: the game's is stopped — core/native.ts nativeNow).
+    const outline = await j(page, `JSON.stringify((() => { const h = ${FR}.contentDocument.querySelector('[data-studio-ui]'); const c = h?.shadowRoot?.querySelector('.layer.sel canvas');
+      const b = c?.getBoundingClientRect(); const a = ${GW}.__gameStudio._move.anchor(${JSON.stringify(still.key)}); return b && a ? { dx: b.x + b.width / 2 - a.center[0], ax: a.center[0] } : null; })())`);
+    assert.ok(outline && Math.abs(outline.dx) < 40, `the outline is on the moved object ${JSON.stringify(outline)}`);
+    u = await j(page, MOVE_UI);
+    assert.ok(u.text.includes(still.label), `the card names it (${u.text})`);
+    assert.ok(u.only && u.toLayout && u.putBack, `"Only in this play", Put in layout, Put back (${u.text})`);
+    h = await held(page, 800);
+    assert.ok(h.frames <= 1 && h.clock === 0, `still paused after the drag (${h.frames} frames, clock +${h.clock})`);
+    assert.ok(!h.b.down.length || !h.b.down.some((k) => k !== 'p'), 'the game saw no press');
+    await shot('move', 'moved');
+    assert.equal(await saveCount(page), '', 'nothing unsaved before Put in layout');
+    await page.click(u.toLayout.x, u.toLayout.y);
+    await page.waitFor(`JSON.parse(${MOVE_UI}).inLayout`, 5000);
+    const save = await until(async () => {
+      const t = await saveCount(page);
+      return /1/.test(t) ? t : null;
+    }, 5000, 'Save · 1');
+    await shot('move', 'in-layout');
+    console.log(`  ok: ${still.label} moved and put in the layout (${save.trim()})`);
+    // Something the game moves itself: this moment only.
+    const boat = (await movable(page, true))[0];
+    if (boat) {
+      await pickAndDrag(page, boat, 70, 20, false);
+      u = await j(page, MOVE_UI);
+      assert.ok(u.moment, `"Just for this moment" on ${boat.label} (${boat.why}) ${u.text}`);
+      assert.equal(u.toLayout, null, 'no Put in layout for what the game moves');
+      await shot('move', 'moment');
+      if (u.putBack) {
+        await page.click(u.putBack.x, u.putBack.y);
+        await sleep(300);
+        const back = await poseOf(page, boat.key);
+        assert.ok(gap(back, boat.pose) < 1e-3, `Put back: where it was at the pause (${gap(back, boat.pose)})`);
+      }
+      console.log(`  ok: ${boat.label} is "just for this moment" (${boat.why})`);
+    } else console.log('  (no object the game moves was in reach to press)');
+    // Resume: the game goes on, the moved one where it was left.
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(`!JSON.parse(${IN.ui}).chat`, 5000);
+    h = await held(page, 1500);
+    assert.ok(h.frames >= 2, `the game runs again (${h.frames})`);
+    const after = await playPose(page, still.key);
+    assert.ok(gap(after, moved) < 1e-3, `after Resume ${still.label} is where it was left (${gap(after, moved)})`);
+    assert.equal(await page.eval(`!!${Q('.mark')} && !${Q('.mark')}.hidden`), true, 'the corner is back');
+    await shot('move', 'resumed');
+    // Edit: the place put in the layout is the editor's (its draft), Save · 1 still.
+    await page.eval(`document.querySelector('button.play').click()`);
+    await page.waitFor(`document.querySelector('.shell').dataset.playing === 'off' && !!${GW}?.__gameStudio?._debug`, 30000);
+    await page.waitFor(`!!${GW}.__gameStudio._debug.list().length`, 30000);
+    await sleep(800);
+    const inEdit = await j(page, `JSON.stringify(${GW}.__gameStudio._debug.list().find((i) => i.key === ${JSON.stringify(still.key)})?.pose || null)`);
+    assert.ok(gap(inEdit, moved) < 0.02, `Edit shows ${still.label} where it was put (${gap(inEdit, moved).toFixed(3)})`);
+    assert.match(await saveCount(page), /1/, 'Save · 1 in Edit');
+    const draft = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    assert.ok(draft.objects?.[still.key], 'the draft has it (placement.json)');
+    await shot('move', 'edit');
+    console.log('  ok: resumed from the moved places; Edit has the one put in the layout');
+  } finally {
+    await g.close();
+  }
+}
+
+/** One pick, drag and look at the card (2D, Glow Garden, narrow screens, dark). */
+async function moveSome(src, layout, tag, { theme = 'light', layoutIn = true } = {}) {
+  console.log(`${tag}: ${src} ${layout.width}×${layout.height} (${theme})`);
+  const g = await open(src, layout, { theme });
+  const { page, shot } = g;
+  try {
+    await page.eval(IN.probe);
+    await sleep(2000);
+    let u = await pauseAndMove(page, layout);
+    assert.equal(u.veil, false);
+    assert.ok((await held(page, 600)).frames <= 1, 'still paused');
+    await shot(tag, 'pick');
+    const o = (await movable(page, false, layout.mobile))[0] || (await movable(page, true, layout.mobile))[0];
+    assert.ok(o, 'something to move');
+    await pickAndDrag(page, o, layout.width < 640 ? -50 : -80, 30, layout.mobile);
+    const p = await poseOf(page, o.key);
+    assert.ok(gap(p, o.pose) > 0.05, `${o.label} moved (${gap(p, o.pose).toFixed(2)})`);
+    u = await j(page, MOVE_UI);
+    assert.ok(u.text.includes(o.label), `the card names it (${u.text})`);
+    assert.ok(o.why ? u.moment : u.only, `the card says what happens to it (${u.text})`);
+    assert.ok((await held(page, 600)).frames <= 1, 'still paused after the drag');
+    await shot(tag, 'moved');
+    if (layoutIn && !o.why && u.toLayout) {
+      if (layout.mobile) await page.tap(u.toLayout.x, u.toLayout.y);
+      else await page.click(u.toLayout.x, u.toLayout.y);
+      await page.waitFor(`JSON.parse(${MOVE_UI}).inLayout`, 5000);
+      await until(async () => /1/.test(await saveCount(page)), 5000, 'Save · 1');
+      await shot(tag, 'in-layout');
+    }
+    await keyIn(page, 'p', 'KeyP', 'p');
+    await page.waitFor(`!JSON.parse(${IN.ui}).chat`, 5000);
+    assert.ok((await held(page, 1500)).frames >= 2, 'resumed');
+    console.log(`  ok: ${o.label}${o.why ? ` (just for this moment: ${o.why})` : ''}`);
+  } finally {
+    await g.close();
+  }
+}
+
 async function before() {
   console.log(`before: ${BEFORE}`);
   for (const [layout, theme] of [[LAYOUTS.pc, 'light'], [LAYOUTS.pc, 'dark'], [LAYOUTS.side, 'light'], [LAYOUTS.phone, 'light'], [LAYOUTS.phone, 'dark']]) {
@@ -415,6 +611,16 @@ try {
       await narrow(LAYOUTS.phone, 'dark');
       await narrow(LAYOUTS.side, 'dark');
     }
+    if (on('move')) await moveCove();
+    if (on('move2d')) await moveSome('starters/firefly-ruins', LAYOUTS.pc, 'move-ruins');
+    if (on('moveglow')) await moveSome('examples/three-hud', LAYOUTS.pc, 'move-glow');
+    if (on('movenarrow')) {
+      for (const theme of ['light', 'dark']) {
+        await moveSome('starters/lantern-cove', LAYOUTS.phone, `move-phone${theme === 'dark' ? '-dark' : ''}`, { theme });
+        await moveSome('starters/lantern-cove', LAYOUTS.side, `move-side${theme === 'dark' ? '-dark' : ''}`, { theme });
+      }
+    }
+    if (on('movedark')) await moveSome('starters/lantern-cove', LAYOUTS.pc, 'move-pc-dark', { theme: 'dark' });
   }
 } finally {
   if (browser) await browser.close();

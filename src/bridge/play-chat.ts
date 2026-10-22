@@ -119,6 +119,11 @@ export interface ChatOptions {
   send(text: string, history: Array<{ who: 'you' | 'ai'; text: string }>): void;
   resume(): void;
   reload(): void;
+  /**
+   * Moving things while paused (stage 2, play-move.ts): "Move" in the panel's top row, and the card that takes the
+   * talk's place while it is on. Absent = no Move button (a game with no adapter to move with).
+   */
+  move?: { card: HTMLElement; on(): boolean; picked(): boolean; can(): boolean; toggle(): void };
 }
 
 export interface Chat {
@@ -160,7 +165,15 @@ export function createChat(o: ChatOptions): Chat {
   resumeBtn.type = 'button';
   resumeBtn.dataset.action = 'pause-resume';
   resumeBtn.addEventListener('click', () => o.resume());
-  top.append(title, resumeBtn);
+  // "Move" left of Resume: the panel's one other way, so both are where the eye already is (design.md §5).
+  const moveBtn = o.move ? (el('button', 'b', '') as HTMLButtonElement) : null;
+  if (moveBtn && o.move) {
+    moveBtn.type = 'button';
+    moveBtn.dataset.action = 'pause-move';
+    const m = o.move;
+    moveBtn.addEventListener('click', () => m.toggle());
+  }
+  top.append(title, ...(moveBtn ? [moveBtn] : []), resumeBtn);
   const talk = el('div', 'talk');
   talk.setAttribute('aria-live', 'polite');
   const form = el('form', '');
@@ -182,7 +195,7 @@ export function createChat(o: ChatOptions): Chat {
     sendFailed = false;
     sendBtn.disabled = !input.value.trim() || sending;
   });
-  panel.append(top, talk, form);
+  panel.append(top, talk, form, ...(o.move ? [o.move.card] : []));
 
   function submit(text: string) {
     const t = text.trim();
@@ -198,12 +211,30 @@ export function createChat(o: ChatOptions): Chat {
   }
 
   function render() {
-    veil.hidden = !open;
+    const moving = !!o.move?.on();
+    // Moving: no veil (the objects are what the person looks at, and the presses go to them) and the card in the
+    // talk's place. The talk is kept as it was for "Chat".
+    veil.hidden = !open || moving;
     panel.hidden = !open;
+    panel.classList.toggle('moving', moving);
     if (!open) return;
     // Words only: a 12 px ❚❚ before "Paused" read as a stray mark (design pass, 2026-10-22).
     head.textContent = w('paused');
-    seesEl.textContent = sees;
+    // Moving: the line under "Paused" says what to do (the card says what happened to the picked one).
+    seesEl.textContent = moving ? w('movePick') : sees;
+    talk.hidden = moving;
+    form.hidden = moving;
+    if (o.move) o.move.card.hidden = !moving;
+    if (moveBtn) {
+      moveBtn.replaceChildren();
+      const ic = el('span', 'ic');
+      ic.append(icon(moving ? 'spark' : 'move'));
+      moveBtn.append(ic, o.doc.createTextNode(moving ? w('talk') : w('move')));
+      moveBtn.title = moving ? w('talkTip') : w('moveTip');
+      moveBtn.setAttribute('aria-pressed', String(moving));
+      // Nothing to move with (no adapter found for this game): no button that would do nothing.
+      moveBtn.hidden = !moving && !o.move!.can();
+    }
     resumeBtn.replaceChildren(o.doc.createTextNode(w('resume')), el('span', 'k', 'P'));
     resumeBtn.title = w('resumeTip');
     input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : w('chatPlaceholder');

@@ -130,7 +130,8 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   function glideTo(from, to, done, stop) {
     view.set(from);
     const gen = ++glide;
-    const t0 = performance.now();
+    const now = boot.now || (() => performance.now());
+    const t0 = now();
     const MS = 600;
     const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
     const lerp = (a, b, k) => a + (b - a) * k;
@@ -138,7 +139,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
     const yawTo = from.yaw + Math.atan2(Math.sin(to.yaw - from.yaw), Math.cos(to.yaw - from.yaw));
     const step = () => {
       if (gen !== glide || !editing || (stop && stop())) return;
-      const t = Math.min(1, (performance.now() - t0) / MS);
+      const t = Math.min(1, (now() - t0) / MS);
       const k = ease(t);
       view.set({
         target: [0, 1, 2].map((i) => lerp(from.target[i], to.target[i], k)),
@@ -764,7 +765,7 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       tiltOf(o);
       tippedHere.add(o);
       scene.updateMatrixWorld(true);
-      const now = performance.now();
+      const now = boot.now ? boot.now() : performance.now();
       let c;
       if (turnPivot && turnPivot.o === o && now - turnPivot.at < 400) c = turnPivot.c;
       else {

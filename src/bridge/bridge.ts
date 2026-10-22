@@ -147,18 +147,18 @@ export function startBridge(opts: BridgeOptions): void {
    * loader's own applyPlacement(document, …) (placeUi: the same offset set again, never added), the world's through the
    * page's adapter once it lists its objects.
    */
-  async function showFileEditsInPlay() {
+  async function showFileEditsInPlay(): Promise<string[]> {
     let file: PlayFile & { ui?: unknown } | null = null;
     try {
       const res = await fetch(new URL('placement.json', win.location.href).href, { cache: 'no-cache' });
       if (res.ok) file = await res.json();
     } catch {
-      return;
+      return [];
     }
-    if (!file || typeof file !== 'object') return;
+    if (!file || typeof file !== 'object') return [];
     // A game with levels (2026-10-22): only the level this page shows (the URL's studioLevel; none = nothing moves).
     if (Array.isArray((file as { levels?: unknown }).levels)) file = placementForLevel(file, new URL(win.location.href).searchParams.get(LOCAL_PATHS.levelParam) || '');
-    if (!file) return;
+    if (!file) return [];
     if (file.ui && typeof file.ui === 'object') {
       try {
         await applyPlacement(win.document, { tool: 'placement', objects: {}, ui: file.ui });
@@ -168,7 +168,7 @@ export function startBridge(opts: BridgeOptions): void {
     }
     const busy = (file.objects && Object.keys(file.objects).length) || file.added?.length || file.removed?.length || file.order?.length
       || (file.motion && Object.keys(file.motion).length);
-    if (!busy) return;
+    if (!busy) return [];
     await core.time.firstFrame();
     // The game may build its scene a little after its first frame (as in edit mode): look for up to ~5 s.
     let a: StudioAdapter | null = null;
@@ -188,12 +188,14 @@ export function startBridge(opts: BridgeOptions): void {
       }
       await new Promise((r) => win.setTimeout(r, 150));
     }
-    if (!a) return;
+    if (!a) return [];
     const shown = arrangeInPlay(a, file);
     if (shown) console.info(`[studio] Play: ${shown} change${shown === 1 ? '' : 's'} from the editor shown (saved or not, not in the code yet)`);
     // The draft's motions (motion-gui, 2026-10-22), for the objects the page's own loader does not move.
     const moving = moveInPlay(a, file, win);
     if (moving.length) console.info(`[studio] Play: ${moving.length} motion${moving.length === 1 ? '' : 's'} from the editor played (not in the code yet)`);
+    // The keys those motions move: a pause shows them as "just for this moment" (play-move.ts).
+    return moving;
   }
 
   /**
@@ -291,8 +293,11 @@ export function startBridge(opts: BridgeOptions): void {
       }),
       enumerable: false,
     });
-    void showFileEditsInPlay();
-    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins], ...(playClock ? { pause: { time: core.time, clock: playClock } } : {}) });
+    const arranged = showFileEditsInPlay();
+    // Pause-move (stage 2): the editor that wakes in a paused game needs the core and the game's rules, and the draft's
+    // motions (what the game page moves for the editor) to say "just for this moment" on them.
+    startPlayAsk({ win, parentOrigin, probes: () => [...gameProbes, ...opts.builtins],
+      ...(playClock ? { pause: { time: core.time, clock: playClock }, move: { core, rules, arranged } } : {}) });
   }
   if (!edit || !inFrame) return;
   // A tap in the game before the editor is ready is kept for it (early-press.ts): from the very start, before the game's code.

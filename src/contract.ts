@@ -977,7 +977,12 @@ export type ShellToBridge =
    * itself (✦ in its top bar, left of Edit) and the game page draws its corner mark only in full screen; sent again
    * when the editor's layout changes. Absent = true.
    */
-  | { type: 'studio:play/on'; lang: Lang; words: Record<string, string>; mark?: boolean }
+  | { type: 'studio:play/on'; lang: Lang; words: Record<string, string>; mark?: boolean;
+      /**
+       * Pause-move (2026-10-22, bridge/play-move.ts): what the editor gives its own editor in Edit, for the one that
+       * wakes in the paused game — the game rules (.studio/studio.json: what is locked) and the strip's button size.
+       */
+      config?: GameConfig | null; handlePx?: number }
   /** The editor's ✦ was pressed (phone): open the field over the game, as ` or the corner mark do. */
   | { type: 'studio:play/open' }
   /** What the AI is doing about the play request, for the small line over the game (shell/play-ask.ts playLine). */

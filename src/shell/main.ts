@@ -2108,7 +2108,7 @@ export function start(host: StudioHost) {
     if (show) setButton(playPauseBtn, playPaused ? 'play' : 'pause', playPaused ? t('play.resume') : t('play.pause'), false, playPaused ? t('play.resumeTip') : t('play.pauseTip'));
     if (playing && playAskOn && playMark !== !phone()) {
       playMark = !phone();
-      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
+      postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
     }
     if (!show) return;
     setButton(playAskBtn, 'spark', t('play.ask'), false, t('play.askTip'));
@@ -2457,7 +2457,7 @@ export function start(host: StudioHost) {
         if (playing && !host.offline) {
           playAskOn = true;
           playMark = !phone();
-          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark });
+          postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
           sendPlayLine(true);
           renderPlayAsk();
         }
