@@ -66,11 +66,56 @@ if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad val
 return report;
 }
 const MOVING = Symbol.for('game-studio.motion');
-let motionRuns = [];
-export function stopMotion() {
-for (const r of motionRuns) r.stop = true;
-motionRuns = [];
+const known = new Map();
+const movers = new Map();
+let ticking = false;
+export function stopMotion(key) {
+if (key === undefined) {
+movers.clear();
 if (globalThis[MOVING]) globalThis[MOVING].clear();
+} else movers.delete(key);
+}
+export function playMotion(key, name) {
+const k = known.get(key);
+const clip = k && k.clips.find((c) => c && c.name === name);
+if (!clip || editing()) return false;
+start(key, { clip });
+return true;
+}
+export function clipOf(key, name) {
+const k = known.get(key);
+return (k && k.clips.find((c) => c && c.name === name)) || null;
+}
+export function clipAt(c, t) {
+const out = { p: null, r: null, s: null, done: false };
+if (!c || typeof c !== 'object' || !c.keys || typeof c.keys !== 'object') return out;
+const len = isNum(c.len) && c.len > 0 ? c.len : 1;
+let u = isNum(t) ? Math.max(0, t) : 0;
+if (c.repeat === 'loop') u %= len;
+else if (c.repeat === 'pingpong') (u %= 2 * len), (u = u > len ? 2 * len - u : u);
+else if (u >= len) (u = len), (out.done = true);
+for (const ch of ['p', 'r', 's']) out[ch] = trackAt(c.keys[ch], u, ch === 'p');
+return out;
+}
+export function trackAt(keys, u, smooth) {
+const ks = Array.isArray(keys) ? keys.filter((k) => k && isNum(k.t) && Array.isArray(k.v) && k.v.length && k.v.every(isNum)) : [];
+if (!ks.length) return null;
+const n = ks[0].v.length;
+if (ks.some((k) => k.v.length !== n)) return null;
+if (!(u > ks[0].t)) return ks[0].v.slice();
+const last = ks[ks.length - 1];
+if (u >= last.t) return last.v.slice();
+let i = 0;
+while (i < ks.length - 2 && u >= ks[i + 1].t) i++;
+const a = ks[i], b = ks[i + 1], ease = a.ease || 'ease';
+if (ease === 'step') return a.v.slice();
+let f = b.t > a.t ? (u - a.t) / (b.t - a.t) : 1;
+if (ease === 'ease') f = f * f * (3 - 2 * f);
+if (!smooth || ks.length < 3) return a.v.map((v, k) => v + (b.v[k] - v) * f);
+const p0 = i > 0 && (ks[i - 1].ease || 'ease') !== 'step' ? ks[i - 1].v : a.v;
+const p3 = i + 2 < ks.length && (b.ease || 'ease') !== 'step' ? ks[i + 2].v : b.v;
+const f2 = f * f, f3 = f2 * f;
+return a.v.map((v, k) => 0.5 * (2 * v + (b.v[k] - p0[k]) * f + (2 * p0[k] - 5 * v + 4 * b.v[k] - p3[k]) * f2 + (3 * v - p0[k] - 3 * b.v[k] + p3[k]) * f3));
 }
 export function motionAt(m, t) {
 const out = { off: null, turn: 0, done: false };
@@ -95,31 +140,58 @@ const f = lens[i] ? Math.min(1, d / lens[i]) : 0;
 out.off = pts[i].map((v, k) => v + (pts[i + 1][k] - v) * f);
 return out;
 }
-function runMotion(root, motion, n, three, report) {
-if (typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search)) return;
-const run = { list: [], stop: false };
-for (const key of Object.keys(motion)) {
-const m = motion[key], o = findByKey(root, key, three);
-const ok = m && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
-if (!o || !ok) continue;
-run.list.push({ key, o, m, p: [o.position.x, o.position.y, o.position.z], r: three ? o.rotation.y : o.rotation });
-(globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+function legacyAt(m, t, n) {
+const a = motionAt(m, t);
+return { p: a.off, r: isNum(m.spin) ? (n === 3 ? [0, a.turn, 0] : [a.turn]) : null, s: null, done: a.done };
 }
-if (!run.list.length || typeof requestAnimationFrame !== 'function') return;
-report.motion = run.list.map((e) => e.key);
-motionRuns.push(run);
-const t0 = performance.now();
+function poseAt(o, base, at, three) {
+if (at.p) three ? o.position.set(base.p[0] + at.p[0], base.p[1] + at.p[1], base.p[2] + at.p[2]) : o.position.set(base.p[0] + at.p[0], base.p[1] + at.p[1]);
+if (at.r) {
+if (three) (o.rotation.x = base.r[0] + (at.r[0] || 0)), (o.rotation.y = base.r[1] + (at.r[1] || 0)), (o.rotation.z = base.r[2] + (at.r[2] || 0));
+else o.rotation = base.r[0] + (at.r[0] || 0);
+}
+if (at.s) three ? o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1], base.s[2] * at.s[2]) : o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1]);
+}
+const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+function start(key, what) {
+movers.set(key, { ...what, t0: performance.now() });
+if (ticking || typeof requestAnimationFrame !== 'function') return;
+ticking = true;
 const tick = (now) => {
-if (run.stop) return;
-const t = Math.max(0, (now - t0) / 1000);
-for (const e of run.list) {
-const a = motionAt(e.m, t);
-if (a.off) e.o.position.set(e.p[0] + a.off[0], e.p[1] + a.off[1], three ? e.p[2] + a.off[2] : undefined);
-if (isNum(e.m.spin)) three ? (e.o.rotation.y = e.r + a.turn) : (e.o.rotation = e.r + a.turn);
+if (!movers.size) return void (ticking = false);
+for (const [key, r] of movers) {
+const k = known.get(key);
+if (!k || k.o.parent === null) {
+movers.delete(key);
+continue;
+}
+const t = Math.max(0, (now - r.t0) / 1000);
+poseAt(k.o, k.base, r.clip ? clipAt(r.clip, t) : legacyAt(r.legacy, t, k.three ? 3 : 2), k.three);
 }
 requestAnimationFrame(tick);
 };
 requestAnimationFrame(tick);
+}
+function runMotion(root, motion, n, three, report) {
+if (editing()) return;
+const list = [];
+for (const key of Object.keys(motion)) {
+const m = motion[key], o = findByKey(root, key, three);
+if (!o || !m || typeof m !== 'object') continue;
+const clips = Array.isArray(m.clips) ? m.clips.filter((c) => c && typeof c === 'object' && typeof c.name === 'string' && c.keys && typeof c.keys === 'object') : [];
+const legacy = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
+if (!clips.length && !legacy) continue;
+const base = three
+? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }
+: { p: [o.position.x, o.position.y], r: [o.rotation], s: [o.scale.x, o.scale.y] };
+known.set(key, { o, three, base, clips });
+(globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+list.push(key);
+const first = clips.find((c) => c.start === true);
+if (legacy) start(key, { legacy: m });
+else if (first) start(key, { clip: first });
+}
+if (list.length) report.motion = list;
 }
 export function placementForLevel(data, id) {
 if (!data || !Array.isArray(data.levels)) return data;

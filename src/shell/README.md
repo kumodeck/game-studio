@@ -179,8 +179,11 @@ the boss at the climax", and "when I pick something in the game, take me straigh
   and ⌘K open the Library on that object's detail (its file one press further); the camera never moves.
 `test/studio-library-use.browser.mjs`.
 
-Motion (motion-gui, 2026-10-22; CONTRACT.md §1.9): `motion-row.ts` is the card's Motion row under Size (None / Back
-and forth / Loop / Once / Spin, the speed, − n + for the points, ▶ / ■), `motion-model.ts` what is remembered (each
-object's motion now and at the last save, inside the world's `PlacementModel`; the card's helpers), `motion-wire.ts`
-the shell's side of it (one undo step per change, `motion/show` / `motion/play` to the game page, the bridge's
-`motion/changed` / `motion/played` back). 3D only in stage 1.
+The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender"; CONTRACT.md §1.9; it replaced motion-gui's card menu the same day): `timeline-panel.ts` draws the
+plate (▶ / ❚❚, the time, ● Auto key, the motion's menus, the ruler, a row per object with its keys) and reports presses;
+`timeline-wire.ts` holds its state and decides what a move, a typed number, a dragged path point or a key press does
+(auto key on: a key at the time line; off or folded: the place moves), sends `timeline/pose` / `timeline/path` to the
+game page, and gives the card its Motion row (the object's motions and "◆ Timeline"); `timeline-model.ts` is the pure
+part (keys set / moved / deleted / copied, ease, templates, the older shape read as a clip, the pose at a time with the
+loader's `clipAt`); `motion-model.ts` what is remembered (each object's motion now and at the last save, inside the
+world's `PlacementModel`, written rounded). 3D only in stage 1.

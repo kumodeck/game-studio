@@ -72,6 +72,50 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
     assert.equal(motionAt({ path: [['x']] }, 1).off, null);
   });
 
+  // The timeline's clips (studio-timeline, 2026-10-22): `start` plays at once, the others wait for playMotion.
+  test(`${label}: clips — start plays, a cue (playMotion) takes over, stopMotion(key) stops one`, async () => {
+    const s = threeScene();
+    const frames = [];
+    const keep = { raf: globalThis.requestAnimationFrame, loc: globalThis.location, now: performance.now };
+    let now = 1000;
+    performance.now = () => now;
+    globalThis.requestAnimationFrame = (cb) => frames.push(cb);
+    try {
+      globalThis.location = { search: '' };
+      const clips = [
+        { name: 'Bob', len: 2, repeat: 'pingpong', start: true, keys: { p: [{ t: 0, v: [0, 0, 0], ease: 'linear' }, { t: 2, v: [0, 2, 0] }] } },
+        { name: 'Open', len: 1, keys: { r: [{ t: 0, v: [0, 0, 0], ease: 'linear' }, { t: 1, v: [0, 1, 0] }], s: [{ t: 1, v: [2, 2, 2] }] } },
+      ];
+      const file = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: { hero: { p: [1, 0, 0] } }, motion: { hero: { clips } } };
+      const report = await applyPlacement(s.scene, file);
+      assert.deepEqual(report.motion, ['hero']);
+      now = 2000;
+      frames.shift()(now);
+      assert.deepEqual([s.marked.position.x, s.marked.position.y], [1, 1], 'the start clip: half way up at 1 s');
+      assert.equal(mod.playMotion('hero', 'Nope'), false);
+      assert.equal(mod.playMotion('hero', 'Open'), true, 'a cue');
+      now = 2500;
+      frames.shift()(now);
+      assert.equal(s.marked.rotation.y, 0.5, 'Open: half turned at 0.5 s');
+      assert.deepEqual([s.marked.position.x, s.marked.position.y], [1, 1], 'Open has no position keys: the position stays where Bob left it');
+      assert.equal(s.marked.scale.x, 2, 'a size key multiplies the size');
+      assert.equal(mod.clipOf('hero', 'Open'), clips[1]);
+      mod.stopMotion('hero');
+      frames.shift()?.(3000);
+      assert.equal(frames.length, 0, 'nothing left to run: the loop ends');
+      assert.equal(s.marked.rotation.y, 0.5, 'stopped where it was');
+      // Inside the editor nothing plays, cues included.
+      globalThis.location = { search: '?studio=edit' };
+      assert.equal(mod.playMotion('hero', 'Open'), false);
+    } finally {
+      globalThis.requestAnimationFrame = keep.raf;
+      performance.now = keep.now;
+      if (keep.loc === undefined) delete globalThis.location;
+      else globalThis.location = keep.loc;
+      mod.stopMotion();
+    }
+  });
+
   test(`${label}: motion runs from the game's frames, not inside the editor`, async () => {
     const s = threeScene();
     const frames = [];
@@ -302,8 +346,8 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
   });
 }
 
-// 12 KB since motion-gui (the `motion` part, 2026-10-22; 9 since UI stage 1, 6 before). The same limit as
-// src/server/build.mjs LOADER_LIMIT.
-test('the built loader is under 12 KB', () => {
-  assert.ok(readFileSync(BUILT).length < 12 * 1024);
+// 16 KB since the timeline (clips, playMotion, 2026-10-22; 12 since motion-gui, 9 since UI stage 1, 6 before). The
+// same limit as src/server/build.mjs LOADER_LIMIT.
+test('the built loader is under 16 KB', () => {
+  assert.ok(readFileSync(BUILT).length < 16 * 1024);
 });

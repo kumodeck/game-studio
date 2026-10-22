@@ -32,7 +32,6 @@ import { icon, setButton } from './icons.ts';
 import { tipText } from './keymap.ts';
 import { displayName, isGuessed, nameParts } from './names.ts';
 import { toneThumb } from './thumb-tone.ts';
-import { motionRow, type MotionRowDeps } from './motion-row.ts';
 
 export interface PlacementPanelDeps {
   t(key: string, vars?: Record<string, string | number>): string;
@@ -108,8 +107,11 @@ export interface PlacementPanelDeps {
   scrub?(key: string, pose: Pose, end: boolean, from: Pose): void;
   /** "Make movable" on a held ground / road / sky (Item.held 'ground', bridge/hold.ts). */
   unhold?(keys: string[]): void;
-  /** The Motion row under Size (motion-gui, 2026-10-22; motion-row.ts). Absent = no row (the UI layer, a build without it). */
-  motion?: Omit<MotionRowDeps, 't' | 'dim'>;
+  /**
+   * The Motion row under Size (motion-gui, 2026-10-22; since studio-timeline the same day: the object's motions and
+   * the button that opens the timeline, timeline-wire.ts cardRow). Absent = no row (the UI layer, a build without it).
+   */
+  motion?: (key: string) => HTMLElement[];
 }
 
 export interface PlacementPanel {
@@ -668,7 +670,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     }
     // Motion (motion-gui, 2026-10-22): how it moves by itself, one more property under its size. 3D only in stage 1
     // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
-    if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...motionRow({ ...d.motion, t: d.t, dim: d.dim }, key));
+    if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...d.motion(key));
     fine.append(fields);
     if (it.scalable && typeof it.defaultScale === 'number') {
       const target = it.defaultScale;

@@ -898,15 +898,19 @@ export type ShellToBridge =
   /** "Make movable" on a held ground / road / sky (Item.held 'ground'): the tools work on it again for this session. */
   | { type: 'studio:placement/unhold'; keys: string[] }
   /**
-   * Motion (motion-gui, 2026-10-22; CONTRACT.md §1.9): draw this object's path in the game — a dotted line from the
-   * object through its points, a dot on each that can be dragged — or nothing (`key` null, or no path). Sent whenever
-   * the picked object or its motion changes. `seed`: the motion was just given a path kind and has no point yet; the
-   * bridge picks points that are in sight (to the object's right on screen, on its own height) and answers with
-   * motion/changed `seed: true`.
+   * The timeline (studio-timeline, 2026-10-22; CONTRACT.md §1.9): put these objects at these poses — each one's place
+   * plus its clip at the playhead's time, worked out by the shell — through the copy/delete layer (no game rules, no
+   * snapping) and report nothing: a preview is not an edit. Sent on every scrub / ▶ frame, and with the places when
+   * the timeline folds (everything back where it stands).
    */
-  | { type: 'studio:motion/show'; key: string | null; motion?: Motion | null; seed?: boolean }
-  /** Play one object's motion in the frozen scene (the card's ▶), or stop (`key` null): the object goes back to its place. */
-  | { type: 'studio:motion/play'; key: string | null; motion?: Motion | null }
+  | { type: 'studio:timeline/pose'; poses: Array<{ key: string; pose: Pose }> }
+  /**
+   * The picked object's path in 3D (studio-timeline): its place `base` (parent space) and its clip's position keys
+   * (offsets from `base`, with `t` and `ease` as in the file), drawn as a curve through the points with a line down
+   * to the ground from each; `now` = the playhead's offset (a small ring), `sel` = indexes of the picked keys. `key`
+   * null = draw nothing.
+   */
+  | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean }
   /**
    * One keyboard/button step on the selected object (arrows, Q/E, PageUp/Down,
    * +/-). `hold: true` marks auto-repeat: the bridge folds a run of held steps
@@ -1064,7 +1068,8 @@ export type BridgeToShell =
    * the last has `end: true` and `from` = the pose before the gesture.
    * The shell records exactly one undo step per `end`.
    */
-  | { type: 'studio:placement/moved'; key: string; pose: Pose; end?: boolean; from?: Pose; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean }
+  /** `set` (studio-timeline): the answer to the shell's own placement/pose (undo, a typed number), not a hand's move. */
+  | { type: 'studio:placement/moved'; key: string; pose: Pose; end?: boolean; from?: Pose; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean; set?: boolean }
   /**
    * Several objects moved together (a selection of more than one). Same rules
    * as `moved`: only the last message of a gesture has `end: true`, and then
@@ -1072,12 +1077,11 @@ export type BridgeToShell =
    */
   | { type: 'studio:placement/moved-group'; poses: Array<{ key: string; pose: Pose; from?: Pose }>; end?: boolean; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean }
   /**
-   * A path point was dragged in the game (`end` false while the finger is down, true once at the release: one undo
-   * step), or the points picked for motion/show `seed`.
+   * A point of the timeline's path was dragged in the game (studio-timeline): position key `i` of the picked object's
+   * clip is now `v` (an offset from its place). `end` false while the finger is down, true once at the release (one
+   * undo step for the whole drag).
    */
-  | { type: 'studio:motion/changed'; key: string; motion: Motion; end: boolean; seed?: boolean }
-  /** The card's ▶ stopped by itself (a `once` motion arrived, a press in the game, another pick): the ▶ shows again. */
-  | { type: 'studio:motion/played'; key: string | null }
+  | { type: 'studio:timeline/point'; key: string; i: number; v: number[]; end: boolean }
   /** Answer to placement/copy: the copies made (with their poses) and the keys that could not be copied. */
   | { type: 'studio:placement/added'; items: Array<{ key: string; from: string; pose: Pose; ghost?: boolean }>; failed: string[] }
   /** `size`: the side asked for (placement/thumbs), so the editor can tell a Library tile's picture from a list row's. */
@@ -1672,22 +1676,64 @@ export interface PlacementLevel {
 }
 
 /**
- * How an object moves by itself (motion-gui, 2026-10-22; CONTRACT.md §4.1 `motion`). A path, a spin, or both.
- * The loader runs it (src/loader/studio-placement.js motionAt), the editor previews it with the same maths.
+ * How an object moves by itself (CONTRACT.md §4.1 `motion`). Since the timeline (studio-timeline, 2026-10-22): its
+ * `clips`, named motions made of keys. The older shape (motion-gui, v0.1.13: `path` / `speed` / `repeat` / `spin`) is
+ * still read — the editor turns it into one clip when it opens the file, the loader plays it as it was — and never
+ * written by the editor again. The loader runs both (src/loader/studio-placement.js clipAt / motionAt), the editor
+ * previews them with the same maths.
  */
 export interface Motion {
-  /**
-   * The points it goes through, as offsets from the object's place (its pose `p`, parent space: [x, y, z] metres in
-   * 3D, [x, y] px in 2D). The start ([0, 0, 0]) is not written. 1–32 points.
-   */
+  /** The object's named motions (1–16), each name once. */
+  clips?: MotionClip[];
+  /** v0.1.13: the points it goes through, as offsets from the object's place. The start is not written. 1–32 points. */
   path?: number[][];
-  /** Along the path: metres (3D) / px (2D) per second. */
+  /** v0.1.13: along the path, metres (3D) / px (2D) per second. */
   speed?: number;
-  /** pingpong = there and back (default), loop = back to the start and round again, once = stop at the last point. */
+  /** v0.1.13: pingpong = there and back (default), loop, once. */
   repeat?: MotionRepeat;
-  /** Turning by itself round the up axis, radians per second (3D: rotation.y, positive = anticlockwise seen from above; 2D: the angle). */
+  /** v0.1.13: turning round the up axis, radians per second. */
   spin?: number;
 }
+
+/**
+ * One named motion of an object (studio-timeline, 2026-10-22): the keys of its position / angle / size over time,
+ * as offsets from the object's place (so moving the object carries its motion along).
+ */
+export interface MotionClip {
+  /** "Open", "Spin": what the person and the AI call it (unique within the object). */
+  name: string;
+  /** Seconds (0.1–600): where a loop starts again, where a pingpong turns, where a once ends. */
+  len: number;
+  /** once (default: stays on its last pose), loop, pingpong (there and back). */
+  repeat?: MotionRepeat;
+  /** true = plays as soon as the game starts (one clip per object at most). Absent = waits for a cue (playMotion). */
+  start?: boolean;
+  /** For a clip that waits: when it should play, in the person's words, for the AI ("when the player comes near"). */
+  when?: string;
+  keys: MotionKeys;
+}
+
+/**
+ * Keys per property, in time order (1–256 each); a property with no keys is left as the game puts it.
+ *   p — added to the position ([x, y, z] m in 3D, [x, y] px in 2D)
+ *   r — added to the angles in radians ([x, y, z] in 3D: y is the card's Angle, x / z its tilt; [angle] in 2D)
+ *   s — multiplying the size ([x, y, z] in 3D, [x, y] in 2D)
+ */
+export interface MotionKeys {
+  p?: MotionKey[];
+  r?: MotionKey[];
+  s?: MotionKey[];
+}
+export type MotionChannel = keyof MotionKeys;
+
+export interface MotionKey {
+  /** Seconds from the clip's start. */
+  t: number;
+  v: number[];
+  /** How this key goes on to the next: linear (the same speed), ease (default: slow start, slow stop), step (jumps at the next key). */
+  ease?: MotionEase;
+}
+export type MotionEase = 'linear' | 'ease' | 'step';
 export type MotionRepeat = 'pingpong' | 'loop' | 'once';
 
 export interface PlacementUiEntry {

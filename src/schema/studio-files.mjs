@@ -39,7 +39,9 @@ export const LIMITS = Object.freeze({
   maxLabel: 120,
   maxPath: 300,
   maxUrl: 2000,
-  maxDepth: 8,
+  // 12 since the timeline (studio-timeline, 2026-10-22): levels → [i] → motion → key → clips → [j] → keys → p → [k] → v →
+  // [m] is 11 deep; 8 was enough for every earlier part (levels → [i] → objects → key → p → [k] is 6).
+  maxDepth: 12,
   maxOrders: 100, // sibling lists with a changed draw order (2D layers)
   maxLevels: 100, // levels of one game (2026-10-22); each has its own 500 objects, the whole file its maxBytes
   // `ui` (the game's HTML UI moved in the editor's UI layer, UI stage 1, 2026-10-19): offsets in CSS px from where the
@@ -58,7 +60,21 @@ export const LIMITS = Object.freeze({
   maxSpeed3d: 1000,
   maxSpeed2d: 100000,
   maxSpin: 100,
+  // `motion` clips (the timeline, studio-timeline 2026-10-22): 16 named motions per object, 256 keys per property, 10
+  // minutes long, angles up to ±1000 rad (a key may hold many turns: a wheel that rolls for a minute). Far beyond a
+  // door, a lift or a patrol; they stop a runaway file like the bounds above. Times round to 1 ms.
+  maxClips: 16,
+  maxClipKeys: 256,
+  minClipLen: 0.1,
+  maxClipLen: 600,
+  maxClipName: 40,
+  maxClipWhen: 200,
+  maxClipAngle: 1000,
+  stepTime: 1000,
 });
+
+/** How a key goes on to the next (contract MotionKey.ease). */
+export const MOTION_EASES = Object.freeze(['linear', 'ease', 'step']);
 
 /** The ways a motion repeats (contract Motion.repeat). */
 export const MOTION_REPEATS = Object.freeze(['pingpong', 'loop', 'once']);
@@ -406,6 +422,13 @@ function readMotion(v, dim, fail) {
       fail(where, 'must be an object');
       continue;
     }
+    // The timeline's shape (studio-timeline): clips, and nothing of the older shape beside them.
+    if (e.clips !== undefined) {
+      onlyFields(e, ['clips'], where, fail);
+      const clips = readClips(e.clips, n, bound, step, `${where}.clips`, fail);
+      if (clips.length) out[key] = { clips };
+      continue;
+    }
     onlyFields(e, ['path', 'speed', 'repeat', 'spin'], where, fail);
     const o = {};
     if (e.path !== undefined) {
@@ -443,6 +466,81 @@ function readMotion(v, dim, fail) {
     if (e.path === undefined && e.spin === undefined) fail(where, 'needs a path or a spin');
     if (o.path || o.spin !== undefined) out[key] = o;
   }
+  return out;
+}
+
+// One object's clips (the timeline, studio-timeline 2026-10-22; contract MotionClip): 1–16, names unique, at most one
+// that plays at the start, keys per property in strictly increasing time within the clip's length. Values: position
+// offsets like a pose's `p`, angles added (3D three numbers, 2D one), sizes multiplied (like a pose's `s`).
+function readClips(v, n, bound, step, where, fail) {
+  const out = [];
+  if (!Array.isArray(v) || !v.length || v.length > LIMITS.maxClips) {
+    fail(where, `must be 1 to ${LIMITS.maxClips} clips`);
+    return out;
+  }
+  const names = new Set();
+  let starts = 0;
+  v.forEach((c, i) => {
+    const at = `${where}[${i}]`;
+    if (!isObject(c)) return fail(at, 'must be an object');
+    onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'keys'], at, fail);
+    const o = {};
+    if (typeof c.name !== 'string' || !c.name.trim() || c.name.length > LIMITS.maxClipName || /[\u0000-\u001f\u007f]/.test(c.name)) fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+    else if (names.has(c.name)) fail(`${at}.name`, `"${c.name}" is used twice`);
+    else (names.add(c.name), (o.name = c.name));
+    const len = readNumber(c.len, LIMITS.minClipLen, LIMITS.maxClipLen, `${at}.len`, fail);
+    if (len !== null) o.len = round(len, LIMITS.stepTime);
+    if (c.repeat !== undefined) {
+      if (!MOTION_REPEATS.includes(c.repeat)) fail(`${at}.repeat`, `must be one of ${MOTION_REPEATS.join(', ')}`);
+      else o.repeat = c.repeat;
+    }
+    if (c.start !== undefined) {
+      if (c.start !== true) fail(`${at}.start`, 'must be true (leave it out for a clip that waits for a cue)');
+      else if (++starts > 1) fail(`${at}.start`, 'only one clip of an object plays at the start');
+      else o.start = true;
+    }
+    if (c.when !== undefined) {
+      if (typeof c.when !== 'string' || c.when.length > LIMITS.maxClipWhen) fail(`${at}.when`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
+      else if (c.start) fail(`${at}.when`, 'only for a clip that waits for a cue');
+      else o.when = c.when.replace(/[\u0000-\u001f\u007f]/g, '');
+    }
+    if (!isObject(c.keys)) {
+      fail(`${at}.keys`, 'must be an object');
+      return;
+    }
+    onlyFields(c.keys, ['p', 'r', 's'], `${at}.keys`, fail);
+    o.keys = {};
+    const widths = { p: n, r: n === 3 ? 3 : 1, s: n };
+    const range = { p: [bound, step], r: [LIMITS.maxClipAngle, LIMITS.stepAngle], s: [LIMITS.maxScale, LIMITS.stepScale] };
+    for (const ch of ['p', 'r', 's']) {
+      if (c.keys[ch] === undefined) continue;
+      const kw = `${at}.keys.${ch}`;
+      if (!Array.isArray(c.keys[ch]) || !c.keys[ch].length || c.keys[ch].length > LIMITS.maxClipKeys) {
+        fail(kw, `must be 1 to ${LIMITS.maxClipKeys} keys`);
+        continue;
+      }
+      let last = -1;
+      const ks = c.keys[ch].map((k, j) => {
+        const kat = `${kw}[${j}]`;
+        if (!isObject(k)) return fail(kat, 'must be an object'), null;
+        onlyFields(k, ['t', 'v', 'ease'], kat, fail);
+        const t = readNumber(k.t, 0, LIMITS.maxClipLen, `${kat}.t`, fail);
+        if (t !== null && len !== null && t > len + 1e-9) return fail(`${kat}.t`, 'is after the clip’s end (len)'), null;
+        if (t !== null && round(t, LIMITS.stepTime) <= last) return fail(`${kat}.t`, 'keys must be in time order, one per moment'), null;
+        if (t !== null) last = round(t, LIMITS.stepTime);
+        if (!Array.isArray(k.v) || k.v.length !== widths[ch]) return fail(`${kat}.v`, `must be ${widths[ch]} numbers`), null;
+        const [max, st] = range[ch];
+        const vals = k.v.map((x, q) => readNumber(x, -max, max, `${kat}.v[${q}]`, fail));
+        if (k.ease !== undefined && !MOTION_EASES.includes(k.ease)) return fail(`${kat}.ease`, `must be one of ${MOTION_EASES.join(', ')}`), null;
+        if (t === null || vals.some((x) => x === null)) return null;
+        const key = { t: round(t, LIMITS.stepTime), v: vals.map((x) => round(x, st)) };
+        if (k.ease !== undefined) key.ease = k.ease;
+        return key;
+      });
+      if (ks.every((k) => k)) o.keys[ch] = ks;
+    }
+    if (o.name !== undefined && o.len !== undefined) out.push(o);
+  });
   return out;
 }
 

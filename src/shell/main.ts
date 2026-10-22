@@ -60,7 +60,7 @@ import { renderSettings } from './settings-page.ts';
 import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
-import { createMotionWire } from './motion-wire.ts';
+import { createTimeline } from './timeline-wire.ts';
 import { icon, setButton } from './icons.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
@@ -233,22 +233,36 @@ export function start(host: StudioHost) {
   let model = worldModel;
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
-  // Motions (motion-gui, 2026-10-22; motion-wire.ts): the card's Motion row, the path in the game, its ▶. The world's
-  // only, one object picked, while editing.
-  const motionWire = createMotionWire({
+  // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
+  // timeline plate at the foot of the game, the path in 3D, auto key. The world's only, 3D, while editing the Scene.
+  const timeline = createTimeline({
     // A getter (integrate3, 2026-10-22): a game with levels gets a fresh worldModel per level (useLevelModel), so the
-    // wire must read the one on screen now, not the first one it was given.
+    // timeline must read the one on screen now, not the first one it was given.
     get store() {
       return worldModel.motion;
     },
     undo,
     send: (m) => send(m),
     dim: () => dim,
+    usable: () => editing && !playing && editLayer === 'world' && dim === '3d' && tool === 'placement' && page === 'tool',
     picked: () => (editing && editLayer === 'world' && group.length <= 1 ? selected : null),
+    place: (k) => worldModel.pose(k),
+    order: () => worldItems.map((i) => i.key),
+    label: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    },
+    select: (k) => selectObject(k, true),
     changed: () => {
       if (tool === 'placement' && page === 'tool') placementPanel.render();
       renderButtons();
     },
+    layout: () => placeTimeline(),
+    numbers: () => {
+      if (tool === 'placement' && page === 'tool' && selected) placementPanel.updateNumbers();
+    },
+    narrow: () => phone(),
+    t: (k, v) => t(k, v),
   });
   const listeners = new Map<string, Set<(m: BridgeToShell) => void>>();
   let placementRestored = false;
@@ -865,6 +879,24 @@ export function start(host: StudioHost) {
     send({ type: 'studio:core/ui', handlePx: handlePx(), inset, theme });
   };
   new ResizeObserver(() => sendInset()).observe(dock);
+  /**
+   * Where the timeline plate goes (studio-timeline): PC, at the foot of the game across its width, the ask bar lifted
+   * over it (--tl-h); a phone / the side window, in the dock right above the picked object's card (one stack at the
+   * thumb's reach, as the card itself). Shown only while the timeline can be used (timeline-wire.ts usable).
+   */
+  function placeTimeline() {
+    const el = timeline.el;
+    if (phone()) {
+      if (el.parentElement !== dock || el.nextSibling !== cardSlot) dock.insertBefore(el, cardSlot);
+    } else if (el.parentElement !== stage) stage.append(el);
+    timeline.render();
+    const on = !el.hidden;
+    app.dataset.timeline = on ? 'open' : 'closed';
+    const hgt = on && !phone() ? `${el.offsetHeight}px` : '0px';
+    if (app.style.getPropertyValue('--tl-h') !== hgt) app.style.setProperty('--tl-h', hgt);
+    sendInset();
+  }
+  new ResizeObserver(() => placeTimeline()).observe(timeline.el);
 
   // ----- tools -----
   const placementPanel = createPlacementPanel({
@@ -874,7 +906,8 @@ export function start(host: StudioHost) {
     hover: (keys) => editing && send({ type: 'studio:placement/hover', keys }),
     items: () => items,
     selected: () => selected,
-    pose: (k) => model.pose(k),
+    // With the timeline open, the numbers are how the object stands at the time line (its place + its motion).
+    pose: (k) => (editLayer === 'world' ? timeline.shownPose(k) : model.pose(k)),
     dim: () => dim,
     thumb: (k) => thumbs.get(k) || null,
     select: (k, add) => (add || multi ? toggleSelect(k) : selectObject(k, true)),
@@ -887,6 +920,10 @@ export function start(host: StudioHost) {
     shortcutOf: (what) => shortcutText(what),
     phone: () => phone(),
     setPose: (k, pose) => {
+      // The timeline open with auto key on: a typed number is a key at the time line (timeline-wire.ts).
+      const shown = editLayer === 'world' ? timeline.shownPose(k) : undefined;
+      if (shown && timeline.card(k, pose, shown)) return;
+      if (editLayer === 'world') pose = timeline.placeFor(k, pose);
       const from = model.pose(k);
       if (!from) return;
       if (undo.push(poseChange(k, from, pose))) applyPose(k, pose);
@@ -905,6 +942,8 @@ export function start(host: StudioHost) {
     // Dragging a number's label: live moves go straight to the game (no undo
     // step), the end of the drag is one undo step, like a handle drag.
     scrub: (k, pose, end, from) => {
+      if (editLayer === 'world' && timeline.card(k, pose, from, !end)) return;
+      if (editLayer === 'world') (pose = timeline.placeFor(k, pose)), (from = timeline.placeFor(k, from));
       if (!end) {
         model.moved(k, pose);
         send({ type: 'studio:placement/pose', key: k, pose });
@@ -924,7 +963,7 @@ export function start(host: StudioHost) {
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
-    motion: motionWire.row,
+    motion: (k) => timeline.cardRow(k),
   });
 
   // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
@@ -1142,6 +1181,8 @@ export function start(host: StudioHost) {
       if (src[0]) act('show-file-in-library', t('pal.showFileInLibrary', { file: src[0].slice(src[0].lastIndexOf('/') + 1) }), 'grid', () => openAsset(src[0]!, ctx), undefined, t('pal.libraryUseWords'));
     }
     if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), keyOf('save', mac), 'save 保存');
+    // The timeline (studio-timeline, 2026-10-22): open / fold it from here too (the card's Motion row is the other door).
+    if (editing && !playing && dim === '3d' && editLayer === 'world') act('timeline', t(timeline.isOpen() ? 'tl.fold' : 'tl.open'), 'play', () => timeline.toggle(), undefined, 'timeline keyframe animation motion animate key タイムライン キーフレーム アニメーション 動き');
     if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
     else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
     // World ⇄ UI (UI stage 1): only in a game with both.
@@ -1570,7 +1611,7 @@ export function start(host: StudioHost) {
       if (c.kind === 'pose') {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
-      } else if (c.kind === 'motion') motionWire.apply(c, dir);
+      } else if (c.kind === 'motion') timeline.apply(c, dir);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -2259,6 +2300,8 @@ export function start(host: StudioHost) {
   function applyPose(key: string, pose: Pose) {
     model.moved(key, pose);
     send({ type: 'studio:placement/pose', key, pose });
+    // The timeline open: the game shows this place + the object's motion at the time line, not the bare place.
+    if (editLayer === 'world') timeline.refresh();
     placementPanel.updateNumbers();
     renderButtons();
   }
@@ -2364,7 +2407,7 @@ export function start(host: StudioHost) {
   };
 
   function onBridge(m: BridgeToShell) {
-    if (motionWire.onMessage(m)) return;
+    if (timeline.onMessage(m)) return;
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -2621,6 +2664,8 @@ export function start(host: StudioHost) {
         }
         requestThumbs();
         renderAll();
+        // A list (a new page, a copy, a removal): the timeline shows the moving ones at the time line again.
+        timeline.refresh(true);
         if (swapping) {
           // The selection the person had, in the new game (focus: false = the camera stays put).
           const ks = keepSel;
@@ -2645,24 +2690,42 @@ export function start(host: StudioHost) {
         } else if (tool !== 'placement') switchTool('placement');
         else if (page === 'tool') placementPanel.render();
         else placementPanel.renderAsk();
-        motionWire.sync();
+        timeline.untouch();
+        timeline.render();
         break;
-      case 'studio:placement/moved':
+      case 'studio:placement/moved': {
+        // The game's echo of a pose the shell set (undo, a typed number): that pose is a place, as it always was.
+        const hand = editLayer === 'world' && !m.set;
+        if (hand) timeline.untouch();
+        // The timeline open with auto key on: the move is a key at the time line, the place stays (timeline-wire.ts).
+        if (hand && timeline.moved(m.key, m.pose, !!m.end, m.from)) {
+          if (m.key === selected) placementPanel.updateNumbers();
+          renderButtons();
+          break;
+        }
+        // Otherwise the place moves; with the timeline open, what the game shows is the place + the motion now.
+        if (hand) (m.pose = timeline.placeFor(m.key, m.pose)), m.from && (m.from = timeline.placeFor(m.key, m.from));
         model.moved(m.key, m.pose);
         if (m.end && m.from) undo.push(poseChange(m.key, m.from, m.pose));
+        if (m.end && hand) timeline.refresh();
         // A tip forward / sideways adds the card's Tilt row: draw the card again when that changes.
         if (m.key === selected && m.end && !!m.pose.t !== !!m.from?.t && tool === 'placement' && page === 'tool') placementPanel.render();
         else if (m.key === selected) placementPanel.updateNumbers();
         renderButtons();
         break;
-      case 'studio:placement/moved-group':
-        for (const e of m.poses) model.moved(e.key, e.pose);
+      }
+      case 'studio:placement/moved-group': {
+        // The timeline: those that record become keys (one undo step with the others' moves), the rest move their place.
+        const tl = editLayer === 'world' ? timeline.movedGroup(m.poses, !!m.end) : { rest: m.poses, changes: [] };
+        for (const e of tl.rest) model.moved(e.key, e.pose);
         if (m.end) {
-          undo.push({ changes: m.poses.filter((e) => e.from).map((e) => ({ kind: 'pose', key: e.key, from: e.from!, to: e.pose })) });
+          undo.push({ changes: [...tl.rest.filter((e) => e.from).map((e) => ({ kind: 'pose' as const, key: e.key, from: e.from!, to: e.pose })), ...tl.changes] });
           emit('moved', { keys: m.poses.map((e) => e.key) });
+          if (editLayer === 'world') timeline.refresh();
         }
         renderButtons();
         break;
+      }
       case 'studio:placement/added': {
         // New copies (from ⌘D / the Copy button): one undo step for all.
         // Copies the shell asked for again (redo, reopening) are already in the model.
@@ -3136,7 +3199,7 @@ export function start(host: StudioHost) {
 
   function loadGame(soft = false) {
     bridgeAlive = false;
-    motionWire.reset();
+    timeline.reset();
     // A new game page asks again (play/hello), and starts unpaused.
     playAskOn = false;
     playPaused = false;
@@ -3198,6 +3261,8 @@ export function start(host: StudioHost) {
       keySheet.hide();
       return true;
     }
+    // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
+    if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
       if (e.shift) doRedo();
       else doUndo();
@@ -3748,7 +3813,7 @@ export function start(host: StudioHost) {
     renderSheetBtn();
     // Rows may have come into view without a scroll (a kind opened, the sheet opened).
     thumbsSoon(false);
-    sendInset();
+    placeTimeline();
   }
 
   let lastLayout = `${phone()}${sideWin()}`;
@@ -3841,6 +3906,9 @@ export function start(host: StudioHost) {
     },
   };
   (window as unknown as { studioShell: StudioShellApi }).studioShell = api;
+  // The timeline's state for the screen tests (test/studio-timeline.browser.mjs): what is open, the time, the picked
+  // keys. Not part of studioShell (no promise to .studio/ui/ scripts).
+  (window as unknown as { __studioTimeline: typeof timeline }).__studioTimeline = timeline;
 
   /**
    * Load .studio/ui/studio.css and shell.js unless the URL has ?ui=off (the

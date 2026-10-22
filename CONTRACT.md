@@ -345,42 +345,41 @@ the editor offers all three with every adapter.
   made this way looks like its original but does not act like it until the
   AI adds it to the code.
 
-### 1.9 Motion (2026-10-22, motion-gui)
+### 1.9 Motion — the timeline (2026-10-22, studio-timeline; motion-gui before it)
 
-How an object moves by itself, made on its card (3D in stage 1): back and
-forth between its place and a point, round a path, along it once, or a
-spin. Saved as `motion` (§4.1); the loader runs it in the game.
+How an object moves by itself, made with keys on a time line (3D in stage 1), as in Unity's Animation window or
+Blender's Dope Sheet with auto key. Saved as `motion` with `clips` (§4.1); the loader plays it in the game.
+(motion-gui, the same morning, had a card menu of kinds — back and forth, loop, once, spin — and a ▶ for one object;
+those kinds are now templates that set keys, and its file shape is still read.)
 
-- Card: a Motion row under Size (`shell/motion-row.ts`): None / Back and
-  forth / Loop / Once / Spin, the speed (m/s, °/s; drag the unit or type),
-  − n + for the path's points, ▶ / ■. Each change is one undo step
-  (`Change` kind `motion`) and one Save count per object.
-- `studio:motion/show { key, motion, seed? }` (shell → bridge): draw the
-  picked object's path (only that one) — a dotted orange line from it
-  through its points, a white dot with an orange ring on each. Sent when
-  the pick or its motion changes. `seed`: a path kind was just chosen; the
-  bridge picks the first points in sight (to the object's side on screen
-  that the card does not cover, on its height; a loop gets a square) and
-  answers `motion/changed { seed: true }`, which replaces the stand-in
-  points of the undo step just recorded.
-- A dot is dragged on the ground at its own height (`toGround`); the bridge
-  takes that press before the input layer (its window listeners are added
-  first), sends `motion/changed { end: false }` while it moves and
-  `{ end: true }` once (one undo step from before the drag).
-- `studio:motion/play { key, motion }` / `{ key: null }`: ▶ / ■. The bridge
-  keeps the object's pose and puts it at place + `motionAt(t)` each frame
-  through the copy/delete layer (no game rules: a grid snap would make it
-  jump); ■ puts the pose back exactly. Nothing is reported as moved. A press
-  elsewhere in the game, another pick, a pose / copy / delete, the end of
-  editing stop it; the bridge then sends `studio:motion/played`.
-- Positions are the parent's space and the screen maths the scene's: right
-  for objects at the top of the scene; a path inside a moved group is drawn
-  off by the group's offset (stage 2).
-- ▶ Play: the page's loader runs the draft's motions; for the keys it does
-  not (no loader, an older one) the bridge does, the same way
-  (`play-arrange.ts` `moveInPlay`). The loader lists what it moves in a
-  global set (`Symbol.for('game-studio.motion')`) so nothing moves twice.
-  Inside the editor (`studio=edit`) the loader runs none.
+- The plate (`shell/timeline-panel.ts`, state in `shell/timeline-wire.ts`, maths in `shell/timeline-model.ts`): at the
+  foot of the game (PC), in the dock above the card (phone, side window). ▶ / ❚❚, the time, ● Auto key, the picked
+  object's motion (clip) menu with `New: <template>`, Rename, Delete, its repeat and "plays at start / on a cue" (+ the
+  "when" words for the AI), the picked keys' ease, ⌄ folds. One row per object with a motion (and the picked one),
+  ▸ opens position / angle / size. Opened by the card's "◆ Timeline" (the Motion row) or ⌘K.
+- **Auto key** (on by default while the plate is open): moving / turning / resizing an object — the strip, ↑↓, a group,
+  a typed or dragged number on the card — sets a key at the time line for what changed; the object's place does not
+  move. An object without a motion, moved after 0 s, gets its first clip with a key at 0 s of how it stood. Off, or
+  the plate folded: the place moves and the motion comes along (offsets). Decided in the shell
+  (`timeline.moved` / `movedGroup` / `card` before the model sees a `placement/moved`); the bridge's drag code is
+  unchanged. A `placement/moved` with `set: true` is the bridge's echo of the shell's own `placement/pose` (undo, a
+  typed number), never a gesture.
+- Keys on the plate: press (Shift / ⌘ adds), drag a box, drag to move in time (0.05 s steps, Alt free), Delete,
+  ⌘C / ⌘V at the time line, K = a key now, Space = ▶, ← → steps the time. Those keys go to the plate only after it was
+  pressed (a press in the game gives them back to the scene). Every change is one undo step (`Change` kind `motion`,
+  the whole motion before / after) and one Save count per object.
+- `studio:timeline/pose { poses }` (shell → bridge): each moving object at its place + its clip at the time line,
+  worked out in the shell (the loader's `clipAt`), set through the copy/delete layer and reported to nobody. Folding
+  sends the places.
+- `studio:timeline/path { key, base, keys, now, sel }`: the picked object's position keys, drawn in 3D — the curve the
+  object follows (the loader's `trackAt`), its shadow at the place's height, a dashed drop from each key, a dot per key
+  (picked: orange), its time, a ring at the time line. A dot dragged moves on the ground at its height (`toGround`), or
+  up / down with Shift (px → m measured at the dot); `studio:timeline/point { key, i, v, end }` back, one undo step.
+- Positions are the parent's space and the screen maths the scene's: right for objects at the top of the scene; a path
+  inside a moved group is drawn off by the group's offset (stage 2).
+- ▶ Play: the page's loader plays the draft's start clips (and older motions); for the keys it does not (no loader, an
+  older one) the bridge does (`play-arrange.ts` `moveInPlay`). The loader lists what it moves in a global set
+  (`Symbol.for('game-studio.motion')`) so nothing moves twice. Inside the editor (`studio=edit`) the loader runs none.
 
 ### 1.10 Levels (2026-10-22)
 
@@ -939,27 +938,31 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   (`applyPlacement(document, url)` = the UI only); `report.ui = { applied,
   missing }`.
 
-- Optional (motion-gui, 2026-10-22, §1.9): objects that move by themselves,
-  by key (a game object or an `added` copy; never a `removed` key):
+- Optional (§1.9; motion-gui, then the timeline, 2026-10-22): objects that move by themselves, by key (a game object
+  or an `added` copy; never a `removed` key), each with its named motions (`clips`):
 
   ```json
   "motion": {
-    "rowboat": { "path": [[7, 0, -2]], "speed": 1.5, "repeat": "pingpong" },
-    "buoy":    { "spin": 1.5708 }
+    "rowboat": { "clips": [ { "name": "Row", "len": 4, "repeat": "pingpong", "start": true, "keys": {
+      "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 2, "v": [-3.1, 0.8, -1.2] }, { "t": 4, "v": [-6, 0, 0], "ease": "linear" }] } } ] },
+    "door": { "clips": [ { "name": "Open", "len": 1, "when": "when the player walks up to it", "keys": {
+      "r": [{ "t": 0, "v": [0, 0, 0] }, { "t": 1, "v": [0, 1.5708, 0] }] } } ] }
   }
   ```
 
-  `path` = 1–32 points as offsets from the object's place (its `p`, else
-  the code's), parent space, `dim`'s numbers; the start `[0, 0(, 0)]` is not
-  written. `speed` = units per second along it (> 0, ≤ 1000 m/s / 100 000
-  px/s; with a path only), `repeat` = `pingpong` (default) | `loop` | `once`
-  (with a path only), `spin` = rad/s round the up axis (3D `rotation.y`,
-  + = anticlockwise from above; 2D the angle; ≠ 0, |spin| ≤ 100). A path, a
-  spin or both. Rounded like poses (1 mm / 0.1 px, 1e-4 rad). Absent when
-  nothing moves: older files are byte for byte the same. The loader runs it
-  from the game's frames (`position = place + motionAt(m, t).off`, `angle +=
-  spin × t`), reports `report.motion` (keys) and exports `motionAt` and
-  `stopMotion()`.
+  `clips` = 1–16, names unique (≤ 40 characters). `len` = seconds (0.1–600): where a `loop` starts again, a
+  `pingpong` turns, a `once` (the default) ends and stays. `start: true` = plays as the game starts (one per object);
+  without it the clip waits for a cue (`playMotion`), `when` = the person's words for the AI (≤ 200). `keys.p` / `r` /
+  `s` = 1–256 keys each, in time order, one per moment, `t` ≤ `len`: `p` added to the position (3D [x, y, z] m, 2D
+  [x, y] px), `r` added to the angles (3D [x, y, z] rad — y the card's Angle, x / z its tilt; 2D [angle]; |v| ≤ 1000),
+  `s` multiplying the size. `ease` = how the key goes on to the next: `linear`, `ease` (default: slow in and out),
+  `step` (holds, then jumps). The position goes through its keys on a curve (Catmull-Rom); a `step` key breaks it.
+  Rounded like poses (1 mm / 0.1 px, 1e-4 rad and size, 1 ms). A property without keys is left as the game puts it.
+  Absent when nothing moves: older files are byte for byte the same.
+  The older shape (motion-gui, v0.1.13) is still valid and played: `path` (1–32 offsets), `speed`, `repeat`, `spin`
+  (rad/s); never next to `clips`. The editor reads it as one clip "Motion" (`start`) and writes clips at the next Save.
+  The loader plays both from the game's frames, reports `report.motion` (keys) and exports `clipAt(clip, t)`,
+  `trackAt`, `motionAt` (the older shape), `playMotion(key, name)`, `clipOf(key, name)` and `stopMotion(key?)`.
 - Optional (levels, 2026-10-22, §1.10): a game with several levels.
 
   ```json

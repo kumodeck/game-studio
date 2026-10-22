@@ -71,6 +71,9 @@ export const KEYMAP: KeyDef[] = [
   { id: 'drop', group: 'tools', keys: ['End'], dim: '3d' },
   { id: 'free', group: 'tools', keys: ['⌃', '⌥'], dim: '3d', note: 'keys.free.note' },
   { id: 'sizeStep', group: 'tools', keys: ['+', '−'] },
+  // The timeline (studio-timeline, 2026-10-22): K sets a key at the time line — Unity's key for it (Blender's is I;
+  // one letter is enough, and K reads as "key"). Only while the timeline is open.
+  { id: 'timelineKey', group: 'tools', keys: ['K'], dim: '3d', note: 'keys.timelineKey.note' },
   { id: 'play', group: 'view', keys: ['P'], label: 'btn.play' },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },

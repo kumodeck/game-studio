@@ -512,8 +512,8 @@ for example "Reload the game: the rock should be left of the house, and the seco
   changes, whichever way below the user chose: see "Copies and deletions" after the two ways.
 - `ui` and `uiView` (optional): the game's **HTML UI** (title, score, buttons) the user moved or resized in the
   editor's UI layer. See "The UI (`ui`)" after "Copies and deletions".
-- `motion` (optional): objects the user made **move by themselves** in the editor (back and forth, a loop, once, a
-  spin). See "Motion (`motion`)" after "The UI".
+- `motion` (optional): objects the user made **move by themselves** in the editor, with keys on a timeline (named
+  motions: "Open", "Row"). See "Motion (`motion`)" after "The UI".
 
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
@@ -671,54 +671,66 @@ the editor, press **U** (World | UI) and see that Save shows no unsaved count.
 
 ### Motion (`motion`)
 
-On an object's card the user can choose how it **moves by itself**: back and forth between its place and a point,
-round a path (loop), along a path once, or spinning in place. They drag the path's points in the scene and watch it
-with ▶ before saving. It is saved by key:
+The editor has a **timeline** (like Unity's Animation window or Blender's Dope Sheet): the user moves the time line,
+moves / turns / resizes an object, and a **key** is set at that moment; the object goes from key to key. An object can
+have several **named motions** (clips: "Open", "Close", "Spin"). Saved by key:
 
 ```json
 "motion": {
-  "rowboat": { "path": [[7, 0, -2]], "speed": 1.5, "repeat": "pingpong" },
-  "patrol":  { "path": [[4, 0, 0], [4, 0, -4], [0, 0, -4]], "speed": 2, "repeat": "loop" },
-  "coin":    { "spin": 3.1416 }
+  "rowboat": { "clips": [ { "name": "Row", "len": 4, "repeat": "pingpong", "start": true, "keys": {
+    "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 2, "v": [-3.1, 0.8, -1.2] }, { "t": 4, "v": [-6, 0, 0], "ease": "linear" }] } } ] },
+  "door": { "clips": [
+    { "name": "Open", "len": 1, "when": "when the player walks up to it", "keys": { "r": [{ "t": 0, "v": [0, 0, 0] }, { "t": 1, "v": [0, 1.5708, 0] }] } },
+    { "name": "Close", "len": 1, "keys": { "r": [{ "t": 0, "v": [0, 1.5708, 0] }, { "t": 1, "v": [0, 0, 0] }] } } ] }
 }
 ```
 
-- `path`: the points it goes through, as **offsets from the object's place** (its `p` in `objects`, or where the code
-  puts it when it is not there), in the parent's space: `[x, y, z]` in 3D, `[x, y]` px in 2D. The start (`[0, 0, 0]`)
-  is not written: `"path": [[7, 0, -2]]` = from its place to 7 right and 2 back, and back again.
-- `speed`: along the path, units per second. Straight lines, constant speed.
-- `repeat`: `pingpong` (there and back, forever), `loop` (from the last point straight back to the start, and round
-  again), `once` (stops at the last point).
-- `spin`: radians per second round the up axis (3D `rotation.y`, positive = anticlockwise seen from above; 2D the
-  angle, positive = clockwise). An object can have a path and a spin.
+- Every value is an **offset from the object's place** (its `p` / `r` / `s` in `objects`, or where the code puts it):
+  `p` is added to the position (`[x, y, z]` m; 2D `[x, y]` px), `r` is added to the angles (`[x, y, z]` radians, y =
+  turning round the up axis; 2D `[angle]`), `s` multiplies the size. A property with no keys is not touched.
+- `t` = seconds into the clip, `len` = the clip's length. `repeat`: `once` (default: plays, then stays on its last
+  pose), `loop`, `pingpong` (there and back). `ease` on a key = how it goes to the next one: `ease` (default: starts
+  and stops slowly), `linear`, `step` (jumps at the next key). The position goes through its keys on a smooth curve.
+- `start: true` = plays as soon as the game starts. A clip **without** `start` **waits for a cue**; `when` holds the
+  user's words for when ("when the player walks up to it").
+- An older file may still have `path` / `speed` / `repeat` / `spin` per key (the editor's first version): the loader
+  plays it too; the editor turns it into a clip at the next Save.
 
-**With the loader (Way 1)** there is nothing to write: `applyPlacement()` runs every motion from the game's own
-frames (position = place + offset; angle = its angle + spin × seconds) and returns their keys in `report.motion`;
-`stopMotion()` (exported next to it) stops them. Say so in one line ("The boat now goes back and forth. Press Play to
-see it."). Do it this way unless one of these is true:
+**With the loader (Way 1)**:
 
-- **The code already sets that object's position or angle every frame** (its own update, a physics body, a tween):
-  the two would fight. Put the motion into that code instead (below) and take the key out of `motion`.
-- The user asks for the motion in the code, or it must react to the game (stop when the player stands on it, speed
-  up per level).
+1. `start` clips need **no code**: `applyPlacement()` plays them from the game's own frames and returns their keys in
+   `report.motion`. Say so in one line ("The boat now rows back and forth. Press Play to see it.").
+2. **Cues**: for each clip without `start`, read `when`, find that moment in the game's code (the player comes near the
+   door, a button is pressed, the level begins) and add one line there:
 
-**Writing it into the code (Way 2)**, per key: in the game's update loop, with `t` = seconds since the level started
-and `base` = the object's place,
+   ```js
+   import { applyPlacement, playMotion } from './studio-placement.js';
+   // …where the moment happens:
+   playMotion('door', 'Open');   // from its first key; the clip playing on that object stops where it is
+   ```
 
-```js
-// pingpong along a path P = [[0,0,0], ...path], length L (sum of its sides), speed v:
-//   d = (v * t) % (2 * L); if (d > L) d = 2 * L - d;   then walk d along the sides of P
-// loop: P gets the start again at its end, d = (v * t) % L.   once: d = Math.min(v * t, L).
-object.position.set(base.x + off[0], base.y + off[1], base.z + off[2]);
-object.rotation.y = baseAngle + spin * t;
-```
+   No `when`? Ask the user once ("When should the door open?"), then add it. `stopMotion('door')` stops one object
+   (`stopMotion()` all of them).
+3. **The code already sets that object's position or angle every frame** (its own update, a physics body, a tween):
+   the two would fight. Use the clip in that code instead and take the key out of `motion`:
 
-(The loader's `motionAt(m, t)` is that maths, exported: `const { off, turn } = motionAt(entry, t)`.) A moving
-platform the player rides needs its velocity too (move the player with it); a physics body moves with
-`setNextKinematicTranslation` (Rapier) or the engine's kinematic setter, not by setting the mesh. Then remove the key
-from `motion`.
+   ```js
+   import { clipOf, clipAt } from './studio-placement.js';
+   const open = clipOf('door', 'Open');               // after applyPlacement
+   const a = clipAt(open, secondsSinceItStarted);      // { p, r, s, done }: offsets, null for a property without keys
+   if (a.r) door.rotation.y = baseAngle + a.r[1];
+   ```
 
-Check: ▶ Play in the editor (it plays the saved file and the draft) — the object moves as the user's ▶ showed it.
+   A moving platform the player rides needs its velocity too (move the player with it); a physics body moves with
+   `setNextKinematicTranslation` (Rapier) or the engine's kinematic setter, not by setting the mesh.
+
+**Writing it into the code (Way 2)** (the user asks for it, or there is no loader): copy the keys into an array in the
+code and interpolate between the two keys around `t` (`ease`: `f = f * f * (3 - 2 * f)`; `step`: hold the earlier
+key), adding the result to the object's place every frame; the loader's `trackAt(keys, t, smooth)` is that maths if
+you may import it. Then remove the key from `motion`.
+
+Check: ▶ Play in the editor (it plays the saved file and the draft's `start` clips) — the object moves as the user's
+timeline showed it; for a cue, do what `when` says in the game and watch it play.
 
 ### Levels (`levels`)
 

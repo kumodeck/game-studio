@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.14 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.15 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4378,15 +4378,19 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                        
      
-                                                                                                                    
-                                                                                                                      
-                                                                                                                     
-                                                                                                                
-                                 
+                                                                                                                      
+                                                                                                                     
+                                                                                                                    
+                                                          
      
-                                                                                              
-                                                                                                                              
-                                                                              
+                                                                               
+     
+                                                                                                                   
+                                                                                                                    
+                                                                                                                     
+                         
+     
+                                                                                                                                                     
      
                                                                                
                                                                                
@@ -4544,7 +4548,8 @@ const MSG_PREFIX = 'studio:';
                                                                        
                                                        
      
-                                                                                                                                                         
+                                                                                                                         
+                                                                                                                                                                        
      
                                                                               
                                                                              
@@ -4552,12 +4557,11 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                                                                                  
      
-                                                                                                                   
-                                                        
+                                                                                                                      
+                                                                                                                    
+                                   
      
-                                                                                                
-                                                                                                                        
-                                                        
+                                                                                        
                                                                                                             
                                                                                                                                   
                                                                                                                           
@@ -5152,22 +5156,64 @@ const RESULT_FILES                         = {
  
 
 /**
- * How an object moves by itself (motion-gui, 2026-10-22; CONTRACT.md §4.1 `motion`). A path, a spin, or both.
- * The loader runs it (src/loader/studio-placement.js motionAt), the editor previews it with the same maths.
+ * How an object moves by itself (CONTRACT.md §4.1 `motion`). Since the timeline (studio-timeline, 2026-10-22): its
+ * `clips`, named motions made of keys. The older shape (motion-gui, v0.1.13: `path` / `speed` / `repeat` / `spin`) is
+ * still read — the editor turns it into one clip when it opens the file, the loader plays it as it was — and never
+ * written by the editor again. The loader runs both (src/loader/studio-placement.js clipAt / motionAt), the editor
+ * previews them with the same maths.
  */
                          
-     
-                                                                                                                    
-                                                                             
-     
+                                                           
+                       
+                                                                                                                        
                     
-                                                          
+                                                                   
                  
-                                                                                                                      
+                                                                  
                         
-                                                                                                                                           
+                                                                
                 
  
+
+/**
+ * One named motion of an object (studio-timeline, 2026-10-22): the keys of its position / angle / size over time,
+ * as offsets from the object's place (so moving the object carries its motion along).
+ */
+                             
+                                                                                       
+               
+                                                                                                 
+              
+                                                                                 
+                        
+                                                                                                                      
+                  
+                                                                                                                      
+                
+                   
+ 
+
+/**
+ * Keys per property, in time order (1–256 each); a property with no keys is left as the game puts it.
+ *   p — added to the position ([x, y, z] m in 3D, [x, y] px in 2D)
+ *   r — added to the angles in radians ([x, y, z] in 3D: y is the card's Angle, x / z its tilt; [angle] in 2D)
+ *   s — multiplying the size ([x, y, z] in 3D, [x, y] in 2D)
+ */
+                             
+                  
+                  
+                  
+ 
+                                             
+
+                            
+                                       
+            
+              
+                                                                                                                                        
+                    
+ 
+                                                    
                                                         
 
                                    
@@ -6519,21 +6565,95 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
 // The keys moved by this file (any copy of it on the page): the editor's ▶ Play (bridge/play-arrange.ts) leaves them
 // alone, so an object is never moved twice. A global symbol, because the game and the editor each load their own copy.
 const MOVING = Symbol.for('game-studio.motion');
-let motionRuns = [];
+// Every object this file can move (studio-timeline, 2026-10-22): key → { o, three, base, clips, legacy }. `base` is the
+// pose after `objects` (the place every key is an offset from). What plays now is in `movers` (key → { clip | legacy,
+// t0 }); one shared frame loop runs them while there are any.
+const known = new Map();
+const movers = new Map();
+let ticking = false;
 
-/** Stop every motion started by applyPlacement (the objects stay where they are now). */
-function stopMotion() {
-  for (const r of motionRuns) r.stop = true;
-  motionRuns = [];
-  if (globalThis[MOVING]) globalThis[MOVING].clear();
+/**
+ * Stop the motion of one object (`key`), or of every object (no key). The objects stay where they are now. A stopped
+ * key stays in the "moved by the loader" set: the game took it over, the editor's Play must not start it again.
+ */
+function stopMotion(key) {
+  if (key === undefined) {
+    movers.clear();
+    if (globalThis[MOVING]) globalThis[MOVING].clear();
+  } else movers.delete(key);
+}
+
+/**
+ * Play one of an object's named motions (a clip made on the editor's timeline) from its start: the cue a game gives
+ * ("the player reached the door" → playMotion('door', 'Open')). The clip that was playing on that object stops where
+ * it is and this one takes over from its own first key. false = no such object / clip, or inside the editor.
+ */
+function playMotion(key, name) {
+  const k = known.get(key);
+  const clip = k && k.clips.find((c) => c && c.name === name);
+  if (!clip || editing()) return false;
+  start(key, { clip });
+  return true;
+}
+
+/** An object's clip by name (for a game that moves the object itself: clipAt(clipOf('door', 'Open'), seconds)). */
+function clipOf(key, name) {
+  const k = known.get(key);
+  return (k && k.clips.find((c) => c && c.name === name)) || null;
+}
+
+/**
+ * Where a clip is after `t` seconds: offsets from the object's place, per property — `p` added to the position, `r`
+ * added to the angles ([x, y, z] in 3D, [angle] in 2D), `s` multiplying the size — each null when the clip has no key
+ * for it (that property is left as it is). `done` = a `once` clip has reached its end (it stays on its last pose).
+ * Shared with the editor (the timeline's scrub and ▶, Play), so the editor and the game move the same way.
+ */
+function clipAt(c, t) {
+  const out = { p: null, r: null, s: null, done: false };
+  if (!c || typeof c !== 'object' || !c.keys || typeof c.keys !== 'object') return out;
+  const len = isNum(c.len) && c.len > 0 ? c.len : 1;
+  let u = isNum(t) ? Math.max(0, t) : 0;
+  if (c.repeat === 'loop') u %= len;
+  else if (c.repeat === 'pingpong') (u %= 2 * len), (u = u > len ? 2 * len - u : u);
+  else if (u >= len) (u = len), (out.done = true);
+  for (const ch of ['p', 'r', 's']) out[ch] = trackAt(c.keys[ch], u, ch === 'p');
+  return out;
+}
+
+/**
+ * One property's value at `u` seconds into its clip, from its keys ({ t, v, ease }, in time order). Before the first
+ * key: the first; after the last: the last. `ease` is how a key goes on to the next one: 'linear' (the same speed),
+ * 'ease' (the default: starts slowly and stops slowly), 'step' (holds, then jumps at the next key). `smooth` (the
+ * position): the way goes through the points on a curve (Catmull-Rom), not in straight lines — the shape the editor
+ * draws as the path; a 'step' key breaks the curve there.
+ */
+function trackAt(keys, u, smooth) {
+  const ks = Array.isArray(keys) ? keys.filter((k) => k && isNum(k.t) && Array.isArray(k.v) && k.v.length && k.v.every(isNum)) : [];
+  if (!ks.length) return null;
+  const n = ks[0].v.length;
+  if (ks.some((k) => k.v.length !== n)) return null;
+  if (!(u > ks[0].t)) return ks[0].v.slice();
+  const last = ks[ks.length - 1];
+  if (u >= last.t) return last.v.slice();
+  let i = 0;
+  while (i < ks.length - 2 && u >= ks[i + 1].t) i++;
+  const a = ks[i], b = ks[i + 1], ease = a.ease || 'ease';
+  if (ease === 'step') return a.v.slice();
+  let f = b.t > a.t ? (u - a.t) / (b.t - a.t) : 1;
+  if (ease === 'ease') f = f * f * (3 - 2 * f);
+  if (!smooth || ks.length < 3) return a.v.map((v, k) => v + (b.v[k] - v) * f);
+  const p0 = i > 0 && (ks[i - 1].ease || 'ease') !== 'step' ? ks[i - 1].v : a.v;
+  const p3 = i + 2 < ks.length && (b.ease || 'ease') !== 'step' ? ks[i + 2].v : b.v;
+  const f2 = f * f, f3 = f2 * f;
+  return a.v.map((v, k) => 0.5 * (2 * v + (b.v[k] - p0[k]) * f + (2 * p0[k] - 5 * v + 4 * b.v[k] - p3[k]) * f2 + (3 * v - p0[k] - 3 * b.v[k] + p3[k]) * f3));
 }
 
 /**
  * Where a motion is after `t` seconds: `off` = the offset from the object's place (null without a path), `turn` = the
- * angle added (spin × t), `done` = a `once` path has arrived. Shared with the editor (its ▶ preview and its ▶ Play), so
- * the editor and the game move the same way. Path points are offsets from the place, the start ([0, 0(, 0)]) left out;
- * constant speed along straight lines; `repeat` pingpong (default: there and back), loop (back to the start and round
- * again), once (stops at the last point).
+ * angle added (spin × t), `done` = a `once` path has arrived. The older shape of `motion` (v0.1.13: a path, a speed,
+ * a spin), still played for files saved before the timeline; the editor turns it into a clip when it opens one.
+ * Path points are offsets from the place, the start ([0, 0(, 0)]) left out; constant speed along straight lines;
+ * `repeat` pingpong (default: there and back), loop (back to the start and round again), once (stops at the last point).
  */
 function motionAt(m, t) {
   const out = { off: null, turn: 0, done: false };
@@ -6559,31 +6679,70 @@ function motionAt(m, t) {
   return out;
 }
 
-function runMotion(root, motion, n, three, report) {
-  if (typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search)) return;
-  const run = { list: [], stop: false };
-  for (const key of Object.keys(motion)) {
-    const m = motion[key], o = findByKey(root, key, three);
-    const ok = m && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
-    if (!o || !ok) continue;
-    run.list.push({ key, o, m, p: [o.position.x, o.position.y, o.position.z], r: three ? o.rotation.y : o.rotation });
-    (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+/** A legacy motion (path / spin) as the same offsets clipAt gives: the editor and the loader play both one way. */
+function legacyAt(m, t, n) {
+  const a = motionAt(m, t);
+  return { p: a.off, r: isNum(m.spin) ? (n === 3 ? [0, a.turn, 0] : [a.turn]) : null, s: null, done: a.done };
+}
+
+/** Put `o` at its place + the offsets `at` (clipAt's shape). Only the properties `at` has are touched. */
+function poseAt(o, base, at, three) {
+  if (at.p) three ? o.position.set(base.p[0] + at.p[0], base.p[1] + at.p[1], base.p[2] + at.p[2]) : o.position.set(base.p[0] + at.p[0], base.p[1] + at.p[1]);
+  if (at.r) {
+    if (three) (o.rotation.x = base.r[0] + (at.r[0] || 0)), (o.rotation.y = base.r[1] + (at.r[1] || 0)), (o.rotation.z = base.r[2] + (at.r[2] || 0));
+    else o.rotation = base.r[0] + (at.r[0] || 0);
   }
-  if (!run.list.length || typeof requestAnimationFrame !== 'function') return;
-  report.motion = run.list.map((e) => e.key);
-  motionRuns.push(run);
-  const t0 = performance.now();
+  if (at.s) three ? o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1], base.s[2] * at.s[2]) : o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1]);
+}
+
+const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+
+function start(key, what) {
+  movers.set(key, { ...what, t0: performance.now() });
+  if (ticking || typeof requestAnimationFrame !== 'function') return;
+  ticking = true;
   const tick = (now) => {
-    if (run.stop) return;
-    const t = Math.max(0, (now - t0) / 1000);
-    for (const e of run.list) {
-      const a = motionAt(e.m, t);
-      if (a.off) e.o.position.set(e.p[0] + a.off[0], e.p[1] + a.off[1], three ? e.p[2] + a.off[2] : undefined);
-      if (isNum(e.m.spin)) three ? (e.o.rotation.y = e.r + a.turn) : (e.o.rotation = e.r + a.turn);
+    if (!movers.size) return void (ticking = false);
+    for (const [key, r] of movers) {
+      const k = known.get(key);
+      // The object left the scene (another level was built; three and Pixi set parent to null): forget it.
+      if (!k || k.o.parent === null) {
+        movers.delete(key);
+        continue;
+      }
+      const t = Math.max(0, (now - r.t0) / 1000);
+      poseAt(k.o, k.base, r.clip ? clipAt(r.clip, t) : legacyAt(r.legacy, t, k.three ? 3 : 2), k.three);
     }
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
+}
+
+/**
+ * The `motion` part of the file: each object's clips (a timeline's named motions: `start: true` plays at once, the
+ * others wait for playMotion) or the older path / spin. Nothing runs inside the editor (studio=edit in the URL): there
+ * the editor owns every pose and plays the timeline itself.
+ */
+function runMotion(root, motion, n, three, report) {
+  if (editing()) return;
+  const list = [];
+  for (const key of Object.keys(motion)) {
+    const m = motion[key], o = findByKey(root, key, three);
+    if (!o || !m || typeof m !== 'object') continue;
+    const clips = Array.isArray(m.clips) ? m.clips.filter((c) => c && typeof c === 'object' && typeof c.name === 'string' && c.keys && typeof c.keys === 'object') : [];
+    const legacy = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
+    if (!clips.length && !legacy) continue;
+    const base = three
+      ? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }
+      : { p: [o.position.x, o.position.y], r: [o.rotation], s: [o.scale.x, o.scale.y] };
+    known.set(key, { o, three, base, clips });
+    (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+    list.push(key);
+    const first = clips.find((c) => c.start === true);
+    if (legacy) start(key, { legacy: m });
+    else if (first) start(key, { clip: first });
+  }
+  if (list.length) report.motion = list;
 }
 
 /**
@@ -6793,6 +6952,10 @@ function warn(msg) {
 
 __def(__exports, "applyPlacement", () => applyPlacement);
 __def(__exports, "stopMotion", () => stopMotion);
+__def(__exports, "playMotion", () => playMotion);
+__def(__exports, "clipOf", () => clipOf);
+__def(__exports, "clipAt", () => clipAt);
+__def(__exports, "trackAt", () => trackAt);
 __def(__exports, "motionAt", () => motionAt);
 __def(__exports, "placementForLevel", () => placementForLevel);
 __def(__exports, "placeUi", () => placeUi);
@@ -11384,37 +11547,38 @@ __def(__exports, "drivenBetween", () => drivenBetween);
 };
 __defs[34] = function (__exports) {
 'use strict';
-// motion.ts
+// timeline-path.ts
 
-// Motion in the game page (motion-gui, 2026-10-22; CONTRACT.md §1.9): the picked object's path drawn over the game, its
-// points dragged by hand, and the card's ▶ — that one object moving in the frozen scene.
+// The timeline in the game page (studio-timeline, 2026-10-22; CONTRACT.md §1.9): the poses the shell works out for the time line, and the picked object's
+// path in 3D — Blender's motion path, Unity's trajectory.
 //
-// What is drawn (only for the picked object, only while it has a path; nothing else's path: the scene stays quiet):
-//   a dotted orange line from the object through its points (back to the object for a loop), a small orange dot where
-//   it starts, and a white dot with an orange ring on each point — the ring of the picked object's outline, the colour
-//   of "your hand" (handles.ts). The dot is the handle: drag it and the point follows on the ground at its own height
-//   (adapter.toGround), the line with it; letting go is one undo step (the shell records it).
+// timeline/pose: each object put where the shell says (its place + its clip at the time line), through the copy/delete
+//   layer (no game rules, no snapping: a grid snap would make a motion jump) and reported to nobody: a preview is not
+//   an edit (input.ts still reads the object where it shows, so a drag starts from what the person sees).
+// timeline/path: the curve through the position keys — the same curve the object follows (the loader's trackAt, with
+//   the keys' eases), sampled and projected every frame, so it is a line in the 3D scene, not on the screen. Under it:
+//   a faint copy of the curve at the object's resting height, and from each key a dashed line straight down to it (a
+//   small shadow where it lands), so how high a point is reads from any side. A white dot with an orange ring on each
+//   key (a picked one is filled orange), its time beside it, a small orange ring where the time line is.
+// Dragging a dot: across the ground at its own height (adapter.toGround), or with Shift up and down (the ↑↓ tool's
+//   job, here on the dot: px → metres measured at the dot). Live to the shell (timeline/point), one undo step there.
+//
 // WHY DOM in a shadow root, as handles.ts: the same look and hit in every engine, out of reach of the game's CSS.
 // WHY the press is taken here before input.ts sees it: this file's window listeners are added when the editor is made,
 // before input.ts attaches its own (capture listeners on one target run in the order they were added), so a press on
-// a dot never selects or drags what is under it; any other press goes on to input.ts untouched (and stops the ▶).
+// a dot never selects or drags what is under it; any other press goes on to input.ts untouched.
+// (This replaces motion.ts of motion-gui, the same day: its flat dotted path on the ground and its ▶ for one object.)
 //
-// ▶ (motion/play): the object's place is kept, then every frame it is put at place + motionAt(t) (the loader's own
-// maths, src/loader, so the editor shows exactly what the game will do) through the copy/delete layer — not the game
-// rules layer: a grid snap would make the motion jump, and the rules are about where a hand puts things. Stop puts the
-// place back exactly. Nothing is reported as moved: the preview is not an edit.
-//
-// Positions: `p` and the path are the object's PARENT space; toScreen / toGround speak the scene's. They agree for
-// objects at the top of the scene (every starter's). An object inside a moved group draws its path off by the group's
-// offset (design.md §5, stage 2).
-                                                                                                                     
-const { motionAt } = __require(19);
-const { nativeNow } = __require(0);
+// Positions: the place and the keys are the object's PARENT space; toScreen / toGround speak the scene's. They agree
+// for objects at the top of the scene (every starter's); an object inside a moved group draws its path off by the
+// group's offset (stage 2).
+                                                                                                         
+const { trackAt } = __require(19);
 
 const YOU = '#ff6b1a';
 const WORDS                                                 = {
-  en: { point: (i) => `Point ${i}: drag to move it` },
-  ja: { point: (i) => `点 ${i}：引いて動かす` },
+  en: { point: (t) => `Key at ${t} s: drag to move it, Shift+drag for up and down` },
+  ja: { point: (t) => `${t} 秒のキー：引いて動かす・Shift で上下` },
 };
 
 const CSS = `
@@ -11422,39 +11586,36 @@ const CSS = `
 svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .hit { pointer-events: auto; cursor: grab; fill: transparent; }
 .hit.on { cursor: grabbing; }
+text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; paint-order: stroke; stroke: rgba(0,0,0,.5); stroke-width: 3px; }
 `;
 
-                                 
+                                   
                                   
-                                                                                               
+                                                                                   
                            
-                                                                                                    
+                                                                                                     
                          
                                
-                                                                                                                        
-                 
                
-                                                                                    
-                                       
                     
  
 
-                             
+                               
                                    
-                                                                         
+                                                         
                 
-                                                                                               
+                                                          
                 
-                                                                                                      
-                              
  
 
-function createMotionView(d                )             {
+                                                                                                     
+
+function createTimelineView(d                  )               {
   const { win } = d;
   const doc = win.document;
   const host = doc.createElement('div');
   host.setAttribute('data-studio-ui', '');
-  host.setAttribute('data-studio-motion', '');
+  host.setAttribute('data-studio-timeline', '');
   const shadow = host.attachShadow({ mode: 'open' });
   const style = doc.createElement('style');
   style.textContent = CSS;
@@ -11469,141 +11630,125 @@ function createMotionView(d                )             {
     if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
   };
 
-  let shown                                         = null;
-  let play                                                                 = null;
-  let drag                                                              = null;
-  // The last picture drawn (so a frame that changes nothing draws nothing).
+  let shown               = null;
+  let drag                                                                                                     = null;
   let drawn = '';
 
-  const poseOf = (key        )              => {
-    try {
-      return d.adapter().anchor(key)?.pose ?? null;
-    } catch {
-      return null;
+  /** The curve's points in the scene: `samples` per span between keys (the loader's own maths). */
+  const curve = (s       , samples = 20)             => {
+    const ks = s.keys;
+    if (ks.length < 2) return ks.map((k) => k.v.map((v, i) => v + (s.base[i] ?? 0)));
+    const out             = [];
+    for (let i = 0; i < ks.length - 1; i++) {
+      const a = ks[i] .t, b = ks[i + 1] .t;
+      for (let j = 0; j < samples; j++) {
+        const v = trackAt(ks, a + ((b - a) * j) / samples, true)                   ;
+        if (v) out.push(v.map((x, k) => x + (s.base[k] ?? 0)));
+      }
     }
-  };
-  /** Where the object's path starts: its place (kept while the ▶ plays, when the object itself is on its way). */
-  const baseOf = (key        )                  => (play?.key === key ? play.base.p : poseOf(key)?.p) ?? null;
-
-  const stop = (tell         ) => {
-    if (!play) return;
-    const p = play;
-    play = null;
-    try {
-      d.poser().setPose(p.key, p.base);
-    } catch {
-      /* the object is gone (deleted, the page changing): nothing to put back */
-    }
-    d.markDirty();
-    if (tell) d.post({ type: 'studio:motion/played', key: null });
+    out.push(ks[ks.length - 1] .v.map((v, k) => v + (s.base[k] ?? 0)));
+    return out;
   };
 
   const draw = () => {
     const a = d.adapter();
-    const key = shown?.key;
-    const path = shown?.motion.path;
-    const base = key && path?.length ? baseOf(key) : null;
-    if (!key || !path?.length || !base || !a.toScreen) {
-      // By what is on screen, not by `drawn` (handle() empties that to force the next picture).
+    const s = shown;
+    if (!s || !s.keys.length || !a.toScreen || s.base.length !== 3) {
       if (svg.firstChild) svg.replaceChildren();
       drawn = '';
       return;
     }
-    const world = [base, ...path.map((q) => q.map((v, i) => v + (base[i] ?? 0)))];
-    const pts = world.map((w) => a.toScreen (w));
-    const sig = JSON.stringify(pts) + (drag ? drag.i : '');
+    const scr = (w          ) => a.toScreen (w);
+    const pts = curve(s);
+    const ground = (w          ) => [w[0] , s.base[1] , w[2] ];
+    const line = pts.map(scr);
+    const shadowLine = pts.map((w) => scr(ground(w)));
+    const keysW = s.keys.map((k) => k.v.map((v, i) => v + (s.base[i] ?? 0)));
+    const keysS = keysW.map(scr);
+    const dropS = keysW.map((w) => scr(ground(w)));
+    const nowS = s.now ? scr(s.now.map((v, i) => v + (s.base[i] ?? 0))) : null;
+    const sig = JSON.stringify([line, keysS, nowS, s.sel, drag?.i ?? -1, d.lang()]);
     if (sig === drawn) return;
     drawn = sig;
     mount();
     svg.replaceChildren();
-    const ring = shown .motion.repeat === 'loop' ? [...pts, pts[0] ] : pts;
-    // The line: a faint dark halo under a dotted orange line (readable on any colour, as the outline's halo is).
-    let dpath = '';
-    let pen = false;
-    for (const p of ring) {
-      if (!p) {
-        pen = false;
-        continue;
+    const pathD = (ps                                ) => {
+      let out = '';
+      let pen = false;
+      for (const p of ps) {
+        if (!p) {
+          pen = false;
+          continue;
+        }
+        out += `${pen ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
+        pen = true;
       }
-      dpath += `${pen ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
-      pen = true;
-    }
-    const line = (stroke        , width        , dash         ) => {
+      return out;
+    };
+    const stroke = (dd        , color        , width        , dash         ) => {
       const el = doc.createElementNS(NS, 'path');
-      el.setAttribute('d', dpath);
+      el.setAttribute('d', dd);
       el.setAttribute('fill', 'none');
-      el.setAttribute('stroke', stroke);
+      el.setAttribute('stroke', color);
       el.setAttribute('stroke-width', String(width));
       el.setAttribute('stroke-linecap', 'round');
       el.setAttribute('stroke-linejoin', 'round');
       if (dash) el.setAttribute('stroke-dasharray', dash);
       svg.append(el);
     };
-    line('rgba(0,0,0,.28)', 5);
-    line(YOU, 2, '1 7');
-    const dot = (p                  , r        , fill        , stroke         ) => {
+    const circle = (p                  , r        , fill        , ring         , width = 2.5) => {
       const c = doc.createElementNS(NS, 'circle');
       c.setAttribute('cx', p[0].toFixed(1));
       c.setAttribute('cy', p[1].toFixed(1));
       c.setAttribute('r', String(r));
       c.setAttribute('fill', fill);
-      if (stroke) (c.setAttribute('stroke', stroke), c.setAttribute('stroke-width', '2.5'));
+      if (ring) (c.setAttribute('stroke', ring), c.setAttribute('stroke-width', String(width)));
       svg.append(c);
       return c;
     };
-    if (pts[0]) dot(pts[0], 3.5, YOU);
+    // Underneath: the curve's shadow at the resting height, and each key's drop to it.
+    stroke(pathD(shadowLine), 'rgba(0,0,0,.3)', 1.6, '2 5');
+    keysS.forEach((p, i) => {
+      const g = dropS[i];
+      if (!p || !g || Math.hypot(p[0] - g[0], p[1] - g[1]) < 2) return;
+      stroke(`M${p[0].toFixed(1)} ${p[1].toFixed(1)}L${g[0].toFixed(1)} ${g[1].toFixed(1)}`, 'rgba(255,255,255,.8)', 1.2, '3 3');
+      const e = doc.createElementNS(NS, 'ellipse');
+      e.setAttribute('cx', g[0].toFixed(1));
+      e.setAttribute('cy', g[1].toFixed(1));
+      e.setAttribute('rx', '6');
+      e.setAttribute('ry', '2.5');
+      e.setAttribute('fill', 'rgba(0,0,0,.3)');
+      svg.append(e);
+    });
+    // The path: a dark halo under an orange line (readable on any colour, as the outline's halo is).
+    const dd = pathD(line);
+    stroke(dd, 'rgba(0,0,0,.28)', 6);
+    stroke(dd, YOU, 2.5);
     const coarse = win.matchMedia?.('(pointer: coarse)').matches;
-    pts.slice(1).forEach((p, i) => {
+    keysS.forEach((p, i) => {
       if (!p) return;
-      dot(p, drag?.i === i ? 8 : 7, '#fff', YOU);
+      const on = s.sel.includes(i) || drag?.i === i;
+      circle(p, on ? 8.5 : 7, on ? YOU : '#fff', on ? '#fff' : YOU);
+      const t = s.keys[i] .t;
+      const label = doc.createElementNS(NS, 'text');
+      label.setAttribute('x', (p[0] + 12).toFixed(1));
+      label.setAttribute('y', (p[1] - 9).toFixed(1));
+      label.textContent = `${t.toFixed(1)}s`;
+      svg.append(label);
       // The hit area is bigger than the dot: 32 px across with a mouse, 44 with a finger.
-      const hit = dot(p, coarse ? 22 : 16, 'transparent');
+      const hit = circle(p, coarse ? 22 : 16, 'transparent');
       hit.setAttribute('class', `hit${drag?.i === i ? ' on' : ''}`);
       hit.setAttribute('data-point', String(i));
       hit.setAttribute('role', 'button');
-      hit.setAttribute('aria-label', WORDS[d.lang()].point(i + 1));
+      hit.setAttribute('aria-label', WORDS[d.lang()].point(t.toFixed(1)));
       const tip = doc.createElementNS(NS, 'title');
-      tip.textContent = WORDS[d.lang()].point(i + 1);
+      tip.textContent = WORDS[d.lang()].point(t.toFixed(1));
       hit.append(tip);
     });
+    if (nowS) circle(nowS, 5, 'none', YOU, 2);
   };
 
-  /**
-   * The first points of a new path, where the person can see them: to the object's right on screen (left when the
-   * card covers the right), on the ground at the object's own height. A loop gets a square: right, then away (up the
-   * screen), then back. Kept as given when the game cannot tell (no toGround, the sky).
-   */
-  const seed = (key        , m        )                => {
-    const a = d.adapter();
-    let an                = null;
-    try {
-      an = a.anchor(key);
-    } catch {
-      an = null;
-    }
-    const base = an?.pose.p;
-    if (!an || !base || !a.toGround) return null;
-    const [cx, cy] = an.center;
-    const step = Math.max(90, Math.min(220, (an.size || 80) * 1.2));
-    const ins = d.inset();
-    const right = cx + step < win.innerWidth - ins.right - 40;
-    const sx = right ? step : -step;
-    const up = cy - step * 0.6 > ins.top + 40 ? -step * 0.6 : step * 0.6;
-    const shots                          = m.repeat === 'loop' ? [[cx + sx, cy], [cx + sx, cy + up], [cx, cy + up]] : [[cx + sx, cy]];
-    const out             = [];
-    for (const [x, y] of shots) {
-      const hit = a.toGround(x, y, base[1] ?? 0);
-      if (!hit) return null;
-      const off = hit.map((v, i) => Math.round((v - (base[i] ?? 0)) * 1000) / 1000);
-      // Further than 200 m (a point at the horizon) is not "in sight": keep the stand-in points.
-      if (Math.hypot(...off) > 200) return null;
-      out.push(off);
-    }
-    if (out.every((q) => Math.hypot(...q) < 0.05)) return null;
-    return { ...m, path: out };
-  };
-
-  // ----- dragging a point -----
+  // ----- dragging a key's dot -----
   const pointOf = (e              )                => {
     for (const t of e.composedPath()) {
       if (t instanceof Element && t.getAttribute('data-point') !== null && svg.contains(t)) return Number(t.getAttribute('data-point'));
@@ -11615,35 +11760,39 @@ function createMotionView(d                )             {
     e.stopImmediatePropagation();
     if (e.cancelable) e.preventDefault();
   };
+  const r3 = (v        ) => Math.round(v * 1000) / 1000;
   const moveTo = (e              , end         ) => {
     if (!drag || !shown) return;
-    const a = d.adapter();
-    const hit = a.toGround?.(e.clientX, e.clientY, drag.h);
-    const m = shown.motion;
-    if (hit && m.path) {
-      const path = m.path.map((q) => q.slice());
-      const old = path[drag.i] ;
-      const r = (v        ) => Math.round(v * 1000) / 1000;
-      // 3D: across the ground only, the point keeps its height (raising points is stage 2). 2D: where the finger is.
-      path[drag.i] = old.length === 3 ? [r(hit[0]  - drag.base[0] ), old[1] ?? 0, r(hit[2]  - (drag.base[2] ?? 0))] : [r(hit[0]  - drag.base[0] ), r(hit[1]  - (drag.base[1] ?? 0))];
-      shown = { key: shown.key, motion: { ...m, path } };
+    const s = shown;
+    const k = s.keys[drag.i];
+    if (!k) return;
+    let v = k.v.slice();
+    if (drag.up || e.shiftKey) {
+      // Up / down: the screen's px turned into metres at the dot (measured when the drag began).
+      if (!drag.up) (drag.up = true), (drag.y0 = e.clientY), (drag.start = k.v.slice());
+      v = drag.start.slice();
+      v[1] = r3((drag.start[1] ?? 0) + (drag.y0 - e.clientY) * drag.mpp);
+    } else {
+      const hit = d.adapter().toGround?.(e.clientX, e.clientY, drag.h);
+      if (hit) v = [r3(hit[0]  - s.base[0] ), k.v[1] ?? 0, r3(hit[2]  - s.base[2] )];
     }
-    d.post({ type: 'studio:motion/changed', key: shown.key, motion: structuredClone(shown.motion), end });
+    s.keys[drag.i] = { ...k, v };
+    d.post({ type: 'studio:timeline/point', key: s.key, i: drag.i, v, end });
     d.markDirty();
   };
   const onDown = (e              ) => {
     const i = shown ? pointOf(e) : null;
-    if (i === null || !shown) {
-      // A press anywhere else in the game ends the ▶ (the person is about to do something else), then goes on.
-      if (play) stop(true);
-      return;
-    }
+    if (i === null || !shown) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     take(e);
-    const base = baseOf(shown.key);
-    const q = shown.motion.path?.[i];
-    if (!base || !q) return;
-    drag = { i, id: e.pointerId, h: (base[1] ?? 0) + (q[1] ?? 0), base };
+    const k = shown.keys[i];
+    if (!k) return;
+    const w = k.v.map((v, j) => v + (shown .base[j] ?? 0));
+    // Metres per screen px at the dot, for Shift (up / down): one metre up, measured on screen.
+    const a = d.adapter();
+    const p0 = a.toScreen?.(w), p1 = a.toScreen?.([w[0] , w[1]  + 1, w[2] ]);
+    const px = p0 && p1 ? Math.abs(p1[1] - p0[1]) : 0;
+    drag = { i, id: e.pointerId, h: w[1] ?? 0, up: e.shiftKey, y0: e.clientY, mpp: px > 0.5 ? 1 / px : 0.02, start: k.v.slice() };
     drawn = '';
   };
   const onMove = (e              ) => {
@@ -11665,69 +11814,40 @@ function createMotionView(d                )             {
 
   return {
     handle(msg) {
-      if (msg.type === 'studio:motion/show') {
-        drag = null;
-        shown = msg.key && msg.motion?.path?.length ? { key: msg.key, motion: structuredClone(msg.motion) } : null;
-        if (play && play.key !== msg.key) stop(true);
-        if (msg.seed && msg.key && msg.motion?.path) {
-          const m = seed(msg.key, msg.motion);
-          if (m) {
-            shown = { key: msg.key, motion: m };
-            d.post({ type: 'studio:motion/changed', key: msg.key, motion: structuredClone(m), end: true, seed: true });
+      if (msg.type === 'studio:timeline/pose') {
+        const p = d.poser();
+        for (const e of msg.poses) {
+          try {
+            p.setPose(e.key, e.pose        );
+          } catch {
+            /* gone (deleted, the page changing): the others go on */
           }
         }
-        drawn = '';
         d.markDirty();
-      } else if (msg.type === 'studio:motion/play') {
-        const again = play && play.key === msg.key ? play.base : null;
-        if (play && !again) stop(false);
-        if (!msg.key || !msg.motion) return void stop(false);
-        const pose = again ?? poseOf(msg.key);
-        if (!pose) return void d.post({ type: 'studio:motion/played', key: null });
-        play = { key: msg.key, motion: structuredClone(msg.motion), base: structuredClone(pose), t0: nativeNow() };
-        if (shown?.key === msg.key && msg.motion.path?.length) shown = { key: msg.key, motion: structuredClone(msg.motion) };
+      } else if (msg.type === 'studio:timeline/path') {
+        // While a dot is dragged, the shell's echo of the same key keeps the dot under the finger (ours is newer).
+        if (drag && shown && msg.key === shown.key) {
+          shown = { ...shown, base: msg.base ?? shown.base, now: msg.now ?? null, sel: msg.sel ?? [] };
+        } else {
+          drag = null;
+          shown = msg.key && msg.base && msg.keys?.length ? { key: msg.key, base: msg.base.slice(), keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] } : null;
+        }
+        drawn = '';
         d.markDirty();
       }
     },
     frame() {
-      if (play) {
-        const t = (nativeNow() - play.t0) / 1000;
-        const at = motionAt(play.motion, t)                                                         ;
-        const b = play.base;
-        const pose       = { ...b, p: at.off ? b.p.map((v, i) => v + (at.off [i] ?? 0)) : b.p.slice() };
-        if (play.motion.spin) pose.r = (b.r ?? 0) + at.turn;
-        try {
-          d.poser().setPose(play.key, pose);
-        } catch {
-          stop(true);
-        }
-        d.markDirty();
-        // `once` arrived: stay at the end a moment so the eye sees where it stops, then back to the place.
-        if (at.done && t > lastLeg(play.motion) + 0.8) stop(true);
-      }
       draw();
     },
     clear() {
-      stop(false);
       shown = null;
       drag = null;
       draw();
     },
-    stopFor(key) {
-      if (play && (!key || key === play.key)) stop(true);
-    },
   };
 }
 
-/** Seconds a `once` path takes (its length over its speed). */
-function lastLeg(m        )         {
-  const pts = [m.path [0] .map(() => 0), ...m.path ];
-  let len = 0;
-  for (let i = 1; i < pts.length; i++) len += Math.hypot(...pts[i] .map((v, k) => v - pts[i - 1] [k] ));
-  return len / (m.speed && m.speed > 0 ? m.speed : 1);
-}
-
-__def(__exports, "createMotionView", () => createMotionView);
+__def(__exports, "createTimelineView", () => createTimelineView);
 };
 __defs[35] = function (__exports) {
 'use strict';
@@ -11749,7 +11869,7 @@ const { firstToTouch, stepDetent } = __require(31);
 const { createHoldState, withHold } = __require(25);
 const { drivenBetween, WATCH_MS } = __require(33);
 const { runSelfCheck } = __require(22);
-const { createMotionView } = __require(34);
+const { createTimelineView } = __require(34);
 
                              
                                                                                                                      
@@ -11850,10 +11970,10 @@ function createEditor(deps            )         {
     deps.post(msg);
   };
   const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
-  // Motion (motion-gui, 2026-10-22; motion.ts): the picked object's path and the card's ▶. Made here, before input.ts
-  // attaches, so a press on a path point reaches it first (motion.ts says why).
-  const motion = createMotionView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), inset: () => inset, lang: () => lang,
-    raf: (cb) => core.time.raf(cb), markDirty: () => (dirtyFrame = true) });
+  // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
+  // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
+  const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
+    markDirty: () => (dirtyFrame = true) });
   let lang       = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -11935,7 +12055,7 @@ function createEditor(deps            )         {
     }
     input?.frame();
     toolHost.frame();
-    motion.frame();
+    timeline.frame();
     dirtyFrame = false;
   };
 
@@ -12727,12 +12847,12 @@ function createEditor(deps            )         {
         case 'studio:tool/saved':
           toolHost.saved(msg.ids);
           break;
-        case 'studio:motion/show':
-        case 'studio:motion/play':
-          if (state.editing && layer === 'world') motion.handle(msg);
+        case 'studio:timeline/pose':
+        case 'studio:timeline/path':
+          if (state.editing && layer === 'world') timeline.handle(msg);
           break;
         case 'studio:core/edit':
-          if (!msg.on) motion.clear();
+          if (!msg.on) timeline.clear();
           setEditing(msg.on, msg.viewState);
           if (msg.on && wantLayer) {
             const w = wantLayer;
@@ -12741,7 +12861,7 @@ function createEditor(deps            )         {
           }
           break;
         case 'studio:core/layer':
-          if (msg.layer !== layer) motion.clear();
+          if (msg.layer !== layer) timeline.clear();
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
         case 'studio:core/ui-peek':
@@ -12783,12 +12903,10 @@ function createEditor(deps            )         {
           state.multi = !!msg.on;
           break;
         case 'studio:placement/copy':
-          motion.stopFor();
           closeStepRun();
           copy(msg.items, msg.at);
           break;
         case 'studio:placement/remove': {
-          motion.stopFor();
           closeStepRun();
           const gone = edits.removeKeys(msg.keys);
           if (gone.length) {
@@ -12807,8 +12925,6 @@ function createEditor(deps            )         {
           refreshItems();
           break;
         case 'studio:placement/pose': {
-          // An undo / a typed number on the object the ▶ is moving: put it back first, then the new pose.
-          motion.stopFor(msg.key);
           // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
           // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.
           const other = msg.layer && msg.layer !== layer ? (msg.layer === 'ui' ? uiStack : world) : null;
@@ -12821,8 +12937,9 @@ function createEditor(deps            )         {
           const zBefore = msg.pose.z !== undefined ? poseOf(msg.key)?.z : undefined;
           const pose = adapter.setPose(msg.key, msg.pose);
           dirtyFrame = true;
-          // No `end`: the shell already recorded this as undo/redo.
-          if (pose) post({ type: 'studio:placement/moved', key: msg.key, pose });
+          // No `end`: the shell already recorded this as undo/redo. `set`: an echo of the shell's own pose (a place),
+          // never a gesture — the timeline must not take it for a drag to key (studio-timeline).
+          if (pose) post({ type: 'studio:placement/moved', key: msg.key, pose, set: true });
           // A new draw order (2D layers) also shifts the z of the siblings:
           // send the whole list so the shell's order and file stay right.
           if (pose && pose.z !== undefined && pose.z !== zBefore) refreshItems();
@@ -15277,6 +15394,335 @@ __def(__exports, "samePose", () => samePose);
 };
 __defs[45] = function (__exports) {
 'use strict';
+// ../shell/timeline-model.ts
+
+// The timeline's pure logic (studio-timeline, 2026-10-22; CONTRACT.md §1.9): clips and
+// their keys, the pose an object shows at a time, the older motion shape read as a clip, the templates, and the key
+// edits the panel makes (set, move, delete, copy / paste, ease). No DOM: unit-tested in test/timeline.test.ts.
+//
+// WHY offsets from the place, not absolute values (Unity's clips hold absolute ones): the object's place
+// (`objects` in placement.json) keeps its meaning — moving the object with the timeline folded carries the whole
+// motion along, a level that puts the same object elsewhere reuses the motion, and the AI reads "turns 90° from where
+// it stands". Position is added, angles are added, size is multiplied.
+// WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
+// the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
+                                                                                                                        
+const { clipAt, motionAt } = __require(19);
+
+const CHANNELS                  = ['p', 'r', 's'];
+/** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
+const SAME_T = 0.0005;
+/** Keys dragged on the timeline snap to this (seconds); Alt drags freely. 1/20 s: fine enough for game motion, coarse enough to land on 1.0. */
+const SNAP_T = 0.05;
+const MIN_LEN = 0.1;
+const MAX_LEN = 600;
+const MAX_CLIPS = 16;
+const MAX_KEYS = 256;
+/** A new key's ease (Blender's and Unity's default curve: starts slowly, stops slowly). */
+const DEFAULT_EASE             = 'ease';
+
+                                                                                     
+
+const rt = (t        ) => Math.round(t * 1000) / 1000;
+const zeros = (n        ) => Array.from({ length: n }, () => 0);
+const ones = (n        ) => Array.from({ length: n }, () => 1);
+/** How many numbers one key of a channel holds: p / s 3 in 3D, 2 in 2D; r 3 in 3D, 1 in 2D. */
+const width = (ch               , dim     ) => (dim === '3d' ? 3 : ch === 'r' ? 1 : 2);
+/** The key value that changes nothing (the rest of a channel). */
+const restOf = (ch               , dim     ) => (ch === 's' ? ones(width(ch, dim)) : zeros(width(ch, dim)));
+
+/** Where a clip is at `t` (the loader's own maths, so the editor and the game agree). */
+function offsetsAt(clip                               , t        )                              {
+  return clipAt(clip, t)                               ;
+}
+
+/** The pose shown for an object at its place with these offsets. */
+function compose(place      , at         , dim     )       {
+  const out       = structuredClone(place);
+  if (at.p) out.p = place.p.map((v, i) => v + (at.p [i] ?? 0));
+  if (at.r) {
+    if (dim === '3d') {
+      out.r = (place.r ?? 0) + (at.r[1] ?? 0);
+      const tx = (place.t?.[0] ?? 0) + (at.r[0] ?? 0), tz = (place.t?.[1] ?? 0) + (at.r[2] ?? 0);
+      // A tilt only when there is one: a pose without `t` leaves the game's own x / z angles alone (contract Pose.t).
+      if (place.t || Math.abs(tx) > 1e-9 || Math.abs(tz) > 1e-9) out.t = [tx, tz];
+    } else out.r = (place.r ?? 0) + (at.r[0] ?? 0);
+  }
+  if (at.s) {
+    const n = width('s', dim);
+    const base = Array.isArray(place.s) ? place.s : Array.from({ length: n }, () => (typeof place.s === 'number' ? place.s : 1));
+    const s = base.map((v, i) => v * (at.s [i] ?? 1));
+    out.s = s.every((v) => Math.abs(v - s[0] ) < 1e-9) && !Array.isArray(place.s) ? s[0]  : s;
+  }
+  return out;
+}
+
+/** The offsets that turn `place` into `pose` (compose's inverse), for one channel. */
+function offsetOf(place      , pose      , ch               , dim     )           {
+  if (ch === 'p') return pose.p.map((v, i) => v - (place.p[i] ?? 0));
+  if (ch === 'r') {
+    if (dim !== '3d') return [(pose.r ?? 0) - (place.r ?? 0)];
+    return [(pose.t?.[0] ?? 0) - (place.t?.[0] ?? 0), (pose.r ?? 0) - (place.r ?? 0), (pose.t?.[1] ?? 0) - (place.t?.[1] ?? 0)];
+  }
+  const n = width('s', dim);
+  const vec = (s           ) => (Array.isArray(s) ? s : Array.from({ length: n }, () => (typeof s === 'number' ? s : 1)));
+  const a = vec(place.s), b = vec(pose.s);
+  return b.map((v, i) => (a[i] ? v / a[i]  : 1));
+}
+
+/** The channels whose value differs between two poses (what a drag / a typed number changed). */
+function changedChannels(a      , b      , dim     )                  {
+  const diff = (x          , y          , eps        ) => x.some((v, i) => Math.abs(v - (y[i] ?? 0)) > eps);
+  const out                  = [];
+  if (diff(a.p, b.p, 1e-6)) out.push('p');
+  if (diff(offsetOf(a, b, 'r', dim), zeros(width('r', dim)), 1e-6)) out.push('r');
+  if (diff(offsetOf(a, b, 's', dim), ones(width('s', dim)), 1e-6)) out.push('s');
+  return out;
+}
+
+// ----- the older shape (v0.1.13) as a clip -----
+
+/**
+ * A motion in the timeline's shape: its clips as they are, or the older path / speed / repeat / spin turned into one
+ * clip "Motion" that plays at the start. The path becomes position keys at the times the old constant speed reached
+ * each point (straight lines: 'linear'); a loop gets its way back to the start as a last key; a spin becomes one turn
+ * (0 → 360°, linear) that loops. With both, the spin is spread over the path's time.
+ */
+function toClips(m                           , dim     )                {
+  if (!m) return null;
+  if (m.clips?.length) return { clips: m.clips.map((c) => structuredClone(c)) };
+  const keys                     = {};
+  let len = 0;
+  let repeat               = 'loop';
+  if (m.path?.length) {
+    const n = m.path[0] .length;
+    const pts = [zeros(n), ...m.path.map((q) => q.slice())];
+    repeat = m.repeat ?? 'pingpong';
+    if (repeat === 'loop') pts.push(zeros(n));
+    const speed = m.speed && m.speed > 0 ? m.speed : 1;
+    let t = 0;
+    keys.p = pts.map((v, i) => {
+      if (i) t += Math.hypot(...v.map((x, k) => x - pts[i - 1] [k] )) / speed;
+      return { t: rt(t), v, ease: 'linear'               };
+    });
+    len = Math.max(MIN_LEN, rt(t));
+  }
+  if (m.spin) {
+    const turn = Math.sign(m.spin) * Math.PI * 2;
+    const T = len || rt(Math.abs(turn / m.spin));
+    len ||= Math.max(MIN_LEN, T);
+    const v = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
+    keys.r = [{ t: 0, v: v(0), ease: 'linear' }, { t: len, v: v(keys.p ? m.spin * len : turn), ease: 'linear' }];
+  }
+  if (!keys.p && !keys.r) return null;
+  return { clips: [{ name: 'Motion', len, repeat, start: true, keys }] };
+}
+
+// ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
+
+                                                                       
+const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin'];
+
+/**
+ * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
+ * so the person drags them where they want (in the scene, or on the timeline).
+ */
+function fromTemplate(kind          , name        , dim     )             {
+  const d = dim === '3d' ? 3 : 150;
+  const v = (x        , z        ) => (dim === '3d' ? [x, 0, z] : [x, z]);
+  const k = (t        , val          , ease             = DEFAULT_EASE)            => ({ t, v: val, ease });
+  switch (kind) {
+    case 'pingpong':
+      return { name, len: 2, repeat: 'pingpong', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
+    case 'once':
+      return { name, len: 2, repeat: 'once', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
+    case 'loop':
+      // A round: right, away, back, home — through the points on a curve (the position's smooth way).
+      return { name, len: 4, repeat: 'loop', keys: { p: [k(0, v(0, 0), 'linear'), k(1, v(d, 0), 'linear'), k(2, v(d, -d), 'linear'), k(3, v(0, -d), 'linear'), k(4, v(0, 0), 'linear')] } };
+    case 'spin': {
+      const r = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
+      return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
+    }
+    default:
+      return { name, len: 2, repeat: 'once', keys: {} };
+  }
+}
+
+/** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
+function freeName(clips              , base        )         {
+  const taken = new Set(clips.map((c) => c.name));
+  if (!taken.has(base)) return base;
+  for (let i = 2; ; i++) if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
+}
+
+// ----- keys -----
+
+/** A key picked on the timeline: object, channel, time (a time names a key: two keys of a channel never share one). */
+                         
+              
+                    
+            
+ 
+const refId = (r        ) => `${r.key}\n${r.ch}\n${rt(r.t)}`;
+const sameT = (a        , b        ) => Math.abs(a - b) < SAME_T;
+
+const sorted = (ks             ) => ks.slice().sort((a, b) => a.t - b.t);
+
+/** The clip with a key at `t` on `ch` (replacing one at that moment, keeping its ease); the length grows to hold it. */
+function setKey(c            , ch               , t        , v          , ease             )             {
+  const out = structuredClone(c);
+  const ks = out.keys[ch] ?? [];
+  const at = ks.findIndex((k) => sameT(k.t, t));
+  const key            = { t: rt(t), v: v.slice(), ease: ease ?? (at >= 0 ? ks[at] .ease : undefined) ?? DEFAULT_EASE };
+  if (at >= 0) ks[at] = key;
+  else if (ks.length < MAX_KEYS) ks.push(key);
+  out.keys[ch] = sorted(ks);
+  if (t > out.len) out.len = Math.min(MAX_LEN, rt(t));
+  return out;
+}
+
+/** Keys of `c` (this object's) that `sel` picks. */
+const picks = (sel          , key        ) => sel.filter((r) => r.key === key);
+const isPicked = (sel          , ch               , t        ) => sel.some((r) => r.ch === ch && sameT(r.t, t));
+
+/** The clip without the picked keys. A channel left with no key goes (that property then stays as placed). */
+function deleteKeys(c            , key        , sel          )             {
+  const mine = picks(sel, key);
+  const out = structuredClone(c);
+  for (const ch of CHANNELS) {
+    const ks = (out.keys[ch] ?? []).filter((k) => !isPicked(mine, ch, k.t));
+    if (ks.length) out.keys[ch] = ks;
+    else delete out.keys[ch];
+  }
+  return out;
+}
+
+/**
+ * The clip with the picked keys moved by `dt` seconds (kept between 0 and the length). A moved key that lands on a
+ * key that was not moved replaces it (the dragged one wins, as in Blender). Returns the moved refs' new times too.
+ */
+function moveKeys(c            , key        , sel          , dt        )                                        {
+  const mine = picks(sel, key);
+  const out = structuredClone(c);
+  const moved           = [];
+  for (const ch of CHANNELS) {
+    const ks = out.keys[ch];
+    if (!ks) continue;
+    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(out.len, Math.max(0, k.t + dt))) }));
+    const stay = ks.filter((k) => !isPicked(mine, ch, k.t) && !go.some((g) => sameT(g.t, k.t)));
+    // Two moved keys squeezed onto one moment (against 0 or the end): the later one wins.
+    const merged = new Map                   ();
+    for (const k of go) merged.set(Math.round(k.t * 1000), k);
+    out.keys[ch] = sorted([...stay, ...merged.values()]);
+    for (const k of merged.values()) moved.push({ key, ch, t: k.t });
+  }
+  return { clip: out, moved };
+}
+
+/** The picked keys' ease set to `ease`. */
+function easeKeys(c            , key        , sel          , ease            )             {
+  const mine = picks(sel, key);
+  const out = structuredClone(c);
+  for (const ch of CHANNELS) for (const k of out.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) k.ease = ease;
+  return out;
+}
+
+/** What ⌘C holds: keys by channel, their times from the earliest one copied (so ⌘V puts the first at the playhead). */
+                                                                                              
+
+function copyKeys(c            , key        , sel          )         {
+  const mine = picks(sel, key);
+  const out         = [];
+  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease });
+  const t0 = Math.min(...out.map((k) => k.dt));
+  return out.map((k) => ({ ...k, dt: rt(k.dt - t0) }));
+}
+
+/** ⌘V: the copied keys put on this clip from `at` (a channel the clip's object cannot take — another dim — is skipped). */
+function pasteKeys(c            , keys        , at        , dim     )                                                                        {
+  let out = c;
+  const pasted                                          = [];
+  for (const k of keys) {
+    if (k.v.length !== width(k.ch, dim)) continue;
+    const t = rt(at + k.dt);
+    if (t > MAX_LEN) continue;
+    out = setKey(out, k.ch, t, k.v, k.ease);
+    pasted.push({ ch: k.ch, t });
+  }
+  return { clip: out, pasted };
+}
+
+/** Every key time of a clip (any channel), for the object's summary row. */
+function keyTimes(c                               , chs                  = CHANNELS)           {
+  const ts           = [];
+  for (const ch of chs) for (const k of c?.keys[ch] ?? []) if (!ts.some((t) => sameT(t, k.t))) ts.push(k.t);
+  return ts.sort((a, b) => a - b);
+}
+
+/** Snap a time to the timeline's grid (and to 0 … max). */
+function snapT(t        , max        , free = false)         {
+  const s = free ? rt(t) : Math.round(t / SNAP_T) * SNAP_T;
+  return rt(Math.min(max, Math.max(0, s)));
+}
+
+/** "0:01.6" — minutes, seconds and a tenth (the time readout; tabular figures keep it still while it runs). */
+function clock(t        )         {
+  const s = Math.max(0, t);
+  const m = Math.floor(s / 60);
+  const rest = s - m * 60;
+  return `${m}:${rest.toFixed(1).padStart(4, '0')}`;
+}
+
+/** A motion (the store's shape) with clip `name` replaced by `c` (or added; null = removed). Empty → null. */
+function withClip(m               , name        , c                   )                {
+  // In place (a rename keeps the clip where it was in the menu), removed, or added at the end.
+  const clips = (m?.clips ?? []).slice();
+  const i = clips.findIndex((x) => x.name === name);
+  if (i >= 0) c ? (clips[i] = c) : clips.splice(i, 1);
+  else if (c) clips.push(c);
+  return clips.length ? { clips } : null;
+}
+
+/** The older motion's pose at `t` (the editor still previews one it could not turn into a clip, e.g. a bad file). */
+function legacyOffsets(m        , t        , dim     )          {
+  const a = motionAt(m, t)                                          ;
+  return { p: a.off, r: m.spin ? (dim === '3d' ? [0, a.turn, 0] : [a.turn]) : null, s: null };
+}
+
+__def(__exports, "CHANNELS", () => CHANNELS);
+__def(__exports, "SAME_T", () => SAME_T);
+__def(__exports, "SNAP_T", () => SNAP_T);
+__def(__exports, "MIN_LEN", () => MIN_LEN);
+__def(__exports, "MAX_LEN", () => MAX_LEN);
+__def(__exports, "MAX_CLIPS", () => MAX_CLIPS);
+__def(__exports, "MAX_KEYS", () => MAX_KEYS);
+__def(__exports, "DEFAULT_EASE", () => DEFAULT_EASE);
+__def(__exports, "width", () => width);
+__def(__exports, "restOf", () => restOf);
+__def(__exports, "offsetsAt", () => offsetsAt);
+__def(__exports, "compose", () => compose);
+__def(__exports, "offsetOf", () => offsetOf);
+__def(__exports, "changedChannels", () => changedChannels);
+__def(__exports, "toClips", () => toClips);
+__def(__exports, "TEMPLATES", () => TEMPLATES);
+__def(__exports, "fromTemplate", () => fromTemplate);
+__def(__exports, "freeName", () => freeName);
+__def(__exports, "refId", () => refId);
+__def(__exports, "sameT", () => sameT);
+__def(__exports, "setKey", () => setKey);
+__def(__exports, "deleteKeys", () => deleteKeys);
+__def(__exports, "moveKeys", () => moveKeys);
+__def(__exports, "easeKeys", () => easeKeys);
+__def(__exports, "copyKeys", () => copyKeys);
+__def(__exports, "pasteKeys", () => pasteKeys);
+__def(__exports, "keyTimes", () => keyTimes);
+__def(__exports, "snapT", () => snapT);
+__def(__exports, "clock", () => clock);
+__def(__exports, "withClip", () => withClip);
+__def(__exports, "legacyOffsets", () => legacyOffsets);
+};
+__defs[46] = function (__exports) {
+'use strict';
 // play-arrange.ts
 
 // ▶ Play inside the editor: the game as the editor shows it — the arrangement on screen, saved or not.
@@ -15299,10 +15745,10 @@ __defs[45] = function (__exports) {
 //   - a reordered list only while it is still in the code's order (`was`).
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
-                                                               
+                                                                                   
 const { hasLayer, orderOfLayer } = __require(43);
 const { samePose } = __require(44);
-const { motionAt } = __require(19);
+const { compose, legacyOffsets, offsetsAt } = __require(45);
 
                                                                                                                                   
                                                                                                    
@@ -15420,36 +15866,38 @@ function arrangeInPlay(a               , file                 )         {
 }
 
 /**
- * The draft's motions in ▶ Play (motion-gui, 2026-10-22), for a game whose loader does not run them: a game the AI
- * made before "add the loader", or one with an older copy of it. Every frame of the page (its own
- * requestAnimationFrame: Play is not frozen), each object is put at its place + motionAt(t) through the adapter, as
- * the loader would. Keys the page's loader already moves (the global set it keeps, src/loader) are left alone, so
- * nothing moves twice. Call after arrangeInPlay (the place is the arranged one). Returns the keys it moves.
+ * The draft's motions in ▶ Play (motion-gui, 2026-10-22; the timeline's clips since studio-timeline), for a game whose
+ * loader does not run them: a game the AI made before "add the loader", or one with an older copy of it. Every frame
+ * of the page (its own requestAnimationFrame: Play is not frozen), each object is put at its place + its clip that
+ * plays at the start (clipAt) — or the older path / spin (motionAt) — through the adapter, as the loader would. A clip
+ * that waits for a cue does not play here: the cue is the game's code, which the AI writes. Keys the page's loader
+ * already moves (the global set it keeps, src/loader) are left alone, so nothing moves twice. Call after arrangeInPlay
+ * (the place is the arranged one). Returns the keys it moves.
  */
 function moveInPlay(a               , file                 , win                            )           {
   const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
   if (!motion) return [];
   const byLoader = (win                                                      )[Symbol.for('game-studio.motion')];
   const items = a.list();
-  const runs                                                                              = [];
+  const runs                                                                           = [];
   for (const [key, m] of Object.entries(motion)) {
     if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
     const it = items.find((i) => i.key === key);
-    const mm = m                                      ;
-    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === (it?.pose.p.length ?? 0));
-    if (!it || (!pathOk && !num(mm.spin))) continue;
-    runs.push({ key, m: m                                        , base: structuredClone(flat(it.pose)) });
+    if (!it) continue;
+    const dim      = it.pose.p.length === 3 ? '3d' : '2d';
+    const mm = m          ;
+    const clip = Array.isArray(mm.clips) ? (mm.clips                ).find((c) => c && c.start === true && c.keys && typeof c.keys === 'object') : undefined;
+    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
+    if (clip) runs.push({ key, at: (t) => offsetsAt(clip, t), base: structuredClone(flat(it.pose)), dim });
+    else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
   }
   if (!runs.length) return [];
   const t0 = win.performance.now();
   const tick = (now        ) => {
     const t = Math.max(0, (now - t0) / 1000);
     for (const r of runs) {
-      const at = motionAt(r.m, t)                                          ;
-      const pose       = { ...r.base, p: at.off ? r.base.p.map((v, i) => v + (at.off [i] ?? 0)) : r.base.p.slice() };
-      if (num(r.m.spin)) pose.r = (r.base.r ?? 0) + at.turn;
       try {
-        a.setPose(r.key, pose);
+        a.setPose(r.key, compose(r.base, r.at(t), r.dim));
       } catch {
         /* the game took it away: the others go on */
       }
@@ -15463,7 +15911,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -15518,7 +15966,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -15600,7 +16048,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -15618,10 +16066,10 @@ const { findDomUi, uiAdapterFromPort } = __require(21);
 const { runSelfCheck } = __require(22);
 const { createEditor } = __require(35);
 const { startPlayAsk } = __require(42);
-const { arrangeInPlay, moveInPlay } = __require(45);
+const { arrangeInPlay, moveInPlay } = __require(46);
 const { applyPlacement, placementForLevel } = __require(19);
-const { pickLevel } = __require(46);
-const { watchEarlyTaps } = __require(47);
+const { pickLevel } = __require(47);
+const { watchEarlyTaps } = __require(48);
                                                     
 
                                 
@@ -16028,7 +16476,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -16047,11 +16495,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(48);
+const { startBridge } = __require(49);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(49);
+__require(50);
 })();

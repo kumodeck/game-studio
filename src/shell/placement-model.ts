@@ -107,9 +107,11 @@ export class PlacementModel {
     this.fileOrders.clear();
     this.fileAdded = [];
     this.fileRemoved = [];
+    // The dim first: the older motion shape is read as a clip, and a 2D spin is one angle (studio-timeline).
+    if (file?.dim) this.dim = file.dim;
+    this.motion.dim = this.dim;
     this.motion.restore(file?.motion);
     if (!file || !file.objects) return;
-    if (file.dim) this.dim = file.dim;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
     for (const o of file.order || []) this.fileOrders.set(o.in, o);
     this.fileAdded = (file.added || []).map((a) => structuredClone(a));
@@ -225,6 +227,7 @@ export class PlacementModel {
    */
   setItems(items: Item[], dim: Dim): Array<{ key: string; pose: Pose }> {
     this.dim = dim;
+    this.motion.dim = dim;
     const apply: Array<{ key: string; pose: Pose }> = [];
     const seen = new Set<string>();
     for (const it of items) {

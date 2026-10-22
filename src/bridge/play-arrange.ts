@@ -18,10 +18,10 @@
 //   - a reordered list only while it is still in the code's order (`was`).
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
-import type { Dim, Pose, StudioAdapter } from '../contract.ts';
+import type { Dim, Motion, MotionClip, Pose, StudioAdapter } from '../contract.ts';
 import { hasLayer, orderOfLayer } from '../shell/layers.ts';
 import { samePose } from '../shell/pose-compare.ts';
-import { motionAt } from '../loader/studio-placement.js';
+import { compose, legacyOffsets, offsetsAt, type Offsets } from '../shell/timeline-model.ts';
 
 type Entry = { p?: unknown; r?: unknown; s?: unknown; t?: unknown; was?: { p?: unknown; r?: unknown; s?: unknown; t?: unknown } };
 type Added = { key?: unknown; from?: unknown; p?: unknown; r?: unknown; s?: unknown; t?: unknown };
@@ -139,36 +139,38 @@ export function arrangeInPlay(a: StudioAdapter, file: PlayFile | null): number {
 }
 
 /**
- * The draft's motions in ▶ Play (motion-gui, 2026-10-22), for a game whose loader does not run them: a game the AI
- * made before "add the loader", or one with an older copy of it. Every frame of the page (its own
- * requestAnimationFrame: Play is not frozen), each object is put at its place + motionAt(t) through the adapter, as
- * the loader would. Keys the page's loader already moves (the global set it keeps, src/loader) are left alone, so
- * nothing moves twice. Call after arrangeInPlay (the place is the arranged one). Returns the keys it moves.
+ * The draft's motions in ▶ Play (motion-gui, 2026-10-22; the timeline's clips since studio-timeline), for a game whose
+ * loader does not run them: a game the AI made before "add the loader", or one with an older copy of it. Every frame
+ * of the page (its own requestAnimationFrame: Play is not frozen), each object is put at its place + its clip that
+ * plays at the start (clipAt) — or the older path / spin (motionAt) — through the adapter, as the loader would. A clip
+ * that waits for a cue does not play here: the cue is the game's code, which the AI writes. Keys the page's loader
+ * already moves (the global set it keeps, src/loader) are left alone, so nothing moves twice. Call after arrangeInPlay
+ * (the place is the arranged one). Returns the keys it moves.
  */
 export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window & typeof globalThis): string[] {
   const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
   if (!motion) return [];
   const byLoader = (win as unknown as Record<symbol, Set<string> | undefined>)[Symbol.for('game-studio.motion')];
   const items = a.list();
-  const runs: Array<{ key: string; m: { path?: number[][]; spin?: number }; base: Pose }> = [];
+  const runs: Array<{ key: string; at: (t: number) => Offsets; base: Pose; dim: Dim }> = [];
   for (const [key, m] of Object.entries(motion)) {
     if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
     const it = items.find((i) => i.key === key);
-    const mm = m as { path?: unknown; spin?: unknown };
-    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === (it?.pose.p.length ?? 0));
-    if (!it || (!pathOk && !num(mm.spin))) continue;
-    runs.push({ key, m: m as { path?: number[][]; spin?: number }, base: structuredClone(flat(it.pose)) });
+    if (!it) continue;
+    const dim: Dim = it.pose.p.length === 3 ? '3d' : '2d';
+    const mm = m as Motion;
+    const clip = Array.isArray(mm.clips) ? (mm.clips as MotionClip[]).find((c) => c && c.start === true && c.keys && typeof c.keys === 'object') : undefined;
+    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
+    if (clip) runs.push({ key, at: (t) => offsetsAt(clip, t), base: structuredClone(flat(it.pose)), dim });
+    else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
   }
   if (!runs.length) return [];
   const t0 = win.performance.now();
   const tick = (now: number) => {
     const t = Math.max(0, (now - t0) / 1000);
     for (const r of runs) {
-      const at = motionAt(r.m, t) as { off: number[] | null; turn: number };
-      const pose: Pose = { ...r.base, p: at.off ? r.base.p.map((v, i) => v + (at.off![i] ?? 0)) : r.base.p.slice() };
-      if (num(r.m.spin)) pose.r = (r.base.r ?? 0) + at.turn;
       try {
-        a.setPose(r.key, pose);
+        a.setPose(r.key, compose(r.base, r.at(t), r.dim));
       } catch {
         /* the game took it away: the others go on */
       }

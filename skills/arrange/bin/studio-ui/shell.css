@@ -76,6 +76,8 @@
   --ai: #8b7cff; --ai-soft: rgba(139, 124, 255, .16); --ai-text: #c1b8ff;
   --live: #30d158;
   --danger: #ff453a;
+  /* Recording (the timeline's auto key, studio-timeline 2026-10-22): rule 2's second exception, see the timeline section. */
+  --rec: #ff453a; --rec-soft: rgba(255, 69, 58, .2);
   --x: var(--text-3); --y: var(--text-3); --z: var(--text-3);   /* axis letters: grey (rule 2) */
   --scrim: rgba(0, 0, 0, .28);
   /* The glass: dark 86 % + blur. --glass-thick for the Assets sheet (a page of pictures: reading beats see-through).
@@ -111,6 +113,7 @@
   --ai-soft: rgba(139, 124, 255, .14); --ai-text: #5b4bd6;
   --live: #1f9d55;
   --danger: #d70015;
+  --rec: #ff3b30; --rec-soft: rgba(255, 59, 48, .14);
   --scrim: rgba(20, 21, 24, .14);
   --glass: rgba(251, 251, 253, .8); --glass-thick: rgba(251, 251, 253, .94);
   --glass-blur: blur(30px) saturate(1.25);   /* light glass may carry a little of the game's colour: it reads as light through it */
@@ -439,22 +442,20 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .num input { flex: 1; min-width: 0; width: 100%; height: 100%; border: 0; background: none; color: var(--text); font: 400 var(--fs) var(--sans); font-variant-numeric: tabular-nums; padding: 0 6px 0 0; outline: none; -moz-appearance: textfield; }
 .num input::-webkit-inner-spin-button, .num input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .num.wide { padding-left: 8px; }
-/* Motion (motion-gui, 2026-10-22; motion-row.ts): one more row of the card, read like the numbers above it — a quiet
-   menu that lights on hover like a number, the ▶ an icon button, no colour but orange once it plays (your hand). The
-   native <select> is kept (the platform's menu, read aloud, a finger's), only its box is the card's. */
-.motion-cells, .motion-more { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+/* Motion (motion-gui, 2026-10-22; the timeline's door since studio-timeline: timeline-wire.ts cardRow): one more row of
+   the card, read like the numbers above it — the object's motions (a quiet menu) and "◆ Timeline", which opens the
+   timeline at the foot of the game (orange while it is open: your hand is on it). */
+.motion-cells { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px; }
 .motion-pick { position: relative; display: flex; align-items: center; height: var(--h); min-width: 0; border-radius: 6px; }
 .motion-pick:hover { background: var(--raise); }
 .motion-pick select { appearance: none; -webkit-appearance: none; width: 100%; height: 100%; min-width: 0; border: 0; border-radius: 6px; background: none; color: var(--text);
-  font: 400 var(--fs) var(--sans); padding: 0 24px 0 8px; cursor: pointer; outline: none; text-overflow: ellipsis; }
+  font: inherit; padding: 0 24px 0 8px; cursor: pointer; text-overflow: ellipsis; }
+.motion-pick select:disabled { color: var(--text-3); cursor: default; }
 .motion-pick select:focus-visible { box-shadow: inset 0 0 0 1px var(--you); }
 .motion-pick .icon { position: absolute; right: 6px; width: 14px; height: 14px; color: var(--text-3); pointer-events: none; }
-.motion-play.on, .motion-play.on:hover:not(:disabled) { color: var(--you); }
-.motion-speed { cursor: text; padding-left: 8px; }
-.motion-speed .motion-unit { padding-right: 8px; font-weight: 400; color: var(--text-3); }
-.motion-points { display: inline-flex; align-items: center; }
-.motion-points .icon-btn { width: 24px; height: 24px; min-height: 24px; }
-.motion-points .n { margin: 0; min-width: 2ch; text-align: center; color: var(--text-2); }
+.motion-tl { background: var(--raise); padding: 0 10px; gap: 6px; font-size: var(--fs-s); }
+.motion-tl.on { background: var(--you-soft); color: var(--you-text); }
+.tl-diamond { width: 7px; height: 7px; transform: rotate(45deg); background: currentColor; border-radius: 1px; flex: none; }
 .f-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: var(--raise); }
 .seg button { min-height: 24px; height: 24px; border-radius: 6px; }
@@ -932,7 +933,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .num input { font-size: max(16px, var(--fs)); }
 .shell[data-layout="phone"] .motion-pick { height: 40px; }
 .shell[data-layout="phone"] .motion-pick select { font-size: max(16px, var(--fs)); }
-.shell[data-layout="phone"] .motion-play, .shell[data-layout="phone"] .motion-points .icon-btn { width: 44px; height: 44px; min-height: 44px; }
+.shell[data-layout="phone"] .motion-tl { min-height: 40px; }
 .shell[data-layout="phone"] .layer-seg button { width: 44px; height: 40px; min-height: 40px; }
 .shell[data-layout="phone"] .f-row { grid-template-columns: 56px minmax(0, 1fr) auto; }
 .shell[data-layout="phone"] .card-body > .link-btn, .shell[data-layout="phone"] .note-line .link-btn { min-height: 44px; }
@@ -1251,3 +1252,99 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .card-actions .card-x { display: inline-flex; }
 .shell[data-layout="phone"] .card-body > [data-action="select-none"] { display: none; }
 .shell[data-layout="phone"] .card-body:not(:has(> :not([data-action="select-none"]))) { display: none; }
+
+/* ----- The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender"; timeline-panel.ts) -----
+   One more plate of the glass (rule 1), at the foot of the game across its width on PC (the ask bar steps up over it:
+   --tl-h), in the dock above the picked object's card on a phone and in the side window. A head row (▶, the time, ●
+   Auto key, the motion and its menus, ⌄), a ruler, then one row per object (▸ opens position / angle / size). Keys are
+   diamonds, grey; picked ones are orange (rule 2: your hand).
+   RED, the second exception to rule 2: while Auto key is on, its dot and the time line are red. Red is what every
+   camera, sound desk and animation tool says for "writing now"; whether moving something sets a key or moves it is
+   the one thing the person must be able to tell at a glance (asked for as "a red ● that shows on / off"). Delete's red
+   is never next to it. */
+.timeline { background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  border-radius: var(--R); color: var(--text); overflow: hidden; outline: none; --tl-names: 168px; --tl-ruler: 24px; --tl-row: 28px; }
+.timeline.enter { animation: studio-rise var(--dur-in) var(--ease); }
+.stage > .timeline { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5; }
+.shell[data-timeline="open"]:not([data-layout="phone"]) .dock { bottom: calc(16px + var(--tl-h, 0px)); }
+.shell[data-timeline="open"]:not([data-layout="phone"]) .card { max-height: calc(100dvh - var(--bar) - 112px - var(--tl-h, 0px)); }
+.tl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 8px; min-height: 40px; }
+.tl-head .icon-btn .icon { width: 16px; height: 16px; }
+.tl-play { background: var(--solid); color: var(--solid-fg); width: var(--h); padding: 0; }
+.tl-play:hover:not(:disabled) { background: var(--solid); opacity: .88; }
+.tl-time { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; font-variant-numeric: tabular-nums; }
+.tl-now { font-weight: 600; min-width: 4.2em; font-variant-numeric: tabular-nums; }
+.tl-of { color: var(--text-3); }
+.tl-len { width: 2.4em; height: 24px; text-align: right; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-variant-numeric: tabular-nums; padding: 0 4px; }
+.tl-len:hover:not(:disabled), .tl-len:focus { background: var(--raise); color: var(--text); }
+.tl-auto { background: var(--raise); padding: 0 10px; gap: 7px; }
+.tl-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); flex: none; }
+.tl-auto.on { color: var(--rec); }
+.tl-auto.on .tl-dot { background: var(--rec); box-shadow: 0 0 0 3px var(--rec-soft); }
+.tl-pick { position: relative; display: inline-flex; align-items: center; min-width: 0; }
+.tl-pick select { appearance: none; -webkit-appearance: none; height: var(--h); max-width: 220px; field-sizing: content; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text);
+  font: inherit; padding: 0 24px 0 10px; cursor: pointer; text-overflow: ellipsis; }
+.tl-pick select:hover:not(:disabled) { background: var(--raise-2); }
+.tl-pick select:focus-visible { box-shadow: inset 0 0 0 1px var(--you); }
+.tl-pick .icon { position: absolute; right: 7px; width: 12px; height: 12px; color: var(--text-3); pointer-events: none; }
+.tl-pick.off { opacity: .5; }
+.tl-pick.off select { cursor: default; }
+.tl-when, .tl-rename { height: var(--h); width: 200px; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 10px; }
+.tl-when:focus, .tl-rename:focus { box-shadow: inset 0 0 0 1px var(--you); }
+.tl-gap { flex: 1; }
+.tl-body { display: grid; grid-template-columns: var(--tl-names) minmax(0, 1fr); max-height: calc(var(--tl-ruler) + 5 * var(--tl-row)); overflow: hidden auto;
+  border-top: 1px solid var(--line); overscroll-behavior: contain; }
+.tl-names-col { min-width: 0; }
+.tl-ruler-pad { height: var(--tl-ruler); position: sticky; top: 0; z-index: 2; background: var(--float-solid); }
+.tl-name { display: flex; align-items: center; gap: 2px; padding: 0 6px 0 4px; white-space: nowrap; overflow: hidden; min-width: 0; }
+.tl-name.picked, .tl-lane.picked { background: var(--you-soft); }
+.tl-name.sub { padding-left: 30px; color: var(--text-2); font-size: var(--fs-s); }
+.tl-name.sub.none { color: var(--text-3); }
+.tl-twist { width: 22px; min-height: 22px; padding: 0; flex: none; color: var(--text-3); }
+.tl-twist .icon { width: 12px; height: 12px; transition: transform var(--dur) var(--ease); }
+.tl-twist.open .icon { transform: rotate(90deg); }
+.tl-obj { min-height: 22px; padding: 0 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; justify-content: flex-start; flex: 0 1 auto; }
+.tl-clipname { color: var(--text-3); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tl-track { position: relative; min-width: 0; touch-action: none; user-select: none; -webkit-user-select: none; }
+.tl-ruler { position: sticky; top: 0; height: var(--tl-ruler); z-index: 2; background: var(--float-solid); cursor: ew-resize; }
+.tl-tick { position: absolute; top: 0; height: 100%; padding-left: 4px; border-left: 1px solid var(--line-2); font-size: var(--fs-s); line-height: var(--tl-ruler);
+  color: var(--text-3); font-variant-numeric: tabular-nums; pointer-events: none; }
+.tl-tick.half { top: auto; bottom: 0; height: 6px; }
+.tl-lanes { position: relative; min-height: var(--tl-row); }
+.tl-lane { position: absolute; left: 0; right: 0; }
+.tl-span { position: absolute; top: 50%; height: 2px; transform: translateY(-50%); background: var(--raise-3); border-radius: 1px; pointer-events: none; }
+.tl-key { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; transform: rotate(45deg); background: var(--text-2); border-radius: 1.5px; cursor: ew-resize; z-index: 1; }
+/* The press area is larger than the diamond (24 px a mouse, 40 a finger), so a key is easy to grab. */
+.tl-key::after { content: ''; position: absolute; inset: -7px; }
+.tl-key.sum { width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; background: none; box-shadow: inset 0 0 0 2px var(--text-2); }
+.tl-key.on { background: var(--you); box-shadow: 0 0 0 2px var(--you-soft); }
+.tl-key.sum.on { background: none; box-shadow: inset 0 0 0 2px var(--you), 0 0 0 2px var(--you-soft); }
+.tl-after { position: absolute; top: 0; bottom: 0; right: 0; background: var(--raise); pointer-events: none; }
+.tl-playhead { position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-left: 1.5px solid var(--text); z-index: 3; pointer-events: none; }
+.tl-cap { position: absolute; top: 3px; left: 0; transform: translateX(-50%); padding: 0 6px; border-radius: 6px; background: var(--text); color: var(--float-solid);
+  font-size: var(--fs-s); font-weight: 600; line-height: 18px; font-variant-numeric: tabular-nums; pointer-events: auto; cursor: ew-resize; }
+.timeline.rec .tl-playhead { border-color: var(--rec); }
+.timeline.rec .tl-cap { background: var(--rec); color: #fff; }
+.tl-box { position: absolute; z-index: 4; border: 1px solid var(--you); background: var(--you-soft); border-radius: 4px; pointer-events: none; }
+.tl-empty { margin: 0; padding: 8px 12px; color: var(--text-2); font-size: var(--fs-s); }
+/* Narrow (a phone, the side window): the names column is short, Auto key is its dot, the head wraps to two rows —
+   ▶, the time, ● and ⌄ on the first (what a thumb uses every time), the motion's menus under them; the key's ease only
+   while keys are picked; the rows say the object, not its motion's name (the menu above says it). */
+.timeline.narrow { --tl-names: 96px; }
+.timeline.narrow .tl-head > * { order: 2; }
+.timeline.narrow .tl-head > .tl-play, .timeline.narrow .tl-head > .tl-time, .timeline.narrow .tl-head > .tl-auto { order: 0; }
+.timeline.narrow .tl-head > .tl-fold { order: 1; margin-left: auto; }
+.tl-break { display: none; }
+.timeline.narrow .tl-head > .tl-break { display: block; order: 1; flex-basis: 100%; height: 0; }
+.timeline.narrow .tl-head > .tl-gap { display: none; }
+.timeline.narrow .tl-ease-pick.off { display: none; }
+.timeline.narrow .tl-clipname { display: none; }
+.timeline.narrow .tl-auto-w { display: none; }
+.timeline.narrow .tl-auto { padding: 0; width: var(--h); }
+.timeline.narrow .tl-pick select { max-width: 150px; }
+.timeline.narrow .tl-when { width: 100%; order: 9; }
+.timeline.narrow .tl-body { max-height: calc(var(--tl-ruler) + 4 * var(--tl-row)); }
+.shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-ruler: 32px; --tl-row: 36px; border-radius: 22px; }
+.shell[data-layout="phone"]:not([data-fit="side"]) .tl-head button, .shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select { min-height: 40px; height: 40px; }
+.shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select { font-size: max(16px, var(--fs)); }
+.shell[data-layout="phone"]:not([data-fit="side"]) .tl-key::after { inset: -14px; }
