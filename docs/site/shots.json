@@ -1,0 +1,36 @@
+{
+  "about": "Which photo of which screen test each docs picture is. The picture script runs every test once per language (with --lang) and turns the photos into lang/<lang>/media/<as>.webp. A * in a file name matches the photo's step number. Change a test's photo names and this file goes with it.",
+  "runs": [
+    { "id": "w1", "test": "test/w1-shots.browser.mjs", "args": ["--only", "pc", "--theme", "light"] },
+    { "id": "menu", "test": "test/studio-context-menu.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] },
+    { "id": "library", "test": "test/studio-library.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] },
+    { "id": "save", "test": "test/studio-save-fab.browser.mjs", "args": ["--only", "pc", "--theme", "light"] },
+    { "id": "choice", "test": "test/studio-play-choice.browser.mjs", "args": ["--only", "look"] },
+    { "id": "pause", "test": "test/studio-pause.browser.mjs", "args": ["--only", "cove"] },
+    { "id": "timeline", "test": "test/studio-timeline.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
+    { "id": "when", "test": "test/studio-motion-triggers.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
+    { "id": "levels", "test": "test/studio-levels.browser.mjs", "args": [] },
+    { "id": "ui", "test": "test/studio-ui-layer.browser.mjs", "args": ["--only", "pc"] },
+    { "id": "kumo", "test": "test/studio-kumo.browser.mjs", "args": [] },
+    { "id": "gen", "test": "test/studio-generate.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] }
+  ],
+  "pictures": [
+    { "as": "open", "run": "w1", "file": "pc-light-*-open.png" },
+    { "as": "selected", "run": "w1", "file": "pc-light-*-picked.png" },
+    { "as": "turn", "run": "w1", "file": "pc-light-*-turn.png" },
+    { "as": "right-click", "run": "menu", "file": "lantern-cove-pc-light-1-object.png" },
+    { "as": "library", "run": "library", "file": "lantern-cove-pc-light-2-library-all.png" },
+    { "as": "library-object", "run": "library", "file": "lantern-cove-pc-light-4-object-detail.png" },
+    { "as": "save", "run": "save", "file": "pc-1280x800-light-after-1-changed.png" },
+    { "as": "play-unsaved", "run": "choice", "file": "choice-pc-light-1-window.png" },
+    { "as": "pause-chat", "run": "pause", "file": "cove-*-replied.png" },
+    { "as": "timeline", "run": "timeline", "file": "after-pc-light-1-open.png" },
+    { "as": "motion-when", "run": "when", "file": "after-pc-light-1-when.png" },
+    { "as": "motion-library", "run": "when", "file": "after-pc-light-3-library.png" },
+    { "as": "levels", "run": "levels", "file": "after-pc-light-2-menu.png" },
+    { "as": "ui-layer", "run": "ui", "file": "ui-pc-moved.png" },
+    { "as": "make-form", "run": "kumo", "file": "kumo-1280-{lang}-2-form.png" },
+    { "as": "make-added", "run": "kumo", "file": "kumo-1280-{lang}-4-picture-added.png" },
+    { "as": "make-sound", "run": "gen", "file": "gen-lantern-cove-pc-light-2-sound-form.png" }
+  ]
+}

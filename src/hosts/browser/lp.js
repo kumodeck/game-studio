@@ -26,6 +26,8 @@
     'line', 'f1Title', 'f1', 'f2Title', 'f2', 'f3Title', 'f3', 'engines', 'kdTitle', 'kd', 'kdLink', 'foot', 'license']
     .forEach(function (id) { $(id).textContent = T[id]; });
   $('gh').textContent = T.github;
+  $('docs').textContent = T.docs;
+  if (ja) $('docs').href = 'docs/ja/';
   $('repo').textContent = T.repoLink;
   $('copy').textContent = T.copy;
 

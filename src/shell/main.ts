@@ -47,6 +47,7 @@ import { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStil
 import { DRAG_FILE } from '../tools/library/panel.ts';
 import { createLibraryObjects, DRAG_OBJECT } from './library-objects.ts';
 import { createLibraryMotions } from './library-motions.ts';
+import { createMotionDrag } from './motion-drag.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
 import { h, safeImageSrc } from './dom.ts';
@@ -270,7 +271,30 @@ export function start(host: StudioHost) {
     },
     narrow: () => phone(),
     t: (k, v) => t(k, v),
+    seen: (id) => hintSeen(id),
+    markSeen: (id) => markHint(id),
   });
+  /**
+   * Hints closed for good (studio-motion-flow: the timeline's first-time steps). Kept in this browser AND in the game's
+   * ui prefs (.studio/ui/prefs.json `seen`): the studio opens on a free port, so the browser's storage alone would
+   * forget it on the next run; the prefs alone would show it again in every new game on this machine.
+   */
+  function hintSeen(id: string): boolean {
+    if (uiPrefs.seen?.includes(id)) return true;
+    try {
+      return handStore?.getItem(`studio.seen.${id}`) === '1';
+    } catch {
+      return false;
+    }
+  }
+  function markHint(id: string) {
+    try {
+      handStore?.setItem(`studio.seen.${id}`, '1');
+    } catch {
+      /* private window: the prefs still keep it */
+    }
+    if (!uiPrefs.seen?.includes(id)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), id] });
+  }
   const listeners = new Map<string, Set<(m: BridgeToShell) => void>>();
   let placementRestored = false;
   // The same for the UI layer's first list of each page (UI stage 1): set false by loadGame().
@@ -1033,6 +1057,55 @@ export function start(host: StudioHost) {
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
+  // A Library motion picked up and dropped on an object in the game (studio-motion-flow, motion-drag.ts).
+  const motionDrag = createMotionDrag({
+    t,
+    app,
+    frame: () => iframe,
+    send: (m) => send(m),
+    target: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it && !it.backdrop && it.held !== 'ground' ? displayName(it, t) : null;
+    },
+    drop: (k, name) => attachAndShow(k, name),
+    can: () => editing && !playing && dim === '3d',
+  });
+  /**
+   * After an attach from outside the Scene (a drop, the Library's detail): the Scene, the object picked, the timeline
+   * open on the motion with "✓ attached · When does it move?" (studio-motion-flow: the next thing to decide, on screen).
+   */
+  function attachAndShow(key: string, name: string) {
+    if (!timeline.attach(key, name)) return;
+    toScene();
+    // No camera move: the object was just in sight (a drop), or the person left the camera where they want it.
+    selectObject(key);
+    timeline.show(key, name, true);
+    renderShelf();
+  }
+  function toScene() {
+    if (editLayer !== 'world') setEditLayer('world');
+    if (tool === 'placement' && page === 'tool' && !(phone() && sheetOpen)) return;
+    tool = 'placement';
+    page = 'tool';
+    if (phone()) sheetOpen = false;
+    renderAll(true);
+  }
+  // "+ New motion" with nothing picked: the next object picked in the Scene gets it (one line says so; it lapses with
+  // the line, MAKE_WAIT_MS, so a pick much later is just a pick).
+  let makeOnPick = 0;
+  const MAKE_WAIT_MS = 12000;
+  function newMotion() {
+    const key = editLayer === 'world' && group.length <= 1 ? selected : null;
+    toScene();
+    if (key) {
+      makeOnPick = 0;
+      selectObject(key);
+      timeline.make(key);
+      return;
+    }
+    makeOnPick = Date.now() + MAKE_WAIT_MS;
+    showToast(t('motion.pickFirst'), MAKE_WAIT_MS);
+  }
   // The Library's motions (studio-motion-triggers, library-motions.ts): the "Motion" filter, attach, the ask's motions.
   const libraryMotions = createLibraryMotions({
     t,
@@ -1041,7 +1114,9 @@ export function start(host: StudioHost) {
     items: () => worldItems,
     picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
     multi: () => multi,
-    attach: (key, name) => timeline.attach(key, name),
+    attach: (key, name) => attachAndShow(key, name),
+    create: () => newMotion(),
+    holdable: (tile, name) => motionDrag.bind(tile, name),
     duplicate: (name) => timeline.duplicateLib(name),
     remove: (name) => timeline.deleteLib(name),
     rename: (name, to) => timeline.renameLib(name, to),
@@ -2463,6 +2538,7 @@ export function start(host: StudioHost) {
 
   function onBridge(m: BridgeToShell) {
     if (timeline.onMessage(m)) return;
+    if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -2743,6 +2819,12 @@ export function start(host: StudioHost) {
         else placementPanel.renderAsk();
         timeline.untouch();
         timeline.render();
+        // "+ New motion" was pressed with nothing picked (studio-motion-flow): this pick is the object it was for.
+        if (makeOnPick && m.key && group.length <= 1 && editLayer === 'world' && !libraryShown()) {
+          const ok = Date.now() < makeOnPick;
+          makeOnPick = 0;
+          if (ok) timeline.make(m.key);
+        }
         break;
       case 'studio:placement/moved': {
         // The game's echo of a pose the shell set (undo, a typed number): that pose is a place, as it always was.

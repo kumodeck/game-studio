@@ -140,6 +140,12 @@ export interface InputHandle {
   setAiMarks(keys: string[], label: string | null): void;
   /** The objects the mouse is over in the editor page (list row, card, ask chip): lit softly in the game. [] = none. */
   setHover(keys: string[]): void;
+  /**
+   * The object a finger / the mouse would pick at this point of the game page (studio-motion-flow: a Library motion held
+   * over the game asks "what is here?"). The same test as a tap (tappableAt, the touch radius: a held tile is a finger's
+   * size), null = nothing.
+   */
+  keyAt(x: number, y: number): string | null;
   detach(): void;
 }
 
@@ -1526,6 +1532,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       aiLabel = label;
       shapes.ai.sig = '';
       place();
+    },
+    keyAt(x, y) {
+      return tappableAt(adapter, state.items, win, x, y, UI.pickRadiusTouch)[0] ?? null;
     },
     setHover(keys) {
       if (keys.join('\n') === hoverKeys.join('\n')) return;

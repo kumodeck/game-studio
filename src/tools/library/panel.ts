@@ -546,11 +546,25 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
     else count.textContent = fileCount ? L('countBoth', { o: objs.n, f: list.length }) : objs.n ? L('countObjects', { n: objs.n }) : '';
     grid.replaceChildren();
-    // The Motion filter: the motions only, and a line when there are none (they are made on the timeline).
+    // The Motion filter: "+ New motion" first (studio-motion-flow), then the motions; with none, one line that does
+    // the same as the tile (a press on it = the tile's press: "the same guidance, one line, pressable").
     if (filter.shelf === 'motion') {
       count.textContent = L('countMotions', { n: mots?.n ?? 0 });
+      const plus = filter.q.trim() ? null : motions?.newTile?.() ?? null;
+      if (plus) grid.append(plus);
       if (mots?.tiles.length) grid.append(...mots.tiles);
-      else grid.append(h('div', 'gsl-empty', L('noMotionsYet')));
+      else {
+        const line = h('div', 'gsl-empty', L(plus ? 'noMotionsMake' : 'noMotionsYet'));
+        if (plus) {
+          line.classList.add('gsl-empty-act');
+          line.setAttribute('role', 'button');
+          line.tabIndex = 0;
+          line.dataset.part = 'motion-new-line';
+          line.addEventListener('click', () => plus.click());
+          line.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), plus.click()));
+        }
+        grid.append(line);
+      }
       return;
     }
     if (objs) {

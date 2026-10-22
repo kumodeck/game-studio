@@ -28,6 +28,7 @@
     .brand img { width: 22px; height: 22px; display: block; }
     .top a.gh { font-size: 14px; color: var(--text-2); text-decoration: none; }
     .top a.gh:hover { color: var(--text); }
+    .top .links { display: flex; gap: 20px; }
 
     .hero { padding-top: 72px; padding-bottom: 56px; }
     h1 { font-size: 52px; line-height: 1.06; letter-spacing: -.025em; font-weight: 650; margin: 0; max-width: 15em; text-wrap: balance; }
@@ -122,7 +123,11 @@
 <body>
   <header class="wrap top">
     <a class="brand" href="./"><img src="favicon.svg" alt="" width="22" height="22" /><span id="brand">Game Studio</span></a>
-    <a class="gh" id="gh" target="_blank" rel="noopener">GitHub</a>
+    <nav class="links">
+      <!-- The docs (docs/site/, built into docs/ and docs/ja/ next to this page; 2026-10-22). lp.js points the Japanese page at docs/ja/. -->
+      <a class="gh" id="docs" href="docs/">Docs</a>
+      <a class="gh" id="gh" target="_blank" rel="noopener">GitHub</a>
+    </nav>
   </header>
   <main>
     <section class="wrap hero">

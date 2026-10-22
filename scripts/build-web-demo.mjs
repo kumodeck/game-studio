@@ -30,6 +30,8 @@
 //   games/<id>/…                the starter's files (what `--starter` copies); HTML pages get the tags above
 //                               and their import map pointed at vendor/
 //   vendor/<pkg>@<ver>/…        the CDN modules the samples import, copied (only the files used)
+//   docs/, docs/ja/             the public docs, English and Japanese (docs/site/, built by build-docs.mjs; decided
+//                               2026-10-22: "put the docs on the demo site, English first, Japanese too")
 //
 // WHY `__studio/` for the studio's own scripts: the edit script's load log skips any
 // /__studio/ path (core/loads.ts), so they are not listed as game assets.
@@ -41,6 +43,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundle } from './bundle.mjs';
+import { buildDocs } from './build-docs.mjs';
 import { injectEditScript } from '../src/server/files.mjs';
 import { listAssets } from '../src/server/assets.mjs';
 import { readStarters, starterFiles } from '../src/server/starters.mjs';
@@ -236,7 +239,10 @@ while (queue.length) {
   }
 }
 
-// ---- 4. a note for whoever opens the folder ----
+// ---- 4. the docs (/docs/ and /docs/ja/): the header's "Game Studio" and the tab icon point one folder up, here ----
+buildDocs(join(OUT, 'docs'), { version: pkg.version, repo: REPO, home: true });
+
+// ---- 5. a note for whoever opens the folder ----
 write('README.md', `# Game Studio — web demo (built folder)
 
 Built by \`oss/game-studio/scripts/build-web-demo.mjs\` (Game Studio ${pkg.version}). Do not edit: rebuild.
@@ -245,7 +251,8 @@ Static files only, relative paths, no CDN. Serve the folder as it is (KUMODeck h
 \`python3 -m http.server\`) and open \`index.html\`. The editor keeps everything in the
 visitor's browser (IndexedDB) and is not connected to an AI.
 
-- \`index.html\` — the sample list
+- \`index.html\` — the front page
+- \`docs/\` — the docs (English; Japanese in \`docs/ja/\`)
 - \`studio/\` — the editor (\`?game=<id>\`), \`games.json\` lists the samples
 - \`thumbs/\` — the pictures on the sample list
 - \`games/\` — the samples (${SAMPLES.map((s) => s.id).join(', ')})

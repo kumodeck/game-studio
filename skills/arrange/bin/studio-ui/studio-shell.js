@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.18 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.19 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -712,6 +712,11 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
     
                                                          
               
+     
+                                                                                                                      
+                                                                                                            
+     
+                  
  
 
 /**
@@ -961,6 +966,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                              
      
                                                       
+     
+                                                                                                                        
+                                                                                                                   
+     
+                                                                     
                                                                                        
                                                               
                                                                                                    
@@ -1135,6 +1145,8 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
      
                                                                                                   
+                                                                                 
+                                                                      
                                                                                            
                                                                   
                                                    
@@ -1976,6 +1988,8 @@ const RESULT_FILES                         = {
                 
                                                                                                                      
                                            
+                                                                                        
+                                 
  
 
                                
@@ -4160,8 +4174,9 @@ const en = {
   shelf_sound: 'Sound',
   shelf_other: 'Other',
   shelf_motion: 'Motion',
-  countMotions: '{n:1 motion|# motions} · made on the timeline',
+  countMotions: '{n:1 motion|# motions} · drag one onto an object to attach it',
   noMotionsYet: 'No motions yet. Open the timeline on an object (◆ Timeline on its card) and make one: it shows here.',
+  noMotionsMake: 'No motions yet. + New motion makes one on the timeline →',
   // The phone's one "+" next to the search (the second design review's ⑦, 2026-10-19): Multi-select, Add files and
   // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
   more: 'More',
@@ -4200,8 +4215,9 @@ const ja                                     = {
   shelf_sound: '音',
   shelf_other: 'その他',
   shelf_motion: '動き',
-  countMotions: '動き {n} · タイムラインで作った物',
+  countMotions: '動き {n} · 物にドラッグすると付きます',
   noMotionsYet: 'まだ動きはありません。物のカードの「◆ タイムライン」で作ると、ここに並びます。',
+  noMotionsMake: 'まだ動きはありません。「＋ 新しい動き」でタイムラインで作れます →',
   more: 'ほか',
   countObjects: '物 {n}',
   countBoth: '物 {o} ・ 素材 {f}',
@@ -6237,11 +6253,25 @@ function mountLibrary(root    , deps             )              {
     else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
     else count.textContent = fileCount ? L('countBoth', { o: objs.n, f: list.length }) : objs.n ? L('countObjects', { n: objs.n }) : '';
     grid.replaceChildren();
-    // The Motion filter: the motions only, and a line when there are none (they are made on the timeline).
+    // The Motion filter: "+ New motion" first (studio-motion-flow), then the motions; with none, one line that does
+    // the same as the tile (a press on it = the tile's press: "the same guidance, one line, pressable").
     if (filter.shelf === 'motion') {
       count.textContent = L('countMotions', { n: mots?.n ?? 0 });
+      const plus = filter.q.trim() ? null : motions?.newTile?.() ?? null;
+      if (plus) grid.append(plus);
       if (mots?.tiles.length) grid.append(...mots.tiles);
-      else grid.append(h('div', 'gsl-empty', L('noMotionsYet')));
+      else {
+        const line = h('div', 'gsl-empty', L(plus ? 'noMotionsMake' : 'noMotionsYet'));
+        if (plus) {
+          line.classList.add('gsl-empty-act');
+          line.setAttribute('role', 'button');
+          line.tabIndex = 0;
+          line.dataset.part = 'motion-new-line';
+          line.addEventListener('click', () => plus.click());
+          line.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), plus.click()));
+        }
+        grid.append(line);
+      }
       return;
     }
     if (objs) {
@@ -9448,6 +9478,10 @@ function whenShort(t                                                            
                                                                                                      
                             
                         
+                                                                                                                              
+                          
+                                                                                                                        
+                 
  
 
                                
@@ -9477,6 +9511,8 @@ function whenShort(t                                                            
                                  
                                                                                        
                   
+                                                                      
+                    
                                                                  
  
 
@@ -9495,7 +9531,9 @@ function createTimelinePanel(view                    , act              ) {
   const boxEl = h('div', { class: 'tl-box', hidden: true });
   const track = h('div', { class: 'tl-track' }, ruler, lanes, playhead, boxEl);
   const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, h('div', { class: 'tl-ruler-pad' }), names), track);
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, whenRow, body);
+  // studio-motion-flow: the three steps, the first time the plate opens (over its right end; shell.css .tl-coach).
+  const coach = h('div', { class: 'tl-coach', role: 'note', hidden: true, dataset: { part: 'tl-coach' } });
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, whenRow, body, coach);
 
   // Seconds ↔ px on the track (its own box: the names column is outside it).
   const pad = 12;
@@ -9601,7 +9639,10 @@ function createTimelinePanel(view                    , act              ) {
     const w = v.when;
     const items         = [];
     if (c && w) {
-      items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Just attached (studio-motion-flow): say so where the "when" is chosen, and ask the question the row answers.
+      if (v.attached) items.push(h('span', { class: 'tl-attached', dataset: { part: 'tl-attached' }, text: `✓ ${t('tl.attached', { name: v.attached })}` }),
+        h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
+      else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
       // Starts ▾: two groups, so the person sees which ones the AI has to connect (purple ✦, the AI's colour).
       const s = h('select', { 'aria-label': t('tl.starts'), title: t('tl.startsTip'), dataset: { part: 'tl-starts' } });
       for (const [label, list] of [[t('tl.when.self'), SELF_TRIGGERS], [`✦ ${t('tl.when.ai')}`, AI_TRIGGERS]]                                    ) {
@@ -9615,7 +9656,7 @@ function createTimelinePanel(view                    , act              ) {
         s.append(g);
       }
       s.addEventListener('change', () => act.setWhen(fresh(s.value                 , v)));
-      items.push(h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}` }, s, icon('chevronDown')));
+      items.push(h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}${v.attached ? ' ask' : ''}` }, s, icon('chevronDown')));
       items.push(...whenField(w, v));
       // Stops ▾: never / after N rounds / a cue; then: stay or go back.
       const u = v.until;
@@ -9630,6 +9671,10 @@ function createTimelinePanel(view                    , act              ) {
       }, 'decimal'), h('span', { class: 'tl-of', text: t('tl.until.timesUnit') }));
       if (u?.cue) items.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
       if (u) items.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
+    } else if (v.focus) {
+      // An object with no motion yet (studio-motion-flow: "+ New motion" lands here): what makes one, in one line.
+      const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus;
+      items.push(h('span', { class: 'tl-lbl', dataset: { part: 'tl-first' }, text: t('tl.when.first', { name }) }));
     } else items.push(h('span', { class: 'tl-lbl', text: t('tl.when.none') }));
     // Try: one ▶ per cue in the scene (Unity's Animator: the Parameters' Trigger buttons).
     items.push(h('span', { class: 'tl-gap' }));
@@ -9931,18 +9976,52 @@ function createTimelinePanel(view                    , act              ) {
 
   function render() {
     const v = view();
+    // A menu of the head that has the keyboard keeps it through a redraw (the head is drawn anew each time): the
+    // "When does it move?" focus after an attach (studio-motion-flow) would otherwise be lost to the next pick's echo.
+    const had = document.activeElement instanceof HTMLSelectElement && el.contains(document.activeElement) ? document.activeElement.dataset.part : null;
     el.classList.toggle('rec', v.auto);
     el.classList.toggle('narrow', v.narrow);
     renderHead(v);
+    if (had) el.querySelector                   (`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderRows(v);
     renderRuler(v);
+    renderCoach(v);
     place(v);
+  }
+
+  /**
+   * The first-time steps (studio-motion-flow; a hands-on try, 2026-10-22: "I couldn't tell how to make a motion"): what the plate
+   * is for, in the order a hand does it. Shown while v.coach; "Got it", × or Esc closes it for good (TimelineDeps.seen).
+   */
+  function renderCoach(v              ) {
+    coach.hidden = !v.coach;
+    if (!v.coach) return void coach.replaceChildren();
+    if (coach.childElementCount) return;
+    const done = () => act.coachDone();
+    const steps = h('ol', {}, ...['tl.coach.1', 'tl.coach.2', 'tl.coach.3'].map((k, i) => h('li', {}, h('i', { 'aria-hidden': 'true', text: String(i + 1) }), h('span', { text: t(k) }))));
+    coach.replaceChildren(
+      h('div', { class: 'tl-coach-head' }, h('b', { text: t('tl.coach.title') }),
+        h('button', { type: 'button', class: 'icon-btn tl-coach-x', 'aria-label': t('btn.close'), title: t('btn.close'), onclick: done }, icon('close'))),
+      steps,
+      h('div', { class: 'tl-coach-foot' }, h('button', { type: 'button', class: 'tl-coach-ok', dataset: { part: 'tl-coach-ok' }, text: t('tl.coach.ok'), onclick: done })));
+  }
+
+  /** "When does it move?" open after an attach: the Starts menu focused, and opened where the browser allows it. */
+  function focusStarts() {
+    const s = whenRow.querySelector                   ('[data-part=tl-starts]');
+    if (!s) return;
+    s.focus({ preventScroll: true });
+    try {
+      (s                                                   ).showPicker?.();
+    } catch {
+      /* no user gesture left (a drop that waited for the game's answer): focused, with its orange ring */
+    }
   }
 
   // The track's width changes with the window: the keys' places come from it.
   new ResizeObserver(() => el.isConnected && !el.hidden && render()).observe(track);
 
-  return { el, render, place };
+  return { el, render, place, focusStarts };
 }
 
 __def(__exports, "SELF_TRIGGERS", () => SELF_TRIGGERS);
@@ -9970,6 +10049,11 @@ __defs[23] = function (__exports) {
 //
 // The pick lives here (a Set of names): Shift / Multi-select adds to it and keeps the objects and files picked (the
 // "this crate and this Hop" ask); a plain press picks this motion alone. Names are the person's text: textContent only.
+//
+// studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and put it on objects"): a tile can
+// be picked up and dropped on an object in the game (motion-drag.ts), the Motion filter starts with a "+ New motion"
+// tile (newTile: the picked object gets a new motion on the timeline; nothing picked → "Pick an object first"), and the
+// count line says the hand ("drag one onto an object to attach it").
                                                                                                                  
 const { clipAt } = __require(19);
 const { h } = __require(16);
@@ -9991,6 +10075,10 @@ const { whenShort } = __require(22);
                                                   
                                                                                                   
                  
+                                                                                                                                          
+                  
+                                                                                         
+                                                   
                                                                                     
                   
  
@@ -10119,6 +10207,7 @@ function createLibraryMotions(d                    )                     {
         dataset: { kind: 'motion', motion: m.name } },
       h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
       h('span', { class: 'gsl-name' }, m.name, h('span', { class: 'lib-motion-len', text: ` ${(Math.round(m.len * 10) / 10).toFixed(1)} s ${repeatSign(m.repeat)}` })), meta);
+      d.holdable?.(tile, m.name);
       tile.addEventListener('pointerenter', () => pic.play(true));
       tile.addEventListener('pointerleave', () => pic.play(on));
       if (on) pic.play(true);
@@ -10146,7 +10235,9 @@ function createLibraryMotions(d                    )                     {
     const keys = (['p', 'r', 's']         ).reduce((n, ch) => n + (m.keys[ch]?.length ?? 0), 0);
     const title = h('b', { text: m.name, title: d.t('lib.motion.renameTip'), class: 'lib-motion-title', dataset: { part: 'motion-title' } });
     const head = h('div', { class: 'gsl-dtitle' }, title,
-      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }));
+      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }),
+      // The hand, said where the attaching is (studio-motion-flow): the tile itself goes onto an object.
+      ...(d.holdable ? [h('span', { class: 'gsl-path lib-motion-hand', text: d.t('lib.motion.dragTip') })] : []));
     // Rename: the title becomes a field (Enter / leaving keeps it, Esc goes back). Every object that uses it follows.
     const rename = () => {
       const f = h('input', { type: 'text', class: 'tl-rename', maxlength: '40', 'aria-label': d.t('lib.motion.renameTip'), dataset: { part: 'motion-rename' } });
@@ -10211,9 +10302,32 @@ function createLibraryMotions(d                    )                     {
     return { el, key: `motion:${m.name}` };
   }
 
+  /**
+   * "+ New motion": the Motion filter's first tile (and the only one with no motions yet). Its second line says what
+   * a press does: "for crate" (the picked object gets a new motion on the timeline) or "Pick an object first".
+   */
+  function newTile()                     {
+    if (!d.create) return null;
+    const target = d.picked();
+    const tile = h('div', { class: 'gsl-tile lib-motion lib-motion-new', role: 'button', tabindex: 0, dataset: { part: 'motion-new' } },
+      h('div', { class: 'gsl-thumb lib-motion-thumb lib-motion-plus' }, h('span', { 'aria-hidden': 'true', text: '+' })),
+      h('span', { class: 'gsl-name', text: d.t('lib.motion.new') }),
+      h('span', { class: 'gsl-meta' }, h('span', { class: 'lib-motion-on', text: target ? d.t('lib.motion.newFor', { name: name(target) }) : d.t('lib.motion.pickFirst') })));
+    tile.addEventListener('click', () => d.create ());
+    tile.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        d.create ();
+      }
+    });
+    return tile;
+  }
+
   return {
     count: () => d.list().length,
     tiles,
+    newTile,
     detail,
     clear() {
       if (!pick.size) return;
@@ -10230,6 +10344,217 @@ __def(__exports, "motionPicture", () => motionPicture);
 __def(__exports, "createLibraryMotions", () => createLibraryMotions);
 };
 __defs[24] = function (__exports) {
+'use strict';
+// motion-drag.ts
+
+// A Library motion picked up and dropped on an object in the game = attached (studio-motion-flow, 2026-10-22).
+//
+// A hands-on try of v0.1.18 (2026-10-22): "I couldn't tell how to make a motion and then put it on objects." Attaching was a
+// menu in the card ("Attach from the Library") or a menu in the motion's detail: neither said "this goes ON a thing".
+// Now the motion's tile is held like an asset's: pick it up, the Library steps aside so the game shows, the object
+// under the pointer lights and says "Attach “Hop” to barrel", let go = attached (then main.ts shows the Scene with
+// "When does it move?" open). A phone: hold the tile (long press) to pick it up; the sheet slides away the same.
+//
+// WHY pointer events and not HTML drag-and-drop (the asset tiles' DRAG_FILE): the game is another page (an iframe).
+// With drag-and-drop the editor page sees nothing while the pointer is over it, so it cannot ask "which object is
+// here?". With pointer events the iframe is set to `pointer-events: none` while a motion is held (shell.css
+// [data-drag="motion"]), the editor page keeps every move, and asks the game (studio:placement/at → at-is: the same
+// test as a tap, bridge/input.ts keyAt). A touch hold works the same way, which drag-and-drop does not on phones.
+//
+// WHY the Library fades instead of closing: let go anywhere that is not an object (or Esc) = nothing changes, and the
+// Library is there again exactly as it was (its scroll, its pick). Closing it would lose that for a cancelled drag.
+                                                    
+const { h } = __require(16);
+
+                                 
+                                                                 
+                                                                                       
+                   
+                                                 
+                                    
+                               
+                                                                                                               
+                                     
+                                                                                                
+                                        
+                                                                    
+                 
+ 
+
+/** A press that travels this far (mouse / pen) picks the tile up; less is a click (it opens the detail, as before). */
+const LIFT_PX = 6;
+/** A finger held this long without moving picks the tile up (a phone's long press; UI.longPressMs is the game's). */
+const HOLD_MS = 420;
+/** A finger that moves this far before HOLD_MS is scrolling the sheet: no pick up. */
+const SCROLL_PX = 10;
+
+function createMotionDrag(d                ) {
+  // A press on a tile that may become a pick up.
+  let press                                                                                                              = null;
+  // The motion in the hand.
+  let held                                                                                                                                        = null;
+  // The last question to the game and its answer: `asked` = the id waited for, `want` = a point to ask next.
+  let seq = 0;
+  let asked = 0;
+  let want                                  = null;
+  let target                = null;
+  let answered                      = null;
+  // The click that ends a pick up must not open the tile's detail too.
+  let eatClick = false;
+
+  /** Ask the game which object is at this editor-page point (one question at a time: the newest point wins). */
+  function ask(x        , y        ) {
+    const f = d.frame();
+    const r = f?.getBoundingClientRect();
+    if (!f || !r || x < r.left || y < r.top || x > r.right || y > r.bottom) {
+      want = null;
+      return setTarget(null);
+    }
+    if (asked) {
+      want = { x, y };
+      return;
+    }
+    asked = ++seq;
+    d.send({ type: 'studio:placement/at', id: asked, x: x - r.left, y: y - r.top });
+  }
+  function setTarget(key               ) {
+    const ok = key && d.target(key) !== null ? key : null;
+    if (ok === target) return;
+    target = ok;
+    d.send({ type: 'studio:placement/hover', keys: ok ? [ok] : [] });
+    if (!held) return;
+    held.tag.hidden = !ok;
+    held.tag.textContent = ok ? d.t('motion.drag.onto', { name: held.name, target: d.target(ok)  }) : '';
+    held.ghost.classList.toggle('on', !!ok);
+  }
+
+  function lift(p                                                 , x        , y        ) {
+    const pic = p.tile.querySelector('svg')?.cloneNode(true)                          ;
+    const ghost = h('div', { class: 'motion-held', 'aria-hidden': 'true' }, ...(pic ? [pic] : []));
+    const tag = h('div', { class: 'motion-held-tag', hidden: true, dataset: { part: 'motion-drag-tag' } });
+    const line = h('div', { class: 'motion-held-line', role: 'status', dataset: { part: 'motion-drag-line' } },
+      d.t('motion.drag.line', { name: p.name }), h('span', { class: 'muted', text: ` · ${d.t(press?.touch ? 'motion.drag.cancelTouch' : 'motion.drag.cancel')}` }));
+    d.app.append(ghost, tag, line);
+    held = { id: p.id, tile: p.tile, name: p.name, ghost, tag, line, x, y };
+    d.app.dataset.drag = 'motion';
+    try {
+      p.tile.setPointerCapture(p.id);
+    } catch {
+      /* a pointer already gone: the window listeners still see the moves */
+    }
+    if (press?.touch) navigator.vibrate?.(8);
+    press = null;
+    move(x, y);
+  }
+  function move(x        , y        ) {
+    if (!held) return;
+    held.x = x;
+    held.y = y;
+    held.ghost.style.transform = `translate(${x + 10}px, ${y + 10}px) rotate(-4deg)`;
+    held.tag.style.transform = `translate(${x + 10}px, ${y - 40}px)`;
+    ask(x, y);
+  }
+  function end(dropIt         ) {
+    if (press) (clearTimeout(press.timer), (press = null));
+    if (!held) return;
+    const h0 = held;
+    const finish = () => {
+      const key = dropIt ? target : null;
+      held = null;
+      h0.ghost.remove();
+      h0.tag.remove();
+      h0.line.remove();
+      delete d.app.dataset.drag;
+      setTarget(null);
+      asked = 0;
+      want = null;
+      answered = null;
+      if (key) d.drop(key, h0.name);
+    };
+    // Let go while the game's answer for the last point is on its way: wait for it (a few frames at most).
+    if (dropIt && asked) {
+      answered = finish;
+      window.setTimeout(() => answered === finish && finish(), 250);
+    } else finish();
+  }
+
+  // Window listeners: they see a press's moves wherever the pointer goes (the tile is re-drawn under it sometimes).
+  window.addEventListener('pointermove', (e) => {
+    if (held && e.pointerId === held.id) return move(e.clientX, e.clientY);
+    if (!press || e.pointerId !== press.id) return;
+    const dist = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+    if (press.touch) {
+      if (dist > SCROLL_PX) (clearTimeout(press.timer), (press = null));
+    } else if (dist > LIFT_PX) lift(press, e.clientX, e.clientY);
+  });
+  window.addEventListener('pointerup', (e) => {
+    if (held && e.pointerId === held.id) {
+      eatClick = true;
+      window.setTimeout(() => (eatClick = false), 0);
+      end(true);
+    } else if (press && e.pointerId === press.id) (clearTimeout(press.timer), (press = null));
+  });
+  window.addEventListener('pointercancel', (e) => {
+    if ((held && e.pointerId === held.id) || (press && e.pointerId === press.id)) end(false);
+  });
+  window.addEventListener('keydown', (e) => {
+    if (held && e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      end(false);
+    }
+  }, true);
+  // A finger holding a motion moves it; the sheet must not scroll under it (the first move after the long press is still
+  // cancelable: nothing has scrolled yet).
+  document.addEventListener('touchmove', (e) => {
+    if (held) e.preventDefault();
+  }, { passive: false });
+
+  return {
+    /** Make a Library motion's tile one that can be picked up. */
+    bind(tile             , name        ) {
+      tile.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || held || !d.can()) return;
+        const touch = e.pointerType === 'touch';
+        press = { id: e.pointerId, touch, x: e.clientX, y: e.clientY, tile, name, timer: 0 };
+        if (touch) {
+          const p = press;
+          p.timer = window.setTimeout(() => press === p && lift(p, p.x, p.y), HOLD_MS);
+        }
+      });
+      // A long press on a phone also asks for the page's own menu (copy image…): not over a motion.
+      tile.addEventListener('contextmenu', (e) => {
+        if (press?.touch || held) e.preventDefault();
+      });
+      tile.addEventListener('click', (e) => {
+        if (!eatClick) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+      }, true);
+    },
+    /** The game's answer to placement/at. */
+    answer(id        , key               ) {
+      if (id !== asked) return;
+      asked = 0;
+      setTarget(key);
+      if (answered) return answered();
+      if (want && held) {
+        const w = want;
+        want = null;
+        ask(w.x, w.y);
+      }
+    },
+    held: () => !!held,
+    /** Tests: what is in the hand and what it is over. */
+    state: () => ({ held: held?.name ?? null, target }),
+  };
+}
+
+                                                             
+
+__def(__exports, "createMotionDrag", () => createMotionDrag);
+};
+__defs[25] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -10483,7 +10808,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // pose-compare.ts
 
@@ -10536,7 +10861,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -10675,7 +11000,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // motion-library.ts
 
@@ -10799,7 +11124,7 @@ __def(__exports, "libOf", () => libOf);
 __def(__exports, "MotionLibrary", () => MotionLibrary);
 __def(__exports, "motionLibrary", () => motionLibrary);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -10820,7 +11145,7 @@ __defs[28] = function (__exports) {
 // turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
                                                                                                       
 const { whenOf } = __require(19);
-const { motionLibrary } = __require(27);
+const { motionLibrary } = __require(28);
 const { CHANNELS, toClips } = __require(21);
 
 /** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
@@ -11010,7 +11335,7 @@ __def(__exports, "attachAll", () => attachAll);
 __def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -11034,9 +11359,9 @@ __defs[29] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 __require(0);
-const { hasLayer, orderOfLayer } = __require(26);
-const { roundPose, samePose } = __require(25);
-const { MotionStore } = __require(28);
+const { hasLayer, orderOfLayer } = __require(27);
+const { roundPose, samePose } = __require(26);
+const { MotionStore } = __require(29);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -11574,11 +11899,11 @@ class PlacementModel {
   }
 }
 
-__def(__exports, "roundPose", () => __require(25).roundPose);
-__def(__exports, "samePose", () => __require(25).samePose);
+__def(__exports, "roundPose", () => __require(26).roundPose);
+__def(__exports, "samePose", () => __require(26).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -11630,6 +11955,27 @@ const en = {
   'lib.motion.deleteTip': 'Delete this motion: it comes off every object that uses it',
   'lib.motion.renameTip': 'The motion’s name (double-click to rename)',
   'motion.none': 'None',
+  // studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and put it on objects").
+  'motion.make': 'New motion',
+  'motion.makeTip': 'Open the timeline on this: pick a moment, then move it',
+  'motion.fromLib': 'From Library',
+  'motion.pickFirst': 'Pick an object to make its motion',
+  'motion.drag.line': 'Drop on an object to attach “{name}”',
+  'motion.drag.cancel': 'Esc to cancel',
+  'motion.drag.cancelTouch': 'let go elsewhere to cancel',
+  'motion.drag.onto': 'Attach “{name}” to {target}',
+  'lib.motion.new': 'New motion',
+  'lib.motion.newFor': 'for {name}',
+  'lib.motion.pickFirst': 'Pick an object first',
+  'lib.motion.dragTip': 'Drag it onto an object to attach',
+  'tl.when.first': 'Pick a moment on the ruler, then move {name}: that starts its motion',
+  'tl.attached': '“{name}” attached',
+  'tl.whenAsk': 'When does it move?',
+  'tl.coach.title': 'Make a motion in 3 steps',
+  'tl.coach.1': 'Pick a moment on the ruler',
+  'tl.coach.2': 'Move the object — that’s a key',
+  'tl.coach.3': 'Press ▶ to watch it move',
+  'tl.coach.ok': 'Got it',
   // The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender": keys on a time line).
   'tl.title': 'Timeline',
   'tl.open': 'Timeline',
@@ -12262,6 +12608,26 @@ const ja                               = {
   'undo.motion': '{name} の動きを変更',
   'motion.label': '動き',
   'motion.none': 'なし',
+  'motion.make': '新しい動き',
+  'motion.makeTip': 'この物でタイムラインを開く: 時刻を選んで、物を動かす',
+  'motion.fromLib': 'ライブラリから',
+  'motion.pickFirst': '物を選ぶと、その物の動きを作ります',
+  'motion.drag.line': '物の上で離すと “{name}” を付けます',
+  'motion.drag.cancel': 'Esc でやめる',
+  'motion.drag.cancelTouch': 'ほかの所で離すとやめる',
+  'motion.drag.onto': '“{name}” を {target} に付ける',
+  'lib.motion.new': '新しい動き',
+  'lib.motion.newFor': '{name} に',
+  'lib.motion.pickFirst': '物を選んでから',
+  'lib.motion.dragTip': '物にドラッグすると付きます',
+  'tl.when.first': '目盛りで時刻を選んでから {name} を動かすと、動きが始まります',
+  'tl.attached': '“{name}” を付けました',
+  'tl.whenAsk': 'いつ動く？',
+  'tl.coach.title': '3 つの手で動きを作る',
+  'tl.coach.1': '目盛りで時刻を選ぶ',
+  'tl.coach.2': '物を動かす（それがキー）',
+  'tl.coach.3': '▶ で動きを見る',
+  'tl.coach.ok': 'わかった',
   'lib.motion.on': '{names} に',
   'lib.motion.free': 'まだどの物にも付いていません',
   'lib.motion.onLabel': '付いている物',
@@ -12853,7 +13219,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -12956,7 +13322,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -13300,7 +13666,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -13328,7 +13694,7 @@ __defs[33] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(32);
+const { statusCovers } = __require(33);
 
                                                                                                                                                                          
 
@@ -13471,7 +13837,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -13517,7 +13883,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -13596,7 +13962,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -13609,7 +13975,7 @@ __defs[36] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(33);
+const { moreIn } = __require(34);
 
                                 
                  
@@ -13675,7 +14041,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -13738,7 +14104,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -13806,6 +14172,11 @@ function normalizeUi(raw         )          {
   };
   for (const k of Object.keys(out.show)                                ) if (typeof show[k] === 'boolean') out.show[k] = show[k]           ;
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
+  // Hand-editable too: short slugs only, at most 20.
+  if (Array.isArray(r.seen)) {
+    const seen = [...new Set(r.seen.filter((x)              => typeof x === 'string' && /^[a-z0-9-]{1,40}$/.test(x)))].slice(0, 20);
+    if (seen.length) out.seen = seen;
+  }
   // `intro` (the first-run tips' step, removed 2026-10-17) is dropped here: an
   // older prefs.json that still has it loads fine and loses it on the next save.
   return out;
@@ -13821,7 +14192,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -13831,7 +14202,7 @@ __defs[39] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(20);
-const { DEFAULT_UI, UI_LIMITS } = __require(38);
+const { DEFAULT_UI, UI_LIMITS } = __require(39);
 
                                
                          
@@ -13914,14 +14285,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(26);
+const { hasLayer } = __require(27);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -14018,7 +14389,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -14161,7 +14532,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -14193,10 +14564,10 @@ __defs[42] = function (__exports) {
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
 const { h, safeImageSrc } = __require(16);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(26);
-const { groupLayerPossible, sameKind } = __require(40);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(27);
+const { groupLayerPossible, sameKind } = __require(41);
 const { icon, setButton } = __require(20);
-const { tipText } = __require(41);
+const { tipText } = __require(42);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -15260,7 +15631,100 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
+'use strict';
+// motion-card.ts
+
+// The card's Motion row (motion-gui → studio-timeline → studio-motion-triggers → studio-motion-flow, 2026-10-22).
+//
+// studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and then put it on objects"): the row
+// had one menu ("None ▾") and ◆ Timeline whatever the object had, so an object with no motion showed no way in. Now:
+//   no motion yet  →  [+ New motion]  [From Library ▾]        the two ways in, side by side (the second only when the
+//                                                             Library has motions: no button that leads nowhere)
+//   a motion       →  [Hop  ⌨ E · 3× ▾]  [◆ Timeline]         its name and when it plays; the ▾ is the menu it was
+//                                                             (its other motions, attach more, take it off)
+// "+ New motion" (the Library's tile says the same words) opens the timeline to make one on this object; an attach (either menu) opens the timeline on
+// it with "When does it move?" open (timeline-wire show()). WHY no "when" menu of its own in the card: the timeline's
+// second row has every "when" with its field (seconds, key, area, cue…); a second, smaller copy here would drift.
+// Split out of timeline-wire.ts (970 lines) with this change; it only reads the timeline's state through `MotionCardDeps`.
+                                                                                                       
+const { whenOf } = __require(19);
+const { h } = __require(16);
+const { icon } = __require(20);
+const { whenShort } = __require(22);
+
+                                 
+                                                                 
+                                                                                              
+                        
+                                           
+                             
+                               
+                             
+                                                                  
+                  
+                              
+                  
+                                                     
+                             
+                             
+                             
+                                                                             
+               
+                                                   
+                 
+ 
+
+function motionCardRow(d                )                {
+  const cs = d.clips();
+  const c = d.shown();
+  const others = d.library().filter((m) => !cs.some((x) => (x.use ?? x.name) === m.name));
+  const label = h('span', { class: 'f-l', text: d.t('motion.label') });
+  /** The Library's other motions as a menu (`first`: the menu's own first line, shown on the button). */
+  const attachMenu = (sel                   ) => {
+    const g = h('optgroup', { label: d.t('motion.attach') });
+    for (const m of others) g.append(h('option', { value: `attach:${m.name}`, text: `${m.name} · ${Math.round(m.len * 10) / 10} s` }));
+    sel.append(g);
+  };
+  if (!cs.length) {
+    const make = h('button', { type: 'button', class: 'motion-make', dataset: { action: 'motion-make', part: 'motion-make' }, title: d.t('motion.makeTip'), onclick: () => d.make() },
+      h('span', { 'aria-hidden': 'true', text: '+' }), h('span', { text: d.t('motion.make') }));
+    const cells = h('div', { class: 'f-cells motion-cells motion-cells-new' }, make);
+    if (others.length && d.room()) {
+      const sel = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.attach'), title: d.t('motion.attach'), dataset: { part: 'motion-from-lib' } });
+      sel.append(h('option', { value: '', text: d.t('motion.fromLib') }));
+      attachMenu(sel);
+      sel.addEventListener('change', () => sel.value.startsWith('attach:') && d.attach(sel.value.slice(7)));
+      cells.append(h('span', { class: 'motion-pick motion-from-lib' }, sel, icon('chevronDown')));
+    }
+    return [label, cells];
+  }
+  // A motion: its name and when it plays, on the menu's button (a <select> shows its picked option's text).
+  const pick = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
+  const mine = h('optgroup', { label: d.t('motion.on') });
+  for (const x of cs) {
+    const o = h('option', { value: x.name, text: `${x.name}  ${whenShort(d.t, whenOf(x)              , (x.until ?? null)                      , (x.repeat ?? 'once')                )}` });
+    if (x.name === c?.name) o.selected = true;
+    mine.append(o);
+  }
+  pick.append(mine);
+  if (others.length && d.room()) attachMenu(pick);
+  if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
+  pick.addEventListener('change', () => {
+    const v = pick.value;
+    if (v.startsWith('attach:')) d.attach(v.slice(7));
+    else if (v === 'detach' && c) d.detach(c.name);
+    else d.choose(v);
+  });
+  const open = d.open();
+  const btn = h('button', { type: 'button', class: `motion-tl${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline' },
+    onclick: () => d.toggle() }, h('span', { class: 'tl-diamond' }), h('span', { text: d.t('tl.open') }));
+  return [label, h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, pick, icon('chevronDown')), btn)];
+}
+
+__def(__exports, "motionCardRow", () => motionCardRow);
+};
+__defs[45] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -15282,11 +15746,10 @@ __defs[43] = function (__exports) {
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                    
 const { motionRunner, whenOf } = __require(19);
-const { libOf } = __require(27);
-const { h } = __require(16);
-const { icon } = __require(20);
+const { libOf } = __require(28);
+const { motionCardRow } = __require(44);
                                                      
-const { sameMotion: sameFile } = __require(28);
+const { sameMotion: sameFile } = __require(29);
 
 /**
  * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
@@ -15333,12 +15796,23 @@ const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, from
                   
                     
                                                                  
+     
+                                                                                                                      
+                                                                                                                            
+     
+                             
+                              
  
 
 /**
  * `makePanel`: the plate (timeline-panel.ts). The unit tests give a stand-in with no DOM, so what a move, a typed number
  * or a key press does is tested without a browser (test/timeline.test.ts).
  */
+/** The first-time steps' id (TimelineDeps.seen). */
+const COACH = 'timeline-steps';
+/** How long "✓ “Hop” attached" stays when nothing is chosen (then the row reads "Starts" again). */
+const FRESH_MS = 6000;
+
 function createTimeline(d              , makePanel                             = createTimelinePanel) {
   let open = false;
   let auto = true;
@@ -15374,6 +15848,11 @@ function createTimeline(d              , makePanel                             =
     return from;
   };
   let keyDrag                                                             = null;
+  // studio-motion-flow: a motion just attached (a drop, the card, the Library) — the second row says "✓ “Hop” attached ·
+  // When does it move?" with Starts ▾ open, until a "when" is chosen or 6 s pass (then it reads "Starts" again).
+  let fresh                                                                                 = null;
+  // Starts ▾ to focus at the next render (the one that draws the "attached" line).
+  let focusStarts = false;
   // What the game page shows now, so a frame that changes nothing sends nothing.
   let sentPoses = '';
   let sentPath = '';
@@ -15637,6 +16116,9 @@ function createTimeline(d              , makePanel                             =
         return { p: (place?.p ?? [0, 0, 0]).map((v) => Math.round(v * 100) / 100), size: dim() === '3d' ? [3, 2, 3] : [200, 200] };
       },
       player: d.order().find((k) => /player|hero/i.test(k)) ?? null,
+      attached: fresh && fresh.key === key && c && (c.use ?? c.name) === fresh.name ? fresh.name : null,
+      // Only while making (the focused object has no keys yet): the steps are about keys, not about a motion just attached.
+      coach: !!d.seen && !d.seen(COACH) && !!key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
     };
   }
 
@@ -15689,13 +16171,19 @@ function createTimeline(d              , makePanel                             =
     for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) if (c.use === name) out.push({ key: k, when: whenOf(c)              , ...(c.until ? { until: c.until } : {}) });
     return out;
   }
-  /** Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). */
-  function attach(key        , name        ) {
+  /**
+   * Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). true
+   * when it is on the object now (attached here, or it was already: a second drop of the same motion shows it again).
+   */
+  function attach(key        , name        )          {
     const l = lib().get(name);
-    if (!l || clipsOf(key).some((c) => (c.use ?? c.name) === name) || clipsOf(key).length >= MAX_CLIPS) return;
+    if (!l || !d.place(key)) return false;
+    if (clipsOf(key).some((c) => (c.use ?? c.name) === name)) return true;
+    if (clipsOf(key).length >= MAX_CLIPS) return false;
     const when             = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
     chosen.set(key, name);
     one(key, withClip(store().get(key), name, { ...l, use: name, when }));
+    return true;
   }
   function detach(key        , name        ) {
     if (chosen.get(key) === name) chosen.delete(key);
@@ -15736,6 +16224,63 @@ function createTimeline(d              , makePanel                             =
     refresh();
     if (shown()) panel.render();
     d.changed();
+  }
+
+  // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
+  /** A new motion on `key` from a template (the clip menu's "New: …", the Library's "+ New motion" on an object that moves already). */
+  function newClip(key        , kind          ) {
+    const cs = clipsOf(key);
+    if (cs.length >= MAX_CLIPS) return;
+    // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
+    const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
+    // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
+    c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
+    chosen.set(key, c.name);
+    openRows.add(key);
+    time = 0;
+    one(key, withClip(store().get(key), c.name, c));
+  }
+  /**
+   * The card's and the Library's "+ New motion": the plate opens on `key`. An object with no motion yet gets none until it is
+   * moved (auto key makes its first clip then, as ◆ Timeline always did: no empty "Motion" left in the Library by a
+   * look); one that moves already gets a new, empty one to fill (else a move would change the motion it has).
+   */
+  function make(key        ) {
+    focusKey = key;
+    if (!open) setOpen(true);
+    if (clipsOf(key).length) newClip(key, 'empty');
+    else {
+      time = 0;
+      refresh();
+      panel.render();
+    }
+  }
+  /** The plate open on `key`'s motion `name`; `attached`: say so, with "When does it move?" open. */
+  function show(key        , name        , attached = false) {
+    focusKey = key;
+    chosen.set(key, name);
+    if (fresh) clearTimeout(fresh.timer);
+    fresh = null;
+    if (attached) {
+      const f = { key, name, timer: 0 };
+      f.timer = setTimeout(() => {
+        if (fresh !== f) return;
+        fresh = null;
+        if (shown()) panel.render();
+      }, FRESH_MS);
+      fresh = f;
+      focusStarts = true;
+    }
+    if (!open) setOpen(true);
+    else {
+      refresh();
+      render();
+    }
+    if (focusStarts && shown()) (panel.focusStarts(), (focusStarts = false));
+  }
+  /** Attach from the card's menu (already in the Scene): attach, then show it with its "when" open. */
+  function attachShow(key        , name        ) {
+    if (attach(key, name)) show(key, name, true);
   }
 
   // ----- Try: the scene's cues, played by the loader's own rules (motionRunner) -----
@@ -15852,19 +16397,8 @@ function createTimeline(d              , makePanel                             =
     clip(value) {
       const key = focus();
       if (!key) return;
-      if (value.startsWith('new:')) {
-        const cs = clipsOf(key);
-        if (cs.length >= MAX_CLIPS) return;
-        const kind = value.slice(4)            ;
-        // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
-        const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
-        // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
-        c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
-        chosen.set(key, c.name);
-        openRows.add(key);
-        time = 0;
-        one(key, withClip(store().get(key), c.name, c));
-      } else if (value === 'delete') {
+      if (value.startsWith('new:')) newClip(key, value.slice(4)            );
+      else if (value === 'delete') {
         const c = clipOf(key);
         if (!c) return;
         chosen.delete(key);
@@ -15897,6 +16431,8 @@ function createTimeline(d              , makePanel                             =
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
     // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
     setWhen: (w) => editClip((c) => {
+      // A "when" chosen: the "✓ attached" line has done its job.
+      if (fresh) (clearTimeout(fresh.timer), (fresh = null));
       const out             = { ...c, when: w };
       delete out.start;
       return out;
@@ -15957,6 +16493,10 @@ function createTimeline(d              , makePanel                             =
       return onKey({ key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey }, true);
     },
     touched: () => (touched = true),
+    coachDone: () => {
+      d.markSeen?.(COACH);
+      panel.render();
+    },
   });
 
   // Fold / open: the plate itself (PC: at the foot of the game; phone / side window: in the dock, above the card).
@@ -15998,6 +16538,11 @@ function createTimeline(d              , makePanel                             =
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
     const mine = onPlate || touched;
+    if (k === 'escape' && view().coach) {
+      d.markSeen?.(COACH);
+      panel.render();
+      return true;
+    }
     if (k === 'k' && !mod) return keyNow();
     if (!mine) return false;
     if (k === ' ' && !mod) return (playing ? stop() : play()), true;
@@ -16159,47 +16704,34 @@ function createTimeline(d              , makePanel                             =
      * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
      */
     cardRow(key        )                {
-      const cs = clipsOf(key);
-      const c = clipOf(key);
-      const pick = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
-      if (!cs.length) pick.append(h('option', { value: '', text: d.t('motion.none') }));
-      const mine = h('optgroup', { label: d.t('motion.on') });
-      for (const x of cs) {
-        const o = h('option', { value: x.name, text: `${x.name} · ${d.t(`tl.when.short.${whenOf(x).on}`)}` });
-        if (x.name === c?.name) o.selected = true;
-        mine.append(o);
-      }
-      if (cs.length) pick.append(mine);
-      const others = lib().list().filter((m) => !cs.some((x) => (x.use ?? x.name) === m.name));
-      if (others.length && cs.length < MAX_CLIPS) {
-        const g = h('optgroup', { label: d.t('motion.attach') });
-        for (const m of others) g.append(h('option', { value: `attach:${m.name}`, text: `${m.name} · ${Math.round(m.len * 10) / 10} s` }));
-        pick.append(g);
-      }
-      if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
-      pick.addEventListener('change', () => {
-        const v = pick.value;
-        if (v.startsWith('attach:')) attach(key, v.slice(7));
-        else if (v === 'detach' && c) detach(key, c.name);
-        else {
-          chosen.set(key, v);
+      return motionCardRow({
+        t: d.t,
+        clips: () => clipsOf(key),
+        shown: () => clipOf(key),
+        library: () => lib().list(),
+        room: () => clipsOf(key).length < MAX_CLIPS,
+        open: () => open,
+        choose: (name) => {
+          chosen.set(key, name);
           refresh();
           if (shown()) panel.render();
-        }
-        d.changed();
-      });
-      pick.disabled = !cs.length && !others.length;
-      const btn = h('button', { type: 'button', class: `motion-tl${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline' },
-        onclick: () => {
+          d.changed();
+        },
+        attach: (name) => attachShow(key, name),
+        detach: (name) => (detach(key, name), d.changed()),
+        make: () => make(key),
+        toggle: () => {
           focusKey = key;
           setOpen(!open);
-        } }, h('span', { class: 'tl-diamond' }), h('span', { text: d.t('tl.open') }));
-      const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, pick, icon('chevronDown')), btn);
-      return [h('span', { class: 'f-l', text: d.t('motion.label') }), cells];
+        },
+      });
     },
     // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.
     usage,
     attach,
+    // studio-motion-flow: the plate on an object, from outside it (the Library's "+ New motion", a drop, its "Attach").
+    make,
+    show,
     detach,
     duplicateLib,
     deleteLib,
@@ -16234,7 +16766,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[44] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -16540,7 +17072,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[45] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -16641,7 +17173,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[46] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -16749,7 +17281,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[47] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -16869,7 +17401,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[48] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -16883,7 +17415,7 @@ __defs[48] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
 const { icon } = __require(20);
-const { KEYMAP, keysOf } = __require(41);
+const { KEYMAP, keysOf } = __require(42);
 
                                     
                          
@@ -16948,7 +17480,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[49] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -17175,7 +17707,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[50] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -17446,7 +17978,7 @@ __def(__exports, "worldOf", () => worldOf);
 __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[51] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -17559,7 +18091,7 @@ function createLevelSwitch(d                 ) {
 
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[52] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -17749,7 +18281,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[53] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -17860,7 +18392,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[54] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -18017,7 +18549,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[55] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -18087,7 +18619,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[56] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -18145,7 +18677,7 @@ __def(__exports, "uiAsPlacement", () => uiAsPlacement);
 __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[57] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -18222,7 +18754,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[58] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -18245,43 +18777,44 @@ const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill
 const { DRAG_FILE } = __require(13);
 const { createLibraryObjects, DRAG_OBJECT } = __require(18);
 const { createLibraryMotions } = __require(23);
-const { rulesFor } = __require(24);
-const { samePose } = __require(29);
+const { createMotionDrag } = __require(24);
+const { rulesFor } = __require(25);
+const { samePose } = __require(30);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setExtraText, translate } = __require(30);
-const { NEXT_STEPS, renderNextSteps } = __require(31);
-const { statusCovers } = __require(32);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(33);
-const { bounces, saveLoud } = __require(34);
-const { askView: questionView } = __require(35);
-const { playLine, playWords } = __require(36);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(37);
-const { renderSettings } = __require(39);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(38);
-const { dropTarget, hasLayer, layerTarget } = __require(26);
-const { createPlacementPanel } = __require(42);
-const { createTimeline } = __require(43);
-const { motionLibrary } = __require(27);
-const { attachWorld, roundLib } = __require(28);
+const { detectLang, setExtraText, translate } = __require(31);
+const { NEXT_STEPS, renderNextSteps } = __require(32);
+const { statusCovers } = __require(33);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(34);
+const { bounces, saveLoud } = __require(35);
+const { askView: questionView } = __require(36);
+const { playLine, playWords } = __require(37);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(38);
+const { renderSettings } = __require(40);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(39);
+const { dropTarget, hasLayer, layerTarget } = __require(27);
+const { createPlacementPanel } = __require(43);
+const { createTimeline } = __require(45);
+const { motionLibrary } = __require(28);
+const { attachWorld, roundLib } = __require(29);
 const { icon, setButton } = __require(20);
-const { createPalette } = __require(44);
-const { fitPicture } = __require(45);
-const { PlacementModel } = __require(29);
-const { UndoStack, poseChange } = __require(46);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(40);
+const { createPalette } = __require(46);
+const { fitPicture } = __require(47);
+const { PlacementModel } = __require(30);
+const { UndoStack, poseChange } = __require(48);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(41);
 const { displayName, forgetNames, noteItems, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(41);
-const { installTooltips } = __require(47);
-const { createShortcutSheet } = __require(48);
-const { createContextMenu } = __require(49);
-const { Levels, worldOf } = __require(50);
-const { createLevelSwitch } = __require(51);
-const { contextRows } = __require(52);
-const { bigChanges, createSafeSave } = __require(53);
-const { createUnsavedGuard, lostBy, playAsks } = __require(54);
-const { createLayerSwitch } = __require(55);
-const { uiAsPlacement, uiEntries, withUi } = __require(56);
-const { barPress, gripEnd, readFold, writeFold } = __require(57);
+const { keyOf, tipText } = __require(42);
+const { installTooltips } = __require(49);
+const { createShortcutSheet } = __require(50);
+const { createContextMenu } = __require(51);
+const { Levels, worldOf } = __require(52);
+const { createLevelSwitch } = __require(53);
+const { contextRows } = __require(54);
+const { bigChanges, createSafeSave } = __require(55);
+const { createUnsavedGuard, lostBy, playAsks } = __require(56);
+const { createLayerSwitch } = __require(57);
+const { uiAsPlacement, uiEntries, withUi } = __require(58);
+const { barPress, gripEnd, readFold, writeFold } = __require(59);
 
                                                                         
 
@@ -18468,7 +19001,30 @@ function start(host            ) {
     },
     narrow: () => phone(),
     t: (k, v) => t(k, v),
+    seen: (id) => hintSeen(id),
+    markSeen: (id) => markHint(id),
   });
+  /**
+   * Hints closed for good (studio-motion-flow: the timeline's first-time steps). Kept in this browser AND in the game's
+   * ui prefs (.studio/ui/prefs.json `seen`): the studio opens on a free port, so the browser's storage alone would
+   * forget it on the next run; the prefs alone would show it again in every new game on this machine.
+   */
+  function hintSeen(id        )          {
+    if (uiPrefs.seen?.includes(id)) return true;
+    try {
+      return handStore?.getItem(`studio.seen.${id}`) === '1';
+    } catch {
+      return false;
+    }
+  }
+  function markHint(id        ) {
+    try {
+      handStore?.setItem(`studio.seen.${id}`, '1');
+    } catch {
+      /* private window: the prefs still keep it */
+    }
+    if (!uiPrefs.seen?.includes(id)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), id] });
+  }
   const listeners = new Map                                         ();
   let placementRestored = false;
   // The same for the UI layer's first list of each page (UI stage 1): set false by loadGame().
@@ -19231,6 +19787,55 @@ function start(host            ) {
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
+  // A Library motion picked up and dropped on an object in the game (studio-motion-flow, motion-drag.ts).
+  const motionDrag = createMotionDrag({
+    t,
+    app,
+    frame: () => iframe,
+    send: (m) => send(m),
+    target: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it && !it.backdrop && it.held !== 'ground' ? displayName(it, t) : null;
+    },
+    drop: (k, name) => attachAndShow(k, name),
+    can: () => editing && !playing && dim === '3d',
+  });
+  /**
+   * After an attach from outside the Scene (a drop, the Library's detail): the Scene, the object picked, the timeline
+   * open on the motion with "✓ attached · When does it move?" (studio-motion-flow: the next thing to decide, on screen).
+   */
+  function attachAndShow(key        , name        ) {
+    if (!timeline.attach(key, name)) return;
+    toScene();
+    // No camera move: the object was just in sight (a drop), or the person left the camera where they want it.
+    selectObject(key);
+    timeline.show(key, name, true);
+    renderShelf();
+  }
+  function toScene() {
+    if (editLayer !== 'world') setEditLayer('world');
+    if (tool === 'placement' && page === 'tool' && !(phone() && sheetOpen)) return;
+    tool = 'placement';
+    page = 'tool';
+    if (phone()) sheetOpen = false;
+    renderAll(true);
+  }
+  // "+ New motion" with nothing picked: the next object picked in the Scene gets it (one line says so; it lapses with
+  // the line, MAKE_WAIT_MS, so a pick much later is just a pick).
+  let makeOnPick = 0;
+  const MAKE_WAIT_MS = 12000;
+  function newMotion() {
+    const key = editLayer === 'world' && group.length <= 1 ? selected : null;
+    toScene();
+    if (key) {
+      makeOnPick = 0;
+      selectObject(key);
+      timeline.make(key);
+      return;
+    }
+    makeOnPick = Date.now() + MAKE_WAIT_MS;
+    showToast(t('motion.pickFirst'), MAKE_WAIT_MS);
+  }
   // The Library's motions (studio-motion-triggers, library-motions.ts): the "Motion" filter, attach, the ask's motions.
   const libraryMotions = createLibraryMotions({
     t,
@@ -19239,7 +19844,9 @@ function start(host            ) {
     items: () => worldItems,
     picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
     multi: () => multi,
-    attach: (key, name) => timeline.attach(key, name),
+    attach: (key, name) => attachAndShow(key, name),
+    create: () => newMotion(),
+    holdable: (tile, name) => motionDrag.bind(tile, name),
     duplicate: (name) => timeline.duplicateLib(name),
     remove: (name) => timeline.deleteLib(name),
     rename: (name, to) => timeline.renameLib(name, to),
@@ -20661,6 +21268,7 @@ function start(host            ) {
 
   function onBridge(m               ) {
     if (timeline.onMessage(m)) return;
+    if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -20941,6 +21549,12 @@ function start(host            ) {
         else placementPanel.renderAsk();
         timeline.untouch();
         timeline.render();
+        // "+ New motion" was pressed with nothing picked (studio-motion-flow): this pick is the object it was for.
+        if (makeOnPick && m.key && group.length <= 1 && editLayer === 'world' && !libraryShown()) {
+          const ok = Date.now() < makeOnPick;
+          makeOnPick = 0;
+          if (ok) timeline.make(m.key);
+        }
         break;
       case 'studio:placement/moved': {
         // The game's echo of a pose the shell set (undo, a typed number): that pose is a place, as it always was.
@@ -22337,7 +22951,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[59] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -22516,19 +23130,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[60] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(58);
-const { createLocalHost } = __require(59);
+const { start } = __require(60);
+const { createLocalHost } = __require(61);
 
 start(createLocalHost());
 
 
 };
-__require(60);
+__require(62);
 })();

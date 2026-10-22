@@ -62,6 +62,11 @@ export function normalizeUi(raw: unknown): UiPrefs {
   };
   for (const k of Object.keys(out.show) as Array<keyof UiPrefs['show']>) if (typeof show[k] === 'boolean') out.show[k] = show[k] as boolean;
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
+  // Hand-editable too: short slugs only, at most 20.
+  if (Array.isArray(r.seen)) {
+    const seen = [...new Set(r.seen.filter((x): x is string => typeof x === 'string' && /^[a-z0-9-]{1,40}$/.test(x)))].slice(0, 20);
+    if (seen.length) out.seen = seen;
+  }
   // `intro` (the first-run tips' step, removed 2026-10-17) is dropped here: an
   // older prefs.json that still has it loads fine and loses it on the next save.
   return out;

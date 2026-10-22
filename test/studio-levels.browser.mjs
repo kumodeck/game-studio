@@ -12,7 +12,9 @@
 // Then pictures of the head and its menu: PC 1280×800, a side window 420×800 (mouse), a phone 390×844 (touch), light
 // and dark.
 //
-//   node test/studio-levels.browser.mjs [--shots <dir>] [--tag before|after] [--ui <built shell dir>] [--no-assert]
+//   node test/studio-levels.browser.mjs [--shots <dir>] [--tag before|after] [--ui <built shell dir>] [--no-assert] [--lang en|ja]
+// --lang: the pictures' words (the editor's own choice when left out). The checks themselves always run in English.
+// Added for the public docs' Japanese pages (docs/site, 2026-10-22), which use pictures of the Japanese screen.
 // --ui with --no-assert: pictures only, with another built shell (the "before" set: the shell of the commit before).
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
@@ -32,6 +34,7 @@ const opt = (name) => {
 const SHOTS = opt('--shots') ? resolve(opt('--shots')) : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const TAG = opt('--tag') || 'after';
+const LANG = opt('--lang');
 const CHECK = !args.includes('--no-assert');
 const UI = opt('--ui') ? resolve(opt('--ui')) : join(PKG, 'skills/arrange/bin/studio-ui');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -204,7 +207,7 @@ async function shots() {
     const name = `${TAG}-${sz.id}-${dark ? 'dark' : 'light'}`;
     const p = await open({ ...sz, dark });
     try {
-      await p.page.goto(srv.url);
+      await p.page.goto(srv.url + (LANG ? `&lang=${LANG}` : ''));
       await p.waitReady();
       // The list: the side window and the phone open it from the ask bar's list button.
       const sheet = await p.ev(`(() => { const b = document.querySelector('[data-action=sheet]'); if (!b || !b.offsetParent) return false; b.click(); return true; })()`);

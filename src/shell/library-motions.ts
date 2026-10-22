@@ -13,6 +13,11 @@
 //
 // The pick lives here (a Set of names): Shift / Multi-select adds to it and keeps the objects and files picked (the
 // "this crate and this Hop" ask); a plain press picks this motion alone. Names are the person's text: textContent only.
+//
+// studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and put it on objects"): a tile can
+// be picked up and dropped on an object in the game (motion-drag.ts), the Motion filter starts with a "+ New motion"
+// tile (newTile: the picked object gets a new motion on the timeline; nothing picked → "Pick an object first"), and the
+// count line says the hand ("drag one onto an object to attach it").
 import type { Item, LibraryMotion, LibraryMotions, MotionRepeat, MotionUntil, MotionWhen } from '../contract.ts';
 import { clipAt } from '../loader/studio-placement.js';
 import { h } from './dom.ts';
@@ -34,6 +39,10 @@ export interface LibraryMotionsDeps {
   rename(name: string, to: string): string | null;
   /** "Ask your AI…": the cursor in the ask box (its chip names the pick). Absent = no AI here. */
   askAi?(): void;
+  /** "+ New motion" (studio-motion-flow): a new motion on the picked object (or, with none, on the next one picked). Absent = no tile. */
+  create?(): void;
+  /** Make a tile one that can be picked up and dropped on an object (motion-drag.ts). */
+  holdable?(tile: HTMLElement, name: string): void;
   /** The pick changed (the ask box's chip, the detail): the Library draws again. */
   changed(): void;
 }
@@ -162,6 +171,7 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
         dataset: { kind: 'motion', motion: m.name } },
       h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
       h('span', { class: 'gsl-name' }, m.name, h('span', { class: 'lib-motion-len', text: ` ${(Math.round(m.len * 10) / 10).toFixed(1)} s ${repeatSign(m.repeat)}` })), meta);
+      d.holdable?.(tile, m.name);
       tile.addEventListener('pointerenter', () => pic.play(true));
       tile.addEventListener('pointerleave', () => pic.play(on));
       if (on) pic.play(true);
@@ -189,7 +199,9 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
     const keys = (['p', 'r', 's'] as const).reduce((n, ch) => n + (m.keys[ch]?.length ?? 0), 0);
     const title = h('b', { text: m.name, title: d.t('lib.motion.renameTip'), class: 'lib-motion-title', dataset: { part: 'motion-title' } });
     const head = h('div', { class: 'gsl-dtitle' }, title,
-      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }));
+      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }),
+      // The hand, said where the attaching is (studio-motion-flow): the tile itself goes onto an object.
+      ...(d.holdable ? [h('span', { class: 'gsl-path lib-motion-hand', text: d.t('lib.motion.dragTip') })] : []));
     // Rename: the title becomes a field (Enter / leaving keeps it, Esc goes back). Every object that uses it follows.
     const rename = () => {
       const f = h('input', { type: 'text', class: 'tl-rename', maxlength: '40', 'aria-label': d.t('lib.motion.renameTip'), dataset: { part: 'motion-rename' } });
@@ -254,9 +266,32 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
     return { el, key: `motion:${m.name}` };
   }
 
+  /**
+   * "+ New motion": the Motion filter's first tile (and the only one with no motions yet). Its second line says what
+   * a press does: "for crate" (the picked object gets a new motion on the timeline) or "Pick an object first".
+   */
+  function newTile(): HTMLElement | null {
+    if (!d.create) return null;
+    const target = d.picked();
+    const tile = h('div', { class: 'gsl-tile lib-motion lib-motion-new', role: 'button', tabindex: 0, dataset: { part: 'motion-new' } },
+      h('div', { class: 'gsl-thumb lib-motion-thumb lib-motion-plus' }, h('span', { 'aria-hidden': 'true', text: '+' })),
+      h('span', { class: 'gsl-name', text: d.t('lib.motion.new') }),
+      h('span', { class: 'gsl-meta' }, h('span', { class: 'lib-motion-on', text: target ? d.t('lib.motion.newFor', { name: name(target) }) : d.t('lib.motion.pickFirst') })));
+    tile.addEventListener('click', () => d.create!());
+    tile.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        d.create!();
+      }
+    });
+    return tile;
+  }
+
   return {
     count: () => d.list().length,
     tiles,
+    newTile,
     detail,
     clear() {
       if (!pick.size) return;

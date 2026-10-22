@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 250" role="img" aria-label="You arrange → Save → placement.json → Your AI → Your game">
+  <!-- docs/site diagram (2026-10-22). Light and dark: the colors follow the reader's setting. Edit the text in both languages. -->
+  <style>
+    .box { fill: #ffffff; stroke: rgba(0,0,0,.14); } .file { fill: #f3f2ef; stroke: rgba(0,0,0,.14); }
+    .ai { fill: #f4effe; stroke: #8b5cf6; } .you { fill: #fff3ec; stroke: #ff6a2b; }
+    .t { font: 600 15px system-ui, -apple-system, Segoe UI, sans-serif; fill: #18181b; } .s { font: 400 12px system-ui, -apple-system, Segoe UI, sans-serif; fill: #6b6b70; }
+    .m { font: 600 12px ui-monospace, Menlo, monospace; fill: #18181b; }
+    .a { font: 500 12px system-ui, -apple-system, Segoe UI, sans-serif; fill: #6b6b70; } .line { stroke: #9d9da3; stroke-width: 1.5; fill: none; }
+    .head { fill: #9d9da3; }
+    @media (prefers-color-scheme: dark) {
+      .box { fill: #1a1a1c; stroke: rgba(255,255,255,.14); } .file { fill: #232326; stroke: rgba(255,255,255,.14); }
+      .ai { fill: #261d3a; stroke: #a78bfa; } .you { fill: #33201a; stroke: #ff8a55; }
+      .t, .m { fill: #f2f2f3; } .s, .a { fill: #9d9da3; } .line { stroke: #6b6b70; } .head { fill: #6b6b70; }
+    }
+  </style>
+  <defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path class="head" d="M0 0 L10 5 L0 10 z"/></marker></defs>
+  <rect class="you" x="10" y="40" width="150" height="70" rx="12"/>
+  <text class="t" x="85" y="70" text-anchor="middle">You arrange</text><text class="s" x="85" y="92" text-anchor="middle">in the editor</text>
+  <rect class="file" x="200" y="40" width="150" height="70" rx="12"/>
+  <text class="m" x="275" y="70" text-anchor="middle">placement.json</text><text class="s" x="275" y="92" text-anchor="middle">what you changed</text>
+  <rect class="ai" x="390" y="40" width="150" height="70" rx="12"/>
+  <text class="t" x="465" y="70" text-anchor="middle">Your AI</text><text class="s" x="465" y="92" text-anchor="middle">updates the code</text>
+  <rect class="box" x="580" y="40" width="130" height="70" rx="12"/>
+  <text class="t" x="645" y="70" text-anchor="middle">Your game</text><text class="s" x="645" y="92" text-anchor="middle">reads it at start</text>
+  <path class="line" d="M162 75 H196" marker-end="url(#h)"/><text class="a" x="180" y="30" text-anchor="middle">Save</text>
+  <path class="line" d="M352 75 H386" marker-end="url(#h)"/><text class="a" x="370" y="30" text-anchor="middle">reads</text>
+  <path class="line" d="M542 75 H576" marker-end="url(#h)"/><text class="a" x="560" y="30" text-anchor="middle">edits</text>
+  <path class="line" d="M645 112 V170 Q645 190 625 190 H295 Q275 190 275 170 V116" stroke-dasharray="4 4" marker-end="url(#h)"/>
+  <text class="a" x="460" y="212" text-anchor="middle">the one loader line reads it</text>
+</svg>

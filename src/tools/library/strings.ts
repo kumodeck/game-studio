@@ -201,8 +201,9 @@ const en = {
   shelf_sound: 'Sound',
   shelf_other: 'Other',
   shelf_motion: 'Motion',
-  countMotions: '{n:1 motion|# motions} · made on the timeline',
+  countMotions: '{n:1 motion|# motions} · drag one onto an object to attach it',
   noMotionsYet: 'No motions yet. Open the timeline on an object (◆ Timeline on its card) and make one: it shows here.',
+  noMotionsMake: 'No motions yet. + New motion makes one on the timeline →',
   // The phone's one "+" next to the search (the second design review's ⑦, 2026-10-19): Multi-select, Add files and
   // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
   more: 'More',
@@ -241,8 +242,9 @@ const ja: Partial<Record<StringKey, string>> = {
   shelf_sound: '音',
   shelf_other: 'その他',
   shelf_motion: '動き',
-  countMotions: '動き {n} · タイムラインで作った物',
+  countMotions: '動き {n} · 物にドラッグすると付きます',
   noMotionsYet: 'まだ動きはありません。物のカードの「◆ タイムライン」で作ると、ここに並びます。',
+  noMotionsMake: 'まだ動きはありません。「＋ 新しい動き」でタイムラインで作れます →',
   more: 'ほか',
   countObjects: '物 {n}',
   countBoth: '物 {o} ・ 素材 {f}',

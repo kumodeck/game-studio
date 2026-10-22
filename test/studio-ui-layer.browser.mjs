@@ -23,7 +23,8 @@
 //
 // HTML only (no world): the UI alone, opened in about a second, saved with dim 2d and no objects.
 //
-//   node test/studio-ui-layer.browser.mjs [--shots <dir>] [--only pc|phone|html|plain]
+//   node test/studio-ui-layer.browser.mjs [--shots <dir>] [--only pc|phone|html|plain] [--lang en|ja]
+// --lang (the PC and phone runs): the editor's words, for the public docs' Japanese pictures (docs/site, 2026-10-22).
 // --shots <dir> also writes the photos (ui-pc-world.png, ui-pc-ui.png, ui-pc-moved.png, ui-phone-*.png).
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
@@ -41,6 +42,7 @@ const args = process.argv.slice(2);
 const opt = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const SHOTS = opt('--shots') ? resolve(opt('--shots')) : null;
 const ONLY = opt('--only');
+const LANG = opt('--lang') || 'en';
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // The editor before UI stage 1 (its built files are committed): the "same bytes" baseline.
@@ -129,7 +131,7 @@ try {
   if (!ONLY || ONLY === 'pc') await run('PC 1280×800: switch, pick, drag, size, Save, reopen without the editor, undo across layers', async () => {
     const { root, srv, browser } = await open(join(PKG, 'examples/three-hud'));
     const page = await newPage(browser, { width: 1280, height: 800 });
-    await page.goto(srv.url);
+    await page.goto(`${srv.url}&lang=${LANG}`);
     await waitEditing(page);
     await sleep(1200);
     // 1. World | UI in the top bar, World on.
@@ -139,7 +141,7 @@ try {
     near(sw.cx, 640, 2, 'the switch sits in the middle of the bar');
     assert.equal(sw.on, 'world');
     // Ive review 3, "what to cut" 1: no "UI hidden" beside the eye (the eye says it; the words are its tooltip).
-    assert.equal(sw.text, 'World UI');
+    assert.equal(sw.text, LANG === 'ja' ? 'ワールド UI' : 'World UI');
     const worldKeys = await page.eval(`studioShell.items().map((i) => i.key).sort().join(' ')`);
     assert.match(worldKeys, /lantern-1.*tree-1/, `the world's list: ${worldKeys}`);
     assert.equal(await page.eval(`${DBG}.layer()`), 'world');
@@ -154,7 +156,7 @@ try {
     assert.equal(h0.startInner, 'none', 'nor what is inside the title');
     assert.ok(h0.eye && !h0.eye.hidden, 'the eye is there');
     assert.deepEqual([h0.eye.pressed, h0.eye.text, h0.eye.icon], ['false', '', 'off'], 'the eye alone says the UI is hidden');
-    assert.equal(h0.eye.title, "Show the game's UI  ⇧U", 'the words are the tooltip');
+    assert.equal(h0.eye.title, LANG === 'ja' ? 'ゲームの UI を見る  ⇧U' : "Show the game's UI  ⇧U", 'the words are the tooltip');
     assert.ok(h0.eye.cx > sw.cx + 40, 'right of the switch');
     // A click where a UI element sits picks the world object behind it.
     let behind = null;
@@ -172,7 +174,7 @@ try {
     assert.equal(h1.title.filter, 'opacity(0.5)');
     assert.equal(h1.start.pointer, 'none', 'shown, Start still takes no pointer');
     assert.deepEqual([h1.eye.pressed, h1.eye.text, h1.eye.icon], ['true', '', 'on']);
-    assert.equal(h1.eye.title, "Hide the game's UI  ⇧U");
+    assert.equal(h1.eye.title, LANG === 'ja' ? 'ゲームの UI を隠す  ⇧U' : "Hide the game's UI  ⇧U");
     assert.equal(await page.eval(`${DBG}.layer()`), 'world', '⇧U does not switch the layer');
     if (SHOTS) writeFileSync(join(SHOTS, 'ui-pc-world-peek.png'), await page.screenshot());
     await page.click(h1.eye.cx, h1.eye.cy);
@@ -321,7 +323,7 @@ try {
   if (!ONLY || ONLY === 'phone') await run('phone 390×844: icons-only switch over the game, tap, drag', async () => {
     const { srv, browser } = await open(join(PKG, 'examples/three-hud'));
     const page = await newPage(browser, { width: 390, height: 844, mobile: true });
-    await page.goto(srv.url);
+    await page.goto(`${srv.url}&lang=${LANG}`);
     await waitEditing(page);
     await sleep(1500);
     const sw = JSON.parse(await page.eval(`(() => { const s = document.querySelector('[data-part=layer-switch]'); const r = s.getBoundingClientRect(); const b = s.querySelector('[data-layer=ui]').getBoundingClientRect();

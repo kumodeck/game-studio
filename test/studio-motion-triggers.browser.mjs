@@ -84,7 +84,8 @@ async function run(size, theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-motion-triggers-'));
   cpSync(join(PKG, 'starters/lantern-cove'), root, { recursive: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
-  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
+  // The first-time steps (studio-motion-flow) closed already: this test and its pictures are about the "when".
+  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme, seen: ['timeline-steps'] }));
   const full = CHECKS && size.id === 'pc' && theme === THEMES[0];
   writeFileSync(join(root, 'placement.json'), JSON.stringify(full ? OLD_FILE : NEW_FILE, null, 2));
   const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, env: {} });
@@ -188,6 +189,11 @@ async function run(size, theme) {
       await sleep(600);
       const onCrate = await j(`JSON.stringify(${TL}.usage('Row').map((u) => u.key))`);
       check(onCrate.includes('crate'), `"Attach to" crate (${onCrate.join(', ')})`);
+      // Since studio-motion-flow an attach shows it in the Scene ("When does it move?"): back to the Library's Motion.
+      await page.eval(`studioShell.actions.switchTool('library')`);
+      await sleep(1000);
+      await page.eval(`document.querySelector('.shelf-filters [data-shelf=motion]').click()`);
+      await sleep(500);
       // 6. The ask box names the motion; a request carries it.
       await page.eval(`document.querySelector('.gsl-tile[data-motion="Row"]').click()`);
       await sleep(300);

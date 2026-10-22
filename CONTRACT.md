@@ -458,6 +458,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/tool` | `{ tool }`: the strip's chosen tool changed in the game (a strip button, M / H / T / S, Escape) |
 | | `placement/menu` | `{ open }`: the strip's choices (the ▾ on turn / size) opened or closed in the game |
 | | `placement/context` | `{ key, x, y, touch }`: a right-click (Mac: also Control-click) or a long press on the game: the editor page opens the menu for that place. `key` = the object under it (null = nothing / only the ground); an object not picked yet was picked first, without moving the camera |
+| | `placement/at-is` | `{ id, key }`: the answer to `placement/at` (the same test as a tap; `key` null = nothing there) |
 | | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
@@ -473,6 +474,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/axis` | `{ axis }`: the 3D turn axis (`y` / `x` / `z`, or `next` for the R key) |
 | | `placement/marks` | `{ keys, label? }`: what the AI's last change touched (after "Reload the game"), outlined in the AI's colour with one tag |
 | | `placement/hover` | `{ keys }`: the mouse is over these objects' row in the list, the card or the ask chip — lit in your colour, softer than the pick (`[]` = none) |
+| | `placement/at` | `{ id, x, y }`: which object is at this point of the game page (its own px)? A Library motion is held over the game (studio-motion-flow). Answered at once by `placement/at-is`; nothing is picked |
 | | `placement/tool` | `{ tool: 'move' \| 'lift' \| 'rotate' \| 'scale' \| null }`: choose the strip's tool (the keys and ⌘K when the editor page has focus) |
 | | `placement/look` | `{ on }`: Space is held in the editor page — a drag in the game looks around even with a tool chosen |
 | | `placement/menu` | `{ open: false }`: close the strip's choices (a press or Escape in the editor page while they are open) |

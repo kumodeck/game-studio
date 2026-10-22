@@ -1018,6 +1018,10 @@ export function createEditor(deps: EditorDeps): Editor {
           input?.setAiMarks(aiMarks.keys, aiMarks.label);
           dirtyFrame = true;
           break;
+        case 'studio:placement/at':
+          // studio-motion-flow: a Library motion held over the game — which object is under it (answered at once).
+          if (typeof msg.x === 'number' && typeof msg.y === 'number') post({ type: 'studio:placement/at-is', id: Number(msg.id) || 0, key: input?.keyAt(msg.x, msg.y) ?? null });
+          break;
         case 'studio:placement/hover':
           input?.setHover(Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : []);
           dirtyFrame = true;

@@ -70,6 +70,10 @@ export interface TimelineView {
   rowWhen(key: string): { when: MotionWhen; until: MotionUntil | null; repeat: MotionRepeat } | null;
   defaultArea(): MotionArea;
   player: string | null;
+  /** studio-motion-flow: the focused clip's motion was just attached ("✓ “Hop” attached · When does it move?"), else null. */
+  attached: string | null;
+  /** studio-motion-flow: the first-time steps are shown (while making: no keys yet; until "Got it" / × / Esc, once). */
+  coach: boolean;
 }
 
 export interface TimelineActs {
@@ -99,6 +103,8 @@ export interface TimelineActs {
   key(e: KeyboardEvent): boolean;
   /** The plate was pressed (the keyboard keys then belong to it, not to the scene). */
   touched(): void;
+  /** The first-time steps closed ("Got it", ×): never shown again. */
+  coachDone(): void;
   t(key: string, vars?: Record<string, string | number>): string;
 }
 
@@ -117,7 +123,9 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const boxEl = h('div', { class: 'tl-box', hidden: true });
   const track = h('div', { class: 'tl-track' }, ruler, lanes, playhead, boxEl);
   const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, h('div', { class: 'tl-ruler-pad' }), names), track);
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, whenRow, body);
+  // studio-motion-flow: the three steps, the first time the plate opens (over its right end; shell.css .tl-coach).
+  const coach = h('div', { class: 'tl-coach', role: 'note', hidden: true, dataset: { part: 'tl-coach' } });
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, whenRow, body, coach);
 
   // Seconds ↔ px on the track (its own box: the names column is outside it).
   const pad = 12;
@@ -223,7 +231,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const w = v.when;
     const items: Node[] = [];
     if (c && w) {
-      items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Just attached (studio-motion-flow): say so where the "when" is chosen, and ask the question the row answers.
+      if (v.attached) items.push(h('span', { class: 'tl-attached', dataset: { part: 'tl-attached' }, text: `✓ ${t('tl.attached', { name: v.attached })}` }),
+        h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
+      else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
       // Starts ▾: two groups, so the person sees which ones the AI has to connect (purple ✦, the AI's colour).
       const s = h('select', { 'aria-label': t('tl.starts'), title: t('tl.startsTip'), dataset: { part: 'tl-starts' } });
       for (const [label, list] of [[t('tl.when.self'), SELF_TRIGGERS], [`✦ ${t('tl.when.ai')}`, AI_TRIGGERS]] as Array<[string, MotionTrigger[]]>) {
@@ -237,7 +248,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
         s.append(g);
       }
       s.addEventListener('change', () => act.setWhen(fresh(s.value as MotionTrigger, v)));
-      items.push(h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}` }, s, icon('chevronDown')));
+      items.push(h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}${v.attached ? ' ask' : ''}` }, s, icon('chevronDown')));
       items.push(...whenField(w, v));
       // Stops ▾: never / after N rounds / a cue; then: stay or go back.
       const u = v.until;
@@ -252,6 +263,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       }, 'decimal'), h('span', { class: 'tl-of', text: t('tl.until.timesUnit') }));
       if (u?.cue) items.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
       if (u) items.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
+    } else if (v.focus) {
+      // An object with no motion yet (studio-motion-flow: "+ New motion" lands here): what makes one, in one line.
+      const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus;
+      items.push(h('span', { class: 'tl-lbl', dataset: { part: 'tl-first' }, text: t('tl.when.first', { name }) }));
     } else items.push(h('span', { class: 'tl-lbl', text: t('tl.when.none') }));
     // Try: one ▶ per cue in the scene (Unity's Animator: the Parameters' Trigger buttons).
     items.push(h('span', { class: 'tl-gap' }));
@@ -553,16 +568,50 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
 
   function render() {
     const v = view();
+    // A menu of the head that has the keyboard keeps it through a redraw (the head is drawn anew each time): the
+    // "When does it move?" focus after an attach (studio-motion-flow) would otherwise be lost to the next pick's echo.
+    const had = document.activeElement instanceof HTMLSelectElement && el.contains(document.activeElement) ? document.activeElement.dataset.part : null;
     el.classList.toggle('rec', v.auto);
     el.classList.toggle('narrow', v.narrow);
     renderHead(v);
+    if (had) el.querySelector<HTMLSelectElement>(`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderRows(v);
     renderRuler(v);
+    renderCoach(v);
     place(v);
+  }
+
+  /**
+   * The first-time steps (studio-motion-flow; a hands-on try, 2026-10-22: "I couldn't tell how to make a motion"): what the plate
+   * is for, in the order a hand does it. Shown while v.coach; "Got it", × or Esc closes it for good (TimelineDeps.seen).
+   */
+  function renderCoach(v: TimelineView) {
+    coach.hidden = !v.coach;
+    if (!v.coach) return void coach.replaceChildren();
+    if (coach.childElementCount) return;
+    const done = () => act.coachDone();
+    const steps = h('ol', {}, ...['tl.coach.1', 'tl.coach.2', 'tl.coach.3'].map((k, i) => h('li', {}, h('i', { 'aria-hidden': 'true', text: String(i + 1) }), h('span', { text: t(k) }))));
+    coach.replaceChildren(
+      h('div', { class: 'tl-coach-head' }, h('b', { text: t('tl.coach.title') }),
+        h('button', { type: 'button', class: 'icon-btn tl-coach-x', 'aria-label': t('btn.close'), title: t('btn.close'), onclick: done }, icon('close'))),
+      steps,
+      h('div', { class: 'tl-coach-foot' }, h('button', { type: 'button', class: 'tl-coach-ok', dataset: { part: 'tl-coach-ok' }, text: t('tl.coach.ok'), onclick: done })));
+  }
+
+  /** "When does it move?" open after an attach: the Starts menu focused, and opened where the browser allows it. */
+  function focusStarts() {
+    const s = whenRow.querySelector<HTMLSelectElement>('[data-part=tl-starts]');
+    if (!s) return;
+    s.focus({ preventScroll: true });
+    try {
+      (s as HTMLSelectElement & { showPicker?: () => void }).showPicker?.();
+    } catch {
+      /* no user gesture left (a drop that waited for the game's answer): focused, with its orange ring */
+    }
   }
 
   // The track's width changes with the window: the keys' places come from it.
   new ResizeObserver(() => el.isConnected && !el.hidden && render()).observe(track);
 
-  return { el, render, place };
+  return { el, render, place, focusStarts };
 }

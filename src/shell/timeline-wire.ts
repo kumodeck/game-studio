@@ -17,8 +17,7 @@
 import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
 import { motionRunner, whenOf } from '../loader/studio-placement.js';
 import { libOf, type MotionLibrary } from './motion-library.ts';
-import { h } from './dom.ts';
-import { icon } from './icons.ts';
+import { motionCardRow } from './motion-card.ts';
 import type { MotionStore } from './motion-model.ts';
 import { sameMotion as sameFile } from './motion-model.ts';
 
@@ -70,12 +69,23 @@ export interface TimelineDeps {
   numbers(): void;
   narrow(): boolean;
   t(key: string, vars?: Record<string, string | number>): string;
+  /**
+   * studio-motion-flow: hints shown once ("timeline-steps": the three steps the first time the plate opens). `seen` =
+   * already closed once (this browser or this game's ui prefs); `markSeen` = closed now, never again. Absent = never shown.
+   */
+  seen?(id: string): boolean;
+  markSeen?(id: string): void;
 }
 
 /**
  * `makePanel`: the plate (timeline-panel.ts). The unit tests give a stand-in with no DOM, so what a move, a typed number
  * or a key press does is tested without a browser (test/timeline.test.ts).
  */
+/** The first-time steps' id (TimelineDeps.seen). */
+const COACH = 'timeline-steps';
+/** How long "✓ “Hop” attached" stays when nothing is chosen (then the row reads "Starts" again). */
+const FRESH_MS = 6000;
+
 export function createTimeline(d: TimelineDeps, makePanel: typeof createTimelinePanel = createTimelinePanel) {
   let open = false;
   let auto = true;
@@ -111,6 +121,11 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     return from;
   };
   let keyDrag: { sel: KeyRef[]; from: Map<string, Motion | null> } | null = null;
+  // studio-motion-flow: a motion just attached (a drop, the card, the Library) — the second row says "✓ “Hop” attached ·
+  // When does it move?" with Starts ▾ open, until a "when" is chosen or 6 s pass (then it reads "Starts" again).
+  let fresh: { key: string; name: string; timer: ReturnType<typeof setTimeout> | 0 } | null = null;
+  // Starts ▾ to focus at the next render (the one that draws the "attached" line).
+  let focusStarts = false;
   // What the game page shows now, so a frame that changes nothing sends nothing.
   let sentPoses = '';
   let sentPath = '';
@@ -374,6 +389,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
         return { p: (place?.p ?? [0, 0, 0]).map((v) => Math.round(v * 100) / 100), size: dim() === '3d' ? [3, 2, 3] : [200, 200] };
       },
       player: d.order().find((k) => /player|hero/i.test(k)) ?? null,
+      attached: fresh && fresh.key === key && c && (c.use ?? c.name) === fresh.name ? fresh.name : null,
+      // Only while making (the focused object has no keys yet): the steps are about keys, not about a motion just attached.
+      coach: !!d.seen && !d.seen(COACH) && !!key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
     };
   }
 
@@ -426,13 +444,19 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) if (c.use === name) out.push({ key: k, when: whenOf(c) as MotionWhen, ...(c.until ? { until: c.until } : {}) });
     return out;
   }
-  /** Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). */
-  function attach(key: string, name: string) {
+  /**
+   * Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). true
+   * when it is on the object now (attached here, or it was already: a second drop of the same motion shows it again).
+   */
+  function attach(key: string, name: string): boolean {
     const l = lib().get(name);
-    if (!l || clipsOf(key).some((c) => (c.use ?? c.name) === name) || clipsOf(key).length >= MAX_CLIPS) return;
+    if (!l || !d.place(key)) return false;
+    if (clipsOf(key).some((c) => (c.use ?? c.name) === name)) return true;
+    if (clipsOf(key).length >= MAX_CLIPS) return false;
     const when: MotionWhen = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
     chosen.set(key, name);
     one(key, withClip(store().get(key), name, { ...l, use: name, when }));
+    return true;
   }
   function detach(key: string, name: string) {
     if (chosen.get(key) === name) chosen.delete(key);
@@ -473,6 +497,63 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     refresh();
     if (shown()) panel.render();
     d.changed();
+  }
+
+  // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
+  /** A new motion on `key` from a template (the clip menu's "New: …", the Library's "+ New motion" on an object that moves already). */
+  function newClip(key: string, kind: Template) {
+    const cs = clipsOf(key);
+    if (cs.length >= MAX_CLIPS) return;
+    // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
+    const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
+    // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
+    c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
+    chosen.set(key, c.name);
+    openRows.add(key);
+    time = 0;
+    one(key, withClip(store().get(key), c.name, c));
+  }
+  /**
+   * The card's and the Library's "+ New motion": the plate opens on `key`. An object with no motion yet gets none until it is
+   * moved (auto key makes its first clip then, as ◆ Timeline always did: no empty "Motion" left in the Library by a
+   * look); one that moves already gets a new, empty one to fill (else a move would change the motion it has).
+   */
+  function make(key: string) {
+    focusKey = key;
+    if (!open) setOpen(true);
+    if (clipsOf(key).length) newClip(key, 'empty');
+    else {
+      time = 0;
+      refresh();
+      panel.render();
+    }
+  }
+  /** The plate open on `key`'s motion `name`; `attached`: say so, with "When does it move?" open. */
+  function show(key: string, name: string, attached = false) {
+    focusKey = key;
+    chosen.set(key, name);
+    if (fresh) clearTimeout(fresh.timer);
+    fresh = null;
+    if (attached) {
+      const f = { key, name, timer: 0 };
+      f.timer = setTimeout(() => {
+        if (fresh !== f) return;
+        fresh = null;
+        if (shown()) panel.render();
+      }, FRESH_MS);
+      fresh = f;
+      focusStarts = true;
+    }
+    if (!open) setOpen(true);
+    else {
+      refresh();
+      render();
+    }
+    if (focusStarts && shown()) (panel.focusStarts(), (focusStarts = false));
+  }
+  /** Attach from the card's menu (already in the Scene): attach, then show it with its "when" open. */
+  function attachShow(key: string, name: string) {
+    if (attach(key, name)) show(key, name, true);
   }
 
   // ----- Try: the scene's cues, played by the loader's own rules (motionRunner) -----
@@ -589,19 +670,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     clip(value) {
       const key = focus();
       if (!key) return;
-      if (value.startsWith('new:')) {
-        const cs = clipsOf(key);
-        if (cs.length >= MAX_CLIPS) return;
-        const kind = value.slice(4) as Template;
-        // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
-        const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
-        // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
-        c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
-        chosen.set(key, c.name);
-        openRows.add(key);
-        time = 0;
-        one(key, withClip(store().get(key), c.name, c));
-      } else if (value === 'delete') {
+      if (value.startsWith('new:')) newClip(key, value.slice(4) as Template);
+      else if (value === 'delete') {
         const c = clipOf(key);
         if (!c) return;
         chosen.delete(key);
@@ -634,6 +704,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
     // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
     setWhen: (w) => editClip((c) => {
+      // A "when" chosen: the "✓ attached" line has done its job.
+      if (fresh) (clearTimeout(fresh.timer), (fresh = null));
       const out: MotionClip = { ...c, when: w };
       delete out.start;
       return out;
@@ -694,6 +766,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       return onKey({ key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey }, true);
     },
     touched: () => (touched = true),
+    coachDone: () => {
+      d.markSeen?.(COACH);
+      panel.render();
+    },
   });
 
   // Fold / open: the plate itself (PC: at the foot of the game; phone / side window: in the dock, above the card).
@@ -735,6 +811,11 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
     const mine = onPlate || touched;
+    if (k === 'escape' && view().coach) {
+      d.markSeen?.(COACH);
+      panel.render();
+      return true;
+    }
     if (k === 'k' && !mod) return keyNow();
     if (!mine) return false;
     if (k === ' ' && !mod) return (playing ? stop() : play()), true;
@@ -896,47 +977,34 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
      * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
      */
     cardRow(key: string): HTMLElement[] {
-      const cs = clipsOf(key);
-      const c = clipOf(key);
-      const pick = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
-      if (!cs.length) pick.append(h('option', { value: '', text: d.t('motion.none') }));
-      const mine = h('optgroup', { label: d.t('motion.on') });
-      for (const x of cs) {
-        const o = h('option', { value: x.name, text: `${x.name} · ${d.t(`tl.when.short.${whenOf(x).on}`)}` });
-        if (x.name === c?.name) o.selected = true;
-        mine.append(o);
-      }
-      if (cs.length) pick.append(mine);
-      const others = lib().list().filter((m) => !cs.some((x) => (x.use ?? x.name) === m.name));
-      if (others.length && cs.length < MAX_CLIPS) {
-        const g = h('optgroup', { label: d.t('motion.attach') });
-        for (const m of others) g.append(h('option', { value: `attach:${m.name}`, text: `${m.name} · ${Math.round(m.len * 10) / 10} s` }));
-        pick.append(g);
-      }
-      if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
-      pick.addEventListener('change', () => {
-        const v = pick.value;
-        if (v.startsWith('attach:')) attach(key, v.slice(7));
-        else if (v === 'detach' && c) detach(key, c.name);
-        else {
-          chosen.set(key, v);
+      return motionCardRow({
+        t: d.t,
+        clips: () => clipsOf(key),
+        shown: () => clipOf(key),
+        library: () => lib().list(),
+        room: () => clipsOf(key).length < MAX_CLIPS,
+        open: () => open,
+        choose: (name) => {
+          chosen.set(key, name);
           refresh();
           if (shown()) panel.render();
-        }
-        d.changed();
-      });
-      pick.disabled = !cs.length && !others.length;
-      const btn = h('button', { type: 'button', class: `motion-tl${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline' },
-        onclick: () => {
+          d.changed();
+        },
+        attach: (name) => attachShow(key, name),
+        detach: (name) => (detach(key, name), d.changed()),
+        make: () => make(key),
+        toggle: () => {
           focusKey = key;
           setOpen(!open);
-        } }, h('span', { class: 'tl-diamond' }), h('span', { text: d.t('tl.open') }));
-      const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, pick, icon('chevronDown')), btn);
-      return [h('span', { class: 'f-l', text: d.t('motion.label') }), cells];
+        },
+      });
     },
     // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.
     usage,
     attach,
+    // studio-motion-flow: the plate on an object, from outside it (the Library's "+ New motion", a drop, its "Attach").
+    make,
+    show,
     detach,
     duplicateLib,
     deleteLib,

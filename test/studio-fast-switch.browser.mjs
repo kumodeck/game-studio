@@ -66,12 +66,21 @@ const IN = {
 // WHY both: in headless Chrome (software GL) a game's own resize (the side panel steps away in Play and comes back in
 // Edit, so the game's canvas changes size) takes about a second per resize in WebGLRenderer.setSize, before and after
 // this change alike; on a real GPU it is a few ms. `page` is the switch itself; `screen` includes that.
-const timed = (cond, answer) => `new Promise((res) => { const t0 = performance.now(); let page = -1;
+// WHY the wait for the answer after `screen` holds (2026-10-22, studio-switch-timing): Edit's `screen` can hold BEFORE
+// the page's answer is read here. The game page is a same-origin frame: on core/play off it shows its editor at once
+// (`_debug` comes back in the same task, play-switch.ts back()), and the core/ready it posts is a task of its own on the
+// editor's page — a frame of this page can run in between. The listener used to go when `screen` held, so that answer,
+// already on its way, was dropped: page -1 with screen a few ms ("every round finished" failed 1 run in 3; 8 s of
+// SETTLE did not help, it was never the settling). `late` = rounds whose answer came after the screen (for the log).
+const timed = (cond, answer) => `new Promise((res) => { const t0 = performance.now(); let page = -1, screen = -1;
   const on = (e) => { const d = e.data; if (page < 0 && d && (${answer})) page = Math.round(performance.now() - t0); };
   window.addEventListener('message', on);
   document.querySelector('button.play').click();
+  const done = () => { window.removeEventListener('message', on); res({ page, screen, late: screen >= 0 && page >= 0 && page > screen }); };
+  // After the screen: up to 5 s more for the page's answer (it comes within a task or two when the page answers at all).
+  const wait = () => { if (page >= 0 || performance.now() - t0 > screen + 5000) done(); else setTimeout(wait, 20); };
   const tick = () => { let ok = false; try { ok = !!(${cond}); } catch {} const ms = performance.now() - t0;
-    if (ok || ms > 60000) { window.removeEventListener('message', on); res({ page, screen: ok ? Math.round(ms) : -1 }); } else requestAnimationFrame(tick); };
+    if (ok) { screen = Math.round(ms); wait(); } else if (ms > 60000) done(); else requestAnimationFrame(tick); };
   requestAnimationFrame(tick); })`;
 const ANSWER = { play: `d.type === 'studio:play/hello'`, edit: `d.type === 'studio:core/ready' && d.editing === true` };
 // What of IN.play is missing (a timeout's message).
@@ -160,7 +169,8 @@ async function time() {
     const say = (tag, r) => {
       for (const k of ['play', 'edit']) {
         const p = r[k].map((x) => x.page), s = r[k].map((x) => x.screen);
-        console.log(`  ${tag}  ${k === 'play' ? 'Play' : 'Edit'}  page ${p.join(' / ')} ms (median ${median(p)})   screen ${s.join(' / ')} ms (median ${median(s)})`);
+        const late = r[k].filter((x) => x.late).length;
+        console.log(`  ${tag}  ${k === 'play' ? 'Play' : 'Edit'}  page ${p.join(' / ')} ms (median ${median(p)})   screen ${s.join(' / ')} ms (median ${median(s)})${late ? `   answer after the screen: ${late}` : ''}`);
       }
     };
     if (BEFORE) say('before', await rounds(src, resolve(BEFORE)));

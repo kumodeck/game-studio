@@ -23,6 +23,8 @@ the right… no, less."
 > KUMODeck credits. Your AI can also publish your game and add online multiplayer and saves with it. All optional:
 > everything above works without an account.
 
+**Docs:** [how to use Game Studio](docs/site/lang/en/index.md), step by step with pictures (also [in Japanese](docs/site/lang/ja/index.md)).
+
 ## Install
 
 You need [Node.js](https://nodejs.org) 22.13 or newer (`node --version`). Nothing else is installed.
@@ -284,6 +286,8 @@ Serve the folder with any static server and open `index.html`.
 
 Read `CONTRACT.md` first: it is the promise between the editor, the
 adapters, the host and the result files (`src/contract.ts` has the types).
+
+Changed a feature? Fix its page in the docs too (`docs/site/lang/en/` and `ja/`, see [its README](docs/site/README.md)).
 
 ## License
 

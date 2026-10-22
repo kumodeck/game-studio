@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.18 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.19 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4176,6 +4176,11 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
     
                                                          
               
+     
+                                                                                                                      
+                                                                                                            
+     
+                  
  
 
 /**
@@ -4425,6 +4430,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                              
      
                                                       
+     
+                                                                                                                        
+                                                                                                                   
+     
+                                                                     
                                                                                        
                                                               
                                                                                                    
@@ -4599,6 +4609,8 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
      
                                                                                                   
+                                                                                 
+                                                                      
                                                                                            
                                                                   
                                                    
@@ -5440,6 +5452,8 @@ const RESULT_FILES                         = {
                 
                                                                                                                      
                                            
+                                                                                        
+                                 
  
 
                                
@@ -10485,6 +10499,12 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                                          
                                                                                                                         
                                  
+     
+                                                                                                                         
+                                                                                                                         
+                           
+     
+                                             
                  
  
 
@@ -11871,6 +11891,9 @@ function attachInput(deps           )              {
       aiLabel = label;
       shapes.ai.sig = '';
       place();
+    },
+    keyAt(x, y) {
+      return tappableAt(adapter, state.items, win, x, y, UI.pickRadiusTouch)[0] ?? null;
     },
     setHover(keys) {
       if (keys.join('\n') === hoverKeys.join('\n')) return;
@@ -13402,6 +13425,10 @@ function createEditor(deps            )         {
           aiMarks = { keys: Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : [], label: typeof msg.label === 'string' ? msg.label.slice(0, 80) : null };
           input?.setAiMarks(aiMarks.keys, aiMarks.label);
           dirtyFrame = true;
+          break;
+        case 'studio:placement/at':
+          // studio-motion-flow: a Library motion held over the game — which object is under it (answered at once).
+          if (typeof msg.x === 'number' && typeof msg.y === 'number') post({ type: 'studio:placement/at-is', id: Number(msg.id) || 0, key: input?.keyAt(msg.x, msg.y) ?? null });
           break;
         case 'studio:placement/hover':
           input?.setHover(Array.isArray(msg.keys) ? msg.keys.filter((k) => typeof k === 'string').slice(0, 500) : []);

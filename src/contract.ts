@@ -696,6 +696,11 @@ export interface UiPrefs {
   };
   /** Saved UI language (absent = follow the browser). */
   lang?: Lang;
+  /**
+   * Hints closed for good (studio-motion-flow, 2026-10-22: "timeline-steps", the timeline's first-time steps). In the
+   * game folder like the rest, so a new port or browser does not show them again. Absent = none closed yet.
+   */
+  seen?: string[];
 }
 
 /**
@@ -945,6 +950,11 @@ export type ShellToBridge =
    * it up when I hover its card"): the game shows them lit, in your colour, softer than the pick. [] = none.
    */
   | { type: 'studio:placement/hover'; keys: string[] }
+  /**
+   * studio-motion-flow (2026-10-22): a Library motion is held over the game — which object is at this point of the game
+   * page (its own px)? Answered by placement/at-is with the same `id` (the same test as a tap; nothing is picked).
+   */
+  | { type: 'studio:placement/at'; id: number; x: number; y: number }
   /** 3D: the axis the strip's turn button uses (`next` = the R key: y → x → z → y). */
   | { type: 'studio:placement/axis'; axis: TurnAxis | 'next' }
   /** Choose the strip's tool (the M / H / T / S keys and ⌘K when the shell has focus), or none. */
@@ -1119,6 +1129,8 @@ export type BridgeToShell =
    * moving the camera — and sent `placement/selected` before this. `x` / `y` = the point in the game page's own px.
    */
   | { type: 'studio:placement/context'; key: string | null; x: number; y: number; touch: boolean }
+  /** Answer to placement/at: the object at that point (null = nothing there). */
+  | { type: 'studio:placement/at-is'; id: number; key: string | null }
   | { type: 'studio:library/assets'; loads: LoadEntry[]; uses: Record<string, AssetRef[]> }
   | { type: 'studio:library/previewed'; url: string; ok: boolean }
   /** Game tools registered by .studio/tools.js. */
@@ -1960,6 +1972,8 @@ export interface LibraryMotions {
   clear(): void;
   /** Called right before a press on a motion's tile picks it (`add`: Shift / Multi-select keeps the other picks). */
   onPick(fn: (add: boolean) => void): void;
+  /** studio-motion-flow: the Motion filter's "+ New motion" tile (null = none here). */
+  newTile?(): HTMLElement | null;
 }
 
 export interface ShellContext {

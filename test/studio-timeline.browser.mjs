@@ -1,7 +1,9 @@
 // The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender"), in a headless browser on Lantern
 // Cove (3D, a copy of the starter). The checks (PC light):
 //   1. an older file's motion (v0.1.13: the buoy's spin) opens as a clip, and nothing counts as changed;
-//   2. the rowboat's card has a Motion row ("None", ◆ Timeline); ◆ opens the plate at the foot of the game, auto key on;
+//   2. the rowboat's card has a Motion row ("+ New motion" since studio-motion-flow; the picture runs, where it has
+//      "Row" already: "Row" and ◆ Timeline); it opens the plate at the foot of
+//      the game, auto key on;
 //   3. the time line moved to 2 s (the ruler pressed), the boat dragged in the game: a key — a clip "Motion" with keys at
 //      0 s and 2 s — Save counts it, the boat's place is unchanged, one undo step;
 //   4. the path in 3D: two dots in the game; Shift-dragging the 2 s dot lifts that key (its height goes up);
@@ -76,7 +78,8 @@ async function run(size, theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-timeline-'));
   cpSync(join(PKG, 'starters/lantern-cove'), root, { recursive: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
-  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
+  // The first-time steps (studio-motion-flow) closed already: this test and its pictures are about the plate itself.
+  writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme, seen: ['timeline-steps'] }));
   const full = CHECKS && size.id === 'pc' && theme === THEMES[0];
   // The checks start from the older shape only (the buoy's spin): the boat's motion is made by hand.
   writeFileSync(join(root, 'placement.json'), JSON.stringify(full ? { ...PICTURE_FILE, motion: { buoy: PICTURE_FILE.motion.buoy } } : PICTURE_FILE, null, 2));
@@ -105,11 +108,16 @@ async function run(size, theme) {
     const fine = async (open) => size.id !== 'pc' && page.eval(`(() => { const d = document.querySelector('[data-part=card] details.fine'); if (d) d.open = ${open}; return true; })()`);
     await fine(true);
     await sleep(400);
-    const row = await j(`(() => { const s = document.querySelector('[data-part=card] [data-part=motion-clip]'); const b = document.querySelector('[data-part=card] [data-part=motion-timeline]');
-      return JSON.stringify({ clip: s ? s.value : null, none: s ? s.disabled : null, button: !!b }); })()`);
-    // Since studio-motion-triggers the menu also offers the Library's motions to attach (the buoy's), so it is not dimmed.
-    if (full) check(!!row && row.clip === '' && row.button, `the card's Motion row: None and ◆ Timeline (${JSON.stringify(row)})`);
-    await page.eval(`document.querySelector('[data-part=card] [data-part=motion-timeline]').click()`);
+    // studio-motion-flow: an object with no motion shows "+ New motion" (and "From Library": the buoy's spin is one);
+    // one with a motion shows its name and ◆ Timeline (motion-card.ts).
+    const row = await j(`(() => { const q = (p) => document.querySelector('[data-part=card] [data-part=' + p + ']');
+      return JSON.stringify({ make: !!q('motion-make'), fromLib: !!q('motion-from-lib'), clip: q('motion-clip')?.value ?? null, tl: !!q('motion-timeline') }); })()`);
+    if (full) check(!!row && row.make && row.fromLib, `the card's Motion row: + New motion and From Library (${JSON.stringify(row)})`);
+    // The picture runs start from PICTURE_FILE, where the boat already has "Row": no "+ New motion" there (as designed),
+    // so ◆ Timeline opens the plate. 2026-10-22 (studio-motion-flow-2): 9e1634134 clicked motion-make in every run and the
+    // runs after PC light stopped on `null.click()` — the test, not the product (each run is a fresh copy, nothing carried over).
+    else check(!!row && !row.make && row.clip === 'Row' && row.tl, `the card's Motion row: "Row" and ◆ Timeline (${JSON.stringify(row)})`);
+    await page.eval(`document.querySelector('[data-part=card] [data-part=${full ? 'motion-make' : 'motion-timeline'}]').click()`);
     await sleep(600);
     await fine(false);
     await sleep(500);

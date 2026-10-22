@@ -16,11 +16,12 @@
 //   big       a big change (the lighthouse 30 m away): Save and play → "Check before you save" first; its × stays in
 //             Edit with nothing saved; "Save anyway" saves, then plays
 //   demo      the web demo: the second line says "kept in this browser"; Try / Save and play as above
-//   look      PC, the chat's side window, a phone × light, dark (in Japanese): the window inside
+//   look      PC, the chat's side window, a phone × light, dark (in Japanese; --lang en for English): the window inside
 //             the screen, every word fits, narrow = one button per row with the main one on top; photos
 //             `choice-<pc|side|phone>-<light|dark>-<1-window|2-play>.png` with --shots
 //
-//   node test/studio-play-choice.browser.mjs [--shots <dir>] [--only choose,keys,big,demo,look]
+//   node test/studio-play-choice.browser.mjs [--shots <dir>] [--only choose,keys,big,demo,look] [--lang ja|en]
+// --lang (look only, ja by default): en was added for the public docs' English pictures (docs/site, 2026-10-22).
 // Exit 1 on failure.
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -41,6 +42,7 @@ const SHOTS = opt('--shots') ? resolve(opt('--shots')) : null;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const ONLY = opt('--only') ? opt('--only').split(',') : null;
 const want = (name) => !ONLY || ONLY.includes(name);
+const LOOK_LANG = opt('--lang') === 'en' ? 'en' : 'ja';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LAYOUTS = {
   pc: { id: 'pc', width: 1280, height: 800, mobile: false, dpr: 1 },
@@ -342,7 +344,7 @@ try {
 
   if (want('look')) {
     for (const theme of ['light', 'dark']) for (const l of [LAYOUTS.pc, LAYOUTS.side, LAYOUTS.phone]) {
-      const root = gameFolder('starters/lantern-cove', { theme, lang: 'ja' });
+      const root = gameFolder('starters/lantern-cove', { theme, lang: LOOK_LANG });
       roots.push(root);
       await run('look', l, { theme, url: await serve(root), steps: async ({ page, until, pressSel, win, move, shot, layout }) => {
         // Three changes, so the photo shows the number.
@@ -353,17 +355,21 @@ try {
         check(await until(async () => (await win())?.kind === 'play', 3000), 'the window');
         await sleep(500);
         const w = await win();
-        check(w?.title === '保存していない変更が 3 個あります', `「${w?.title}」`);
-        check(w?.why === '保存すると AI がゲームのコードに入れます。', `「${w?.why}」`);
-        check(w?.save.text === '保存して遊ぶ' && w?.skip.text === '保存せずに試す' && w?.no.text === 'やめる', `「${w?.save.text}」「${w?.skip.text}」「${w?.no.text}」`);
-        check(w?.save.bg === ORANGE, `保存して遊ぶ is orange (${w?.save.bg})`);
+        // The words (src/shell/i18n.ts guard.title / playWhy / playSave / playTry / cancel) in the language shown.
+        const W = LOOK_LANG === 'ja'
+          ? { title: '保存していない変更が 3 個あります', why: '保存すると AI がゲームのコードに入れます。', save: '保存して遊ぶ', skip: '保存せずに試す', no: 'やめる' }
+          : { title: 'You have 3 unsaved changes', why: 'Save, and your AI puts the changes in the game’s code.', save: 'Save and play', skip: 'Try without saving', no: 'Cancel' };
+        check(w?.title === W.title, `「${w?.title}」`);
+        check(w?.why === W.why, `「${w?.why}」`);
+        check(w?.save.text === W.save && w?.skip.text === W.skip && w?.no.text === W.no, `「${w?.save.text}」「${w?.skip.text}」「${w?.no.text}」`);
+        check(w?.save.bg === ORANGE, `${W.save} is orange (${w?.save.bg})`);
         check(w.box.l >= 8 && w.box.t >= 8 && w.box.r <= layout.width - 8 && w.box.b <= layout.height - 8, `inside the screen (${Math.round(w.box.l)}, ${Math.round(w.box.t)} – ${Math.round(w.box.r)}, ${Math.round(w.box.b)})`);
         check(w.save.fits && w.skip.fits && w.no.fits, 'every button\'s words fit');
         if (layout.id === 'pc') check(Math.abs(w.save.t - w.no.t) < 2 && w.save.l > w.skip.l, 'PC: one row, the main one at the right');
-        else check(w.save.b <= w.skip.t + 1 && w.skip.b <= w.no.t + 1 && Math.abs(w.save.l - w.no.l) < 2, 'narrow: one per row, 保存して遊ぶ on top');
+        else check(w.save.b <= w.skip.t + 1 && w.skip.b <= w.no.t + 1 && Math.abs(w.save.l - w.no.l) < 2, `narrow: one per row, ${W.save} on top`);
         await shot(`choice-${layout.id}-${theme}-1-window.png`);
         await pressSel('[data-action=guard-discard]');
-        check(await until(async () => !!(await page.eval(PLAYING)), 20000), '保存せずに試す: playing');
+        check(await until(async () => !!(await page.eval(PLAYING)), 20000), `${W.skip}: playing`);
         await sleep(1500);
         check(!(await page.eval(STRIP)) && /3/.test(await page.eval(FAB)), `playing: no strip, 「${await page.eval(FAB)}」 beside Play`);
         await shot(`choice-${layout.id}-${theme}-2-play.png`);
