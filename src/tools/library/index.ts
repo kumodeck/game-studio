@@ -101,6 +101,7 @@ export const libraryTool: ShellTool = {
       selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects!(keys) : undefined,
       showObjects: ctx.showObjects ? (o) => ctx.showObjects!(o) : undefined,
       objects: ctx.objects,
+      motions: ctx.motions,
       files: ctx.files,
       view,
       nameOf: (key) => {

@@ -227,3 +227,24 @@ test('placement: t (3D tilt) is optional, two angles, 3D only; files without it 
     assert.equal(v.ok, false, JSON.stringify(bad));
   }
 });
+
+// When a motion plays and the Library's motions (studio-motion-triggers, 2026-10-22).
+test('placement: motions and when / until', () => {
+  const hop = { name: 'Hop', len: 0.6, keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 0.3, v: [0, 1, 0] }] } };
+  const file = { ...place3d({}), motions: [hop], motion: {
+    crate: { clips: [{ use: 'Hop', when: { on: 'key', key: 'KeyE' }, until: { times: 3, then: 'stay' } }] },
+    gate: { clips: [{ use: 'Hop', when: { on: 'enter', area: { p: [1, 0, 2], size: [4, 2, 3] }, who: 'player' } }] },
+    chest: { clips: [{ name: 'Open', use: 'Hop', when: { on: 'cue', cue: 'chest-opened' }, until: { cue: 'chest-closed', then: 'reset' } }] },
+    old: { clips: [{ name: 'Row', len: 2, start: true, keys: {} }, { name: 'Wave', len: 1, when: 'when the player waves', keys: {} }] },
+  } };
+  const r = ok(file);
+  assert.deepEqual(r.value.motions, [hop]);
+  assert.deepEqual(r.value.motion.crate.clips[0], { use: 'Hop', when: { on: 'key', key: 'KeyE' }, until: { times: 3 } }, '"stay" is the default: not written');
+  assert.equal(r.value.motion.chest.clips[0].name, 'Open');
+  assert.equal(r.value.motion.old.clips[1].when, 'when the player waves', "studio-timeline's words still read");
+  bad({ ...file, motions: [] }, /uses "Hop", which is not in motions/);
+  bad({ ...file, motion: { a: { clips: [{ use: 'Hop', when: { on: 'cue', cue: 'Chest Opened' } }] } } }, /cue name/);
+  bad({ ...file, motion: { a: { clips: [{ use: 'Hop', when: { on: 'fly' } }] } } }, /when\.on/);
+  bad({ ...file, motion: { a: { clips: [{ use: 'Hop', keys: {} }] } } }, /keys/);
+  bad({ ...file, motions: [{ ...hop, when: { on: 'start' } }] }, /when/);
+});

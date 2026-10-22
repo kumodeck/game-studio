@@ -71,7 +71,18 @@ export const LIMITS = Object.freeze({
   maxClipWhen: 200,
   maxClipAngle: 1000,
   stepTime: 1000,
+  // When a motion plays (studio-motion-triggers, 2026-10-22): 64 Library motions per file (a game has a handful: Open,
+  // Bob, Spin), a cue name like a key (lower case, digits, -: written as is into the game's code), up to 1000 rounds.
+  maxMotions: 64,
+  maxRounds: 1000,
 });
+
+/** When a motion starts (contract MotionWhen.on). */
+export const MOTION_TRIGGERS = Object.freeze(['start', 'time', 'key', 'click', 'after', 'enter', 'touch', 'cue', 'say']);
+/** A cue's name: "chest-opened", "boss-down". */
+export const CUE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** A key's KeyboardEvent.code: "KeyE", "Space", "ArrowUp", "Digit1". */
+const KEY_CODE_RE = /^[A-Za-z][A-Za-z0-9]{1,24}$/;
 
 /** How a key goes on to the next (contract MotionKey.ease). */
 export const MOTION_EASES = Object.freeze(['linear', 'ease', 'step']);
@@ -163,7 +174,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'levels', 'levelsWas'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -206,6 +217,18 @@ function placement(data, fail) {
       for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
     }
   } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
+  // `motions` (studio-motion-triggers, 2026-10-22): the Library's motions, at the top even with levels. Every clip's
+  // `use` must name one of them (a clip that uses nothing would not move).
+  const names = new Set();
+  if (data.motions !== undefined) {
+    const n = dim === '3d' ? 3 : 2;
+    const ms = readClips(data.motions, n, dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d, dim === '3d' ? LIMITS.step3d : LIMITS.step2d, 'motions', fail, true);
+    for (const m of ms) names.add(m.name);
+    if (ms.length) out.motions = ms;
+  }
+  for (const w of [out, ...(out.levels || [])]) for (const [key, m] of Object.entries(w.motion || {})) for (const c of m.clips || []) {
+    if (c.use !== undefined && !names.has(c.use)) fail(`motion[${JSON.stringify(key)}]`, `uses "${c.use}", which is not in motions`);
+  }
   return out;
 }
 
@@ -472,20 +495,38 @@ function readMotion(v, dim, fail) {
 // One object's clips (the timeline, studio-timeline 2026-10-22; contract MotionClip): 1–16, names unique, at most one
 // that plays at the start, keys per property in strictly increasing time within the clip's length. Values: position
 // offsets like a pose's `p`, angles added (3D three numbers, 2D one), sizes multiplied (like a pose's `s`).
-function readClips(v, n, bound, step, where, fail) {
+function readClips(v, n, bound, step, where, fail, lib = false) {
   const out = [];
-  if (!Array.isArray(v) || !v.length || v.length > LIMITS.maxClips) {
-    fail(where, `must be 1 to ${LIMITS.maxClips} clips`);
+  const max = lib ? LIMITS.maxMotions : LIMITS.maxClips;
+  if (!Array.isArray(v) || (!lib && !v.length) || v.length > max) {
+    fail(where, `must be ${lib ? 0 : 1} to ${max} ${lib ? 'motions' : 'clips'}`);
     return out;
   }
   const names = new Set();
   let starts = 0;
+  const okName = (x) => typeof x === 'string' && !!x.trim() && x.length <= LIMITS.maxClipName && !/[\u0000-\u001f\u007f]/.test(x);
   v.forEach((c, i) => {
     const at = `${where}[${i}]`;
     if (!isObject(c)) return fail(at, 'must be an object');
-    onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'keys'], at, fail);
+    // A Library motion (studio-motion-triggers) is a clip without "when"; an object's clip that uses one has no len /
+    // repeat / keys of its own.
+    if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys'], at, fail);
+    else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until'], at, fail);
+    else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys'], at, fail);
     const o = {};
-    if (typeof c.name !== 'string' || !c.name.trim() || c.name.length > LIMITS.maxClipName || /[\u0000-\u001f\u007f]/.test(c.name)) fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+    if (c.use !== undefined && !lib) {
+      if (!okName(c.use)) return fail(`${at}.use`, `must be 1 to ${LIMITS.maxClipName} characters`);
+      const name = c.name === undefined ? c.use : c.name;
+      if (!okName(name)) return fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+      if (names.has(name)) return fail(`${at}.name`, `"${name}" is used twice`);
+      names.add(name);
+      if (c.name !== undefined && c.name !== c.use) o.name = c.name;
+      o.use = c.use;
+      readWhenUntil(c, o, n, bound, step, at, fail, true);
+      out.push(o);
+      return;
+    }
+    if (!okName(c.name)) fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
     else if (names.has(c.name)) fail(`${at}.name`, `"${c.name}" is used twice`);
     else (names.add(c.name), (o.name = c.name));
     const len = readNumber(c.len, LIMITS.minClipLen, LIMITS.maxClipLen, `${at}.len`, fail);
@@ -494,16 +535,12 @@ function readClips(v, n, bound, step, where, fail) {
       if (!MOTION_REPEATS.includes(c.repeat)) fail(`${at}.repeat`, `must be one of ${MOTION_REPEATS.join(', ')}`);
       else o.repeat = c.repeat;
     }
-    if (c.start !== undefined) {
+    if (!lib && c.start !== undefined) {
       if (c.start !== true) fail(`${at}.start`, 'must be true (leave it out for a clip that waits for a cue)');
       else if (++starts > 1) fail(`${at}.start`, 'only one clip of an object plays at the start');
       else o.start = true;
     }
-    if (c.when !== undefined) {
-      if (typeof c.when !== 'string' || c.when.length > LIMITS.maxClipWhen) fail(`${at}.when`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
-      else if (c.start) fail(`${at}.when`, 'only for a clip that waits for a cue');
-      else o.when = c.when.replace(/[\u0000-\u001f\u007f]/g, '');
-    }
+    if (!lib) readWhenUntil(c, o, n, bound, step, at, fail, false);
     if (!isObject(c.keys)) {
       fail(`${at}.keys`, 'must be an object');
       return;
@@ -542,6 +579,76 @@ function readClips(v, n, bound, step, where, fail) {
     if (o.name !== undefined && o.len !== undefined) out.push(o);
   });
   return out;
+}
+
+// A clip's `when` / `until` (studio-motion-triggers, 2026-10-22; contract MotionWhen / MotionUntil). `when` may still be
+// studio-timeline's words (a string) on a clip with keys of its own; a clip that uses a Library motion has the object.
+function readWhenUntil(c, o, n, bound, step, at, fail, uses) {
+  const w = c.when;
+  if (w !== undefined) {
+    if (typeof w === 'string' && !uses) {
+      if (w.length > LIMITS.maxClipWhen) fail(`${at}.when`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
+      else if (c.start) fail(`${at}.when`, 'only for a clip that waits for a cue');
+      else o.when = w.replace(/[\u0000-\u001f\u007f]/g, '');
+    } else if (!isObject(w) || !MOTION_TRIGGERS.includes(w.on)) fail(`${at}.when.on`, `must be one of ${MOTION_TRIGGERS.join(', ')}`);
+    else {
+      const wa = `${at}.when`;
+      const x = { on: w.on };
+      const fields = { start: [], time: ['after'], key: ['key'], click: [], after: ['use', 'key'], enter: ['area', 'who'], touch: [], cue: ['cue'], say: ['say'] }[w.on];
+      onlyFields(w, ['on', ...fields], wa, fail);
+      if (w.on === 'time') {
+        const a = readNumber(w.after, 0, LIMITS.maxClipLen, `${wa}.after`, fail);
+        if (a !== null) x.after = round(a, LIMITS.stepTime);
+      } else if (w.on === 'key') {
+        if (typeof w.key !== 'string' || !KEY_CODE_RE.test(w.key)) fail(`${wa}.key`, 'must be a KeyboardEvent.code ("KeyE", "Space")');
+        else x.key = w.key;
+      } else if (w.on === 'after') {
+        if (typeof w.use !== 'string' || !w.use.trim() || w.use.length > LIMITS.maxClipName) fail(`${wa}.use`, 'must name a motion');
+        else x.use = w.use;
+        if (w.key !== undefined) {
+          if (typeof w.key !== 'string' || !KEY_RE.test(w.key)) fail(`${wa}.key`, 'key must match ' + KEY_RE);
+          else x.key = w.key;
+        }
+      } else if (w.on === 'enter') {
+        const ar = w.area;
+        if (!isObject(ar)) fail(`${wa}.area`, 'must be { p, size }');
+        else {
+          onlyFields(ar, ['p', 'size'], `${wa}.area`, fail);
+          const nums = (a, lo, f) => (Array.isArray(a) && a.length === n ? a.map((v, k) => readNumber(v, lo, bound, `${wa}.area.${f}[${k}]`, fail)) : (fail(`${wa}.area.${f}`, `must be ${n} numbers`), null));
+          const p = nums(ar.p, -bound, 'p');
+          const sz = nums(ar.size, 0, 'size');
+          if (p && sz && p.every((v) => v !== null) && sz.every((v) => v !== null)) x.area = { p: p.map((v) => round(v, step)), size: sz.map((v) => round(v, step)) };
+        }
+        if (w.who !== undefined) {
+          if (typeof w.who !== 'string' || !KEY_RE.test(w.who)) fail(`${wa}.who`, 'key must match ' + KEY_RE);
+          else x.who = w.who;
+        }
+      } else if (w.on === 'cue') {
+        if (typeof w.cue !== 'string' || !CUE_RE.test(w.cue)) fail(`${wa}.cue`, 'must be a cue name: lower case letters, digits and -, like "chest-opened"');
+        else x.cue = w.cue;
+      } else if (w.on === 'say' && w.say !== undefined) {
+        if (typeof w.say !== 'string' || w.say.length > LIMITS.maxClipWhen) fail(`${wa}.say`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
+        else if (w.say.trim()) x.say = w.say.replace(/[\u0000-\u001f\u007f]/g, '');
+      }
+      o.when = x;
+    }
+  }
+  const u = c.until;
+  if (u === undefined) return;
+  if (!isObject(u)) return fail(`${at}.until`, 'must be { times } or { cue }, with then: stay | reset');
+  onlyFields(u, ['times', 'cue', 'then'], `${at}.until`, fail);
+  const x = {};
+  if (u.times !== undefined) {
+    const t = readNumber(u.times, 1, LIMITS.maxRounds, `${at}.until.times`, fail);
+    if (t !== null) x.times = Math.round(t);
+  }
+  if (u.cue !== undefined) {
+    if (typeof u.cue !== 'string' || !CUE_RE.test(u.cue)) fail(`${at}.until.cue`, 'must be a cue name like "boss-down"');
+    else x.cue = u.cue;
+  }
+  if (u.then !== undefined && u.then !== 'stay' && u.then !== 'reset') fail(`${at}.until.then`, 'must be stay or reset');
+  else if (u.then === 'reset') x.then = 'reset';
+  if (Object.keys(x).length) o.until = x;
 }
 
 // The game's size in CSS px when the UI was saved: [width, height], whole pixels. A hint for the AI turning offsets

@@ -8,7 +8,7 @@
 // front is ONE press of Undo. Changes are applied in order on redo and in
 // reverse order on undo (a group's draw-order moves only undo exactly
 // backwards, each one being "take it out, put it at that place").
-import { LIMITS, type Motion, type Pose } from '../contract.ts';
+import { LIMITS, type LibraryMotion, type Motion, type Pose } from '../contract.ts';
 
 export type Change =
   | { kind: 'pose'; key: string; from: Pose; to: Pose }
@@ -17,7 +17,11 @@ export type Change =
   /** An object was deleted: undo puts it back. */
   | { kind: 'remove'; key: string }
   /** Its motion changed (motion-gui, 2026-10-22): the card's menu, speed, + / −, or a path point dragged. null = none. */
-  | { kind: 'motion'; key: string; from: Motion | null; to: Motion | null };
+  | { kind: 'motion'; key: string; from: Motion | null; to: Motion | null }
+  /** A Library motion made, changed or deleted (studio-motion-triggers, 2026-10-22): `key` is its name. null = none. */
+  | { kind: 'motion-lib'; key: string; from: LibraryMotion | null; to: LibraryMotion | null }
+  /** A Library motion renamed (`key` = its new name), with every clip that uses it. */
+  | { kind: 'motion-rename'; key: string; from: string; to: string };
 
 export interface UndoEntry {
   changes: Change[];
@@ -45,7 +49,7 @@ export class UndoStack {
 
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e: UndoEntry): boolean {
-    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion') || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion' && c.kind !== 'motion-lib' && c.kind !== 'motion-rename') || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });

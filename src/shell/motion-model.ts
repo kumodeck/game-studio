@@ -9,8 +9,40 @@
 //
 // The file's older shape (v0.1.13: path / speed / repeat / spin) is turned into one clip when the file is read
 // (timeline-model.ts toClips), for the saved copy too: opening an old file is not a change; the next Save writes clips.
-import type { Dim, Motion, MotionClip } from '../contract.ts';
+//
+// Since studio-motion-triggers (2026-10-22) an object's clips are ATTACHMENTS: `{ use, when, until }` naming a Library
+// motion (motion-library.ts holds its len / repeat / keys). A clip that still holds keys of its own (an older file) is
+// turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
+import type { Dim, LibraryMotion, Motion, MotionClip, MotionUntil, MotionWhen } from '../contract.ts';
+import { whenOf } from '../loader/studio-placement.js';
+import { motionLibrary, type MotionLibrary } from './motion-library.ts';
 import { CHANNELS, toClips } from './timeline-model.ts';
+
+/** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
+function roundWhen(w: MotionWhen, r: (v: number, s: number) => number, step: number): MotionWhen {
+  const x = structuredClone(w);
+  if (x.on === 'time') x.after = r(x.after, 1000);
+  if (x.on === 'enter') x.area = { p: x.area.p.map((v) => r(v, step)), size: x.area.size.map((v) => r(Math.abs(v), step)) };
+  if (x.on === 'say') {
+    const say = x.say?.trim().slice(0, 200);
+    return say ? { on: 'say', say } : { on: 'say' };
+  }
+  return x;
+}
+function roundUntil(u: MotionUntil | undefined): MotionUntil | undefined {
+  if (!u) return undefined;
+  const x: MotionUntil = {};
+  if (u.times) x.times = Math.max(1, Math.round(u.times));
+  if (u.cue) x.cue = u.cue;
+  if (u.then === 'reset') x.then = 'reset';
+  return x.times || x.cue || x.then ? x : undefined;
+}
+
+/** A Library motion as the file writes it (the same rounding as a clip's keys). */
+export function roundLib(m: LibraryMotion, dim: Dim = '3d'): LibraryMotion {
+  const c = roundMotion({ clips: [{ ...m, start: undefined, when: undefined, keys: m.keys ?? {} }] }, dim)!.clips![0]!;
+  return { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}), keys: c.keys };
+}
 
 /** Same motion (the file's rounding), so a drag that ends where it began is not a change. */
 export function sameMotion(a: Motion | null | undefined, b: Motion | null | undefined): boolean {
@@ -31,6 +63,16 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
   };
   if (m.clips?.length) {
     const clips = m.clips.map((c) => {
+      if (c.use) {
+        // An attachment (studio-motion-triggers): which Library motion, and when it starts / stops.
+        const until = roundUntil(c.until);
+        return {
+          ...(c.name && c.name !== c.use ? { name: c.name } : {}),
+          use: c.use,
+          when: roundWhen(whenOf(c) as MotionWhen, r, step),
+          ...(until ? { until } : {}),
+        } as MotionClip;
+      }
       // Fields in the file's order: name, len, repeat, start, when, keys (keys last: the long part).
       const keys: MotionClip['keys'] = {};
       for (const ch of CHANNELS) {
@@ -44,7 +86,9 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
         len: r(c.len, 1000),
         ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}),
         ...(c.start ? { start: true } : {}),
-        ...(!c.start && c.when?.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
+        ...(!c.start && typeof c.when === 'string' && c.when.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
+        ...(!c.start && c.when && typeof c.when === 'object' ? { when: roundWhen(c.when, r, step) } : {}),
+        ...(roundUntil(c.until) ? { until: roundUntil(c.until) } : {}),
         keys,
       };
     });
@@ -61,18 +105,53 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
   return out.path || out.spin ? out : null;
 }
 
+/**
+ * An object's motion with every clip as an attachment: a clip with keys of its own becomes a Library motion (adopt) and
+ * the clip names it. Its `when`: studio-timeline's `start: true` → the game starts, its words → `say`.
+ */
+export function attachAll(m: Motion, lib: MotionLibrary): Motion {
+  if (!m.clips?.length) return m;
+  return {
+    clips: m.clips.map((c) => {
+      if (c.use) return { ...c, keys: {} } as MotionClip;
+      const use = lib.adopt(c, true);
+      const out = { name: c.name, use, len: c.len, when: whenOf(c) as MotionWhen, keys: {} } as MotionClip;
+      if (c.until) out.until = c.until;
+      return out;
+    }),
+  };
+}
+
+/**
+ * A level's motions as a file part, every clip an attachment (the levels waiting in levels.ts, read once when the file
+ * opens: their old clips become Library motions now, so a save writes them in the new shape even if never visited).
+ */
+export function attachWorld(motion: Record<string, Motion> | undefined, lib: MotionLibrary, dim: Dim): Record<string, Motion> | undefined {
+  if (!motion) return motion;
+  const out: Record<string, Motion> = {};
+  for (const [k, raw] of Object.entries(motion)) {
+    const c = toClips(raw, dim);
+    const r = roundMotion(c ? attachAll(c, lib) : raw, dim);
+    if (r) out[k] = r;
+  }
+  return out;
+}
+
 export class MotionStore {
   private now = new Map<string, Motion>();
   private saved = new Map<string, Motion>();
   /** The world's dim, for reading the older shape (2D spins are one angle). Set by PlacementModel. */
   dim: Dim = '3d';
+  /** The Library's motions the clips use (the page's one; tests give their own). */
+  lib: MotionLibrary = motionLibrary;
 
   /** The saved file's motions (before the game lists its objects): they are what the editor starts from. */
   restore(file: Record<string, Motion> | undefined): void {
     this.now.clear();
     this.saved.clear();
     for (const [k, raw] of Object.entries(file || {})) {
-      const m = toClips(raw, this.dim) ?? raw;
+      const c = toClips(raw, this.dim);
+      const m = c ? attachAll(c, this.lib) : raw;
       this.now.set(k, structuredClone(m));
       this.saved.set(k, structuredClone(m));
     }

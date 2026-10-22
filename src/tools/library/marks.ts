@@ -196,8 +196,9 @@ export type BadgeFilter = Badge | 'all';
  * 3D game's objects are 3D, a 2D game's objects are 2D (panel.ts); a file goes by its type (shelfOfType).
  * Object vs file stays readable on each tile's small tag; used / not used stays on the file's tile and detail.
  */
-export type Shelf = 'all' | '3d' | '2d' | 'sound' | 'other';
-export const SHELVES: Shelf[] = ['all', '3d', '2d', 'sound', 'other'];
+// 'motion' (studio-motion-triggers, 2026-10-22): the Library's motions, an asset of their own (no file: placement.json).
+export type Shelf = 'all' | '3d' | '2d' | 'sound' | 'other' | 'motion';
+export const SHELVES: Shelf[] = ['all', '3d', '2d', 'sound', 'motion', 'other'];
 
 /**
  * Where a file goes in the filters: 3D models → 3D; images and sprite sheets → 2D; sounds → Sound; the rest (fonts,

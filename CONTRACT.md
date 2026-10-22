@@ -381,6 +381,30 @@ those kinds are now templates that set keys, and its file shape is still read.)
   older one) the bridge does (`play-arrange.ts` `moveInPlay`). The loader lists what it moves in a global set
   (`Symbol.for('game-studio.motion')`) so nothing moves twice. Inside the editor (`studio=edit`) the loader runs none.
 
+#### 1.9.1 When a motion plays, and motions as Library assets (2026-10-22, studio-motion-triggers)
+
+Asked for: "a motion starts when an event happens, stops, or runs the whole game" / "treat a motion as one of the assets".
+
+- A motion (len / repeat / keys) is a **Library asset**: `motions` at the top of placement.json (§4.1), the editor's
+  `shell/motion-library.ts` (one for the file, across levels). An object's clip is an **attachment**: which motion
+  (`use`), when it starts (`when`) and stops (`until`). Editing keys on the timeline edits the Library motion — every
+  object that uses it changes (the head says "on 2"). A file of the first timeline shape (keys inside each clip) is read
+  into the Library when it opens (the same name and keys = one motion; other keys = "Open 2"), not counted as a change.
+- The timeline head's second row: **Starts** ▾ (two groups — plays by itself: the game starts / after N s / a key /
+  this is clicked / another motion ends / the player enters an area; ✦ your AI connects it: touches this / a named cue /
+  in my words) with its field, **Stops** ▾ (never / after N rounds / a cue) and **then** (stays / goes back), and **Try**:
+  one ▶ per cue in the scene. Try runs the scene with the loader's `motionRunner` (the same rules as the game) and
+  shows the poses (`timeline/pose`); ■ stops it. The rows' names say when each starts (`⌨ E · 2×`, purple ✦ = the AI's).
+- An area is drawn in the game: `studio:timeline/area { key, area: { p, size }, label }` (shell → bridge, null = none);
+  its middle point dragged (ground / Shift up and down) comes back as `studio:timeline/area-moved { key, p, end }`, one
+  undo step.
+- The Library's **Motion** filter (`shell/library-motions.ts`, `ShellContext.motions`): a tile per motion (its path
+  from above, a dot running along it), its detail (what it is on and when, Attach to…, Ask your AI…, Rename,
+  Duplicate, Delete — each one undo step: `Change` kinds `motion-lib` / `motion-rename` beside `motion`). The card's
+  Motion menu: this object's motions, "Attach from the Library", "Take … off". A picked motion goes to the ask box's chip
+  and into the request (`motions`, §3).
+- Save: one count per object whose clips changed and one per Library motion that changed.
+
 ### 1.10 Levels (2026-10-22)
 
 Optional, added in contract 1 without changing anything else. A game with
@@ -660,7 +684,8 @@ a bonus that wakes an agent that happens to be watching.
   be unsaved —, `unstable`, and `files`: the asset files it is drawn with, when
   the editor knows them), `assets` (`ask`: files picked in the Library that the
   words are about — "Add this to the scene" asks for a new object made from
-  them; plain folder paths, ≤ 50), `step`, `lang`, `dim`, `unsaved` (changes not
+  them; plain folder paths, ≤ 50), `motions` (`ask`, studio-motion-triggers: Library motions picked with the words,
+  ≤ 20, each `{ name, len, repeat?, on: [{ key, when?, until? }] }` — a hint, bad entries dropped), `step`, `lang`, `dim`, `unsaved` (changes not
   saved yet), `view` (`ask`, 3D: the camera's `eye` and `target` when they
   asked, so new things land in sight), `files` (what it is about: `placement.json`,
   `.studio/next-step.md`, …; for `delete-files`, `.studio/next-step.md` then
@@ -963,6 +988,27 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   (rad/s); never next to `clips`. The editor reads it as one clip "Motion" (`start`) and writes clips at the next Save.
   The loader plays both from the game's frames, reports `report.motion` (keys) and exports `clipAt(clip, t)`,
   `trackAt`, `motionAt` (the older shape), `playMotion(key, name)`, `clipOf(key, name)` and `stopMotion(key?)`.
+- Optional (§1.9.1, studio-motion-triggers, 2026-10-22): **`motions`** — the Library's motions, at the top (also with
+  `levels`), 0–64, each `{ name, len, repeat?, keys }` (a clip without "when"; names unique). Since then the editor
+  writes every object clip as an attachment:
+
+  ```json
+  "motions": [{ "name": "Hop", "len": 0.6, "keys": { "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 0.3, "v": [0, 1, 0] }] } }],
+  "motion": {
+    "crate": { "clips": [{ "use": "Hop", "when": { "on": "key", "key": "KeyE" }, "until": { "times": 3 } }] },
+    "chest": { "clips": [{ "name": "Open", "use": "Hop", "when": { "on": "cue", "cue": "chest-opened" }, "until": { "cue": "chest-closed", "then": "reset" } }] }
+  }
+  ```
+
+  A clip with `use` has only `name?` (when it differs: `playMotion(key, name)`), `use` (a name in `motions`), `when`,
+  `until`. `when.on`: `start` · `time` (`after` s, ≤ 600) · `key` (`key` = KeyboardEvent.code) · `click` · `after`
+  (`use`, `key?`: another clip ended) · `enter` (`area: { p, size }` in world units, `who?` = the key of who walks in) ·
+  `touch` · `cue` (`cue` = `^[a-z0-9][a-z0-9-]{0,39}$`) · `say` (`say?` = words for the AI, ≤ 200). Absent on a `use`
+  clip = `start`. `until`: `times` (1–1000 rounds: a loop's len, a pingpong's there and back), `cue`, `then: 'reset'`
+  (back to its first pose; default stays). The first shape (keys inside, `start: true`, `when` as words) is still valid
+  and played. The loader runs start / time / key / click / after / enter by itself (`motionRunner`, shared with the
+  editor's Try) and exports `cue(name)`, `touch(key)`, `setPlayer(obj)` for the rest; `report.motionWaits` lists the
+  clips that wait for the game's code.
 - Optional (levels, 2026-10-22, §1.10): a game with several levels.
 
   ```json

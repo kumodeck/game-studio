@@ -81,6 +81,8 @@ export interface PlacementPanelDeps {
    * objects, and the words are sent about both. Absent / empty = objects only.
    */
   assets?(): string[];
+  /** Motions picked in the Library (studio-motion-triggers): the chip names them with the objects and files. */
+  motions?(): string[];
   /** The card's "Show in Library →": the Library with this pick's detail. Absent = no Library in this build. */
   showInLibrary?(): void;
   /** Ask the AI to name these objects (the "no name" warning). */
@@ -341,7 +343,10 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
 
   const renderAsk = () => {
     const keys = d.selectedKeys();
-    const files = d.assets?.() || [];
+    // Files and motions picked in the Library are named by the chip together (a motion by its name, "Hop").
+    const fileName = (p: string) => (p.startsWith('\u0000') ? p.slice(1) : p.slice(p.lastIndexOf('/') + 1));
+    const picks = [...(d.assets?.() || []), ...(d.motions?.() || []).map((m) => `\u0000${m}`)];
+    const files = picks;
     const items = d.items();
     const first = items.find((i) => i.key === keys[0]);
     const k = keys.length || files.length ? [...[...keys].sort(), ...files].join(',') : null;
@@ -356,14 +361,13 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
     // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
-    const fileName = (p: string) => p.slice(p.lastIndexOf('/') + 1);
     const firstName = noObj ? (files.length ? fileName(files[0]!) : '') : displayName(first, d.t);
     // The chip stays small (a hands-on try, 2026-10-19: "the object's name in the chat box is in the way" — "Unnamed group"
     // took half the field). One object: its short name ("Black pillar", without "by the road" and "(left, 3rd)": the card
     // above says those, and the game lights it); several: only how many ("×4"). The whole names are its tooltip and
     // the field's label read aloud, so what goes to the AI stays clear; a mouse over it lights them in the game.
     askChip.textContent = whole ? '' : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
-    const allNames = [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files];
+    const allNames = [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files.map(fileName)];
     askChip.title = whole ? '' : allNames.slice(0, 12).join('\n') + (allNames.length > 12 ? '\n…' : '');
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").

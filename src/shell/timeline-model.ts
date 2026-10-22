@@ -267,6 +267,14 @@ export function snapT(t: number, max: number, free = false): number {
   return rt(Math.min(max, Math.max(0, s)));
 }
 
+/** A KeyboardEvent.code as a person reads it: "KeyE" → "E", "Digit1" → "1", "ArrowUp" → "↑", "Space" → "Space". */
+export function keyName(code: string): string {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  const arrows: Record<string, string> = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+  return arrows[code] ?? code;
+}
+
 /** "0:01.6" — minutes, seconds and a tenth (the time readout; tabular figures keep it still while it runs). */
 export function clock(t: number): string {
   const s = Math.max(0, t);

@@ -161,3 +161,11 @@ test('answer: the person\'s words, what it answers (to, question); its line name
     'studio: answer .studio/requests/a.json "Keep it" to "Keep your spot anyway?" (request 20261019-101500-000-saved-0a0a)',
   );
 });
+
+test('motions as assets (studio-motion-triggers, 2026-10-22): an ask carries the picked motions; the line names them', () => {
+  const r = normalizeRequestInput({ kind: 'ask', text: 'make the crate Hop when the player walks up', objects: [{ key: 'crate' }],
+    motions: [{ name: 'Hop', len: 0.6, on: [{ key: 'barrel', when: { on: 'key', key: 'KeyE' } }, { key: 'a b' }] }, { name: '', len: 1 }, 'x'] });
+  assert.ok(r.ok);
+  assert.deepEqual(r.value.motions, [{ name: 'Hop', len: 0.6, on: [{ key: 'barrel', when: { on: 'key', key: 'KeyE' } }] }], 'a hint: bad entries dropped');
+  assert.match(handoffLine({ ...r.value, kind: 'ask' }, '.studio/requests/a.json'), /\(crate, motion Hop\)/);
+});

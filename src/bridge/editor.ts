@@ -994,6 +994,7 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:timeline/pose':
         case 'studio:timeline/path':
+        case 'studio:timeline/area':
           if (state.editing && layer === 'world') timeline.handle(msg);
           break;
         case 'studio:core/edit':

@@ -14,10 +14,27 @@
 // no menus of our own on a plate that floats (the card's Motion row made the same choice, motion-gui).
 // Colours (shell.css rule 2 + its one exception here): orange = your hand (picked keys, the picked object's row),
 // red = recording (● and the time line while auto key is on — the colour every camera and DAW uses for "writing now").
-import type { MotionChannel, MotionClip, MotionEase, MotionRepeat } from '../contract.ts';
+import type { MotionArea, MotionChannel, MotionClip, MotionEase, MotionRepeat, MotionTrigger, MotionUntil, MotionWhen } from '../contract.ts';
 import { h } from './dom.ts';
 import { icon } from './icons.ts';
-import { CHANNELS, clock, keyTimes, sameT, TEMPLATES, type KeyRef, type Template } from './timeline-model.ts';
+import { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES, type KeyRef, type Template } from './timeline-model.ts';
+
+/** Starts menu, in two groups: what the loader plays by itself, then what your AI connects in the game's code. */
+export const SELF_TRIGGERS: MotionTrigger[] = ['start', 'time', 'key', 'click', 'after', 'enter'];
+export const AI_TRIGGERS: MotionTrigger[] = ['touch', 'cue', 'say'];
+/** "Chest opened!" → "chest-opened" (a cue name the game's code can say as is; CUE_RE in the schema). */
+export const cueSlug = (s: string) => s.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'cue';
+
+/** A row's "when" in a few characters (the timeline's name column, the card's menu): "∞ Always", "⌨ E", "✦ chest-opened". */
+export function whenShort(t: (k: string, v?: Record<string, string | number>) => string, w: MotionWhen, until: MotionUntil | null, repeat: MotionRepeat): string {
+  const stop = until?.times ? ` · ${until.times}×` : until?.cue ? ` → ${until.cue}` : '';
+  if (w.on === 'start') return (repeat !== 'once' && !until ? `∞ ${t('tl.when.always')}` : `▶ ${t('tl.when.short.start')}`) + stop;
+  if (w.on === 'time') return `⏱ ${w.after} s${stop}`;
+  if (w.on === 'key') return `⌨ ${keyName(w.key)}${stop}`;
+  if (w.on === 'after') return `↳ ${w.use}${stop}`;
+  if (w.on === 'cue') return `✦ ${w.cue}${stop}`;
+  return `${AI_TRIGGERS.includes(w.on) ? '✦ ' : ''}${t(`tl.when.short.${w.on}`)}${stop}`;
+}
 
 export interface TimelineRow {
   key: string;
@@ -42,6 +59,17 @@ export interface TimelineView {
   /** The picked keys' ease: one of them, 'mixed', or null with nothing picked. */
   ease: MotionEase | 'mixed' | null;
   narrow: boolean;
+  // studio-motion-triggers: the focused clip's start / stop, how many objects use its motion, the scene's cues.
+  when: MotionWhen | null;
+  until: MotionUntil | null;
+  uses: number;
+  cues: Array<{ id: string; label: string; ai: boolean; on: boolean }>;
+  trying: boolean;
+  cueNames: string[];
+  afterOpts: Array<{ key: string; use: string; label: string }>;
+  rowWhen(key: string): { when: MotionWhen; until: MotionUntil | null; repeat: MotionRepeat } | null;
+  defaultArea(): MotionArea;
+  player: string | null;
 }
 
 export interface TimelineActs {
@@ -54,8 +82,12 @@ export interface TimelineActs {
   rename(name: string): void;
   len(seconds: number): void;
   repeat(r: MotionRepeat): void;
-  start(on: boolean): void;
-  when(text: string): void;
+  /** When the focused clip starts / stops (null = never stops). */
+  setWhen(w: MotionWhen): void;
+  setUntil(u: MotionUntil | null): void;
+  /** A cue's ▶ pressed ("that just happened"), and ■ to stop trying. */
+  tryCue(id: string): void;
+  tryStop(): void;
   ease(e: MotionEase): void;
   pickRow(key: string): void;
   openRow(key: string): void;
@@ -76,6 +108,8 @@ const ROW_PX = 28;
 export function createTimelinePanel(view: () => TimelineView, act: TimelineActs) {
   const t = act.t;
   const head = h('div', { class: 'tl-head' });
+  // The clip's "when" (studio-motion-triggers): Starts ▾ [its field]  Stops ▾ [its field]  …  Try ▶ ▶ ▶
+  const whenRow = h('div', { class: 'tl-when-row', dataset: { part: 'tl-when-row' } });
   const ruler = h('div', { class: 'tl-ruler', role: 'slider', 'aria-valuemin': '0', dataset: { part: 'tl-ruler' } });
   const names = h('div', { class: 'tl-names' });
   const lanes = h('div', { class: 'tl-lanes', dataset: { part: 'tl-lanes' } });
@@ -83,7 +117,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const boxEl = h('div', { class: 'tl-box', hidden: true });
   const track = h('div', { class: 'tl-track' }, ruler, lanes, playhead, boxEl);
   const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, h('div', { class: 'tl-ruler-pad' }), names), track);
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, body);
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, whenRow, body);
 
   // Seconds ↔ px on the track (its own box: the names column is outside it).
   const pad = 12;
@@ -141,17 +175,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const items: Node[] = [play, time, auto, clipSel];
     if (c) {
       items.push(select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat)));
-      items.push(select('tl-start', t('tl.plays'), [['start', t('tl.start')], ['cue', t('tl.cue')]], c.start ? 'start' : 'cue', (s) => act.start(s === 'start')));
-      if (!c.start) {
-        const when = h('input', { type: 'text', class: 'tl-when', placeholder: t('tl.when'), 'aria-label': t('tl.when'), maxlength: '200', dataset: { part: 'tl-when' } });
-        when.value = c.when ?? '';
-        when.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') when.blur();
-          e.stopPropagation();
-        });
-        when.addEventListener('change', () => act.when(when.value));
-        items.push(when);
-      }
+      // The motion is the Library's: used by 2 or more objects, a key changed here changes them all — say so, small.
+      if (v.uses > 1) items.push(h('span', { class: 'tl-uses', title: t('tl.usesTip'), dataset: { part: 'tl-uses' }, text: t('tl.uses', { n: v.uses }) }));
     }
     const ease = select('tl-ease', t('tl.easeTip'), [...(v.ease === 'mixed' || !v.ease ? [['', v.ease ? '—' : t('tl.ease'), true] as [string, string, boolean]] : []),
       ...(['linear', 'ease', 'step'] as MotionEase[]).map((e) => [e, t(`tl.ease.${e}`)] as [string, string])], v.ease && v.ease !== 'mixed' ? v.ease : '', (e) => act.ease(e as MotionEase));
@@ -163,6 +188,149 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // Narrow: the end of the first row (▶ time ● ⌄); the menus start a new one (shell.css). Nothing on PC.
     items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
     head.replaceChildren(...items);
+    renderWhen(v);
+  }
+
+  /** A small text field that acts on Enter / leaving (Esc: as it was). */
+  const field = (part: string, label: string, value: string, width: string, done: (text: string) => void, mode: 'text' | 'decimal' = 'text') => {
+    const f = h('input', { type: 'text', inputmode: mode, class: 'tl-field', 'aria-label': label, title: label, autocomplete: 'off', spellcheck: false, style: `width:${width}`, dataset: { part } });
+    f.value = value;
+    f.addEventListener('focus', () => f.select());
+    f.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') f.blur();
+      if (e.key === 'Escape') (f.value = value), f.blur();
+    });
+    f.addEventListener('change', () => done(f.value));
+    return f;
+  };
+  /** A cue name menu: the scene's cues, then "New cue…" (the menu becomes a field for its name). */
+  const cueMenu = (part: string, label: string, now: string, names: string[], pick: (name: string) => void) => {
+    const all = [...new Set([now, ...names].filter(Boolean))];
+    const m = select(part, label, [...all.map((n) => [n, n] as [string, string]), ['+', t('tl.cue.new')]], now, (val) => {
+      if (val !== '+') return pick(val);
+      const f = field(`${part}-new`, t('tl.cue.name'), '', '9em', (text) => (text.trim() ? pick(cueSlug(text)) : render()));
+      f.placeholder = 'chest-opened';
+      m.replaceWith(f);
+      f.focus();
+    });
+    return m;
+  };
+
+  /** The second row: when the focused clip starts and stops, and the scene's cues to try. */
+  function renderWhen(v: TimelineView) {
+    const c = v.clip;
+    const w = v.when;
+    const items: Node[] = [];
+    if (c && w) {
+      items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Starts ▾: two groups, so the person sees which ones the AI has to connect (purple ✦, the AI's colour).
+      const s = h('select', { 'aria-label': t('tl.starts'), title: t('tl.startsTip'), dataset: { part: 'tl-starts' } });
+      for (const [label, list] of [[t('tl.when.self'), SELF_TRIGGERS], [`✦ ${t('tl.when.ai')}`, AI_TRIGGERS]] as Array<[string, MotionTrigger[]]>) {
+        const g = h('optgroup', { label });
+        for (const on of list) {
+          const o = h('option', { value: on, text: t(`tl.when.${on}`) });
+          if (on === 'after' && !v.afterOpts.length) o.disabled = true;
+          if (on === w.on) o.selected = true;
+          g.append(o);
+        }
+        s.append(g);
+      }
+      s.addEventListener('change', () => act.setWhen(fresh(s.value as MotionTrigger, v)));
+      items.push(h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}` }, s, icon('chevronDown')));
+      items.push(...whenField(w, v));
+      // Stops ▾: never / after N rounds / a cue; then: stay or go back.
+      const u = v.until;
+      const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
+      items.push(h('span', { class: 'tl-lbl tl-lbl-stops', text: t('tl.stops') }));
+      items.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+        act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
+      if (u?.times) items.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
+        const n = Math.round(parseFloat(x));
+        if (n >= 1) act.setUntil({ ...u, times: Math.min(1000, n) });
+        else render();
+      }, 'decimal'), h('span', { class: 'tl-of', text: t('tl.until.timesUnit') }));
+      if (u?.cue) items.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
+      if (u) items.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
+    } else items.push(h('span', { class: 'tl-lbl', text: t('tl.when.none') }));
+    // Try: one ▶ per cue in the scene (Unity's Animator: the Parameters' Trigger buttons).
+    items.push(h('span', { class: 'tl-gap' }));
+    const tries = h('span', { class: 'tl-tries', dataset: { part: 'tl-tries' } }, h('span', { class: 'tl-lbl', text: t('tl.try') }));
+    for (const q of v.cues) {
+      tries.append(h('button', { type: 'button', class: `tl-cue${q.on ? ' on' : ''}${q.ai ? ' ai' : ''}`, title: t(q.ai ? 'tl.try.aiTip' : 'tl.try.tip', { name: q.label }), dataset: { cue: q.id, part: 'tl-cue' },
+        onclick: () => act.tryCue(q.id) }, h('i', { 'aria-hidden': 'true' }, icon('play')), h('span', { text: q.label })));
+    }
+    if (v.trying) tries.append(h('button', { type: 'button', class: 'tl-cue stop', title: t('tl.try.stop'), dataset: { part: 'tl-try-stop' }, onclick: () => act.tryStop() }, h('i', { 'aria-hidden': 'true' }, icon('pause')), h('span', { text: t('tl.try.stop') })));
+    items.push(tries);
+    whenRow.replaceChildren(...items);
+  }
+
+  /** A trigger with its first values, when the Starts menu changes. */
+  function fresh(on: MotionTrigger, v: TimelineView): MotionWhen {
+    switch (on) {
+      case 'time': return { on, after: 3 };
+      case 'key': return { on, key: 'KeyE' };
+      case 'after': return { on, use: v.afterOpts[0]!.use, key: v.afterOpts[0]!.key };
+      case 'enter': return { on, area: v.defaultArea(), ...(v.player ? { who: v.player } : {}) };
+      case 'cue': return { on, cue: v.cueNames[0] ?? cueSlug(`${v.clip?.name ?? 'motion'}`) };
+      case 'say': return { on };
+      default: return { on } as MotionWhen;
+    }
+  }
+
+  /** The field next to Starts: seconds, the key, which motion, the area's size, the cue, the words. */
+  function whenField(w: MotionWhen, v: TimelineView): Node[] {
+    if (w.on === 'time') return [field('tl-after', t('tl.when.afterTip'), String(w.after), '3em', (x) => {
+      const n = parseFloat(x.replace(',', '.'));
+      if (n >= 0) act.setWhen({ on: 'time', after: Math.min(600, Math.round(n * 1000) / 1000) });
+      else render();
+    }, 'decimal'), h('span', { class: 'tl-of', text: 's' })];
+    if (w.on === 'key') {
+      // Press, then press the key (the next key goes to this button only; Esc: as it was).
+      const b = h('button', { type: 'button', class: 'tl-keycap', title: t('tl.when.keyTip'), dataset: { part: 'tl-key-pick' }, text: keyName(w.key) });
+      b.addEventListener('click', () => {
+        b.textContent = t('tl.when.keyPress');
+        b.classList.add('listen');
+        const onKey = (e: KeyboardEvent) => {
+          e.preventDefault();
+          e.stopPropagation();
+          b.removeEventListener('keydown', onKey);
+          if (e.key === 'Escape') return render();
+          act.setWhen({ on: 'key', key: e.code });
+        };
+        b.addEventListener('keydown', onKey);
+        b.addEventListener('blur', () => render(), { once: true });
+      });
+      return [b];
+    }
+    if (w.on === 'after') {
+      const val = `${w.key ?? v.focus}\n${w.use}`;
+      const opts = v.afterOpts.map((o) => [`${o.key}\n${o.use}`, o.label] as [string, string]);
+      if (!opts.some((o) => o[0] === val)) opts.unshift([val, `${w.key ?? ''} · ${w.use}`]);
+      return [select('tl-after-clip', t('tl.when.after'), opts, val, (x) => {
+        const [key, use] = x.split('\n');
+        act.setWhen({ on: 'after', use: use!, ...(key && key !== v.focus ? { key } : {}) });
+      })];
+    }
+    if (w.on === 'enter') {
+      const size = w.area.size.map((n) => Math.round(n * 10) / 10).join(' × ');
+      const unit = w.area.size.length === 3 ? 'm' : 'px';
+      return [field('tl-area', t('tl.area.tip'), `${size} ${unit}`, '8.5em', (x) => {
+        const n = x.replace(/[^0-9.,\s×x*]/g, ' ').split(/[\s×x*,]+/).map(parseFloat).filter((q) => q > 0);
+        const k = w.area.size.length;
+        if (!n.length) return render();
+        const sz = Array.from({ length: k }, (_, i) => n[i] ?? n[n.length - 1]!);
+        act.setWhen({ ...w, area: { ...w.area, size: sz } });
+      })];
+    }
+    if (w.on === 'cue') return [cueMenu('tl-cue-name', t('tl.when.cue'), w.cue, v.cueNames, (n) => act.setWhen({ on: 'cue', cue: n }))];
+    if (w.on === 'say') {
+      const f = field('tl-when', t('tl.when'), w.say ?? '', '200px', (x) => act.setWhen(x.trim() ? { on: 'say', say: x.trim().slice(0, 200) } : { on: 'say' }));
+      f.classList.add('tl-when');
+      f.placeholder = t('tl.when');
+      return [f];
+    }
+    return [];
   }
 
   /** The clip menu's "Rename…": the menu becomes a field with the name, Enter / leaving keeps it, Esc goes back. */
@@ -209,7 +377,13 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key } },
         h('button', { type: 'button', class: `tl-twist${r.open ? ' open' : ''}`, 'aria-expanded': String(r.open), title: t('tl.expand'), 'aria-label': t('tl.expand'), onclick: () => act.openRow(r.key) }, icon('chevronRight')),
         h('button', { type: 'button', class: 'tl-obj', text: r.label, onclick: () => act.pickRow(r.key) }),
-        r.clip ? h('span', { class: 'tl-clipname', text: r.clip.name }) : null);
+        r.clip ? h('span', { class: 'tl-clipname', text: r.clip.name }) : null,
+        (() => {
+          const rw = v.rowWhen(r.key);
+          if (!rw || v.narrow) return null;
+          const ai = AI_TRIGGERS.includes(rw.when.on);
+          return h('span', { class: `tl-whenchip${ai ? ' ai' : ''}`, dataset: { part: 'tl-whenchip' }, text: whenShort(t, rw.when, rw.until, rw.repeat) });
+        })());
       names.append(name);
       const lane = h('div', { class: `tl-lane${r.picked ? ' picked' : ''}`, style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } });
       lanes.append(lane);

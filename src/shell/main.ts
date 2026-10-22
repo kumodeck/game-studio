@@ -32,6 +32,7 @@ import {
   type ShellTool,
   type StudioHost,
   type StudioRequestInput,
+  type RequestMotion,
   type StudioStatus,
   type LibraryFileUse,
   type ShellPart,
@@ -45,6 +46,7 @@ import { validateLibrary, validatePlacement } from '../schema/index.ts';
 import { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } from '../tools/library/index.ts';
 import { DRAG_FILE } from '../tools/library/panel.ts';
 import { createLibraryObjects, DRAG_OBJECT } from './library-objects.ts';
+import { createLibraryMotions } from './library-motions.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
 import { h, safeImageSrc } from './dom.ts';
@@ -61,6 +63,8 @@ import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
+import { motionLibrary } from './motion-library.ts';
+import { attachWorld, roundLib } from './motion-model.ts';
 import { icon, setButton } from './icons.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
@@ -241,6 +245,9 @@ export function start(host: StudioHost) {
     get store() {
       return worldModel.motion;
     },
+    // The Library's motions: one for the whole file, across levels (studio-motion-triggers, motion-library.ts).
+    lib: motionLibrary,
+    others: () => levels.list.filter((e) => e.id !== levels.current).map((e) => (e.world.motion ||= {})),
     undo,
     send: (m) => send(m),
     dim: () => dim,
@@ -954,11 +961,12 @@ export function start(host: StudioHost) {
       applyPose(k, pose);
     },
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
-    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}) })),
+    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
     answering: () => answering(),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
     assets: () => (libraryShown() ? filePick : []),
+    motions: () => (libraryShown() ? libraryMotions.picked() : []),
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
@@ -1011,6 +1019,35 @@ export function start(host: StudioHost) {
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
+  // The Library's motions (studio-motion-triggers, library-motions.ts): the "Motion" filter, attach, the ask's motions.
+  const libraryMotions = createLibraryMotions({
+    t,
+    list: () => motionLibrary.list(),
+    usage: (name) => timeline.usage(name),
+    items: () => worldItems,
+    picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
+    multi: () => multi,
+    attach: (key, name) => timeline.attach(key, name),
+    duplicate: (name) => timeline.duplicateLib(name),
+    remove: (name) => timeline.deleteLib(name),
+    rename: (name, to) => timeline.renameLib(name, to),
+    askAi: host.offline ? undefined : () => focusAsk(),
+    changed: () => (renderShelf(), placementPanel.render()),
+  });
+
+  /**
+   * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
+   * (`on`: keys with when / until), so "make this crate Hop when the player walks up" reaches the AI with both names.
+   */
+  function requestMotions(): { motions?: RequestMotion[] } {
+    if (!libraryShown()) return {};
+    const out: RequestMotion[] = [];
+    for (const name of libraryMotions.picked()) {
+      const m = motionLibrary.get(name);
+      if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name) });
+    }
+    return out.length ? { motions: out } : {};
+  }
 
   /**
    * The Library's "Add to scene" (2026-10-18; also its tiles' menu and a tile dropped on the Scene row): one copy of
@@ -1494,7 +1531,7 @@ export function start(host: StudioHost) {
       return it ? displayName(it, t) : k;
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion' : 'move';
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0]!) : t('undo.n', { n: keys.length }) });
   }
@@ -1611,7 +1648,7 @@ export function start(host: StudioHost) {
       if (c.kind === 'pose') {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
-      } else if (c.kind === 'motion') timeline.apply(c, dir);
+      } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -1629,7 +1666,7 @@ export function start(host: StudioHost) {
     }
     flush();
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && c.kind !== 'motion').map((c) => c.key));
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && !c.kind.startsWith('motion')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]! : null;
@@ -1665,6 +1702,7 @@ export function start(host: StudioHost) {
     },
     // The objects, for the Library's one grid (no `showObjects`: the Library narrows to a file's objects itself).
     objects: libraryObjects,
+    motions: libraryMotions,
     switchTool: (id) => switchTool(id),
     changed: () => renderButtons(),
     phone,
@@ -2819,13 +2857,18 @@ export function start(host: StudioHost) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere();
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
    */
-  const fileNow = (): PlacementFile => levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
-    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
+  const fileNow = (): PlacementFile => {
+    const f = levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
+      uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
+    // The Library's motions sit at the top, also with levels (studio-motion-triggers). Absent with none: same bytes.
+    const motions = motionLibrary.result((m) => roundLib(m, dim));
+    return motions ? { ...f, motions } : f;
+  };
   const dirtyCount = () => placementDirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
 
   // ----- the draft and Save (rebrand 2026-10-16, play test the same day) -----
@@ -3007,6 +3050,7 @@ export function start(host: StudioHost) {
           worldModel.markSaved();
           uiModel.markSaved();
           levels.markSaved();
+          motionLibrary.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -3963,7 +4007,10 @@ export function start(host: StudioHost) {
       }
       const v = placement ? validatePlacement(placement) : null;
       const saved = v && v.ok ? v.value : null;
+      // The Library's motions first: reading each level's clips below asks it for the motion each clip is.
+      motionLibrary.restore(saved);
       levels.load(saved);
+      for (const e of levels.list) if (e.world.motion) e.world.motion = attachWorld(e.world.motion, motionLibrary, saved?.dim ?? dim);
       if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
       else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));

@@ -107,7 +107,8 @@ async function run(size, theme) {
     await sleep(400);
     const row = await j(`(() => { const s = document.querySelector('[data-part=card] [data-part=motion-clip]'); const b = document.querySelector('[data-part=card] [data-part=motion-timeline]');
       return JSON.stringify({ clip: s ? s.value : null, none: s ? s.disabled : null, button: !!b }); })()`);
-    if (full) check(!!row && row.none && row.button, `the card's Motion row: None and ◆ Timeline (${JSON.stringify(row)})`);
+    // Since studio-motion-triggers the menu also offers the Library's motions to attach (the buoy's), so it is not dimmed.
+    if (full) check(!!row && row.clip === '' && row.button, `the card's Motion row: None and ◆ Timeline (${JSON.stringify(row)})`);
     await page.eval(`document.querySelector('[data-part=card] [data-part=motion-timeline]').click()`);
     await sleep(600);
     await fine(false);
@@ -131,7 +132,8 @@ async function run(size, theme) {
       await sleep(800);
       const k1 = (await j(PLATE)).keys.filter((k) => k.key === 'rowboat');
       check(k1.length >= 2 && k1.some((k) => Math.abs(k.t) < 1e-3) && k1.some((k) => Math.abs(k.t - 2) < 0.06), `keys at 0 s and 2 s on the boat's row (${k1.map((k) => k.t).join(', ')})`);
-      check(/1/.test(await page.eval(SAVE)), `Save counts it ("${(await page.eval(SAVE)).trim()}")`);
+      // The boat (its clip) and the Library (a new motion): 2 since studio-motion-triggers.
+      check(/[12]/.test(await page.eval(SAVE)), `Save counts it ("${(await page.eval(SAVE)).trim()}")`);
       const tip = await page.eval(`(document.querySelector('[data-action=undo]') || {}).title || ''`);
       check(/motion|動き/.test(tip), `Undo names it ("${tip.split('\n')[0]}")`);
       // 4. The path: two dots; Shift-drag the 2 s one up.
@@ -195,13 +197,16 @@ async function run(size, theme) {
       const st = await state();
       const clips = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-clip] option')].map((o) => o.value).filter((v) => v && !v.startsWith('new:') && v !== '-' && v !== 'rename' && v !== 'delete'))`);
       check(clips.length === 2 && st.clip !== 'Motion', `a second motion on the buoy (${clips.join(', ')}; showing ${st.clip})`);
-      const cue = await page.eval(`document.querySelector('[data-part=tl-start]').value`);
-      check(cue === 'cue', `the second one waits for a cue (${cue})`);
+      // Since studio-motion-triggers: "waits" = Starts "In my words…" (the AI connects it), on the head's second row.
+      const cue = await page.eval(`document.querySelector('[data-part=tl-starts]').value`);
+      check(cue === 'say', `the second one waits for a cue (${cue})`);
       // 8. Save and the file.
       await page.eval(`studioShell.actions.save()`);
       await sleep(1500);
       const f = existsSync(join(root, 'placement.json')) ? JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8')) : null;
-      const rb = f?.motion?.rowboat?.clips?.[0];
+      // Since studio-motion-triggers the keys are the Library motion's (`motions`), the boat's clip names it (`use`).
+      const use = f?.motion?.rowboat?.clips?.[0];
+      const rb = use && (f.motions || []).find((m) => m.name === use.use);
       check(!!rb && rb.keys.p.length >= 2, `placement.json: rowboat ${JSON.stringify(rb)?.slice(0, 160)}`);
       const lift = rb?.keys.p.find((k) => Math.abs(k.t - 2) < 0.06);
       check(!!lift && lift.v[1] > 0.3, `the Shift-dragged point is higher (y ${lift?.v[1]})`);

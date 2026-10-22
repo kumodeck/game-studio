@@ -139,7 +139,9 @@ export function handoffLine(rec, relPath) {
   // Files picked in the Library ("use the Library", 2026-10-18) are named after the objects, by their folder path:
   // the line alone then says what "this" is ("Add this to the scene" (assets/boss.glb)).
   const assets = Array.isArray(v.assets) ? v.assets : [];
-  const all = [...objs.map((o) => o.label || o.key), ...assets];
+  // Motions picked in the Library (studio-motion-triggers): "motion Hop", next to the objects.
+  const motions = Array.isArray(v.motions) ? v.motions.map((m) => `motion ${m.name}`) : [];
+  const all = [...objs.map((o) => o.label || o.key), ...assets, ...motions];
   const names = all.slice(0, 4).join(', ');
   const more = all.length > 4 ? ` +${all.length - 4}` : '';
   const text = v.text ? ' ' + JSON.stringify(v.text.length > 120 ? v.text.slice(0, 119) + '…' : v.text) : '';

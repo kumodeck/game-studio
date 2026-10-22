@@ -154,6 +154,26 @@ export function normalizeRequestInput(input) {
     else if (!as.every(isFolderPath)) errors.push('"assets" must be paths inside the game folder');
     else if (as.length) out.assets = [...new Set(as)];
   }
+  // "ask" only: motions picked in the Library (studio-motion-triggers, 2026-10-22): what "this motion" means in the
+  // words. A hint like an object's files: a bad entry is dropped, never an error. Each keeps its name, length, repeat
+  // and the objects it is on (key + when / until, as placement.json has them).
+  if (r.motions !== undefined && kind === 'ask' && Array.isArray(r.motions)) {
+    const ms = [];
+    for (const m of r.motions.slice(0, 20)) {
+      const name = m && typeof m.name === 'string' ? oneLine(m.name, 40) : '';
+      if (!name || !isFin(m.len) || m.len <= 0) continue;
+      const e = { name, len: roundTo(m.len, 1000) };
+      if (m.repeat === 'loop' || m.repeat === 'pingpong') e.repeat = m.repeat;
+      e.on = (Array.isArray(m.on) ? m.on : []).filter((o) => o && typeof o.key === 'string' && KEY_OK.test(o.key)).slice(0, 50).map((o) => {
+        const x = { key: o.key };
+        if (o.when && typeof o.when === 'object' && typeof o.when.on === 'string') x.when = JSON.parse(JSON.stringify(o.when));
+        if (o.until && typeof o.until === 'object') x.until = JSON.parse(JSON.stringify(o.until));
+        return x;
+      });
+      ms.push(e);
+    }
+    if (ms.length) out.motions = ms;
+  }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.

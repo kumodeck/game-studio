@@ -21,7 +21,8 @@
 import type { Dim, Motion, MotionClip, Pose, StudioAdapter } from '../contract.ts';
 import { hasLayer, orderOfLayer } from '../shell/layers.ts';
 import { samePose } from '../shell/pose-compare.ts';
-import { compose, legacyOffsets, offsetsAt, type Offsets } from '../shell/timeline-model.ts';
+import { compose, legacyOffsets, type Offsets } from '../shell/timeline-model.ts';
+import { motionRunner, resolveClip } from '../loader/studio-placement.js';
 
 type Entry = { p?: unknown; r?: unknown; s?: unknown; t?: unknown; was?: { p?: unknown; r?: unknown; s?: unknown; t?: unknown } };
 type Added = { key?: unknown; from?: unknown; p?: unknown; r?: unknown; s?: unknown; t?: unknown };
@@ -34,6 +35,8 @@ export interface PlayFile {
   removed?: Removed[];
   order?: Order[];
   motion?: Record<string, unknown>;
+  /** The Library's motions (studio-motion-triggers): the clips' `use`. */
+  motions?: unknown[];
 }
 
 const nums = (v: unknown): v is number[] => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
@@ -153,19 +156,29 @@ export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window 
   const byLoader = (win as unknown as Record<symbol, Set<string> | undefined>)[Symbol.for('game-studio.motion')];
   const items = a.list();
   const runs: Array<{ key: string; at: (t: number) => Offsets; base: Pose; dim: Dim }> = [];
+  // Clips (a Library motion by `use`, or keys of their own) start and stop by the loader's own rules (motionRunner,
+  // studio-motion-triggers): the game starting, a time, a key, another clip's end. Cues the game's code gives (touch,
+  // a named cue, words) cannot happen here: the AI writes them.
+  const lib = Array.isArray(file!.motions) ? file!.motions : [];
+  const clipped: Array<{ key: string; clips: MotionClip[]; base: Pose; dim: Dim }> = [];
   for (const [key, m] of Object.entries(motion)) {
     if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
     const it = items.find((i) => i.key === key);
     if (!it) continue;
     const dim: Dim = it.pose.p.length === 3 ? '3d' : '2d';
     const mm = m as Motion;
-    const clip = Array.isArray(mm.clips) ? (mm.clips as MotionClip[]).find((c) => c && c.start === true && c.keys && typeof c.keys === 'object') : undefined;
+    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib)).filter(Boolean) as MotionClip[]) : [];
     const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
-    if (clip) runs.push({ key, at: (t) => offsetsAt(clip, t), base: structuredClone(flat(it.pose)), dim });
+    if (clips.length) clipped.push({ key, clips, base: structuredClone(flat(it.pose)), dim });
     else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
   }
-  if (!runs.length) return [];
+  if (!runs.length && !clipped.length) return [];
   const t0 = win.performance.now();
+  const run = motionRunner(clipped.map((c) => ({ key: c.key, clips: c.clips })));
+  run.fire({ on: 'start' }, t0);
+  if (clipped.some((c) => c.clips.some((x) => (x.when as { on?: string } | undefined)?.on === 'key'))) {
+    win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
+  }
   const tick = (now: number) => {
     const t = Math.max(0, (now - t0) / 1000);
     for (const r of runs) {
@@ -175,8 +188,16 @@ export function moveInPlay(a: StudioAdapter, file: PlayFile | null, win: Window 
         /* the game took it away: the others go on */
       }
     }
+    for (const [key, at] of run.step(now, () => null)) {
+      const c = clipped.find((x) => x.key === key);
+      try {
+        if (c) a.setPose(key, compose(c.base, at as Offsets, c.dim));
+      } catch {
+        /* gone */
+      }
+    }
     win.requestAnimationFrame(tick);
   };
   win.requestAnimationFrame(tick);
-  return runs.map((r) => r.key);
+  return [...runs.map((r) => r.key), ...clipped.map((c) => c.key)];
 }

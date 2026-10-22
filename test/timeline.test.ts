@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import { PlacementModel } from '../src/shell/placement-model.ts';
 import { UndoStack } from '../src/shell/undo.ts';
 import { MotionStore, roundMotion, sameMotion } from '../src/shell/motion-model.ts';
+import { MotionLibrary, motionLibrary } from '../src/shell/motion-library.ts';
+import { whenOf } from '../src/loader/studio-placement.js';
 import {
   changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, moveKeys, offsetOf, offsetsAt, pasteKeys, setKey, toClips, withClip,
 } from '../src/shell/timeline-model.ts';
@@ -172,8 +174,9 @@ test('model: clips are one Save count per object, written as the schema wants; a
   assert.equal(m.motion.get('boat')!.clips![0]!.name, 'Motion');
   m.motion.set('door', { clips: [door] });
   assert.equal(m.dirty(), 1);
-  const f = m.result();
-  assert.ok((check(f) as { ok: boolean }).ok, JSON.stringify(f.motion));
+  const f = { ...m.result(), motions: motionLibrary.result() };
+  assert.ok((check(f) as { ok: boolean }).ok, JSON.stringify(f));
+  assert.deepEqual(f.motion!.boat, { clips: [{ use: 'Motion', when: { on: 'start' } }] }, 'the older shape: a Library motion "Motion", used by the boat at the start');
   assert.deepEqual(f.motion!.door, { clips: [{ name: 'Open', len: 2, keys: { r: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 1.5708, 0], ease: 'linear' }] } }] });
   assert.ok(f.motion!.boat!.clips, 'the next save writes the older one as clips');
   m.remove('door');
@@ -186,25 +189,27 @@ test('model: clips are one Save count per object, written as the schema wants; a
 
 function rig(places: Record<string, Pose> = { boat: { p: [0, 0, 0], r: 0, s: 1 }, buoy: { p: [5, 0, 0], r: 0, s: 1 } }) {
   const store = new MotionStore();
+  const lib = new MotionLibrary();
+  store.lib = lib;
   const undo = new UndoStack();
   const sent: ShellToBridge[] = [];
   let picked: string | null = 'boat';
   let changed = 0;
   const stand = { el: { hidden: true } as HTMLElement, render() {}, place() {} };
   const tl = createTimeline({
-    store, undo, send: (m) => sent.push(structuredClone(m)), dim: () => '3d', usable: () => true, picked: () => picked,
+    store, lib, others: () => [], undo, send: (m) => sent.push(structuredClone(m)), dim: () => '3d', usable: () => true, picked: () => picked,
     place: (k) => places[k], order: () => Object.keys(places), label: (k) => k, select: (k) => (picked = k), changed: () => changed++,
     layout: () => {}, numbers: () => {}, narrow: () => false, t: (k) => k,
   }, () => stand);
   const poses = () => sent.filter((m) => m.type === 'studio:timeline/pose').pop() as Extract<ShellToBridge, { type: 'studio:timeline/pose' }> | undefined;
-  return { store, undo, sent, tl, places, poses, pick: (k: string | null) => (picked = k), changes: () => changed };
+  return { store, lib, undo, sent, tl, places, poses, pick: (k: string | null) => (picked = k), changes: () => changed };
 }
 const at = (p: number[]): Pose => ({ p, r: 0, s: 1 });
 
 test('wire: folded, a move is a move (nothing keyed)', () => {
   const r = rig();
   assert.equal(r.tl.moved('boat', at([1, 0, 0]), true, at([0, 0, 0])), false);
-  assert.equal(r.store.get('boat'), null);
+  assert.equal(r.tl.motionOf('boat'), null);
 });
 
 test('wire: open at 0 s with no motion yet, a move is still a move; after 0 s it makes the first clip', () => {
@@ -215,9 +220,9 @@ test('wire: open at 0 s with no motion yet, a move is still a move; after 0 s it
   // A drag: live poses, then the end (the bridge's `from` only on the end).
   assert.equal(r.tl.moved('boat', at([1, 0, 0]), false), true);
   assert.equal(r.tl.moved('boat', at([3, 0, -1]), true, at([0, 0, 0])), true);
-  const c = r.store.get('boat')!.clips![0]!;
+  const c = r.tl.motionOf('boat')!.clips![0]!;
   assert.equal(c.name, 'Motion');
-  assert.equal(c.start, true, 'the first motion plays at the start');
+  assert.deepEqual(whenOf(c), { on: 'start' }, 'the first motion plays at the start');
   assert.deepEqual(c.keys.p, [{ t: 0, v: [0, 0, 0], ease: 'ease' }, { t: 2, v: [3, 0, -1], ease: 'ease' }], 'a key at 0 s of how it stood, and one at 2 s');
   assert.equal(c.keys.r, undefined, 'only what changed is keyed');
   assert.equal(r.undo.peekUndo()!.changes.length, 1, 'one undo step for the drag');
@@ -257,18 +262,18 @@ test('wire: a typed number keys only what it changed; a dragged path point is on
   r.tl.setTime(1);
   const shown = r.tl.shownPose('boat')!;
   assert.equal(r.tl.card('boat', { ...shown, r: 1 }, shown), true);
-  const c = r.store.get('boat')!.clips![0]!;
+  const c = r.tl.motionOf('boat')!.clips![0]!;
   assert.deepEqual(c.keys.r!.map((k) => [k.t, k.v[1]]), [[0, 0], [1, 1]], 'an angle key at 1 s (and the start)');
   assert.equal(c.keys.p!.length, 2, 'the position keys are untouched');
   const steps = r.undo.size;
   r.tl.onMessage({ type: 'studio:timeline/point', key: 'boat', i: 1, v: [4, 1, 0], end: false });
   r.tl.onMessage({ type: 'studio:timeline/point', key: 'boat', i: 1, v: [4, 2, 0], end: true });
-  assert.deepEqual(r.store.get('boat')!.clips![0]!.keys.p![1]!.v, [4, 2, 0], 'the point is higher');
+  assert.deepEqual(r.tl.motionOf('boat')!.clips![0]!.keys.p![1]!.v, [4, 2, 0], 'the point is higher');
   assert.equal(r.undo.size, steps + 1, 'one step for the drag');
   // Undo it: the point comes back.
   const step = r.undo.peekUndo()!;
   for (const ch of step.changes) if (ch.kind === 'motion') r.tl.apply(ch, 'undo');
-  assert.deepEqual(r.store.get('boat')!.clips![0]!.keys.p![1]!.v, [4, 0, 0]);
+  assert.deepEqual(r.tl.motionOf('boat')!.clips![0]!.keys.p![1]!.v, [4, 0, 0]);
   // The path the game draws: the picked object's position keys, from its place.
   const path = r.sent.filter((m) => m.type === 'studio:timeline/path').pop() as Extract<ShellToBridge, { type: 'studio:timeline/path' }>;
   assert.equal(path.key, 'boat');
@@ -281,7 +286,7 @@ test('wire: keys — K sets one, Delete removes the picked ones once the plate w
   r.tl.setOpen(true);
   r.tl.setTime(1);
   assert.equal(r.tl.onKey({ key: 'k', ctrl: false, meta: false, shift: false }), true);
-  assert.deepEqual(r.store.get('boat')!.clips![0]!.keys.p, [{ t: 1, v: [0, 0, 0], ease: 'ease' }], 'K: a position key at 1 s');
+  assert.deepEqual(r.tl.motionOf('boat')!.clips![0]!.keys.p, [{ t: 1, v: [0, 0, 0], ease: 'ease' }], 'K: a position key at 1 s');
   // Delete belongs to the scene until the plate is pressed.
   assert.equal(r.tl.onKey({ key: 'Delete', ctrl: false, meta: false, shift: false }), false);
   assert.equal(r.tl.state().sel.length, 0);
@@ -295,5 +300,5 @@ test('wire: several objects moved together at 1 s — each keyed, one undo step 
   const out = r.tl.movedGroup([{ key: 'boat', pose: at([1, 0, 0]), from: at([0, 0, 0]) }, { key: 'buoy', pose: at([6, 0, 0]), from: at([5, 0, 0]) }], true);
   assert.equal(out.rest.length, 0);
   assert.equal(out.changes.length, 2);
-  assert.ok(near(offsetsAt(r.store.get('buoy')!.clips![0]!, 1).p, [1, 0, 0]));
+  assert.ok(near(offsetsAt(r.tl.motionOf('buoy')!.clips![0]!, 1).p, [1, 0, 0]));
 });

@@ -767,6 +767,19 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shelf-rows dt { color: var(--text-3); }
 .shelf-rows dd { margin: 0; display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .shelf-rows .axis { margin-right: 8px; } .shelf-rows .axis i { font-style: normal; color: var(--text-3); }
+/* The Library's motions (studio-motion-triggers, 2026-10-22; library-motions.ts): a tile = the path seen from above,
+   its keys, an orange dot that runs while the pointer is on it (or it is picked). */
+.lib-motion-thumb { display: grid; place-items: center; color: var(--text-2); }
+.lib-motion-thumb .lib-motion-pic { width: 78%; height: 78%; }
+.lib-motion-detail .lib-motion-thumb .lib-motion-pic { width: 84%; height: 84%; }
+.lib-motion-key { fill: var(--studio-thumb, var(--raise-2)); stroke: currentColor; stroke-width: 1.6; }
+.lib-motion-dot { fill: var(--you); }
+.lib-motion-len { font-weight: 400; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.lib-motion-on { color: var(--text-2); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-motion-users { flex-direction: column; align-items: flex-start; }
+.lib-motion-user b { font-weight: 600; }
+.lib-motion-title { cursor: text; }
+.lib-motion-attach { height: 28px; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 8px; }
 .shelf-note { margin: 10px 0 0; font-size: var(--fs-s); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .shelf-acts, .assets-page .gsl-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .assets-page .gsl-in-scene .gsl-keys { margin-top: 6px; }
@@ -1292,6 +1305,33 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-when, .tl-rename { height: var(--h); width: 200px; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 10px; }
 .tl-when:focus, .tl-rename:focus { box-shadow: inset 0 0 0 1px var(--you); }
 .tl-gap { flex: 1; }
+/* The clip's "when" (studio-motion-triggers, 2026-10-22): one small row under the head — Starts ▾ [field]  Stops ▾ …
+   Try ▶ ▶. Purple ✦ = your AI connects it in the game's code (shell.css rule 2: purple is the AI's); orange = playing. */
+.tl-when-row { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 0 8px 6px; min-height: 34px; }
+.tl-when-row .tl-pick select, .tl-when-row .tl-field, .tl-when-row .tl-keycap { height: 26px; }
+.tl-lbl { font-size: var(--fs-s); color: var(--text-2); margin: 0 2px 0 4px; white-space: nowrap; }
+.tl-lbl-stops { margin-left: 12px; }
+.tl-starts.ai select { color: var(--ai-text); }
+.tl-field { border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 8px; font-variant-numeric: tabular-nums; }
+.tl-field:focus { box-shadow: inset 0 0 0 1px var(--you); outline: none; }
+.tl-keycap { min-width: 30px; padding: 0 8px; border-radius: var(--r); background: var(--you-soft); color: var(--you-text, var(--you)); font-weight: 600; }
+.tl-keycap.listen { background: var(--raise-2); color: var(--text-2); font-weight: 400; }
+.tl-tries { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.tl-cue { height: 26px; padding: 0 9px 0 5px; border-radius: 13px; background: var(--raise); gap: 5px; font-size: var(--fs-s); white-space: nowrap; }
+.tl-cue i { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; background: var(--solid); color: var(--solid-fg); }
+.tl-cue i .icon { width: 8px; height: 8px; }
+.tl-cue.ai i { background: var(--ai); color: #fff; }
+.tl-cue.on { background: var(--you-soft); color: var(--you-text, var(--you)); }
+.tl-cue.on i { background: var(--you); color: #fff; }
+.tl-cue.stop i { background: var(--text-2); }
+.tl-uses { font-size: var(--fs-s); color: var(--text-3); padding: 0 4px; white-space: nowrap; }
+.tl-whenchip { font-size: 11px; color: var(--text-2); background: var(--raise); border-radius: 6px; padding: 0 5px; margin-left: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.tl-whenchip.ai { color: var(--ai-text); background: var(--ai-soft); }
+.timeline.narrow .tl-when-row .tl-gap { display: none; }
+.timeline.narrow .tl-tries { flex-basis: 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+.timeline.narrow .tl-tries > .tl-lbl { display: none; }
+.timeline.narrow .tl-lbl-stops { margin-left: 4px; }
+.timeline.narrow .tl-when-row .tl-starts select { max-width: 230px; }
 .tl-body { display: grid; grid-template-columns: var(--tl-names) minmax(0, 1fr); max-height: calc(var(--tl-ruler) + 5 * var(--tl-row)); overflow: hidden auto;
   border-top: 1px solid var(--line); overscroll-behavior: contain; }
 .tl-names-col { min-width: 0; }

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.16 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.17 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -928,6 +928,11 @@ const MSG_PREFIX = 'studio:';
      
                                                                                                                                                      
      
+                                                                                                                         
+                                                                                          
+     
+                                                                                                  
+     
                                                                                
                                                                                
                                                                               
@@ -1098,6 +1103,8 @@ const MSG_PREFIX = 'studio:';
                                    
      
                                                                                         
+                                                                                                                 
+                                                                                  
                                                                                                             
                                                                                                                                   
                                                                                                                           
@@ -1258,6 +1265,12 @@ function isStudioMessage(x         )                     {
      
                     
      
+                                                                                                                        
+                                                                                                                    
+                                                                                                                    
+     
+                            
+     
                                                                                                                     
                                                                                                  
      
@@ -1283,6 +1296,15 @@ function isStudioMessage(x         )                     {
                    
                 
                        
+ 
+
+/** A Library motion named in an ask (StudioRequestInput.motions). */
+                                
+               
+              
+                        
+                                                       
+                                                                     
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1665,6 +1687,12 @@ const RESULT_FILES                         = {
      
                                   
      
+                                                                                                                   
+                                                                                                                    
+                                                                              
+     
+                            
+     
                                                                                                                      
                                                                                                                         
                                                                                                                                    
@@ -1722,10 +1750,60 @@ const RESULT_FILES                         = {
               
                                                                                  
                         
-                                                                                                                      
+     
+                                                                                                                
+                                                                                             
+     
                   
-                                                                                                                      
-                
+     
+                                                                                                                   
+                                                                                                                        
+     
+                             
+                                                                                                      
+                      
+     
+                                                                                                                       
+                                                                                                                       
+                                                                  
+     
+               
+                   
+ 
+
+/**
+ * When an object's motion starts (studio-motion-triggers, 2026-10-22). The loader runs `start`, `time`, `key`, `click`,
+ * `after` and `enter` (when it can find `who`) by itself; `touch`, `cue` and `say` need the game's code (the AI adds
+ * touch(key) / cue(name) / playMotion(key, name) where it happens).
+ */
+                        
+                   
+                                 
+                              
+                   
+                                              
+                                                   
+                   
+                              
+                                
+                                             
+/** A box in the world: its middle `p` and its size (3D [x, y, z] / [w, h, d] m; 2D [x, y] / [w, h] px). */
+                             
+              
+                 
+ 
+/** When a motion stops: after `times` rounds, or when a named cue comes; `then` = stay where it is (default) or go back to its first pose. */
+                              
+                 
+               
+                          
+ 
+
+/** A motion in the Library (studio-motion-triggers): placement.json's top `motions`. A clip without "when". */
+                                
+               
+              
+                        
                    
  
 
@@ -1869,6 +1947,22 @@ const RESULT_FILES                         = {
                    
  
 
+/**
+ * The Library's motions (studio-motion-triggers, 2026-10-22; shell/library-motions.ts): the "Motion" filter's tiles and
+ * the picked motion's detail. The Library (tools/library/panel.ts) puts them in its one grid, like the objects.
+ */
+                                 
+                  
+                                                                  
+                                                        
+                                                                                               
+                                                    
+                                                              
+                
+                                                                                                                     
+                                           
+ 
+
                                
                    
              
@@ -1900,6 +1994,8 @@ const RESULT_FILES                         = {
                                                                                                                             
                                                                          
      
+                           
+                                                                                                                          
                            
                                
                                                                           
@@ -2198,7 +2294,18 @@ const LIMITS = Object.freeze({
   maxClipWhen: 200,
   maxClipAngle: 1000,
   stepTime: 1000,
+  // When a motion plays (studio-motion-triggers, 2026-10-22): 64 Library motions per file (a game has a handful: Open,
+  // Bob, Spin), a cue name like a key (lower case, digits, -: written as is into the game's code), up to 1000 rounds.
+  maxMotions: 64,
+  maxRounds: 1000,
 });
+
+/** When a motion starts (contract MotionWhen.on). */
+const MOTION_TRIGGERS = Object.freeze(['start', 'time', 'key', 'click', 'after', 'enter', 'touch', 'cue', 'say']);
+/** A cue's name: "chest-opened", "boss-down". */
+const CUE_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** A key's KeyboardEvent.code: "KeyE", "Space", "ArrowUp", "Digit1". */
+const KEY_CODE_RE = /^[A-Za-z][A-Za-z0-9]{1,24}$/;
 
 /** How a key goes on to the next (contract MotionKey.ease). */
 const MOTION_EASES = Object.freeze(['linear', 'ease', 'step']);
@@ -2290,7 +2397,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'levels', 'levelsWas'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -2333,6 +2440,18 @@ function placement(data, fail) {
       for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
     }
   } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
+  // `motions` (studio-motion-triggers, 2026-10-22): the Library's motions, at the top even with levels. Every clip's
+  // `use` must name one of them (a clip that uses nothing would not move).
+  const names = new Set();
+  if (data.motions !== undefined) {
+    const n = dim === '3d' ? 3 : 2;
+    const ms = readClips(data.motions, n, dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d, dim === '3d' ? LIMITS.step3d : LIMITS.step2d, 'motions', fail, true);
+    for (const m of ms) names.add(m.name);
+    if (ms.length) out.motions = ms;
+  }
+  for (const w of [out, ...(out.levels || [])]) for (const [key, m] of Object.entries(w.motion || {})) for (const c of m.clips || []) {
+    if (c.use !== undefined && !names.has(c.use)) fail(`motion[${JSON.stringify(key)}]`, `uses "${c.use}", which is not in motions`);
+  }
   return out;
 }
 
@@ -2599,20 +2718,38 @@ function readMotion(v, dim, fail) {
 // One object's clips (the timeline, studio-timeline 2026-10-22; contract MotionClip): 1–16, names unique, at most one
 // that plays at the start, keys per property in strictly increasing time within the clip's length. Values: position
 // offsets like a pose's `p`, angles added (3D three numbers, 2D one), sizes multiplied (like a pose's `s`).
-function readClips(v, n, bound, step, where, fail) {
+function readClips(v, n, bound, step, where, fail, lib = false) {
   const out = [];
-  if (!Array.isArray(v) || !v.length || v.length > LIMITS.maxClips) {
-    fail(where, `must be 1 to ${LIMITS.maxClips} clips`);
+  const max = lib ? LIMITS.maxMotions : LIMITS.maxClips;
+  if (!Array.isArray(v) || (!lib && !v.length) || v.length > max) {
+    fail(where, `must be ${lib ? 0 : 1} to ${max} ${lib ? 'motions' : 'clips'}`);
     return out;
   }
   const names = new Set();
   let starts = 0;
+  const okName = (x) => typeof x === 'string' && !!x.trim() && x.length <= LIMITS.maxClipName && !/[\u0000-\u001f\u007f]/.test(x);
   v.forEach((c, i) => {
     const at = `${where}[${i}]`;
     if (!isObject(c)) return fail(at, 'must be an object');
-    onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'keys'], at, fail);
+    // A Library motion (studio-motion-triggers) is a clip without "when"; an object's clip that uses one has no len /
+    // repeat / keys of its own.
+    if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys'], at, fail);
+    else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until'], at, fail);
+    else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys'], at, fail);
     const o = {};
-    if (typeof c.name !== 'string' || !c.name.trim() || c.name.length > LIMITS.maxClipName || /[\u0000-\u001f\u007f]/.test(c.name)) fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+    if (c.use !== undefined && !lib) {
+      if (!okName(c.use)) return fail(`${at}.use`, `must be 1 to ${LIMITS.maxClipName} characters`);
+      const name = c.name === undefined ? c.use : c.name;
+      if (!okName(name)) return fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+      if (names.has(name)) return fail(`${at}.name`, `"${name}" is used twice`);
+      names.add(name);
+      if (c.name !== undefined && c.name !== c.use) o.name = c.name;
+      o.use = c.use;
+      readWhenUntil(c, o, n, bound, step, at, fail, true);
+      out.push(o);
+      return;
+    }
+    if (!okName(c.name)) fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
     else if (names.has(c.name)) fail(`${at}.name`, `"${c.name}" is used twice`);
     else (names.add(c.name), (o.name = c.name));
     const len = readNumber(c.len, LIMITS.minClipLen, LIMITS.maxClipLen, `${at}.len`, fail);
@@ -2621,16 +2758,12 @@ function readClips(v, n, bound, step, where, fail) {
       if (!MOTION_REPEATS.includes(c.repeat)) fail(`${at}.repeat`, `must be one of ${MOTION_REPEATS.join(', ')}`);
       else o.repeat = c.repeat;
     }
-    if (c.start !== undefined) {
+    if (!lib && c.start !== undefined) {
       if (c.start !== true) fail(`${at}.start`, 'must be true (leave it out for a clip that waits for a cue)');
       else if (++starts > 1) fail(`${at}.start`, 'only one clip of an object plays at the start');
       else o.start = true;
     }
-    if (c.when !== undefined) {
-      if (typeof c.when !== 'string' || c.when.length > LIMITS.maxClipWhen) fail(`${at}.when`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
-      else if (c.start) fail(`${at}.when`, 'only for a clip that waits for a cue');
-      else o.when = c.when.replace(/[\u0000-\u001f\u007f]/g, '');
-    }
+    if (!lib) readWhenUntil(c, o, n, bound, step, at, fail, false);
     if (!isObject(c.keys)) {
       fail(`${at}.keys`, 'must be an object');
       return;
@@ -2669,6 +2802,76 @@ function readClips(v, n, bound, step, where, fail) {
     if (o.name !== undefined && o.len !== undefined) out.push(o);
   });
   return out;
+}
+
+// A clip's `when` / `until` (studio-motion-triggers, 2026-10-22; contract MotionWhen / MotionUntil). `when` may still be
+// studio-timeline's words (a string) on a clip with keys of its own; a clip that uses a Library motion has the object.
+function readWhenUntil(c, o, n, bound, step, at, fail, uses) {
+  const w = c.when;
+  if (w !== undefined) {
+    if (typeof w === 'string' && !uses) {
+      if (w.length > LIMITS.maxClipWhen) fail(`${at}.when`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
+      else if (c.start) fail(`${at}.when`, 'only for a clip that waits for a cue');
+      else o.when = w.replace(/[\u0000-\u001f\u007f]/g, '');
+    } else if (!isObject(w) || !MOTION_TRIGGERS.includes(w.on)) fail(`${at}.when.on`, `must be one of ${MOTION_TRIGGERS.join(', ')}`);
+    else {
+      const wa = `${at}.when`;
+      const x = { on: w.on };
+      const fields = { start: [], time: ['after'], key: ['key'], click: [], after: ['use', 'key'], enter: ['area', 'who'], touch: [], cue: ['cue'], say: ['say'] }[w.on];
+      onlyFields(w, ['on', ...fields], wa, fail);
+      if (w.on === 'time') {
+        const a = readNumber(w.after, 0, LIMITS.maxClipLen, `${wa}.after`, fail);
+        if (a !== null) x.after = round(a, LIMITS.stepTime);
+      } else if (w.on === 'key') {
+        if (typeof w.key !== 'string' || !KEY_CODE_RE.test(w.key)) fail(`${wa}.key`, 'must be a KeyboardEvent.code ("KeyE", "Space")');
+        else x.key = w.key;
+      } else if (w.on === 'after') {
+        if (typeof w.use !== 'string' || !w.use.trim() || w.use.length > LIMITS.maxClipName) fail(`${wa}.use`, 'must name a motion');
+        else x.use = w.use;
+        if (w.key !== undefined) {
+          if (typeof w.key !== 'string' || !KEY_RE.test(w.key)) fail(`${wa}.key`, 'key must match ' + KEY_RE);
+          else x.key = w.key;
+        }
+      } else if (w.on === 'enter') {
+        const ar = w.area;
+        if (!isObject(ar)) fail(`${wa}.area`, 'must be { p, size }');
+        else {
+          onlyFields(ar, ['p', 'size'], `${wa}.area`, fail);
+          const nums = (a, lo, f) => (Array.isArray(a) && a.length === n ? a.map((v, k) => readNumber(v, lo, bound, `${wa}.area.${f}[${k}]`, fail)) : (fail(`${wa}.area.${f}`, `must be ${n} numbers`), null));
+          const p = nums(ar.p, -bound, 'p');
+          const sz = nums(ar.size, 0, 'size');
+          if (p && sz && p.every((v) => v !== null) && sz.every((v) => v !== null)) x.area = { p: p.map((v) => round(v, step)), size: sz.map((v) => round(v, step)) };
+        }
+        if (w.who !== undefined) {
+          if (typeof w.who !== 'string' || !KEY_RE.test(w.who)) fail(`${wa}.who`, 'key must match ' + KEY_RE);
+          else x.who = w.who;
+        }
+      } else if (w.on === 'cue') {
+        if (typeof w.cue !== 'string' || !CUE_RE.test(w.cue)) fail(`${wa}.cue`, 'must be a cue name: lower case letters, digits and -, like "chest-opened"');
+        else x.cue = w.cue;
+      } else if (w.on === 'say' && w.say !== undefined) {
+        if (typeof w.say !== 'string' || w.say.length > LIMITS.maxClipWhen) fail(`${wa}.say`, `must be text of at most ${LIMITS.maxClipWhen} characters`);
+        else if (w.say.trim()) x.say = w.say.replace(/[\u0000-\u001f\u007f]/g, '');
+      }
+      o.when = x;
+    }
+  }
+  const u = c.until;
+  if (u === undefined) return;
+  if (!isObject(u)) return fail(`${at}.until`, 'must be { times } or { cue }, with then: stay | reset');
+  onlyFields(u, ['times', 'cue', 'then'], `${at}.until`, fail);
+  const x = {};
+  if (u.times !== undefined) {
+    const t = readNumber(u.times, 1, LIMITS.maxRounds, `${at}.until.times`, fail);
+    if (t !== null) x.times = Math.round(t);
+  }
+  if (u.cue !== undefined) {
+    if (typeof u.cue !== 'string' || !CUE_RE.test(u.cue)) fail(`${at}.until.cue`, 'must be a cue name like "boss-down"');
+    else x.cue = u.cue;
+  }
+  if (u.then !== undefined && u.then !== 'stay' && u.then !== 'reset') fail(`${at}.until.then`, 'must be stay or reset');
+  else if (u.then === 'reset') x.then = 'reset';
+  if (Object.keys(x).length) o.until = x;
 }
 
 // The game's size in CSS px when the UI was saved: [width, height], whole pixels. A hint for the AI turning offsets
@@ -3074,6 +3277,8 @@ function utf8Length(s) {
 }
 
 __def(__exports, "LIMITS", () => LIMITS);
+__def(__exports, "MOTION_TRIGGERS", () => MOTION_TRIGGERS);
+__def(__exports, "CUE_RE", () => CUE_RE);
 __def(__exports, "MOTION_EASES", () => MOTION_EASES);
 __def(__exports, "MOTION_REPEATS", () => MOTION_REPEATS);
 __def(__exports, "KEY_RE", () => KEY_RE);
@@ -3572,8 +3777,9 @@ function assetsOfKey(rows              , key        )               {
  * 3D game's objects are 3D, a 2D game's objects are 2D (panel.ts); a file goes by its type (shelfOfType).
  * Object vs file stays readable on each tile's small tag; used / not used stays on the file's tile and detail.
  */
-                                                            
-const SHELVES          = ['all', '3d', '2d', 'sound', 'other'];
+// 'motion' (studio-motion-triggers, 2026-10-22): the Library's motions, an asset of their own (no file: placement.json).
+                                                                       
+const SHELVES          = ['all', '3d', '2d', 'sound', 'motion', 'other'];
 
 /**
  * Where a file goes in the filters: 3D models → 3D; images and sprite sheets → 2D; sounds → Sound; the rest (fonts,
@@ -3938,6 +4144,9 @@ const en = {
   shelf_2d: '2D',
   shelf_sound: 'Sound',
   shelf_other: 'Other',
+  shelf_motion: 'Motion',
+  countMotions: '{n:1 motion|# motions} · made on the timeline',
+  noMotionsYet: 'No motions yet. Open the timeline on an object (◆ Timeline on its card) and make one: it shows here.',
   // The phone's one "+" next to the search (the second design review's ⑦, 2026-10-19): Multi-select, Add files and
   // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
   more: 'More',
@@ -3975,6 +4184,9 @@ const ja                                     = {
   shelf_2d: '2D',
   shelf_sound: '音',
   shelf_other: 'その他',
+  shelf_motion: '動き',
+  countMotions: '動き {n} · タイムラインで作った物',
+  noMotionsYet: 'まだ動きはありません。物のカードの「◆ タイムライン」で作ると、ここに並びます。',
   more: 'ほか',
   countObjects: '物 {n}',
   countBoth: '物 {o} ・ 素材 {f}',
@@ -5476,7 +5688,7 @@ __defs[13] = function (__exports) {
 // - Pictures are shown with <img> only (SVG included), so an SVG file cannot
 //   run a script in the shell.
 
-                                                                                                               
+                                                                                                                               
 const { ASSET_EXT } = __require(0);
 const { assetsOfKey, buildRows, filterRows, normalizeList, SHELVES, shelfOfType } = __require(5);
                                                            
@@ -5556,6 +5768,8 @@ const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(12);
                                                                                                                     
                                                                                                                  
      
+                           
+                                                                                                                 
                            
      
                                                                                                      
@@ -5657,6 +5871,9 @@ function mountLibrary(root    , deps             )              {
   let state               = emptyState();
   let saved               = emptyState();
   const objects = deps.objects;
+  const motions = deps.motions;
+  /** The motions are in the grid on All and on Motion (not while a file's objects narrow it). */
+  const showsMotions = () => !!motions && (filter.shelf === 'all' || filter.shelf === 'motion') && !objects?.band();
   // Kept by the caller across re-mounts (index.ts); a fresh one in the dev harness.
   const filter              = deps.view || { shelf: 'all', q: '' };
   /** The shelf the game's objects sit on (3D or 2D), or null without objects (the dev harness: files only). */
@@ -5666,7 +5883,7 @@ function mountLibrary(root    , deps             )              {
    * narrows them (then only those objects: the band above the grid says so and has the × back).
    */
   const showsObjects = () => !!objects && (filter.shelf === 'all' || filter.shelf === objShelf());
-  const showsFiles = () => !objects?.band();
+  const showsFiles = () => !objects?.band() && filter.shelf !== 'motion';
   /** The detail last drawn (a file's path or the picked objects' keys): a new one scrolls the phone sheet up to it. */
   let lastDetail = '';
   /**
@@ -5967,7 +6184,8 @@ function mountLibrary(root    , deps             )              {
     chips.replaceChildren();
     chips.dataset.shelf = filter.shelf;
     chips.setAttribute('aria-label', L('filterShow'));
-    const n                        = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0 };
+    const n                        = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0, motion: motions?.count() ?? 0 };
+    n.all += n.motion;
     for (const r of rows) n[shelfOfType(r.type)]++;
     const os = objShelf();
     if (os) {
@@ -5992,6 +6210,7 @@ function mountLibrary(root    , deps             )              {
     const list = showFiles ? filterRows(rows, filter) : [];
     // The objects first (what is in the game), then the files they are made from: one grid ("one Library").
     const objs = showsObjects() ? objects .tiles(filter.q.trim().toLowerCase()) : null;
+    const mots = showsMotions() ? motions .tiles(filter.q.trim().toLowerCase()) : null;
     // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
     // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
     // While "Couldn't read the folder" shows, it takes the count's place (same cell in shell.css).
@@ -6003,8 +6222,16 @@ function mountLibrary(root    , deps             )              {
     else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
     else count.textContent = fileCount ? L('countBoth', { o: objs.n, f: list.length }) : objs.n ? L('countObjects', { n: objs.n }) : '';
     grid.replaceChildren();
+    // The Motion filter: the motions only, and a line when there are none (they are made on the timeline).
+    if (filter.shelf === 'motion') {
+      count.textContent = L('countMotions', { n: mots?.n ?? 0 });
+      if (mots?.tiles.length) grid.append(...mots.tiles);
+      else grid.append(h('div', 'gsl-empty', L('noMotionsYet')));
+      return;
+    }
     if (objs) {
       grid.append(...objs.tiles);
+      if (mots) grid.append(...mots.tiles);
       if (!showFiles) {
         if (!objs.tiles.length) grid.append(h('div', 'gsl-empty', objects .count() ? L('emptyObjects') : L('noObjectsYet')));
         return;
@@ -6099,16 +6326,18 @@ function mountLibrary(root    , deps             )              {
   function renderDetail() {
     const row = rows.find((r) => r.path === openPath);
     // One detail at a time: the open file's, else the picked objects' (an open file drops the pick, see open()).
-    const obj = !row && objects ? objects.detail() : null;
-    detail.hidden = !row && !obj;
+    const mot = !row && motions ? motions.detail() : null;
+    const obj = !row && !mot && objects ? objects.detail() : null;
+    detail.hidden = !row && !obj && !mot;
     wrap.classList.toggle('gsl-has-detail', !detail.hidden);
-    detail.dataset.kind = row ? 'file' : obj ? 'object' : '';
+    detail.dataset.kind = row ? 'file' : mot ? 'motion' : obj ? 'object' : '';
     detail.replaceChildren();
-    const key = row ? `file:${row.path}` : obj ? `obj:${obj.key}` : '';
+    const key = row ? `file:${row.path}` : mot ? mot.key : obj ? `obj:${obj.key}` : '';
     // Phone: the detail sits at the top of the sheet, under its head; a new one picked further down scrolls the sheet
     // back up to it (scrolling the detail itself into view hid the Scene | Library switch above it).
     if (key && key !== lastDetail && !still && getComputedStyle(detail).order !== '0') requestAnimationFrame(() => wrap.scrollTo?.({ top: 0 }));
     lastDetail = key;
+    if (mot) detail.append(mot.el);
     if (obj) detail.append(obj.el);
     if (!row) return;
 
@@ -6421,7 +6650,14 @@ function mountLibrary(root    , deps             )              {
     picking = false;
     deleting = false;
     // Shift / Multi-select: the files stay picked with the objects; the detail shows the objects now.
-    if (!add) pickedFiles.clear();
+    if (!add) (pickedFiles.clear(), motions?.clear());
+    openPath = null;
+  });
+  // A press on a motion's tile: the same (one detail at a time; Shift / Multi-select keeps the objects and files).
+  motions?.onPick((add) => {
+    picking = false;
+    deleting = false;
+    if (!add) (pickedFiles.clear(), objects?.clear());
     openPath = null;
   });
   saveBtn.addEventListener('click', () => void save());
@@ -6435,7 +6671,7 @@ function mountLibrary(root    , deps             )              {
     // Multi-select acts on the objects: in the bar while objects are shown.
     if (objects) {
       const mb = objects.multiButton();
-      if (!showsObjects()) mb.remove();
+      if (!showsObjects() && !showsMotions()) mb.remove();
       else if (mb.parentElement !== bar) bar.insertBefore(mb, addBtn);
     }
     renderChips();
@@ -7059,6 +7295,7 @@ const libraryTool            = {
       selectObjects: ctx.selectObjects ? (keys) => ctx.selectObjects (keys) : undefined,
       showObjects: ctx.showObjects ? (o) => ctx.showObjects (o) : undefined,
       objects: ctx.objects,
+      motions: ctx.motions,
       files: ctx.files,
       view,
       nameOf: (key) => {
@@ -7772,452 +8009,6 @@ __def(__exports, "createLibraryObjects", () => createLibraryObjects);
 };
 __defs[19] = function (__exports) {
 'use strict';
-// ../core/rules.ts
-
-// Game rules: fit the editor to one game without touching the editor or the
-// adapter (CONTRACT.md §7).
-//
-// `.studio/studio.json` (plain settings the AI writes) and the optional
-// `constrain()` from `.studio/tools.js` sit between the bridge and the
-// adapter, as one more StudioAdapter. So snapping, bounds and per-kind rules
-// work the same for three.js, PixiJS, Phaser, a hand-written canvas game or
-// anything else, and the adapters stay unaware of them.
-//
-// What is constrained: edits made with handles, keys and game tools (drag,
-// rotate, scale, nudgeY). What is not: setPose() — undo/redo and loading a
-// saved file must restore poses exactly, even if the rules changed since.
-                                                                                                               
-
-const DEG = Math.PI / 180;
-
-                              
-                            
-                       
- 
-
-/** "crate*" → /^crate.*$/ (only * and ? are special). */
-function globToRe(glob        )         {
-  const esc = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  return new RegExp(`^${esc}$`, 'i');
-}
-
-                             
-                  
-                  
-                      
-                  
-                 
-                        
-                    
-                    
-                  
-                 
- 
-
-/** All rules whose glob matches the key, label or group, merged in order (later wins). */
-function rulesFor(item                                       , config                   )             {
-  const out             = { hidden: false, locked: false, lockHeight: false, rotate: true, scale: true, grid: config?.snap?.grid, angle: config?.snap?.angle };
-  for (const r of (config?.rules || [])              ) {
-    if (!r || typeof r.match !== 'string') continue;
-    const re = globToRe(r.match);
-    if (!re.test(item.key) && !re.test(item.label || '') && !(item.group && re.test(item.group))) continue;
-    if (typeof r.hidden === 'boolean') out.hidden = r.hidden;
-    if (typeof r.locked === 'boolean') out.locked = r.locked;
-    if (typeof r.lockHeight === 'boolean') out.lockHeight = r.lockHeight;
-    if (typeof r.rotate === 'boolean') out.rotate = r.rotate;
-    if (typeof r.scale === 'boolean') out.scale = r.scale;
-    else if (r.scale && typeof r.scale === 'object') {
-      out.scale = true;
-      if (typeof r.scale.default === 'number' && r.scale.default > 0) out.scaleDefault = r.scale.default;
-      if (typeof r.scale.min === 'number' && r.scale.min > 0) out.scaleMin = r.scale.min;
-      if (typeof r.scale.max === 'number' && r.scale.max > 0) out.scaleMax = r.scale.max;
-    }
-    if (r.snap && typeof r.snap === 'object') {
-      if (r.snap.grid !== undefined) out.grid = r.snap.grid;
-      if (r.snap.angle !== undefined) out.angle = r.snap.angle;
-    }
-  }
-  return out;
-}
-
-const roundTo = (v        , step        ) => (step > 0 ? Number((Math.round(v / step) * step).toFixed(6)) : v);
-const wrap = (a        ) => {
-  let r = a % (2 * Math.PI);
-  if (r <= -Math.PI) r += 2 * Math.PI;
-  if (r > Math.PI) r -= 2 * Math.PI;
-  return r;
-};
-
-/**
- * Snap a position to the grid and clamp it to the bounds.
- * 3D: a single grid number applies to x and z (heights stay free); [x, y, z]
- * sets each axis. 2D: a single number applies to x and y.
- */
-function placeOnGrid(p          , grid                      , bounds                                  , dim             )           {
-  const out = p.slice();
-  if (grid !== undefined) {
-    const steps = Array.isArray(grid) ? grid : dim === '3d' ? [grid, 0, grid] : [grid, grid];
-    for (let i = 0; i < out.length; i++) {
-      const st = Number(steps[i]);
-      if (Number.isFinite(st) && st > 0) out[i] = roundTo(out[i] , st);
-    }
-  }
-  if (bounds && Array.isArray(bounds.min) && Array.isArray(bounds.max)) {
-    for (let i = 0; i < out.length; i++) {
-      const lo = bounds.min[i], hi = bounds.max[i];
-      if (typeof lo === 'number' && out[i]  < lo) out[i] = lo;
-      if (typeof hi === 'number' && out[i]  > hi) out[i] = hi;
-    }
-  }
-  return out;
-}
-
-const samePose = (a      , b      ) => JSON.stringify(a) === JSON.stringify(b);
-
-function withRules(inner               , holder             )                {
-  // Raw (unsnapped) angle per object while it is being turned, so small
-  // finger moves add up instead of being swallowed by the angle snap.
-  const rawR = new Map                ();
-  let cache = new Map              ();
-
-  const refresh = () => {
-    cache = new Map(inner.list().map((i) => [i.key, i]));
-    return cache;
-  };
-  const itemOf = (key        ) => cache.get(key) || refresh().get(key);
-  const ruleOf = (key        ) => {
-    const it = itemOf(key);
-    return it ? rulesFor(it, holder.config) : null;
-  };
-  const decorate = (list        )         => {
-    cache = new Map(list.map((i) => [i.key, i]));
-    const out         = [];
-    for (const it of list) {
-      const r = rulesFor(it, holder.config);
-      if (r.hidden) continue;
-      out.push({
-        ...it,
-        rotatable: it.rotatable && r.rotate && !r.locked,
-        scalable: it.scalable && r.scale && !r.locked,
-        movable: it.movable !== false && !r.locked,
-        liftable: it.liftable !== false && !r.lockHeight && !r.locked,
-        defaultScale: r.scaleDefault ?? it.defaultScale,
-      });
-    }
-    return out;
-  };
-  const current = (key        )              => inner.anchor(key)?.pose ?? itemOf(key)?.pose ?? null;
-
-  /** Grid, bounds, then the game's own constrain(); writes back only when something changed. */
-  const fix = (key        , pose      , moved         )       => {
-    const r = ruleOf(key);
-    let next       = { ...pose, p: pose.p.slice() };
-    if (moved) next.p = placeOnGrid(next.p, r?.grid, holder.config?.bounds, inner.dim);
-    else next.p = placeOnGrid(next.p, undefined, holder.config?.bounds, inner.dim);
-    const item = itemOf(key);
-    for (const e of holder.ext) {
-      if (e.constrain && item) {
-        try {
-          const c = e.constrain(key, next, item);
-          if (c && Array.isArray(c.p)) next = c;
-        } catch (err) {
-          console.warn('[studio] constrain() failed:', err);
-        }
-      }
-    }
-    if (samePose(next, pose)) return pose;
-    return inner.setPose(key, next) || pose;
-  };
-
-  const ruled                = {
-    ...inner,
-    list: () => decorate(inner.list()),
-    begin: () => decorate(inner.begin()),
-    pickNear(x, y, radius) {
-      return inner.pickNear(x, y, radius).filter((k) => !ruleOf(k)?.hidden);
-    },
-    grab(key, x, y) {
-      const r = ruleOf(key);
-      if (!r || r.locked || r.hidden) return false;
-      rawR.delete(key);
-      return inner.grab(key, x, y);
-    },
-    drag(key, x, y) {
-      const r = ruleOf(key);
-      if (!r || r.locked) return current(key) ;
-      const before = r.lockHeight ? current(key) : null;
-      let after = inner.drag(key, x, y);
-      // Snap to surfaces (bridge/snap.ts) moves the height with the ground under it: not for a height the game holds.
-      if (before && after.p[1] !== before.p[1]) after = inner.setPose(key, { ...after, p: [after.p[0] , before.p[1] , after.p[2] ] }) || after;
-      return fix(key, after, true);
-    },
-    rotate(key, d) {
-      const r = ruleOf(key);
-      const before = current(key);
-      if (!r || !before || r.locked || !r.rotate) return before ;
-      const b = before.r ?? 0;
-      const after = inner.rotate(key, d);
-      const step = (r.angle ?? 0) * DEG;
-      if (!(step > 0)) return fix(key, after, false);
-      // Keep accumulating the unsnapped angle; restart from the object's
-      // angle when it no longer matches (undo, another gesture).
-      let raw = rawR.get(key);
-      if (raw === undefined || Math.abs(wrap(roundTo(raw, step) - b)) > 1e-6) raw = b;
-      raw += wrap((after.r ?? 0) - b);
-      rawR.set(key, raw);
-      const target = wrap(roundTo(raw, step));
-      const snapped = Math.abs(wrap(target - (after.r ?? 0))) > 1e-9 ? inner.setPose(key, { ...after, r: target }) || after : after;
-      return fix(key, snapped, false);
-    },
-    // Turning around another axis, or around the box middle (3D): blocked where
-    // turning is (locked, rotate: false). A game with an angle step keeps the
-    // snapped vertical turn of rotate() for the y axis.
-    turn: inner.turn ? (key, d, axis) => {
-      const r = ruleOf(key);
-      const before = current(key);
-      if (!r || !before || r.locked || !r.rotate) return before ;
-      if (axis === 'y' && (r.angle ?? 0) > 0) return ruled.rotate(key, d);
-      return fix(key, inner.turn (key, d, axis), false);
-    } : undefined,
-    scale(key, f) {
-      const r = ruleOf(key);
-      const before = current(key);
-      if (!r || !before || r.locked || !r.scale) return before ;
-      const after = inner.scale(key, f);
-      const s0 = Array.isArray(after.s) ? after.s[0] ?? 1 : after.s ?? 1;
-      let s1 = s0;
-      if (r.scaleMin !== undefined && s1 < r.scaleMin) s1 = r.scaleMin;
-      if (r.scaleMax !== undefined && s1 > r.scaleMax) s1 = r.scaleMax;
-      if (s1 === s0) return fix(key, after, false);
-      const k = s1 / (s0 || 1);
-      const s = Array.isArray(after.s) ? after.s.map((v) => v * k) : s1;
-      return fix(key, inner.setPose(key, { ...after, s }) || after, false);
-    },
-    setPose(key, pose) {
-      rawR.delete(key);
-      return inner.setPose(key, pose);
-    },
-    view: inner.view,
-  };
-  if (inner.drop) {
-    // Drop to floor (End) changes the height only: blocked where the height is (locked, lockHeight).
-    ruled.drop = (key, skip) => {
-      const r = ruleOf(key);
-      const before = current(key);
-      if (!r || !before || r.locked || r.lockHeight) return before ;
-      return fix(key, inner.drop (key, skip), true);
-    };
-  }
-  if (inner.nudgeY) {
-    ruled.nudgeY = (key, dy) => {
-      const r = ruleOf(key);
-      const before = current(key);
-      if (!r || !before || r.locked || r.lockHeight) return before ;
-      return fix(key, inner.nudgeY (key, dy), true);
-    };
-  }
-  return ruled;
-}
-
-__def(__exports, "globToRe", () => globToRe);
-__def(__exports, "rulesFor", () => rulesFor);
-__def(__exports, "placeOnGrid", () => placeOnGrid);
-__def(__exports, "withRules", () => withRules);
-};
-__defs[20] = function (__exports) {
-'use strict';
-// pose-compare.ts
-
-// Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
-// Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
-// poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
-const { LIMITS } = __require(0);
-
-function roundTo(v        , step        )         {
-  return Math.round(v / step) * step;
-}
-
-/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
-function roundPose(p      , dim     )       {
-  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
-  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
-  const out       = { p: p.p.map((v) => fix(v, step)) };
-  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
-  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
-  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
-  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
-  return out;
-}
-
-/**
- * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
- *
- * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
- * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
- * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
- * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
- */
-function sameAngle(a                    , b                    )          {
-  if (a === undefined || b === undefined) return a === b;
-  const TAU = Math.PI * 2;
-  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
-  // Half a rounding step: values one step apart (a real nudge) still differ.
-  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
-}
-
-function samePose(a                  , b                  , dim     )          {
-  if (!a || !b) return a === b;
-  const x = roundPose(a, dim), y = roundPose(b, dim);
-  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
-  if (!sameAngle(x.r, y.r)) return false;
-  if (!x.t || !y.t) return !x.t === !y.t;
-  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
-}
-
-__def(__exports, "roundPose", () => roundPose);
-__def(__exports, "samePose", () => samePose);
-};
-__defs[21] = function (__exports) {
-'use strict';
-// layers.ts
-
-// Draw order (2D layers) in the shell: which object is in front of which.
-// Pure functions over the item list (no DOM), so they are unit-tested.
-//
-// The adapter reports, per object, `layer` (the sibling list it is drawn in,
-// usually its parent) and `pose.z` (its place among the LISTED objects of that
-// list, 0 = back). Changing the order is one setPose with a new z, so undo,
-// redo and the Save count reuse the pose machinery.
-//
-// WHY every target is "the z of another listed sibling" and never z ± 1: the
-// adapter's ranks can have gaps (objects hidden by the game's rules are still
-// counted), and moving to a sibling's z puts the object just past that
-// sibling in the direction of travel. So "forward" always passes exactly one
-// thing the person can see.
-//
-// Ground / background (Item.backdrop, play test 2026-10-16): "to back"
-// once put a rock behind the ground, where it vanished. The backdrops at the
-// back of a list stay there: they have no targets of their own, and nothing
-// else goes behind them ("to back" = just in front of the ground).
-                                           
-
-                                                                    
-
-/** True when the adapter can change the draw order of this object. */
-const hasLayer = (it                  )                                 =>
-  !!it && typeof it.layer === 'string' && typeof it.pose.z === 'number';
-
-/** Listed objects drawn in the same list as `key`, back → front. */
-function siblingsOf(items        , key        )         {
-  const it = items.find((i) => i.key === key);
-  if (!hasLayer(it)) return [];
-  return items.filter((i) => hasLayer(i) && i.layer === it.layer).sort((a, b) => a.pose.z  - b.pose.z );
-}
-
-/**
- * How many siblings (back → front list) are ground / background kept at the
- * back: the lowest place anything else may take.
- */
-function floorOf(sib        )         {
-  let n = 0;
-  while (n < sib.length && sib[n] .backdrop) n++;
-  return n;
-}
-
-/** The z to send for a button/shortcut, or null when the object is already there (or is the ground). */
-function layerTarget(items        , key        , op         )                {
-  const sib = siblingsOf(items, key);
-  const i = sib.findIndex((s) => s.key === key);
-  if (i < 0 || sib.length < 2 || sib[i] .backdrop) return null;
-  const floor = floorOf(sib);
-  const to = op === 'toFront' ? sib.length - 1 : op === 'toBack' ? floor : op === 'forward' ? i + 1 : i - 1;
-  if (to < floor || to >= sib.length || to === i) return null;
-  return sib[to] .pose.z ;
-}
-
-/**
- * The z to send after a drag in the list. `frontIndex` = where the object was
- * dropped among its siblings as the list shows them (front first, 0 = top),
- * counted with the dragged object taken out.
- */
-function dropTarget(items        , key        , frontIndex        )                {
-  const sib = siblingsOf(items, key);
-  const i = sib.findIndex((s) => s.key === key);
-  if (i < 0 || sib[i] .backdrop) return null;
-  const n = sib.length;
-  // Front-first position k ↔ back-first rank n-1-k; dropped below the ground = just in front of it.
-  const rank = Math.max(floorOf(sib), n - 1 - Math.max(0, Math.min(n - 1, Math.round(frontIndex))));
-  return rank === i ? null : sib[rank] .pose.z ;
-}
-
-/** Keys of one list, back → front (what placement.json `order[].keys` holds). */
-function orderOfLayer(items        , layer        )           {
-  return items.filter((i) => hasLayer(i) && i.layer === layer).sort((a, b) => a.pose.z  - b.pose.z ).map((i) => i.key);
-}
-
-                           
-             
-                                                                                                 
-                
- 
-                             
-                                                                                         
-                
-                   
- 
-
-/**
- * The object list in draw order, front on top. Lists drawn inside a listed
- * object (Pixi: sprites in a container) are shown right under that object,
- * indented. Objects without a layer are not included (the caller shows them
- * after, as before).
- */
-function layerBlocks(items        )               {
-  const layered = items.filter(hasLayer);
-  const keys = new Set(items.map((i) => i.key));
-  const byLayer = new Map                ();
-  for (const it of layered) {
-    const arr = byLayer.get(it.layer ) || [];
-    arr.push(it);
-    byLayer.set(it.layer , arr);
-  }
-  for (const arr of byLayer.values()) arr.sort((a, b) => b.pose.z  - a.pose.z );
-  const done = new Set        ();
-  const walk = (layer        , depth        , rows            ) => {
-    if (done.has(layer)) return; // a malformed adapter could report a cycle
-    done.add(layer);
-    for (const it of byLayer.get(layer) || []) {
-      rows.push({ item: it, depth });
-      if (byLayer.has(it.key)) walk(it.key, depth + 1, rows);
-    }
-  };
-  const blocks               = [];
-  for (const layer of byLayer.keys()) {
-    if (keys.has(layer)) continue; // drawn inside a listed object: shown under it
-    const rows             = [];
-    walk(layer, 0, rows);
-    blocks.push({ layer, rows });
-  }
-  // Lists whose parent object is listed but never reached (cycles): still show them.
-  for (const layer of byLayer.keys()) {
-    if (done.has(layer)) continue;
-    const rows             = [];
-    walk(layer, 0, rows);
-    blocks.push({ layer, rows });
-  }
-  return blocks;
-}
-
-__def(__exports, "hasLayer", () => hasLayer);
-__def(__exports, "siblingsOf", () => siblingsOf);
-__def(__exports, "floorOf", () => floorOf);
-__def(__exports, "layerTarget", () => layerTarget);
-__def(__exports, "dropTarget", () => dropTarget);
-__def(__exports, "orderOfLayer", () => orderOfLayer);
-__def(__exports, "layerBlocks", () => layerBlocks);
-};
-__defs[22] = function (__exports) {
-'use strict';
 // ../loader/studio-placement.js
 
 // studio-placement.js: apply placement.json to a running game (three.js or PixiJS) and to its HTML UI.
@@ -8268,6 +8059,15 @@ __defs[22] = function (__exports) {
 // itself (▶ on the card) and must see the place, not a point along the way. A game that writes the object's position
 // every frame itself (physics, its own update) wins over this; the skill tells the AI to put the motion into that code.
 // report.motion = the keys that move; stopMotion() stops them all (a game that wants to take over).
+//
+// `motions` + `when` / `until` (studio-motion-triggers, 2026-10-22: "a motion starts when something happens, stops when
+// something happens, or runs the whole game"): `motions` at the top are the Library's motions (len / repeat / keys);
+// an object's clip `{ use: 'Hop', when, until }` uses one by name. When it starts:
+//   start · time (after N s) · key (KeyboardEvent.code) · click (Pixi: a tap on it; three: the game's camera, learnt
+//   from scene.onBeforeRender) · after (another clip ended) · enter (an object walks into a box: `who`'s key, or
+//   setPlayer(obj)) — all run here; touch · cue · say need the game: touch(key), cue(name), playMotion(key, name).
+// until: { times } rounds, { cue } a named cue; then 'reset' = back to its first pose. motionRunner() is the one place
+// for these rules; the editor's "Try" uses it too. report.motionWaits = the clips that wait for the game's code.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -8343,7 +8143,7 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
     if (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);
   }
   if (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);
-  if (data.motion && typeof data.motion === 'object') runMotion(root, data.motion, n, three, report);
+  if ((data.motion && typeof data.motion === 'object') || Array.isArray(data.motions)) runMotion(root, data, n, three, report);
   if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
   if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
   return report;
@@ -8352,12 +8152,18 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
 // The keys moved by this file (any copy of it on the page): the editor's ▶ Play (bridge/play-arrange.ts) leaves them
 // alone, so an object is never moved twice. A global symbol, because the game and the editor each load their own copy.
 const MOVING = Symbol.for('game-studio.motion');
-// Every object this file can move (studio-timeline, 2026-10-22): key → { o, three, base, clips, legacy }. `base` is the
-// pose after `objects` (the place every key is an offset from). What plays now is in `movers` (key → { clip | legacy,
-// t0 }); one shared frame loop runs them while there are any.
+// Every object this file can move: key → { o, three, base, clips }. `base` is the pose after `objects` (the place every
+// key is an offset from); `clips` are resolved (a Library motion's len / repeat / keys filled in, `when` read).
+// `run` decides what plays when (motionRunner, shared with the editor's "Try"); one frame loop poses what it says.
 const known = new Map();
-const movers = new Map();
+let run = null;
 let ticking = false;
+// The world given to applyPlacement and the Library's motions in its file: playMotion(key, name) can start a Library
+// motion on an object it was never attached to ("make the crate Hop when…": the AI's one line).
+let world = null;
+let library = [];
+// setPlayer(obj): who walks into the areas of `enter` clips that name no `who` (or a `who` the loader cannot find).
+let player = null;
 
 /**
  * Stop the motion of one object (`key`), or of every object (no key). The objects stay where they are now. A stopped
@@ -8365,28 +8171,189 @@ let ticking = false;
  */
 function stopMotion(key) {
   if (key === undefined) {
-    movers.clear();
+    if (run) run.stop();
+    olds.clear();
     if (globalThis[MOVING]) globalThis[MOVING].clear();
-  } else movers.delete(key);
+  } else {
+    if (run) run.stop(key);
+    const k = known.get(key);
+    if (k) olds.delete(k);
+  }
 }
 
 /**
- * Play one of an object's named motions (a clip made on the editor's timeline) from its start: the cue a game gives
- * ("the player reached the door" → playMotion('door', 'Open')). The clip that was playing on that object stops where
- * it is and this one takes over from its own first key. false = no such object / clip, or inside the editor.
+ * Play one of an object's named motions from its start: the cue a game gives ("the player reached the door" →
+ * playMotion('door', 'Open')). The name is the object's clip, or any Library motion (`motions` in the file), even one
+ * that is not on this object. The clip playing on that object stops where it is and this one takes over.
+ * false = no such object / motion, or inside the editor.
  */
 function playMotion(key, name) {
-  const k = known.get(key);
-  const clip = k && k.clips.find((c) => c && c.name === name);
-  if (!clip || editing()) return false;
-  start(key, { clip });
+  if (editing()) return false;
+  let k = known.get(key);
+  let clip = k && k.clips.find((c) => c.name === name);
+  if (!clip) {
+    const lib = library.find((m) => m && m.name === name);
+    const o = !lib ? null : k ? k.o : world && findByKey(world, key, !!world.isObject3D);
+    if (!o) return false;
+    if (!k) k = remember(key, o, !!world.isObject3D, []);
+    clip = { ...lib, use: name, when: { on: 'say' } };
+    k.clips.push(clip);
+  }
+  ensureRun().play(key, clip, performance.now());
+  tickSoon();
   return true;
+}
+
+/** A named cue happened in the game ("chest-opened"): the clips that start on it start, the ones that stop on it stop. */
+function cue(name) {
+  return fire({ on: 'cue', cue: name });
+}
+
+/** The player touched this object (the game's own collision): its clips that start on a touch start. */
+function touch(key) {
+  return fire({ on: 'touch', key });
+}
+
+/** The object that walks into areas (`enter` clips): for a game whose player has no key the loader can find. */
+function setPlayer(obj) {
+  player = obj || null;
+  tickSoon();
+}
+
+function fire(ev) {
+  if (!run || editing()) return false;
+  const n = run.fire(ev, performance.now());
+  tickSoon();
+  return n > 0;
 }
 
 /** An object's clip by name (for a game that moves the object itself: clipAt(clipOf('door', 'Open'), seconds)). */
 function clipOf(key, name) {
   const k = known.get(key);
-  return (k && k.clips.find((c) => c && c.name === name)) || null;
+  return (k && k.clips.find((c) => c.name === name)) || resolveClip(library.find((m) => m && m.name === name) ? { use: name } : null, library);
+}
+
+/**
+ * When a clip starts, in one shape: studio-motion-triggers' `when` object, or studio-timeline's (`start: true` = at
+ * once; else a string `when` = the person's words for the AI; a clip with `use` and no `when` = at once).
+ */
+function whenOf(c) {
+  if (!c || typeof c !== 'object') return { on: 'say' };
+  const w = c.when;
+  if (w && typeof w === 'object' && typeof w.on === 'string') return w;
+  if (c.start === true || (c.use && w === undefined)) return { on: 'start' };
+  return typeof w === 'string' && w.trim() ? { on: 'say', say: w } : { on: 'say' };
+}
+
+/** A clip as it plays: a `use` clip gets its Library motion's len / repeat / keys; null = bad, or a motion not there. */
+function resolveClip(c, lib) {
+  if (!c || typeof c !== 'object') return null;
+  if (typeof c.use === 'string') {
+    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && x.keys && typeof x.keys === 'object');
+    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: m.keys, when: whenOf(c), until: c.until } : null;
+  }
+  return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c) } : null;
+}
+
+/**
+ * What plays when (studio-motion-triggers, 2026-10-22): one place for the rules, used by this file in the game and by
+ * the editor's "Try" (the same answers in both). No DOM, no scene: it is told what happened (fire), asked where things
+ * are (step) and answers each moving key's offsets (clipAt's shape).
+ *   objs: [{ key, clips }] with resolved clips (resolveClip). The rules:
+ *   - a clip starts on its `when` (fire's event, or by itself: `time` after `after` seconds, `after` when that clip
+ *     ends, `enter` when the player's position goes into the area: step's `where(who)`); again = from its start;
+ *   - one clip per object plays: a new one takes over where the last one is (as playMotion always did);
+ *   - `until.times` = after that many rounds (a loop: len; a pingpong: there and back; a once: its length),
+ *     `until.cue` = when that cue fires; `then: 'reset'` puts it back on its first pose, else it stays where it is.
+ */
+function motionRunner(objs) {
+  const list = (Array.isArray(objs) ? objs : []).filter((x) => x && Array.isArray(x.clips));
+  const movers = new Map();
+  const held = new Map();
+  let t0 = null;
+  const timed = new Set();
+  const inside = new Map();
+  const ok = (v) => typeof v === 'number' && isFinite(v);
+  const round = (c) => (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1);
+  const hits = (w, ev, key) => {
+    if (!w || w.on !== ev.on) return false;
+    if (ev.on === 'key') return w.key === ev.key;
+    if (ev.on === 'cue') return w.cue === ev.cue;
+    if (ev.on === 'after') return w.use === ev.use && (w.key || key) === ev.key;
+    if (ev.on === 'click' || ev.on === 'touch' || ev.on === 'enter' || ev.on === 'say') return ev.key === key && (ev.on !== 'say' || !ev.use || ev.use === w.use);
+    return true;
+  };
+  const play = (key, clip, now) => {
+    movers.set(key, { clip, t0: now });
+    held.delete(key);
+  };
+  const end = (key, r, at, now, out) => {
+    movers.delete(key);
+    const pose = r.clip.until && r.clip.until.then === 'reset' ? clipAt(r.clip, 0) : at;
+    held.set(key, pose);
+    out.set(key, pose);
+    fireAt({ on: 'after', key, use: r.clip.use || r.clip.name }, now);
+  };
+  function fireAt(ev, now) {
+    let n = 0;
+    if (ev.on === 'start') t0 = now;
+    for (const { key, clips } of list) {
+      for (const c of clips) if (hits(c.when, ev, key)) (play(key, c, now), n++);
+      const r = movers.get(key);
+      if (ev.on === 'cue' && r && r.clip.until && r.clip.until.cue === ev.cue) {
+        const out = new Map();
+        end(key, r, clipAt(r.clip, (now - r.t0) / 1000), now, out);
+        n++;
+      }
+    }
+    return n;
+  }
+  return {
+    fire: fireAt,
+    play,
+    /** Stop one key, or all (no key): they stay where they are, nothing more plays on them until fired again. */
+    stop(key) {
+      if (key === undefined) (movers.clear(), held.clear());
+      else movers.delete(key), held.delete(key);
+    },
+    /** Something still to watch: a clip playing, a timer not fired yet, an area. */
+    busy: () => movers.size > 0 || list.some(({ clips }) => clips.some((c) => (c.when && c.when.on === 'enter') || (c.when && c.when.on === 'time' && t0 !== null && !timed.has(c)))),
+    /** Where things are at `now` (ms): key → offsets ({ p, r, s }) for every object playing or holding its last pose. */
+    step(now, where) {
+      const out = new Map();
+      if (t0 !== null) for (const { key, clips } of list) for (const c of clips) {
+        const w = c.when;
+        if (w && w.on === 'time' && !timed.has(c) && (now - t0) / 1000 >= (ok(w.after) ? w.after : 0)) (timed.add(c), play(key, c, now));
+      }
+      if (where) for (const { key, clips } of list) for (const c of clips) {
+        const w = c.when;
+        if (!w || w.on !== 'enter' || !w.area || !Array.isArray(w.area.p) || !Array.isArray(w.area.size)) continue;
+        const p = where(w.who || null);
+        const isIn = !!p && w.area.p.every((v, i) => Math.abs((p[i] || 0) - v) <= Math.abs(w.area.size[i] || 0) / 2);
+        if (isIn && !inside.get(c)) play(key, c, now);
+        inside.set(c, isIn);
+      }
+      for (const [key, r] of [...movers]) {
+        const t = Math.max(0, (now - r.t0) / 1000);
+        const u = r.clip.until;
+        const stopAt = u && ok(u.times) && u.times > 0 ? u.times * round(r.clip) : null;
+        // A `once` clip with rounds plays again from its start each round ("hop 3 times"), then stops at its end.
+        const again = stopAt !== null && r.clip.repeat !== 'loop' && r.clip.repeat !== 'pingpong';
+        const tt = (u2) => (again ? Math.min(u2, stopAt) % round(r.clip) || (u2 > 0 ? round(r.clip) : 0) : u2);
+        if (stopAt !== null && t >= stopAt) end(key, r, clipAt(r.clip, again ? round(r.clip) : stopAt - 1e-6), now, out);
+        else {
+          const at = clipAt(r.clip, tt(t));
+          if (again) at.done = false;
+          out.set(key, at);
+          if (at.done) end(key, r, at, now, out);
+        }
+      }
+      for (const [key, at] of held) if (!out.has(key)) out.set(key, at);
+      return out;
+    },
+    /** What each object plays now (key → clip name): the editor's rows light up with it. */
+    playing: () => new Map([...movers].map(([k, r]) => [k, r.clip.name])),
+  };
 }
 
 /**
@@ -8484,21 +8451,51 @@ function poseAt(o, base, at, three) {
 
 const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
 
-function start(key, what) {
-  movers.set(key, { ...what, t0: performance.now() });
-  if (ticking || typeof requestAnimationFrame !== 'function') return;
+function remember(key, o, three, clips) {
+  const base = three
+    ? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }
+    : { p: [o.position.x, o.position.y], r: [o.rotation], s: [o.scale.x, o.scale.y] };
+  const k = { o, three, base, clips };
+  known.set(key, k);
+  (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+  return k;
+}
+
+function ensureRun() {
+  if (!run) run = motionRunner([...known].map(([key, k]) => ({ key, clips: k.clips })));
+  return run;
+}
+
+// Where `who` is in the world (an `enter` area's test): the object with that key, else setPlayer's.
+function whereIs(who) {
+  const o = (who && world && findByKey(world, who, !!world.isObject3D)) || player;
+  if (!o || !o.position) return null;
+  if (o.getWorldPosition) {
+    const v = o.getWorldPosition(o.position.clone());
+    return [v.x, v.y, v.z];
+  }
+  return [o.position.x, o.position.y];
+}
+
+// One loop per applyPlacement: a new file (another level, the game restarted) starts a new generation and the old loop
+// ends at its next frame, so two loops never pose the same object.
+let gen = 0;
+function tickSoon() {
+  if (ticking || !run || typeof requestAnimationFrame !== 'function') return;
   ticking = true;
+  const g = gen;
   const tick = (now) => {
-    if (!movers.size) return void (ticking = false);
-    for (const [key, r] of movers) {
+    if (g !== gen) return;
+    if (!run.busy() && !olds.size) return void (ticking = false);
+    for (const [k, l] of olds) {
+      if (k.o.parent === null) olds.delete(k);
+      else poseAt(k.o, k.base, legacyAt(l.m, (now - l.t0) / 1000, l.n), k.three);
+    }
+    for (const [key, at] of run.step(now, whereIs)) {
       const k = known.get(key);
       // The object left the scene (another level was built; three and Pixi set parent to null): forget it.
-      if (!k || k.o.parent === null) {
-        movers.delete(key);
-        continue;
-      }
-      const t = Math.max(0, (now - r.t0) / 1000);
-      poseAt(k.o, k.base, r.clip ? clipAt(r.clip, t) : legacyAt(r.legacy, t, k.three ? 3 : 2), k.three);
+      if (!k || k.o.parent === null) run.stop(key);
+      else poseAt(k.o, k.base, at, k.three);
     }
     requestAnimationFrame(tick);
   };
@@ -8506,30 +8503,116 @@ function start(key, what) {
 }
 
 /**
- * The `motion` part of the file: each object's clips (a timeline's named motions: `start: true` plays at once, the
- * others wait for playMotion) or the older path / spin. Nothing runs inside the editor (studio=edit in the URL): there
- * the editor owns every pose and plays the timeline itself.
+ * The `motion` part of the file: each object's clips (a Library motion it uses, or keys of its own), each starting on
+ * its `when` (whenOf) — or the older path / spin. Nothing runs inside the editor (studio=edit in the URL): there the
+ * editor owns every pose and plays the timeline itself. Keys and clicks are listened to once per page.
  */
-function runMotion(root, motion, n, three, report) {
+function runMotion(root, data, n, three, report) {
+  world = root;
+  library = Array.isArray(data.motions) ? data.motions.filter((m) => m && typeof m.name === 'string') : [];
+  const motion = data.motion && typeof data.motion === 'object' ? data.motion : {};
   if (editing()) return;
+  gen++;
+  ticking = false;
+  known.clear();
+  clicks.clear();
+  olds.clear();
+  if (run) run.stop();
+  run = null;
   const list = [];
+  const legacy = [];
+  const warn2 = [];
   for (const key of Object.keys(motion)) {
     const m = motion[key], o = findByKey(root, key, three);
     if (!o || !m || typeof m !== 'object') continue;
-    const clips = Array.isArray(m.clips) ? m.clips.filter((c) => c && typeof c === 'object' && typeof c.name === 'string' && c.keys && typeof c.keys === 'object') : [];
-    const legacy = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
-    if (!clips.length && !legacy) continue;
-    const base = three
-      ? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }
-      : { p: [o.position.x, o.position.y], r: [o.rotation], s: [o.scale.x, o.scale.y] };
-    known.set(key, { o, three, base, clips });
-    (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library)).filter(Boolean) : [];
+    const old = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
+    if (!clips.length && !old) continue;
+    // The older path / spin plays at once, as a clip of the same shape (clipAt is not its maths: a frame function).
+    const k = remember(key, o, three, clips);
+    if (old) legacy.push([key, k, m]);
+    for (const c of clips) {
+      const w = c.when;
+      if (w.on === 'click') clickable(key, o, three);
+      if (w.on === 'enter' && !(w.who && findByKey(root, w.who, three)) && !player) warn2.push(key + ': no player for its area (setPlayer)');
+      if (w.on === 'touch' || w.on === 'cue' || w.on === 'say') warn2.push(key + ' · ' + c.name + ': waits for the game (' + w.on + ')');
+    }
     list.push(key);
-    const first = clips.find((c) => c.start === true);
-    if (legacy) start(key, { legacy: m });
-    else if (first) start(key, { clip: first });
   }
-  if (list.length) report.motion = list;
+  if (!list.length) return;
+  report.motion = list;
+  if (warn2.length) report.motionWaits = warn2;
+  ensureRun().fire({ on: 'start' }, performance.now());
+  listen(three);
+  for (const [, k, m] of legacy) olds.set(k, { m, t0: performance.now(), n });
+  tickSoon();
+}
+
+// v0.1.13's path / spin (no clip, so the runner does not know it): object → { m, t0, n }, posed by the same frame loop.
+const olds = new Map();
+
+let listening = false;
+const clicks = new Map();
+let view = null;
+function listen(three) {
+  if (listening || typeof addEventListener !== 'function') return;
+  listening = true;
+  addEventListener('keydown', (e) => {
+    const tag = e.target && e.target.tagName;
+    if (e.repeat || tag === 'INPUT' || tag === 'TEXTAREA') return;
+    fire({ on: 'key', key: e.code });
+  });
+  // three: the camera and canvas the game draws with, learnt from the scene's onBeforeRender (no import of three here).
+  if (three && world && world.isScene) {
+    const was = world.onBeforeRender;
+    world.onBeforeRender = function (renderer, scene, camera) {
+      view = { camera, canvas: renderer && renderer.domElement };
+      if (typeof was === 'function') return was.apply(this, arguments);
+    };
+    addEventListener('pointerdown', (e) => {
+      if (!view || !view.camera || e.target !== view.canvas) return;
+      const hit = clickedKey(e, view);
+      if (hit) fire({ on: 'click', key: hit });
+    });
+  }
+}
+
+/** Pixi: the object itself takes taps. three: noted, found by clickedKey from the drawn picture. */
+function clickable(key, o, three) {
+  clicks.set(key, o);
+  if (!three && typeof o.on === 'function') {
+    o.eventMode = 'static';
+    o.cursor = 'pointer';
+    o.on('pointertap', () => fire({ on: 'click', key }));
+  }
+}
+
+// The nearest clickable object under the pointer: each one's bounding sphere, projected with the game's camera.
+function clickedKey(e, v) {
+  const r = v.canvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  let best = null, bestD = Infinity;
+  for (const [key, o] of clicks) {
+    if (o.parent === null) continue;
+    o.updateWorldMatrix && o.updateWorldMatrix(true, true);
+    o.traverse((m) => {
+      const g = m.geometry;
+      if (!g || !m.visible) return;
+      if (!g.boundingSphere && g.computeBoundingSphere) g.computeBoundingSphere();
+      if (!g.boundingSphere) return;
+      const c = g.boundingSphere.center.clone().applyMatrix4(m.matrixWorld);
+      const rad = g.boundingSphere.radius * m.matrixWorld.getMaxScaleOnAxis();
+      const camPos = v.camera.getWorldPosition(c.clone());
+      const dist = c.distanceTo(camPos);
+      const p = c.clone().project(v.camera);
+      if (p.z > 1 || p.z < -1) return;
+      const sx = ((p.x + 1) / 2) * r.width, sy = ((1 - p.y) / 2) * r.height;
+      const fov = v.camera.fov ? (v.camera.fov * Math.PI) / 180 : 1;
+      const sr = Math.max(8, (rad / Math.max(1e-6, dist * Math.tan(fov / 2))) * (r.height / 2));
+      if (Math.hypot(sx - x, sy - y) <= sr && dist < bestD) (best = key), (bestD = dist);
+    });
+  }
+  return best;
 }
 
 /**
@@ -8740,7 +8823,13 @@ function warn(msg) {
 __def(__exports, "applyPlacement", () => applyPlacement);
 __def(__exports, "stopMotion", () => stopMotion);
 __def(__exports, "playMotion", () => playMotion);
+__def(__exports, "cue", () => cue);
+__def(__exports, "touch", () => touch);
+__def(__exports, "setPlayer", () => setPlayer);
 __def(__exports, "clipOf", () => clipOf);
+__def(__exports, "whenOf", () => whenOf);
+__def(__exports, "resolveClip", () => resolveClip);
+__def(__exports, "motionRunner", () => motionRunner);
 __def(__exports, "clipAt", () => clipAt);
 __def(__exports, "trackAt", () => trackAt);
 __def(__exports, "motionAt", () => motionAt);
@@ -8749,7 +8838,188 @@ __def(__exports, "placeUi", () => placeUi);
 __def(__exports, "uiOffset", () => uiOffset);
 __def(__exports, "findByKey", () => findByKey);
 };
-__defs[23] = function (__exports) {
+__defs[20] = function (__exports) {
+'use strict';
+// icons.ts
+
+// Line icons for the shell, drawn here (no icon font, no images from a
+// third party). One grid for all of them: 20×20 view box, 1.5 px stroke, round
+// ends, `currentColor`, so every icon takes the button's text colour and
+// weight and they read as one family next to the system font.
+//
+// WHY drawn icons instead of the Unicode signs used before (↶ ↷ ⚙ ⋯ ⧉): the
+// signs came from whatever font the system picked, at different sizes and
+// weights per OS, and sat off the text baseline. A tool that should disappear
+// behind the game cannot have its few marks look accidental (design pass
+// 2026-10-16, "apple").
+//
+// Visual pass 2026-10-16 ("visual"): the first set mixed stroke weights
+// (1.6 lines, 2.6 dots, 1.0 on the filled ones), square and round corners,
+// and marks of different optical size, so a row of them looked drawn by
+// three hands. One rule now, the way a Mac pro app's symbol set is built:
+//   - 20×20 grid, artwork inside a 14 px live area (3..17), centred;
+//   - every line is 1.5 px ON SCREEN (vector-effect: non-scaling-stroke, the
+//     width comes from CSS --studio-icon-stroke), whatever size the icon is
+//     drawn at, so an 18 px toolbar icon and a 14 px chevron weigh the same
+//     as the regular weight of the system font beside them;
+//   - round caps and joins; boxes have 1.5 corners, never sharp;
+//   - dots are real filled circles (r 1.3), not zero-length strokes (those
+//     changed size with the stroke and looked blotchy at 2.6);
+//   - filled shapes (play, stop, spark) are filled AND stroked, so their
+//     corners round off the same way the lines do.
+const NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Artwork per icon, parts joined with "|". A part is SVG path data, or
+ * "o cx cy" for a dot (filled circle, r 1.3), or "O cx cy r" for a ring.
+ */
+const PATHS                         = {
+  undo: 'M7 4.5 3.5 8 7 11.5|M3.5 8h8.25a4.25 4.25 0 0 1 0 8.5H9',
+  redo: 'M13 4.5 16.5 8 13 11.5|M16.5 8H8.25a4.25 4.25 0 0 0 0 8.5H11',
+  // Four rounded corners: "show the whole scene".
+  frame: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5',
+  // The same four corners around a dot: "the picture the game opens on" (back to the opening view, speed pass).
+  opening: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5|o 10 10',
+  // A window with an arrow out of its top-right corner: "open this in a large window" (the side window's Open large).
+  openLarge: 'M11.5 3.5h5v5|M16.5 3.5 10 10|M14.5 11.5V15a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5h3.5',
+  // Two sliders with their knobs: "how the editor looks".
+  look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
+  play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
+  stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
+  // Pause while playing (2026-10-22): two bars, filled like play / stop.
+  pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
+  // Pause-move (2026-10-22): the strip's own Move sign (bridge/handles.ts), four ways out of the middle.
+  move: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
+  // The AI: a four-point spark.
+  spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
+  more: 'o 5 10|o 10 10|o 15 10',
+  list: 'M7.5 5.5h9|M7.5 10h9|M7.5 14.5h9|o 4 5.5|o 4 10|o 4 14.5',
+  // Two rounded sheets, the front one whole.
+  copy: 'M9 7.5h6A1.5 1.5 0 0 1 16.5 9v6a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 15V9A1.5 1.5 0 0 1 9 7.5z|M12.5 5A1.5 1.5 0 0 0 11 3.5H5A1.5 1.5 0 0 0 3.5 5v6A1.5 1.5 0 0 0 5 12.5',
+  trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
+  chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
+  chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
+  chevronLeft: 'M12 5l-5 5 5 5',
+  chevronRight: 'M8 5l5 5-5 5',
+  check: 'M4.5 10.5l3.5 3.5 7.5-8',
+  arrowUp: 'M10 15.5v-11|M5.5 9 10 4.5 14.5 9',
+  // Layers (2D draw order): a bar = the end of the stack.
+  toFront: 'M4.5 3.5h11|M10 16.5v-9|M6 11.5l4-4 4 4',
+  forward: 'M10 16v-11|M6 9l4-4 4 4',
+  backward: 'M10 4v11|M6 11l4 4 4-4',
+  toBack: 'M4.5 16.5h11|M10 3.5v9|M6 8.5l4 4 4-4',
+  send: 'M10 16V4.5|M5 9.5 10 4.5l5 5',
+  // Rebrand 2026-10-16: the left column's two places and the ⌘K actions.
+  // A box seen from a corner: "the scene".
+  // The UI layer (UI stage 1): a screen with a title bar and a button — "the things drawn over the game".
+  uiLayer: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M6.5 8h5|M6.5 12.5h3.5',
+  // A UI element's kind in the list and on the card (UI stage 1): text (a T), a button, a picture.
+  uiText: 'M5.5 5h9|M10 5v10.5',
+  uiButton: 'M5.5 6.5h9a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 3 11V9a2.5 2.5 0 0 1 2.5-2.5z|M7.5 10h5',
+  uiImage: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M3.5 13l4-4 3 3 2-2 4 4|o 12.5 8',
+  cube: 'M10 3.5 16 6.75v6.5L10 16.5 4 13.25v-6.5L10 3.5z|M4 6.75 10 10l6-3.25|M10 10v6.5',
+  // Four tiles: "the files".
+  grid: 'M4.5 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M12 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M4.5 11H8a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z|M12 11h3.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z',
+  eye: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25',
+  // The eye struck through: "the game's UI is hidden while you edit the world" (layer-switch.ts).
+  eyeOff: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25|M4 16 16 4',
+  plus: 'M10 4.5v11|M4.5 10h11',
+  // The plus without its upright: one point fewer on a motion's path (motion-gui, 2026-10-22).
+  minus: 'M4.5 10h11',
+  // The plus turned 45°: close a note.
+  close: 'M6 6l8 8|M14 6l-8 8',
+  // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
+  keyboard: 'M4.5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 13V7a1.5 1.5 0 0 1 1.5-1.5z|o 6.5 8.5|o 10 8.5|o 13.5 8.5|M7.5 11.75h5',
+  swap: 'M4 7h11.5|M12.5 4l3 3-3 3|M16 13H4.5|M7.5 10l-3 3 3 3',
+  globe: 'O 10 10 6.5|M3.5 10h13|M10 3.5c-2.2 2.4-2.2 10.6 0 13|M10 3.5c2.2 2.4 2.2 10.6 0 13',
+  hand: 'M7 10V5.25a1.25 1.25 0 0 1 2.5 0V9|M9.5 8.5V4.25a1.25 1.25 0 0 1 2.5 0V9|M12 8.75V5.5a1.25 1.25 0 0 1 2.5 0V11a5.5 5.5 0 0 1-5.5 5.5h-.3a4.5 4.5 0 0 1-3.6-1.8L3.3 12.2a1.3 1.3 0 0 1 2-1.6L7 12',
+  layers: 'M10 3.5 16.5 7 10 10.5 3.5 7 10 3.5z|M3.5 10.25 10 13.75l6.5-3.5|M3.5 13.5 10 17l6.5-3.5',
+  // The studio's mark: two cards (the KUMODeck "deck"), a little apart. The
+  // front one filled = the scene you have open; the one behind, a line = the
+  // code under it. Simple enough to hold at 16 px.
+  mark: 'M8.5 3.5h6A2 2 0 0 1 16.5 5.5v6|M5.5 6.5h6A2 2 0 0 1 13.5 8.5v6a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z',
+  // Six dots: "drag me" (list grips).
+  grip: 'o 7.5 5.5|o 12.5 5.5|o 7.5 10|o 12.5 10|o 7.5 14.5|o 12.5 14.5',
+  // The tool strip's four tools (the same pictures as the strip in the game, on this 20 grid): ⌘K rows.
+  toolMove: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
+  toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
+  toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
+  toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
+};
+
+/** Icons drawn filled as well as stroked (they read too thin as outlines). */
+const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
+/** Icons whose LAST part is filled (the mark's front card). */
+const LAST_FILLED = new Set(['mark']);
+
+function part(d        , filled         )             {
+  if (d[0] === 'o' || d[0] === 'O') {
+    const [, cx, cy, r] = d.split(' ');
+    const c = document.createElementNS(NS, 'circle');
+    c.setAttribute('cx', cx);
+    c.setAttribute('cy', cy);
+    if (d[0] === 'o') {
+      // A dot: fill only, so its size does not depend on the stroke width.
+      c.setAttribute('r', '1.3');
+      c.setAttribute('fill', 'currentColor');
+      c.setAttribute('stroke', 'none');
+    } else {
+      c.setAttribute('r', r);
+      c.setAttribute('fill', 'none');
+    }
+    return c;
+  }
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', d);
+  p.setAttribute('fill', filled ? 'currentColor' : 'none');
+  return p;
+}
+
+function icon(name                             )                {
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 20 20');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', `icon icon-${name}`);
+  // Stroke colour, caps and joins on the <svg> (inherited by every part); the
+  // width comes from CSS (svg.icon { stroke-width: var(--studio-icon-stroke) })
+  // so a .studio/ui/studio.css can make every icon bolder in one place.
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const filled = FILLED.has(name);
+  const parts = (PATHS[name] || '').split('|');
+  for (const [i, d] of parts.entries()) {
+    const el = part(d, filled || (LAST_FILLED.has(name) && i === parts.length - 1));
+    // The same on-screen line width at every icon size (see the rule above).
+    el.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.append(el);
+  }
+  return svg;
+}
+
+/**
+ * Put an icon and a label into a button. `showLabel: false` keeps the label
+ * for screen readers and the tooltip only (icon-only toolbar buttons).
+ * Re-rendering a button goes through here, so textContent never wipes the icon.
+ */
+function setButton(b                   , name               , label        , showLabel = true, tip         )       {
+  b.replaceChildren();
+  if (name) b.append(icon(name));
+  if (showLabel) {
+    const s = document.createElement('span');
+    s.className = 'label';
+    s.textContent = label;
+    b.append(s);
+  }
+  b.setAttribute('aria-label', label);
+  if (tip !== undefined) b.title = tip;
+  else if (!showLabel) b.title = label;
+}
+
+__def(__exports, "icon", () => icon);
+__def(__exports, "setButton", () => setButton);
+};
+__defs[21] = function (__exports) {
 'use strict';
 // timeline-model.ts
 
@@ -8764,7 +9034,7 @@ __defs[23] = function (__exports) {
 // WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
 // the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
                                                                                                                         
-const { clipAt, motionAt } = __require(22);
+const { clipAt, motionAt } = __require(19);
 
 const CHANNELS                  = ['p', 'r', 's'];
 /** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
@@ -9022,6 +9292,14 @@ function snapT(t        , max        , free = false)         {
   return rt(Math.min(max, Math.max(0, s)));
 }
 
+/** A KeyboardEvent.code as a person reads it: "KeyE" → "E", "Digit1" → "1", "ArrowUp" → "↑", "Space" → "Space". */
+function keyName(code        )         {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  const arrows                         = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+  return arrows[code] ?? code;
+}
+
 /** "0:01.6" — minutes, seconds and a tenth (the time readout; tabular figures keep it still while it runs). */
 function clock(t        )         {
   const s = Math.max(0, t);
@@ -9074,11 +9352,1439 @@ __def(__exports, "copyKeys", () => copyKeys);
 __def(__exports, "pasteKeys", () => pasteKeys);
 __def(__exports, "keyTimes", () => keyTimes);
 __def(__exports, "snapT", () => snapT);
+__def(__exports, "keyName", () => keyName);
 __def(__exports, "clock", () => clock);
 __def(__exports, "withClip", () => withClip);
 __def(__exports, "legacyOffsets", () => legacyOffsets);
 };
+__defs[22] = function (__exports) {
+'use strict';
+// timeline-panel.ts
+
+// The timeline plate (studio-timeline, 2026-10-22; CONTRACT.md §1.9): what is drawn and
+// what a press on it means. No state of its own beyond a drag in progress: timeline-wire.ts owns the state and gives
+// a fresh `view()` each render; every press goes back as one call on `act`.
+//
+//   ▶  0:01.6 / [4.0] s   ● Auto key   [Row ▾]   ↔ [Back and forth ▾]   Plays [At start ▾]   Keys [Ease in-out ▾]   ⌄
+//        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
+//   ▾ rowboat   ◇─────────◇──────◇                      ← one row per object (its keys at any property)
+//       Position ◆─────────◆──────◆                     ← ▾ opens position / angle / size
+//
+// WHY the plate redraws whole on render(): a few rows of a few keys (a game object's motion is tens of keys, not
+// thousands), and one code path is easier to keep right than patching. A drag keeps its pointer capture on the track
+// element, which is never replaced (only its children are), so a redraw mid-drag does not drop the drag.
+// WHY native <select>s for the clip, repeat, start and ease: words a screen reader reads, a finger and a keyboard work,
+// no menus of our own on a plate that floats (the card's Motion row made the same choice, motion-gui).
+// Colours (shell.css rule 2 + its one exception here): orange = your hand (picked keys, the picked object's row),
+// red = recording (● and the time line while auto key is on — the colour every camera and DAW uses for "writing now").
+                                                                                                                                              
+const { h } = __require(16);
+const { icon } = __require(20);
+const { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES } = __require(21);
+
+/** Starts menu, in two groups: what the loader plays by itself, then what your AI connects in the game's code. */
+const SELF_TRIGGERS                  = ['start', 'time', 'key', 'click', 'after', 'enter'];
+const AI_TRIGGERS                  = ['touch', 'cue', 'say'];
+/** "Chest opened!" → "chest-opened" (a cue name the game's code can say as is; CUE_RE in the schema). */
+const cueSlug = (s        ) => s.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'cue';
+
+/** A row's "when" in a few characters (the timeline's name column, the card's menu): "∞ Always", "⌨ E", "✦ chest-opened". */
+function whenShort(t                                                            , w            , until                    , repeat              )         {
+  const stop = until?.times ? ` · ${until.times}×` : until?.cue ? ` → ${until.cue}` : '';
+  if (w.on === 'start') return (repeat !== 'once' && !until ? `∞ ${t('tl.when.always')}` : `▶ ${t('tl.when.short.start')}`) + stop;
+  if (w.on === 'time') return `⏱ ${w.after} s${stop}`;
+  if (w.on === 'key') return `⌨ ${keyName(w.key)}${stop}`;
+  if (w.on === 'after') return `↳ ${w.use}${stop}`;
+  if (w.on === 'cue') return `✦ ${w.cue}${stop}`;
+  return `${AI_TRIGGERS.includes(w.on) ? '✦ ' : ''}${t(`tl.when.short.${w.on}`)}${stop}`;
+}
+
+                              
+              
+                
+                  
+                
+                          
+ 
+
+                               
+               
+                                                                          
+               
+                   
+                
+                                                                                                   
+                       
+                  
+                          
+                      
+                             
+                                                                                  
+                                    
+                  
+                                                                                                                
+                          
+                            
+               
+                                                                       
+                  
+                     
+                                                                
+                                                                                                     
+                            
+                        
+ 
+
+                               
+                          
+                                       
+                          
+               
+                                                                            
+                            
+                             
+                             
+                                
+                                                                   
+                               
+                                        
+                                                                        
+                           
+                  
+                            
+                             
+                             
+                                                                                
+                                               
+                                                                                                                       
+                                                      
+                                                                                                               
+                                 
+                                                                                       
+                  
+                                                                 
+ 
+
+/** A row's height: 28 px (a mouse), 36 on a phone (shell.css --tl-row; read so the rows and the lanes agree). */
+const ROW_PX = 28;
+
+function createTimelinePanel(view                    , act              ) {
+  const t = act.t;
+  const head = h('div', { class: 'tl-head' });
+  // The clip's "when" (studio-motion-triggers): Starts ▾ [its field]  Stops ▾ [its field]  …  Try ▶ ▶ ▶
+  const whenRow = h('div', { class: 'tl-when-row', dataset: { part: 'tl-when-row' } });
+  const ruler = h('div', { class: 'tl-ruler', role: 'slider', 'aria-valuemin': '0', dataset: { part: 'tl-ruler' } });
+  const names = h('div', { class: 'tl-names' });
+  const lanes = h('div', { class: 'tl-lanes', dataset: { part: 'tl-lanes' } });
+  const playhead = h('div', { class: 'tl-playhead', dataset: { part: 'tl-playhead' } }, h('span', { class: 'tl-cap' }));
+  const boxEl = h('div', { class: 'tl-box', hidden: true });
+  const track = h('div', { class: 'tl-track' }, ruler, lanes, playhead, boxEl);
+  const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, h('div', { class: 'tl-ruler-pad' }), names), track);
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, whenRow, body);
+
+  // Seconds ↔ px on the track (its own box: the names column is outside it).
+  const pad = 12;
+  const span = () => Math.max(1, view().span);
+  const xOf = (s        ) => pad + (s / span()) * Math.max(1, track.clientWidth - pad * 2);
+  const tOf = (x        ) => ((x - pad) / Math.max(1, track.clientWidth - pad * 2)) * span();
+  const localX = (e              ) => e.clientX - track.getBoundingClientRect().left;
+
+  // ----- the head -----
+  const select = (part        , label        , opts                                   , value        , onchange                     ) => {
+    const s = h('select', { 'aria-label': label, title: label, dataset: { part } });
+    for (const [v, text, disabled] of opts) {
+      const o = h('option', { value: v, text });
+      if (disabled) o.disabled = true;
+      if (v === value) o.selected = true;
+      s.append(o);
+    }
+    s.addEventListener('change', () => onchange(s.value));
+    return h('span', { class: 'tl-pick' }, s, icon('chevronDown'));
+  };
+
+  function renderHead(v              ) {
+    const c = v.clip;
+    const play = h('button', { type: 'button', class: `icon-btn tl-play${v.playing ? ' on' : ''}`, dataset: { action: 'tl-play', part: 'tl-play' }, 'aria-pressed': String(v.playing),
+      title: `${t(v.playing ? 'tl.pause' : 'tl.play')}  Space`, 'aria-label': t(v.playing ? 'tl.pause' : 'tl.play'), onclick: () => act.play(!v.playing) }, icon(v.playing ? 'pause' : 'play'));
+    const now = h('span', { class: 'tl-now', dataset: { part: 'tl-now' }, text: clock(v.time) });
+    const len = h('input', { type: 'text', inputmode: 'decimal', class: 'tl-len', 'aria-label': t('tl.len'), title: t('tl.len'), autocomplete: 'off', spellcheck: false, dataset: { part: 'tl-len' } });
+    len.value = (c?.len ?? v.span).toFixed(1);
+    len.disabled = !c;
+    len.addEventListener('focus', () => len.select());
+    len.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') len.blur();
+      e.stopPropagation();
+    });
+    len.addEventListener('change', () => {
+      const s = parseFloat(len.value.replace(',', '.'));
+      if (Number.isFinite(s)) act.len(s);
+      else len.value = (c?.len ?? v.span).toFixed(1);
+    });
+    const time = h('span', { class: 'tl-time' }, now, h('span', { class: 'tl-of', text: '/' }), len, h('span', { class: 'tl-of', text: 's' }));
+    const auto = h('button', { type: 'button', class: `tl-auto${v.auto ? ' on' : ''}`, dataset: { action: 'tl-auto', part: 'tl-auto' }, 'aria-pressed': String(v.auto),
+      title: t(v.auto ? 'tl.autoOn' : 'tl.autoOff'), onclick: () => act.auto(!v.auto) }, h('span', { class: 'tl-dot' }), h('span', { class: 'tl-auto-w', text: t('tl.auto') }));
+    // The clip menu: this object's motions, then "New: <template>", then rename / delete.
+    const opts                                    = [];
+    if (!v.clips.length) opts.push(['', t('tl.noClip'), true]);
+    for (const n of v.clips) opts.push([n, n]);
+    opts.push(['-', '──────', true]);
+    for (const k of TEMPLATES) opts.push([`new:${k}`, t('tl.new', { name: t(`tl.tpl.${k}`) }), !v.focus]);
+    if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
+    const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
+      if (val === 'rename') return void renaming(c .name);
+      act.clip(val);
+    });
+    clipSel.classList.add('tl-clip-pick');
+    const items         = [play, time, auto, clipSel];
+    if (c) {
+      items.push(select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                )));
+      // The motion is the Library's: used by 2 or more objects, a key changed here changes them all — say so, small.
+      if (v.uses > 1) items.push(h('span', { class: 'tl-uses', title: t('tl.usesTip'), dataset: { part: 'tl-uses' }, text: t('tl.uses', { n: v.uses }) }));
+    }
+    const ease = select('tl-ease', t('tl.easeTip'), [...(v.ease === 'mixed' || !v.ease ? [['', v.ease ? '—' : t('tl.ease'), true]                             ] : []),
+      ...(['linear', 'ease', 'step']                ).map((e) => [e, t(`tl.ease.${e}`)]                    )], v.ease && v.ease !== 'mixed' ? v.ease : '', (e) => act.ease(e              ));
+    ease.classList.toggle('off', !v.ease);
+    ease.classList.add('tl-ease-pick');
+    (ease.firstChild                     ).disabled = !v.ease;
+    items.push(h('span', { class: 'tl-gap' }), ease);
+    items.push(h('button', { type: 'button', class: 'icon-btn tl-fold', dataset: { action: 'tl-fold' }, title: t('tl.fold'), 'aria-label': t('tl.fold'), onclick: () => act.fold() }, icon('chevronDown')));
+    // Narrow: the end of the first row (▶ time ● ⌄); the menus start a new one (shell.css). Nothing on PC.
+    items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
+    head.replaceChildren(...items);
+    renderWhen(v);
+  }
+
+  /** A small text field that acts on Enter / leaving (Esc: as it was). */
+  const field = (part        , label        , value        , width        , done                        , mode                     = 'text') => {
+    const f = h('input', { type: 'text', inputmode: mode, class: 'tl-field', 'aria-label': label, title: label, autocomplete: 'off', spellcheck: false, style: `width:${width}`, dataset: { part } });
+    f.value = value;
+    f.addEventListener('focus', () => f.select());
+    f.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') f.blur();
+      if (e.key === 'Escape') (f.value = value), f.blur();
+    });
+    f.addEventListener('change', () => done(f.value));
+    return f;
+  };
+  /** A cue name menu: the scene's cues, then "New cue…" (the menu becomes a field for its name). */
+  const cueMenu = (part        , label        , now        , names          , pick                        ) => {
+    const all = [...new Set([now, ...names].filter(Boolean))];
+    const m = select(part, label, [...all.map((n) => [n, n]                    ), ['+', t('tl.cue.new')]], now, (val) => {
+      if (val !== '+') return pick(val);
+      const f = field(`${part}-new`, t('tl.cue.name'), '', '9em', (text) => (text.trim() ? pick(cueSlug(text)) : render()));
+      f.placeholder = 'chest-opened';
+      m.replaceWith(f);
+      f.focus();
+    });
+    return m;
+  };
+
+  /** The second row: when the focused clip starts and stops, and the scene's cues to try. */
+  function renderWhen(v              ) {
+    const c = v.clip;
+    const w = v.when;
+    const items         = [];
+    if (c && w) {
+      items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Starts ▾: two groups, so the person sees which ones the AI has to connect (purple ✦, the AI's colour).
+      const s = h('select', { 'aria-label': t('tl.starts'), title: t('tl.startsTip'), dataset: { part: 'tl-starts' } });
+      for (const [label, list] of [[t('tl.when.self'), SELF_TRIGGERS], [`✦ ${t('tl.when.ai')}`, AI_TRIGGERS]]                                    ) {
+        const g = h('optgroup', { label });
+        for (const on of list) {
+          const o = h('option', { value: on, text: t(`tl.when.${on}`) });
+          if (on === 'after' && !v.afterOpts.length) o.disabled = true;
+          if (on === w.on) o.selected = true;
+          g.append(o);
+        }
+        s.append(g);
+      }
+      s.addEventListener('change', () => act.setWhen(fresh(s.value                 , v)));
+      items.push(h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}` }, s, icon('chevronDown')));
+      items.push(...whenField(w, v));
+      // Stops ▾: never / after N rounds / a cue; then: stay or go back.
+      const u = v.until;
+      const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
+      items.push(h('span', { class: 'tl-lbl tl-lbl-stops', text: t('tl.stops') }));
+      items.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+        act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
+      if (u?.times) items.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
+        const n = Math.round(parseFloat(x));
+        if (n >= 1) act.setUntil({ ...u, times: Math.min(1000, n) });
+        else render();
+      }, 'decimal'), h('span', { class: 'tl-of', text: t('tl.until.timesUnit') }));
+      if (u?.cue) items.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
+      if (u) items.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
+    } else items.push(h('span', { class: 'tl-lbl', text: t('tl.when.none') }));
+    // Try: one ▶ per cue in the scene (Unity's Animator: the Parameters' Trigger buttons).
+    items.push(h('span', { class: 'tl-gap' }));
+    const tries = h('span', { class: 'tl-tries', dataset: { part: 'tl-tries' } }, h('span', { class: 'tl-lbl', text: t('tl.try') }));
+    for (const q of v.cues) {
+      tries.append(h('button', { type: 'button', class: `tl-cue${q.on ? ' on' : ''}${q.ai ? ' ai' : ''}`, title: t(q.ai ? 'tl.try.aiTip' : 'tl.try.tip', { name: q.label }), dataset: { cue: q.id, part: 'tl-cue' },
+        onclick: () => act.tryCue(q.id) }, h('i', { 'aria-hidden': 'true' }, icon('play')), h('span', { text: q.label })));
+    }
+    if (v.trying) tries.append(h('button', { type: 'button', class: 'tl-cue stop', title: t('tl.try.stop'), dataset: { part: 'tl-try-stop' }, onclick: () => act.tryStop() }, h('i', { 'aria-hidden': 'true' }, icon('pause')), h('span', { text: t('tl.try.stop') })));
+    items.push(tries);
+    whenRow.replaceChildren(...items);
+  }
+
+  /** A trigger with its first values, when the Starts menu changes. */
+  function fresh(on               , v              )             {
+    switch (on) {
+      case 'time': return { on, after: 3 };
+      case 'key': return { on, key: 'KeyE' };
+      case 'after': return { on, use: v.afterOpts[0] .use, key: v.afterOpts[0] .key };
+      case 'enter': return { on, area: v.defaultArea(), ...(v.player ? { who: v.player } : {}) };
+      case 'cue': return { on, cue: v.cueNames[0] ?? cueSlug(`${v.clip?.name ?? 'motion'}`) };
+      case 'say': return { on };
+      default: return { on }              ;
+    }
+  }
+
+  /** The field next to Starts: seconds, the key, which motion, the area's size, the cue, the words. */
+  function whenField(w            , v              )         {
+    if (w.on === 'time') return [field('tl-after', t('tl.when.afterTip'), String(w.after), '3em', (x) => {
+      const n = parseFloat(x.replace(',', '.'));
+      if (n >= 0) act.setWhen({ on: 'time', after: Math.min(600, Math.round(n * 1000) / 1000) });
+      else render();
+    }, 'decimal'), h('span', { class: 'tl-of', text: 's' })];
+    if (w.on === 'key') {
+      // Press, then press the key (the next key goes to this button only; Esc: as it was).
+      const b = h('button', { type: 'button', class: 'tl-keycap', title: t('tl.when.keyTip'), dataset: { part: 'tl-key-pick' }, text: keyName(w.key) });
+      b.addEventListener('click', () => {
+        b.textContent = t('tl.when.keyPress');
+        b.classList.add('listen');
+        const onKey = (e               ) => {
+          e.preventDefault();
+          e.stopPropagation();
+          b.removeEventListener('keydown', onKey);
+          if (e.key === 'Escape') return render();
+          act.setWhen({ on: 'key', key: e.code });
+        };
+        b.addEventListener('keydown', onKey);
+        b.addEventListener('blur', () => render(), { once: true });
+      });
+      return [b];
+    }
+    if (w.on === 'after') {
+      const val = `${w.key ?? v.focus}\n${w.use}`;
+      const opts = v.afterOpts.map((o) => [`${o.key}\n${o.use}`, o.label]                    );
+      if (!opts.some((o) => o[0] === val)) opts.unshift([val, `${w.key ?? ''} · ${w.use}`]);
+      return [select('tl-after-clip', t('tl.when.after'), opts, val, (x) => {
+        const [key, use] = x.split('\n');
+        act.setWhen({ on: 'after', use: use , ...(key && key !== v.focus ? { key } : {}) });
+      })];
+    }
+    if (w.on === 'enter') {
+      const size = w.area.size.map((n) => Math.round(n * 10) / 10).join(' × ');
+      const unit = w.area.size.length === 3 ? 'm' : 'px';
+      return [field('tl-area', t('tl.area.tip'), `${size} ${unit}`, '8.5em', (x) => {
+        const n = x.replace(/[^0-9.,\s×x*]/g, ' ').split(/[\s×x*,]+/).map(parseFloat).filter((q) => q > 0);
+        const k = w.area.size.length;
+        if (!n.length) return render();
+        const sz = Array.from({ length: k }, (_, i) => n[i] ?? n[n.length - 1] );
+        act.setWhen({ ...w, area: { ...w.area, size: sz } });
+      })];
+    }
+    if (w.on === 'cue') return [cueMenu('tl-cue-name', t('tl.when.cue'), w.cue, v.cueNames, (n) => act.setWhen({ on: 'cue', cue: n }))];
+    if (w.on === 'say') {
+      const f = field('tl-when', t('tl.when'), w.say ?? '', '200px', (x) => act.setWhen(x.trim() ? { on: 'say', say: x.trim().slice(0, 200) } : { on: 'say' }));
+      f.classList.add('tl-when');
+      f.placeholder = t('tl.when');
+      return [f];
+    }
+    return [];
+  }
+
+  /** The clip menu's "Rename…": the menu becomes a field with the name, Enter / leaving keeps it, Esc goes back. */
+  function renaming(name        ) {
+    const pick = head.querySelector('.tl-clip-pick');
+    if (!pick) return;
+    const f = h('input', { type: 'text', class: 'tl-rename', 'aria-label': t('tl.renameTip'), title: t('tl.renameTip'), maxlength: '40', dataset: { part: 'tl-rename' } });
+    f.value = name;
+    let done = false;
+    const finish = (keep         ) => {
+      if (done) return;
+      done = true;
+      if (keep && f.value.trim() && f.value.trim() !== name) act.rename(f.value.trim());
+      else render();
+    };
+    f.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      if (e.key === 'Escape') finish(false);
+    });
+    f.addEventListener('blur', () => finish(true));
+    pick.replaceWith(f);
+    f.focus();
+    f.select();
+  }
+
+  // ----- rows and keys -----
+                                                                   
+  let laneList         = [];
+
+  let ROW = ROW_PX;
+  function renderRows(v              ) {
+    ROW = parseFloat(getComputedStyle(el).getPropertyValue('--tl-row')) || ROW_PX;
+    names.replaceChildren();
+    lanes.replaceChildren();
+    laneList = [];
+    if (!v.rows.length) {
+      lanes.append(h('p', { class: 'tl-empty', text: t('tl.empty') }));
+      return;
+    }
+    let y = 0;
+    for (const r of v.rows) {
+      const chs = CHANNELS.filter((ch) => r.clip?.keys[ch]?.length);
+      const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key } },
+        h('button', { type: 'button', class: `tl-twist${r.open ? ' open' : ''}`, 'aria-expanded': String(r.open), title: t('tl.expand'), 'aria-label': t('tl.expand'), onclick: () => act.openRow(r.key) }, icon('chevronRight')),
+        h('button', { type: 'button', class: 'tl-obj', text: r.label, onclick: () => act.pickRow(r.key) }),
+        r.clip ? h('span', { class: 'tl-clipname', text: r.clip.name }) : null,
+        (() => {
+          const rw = v.rowWhen(r.key);
+          if (!rw || v.narrow) return null;
+          const ai = AI_TRIGGERS.includes(rw.when.on);
+          return h('span', { class: `tl-whenchip${ai ? ' ai' : ''}`, dataset: { part: 'tl-whenchip' }, text: whenShort(t, rw.when, rw.until, rw.repeat) });
+        })());
+      names.append(name);
+      const lane = h('div', { class: `tl-lane${r.picked ? ' picked' : ''}`, style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } });
+      lanes.append(lane);
+      laneList.push({ key: r.key, ch: null, y });
+      drawKeys(lane, r, null, keyTimes(r.clip), v);
+      y += ROW;
+      if (!r.open) continue;
+      for (const ch of CHANNELS) {
+        names.append(h('div', { class: `tl-name sub${chs.includes(ch) ? '' : ' none'}`, style: `height:${ROW}px`, text: t(`tl.ch.${ch}`) }));
+        const sub = h('div', { class: 'tl-lane sub', style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key, ch } });
+        lanes.append(sub);
+        laneList.push({ key: r.key, ch, y });
+        drawKeys(sub, r, ch, keyTimes(r.clip, [ch]), v);
+        y += ROW;
+      }
+    }
+    lanes.style.height = `${y}px`;
+  }
+
+  function drawKeys(lane             , r             , ch                      , times          , v              ) {
+    if (times.length > 1) lane.append(h('div', { class: 'tl-span', style: `left:${xOf(times[0] )}px;width:${xOf(times[times.length - 1] ) - xOf(times[0] )}px` }));
+    for (const s of times) {
+      const refs = refsAt(r, ch, s);
+      const on = refs.length > 0 && refs.every((x) => v.picked(x));
+      const label = t('tl.key', { ch: ch ? t(`tl.ch.${ch}`) : r.label, t: s.toFixed(2) });
+      lane.append(h('div', { class: `tl-key${ch ? '' : ' sum'}${on ? ' on' : ''}`, style: `left:${xOf(s)}px`, role: 'button', 'aria-pressed': String(on), 'aria-label': label, title: label,
+        dataset: { key: r.key, ch: ch ?? '', t: String(s), part: 'tl-key' } }));
+    }
+  }
+
+  /** The keys one diamond stands for: one key, or every property's key at that time (an object row's diamond). */
+  function refsAt(r             , ch                      , s        )           {
+    const chs = ch ? [ch] : CHANNELS;
+    return chs.filter((c) => r.clip?.keys[c]?.some((k) => sameT(k.t, s))).map((c) => ({ key: r.key, ch: c, t: s }));
+  }
+  const rowOf = (key        ) => view().rows.find((r) => r.key === key);
+
+  // ----- presses on the track -----
+  let drag                                                                                                                               = null;
+  track.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    act.touched();
+    el.focus({ preventScroll: true });
+    const x = localX(e);
+    const y = e.clientY - lanes.getBoundingClientRect().top;
+    const target = e.target               ;
+    const add = e.shiftKey || e.metaKey || e.ctrlKey;
+    track.setPointerCapture(e.pointerId);
+    e.preventDefault();
+    if (ruler.contains(target) || target === playhead || playhead.contains(target)) {
+      drag = { kind: 'scrub', x0: x, y0: y, id: e.pointerId, moved: false, add };
+      act.scrub(Math.max(0, tOf(x)), false);
+      return;
+    }
+    const k = target.closest             ('[data-part=tl-key]');
+    if (k) {
+      const r = rowOf(k.dataset.key );
+      const refs = r ? refsAt(r, (k.dataset.ch || null)                        , Number(k.dataset.t)) : [];
+      const v = view();
+      const on = refs.every((x) => v.picked(x));
+      // A press on a picked key keeps the picking (so several drag together); Shift on a picked key unpicks it on release.
+      if (!on) act.pickKeys(refs, add);
+      drag = { kind: 'keys', x0: x, y0: y, id: e.pointerId, moved: false, add: add && on, refs };
+      return;
+    }
+    drag = { kind: 'box', x0: x, y0: y, id: e.pointerId, moved: false, add };
+  });
+  track.addEventListener('pointermove', (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const x = localX(e);
+    const y = e.clientY - lanes.getBoundingClientRect().top;
+    if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) < 3) return;
+    drag.moved = true;
+    if (drag.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), false);
+    else if (drag.kind === 'keys') act.drag(tOf(x) - tOf(drag.x0), false, e.altKey);
+    else {
+      const [l, r] = [Math.min(x, drag.x0), Math.max(x, drag.x0)];
+      const [tp, bt] = [Math.min(y, drag.y0), Math.max(y, drag.y0)];
+      const top = lanes.offsetTop;
+      Object.assign(boxEl.style, { left: `${l}px`, width: `${r - l}px`, top: `${top + tp}px`, height: `${bt - tp}px` });
+      boxEl.hidden = false;
+    }
+  });
+  const up = (e              , cancel         ) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const d = drag;
+    drag = null;
+    const x = localX(e);
+    const y = e.clientY - lanes.getBoundingClientRect().top;
+    if (d.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), true);
+    else if (d.kind === 'keys') {
+      if (d.moved) act.drag(cancel ? 0 : tOf(x) - tOf(d.x0), true, e.altKey);
+      else if (d.add && d.refs) {
+        // Shift-press on a picked key without moving: unpick it (the keys it stood for, kept from the press).
+        const off = d.refs;
+        act.pickKeys(allPicked(view()).filter((p) => !off.some((o) => o.ch === p.ch && o.key === p.key && sameT(o.t, p.t))), false);
+      }
+    } else {
+      boxEl.hidden = true;
+      if (!d.moved) {
+        if (!d.add) act.pickKeys([], false);
+        return;
+      }
+      const [t0, t1] = [tOf(Math.min(x, d.x0)), tOf(Math.max(x, d.x0))];
+      const [y0, y1] = [Math.min(y, d.y0), Math.max(y, d.y0)];
+      const v = view();
+      const refs           = [];
+      for (const l of laneList) {
+        if (l.y + ROW < y0 || l.y > y1) continue;
+        const r = v.rows.find((x) => x.key === l.key);
+        if (!r) continue;
+        for (const s of keyTimes(r.clip, l.ch ? [l.ch] : CHANNELS)) if (s >= t0 && s <= t1) refs.push(...refsAt(r, l.ch, s));
+      }
+      act.pickKeys(refs, d.add);
+    }
+  };
+  track.addEventListener('pointerup', (e) => up(e, false));
+  track.addEventListener('pointercancel', (e) => up(e, true));
+  // A double press on a key puts the time line on it (Blender: ctrl-click / Unity: double-click).
+  track.addEventListener('dblclick', (e) => {
+    const k = (e.target               ).closest             ('[data-part=tl-key]');
+    if (k) act.scrub(Number(k.dataset.t), true);
+  });
+  el.addEventListener('pointerdown', () => act.touched());
+  el.addEventListener('keydown', (e) => {
+    const tag = (e.target               ).tagName;
+    if (tag === 'INPUT' || tag === 'SELECT') return;
+    if (act.key(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+
+  /** Every picked key of the rows on screen (for "unpick one"). */
+  function allPicked(v              )           {
+    const out           = [];
+    for (const r of v.rows) for (const ch of CHANNELS) for (const k of r.clip?.keys[ch] ?? []) if (v.picked({ key: r.key, ch, t: k.t })) out.push({ key: r.key, ch, t: k.t });
+    return out;
+  }
+
+  /** Only the time line and the readout: every frame while ▶ plays (the rows stay as they are). */
+  function place(v               = view()) {
+    const x = xOf(Math.min(v.time, span()));
+    playhead.style.transform = `translateX(${x.toFixed(1)}px)`;
+    (playhead.firstChild               ).textContent = v.time.toFixed(1);
+    const now = head.querySelector('[data-part=tl-now]');
+    if (now) now.textContent = clock(v.time);
+    ruler.setAttribute('aria-valuenow', v.time.toFixed(2));
+    ruler.setAttribute('aria-valuemax', span().toFixed(2));
+  }
+
+  function renderRuler(v              ) {
+    ruler.replaceChildren();
+    ruler.setAttribute('aria-label', t('tl.ruler'));
+    ruler.title = t('tl.ruler');
+    const s = span();
+    // A tick every second (every half on a wide plate with a short span), labelled on whole seconds.
+    const step = s <= 4 && !v.narrow ? 0.5 : s <= 12 ? 1 : s <= 40 ? 5 : 10;
+    for (let x = 0; x <= s + 1e-6; x += step) {
+      const whole = Math.abs(x - Math.round(x)) < 1e-6;
+      ruler.append(h('span', { class: `tl-tick${whole ? '' : ' half'}`, style: `left:${xOf(x)}px`, text: whole ? `${Math.round(x)}s` : '' }));
+    }
+    const c = v.clip;
+    // Past the picked clip's end: shaded (keys cannot go there; its length is the field in the head).
+    if (c && c.len < s) lanes.append(h('div', { class: 'tl-after', style: `left:${xOf(c.len)}px` }));
+  }
+
+  function render() {
+    const v = view();
+    el.classList.toggle('rec', v.auto);
+    el.classList.toggle('narrow', v.narrow);
+    renderHead(v);
+    renderRows(v);
+    renderRuler(v);
+    place(v);
+  }
+
+  // The track's width changes with the window: the keys' places come from it.
+  new ResizeObserver(() => el.isConnected && !el.hidden && render()).observe(track);
+
+  return { el, render, place };
+}
+
+__def(__exports, "SELF_TRIGGERS", () => SELF_TRIGGERS);
+__def(__exports, "AI_TRIGGERS", () => AI_TRIGGERS);
+__def(__exports, "cueSlug", () => cueSlug);
+__def(__exports, "whenShort", () => whenShort);
+__def(__exports, "createTimelinePanel", () => createTimelinePanel);
+};
+__defs[23] = function (__exports) {
+'use strict';
+// library-motions.ts
+
+// The motions in the Library (studio-motion-triggers, 2026-10-22; ShellContext.motions): their tiles (the "Motion" filter,
+// and All), their detail, and the pick that goes to the ask box with the objects and files.
+//
+// A request (2026-10-22): "Treat a motion as one of the assets: then a creator ties motions to objects and asks the AI 'play this
+// motion when …'". So a motion has a tile like a sound or a model: a picture of its path seen from above (the position
+// keys; a turn or a size change gets its own small sign), its name, its length and how it repeats, and what it is on.
+// Pointing at a tile plays it on the tile (a dot runs along the path, the loader's own clipAt), so a person can tell
+// "Bob" from "Hop" without opening the game.
+//
+// What the detail does: "Attach to <the picked object>" (or any object from its menu), "Ask your AI…" (the ask box
+// with this motion named), Duplicate ("Hop 2": its own from now on), Delete (it comes off every object; ⌘Z). Rename on
+// the title. The work is timeline-wire.ts's (attach / detach / duplicateLib / deleteLib / renameLib): one undo step each.
+//
+// The pick lives here (a Set of names): Shift / Multi-select adds to it and keeps the objects and files picked (the
+// "this crate and this Hop" ask); a plain press picks this motion alone. Names are the person's text: textContent only.
+                                                                                                                 
+const { clipAt } = __require(19);
+const { h } = __require(16);
+const { displayName } = __require(14);
+const { whenShort } = __require(22);
+
+                                     
+                                                                 
+                          
+                                                                                     
+                  
+                                                                     
+                          
+                   
+                                          
+                                         
+                             
+                                                                                     
+                                                  
+                                                                                                  
+                 
+                                                                                    
+                  
+ 
+
+                                                            
+                                                      
+                     
+ 
+
+const NS = 'http://www.w3.org/2000/svg';
+const svgEl = (tag        , attrs                                 ) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+  return e;
+};
+const repeatSign = (r                          ) => (r === 'pingpong' ? '↔' : r === 'loop' ? '↻' : '→');
+
+/**
+ * A motion's picture: the position keys seen from above (x across, z down), fitted into the square with a margin, the
+ * keys as small diamonds and a dot that runs when `play` is called. No position keys: a turning arrow (angle keys) or
+ * two nested squares (size keys).
+ */
+function motionPicture(m               , px        )                                                 {
+  const svg = svgEl('svg', { viewBox: '0 0 100 100', width: px, height: px, class: 'lib-motion-pic', 'aria-hidden': 'true' })                 ;
+  const ks = m.keys.p ?? [];
+  let toXY                                             = null;
+  if (ks.length) {
+    // From above: x → right, z → down (3D); y → down (2D, already screen-like). A path straight up (only y changes) is
+    // drawn from the side instead (x across, y up), or it would be a dot.
+    const flat = ks.every((k) => Math.abs((k.v[0] ?? 0) - (ks[0] .v[0] ?? 0)) < 1e-6 && Math.abs((k.v[2] ?? 0) - (ks[0] .v[2] ?? 0)) < 1e-6);
+    const pick = (v          )                   => (v.length === 3 ? (flat ? [v[0] , -v[1] ] : [v[0] , v[2] ]) : [v[0] , v[1] ]);
+    const pts             = [];
+    for (let i = 0; i <= 48; i++) {
+      const a = clipAt({ ...m, repeat: 'once' }, (m.len * i) / 48)                          ;
+      if (a.p) pts.push(pick(a.p));
+    }
+    for (const k of ks) pts.push(pick(k.v));
+    const xs = pts.map((p) => p[0] ), ys = pts.map((p) => p[1] );
+    const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const span = Math.max(x1 - x0, y1 - y0, 1e-6);
+    const s = 64 / span;
+    toXY = (v) => {
+      const [x, y] = pick(v);
+      return [50 + (x - (x0 + x1) / 2) * s, 50 + (y - (y0 + y1) / 2) * s];
+    };
+    const line = [];
+    for (let i = 0; i <= 48; i++) {
+      const a = clipAt({ ...m, repeat: 'once' }, (m.len * i) / 48)                          ;
+      if (a.p) line.push(toXY(a.p));
+    }
+    svg.append(svgEl('path', { d: line.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(''), fill: 'none', stroke: 'currentColor', 'stroke-width': 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.7 }));
+    for (const k of ks) {
+      const [x, y] = toXY(k.v);
+      svg.append(svgEl('rect', { x: x - 3.5, y: y - 3.5, width: 7, height: 7, transform: `rotate(45 ${x} ${y})`, class: 'lib-motion-key' }));
+    }
+  } else if (m.keys.r?.length) {
+    svg.append(svgEl('path', { d: 'M50 24 A 26 26 0 1 1 24 50', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.4, 'stroke-linecap': 'round', opacity: 0.7 }));
+    svg.append(svgEl('path', { d: 'M50 16 L58 24 L50 32', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', opacity: 0.7 }));
+  } else if (m.keys.s?.length) {
+    svg.append(svgEl('rect', { x: 34, y: 34, width: 32, height: 32, rx: 4, fill: 'none', stroke: 'currentColor', 'stroke-width': 2.2, opacity: 0.5 }));
+    svg.append(svgEl('rect', { x: 22, y: 22, width: 56, height: 56, rx: 6, fill: 'none', stroke: 'currentColor', 'stroke-width': 2.2, opacity: 0.7, 'stroke-dasharray': '4 4' }));
+  }
+  const dot = svgEl('circle', { r: 6, class: 'lib-motion-dot', cx: 50, cy: 50 });
+  const place = (t        ) => {
+    const a = clipAt(m, t)                                              ;
+    if (toXY && a.p) {
+      const [x, y] = toXY(a.p);
+      dot.setAttribute('cx', x.toFixed(1));
+      dot.setAttribute('cy', y.toFixed(1));
+    } else if (a.r) {
+      const ang = (a.r.length === 3 ? a.r[1]  : a.r[0] ) - Math.PI / 2;
+      dot.setAttribute('cx', (50 + 26 * Math.cos(ang)).toFixed(1));
+      dot.setAttribute('cy', (50 + 26 * Math.sin(ang)).toFixed(1));
+    }
+  };
+  place(m.len / 2);
+  svg.append(dot);
+  let raf = 0;
+  return {
+    el: svg,
+    play(on) {
+      cancelAnimationFrame(raf);
+      if (!on) return place(m.len / 2);
+      const t0 = performance.now();
+      const loop = (now        ) => {
+        if (!svg.isConnected) return;
+        // A once motion plays again from its start after a short rest, so the tile keeps showing what it does.
+        const t = (now - t0) / 1000;
+        place(m.repeat && m.repeat !== 'once' ? t : t % (m.len + 0.6));
+        raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    },
+  };
+}
+
+function createLibraryMotions(d                    )                     {
+  const pick = new Set        ();
+  let pickHook                         = () => undefined;
+  const name = (k        ) => {
+    const it = d.items().find((i) => i.key === k);
+    return it ? displayName(it, d.t) : k;
+  };
+  const press = (m        , add         ) => {
+    const many = add || d.multi();
+    pickHook(many);
+    if (many) {
+      if (pick.has(m)) pick.delete(m);
+      else pick.add(m);
+    } else {
+      pick.clear();
+      pick.add(m);
+    }
+    d.changed();
+  };
+
+  function tiles(q        )                                      {
+    const list = d.list().filter((m) => !q || m.name.toLowerCase().includes(q));
+    const out                = [];
+    for (const m of list) {
+      const on = pick.has(m.name);
+      const pic = motionPicture(m, 96);
+      const users = d.usage(m.name);
+      const meta = h('span', { class: 'gsl-meta' }, h('span', { class: 'lib-motion-on', text: users.length ? d.t('lib.motion.on', { names: users.slice(0, 2).map((u) => name(u.key)).join(', ') + (users.length > 2 ? ` +${users.length - 2}` : '') }) : d.t('lib.motion.free') }));
+      const tile = h('div', { class: `gsl-tile lib-motion${on ? ' gsl-open' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': String(on), title: m.name,
+        dataset: { kind: 'motion', motion: m.name } },
+      h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
+      h('span', { class: 'gsl-name' }, m.name, h('span', { class: 'lib-motion-len', text: ` ${(Math.round(m.len * 10) / 10).toFixed(1)} s ${repeatSign(m.repeat)}` })), meta);
+      tile.addEventListener('pointerenter', () => pic.play(true));
+      tile.addEventListener('pointerleave', () => pic.play(on));
+      if (on) pic.play(true);
+      tile.addEventListener('click', (e) => press(m.name, e.shiftKey));
+      tile.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          press(m.name, e.shiftKey);
+        }
+      });
+      out.push(tile);
+    }
+    return { tiles: out, n: list.length };
+  }
+
+  function detail()                                          {
+    const names = [...pick].filter((n) => d.list().some((m) => m.name === n));
+    const m = d.list().find((x) => x.name === names[names.length - 1]);
+    if (!m) return null;
+    const el = h('div', { class: 'lib-motion-detail', dataset: { kind: 'motion', part: 'motion-detail' } });
+    const pic = motionPicture(m, 120);
+    pic.play(true);
+    const close = h('button', { type: 'button', class: 'gsl-btn gsl-close', 'aria-label': d.t('btn.close'), text: '×', onclick: () => (pick.clear(), d.changed()) });
+    const keys = (['p', 'r', 's']         ).reduce((n, ch) => n + (m.keys[ch]?.length ?? 0), 0);
+    const title = h('b', { text: m.name, title: d.t('lib.motion.renameTip'), class: 'lib-motion-title', dataset: { part: 'motion-title' } });
+    const head = h('div', { class: 'gsl-dtitle' }, title,
+      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }));
+    // Rename: the title becomes a field (Enter / leaving keeps it, Esc goes back). Every object that uses it follows.
+    const rename = () => {
+      const f = h('input', { type: 'text', class: 'tl-rename', maxlength: '40', 'aria-label': d.t('lib.motion.renameTip'), dataset: { part: 'motion-rename' } });
+      f.value = m.name;
+      let done = false;
+      const end = (keep         ) => {
+        if (done) return;
+        done = true;
+        const v = f.value.trim();
+        const n = keep && v && v !== m.name ? d.rename(m.name, v) : null;
+        if (n) (pick.clear(), pick.add(n));
+        d.changed();
+      };
+      f.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') end(true);
+        if (e.key === 'Escape') end(false);
+      });
+      f.addEventListener('blur', () => end(true));
+      title.replaceWith(f);
+      f.focus();
+      f.select();
+    };
+    title.addEventListener('dblclick', rename);
+    el.append(h('div', { class: 'gsl-dhead' }, h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el), head, close));
+    // What it is on, and when each one starts.
+    const rows = h('dl', { class: 'shelf-rows' });
+    const users = d.usage(m.name);
+    const on = h('dd', { class: 'lib-motion-users' });
+    if (!users.length) on.append(h('span', { class: 'muted', text: d.t('lib.motion.free') }));
+    for (const u of users) on.append(h('span', { class: 'lib-motion-user', dataset: { key: u.key } }, h('b', { text: name(u.key) }), ' ', h('span', { class: 'muted', text: whenShort(d.t, u.when, u.until ?? null, m.repeat ?? 'once') })));
+    rows.append(h('dt', { text: d.t('lib.motion.onLabel') }), on);
+    // Attach to any object: a menu of the scene's objects (the picked one first).
+    const free = d.items().filter((i) => !users.some((u) => u.key === i.key));
+    if (free.length) {
+      const sel = h('select', { class: 'lib-motion-attach', 'aria-label': d.t('lib.motion.attachTo'), dataset: { part: 'motion-attach-to' } });
+      sel.append(h('option', { value: '', text: d.t('lib.motion.attachPick') }));
+      for (const i of free) sel.append(h('option', { value: i.key, text: displayName(i, d.t) }));
+      sel.addEventListener('change', () => sel.value && (d.attach(sel.value, m.name), d.changed()));
+      rows.append(h('dt', { text: d.t('lib.motion.attachTo') }), h('dd', {}, sel));
+    }
+    el.append(rows);
+    const acts = h('div', { class: 'shelf-acts' });
+    const target = d.picked();
+    if (target && !users.some((u) => u.key === target)) {
+      acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'motion-attach' }, text: d.t('lib.motion.attach', { name: name(target) }),
+        onclick: () => (d.attach(target, m.name), d.changed()) }));
+    }
+    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi () }));
+    acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-rename' }, text: d.t('tl.rename'), onclick: rename }));
+    acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-duplicate' }, text: d.t('lib.motion.duplicate'), onclick: () => {
+      const n = d.duplicate(m.name);
+      if (n) (pick.clear(), pick.add(n));
+      d.changed();
+    } }));
+    acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-delete' }, text: d.t('ops.remove'), title: d.t('lib.motion.deleteTip'), onclick: () => {
+      pick.delete(m.name);
+      d.remove(m.name);
+      d.changed();
+    } }));
+    el.append(acts);
+    return { el, key: `motion:${m.name}` };
+  }
+
+  return {
+    count: () => d.list().length,
+    tiles,
+    detail,
+    clear() {
+      if (!pick.size) return;
+      pick.clear();
+    },
+    onPick(fn) {
+      pickHook = fn;
+    },
+    picked: () => [...pick].filter((n) => d.list().some((m) => m.name === n)),
+  };
+}
+
+__def(__exports, "motionPicture", () => motionPicture);
+__def(__exports, "createLibraryMotions", () => createLibraryMotions);
+};
 __defs[24] = function (__exports) {
+'use strict';
+// ../core/rules.ts
+
+// Game rules: fit the editor to one game without touching the editor or the
+// adapter (CONTRACT.md §7).
+//
+// `.studio/studio.json` (plain settings the AI writes) and the optional
+// `constrain()` from `.studio/tools.js` sit between the bridge and the
+// adapter, as one more StudioAdapter. So snapping, bounds and per-kind rules
+// work the same for three.js, PixiJS, Phaser, a hand-written canvas game or
+// anything else, and the adapters stay unaware of them.
+//
+// What is constrained: edits made with handles, keys and game tools (drag,
+// rotate, scale, nudgeY). What is not: setPose() — undo/redo and loading a
+// saved file must restore poses exactly, even if the rules changed since.
+                                                                                                               
+
+const DEG = Math.PI / 180;
+
+                              
+                            
+                       
+ 
+
+/** "crate*" → /^crate.*$/ (only * and ? are special). */
+function globToRe(glob        )         {
+  const esc = glob.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  return new RegExp(`^${esc}$`, 'i');
+}
+
+                             
+                  
+                  
+                      
+                  
+                 
+                        
+                    
+                    
+                  
+                 
+ 
+
+/** All rules whose glob matches the key, label or group, merged in order (later wins). */
+function rulesFor(item                                       , config                   )             {
+  const out             = { hidden: false, locked: false, lockHeight: false, rotate: true, scale: true, grid: config?.snap?.grid, angle: config?.snap?.angle };
+  for (const r of (config?.rules || [])              ) {
+    if (!r || typeof r.match !== 'string') continue;
+    const re = globToRe(r.match);
+    if (!re.test(item.key) && !re.test(item.label || '') && !(item.group && re.test(item.group))) continue;
+    if (typeof r.hidden === 'boolean') out.hidden = r.hidden;
+    if (typeof r.locked === 'boolean') out.locked = r.locked;
+    if (typeof r.lockHeight === 'boolean') out.lockHeight = r.lockHeight;
+    if (typeof r.rotate === 'boolean') out.rotate = r.rotate;
+    if (typeof r.scale === 'boolean') out.scale = r.scale;
+    else if (r.scale && typeof r.scale === 'object') {
+      out.scale = true;
+      if (typeof r.scale.default === 'number' && r.scale.default > 0) out.scaleDefault = r.scale.default;
+      if (typeof r.scale.min === 'number' && r.scale.min > 0) out.scaleMin = r.scale.min;
+      if (typeof r.scale.max === 'number' && r.scale.max > 0) out.scaleMax = r.scale.max;
+    }
+    if (r.snap && typeof r.snap === 'object') {
+      if (r.snap.grid !== undefined) out.grid = r.snap.grid;
+      if (r.snap.angle !== undefined) out.angle = r.snap.angle;
+    }
+  }
+  return out;
+}
+
+const roundTo = (v        , step        ) => (step > 0 ? Number((Math.round(v / step) * step).toFixed(6)) : v);
+const wrap = (a        ) => {
+  let r = a % (2 * Math.PI);
+  if (r <= -Math.PI) r += 2 * Math.PI;
+  if (r > Math.PI) r -= 2 * Math.PI;
+  return r;
+};
+
+/**
+ * Snap a position to the grid and clamp it to the bounds.
+ * 3D: a single grid number applies to x and z (heights stay free); [x, y, z]
+ * sets each axis. 2D: a single number applies to x and y.
+ */
+function placeOnGrid(p          , grid                      , bounds                                  , dim             )           {
+  const out = p.slice();
+  if (grid !== undefined) {
+    const steps = Array.isArray(grid) ? grid : dim === '3d' ? [grid, 0, grid] : [grid, grid];
+    for (let i = 0; i < out.length; i++) {
+      const st = Number(steps[i]);
+      if (Number.isFinite(st) && st > 0) out[i] = roundTo(out[i] , st);
+    }
+  }
+  if (bounds && Array.isArray(bounds.min) && Array.isArray(bounds.max)) {
+    for (let i = 0; i < out.length; i++) {
+      const lo = bounds.min[i], hi = bounds.max[i];
+      if (typeof lo === 'number' && out[i]  < lo) out[i] = lo;
+      if (typeof hi === 'number' && out[i]  > hi) out[i] = hi;
+    }
+  }
+  return out;
+}
+
+const samePose = (a      , b      ) => JSON.stringify(a) === JSON.stringify(b);
+
+function withRules(inner               , holder             )                {
+  // Raw (unsnapped) angle per object while it is being turned, so small
+  // finger moves add up instead of being swallowed by the angle snap.
+  const rawR = new Map                ();
+  let cache = new Map              ();
+
+  const refresh = () => {
+    cache = new Map(inner.list().map((i) => [i.key, i]));
+    return cache;
+  };
+  const itemOf = (key        ) => cache.get(key) || refresh().get(key);
+  const ruleOf = (key        ) => {
+    const it = itemOf(key);
+    return it ? rulesFor(it, holder.config) : null;
+  };
+  const decorate = (list        )         => {
+    cache = new Map(list.map((i) => [i.key, i]));
+    const out         = [];
+    for (const it of list) {
+      const r = rulesFor(it, holder.config);
+      if (r.hidden) continue;
+      out.push({
+        ...it,
+        rotatable: it.rotatable && r.rotate && !r.locked,
+        scalable: it.scalable && r.scale && !r.locked,
+        movable: it.movable !== false && !r.locked,
+        liftable: it.liftable !== false && !r.lockHeight && !r.locked,
+        defaultScale: r.scaleDefault ?? it.defaultScale,
+      });
+    }
+    return out;
+  };
+  const current = (key        )              => inner.anchor(key)?.pose ?? itemOf(key)?.pose ?? null;
+
+  /** Grid, bounds, then the game's own constrain(); writes back only when something changed. */
+  const fix = (key        , pose      , moved         )       => {
+    const r = ruleOf(key);
+    let next       = { ...pose, p: pose.p.slice() };
+    if (moved) next.p = placeOnGrid(next.p, r?.grid, holder.config?.bounds, inner.dim);
+    else next.p = placeOnGrid(next.p, undefined, holder.config?.bounds, inner.dim);
+    const item = itemOf(key);
+    for (const e of holder.ext) {
+      if (e.constrain && item) {
+        try {
+          const c = e.constrain(key, next, item);
+          if (c && Array.isArray(c.p)) next = c;
+        } catch (err) {
+          console.warn('[studio] constrain() failed:', err);
+        }
+      }
+    }
+    if (samePose(next, pose)) return pose;
+    return inner.setPose(key, next) || pose;
+  };
+
+  const ruled                = {
+    ...inner,
+    list: () => decorate(inner.list()),
+    begin: () => decorate(inner.begin()),
+    pickNear(x, y, radius) {
+      return inner.pickNear(x, y, radius).filter((k) => !ruleOf(k)?.hidden);
+    },
+    grab(key, x, y) {
+      const r = ruleOf(key);
+      if (!r || r.locked || r.hidden) return false;
+      rawR.delete(key);
+      return inner.grab(key, x, y);
+    },
+    drag(key, x, y) {
+      const r = ruleOf(key);
+      if (!r || r.locked) return current(key) ;
+      const before = r.lockHeight ? current(key) : null;
+      let after = inner.drag(key, x, y);
+      // Snap to surfaces (bridge/snap.ts) moves the height with the ground under it: not for a height the game holds.
+      if (before && after.p[1] !== before.p[1]) after = inner.setPose(key, { ...after, p: [after.p[0] , before.p[1] , after.p[2] ] }) || after;
+      return fix(key, after, true);
+    },
+    rotate(key, d) {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || !r.rotate) return before ;
+      const b = before.r ?? 0;
+      const after = inner.rotate(key, d);
+      const step = (r.angle ?? 0) * DEG;
+      if (!(step > 0)) return fix(key, after, false);
+      // Keep accumulating the unsnapped angle; restart from the object's
+      // angle when it no longer matches (undo, another gesture).
+      let raw = rawR.get(key);
+      if (raw === undefined || Math.abs(wrap(roundTo(raw, step) - b)) > 1e-6) raw = b;
+      raw += wrap((after.r ?? 0) - b);
+      rawR.set(key, raw);
+      const target = wrap(roundTo(raw, step));
+      const snapped = Math.abs(wrap(target - (after.r ?? 0))) > 1e-9 ? inner.setPose(key, { ...after, r: target }) || after : after;
+      return fix(key, snapped, false);
+    },
+    // Turning around another axis, or around the box middle (3D): blocked where
+    // turning is (locked, rotate: false). A game with an angle step keeps the
+    // snapped vertical turn of rotate() for the y axis.
+    turn: inner.turn ? (key, d, axis) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || !r.rotate) return before ;
+      if (axis === 'y' && (r.angle ?? 0) > 0) return ruled.rotate(key, d);
+      return fix(key, inner.turn (key, d, axis), false);
+    } : undefined,
+    scale(key, f) {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || !r.scale) return before ;
+      const after = inner.scale(key, f);
+      const s0 = Array.isArray(after.s) ? after.s[0] ?? 1 : after.s ?? 1;
+      let s1 = s0;
+      if (r.scaleMin !== undefined && s1 < r.scaleMin) s1 = r.scaleMin;
+      if (r.scaleMax !== undefined && s1 > r.scaleMax) s1 = r.scaleMax;
+      if (s1 === s0) return fix(key, after, false);
+      const k = s1 / (s0 || 1);
+      const s = Array.isArray(after.s) ? after.s.map((v) => v * k) : s1;
+      return fix(key, inner.setPose(key, { ...after, s }) || after, false);
+    },
+    setPose(key, pose) {
+      rawR.delete(key);
+      return inner.setPose(key, pose);
+    },
+    view: inner.view,
+  };
+  if (inner.drop) {
+    // Drop to floor (End) changes the height only: blocked where the height is (locked, lockHeight).
+    ruled.drop = (key, skip) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || r.lockHeight) return before ;
+      return fix(key, inner.drop (key, skip), true);
+    };
+  }
+  if (inner.nudgeY) {
+    ruled.nudgeY = (key, dy) => {
+      const r = ruleOf(key);
+      const before = current(key);
+      if (!r || !before || r.locked || r.lockHeight) return before ;
+      return fix(key, inner.nudgeY (key, dy), true);
+    };
+  }
+  return ruled;
+}
+
+__def(__exports, "globToRe", () => globToRe);
+__def(__exports, "rulesFor", () => rulesFor);
+__def(__exports, "placeOnGrid", () => placeOnGrid);
+__def(__exports, "withRules", () => withRules);
+};
+__defs[25] = function (__exports) {
+'use strict';
+// pose-compare.ts
+
+// Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
+// Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
+// poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
+const { LIMITS } = __require(0);
+
+function roundTo(v        , step        )         {
+  return Math.round(v / step) * step;
+}
+
+/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
+function roundPose(p      , dim     )       {
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
+  const out       = { p: p.p.map((v) => fix(v, step)) };
+  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
+  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
+  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
+  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
+  return out;
+}
+
+/**
+ * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
+ *
+ * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
+ * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
+ * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
+ * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
+ */
+function sameAngle(a                    , b                    )          {
+  if (a === undefined || b === undefined) return a === b;
+  const TAU = Math.PI * 2;
+  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
+  // Half a rounding step: values one step apart (a real nudge) still differ.
+  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
+}
+
+function samePose(a                  , b                  , dim     )          {
+  if (!a || !b) return a === b;
+  const x = roundPose(a, dim), y = roundPose(b, dim);
+  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
+  if (!sameAngle(x.r, y.r)) return false;
+  if (!x.t || !y.t) return !x.t === !y.t;
+  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
+}
+
+__def(__exports, "roundPose", () => roundPose);
+__def(__exports, "samePose", () => samePose);
+};
+__defs[26] = function (__exports) {
+'use strict';
+// layers.ts
+
+// Draw order (2D layers) in the shell: which object is in front of which.
+// Pure functions over the item list (no DOM), so they are unit-tested.
+//
+// The adapter reports, per object, `layer` (the sibling list it is drawn in,
+// usually its parent) and `pose.z` (its place among the LISTED objects of that
+// list, 0 = back). Changing the order is one setPose with a new z, so undo,
+// redo and the Save count reuse the pose machinery.
+//
+// WHY every target is "the z of another listed sibling" and never z ± 1: the
+// adapter's ranks can have gaps (objects hidden by the game's rules are still
+// counted), and moving to a sibling's z puts the object just past that
+// sibling in the direction of travel. So "forward" always passes exactly one
+// thing the person can see.
+//
+// Ground / background (Item.backdrop, play test 2026-10-16): "to back"
+// once put a rock behind the ground, where it vanished. The backdrops at the
+// back of a list stay there: they have no targets of their own, and nothing
+// else goes behind them ("to back" = just in front of the ground).
+                                           
+
+                                                                    
+
+/** True when the adapter can change the draw order of this object. */
+const hasLayer = (it                  )                                 =>
+  !!it && typeof it.layer === 'string' && typeof it.pose.z === 'number';
+
+/** Listed objects drawn in the same list as `key`, back → front. */
+function siblingsOf(items        , key        )         {
+  const it = items.find((i) => i.key === key);
+  if (!hasLayer(it)) return [];
+  return items.filter((i) => hasLayer(i) && i.layer === it.layer).sort((a, b) => a.pose.z  - b.pose.z );
+}
+
+/**
+ * How many siblings (back → front list) are ground / background kept at the
+ * back: the lowest place anything else may take.
+ */
+function floorOf(sib        )         {
+  let n = 0;
+  while (n < sib.length && sib[n] .backdrop) n++;
+  return n;
+}
+
+/** The z to send for a button/shortcut, or null when the object is already there (or is the ground). */
+function layerTarget(items        , key        , op         )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib.length < 2 || sib[i] .backdrop) return null;
+  const floor = floorOf(sib);
+  const to = op === 'toFront' ? sib.length - 1 : op === 'toBack' ? floor : op === 'forward' ? i + 1 : i - 1;
+  if (to < floor || to >= sib.length || to === i) return null;
+  return sib[to] .pose.z ;
+}
+
+/**
+ * The z to send after a drag in the list. `frontIndex` = where the object was
+ * dropped among its siblings as the list shows them (front first, 0 = top),
+ * counted with the dragged object taken out.
+ */
+function dropTarget(items        , key        , frontIndex        )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib[i] .backdrop) return null;
+  const n = sib.length;
+  // Front-first position k ↔ back-first rank n-1-k; dropped below the ground = just in front of it.
+  const rank = Math.max(floorOf(sib), n - 1 - Math.max(0, Math.min(n - 1, Math.round(frontIndex))));
+  return rank === i ? null : sib[rank] .pose.z ;
+}
+
+/** Keys of one list, back → front (what placement.json `order[].keys` holds). */
+function orderOfLayer(items        , layer        )           {
+  return items.filter((i) => hasLayer(i) && i.layer === layer).sort((a, b) => a.pose.z  - b.pose.z ).map((i) => i.key);
+}
+
+                           
+             
+                                                                                                 
+                
+ 
+                             
+                                                                                         
+                
+                   
+ 
+
+/**
+ * The object list in draw order, front on top. Lists drawn inside a listed
+ * object (Pixi: sprites in a container) are shown right under that object,
+ * indented. Objects without a layer are not included (the caller shows them
+ * after, as before).
+ */
+function layerBlocks(items        )               {
+  const layered = items.filter(hasLayer);
+  const keys = new Set(items.map((i) => i.key));
+  const byLayer = new Map                ();
+  for (const it of layered) {
+    const arr = byLayer.get(it.layer ) || [];
+    arr.push(it);
+    byLayer.set(it.layer , arr);
+  }
+  for (const arr of byLayer.values()) arr.sort((a, b) => b.pose.z  - a.pose.z );
+  const done = new Set        ();
+  const walk = (layer        , depth        , rows            ) => {
+    if (done.has(layer)) return; // a malformed adapter could report a cycle
+    done.add(layer);
+    for (const it of byLayer.get(layer) || []) {
+      rows.push({ item: it, depth });
+      if (byLayer.has(it.key)) walk(it.key, depth + 1, rows);
+    }
+  };
+  const blocks               = [];
+  for (const layer of byLayer.keys()) {
+    if (keys.has(layer)) continue; // drawn inside a listed object: shown under it
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  // Lists whose parent object is listed but never reached (cycles): still show them.
+  for (const layer of byLayer.keys()) {
+    if (done.has(layer)) continue;
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  return blocks;
+}
+
+__def(__exports, "hasLayer", () => hasLayer);
+__def(__exports, "siblingsOf", () => siblingsOf);
+__def(__exports, "floorOf", () => floorOf);
+__def(__exports, "layerTarget", () => layerTarget);
+__def(__exports, "dropTarget", () => dropTarget);
+__def(__exports, "orderOfLayer", () => orderOfLayer);
+__def(__exports, "layerBlocks", () => layerBlocks);
+};
+__defs[27] = function (__exports) {
+'use strict';
+// motion-library.ts
+
+// The Library's motions (studio-motion-triggers, 2026-10-22; CONTRACT.md §4.1 `motions`): named motions that are assets
+// of their own, used by objects by name. Pure logic, no DOM: unit-tested in test/motion-triggers.test.ts.
+//
+// A request (2026-10-22): "Treat a motion as one of the assets: then a creator ties motions to objects and asks the AI 'play this
+// motion when …'". So a motion (len / repeat / keys) no longer belongs to one object: an object's clip says which motion
+// it uses (`use`) and when it starts / stops (`when` / `until`). Unity has the same split: the AnimationClip asset, and
+// the Animator's transitions that say when it plays.
+//
+// WHY one store for the whole file, not one per level like MotionStore: a level's objects are that level's, but a motion
+// is an asset any level's object may use ("Bob" on a buoy in Meadow and in Cave). It sits at the top of placement.json
+// next to `levels` and survives a switch of level (main.ts keeps one of these; PlacementModel makes a new MotionStore
+// per level).
+//
+// Reading a file made before this (studio-timeline: each object's clips hold their own keys) turns every such clip into
+// a Library motion (adopt): a clip with the same name and the same keys as one already here is the same motion; the same
+// name with other keys becomes "Open 2". It is done for the saved copy too, so opening an old file is not a change.
+                                                                                       
+
+/** A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). */
+function libOf(c                                                      )                {
+  return { name: c.name, len: c.len, ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}), keys: structuredClone(c.keys ?? {}) };
+}
+
+const sig = (m               ) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys]);
+
+class MotionLibrary {
+          now = new Map                       ();
+          saved = new Map                       ();
+
+  /**
+   * The file's `motions`, then every clip with keys of its own anywhere in it (the top `motion` and each level's) as a
+   * Library motion — both as it is now and as saved. MotionStore.restore later asks adopt() for the same clips and gets
+   * the same names back.
+   */
+  restore(file                                           )       {
+    this.now.clear();
+    this.saved.clear();
+    for (const m of file?.motions ?? []) if (m && typeof m.name === 'string' && !this.now.has(m.name)) this.now.set(m.name, libOf(m));
+    const worlds = [file?.motion, ...(file?.levels ?? []).map((l) => l.motion)];
+    for (const w of worlds) for (const m of Object.values(w ?? {})) for (const c of (m          )?.clips ?? []) if (!c.use && c.keys) this.adopt(c);
+    this.saved = new Map([...this.now].map(([k, v]) => [k, structuredClone(v)]));
+  }
+
+  /**
+   * The Library motion for a clip with keys of its own: the one with this name and these keys, or a new one (named
+   * "Open 2" when "Open" is taken by other keys). New ones count as saved when `asSaved` (a file being read).
+   */
+  adopt(c            , asSaved = false)         {
+    const m = libOf(c);
+    const same = this.now.get(c.name);
+    if (same && sig(same) === sig(m)) return c.name;
+    for (const [name, x] of this.now) if (name.startsWith(`${c.name} `) && sig(x) === sig(m)) return name;
+    const name = this.free(c.name);
+    m.name = name;
+    this.now.set(name, m);
+    if (asSaved) this.saved.set(name, structuredClone(m));
+    return name;
+  }
+
+  /** "Hop", or "Hop 2", "Hop 3"… — a name no Library motion has. */
+  free(base        )         {
+    const b = base.trim().slice(0, 40) || 'Motion';
+    if (!this.now.has(b)) return b;
+    for (let i = 2; ; i++) if (!this.now.has(`${b} ${i}`)) return `${b} ${i}`;
+  }
+
+  get(name        )                       {
+    const m = this.now.get(name);
+    return m ? structuredClone(m) : null;
+  }
+
+  has(name        )          {
+    return this.now.has(name);
+  }
+
+  /** Every motion, in the order they were made (the Library's tiles). */
+  list()                  {
+    return [...this.now.values()].map((m) => structuredClone(m));
+  }
+
+  /** null = gone from the Library. A new one goes at the end. */
+  set(name        , m                      )       {
+    if (m) this.now.set(name, { ...libOf(m), name });
+    else this.now.delete(name);
+  }
+
+  /** A new name, keeping its place in the list. false = taken or not there. */
+  rename(from        , to        )          {
+    if (!this.now.has(from) || this.now.has(to) || !to.trim()) return false;
+    this.now = new Map([...this.now].map(([k, v]) => (k === from ? [to, { ...v, name: to }] : [k, v])));
+    return true;
+  }
+
+  /** Motions that differ from the last save (each is one Save count). */
+  changedNames()           {
+    const names = new Set([...this.now.keys(), ...this.saved.keys()]);
+    return [...names].filter((n) => {
+      const a = this.now.get(n), b = this.saved.get(n);
+      return !a || !b || sig(a) !== sig(b);
+    });
+  }
+
+  /** placement.json's `motions`, or undefined with none. `round` = the file's rounding (motion-model roundMotion). */
+  result(round                                      = (m) => m)                              {
+    const out = [...this.now.values()].map((m) => round(structuredClone(m)));
+    return out.length ? out : undefined;
+  }
+
+  markSaved()       {
+    this.saved = new Map([...this.now].map(([k, v]) => [k, structuredClone(v)]));
+  }
+}
+
+/** The page's one Library of motions (one game open at a time). Tests make their own. */
+const motionLibrary = new MotionLibrary();
+
+__def(__exports, "libOf", () => libOf);
+__def(__exports, "MotionLibrary", () => MotionLibrary);
+__def(__exports, "motionLibrary", () => motionLibrary);
+};
+__defs[28] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -9093,8 +10799,40 @@ __defs[24] = function (__exports) {
 //
 // The file's older shape (v0.1.13: path / speed / repeat / spin) is turned into one clip when the file is read
 // (timeline-model.ts toClips), for the saved copy too: opening an old file is not a change; the next Save writes clips.
-                                                              
-const { CHANNELS, toClips } = __require(23);
+//
+// Since studio-motion-triggers (2026-10-22) an object's clips are ATTACHMENTS: `{ use, when, until }` naming a Library
+// motion (motion-library.ts holds its len / repeat / keys). A clip that still holds keys of its own (an older file) is
+// turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
+                                                                                                      
+const { whenOf } = __require(19);
+const { motionLibrary } = __require(27);
+const { CHANNELS, toClips } = __require(21);
+
+/** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
+function roundWhen(w            , r                                  , step        )             {
+  const x = structuredClone(w);
+  if (x.on === 'time') x.after = r(x.after, 1000);
+  if (x.on === 'enter') x.area = { p: x.area.p.map((v) => r(v, step)), size: x.area.size.map((v) => r(Math.abs(v), step)) };
+  if (x.on === 'say') {
+    const say = x.say?.trim().slice(0, 200);
+    return say ? { on: 'say', say } : { on: 'say' };
+  }
+  return x;
+}
+function roundUntil(u                         )                          {
+  if (!u) return undefined;
+  const x              = {};
+  if (u.times) x.times = Math.max(1, Math.round(u.times));
+  if (u.cue) x.cue = u.cue;
+  if (u.then === 'reset') x.then = 'reset';
+  return x.times || x.cue || x.then ? x : undefined;
+}
+
+/** A Library motion as the file writes it (the same rounding as a clip's keys). */
+function roundLib(m               , dim      = '3d')                {
+  const c = roundMotion({ clips: [{ ...m, start: undefined, when: undefined, keys: m.keys ?? {} }] }, dim) .clips [0] ;
+  return { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}), keys: c.keys };
+}
 
 /** Same motion (the file's rounding), so a drag that ends where it began is not a change. */
 function sameMotion(a                           , b                           )          {
@@ -9115,6 +10853,16 @@ function roundMotion(m                           , dim      = '3d')             
   };
   if (m.clips?.length) {
     const clips = m.clips.map((c) => {
+      if (c.use) {
+        // An attachment (studio-motion-triggers): which Library motion, and when it starts / stops.
+        const until = roundUntil(c.until);
+        return {
+          ...(c.name && c.name !== c.use ? { name: c.name } : {}),
+          use: c.use,
+          when: roundWhen(whenOf(c)              , r, step),
+          ...(until ? { until } : {}),
+        }              ;
+      }
       // Fields in the file's order: name, len, repeat, start, when, keys (keys last: the long part).
       const keys                     = {};
       for (const ch of CHANNELS) {
@@ -9128,7 +10876,9 @@ function roundMotion(m                           , dim      = '3d')             
         len: r(c.len, 1000),
         ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}),
         ...(c.start ? { start: true } : {}),
-        ...(!c.start && c.when?.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
+        ...(!c.start && typeof c.when === 'string' && c.when.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
+        ...(!c.start && c.when && typeof c.when === 'object' ? { when: roundWhen(c.when, r, step) } : {}),
+        ...(roundUntil(c.until) ? { until: roundUntil(c.until) } : {}),
         keys,
       };
     });
@@ -9145,18 +10895,53 @@ function roundMotion(m                           , dim      = '3d')             
   return out.path || out.spin ? out : null;
 }
 
+/**
+ * An object's motion with every clip as an attachment: a clip with keys of its own becomes a Library motion (adopt) and
+ * the clip names it. Its `when`: studio-timeline's `start: true` → the game starts, its words → `say`.
+ */
+function attachAll(m        , lib               )         {
+  if (!m.clips?.length) return m;
+  return {
+    clips: m.clips.map((c) => {
+      if (c.use) return { ...c, keys: {} }              ;
+      const use = lib.adopt(c, true);
+      const out = { name: c.name, use, len: c.len, when: whenOf(c)              , keys: {} }              ;
+      if (c.until) out.until = c.until;
+      return out;
+    }),
+  };
+}
+
+/**
+ * A level's motions as a file part, every clip an attachment (the levels waiting in levels.ts, read once when the file
+ * opens: their old clips become Library motions now, so a save writes them in the new shape even if never visited).
+ */
+function attachWorld(motion                                    , lib               , dim     )                                     {
+  if (!motion) return motion;
+  const out                         = {};
+  for (const [k, raw] of Object.entries(motion)) {
+    const c = toClips(raw, dim);
+    const r = roundMotion(c ? attachAll(c, lib) : raw, dim);
+    if (r) out[k] = r;
+  }
+  return out;
+}
+
 class MotionStore {
           now = new Map                ();
           saved = new Map                ();
   /** The world's dim, for reading the older shape (2D spins are one angle). Set by PlacementModel. */
   dim      = '3d';
+  /** The Library's motions the clips use (the page's one; tests give their own). */
+  lib                = motionLibrary;
 
   /** The saved file's motions (before the game lists its objects): they are what the editor starts from. */
   restore(file                                    )       {
     this.now.clear();
     this.saved.clear();
     for (const [k, raw] of Object.entries(file || {})) {
-      const m = toClips(raw, this.dim) ?? raw;
+      const c = toClips(raw, this.dim);
+      const m = c ? attachAll(c, this.lib) : raw;
       this.now.set(k, structuredClone(m));
       this.saved.set(k, structuredClone(m));
     }
@@ -9203,11 +10988,14 @@ class MotionStore {
   }
 }
 
+__def(__exports, "roundLib", () => roundLib);
 __def(__exports, "sameMotion", () => sameMotion);
 __def(__exports, "roundMotion", () => roundMotion);
+__def(__exports, "attachAll", () => attachAll);
+__def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[25] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -9231,9 +11019,9 @@ __defs[25] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 __require(0);
-const { hasLayer, orderOfLayer } = __require(21);
-const { roundPose, samePose } = __require(20);
-const { MotionStore } = __require(24);
+const { hasLayer, orderOfLayer } = __require(26);
+const { roundPose, samePose } = __require(25);
+const { MotionStore } = __require(28);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -9771,11 +11559,11 @@ class PlacementModel {
   }
 }
 
-__def(__exports, "roundPose", () => __require(20).roundPose);
-__def(__exports, "samePose", () => __require(20).samePose);
+__def(__exports, "roundPose", () => __require(25).roundPose);
+__def(__exports, "samePose", () => __require(25).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[26] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -9816,6 +11604,16 @@ const en = {
   'undo.motion': 'change {name}’s motion',
   // The card's Motion row (motion-gui, 2026-10-22; since studio-timeline: timeline-wire.ts cardRow): how an object moves by itself.
   'motion.label': 'Motion',
+  'lib.motion.on': 'on {names}',
+  'lib.motion.free': 'Not on anything yet',
+  'lib.motion.onLabel': 'On',
+  'lib.motion.meta': '{len} s · {repeat} · {n} keys',
+  'lib.motion.attach': 'Attach to {name}',
+  'lib.motion.attachTo': 'Attach to',
+  'lib.motion.attachPick': 'An object…',
+  'lib.motion.duplicate': 'Duplicate',
+  'lib.motion.deleteTip': 'Delete this motion: it comes off every object that uses it',
+  'lib.motion.renameTip': 'The motion’s name (double-click to rename)',
   'motion.none': 'None',
   // The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender": keys on a time line).
   'tl.title': 'Timeline',
@@ -9838,14 +11636,11 @@ const en = {
   'tl.tpl.spin': 'Spin',
   'tl.rename': 'Rename…',
   'tl.renameTip': 'The motion’s name (Enter to keep it)',
-  'tl.delete': 'Delete this motion',
+  'tl.delete': 'Take it off this object',
   'tl.repeat': 'Repeat',
   'tl.repeat.once': 'Once',
   'tl.repeat.loop': 'Loop',
   'tl.repeat.pingpong': 'Back and forth',
-  'tl.plays': 'Plays',
-  'tl.start': 'At start',
-  'tl.cue': 'On a cue',
   'tl.when': 'When? (for your AI)',
   'tl.ease': 'Keys',
   'tl.easeTip': 'How the picked keys go on to the next one',
@@ -9859,6 +11654,60 @@ const en = {
   'tl.ruler': 'Time: drag to see that moment',
   'tl.empty': 'Select something, move the time line, then move it: a key is set there.',
   'tl.expand': 'Show position, angle and size',
+  'motion.detach': 'Take “{name}” off',
+  'motion.attach': 'Attach from the Library',
+  'motion.on': 'On this object',
+  'tl.area.tip': 'The area’s size (width × height × depth). Drag its white point in the scene to move it',
+  'tl.area.label': 'Area · {size}',
+  'tl.try.say': '{name}',
+  'tl.try.touch': 'Touch {name}',
+  'tl.try.enter': 'Enters {name}’s area',
+  'tl.try.click': 'Click {name}',
+  'tl.try.start': 'Game starts',
+  'tl.try.stop': 'Stop',
+  'tl.try.aiTip': 'Try it: as if “{name}” just happened (in the game, your AI connects this one)',
+  'tl.try.tip': 'Try it: as if “{name}” just happened',
+  'tl.try': 'Try',
+  'tl.then.reset': 'Goes back',
+  'tl.then.stay': 'Stays there',
+  'tl.then': 'Then',
+  'tl.until.timesUnit': 'times',
+  'tl.until.timesTip': 'How many rounds',
+  'tl.until.cue': 'A cue',
+  'tl.until.times': 'After some rounds',
+  'tl.until.never': 'Never',
+  'tl.cue.name': 'The cue’s name (like chest-opened)',
+  'tl.cue.new': 'New cue…',
+  'tl.when.keyPress': 'Press a key…',
+  'tl.when.keyTip': 'The key: press here, then press the key',
+  'tl.when.afterTip': 'Seconds after the game starts',
+  'tl.when.none': 'Pick an object with a motion to say when it plays.',
+  'tl.when.always': 'Always',
+  'tl.when.short.say': 'Words',
+  'tl.when.short.cue': 'Cue',
+  'tl.when.short.touch': 'Touch',
+  'tl.when.short.enter': '▣ Area',
+  'tl.when.short.after': 'After',
+  'tl.when.short.click': 'Click',
+  'tl.when.short.key': 'Key',
+  'tl.when.short.time': 'Timer',
+  'tl.when.short.start': 'Start',
+  'tl.when.say': 'In my words…',
+  'tl.when.cue': 'A cue',
+  'tl.when.touch': 'The player touches this',
+  'tl.when.enter': 'The player enters an area',
+  'tl.when.after': 'Another motion ends',
+  'tl.when.click': 'This is clicked / tapped',
+  'tl.when.key': 'A key is pressed',
+  'tl.when.time': 'After some seconds',
+  'tl.when.start': 'The game starts',
+  'tl.when.ai': 'Your AI connects it',
+  'tl.when.self': 'Plays by itself',
+  'tl.stops': 'Stops',
+  'tl.startsTip': 'When this motion starts',
+  'tl.starts': 'Starts',
+  'tl.usesTip': 'This motion is in the Library and on several objects: changing its keys changes it on all of them',
+  'tl.uses': 'on {n}',
   'undo.n': '{n} objects',
   'tool.library': 'Library',
   'btn.undo': 'Undo',
@@ -10396,6 +12245,16 @@ const ja                               = {
   'undo.motion': '{name} の動きを変更',
   'motion.label': '動き',
   'motion.none': 'なし',
+  'lib.motion.on': '{names} に',
+  'lib.motion.free': 'まだどの物にも付いていません',
+  'lib.motion.onLabel': '付いている物',
+  'lib.motion.meta': '{len} 秒 · {repeat} · キー {n}',
+  'lib.motion.attach': '{name} に付ける',
+  'lib.motion.attachTo': '付ける',
+  'lib.motion.attachPick': '物を選ぶ…',
+  'lib.motion.duplicate': '写す',
+  'lib.motion.deleteTip': 'この動きを消す（付いている物からも外れます）',
+  'lib.motion.renameTip': '動きの名前（ダブルクリックで名前を変える）',
   'tl.title': 'タイムライン',
   'tl.open': 'タイムライン',
   'tl.openTip': 'タイムラインを開く: 時刻を動かしてからこれを動かすとキーが打たれる',
@@ -10416,14 +12275,11 @@ const ja                               = {
   'tl.tpl.spin': 'その場で回る',
   'tl.rename': '名前を変える…',
   'tl.renameTip': '動きの名前（Enter で決める）',
-  'tl.delete': 'この動きを消す',
+  'tl.delete': 'この物から外す',
   'tl.repeat': '繰り返し',
   'tl.repeat.once': '1 回',
   'tl.repeat.loop': 'ループ',
   'tl.repeat.pingpong': '往復',
-  'tl.plays': '動き出す',
-  'tl.start': '始まりから',
-  'tl.cue': '合図で',
   'tl.when': 'いつ？（AI へ）',
   'tl.ease': 'キー',
   'tl.easeTip': '選んだキーから次のキーへのつながり方',
@@ -10437,6 +12293,60 @@ const ja                               = {
   'tl.ruler': '時刻: 引くとその瞬間の姿',
   'tl.empty': '物を選び、時刻の線を動かしてから物を動かすと、そこにキーが打たれます。',
   'tl.expand': '位置・向き・大きさを見る',
+  'motion.detach': '「{name}」を外す',
+  'motion.attach': 'ライブラリから付ける',
+  'motion.on': 'この物の動き',
+  'tl.area.tip': '範囲の大きさ（幅 × 高さ × 奥行き）。動かすのは場面の白い点を引く',
+  'tl.area.label': '範囲 · {size}',
+  'tl.try.say': '{name}',
+  'tl.try.touch': '{name} に触れる',
+  'tl.try.enter': '{name} の範囲に入る',
+  'tl.try.click': '{name} をクリック',
+  'tl.try.start': 'ゲーム開始',
+  'tl.try.stop': '止める',
+  'tl.try.aiTip': '試す：「{name}」が今起きたことにする（ゲームでは AI がつなぐ）',
+  'tl.try.tip': '試す：「{name}」が今起きたことにする',
+  'tl.try': '試す',
+  'tl.then.reset': '最初の姿に戻る',
+  'tl.then.stay': 'その場で',
+  'tl.then': '止まり方',
+  'tl.until.timesUnit': '回',
+  'tl.until.timesTip': '何回で止まるか',
+  'tl.until.cue': '合図が来たら',
+  'tl.until.times': '何回かしたら',
+  'tl.until.never': '止まらない',
+  'tl.cue.name': '合図の名前（例: chest-opened）',
+  'tl.cue.new': '新しい合図…',
+  'tl.when.keyPress': 'キーを押して…',
+  'tl.when.keyTip': 'キー：ここを押してから、そのキーを押す',
+  'tl.when.afterTip': 'ゲームが始まってからの秒',
+  'tl.when.none': '動きのある物を選ぶと、いつ動くかを決められます。',
+  'tl.when.always': 'ずっと',
+  'tl.when.short.say': '言葉',
+  'tl.when.short.cue': '合図',
+  'tl.when.short.touch': '触れた',
+  'tl.when.short.enter': '▣ 範囲',
+  'tl.when.short.after': '続けて',
+  'tl.when.short.click': 'クリック',
+  'tl.when.short.key': 'キー',
+  'tl.when.short.time': '時間',
+  'tl.when.short.start': '始まり',
+  'tl.when.say': '言葉で…',
+  'tl.when.cue': '名前の付いた合図',
+  'tl.when.touch': 'プレイヤーがこれに触れたら',
+  'tl.when.enter': 'プレイヤーが範囲に入ったら',
+  'tl.when.after': '別の動きが終わったら',
+  'tl.when.click': 'これをクリック／タップしたら',
+  'tl.when.key': 'キーを押したら',
+  'tl.when.time': '何秒かたったら',
+  'tl.when.start': 'ゲームが始まったら',
+  'tl.when.ai': 'AI がつなぐ',
+  'tl.when.self': 'ひとりでに動く',
+  'tl.stops': '止まる',
+  'tl.startsTip': 'この動きがいつ動き出すか',
+  'tl.starts': '動き出す',
+  'tl.usesTip': 'この動きはライブラリにあり、いくつかの物で使っています。キーを直すと全部が変わります',
+  'tl.uses': '{n} つの物で使用',
   'undo.n': '{n} 個',
   'tool.library': 'ライブラリ',
   'btn.undo': '戻す',
@@ -10924,188 +12834,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[27] = function (__exports) {
-'use strict';
-// icons.ts
-
-// Line icons for the shell, drawn here (no icon font, no images from a
-// third party). One grid for all of them: 20×20 view box, 1.5 px stroke, round
-// ends, `currentColor`, so every icon takes the button's text colour and
-// weight and they read as one family next to the system font.
-//
-// WHY drawn icons instead of the Unicode signs used before (↶ ↷ ⚙ ⋯ ⧉): the
-// signs came from whatever font the system picked, at different sizes and
-// weights per OS, and sat off the text baseline. A tool that should disappear
-// behind the game cannot have its few marks look accidental (design pass
-// 2026-10-16, "apple").
-//
-// Visual pass 2026-10-16 ("visual"): the first set mixed stroke weights
-// (1.6 lines, 2.6 dots, 1.0 on the filled ones), square and round corners,
-// and marks of different optical size, so a row of them looked drawn by
-// three hands. One rule now, the way a Mac pro app's symbol set is built:
-//   - 20×20 grid, artwork inside a 14 px live area (3..17), centred;
-//   - every line is 1.5 px ON SCREEN (vector-effect: non-scaling-stroke, the
-//     width comes from CSS --studio-icon-stroke), whatever size the icon is
-//     drawn at, so an 18 px toolbar icon and a 14 px chevron weigh the same
-//     as the regular weight of the system font beside them;
-//   - round caps and joins; boxes have 1.5 corners, never sharp;
-//   - dots are real filled circles (r 1.3), not zero-length strokes (those
-//     changed size with the stroke and looked blotchy at 2.6);
-//   - filled shapes (play, stop, spark) are filled AND stroked, so their
-//     corners round off the same way the lines do.
-const NS = 'http://www.w3.org/2000/svg';
-
-/**
- * Artwork per icon, parts joined with "|". A part is SVG path data, or
- * "o cx cy" for a dot (filled circle, r 1.3), or "O cx cy r" for a ring.
- */
-const PATHS                         = {
-  undo: 'M7 4.5 3.5 8 7 11.5|M3.5 8h8.25a4.25 4.25 0 0 1 0 8.5H9',
-  redo: 'M13 4.5 16.5 8 13 11.5|M16.5 8H8.25a4.25 4.25 0 0 0 0 8.5H11',
-  // Four rounded corners: "show the whole scene".
-  frame: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5',
-  // The same four corners around a dot: "the picture the game opens on" (back to the opening view, speed pass).
-  opening: 'M3.5 7.5V5A1.5 1.5 0 0 1 5 3.5h2.5|M12.5 3.5H15A1.5 1.5 0 0 1 16.5 5v2.5|M16.5 12.5V15a1.5 1.5 0 0 1-1.5 1.5h-2.5|M7.5 16.5H5A1.5 1.5 0 0 1 3.5 15v-2.5|o 10 10',
-  // A window with an arrow out of its top-right corner: "open this in a large window" (the side window's Open large).
-  openLarge: 'M11.5 3.5h5v5|M16.5 3.5 10 10|M14.5 11.5V15a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5h3.5',
-  // Two sliders with their knobs: "how the editor looks".
-  look: 'M3.5 6.5h5|M12.5 6.5h4|O 10.5 6.5 2|M3.5 13.5h2|M9.5 13.5h7|O 7.5 13.5 2',
-  play: 'M6.5 5.1v9.8a.9.9 0 0 0 1.37.77l8-4.9a.9.9 0 0 0 0-1.54l-8-4.9a.9.9 0 0 0-1.37.77z',
-  stop: 'M6.5 5.5h7a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1z',
-  // Pause while playing (2026-10-22): two bars, filled like play / stop.
-  pause: 'M6.25 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5A.75.75 0 0 1 6.25 5z|M11.75 5h2a.75.75 0 0 1 .75.75v8.5a.75.75 0 0 1-.75.75h-2a.75.75 0 0 1-.75-.75v-8.5a.75.75 0 0 1 .75-.75z',
-  // Pause-move (2026-10-22): the strip's own Move sign (bridge/handles.ts), four ways out of the middle.
-  move: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
-  // The AI: a four-point spark.
-  spark: 'M10 3.5c.55 3.2 2.3 4.95 5.5 5.5-3.2.55-4.95 2.3-5.5 5.5-.55-3.2-2.3-4.95-5.5-5.5 3.2-.55 4.95-2.3 5.5-5.5z',
-  more: 'o 5 10|o 10 10|o 15 10',
-  list: 'M7.5 5.5h9|M7.5 10h9|M7.5 14.5h9|o 4 5.5|o 4 10|o 4 14.5',
-  // Two rounded sheets, the front one whole.
-  copy: 'M9 7.5h6A1.5 1.5 0 0 1 16.5 9v6a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 15V9A1.5 1.5 0 0 1 9 7.5z|M12.5 5A1.5 1.5 0 0 0 11 3.5H5A1.5 1.5 0 0 0 3.5 5v6A1.5 1.5 0 0 0 5 12.5',
-  trash: 'M3.5 5.5h13|M8 5.5V4.25a.75.75 0 0 1 .75-.75h2.5a.75.75 0 0 1 .75.75V5.5|M5.5 5.5l.75 10.1a1 1 0 0 0 1 .9h5.5a1 1 0 0 0 1-.9l.75-10.1|M8.5 8.5v5|M11.5 8.5v5',
-  chevronUp: 'M5.5 12.5 10 8l4.5 4.5',
-  chevronDown: 'M5.5 7.5 10 12l4.5-4.5',
-  chevronLeft: 'M12 5l-5 5 5 5',
-  chevronRight: 'M8 5l5 5-5 5',
-  check: 'M4.5 10.5l3.5 3.5 7.5-8',
-  arrowUp: 'M10 15.5v-11|M5.5 9 10 4.5 14.5 9',
-  // Layers (2D draw order): a bar = the end of the stack.
-  toFront: 'M4.5 3.5h11|M10 16.5v-9|M6 11.5l4-4 4 4',
-  forward: 'M10 16v-11|M6 9l4-4 4 4',
-  backward: 'M10 4v11|M6 11l4 4 4-4',
-  toBack: 'M4.5 16.5h11|M10 3.5v9|M6 8.5l4 4 4-4',
-  send: 'M10 16V4.5|M5 9.5 10 4.5l5 5',
-  // Rebrand 2026-10-16: the left column's two places and the ⌘K actions.
-  // A box seen from a corner: "the scene".
-  // The UI layer (UI stage 1): a screen with a title bar and a button — "the things drawn over the game".
-  uiLayer: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M6.5 8h5|M6.5 12.5h3.5',
-  // A UI element's kind in the list and on the card (UI stage 1): text (a T), a button, a picture.
-  uiText: 'M5.5 5h9|M10 5v10.5',
-  uiButton: 'M5.5 6.5h9a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 3 11V9a2.5 2.5 0 0 1 2.5-2.5z|M7.5 10h5',
-  uiImage: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M3.5 13l4-4 3 3 2-2 4 4|o 12.5 8',
-  cube: 'M10 3.5 16 6.75v6.5L10 16.5 4 13.25v-6.5L10 3.5z|M4 6.75 10 10l6-3.25|M10 10v6.5',
-  // Four tiles: "the files".
-  grid: 'M4.5 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M12 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M4.5 11H8a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z|M12 11h3.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z',
-  eye: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25',
-  // The eye struck through: "the game's UI is hidden while you edit the world" (layer-switch.ts).
-  eyeOff: 'M2.5 10s2.75-5 7.5-5 7.5 5 7.5 5-2.75 5-7.5 5-7.5-5-7.5-5z|O 10 10 2.25|M4 16 16 4',
-  plus: 'M10 4.5v11|M4.5 10h11',
-  // The plus without its upright: one point fewer on a motion's path (motion-gui, 2026-10-22).
-  minus: 'M4.5 10h11',
-  // The plus turned 45°: close a note.
-  close: 'M6 6l8 8|M14 6l-8 8',
-  // The shortcut sheet (⌘K "Keyboard shortcuts"): a key cap with a row of keys and the space bar.
-  keyboard: 'M4.5 5.5h11a1.5 1.5 0 0 1 1.5 1.5v6a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 13V7a1.5 1.5 0 0 1 1.5-1.5z|o 6.5 8.5|o 10 8.5|o 13.5 8.5|M7.5 11.75h5',
-  swap: 'M4 7h11.5|M12.5 4l3 3-3 3|M16 13H4.5|M7.5 10l-3 3 3 3',
-  globe: 'O 10 10 6.5|M3.5 10h13|M10 3.5c-2.2 2.4-2.2 10.6 0 13|M10 3.5c2.2 2.4 2.2 10.6 0 13',
-  hand: 'M7 10V5.25a1.25 1.25 0 0 1 2.5 0V9|M9.5 8.5V4.25a1.25 1.25 0 0 1 2.5 0V9|M12 8.75V5.5a1.25 1.25 0 0 1 2.5 0V11a5.5 5.5 0 0 1-5.5 5.5h-.3a4.5 4.5 0 0 1-3.6-1.8L3.3 12.2a1.3 1.3 0 0 1 2-1.6L7 12',
-  layers: 'M10 3.5 16.5 7 10 10.5 3.5 7 10 3.5z|M3.5 10.25 10 13.75l6.5-3.5|M3.5 13.5 10 17l6.5-3.5',
-  // The studio's mark: two cards (the KUMODeck "deck"), a little apart. The
-  // front one filled = the scene you have open; the one behind, a line = the
-  // code under it. Simple enough to hold at 16 px.
-  mark: 'M8.5 3.5h6A2 2 0 0 1 16.5 5.5v6|M5.5 6.5h6A2 2 0 0 1 13.5 8.5v6a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2z',
-  // Six dots: "drag me" (list grips).
-  grip: 'o 7.5 5.5|o 12.5 5.5|o 7.5 10|o 12.5 10|o 7.5 14.5|o 12.5 14.5',
-  // The tool strip's four tools (the same pictures as the strip in the game, on this 20 grid): ⌘K rows.
-  toolMove: 'M10 3.5v13|M3.5 10h13|M8 5.5l2-2 2 2|M8 14.5l2 2 2-2|M5.5 8l-2 2 2 2|M14.5 8l2 2-2 2',
-  toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
-  toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
-  toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
-};
-
-/** Icons drawn filled as well as stroked (they read too thin as outlines). */
-const FILLED = new Set(['play', 'stop', 'spark', 'pause']);
-/** Icons whose LAST part is filled (the mark's front card). */
-const LAST_FILLED = new Set(['mark']);
-
-function part(d        , filled         )             {
-  if (d[0] === 'o' || d[0] === 'O') {
-    const [, cx, cy, r] = d.split(' ');
-    const c = document.createElementNS(NS, 'circle');
-    c.setAttribute('cx', cx);
-    c.setAttribute('cy', cy);
-    if (d[0] === 'o') {
-      // A dot: fill only, so its size does not depend on the stroke width.
-      c.setAttribute('r', '1.3');
-      c.setAttribute('fill', 'currentColor');
-      c.setAttribute('stroke', 'none');
-    } else {
-      c.setAttribute('r', r);
-      c.setAttribute('fill', 'none');
-    }
-    return c;
-  }
-  const p = document.createElementNS(NS, 'path');
-  p.setAttribute('d', d);
-  p.setAttribute('fill', filled ? 'currentColor' : 'none');
-  return p;
-}
-
-function icon(name                             )                {
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 20 20');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', `icon icon-${name}`);
-  // Stroke colour, caps and joins on the <svg> (inherited by every part); the
-  // width comes from CSS (svg.icon { stroke-width: var(--studio-icon-stroke) })
-  // so a .studio/ui/studio.css can make every icon bolder in one place.
-  svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-linecap', 'round');
-  svg.setAttribute('stroke-linejoin', 'round');
-  const filled = FILLED.has(name);
-  const parts = (PATHS[name] || '').split('|');
-  for (const [i, d] of parts.entries()) {
-    const el = part(d, filled || (LAST_FILLED.has(name) && i === parts.length - 1));
-    // The same on-screen line width at every icon size (see the rule above).
-    el.setAttribute('vector-effect', 'non-scaling-stroke');
-    svg.append(el);
-  }
-  return svg;
-}
-
-/**
- * Put an icon and a label into a button. `showLabel: false` keeps the label
- * for screen readers and the tooltip only (icon-only toolbar buttons).
- * Re-rendering a button goes through here, so textContent never wipes the icon.
- */
-function setButton(b                   , name               , label        , showLabel = true, tip         )       {
-  b.replaceChildren();
-  if (name) b.append(icon(name));
-  if (showLabel) {
-    const s = document.createElement('span');
-    s.className = 'label';
-    s.textContent = label;
-    b.append(s);
-  }
-  b.setAttribute('aria-label', label);
-  if (tip !== undefined) b.title = tip;
-  else if (!showLabel) b.title = label;
-}
-
-__def(__exports, "icon", () => icon);
-__def(__exports, "setButton", () => setButton);
-};
-__defs[28] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -11126,7 +12855,7 @@ __defs[28] = function (__exports) {
 // - No prices in the UI (they change); a link to the pricing page instead.
                                                                              
 const { h } = __require(16);
-const { icon } = __require(27);
+const { icon } = __require(20);
 
 /** The only place the KUMODeck site address appears in the shell. */
 const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
@@ -11208,7 +12937,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[29] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -11367,6 +13096,26 @@ function normalizeRequestInput(input) {
     if (!as || as.length > HANDOFF_LIMITS.maxAssets) errors.push(`"assets" must list at most ${HANDOFF_LIMITS.maxAssets} files`);
     else if (!as.every(isFolderPath)) errors.push('"assets" must be paths inside the game folder');
     else if (as.length) out.assets = [...new Set(as)];
+  }
+  // "ask" only: motions picked in the Library (studio-motion-triggers, 2026-10-22): what "this motion" means in the
+  // words. A hint like an object's files: a bad entry is dropped, never an error. Each keeps its name, length, repeat
+  // and the objects it is on (key + when / until, as placement.json has them).
+  if (r.motions !== undefined && kind === 'ask' && Array.isArray(r.motions)) {
+    const ms = [];
+    for (const m of r.motions.slice(0, 20)) {
+      const name = m && typeof m.name === 'string' ? oneLine(m.name, 40) : '';
+      if (!name || !isFin(m.len) || m.len <= 0) continue;
+      const e = { name, len: roundTo(m.len, 1000) };
+      if (m.repeat === 'loop' || m.repeat === 'pingpong') e.repeat = m.repeat;
+      e.on = (Array.isArray(m.on) ? m.on : []).filter((o) => o && typeof o.key === 'string' && KEY_OK.test(o.key)).slice(0, 50).map((o) => {
+        const x = { key: o.key };
+        if (o.when && typeof o.when === 'object' && typeof o.when.on === 'string') x.when = JSON.parse(JSON.stringify(o.when));
+        if (o.until && typeof o.until === 'object') x.until = JSON.parse(JSON.stringify(o.until));
+        return x;
+      });
+      ms.push(e);
+    }
+    if (ms.length) out.motions = ms;
   }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
@@ -11532,7 +13281,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[30] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -11560,7 +13309,7 @@ __defs[30] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(29);
+const { statusCovers } = __require(32);
 
                                                                                                                                                                          
 
@@ -11703,7 +13452,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[31] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -11749,7 +13498,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[32] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -11828,7 +13577,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[33] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -11841,7 +13590,7 @@ __defs[33] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(30);
+const { moreIn } = __require(33);
 
                                 
                  
@@ -11907,7 +13656,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[34] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -11970,7 +13719,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[35] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -12053,7 +13802,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[36] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -12062,8 +13811,8 @@ __defs[36] = function (__exports) {
 // the caller), so there is no separate Apply/Save step to forget.
                                                     
 const { h } = __require(16);
-const { icon } = __require(27);
-const { DEFAULT_UI, UI_LIMITS } = __require(35);
+const { icon } = __require(20);
+const { DEFAULT_UI, UI_LIMITS } = __require(38);
 
                                
                          
@@ -12146,14 +13895,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[37] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(21);
+const { hasLayer } = __require(26);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -12250,7 +13999,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[38] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -12393,7 +14142,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[39] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -12425,10 +14174,10 @@ __defs[39] = function (__exports) {
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
 const { h, safeImageSrc } = __require(16);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(21);
-const { groupLayerPossible, sameKind } = __require(37);
-const { icon, setButton } = __require(27);
-const { tipText } = __require(38);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(26);
+const { groupLayerPossible, sameKind } = __require(40);
+const { icon, setButton } = __require(20);
+const { tipText } = __require(41);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -12480,6 +14229,8 @@ const { toneThumb } = __require(17);
                                                                                
      
                       
+                                                                                                                
+                       
                                                                                                                 
                          
                                                                   
@@ -12740,7 +14491,10 @@ function createPlacementPanel(d                    )                 {
 
   const renderAsk = () => {
     const keys = d.selectedKeys();
-    const files = d.assets?.() || [];
+    // Files and motions picked in the Library are named by the chip together (a motion by its name, "Hop").
+    const fileName = (p        ) => (p.startsWith('\u0000') ? p.slice(1) : p.slice(p.lastIndexOf('/') + 1));
+    const picks = [...(d.assets?.() || []), ...(d.motions?.() || []).map((m) => `\u0000${m}`)];
+    const files = picks;
     const items = d.items();
     const first = items.find((i) => i.key === keys[0]);
     const k = keys.length || files.length ? [...[...keys].sort(), ...files].join(',') : null;
@@ -12755,14 +14509,13 @@ function createPlacementPanel(d                    )                 {
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
     // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
-    const fileName = (p        ) => p.slice(p.lastIndexOf('/') + 1);
     const firstName = noObj ? (files.length ? fileName(files[0] ) : '') : displayName(first, d.t);
     // The chip stays small (a hands-on try, 2026-10-19: "the object's name in the chat box is in the way" — "Unnamed group"
     // took half the field). One object: its short name ("Black pillar", without "by the road" and "(left, 3rd)": the card
     // above says those, and the game lights it); several: only how many ("×4"). The whole names are its tooltip and
     // the field's label read aloud, so what goes to the AI stays clear; a mouse over it lights them in the game.
     askChip.textContent = whole ? '' : n === 1 ? (noObj ? firstName : shortName(firstName)) : d.t('ask.chipN', { n });
-    const allNames = [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files];
+    const allNames = [...(noObj ? [] : keys.map((key) => { const it = items.find((i) => i.key === key); return it ? displayName(it, d.t) : key; })), ...files.map(fileName)];
     askChip.title = whole ? '' : allNames.slice(0, 12).join('\n') + (allNames.length > 12 ? '\n…' : '');
     askInput.placeholder = ph;
     // Read aloud as one sentence ("Ask your AI about “crate-4”…").
@@ -13488,408 +15241,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[40] = function (__exports) {
-'use strict';
-// timeline-panel.ts
-
-// The timeline plate (studio-timeline, 2026-10-22; CONTRACT.md §1.9): what is drawn and
-// what a press on it means. No state of its own beyond a drag in progress: timeline-wire.ts owns the state and gives
-// a fresh `view()` each render; every press goes back as one call on `act`.
-//
-//   ▶  0:01.6 / [4.0] s   ● Auto key   [Row ▾]   ↔ [Back and forth ▾]   Plays [At start ▾]   Keys [Ease in-out ▾]   ⌄
-//        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
-//   ▾ rowboat   ◇─────────◇──────◇                      ← one row per object (its keys at any property)
-//       Position ◆─────────◆──────◆                     ← ▾ opens position / angle / size
-//
-// WHY the plate redraws whole on render(): a few rows of a few keys (a game object's motion is tens of keys, not
-// thousands), and one code path is easier to keep right than patching. A drag keeps its pointer capture on the track
-// element, which is never replaced (only its children are), so a redraw mid-drag does not drop the drag.
-// WHY native <select>s for the clip, repeat, start and ease: words a screen reader reads, a finger and a keyboard work,
-// no menus of our own on a plate that floats (the card's Motion row made the same choice, motion-gui).
-// Colours (shell.css rule 2 + its one exception here): orange = your hand (picked keys, the picked object's row),
-// red = recording (● and the time line while auto key is on — the colour every camera and DAW uses for "writing now").
-                                                                                          
-const { h } = __require(16);
-const { icon } = __require(27);
-const { CHANNELS, clock, keyTimes, sameT, TEMPLATES } = __require(23);
-
-                              
-              
-                
-                  
-                
-                          
- 
-
-                               
-               
-                                                                          
-               
-                   
-                
-                                                                                                   
-                       
-                  
-                          
-                      
-                             
-                                                                                  
-                                    
-                  
- 
-
-                               
-                          
-                                       
-                          
-               
-                                                                            
-                            
-                             
-                             
-                                
-                           
-                           
-                            
-                             
-                             
-                                                                                
-                                               
-                                                                                                                       
-                                                      
-                                                                                                               
-                                 
-                                                                                       
-                  
-                                                                 
- 
-
-/** A row's height: 28 px (a mouse), 36 on a phone (shell.css --tl-row; read so the rows and the lanes agree). */
-const ROW_PX = 28;
-
-function createTimelinePanel(view                    , act              ) {
-  const t = act.t;
-  const head = h('div', { class: 'tl-head' });
-  const ruler = h('div', { class: 'tl-ruler', role: 'slider', 'aria-valuemin': '0', dataset: { part: 'tl-ruler' } });
-  const names = h('div', { class: 'tl-names' });
-  const lanes = h('div', { class: 'tl-lanes', dataset: { part: 'tl-lanes' } });
-  const playhead = h('div', { class: 'tl-playhead', dataset: { part: 'tl-playhead' } }, h('span', { class: 'tl-cap' }));
-  const boxEl = h('div', { class: 'tl-box', hidden: true });
-  const track = h('div', { class: 'tl-track' }, ruler, lanes, playhead, boxEl);
-  const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, h('div', { class: 'tl-ruler-pad' }), names), track);
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, body);
-
-  // Seconds ↔ px on the track (its own box: the names column is outside it).
-  const pad = 12;
-  const span = () => Math.max(1, view().span);
-  const xOf = (s        ) => pad + (s / span()) * Math.max(1, track.clientWidth - pad * 2);
-  const tOf = (x        ) => ((x - pad) / Math.max(1, track.clientWidth - pad * 2)) * span();
-  const localX = (e              ) => e.clientX - track.getBoundingClientRect().left;
-
-  // ----- the head -----
-  const select = (part        , label        , opts                                   , value        , onchange                     ) => {
-    const s = h('select', { 'aria-label': label, title: label, dataset: { part } });
-    for (const [v, text, disabled] of opts) {
-      const o = h('option', { value: v, text });
-      if (disabled) o.disabled = true;
-      if (v === value) o.selected = true;
-      s.append(o);
-    }
-    s.addEventListener('change', () => onchange(s.value));
-    return h('span', { class: 'tl-pick' }, s, icon('chevronDown'));
-  };
-
-  function renderHead(v              ) {
-    const c = v.clip;
-    const play = h('button', { type: 'button', class: `icon-btn tl-play${v.playing ? ' on' : ''}`, dataset: { action: 'tl-play', part: 'tl-play' }, 'aria-pressed': String(v.playing),
-      title: `${t(v.playing ? 'tl.pause' : 'tl.play')}  Space`, 'aria-label': t(v.playing ? 'tl.pause' : 'tl.play'), onclick: () => act.play(!v.playing) }, icon(v.playing ? 'pause' : 'play'));
-    const now = h('span', { class: 'tl-now', dataset: { part: 'tl-now' }, text: clock(v.time) });
-    const len = h('input', { type: 'text', inputmode: 'decimal', class: 'tl-len', 'aria-label': t('tl.len'), title: t('tl.len'), autocomplete: 'off', spellcheck: false, dataset: { part: 'tl-len' } });
-    len.value = (c?.len ?? v.span).toFixed(1);
-    len.disabled = !c;
-    len.addEventListener('focus', () => len.select());
-    len.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') len.blur();
-      e.stopPropagation();
-    });
-    len.addEventListener('change', () => {
-      const s = parseFloat(len.value.replace(',', '.'));
-      if (Number.isFinite(s)) act.len(s);
-      else len.value = (c?.len ?? v.span).toFixed(1);
-    });
-    const time = h('span', { class: 'tl-time' }, now, h('span', { class: 'tl-of', text: '/' }), len, h('span', { class: 'tl-of', text: 's' }));
-    const auto = h('button', { type: 'button', class: `tl-auto${v.auto ? ' on' : ''}`, dataset: { action: 'tl-auto', part: 'tl-auto' }, 'aria-pressed': String(v.auto),
-      title: t(v.auto ? 'tl.autoOn' : 'tl.autoOff'), onclick: () => act.auto(!v.auto) }, h('span', { class: 'tl-dot' }), h('span', { class: 'tl-auto-w', text: t('tl.auto') }));
-    // The clip menu: this object's motions, then "New: <template>", then rename / delete.
-    const opts                                    = [];
-    if (!v.clips.length) opts.push(['', t('tl.noClip'), true]);
-    for (const n of v.clips) opts.push([n, n]);
-    opts.push(['-', '──────', true]);
-    for (const k of TEMPLATES) opts.push([`new:${k}`, t('tl.new', { name: t(`tl.tpl.${k}`) }), !v.focus]);
-    if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
-    const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
-      if (val === 'rename') return void renaming(c .name);
-      act.clip(val);
-    });
-    clipSel.classList.add('tl-clip-pick');
-    const items         = [play, time, auto, clipSel];
-    if (c) {
-      items.push(select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                )));
-      items.push(select('tl-start', t('tl.plays'), [['start', t('tl.start')], ['cue', t('tl.cue')]], c.start ? 'start' : 'cue', (s) => act.start(s === 'start')));
-      if (!c.start) {
-        const when = h('input', { type: 'text', class: 'tl-when', placeholder: t('tl.when'), 'aria-label': t('tl.when'), maxlength: '200', dataset: { part: 'tl-when' } });
-        when.value = c.when ?? '';
-        when.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') when.blur();
-          e.stopPropagation();
-        });
-        when.addEventListener('change', () => act.when(when.value));
-        items.push(when);
-      }
-    }
-    const ease = select('tl-ease', t('tl.easeTip'), [...(v.ease === 'mixed' || !v.ease ? [['', v.ease ? '—' : t('tl.ease'), true]                             ] : []),
-      ...(['linear', 'ease', 'step']                ).map((e) => [e, t(`tl.ease.${e}`)]                    )], v.ease && v.ease !== 'mixed' ? v.ease : '', (e) => act.ease(e              ));
-    ease.classList.toggle('off', !v.ease);
-    ease.classList.add('tl-ease-pick');
-    (ease.firstChild                     ).disabled = !v.ease;
-    items.push(h('span', { class: 'tl-gap' }), ease);
-    items.push(h('button', { type: 'button', class: 'icon-btn tl-fold', dataset: { action: 'tl-fold' }, title: t('tl.fold'), 'aria-label': t('tl.fold'), onclick: () => act.fold() }, icon('chevronDown')));
-    // Narrow: the end of the first row (▶ time ● ⌄); the menus start a new one (shell.css). Nothing on PC.
-    items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
-    head.replaceChildren(...items);
-  }
-
-  /** The clip menu's "Rename…": the menu becomes a field with the name, Enter / leaving keeps it, Esc goes back. */
-  function renaming(name        ) {
-    const pick = head.querySelector('.tl-clip-pick');
-    if (!pick) return;
-    const f = h('input', { type: 'text', class: 'tl-rename', 'aria-label': t('tl.renameTip'), title: t('tl.renameTip'), maxlength: '40', dataset: { part: 'tl-rename' } });
-    f.value = name;
-    let done = false;
-    const finish = (keep         ) => {
-      if (done) return;
-      done = true;
-      if (keep && f.value.trim() && f.value.trim() !== name) act.rename(f.value.trim());
-      else render();
-    };
-    f.addEventListener('keydown', (e) => {
-      e.stopPropagation();
-      if (e.key === 'Enter') finish(true);
-      if (e.key === 'Escape') finish(false);
-    });
-    f.addEventListener('blur', () => finish(true));
-    pick.replaceWith(f);
-    f.focus();
-    f.select();
-  }
-
-  // ----- rows and keys -----
-                                                                   
-  let laneList         = [];
-
-  let ROW = ROW_PX;
-  function renderRows(v              ) {
-    ROW = parseFloat(getComputedStyle(el).getPropertyValue('--tl-row')) || ROW_PX;
-    names.replaceChildren();
-    lanes.replaceChildren();
-    laneList = [];
-    if (!v.rows.length) {
-      lanes.append(h('p', { class: 'tl-empty', text: t('tl.empty') }));
-      return;
-    }
-    let y = 0;
-    for (const r of v.rows) {
-      const chs = CHANNELS.filter((ch) => r.clip?.keys[ch]?.length);
-      const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key } },
-        h('button', { type: 'button', class: `tl-twist${r.open ? ' open' : ''}`, 'aria-expanded': String(r.open), title: t('tl.expand'), 'aria-label': t('tl.expand'), onclick: () => act.openRow(r.key) }, icon('chevronRight')),
-        h('button', { type: 'button', class: 'tl-obj', text: r.label, onclick: () => act.pickRow(r.key) }),
-        r.clip ? h('span', { class: 'tl-clipname', text: r.clip.name }) : null);
-      names.append(name);
-      const lane = h('div', { class: `tl-lane${r.picked ? ' picked' : ''}`, style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } });
-      lanes.append(lane);
-      laneList.push({ key: r.key, ch: null, y });
-      drawKeys(lane, r, null, keyTimes(r.clip), v);
-      y += ROW;
-      if (!r.open) continue;
-      for (const ch of CHANNELS) {
-        names.append(h('div', { class: `tl-name sub${chs.includes(ch) ? '' : ' none'}`, style: `height:${ROW}px`, text: t(`tl.ch.${ch}`) }));
-        const sub = h('div', { class: 'tl-lane sub', style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key, ch } });
-        lanes.append(sub);
-        laneList.push({ key: r.key, ch, y });
-        drawKeys(sub, r, ch, keyTimes(r.clip, [ch]), v);
-        y += ROW;
-      }
-    }
-    lanes.style.height = `${y}px`;
-  }
-
-  function drawKeys(lane             , r             , ch                      , times          , v              ) {
-    if (times.length > 1) lane.append(h('div', { class: 'tl-span', style: `left:${xOf(times[0] )}px;width:${xOf(times[times.length - 1] ) - xOf(times[0] )}px` }));
-    for (const s of times) {
-      const refs = refsAt(r, ch, s);
-      const on = refs.length > 0 && refs.every((x) => v.picked(x));
-      const label = t('tl.key', { ch: ch ? t(`tl.ch.${ch}`) : r.label, t: s.toFixed(2) });
-      lane.append(h('div', { class: `tl-key${ch ? '' : ' sum'}${on ? ' on' : ''}`, style: `left:${xOf(s)}px`, role: 'button', 'aria-pressed': String(on), 'aria-label': label, title: label,
-        dataset: { key: r.key, ch: ch ?? '', t: String(s), part: 'tl-key' } }));
-    }
-  }
-
-  /** The keys one diamond stands for: one key, or every property's key at that time (an object row's diamond). */
-  function refsAt(r             , ch                      , s        )           {
-    const chs = ch ? [ch] : CHANNELS;
-    return chs.filter((c) => r.clip?.keys[c]?.some((k) => sameT(k.t, s))).map((c) => ({ key: r.key, ch: c, t: s }));
-  }
-  const rowOf = (key        ) => view().rows.find((r) => r.key === key);
-
-  // ----- presses on the track -----
-  let drag                                                                                                                               = null;
-  track.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    act.touched();
-    el.focus({ preventScroll: true });
-    const x = localX(e);
-    const y = e.clientY - lanes.getBoundingClientRect().top;
-    const target = e.target               ;
-    const add = e.shiftKey || e.metaKey || e.ctrlKey;
-    track.setPointerCapture(e.pointerId);
-    e.preventDefault();
-    if (ruler.contains(target) || target === playhead || playhead.contains(target)) {
-      drag = { kind: 'scrub', x0: x, y0: y, id: e.pointerId, moved: false, add };
-      act.scrub(Math.max(0, tOf(x)), false);
-      return;
-    }
-    const k = target.closest             ('[data-part=tl-key]');
-    if (k) {
-      const r = rowOf(k.dataset.key );
-      const refs = r ? refsAt(r, (k.dataset.ch || null)                        , Number(k.dataset.t)) : [];
-      const v = view();
-      const on = refs.every((x) => v.picked(x));
-      // A press on a picked key keeps the picking (so several drag together); Shift on a picked key unpicks it on release.
-      if (!on) act.pickKeys(refs, add);
-      drag = { kind: 'keys', x0: x, y0: y, id: e.pointerId, moved: false, add: add && on, refs };
-      return;
-    }
-    drag = { kind: 'box', x0: x, y0: y, id: e.pointerId, moved: false, add };
-  });
-  track.addEventListener('pointermove', (e) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const x = localX(e);
-    const y = e.clientY - lanes.getBoundingClientRect().top;
-    if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) < 3) return;
-    drag.moved = true;
-    if (drag.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), false);
-    else if (drag.kind === 'keys') act.drag(tOf(x) - tOf(drag.x0), false, e.altKey);
-    else {
-      const [l, r] = [Math.min(x, drag.x0), Math.max(x, drag.x0)];
-      const [tp, bt] = [Math.min(y, drag.y0), Math.max(y, drag.y0)];
-      const top = lanes.offsetTop;
-      Object.assign(boxEl.style, { left: `${l}px`, width: `${r - l}px`, top: `${top + tp}px`, height: `${bt - tp}px` });
-      boxEl.hidden = false;
-    }
-  });
-  const up = (e              , cancel         ) => {
-    if (!drag || e.pointerId !== drag.id) return;
-    const d = drag;
-    drag = null;
-    const x = localX(e);
-    const y = e.clientY - lanes.getBoundingClientRect().top;
-    if (d.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), true);
-    else if (d.kind === 'keys') {
-      if (d.moved) act.drag(cancel ? 0 : tOf(x) - tOf(d.x0), true, e.altKey);
-      else if (d.add && d.refs) {
-        // Shift-press on a picked key without moving: unpick it (the keys it stood for, kept from the press).
-        const off = d.refs;
-        act.pickKeys(allPicked(view()).filter((p) => !off.some((o) => o.ch === p.ch && o.key === p.key && sameT(o.t, p.t))), false);
-      }
-    } else {
-      boxEl.hidden = true;
-      if (!d.moved) {
-        if (!d.add) act.pickKeys([], false);
-        return;
-      }
-      const [t0, t1] = [tOf(Math.min(x, d.x0)), tOf(Math.max(x, d.x0))];
-      const [y0, y1] = [Math.min(y, d.y0), Math.max(y, d.y0)];
-      const v = view();
-      const refs           = [];
-      for (const l of laneList) {
-        if (l.y + ROW < y0 || l.y > y1) continue;
-        const r = v.rows.find((x) => x.key === l.key);
-        if (!r) continue;
-        for (const s of keyTimes(r.clip, l.ch ? [l.ch] : CHANNELS)) if (s >= t0 && s <= t1) refs.push(...refsAt(r, l.ch, s));
-      }
-      act.pickKeys(refs, d.add);
-    }
-  };
-  track.addEventListener('pointerup', (e) => up(e, false));
-  track.addEventListener('pointercancel', (e) => up(e, true));
-  // A double press on a key puts the time line on it (Blender: ctrl-click / Unity: double-click).
-  track.addEventListener('dblclick', (e) => {
-    const k = (e.target               ).closest             ('[data-part=tl-key]');
-    if (k) act.scrub(Number(k.dataset.t), true);
-  });
-  el.addEventListener('pointerdown', () => act.touched());
-  el.addEventListener('keydown', (e) => {
-    const tag = (e.target               ).tagName;
-    if (tag === 'INPUT' || tag === 'SELECT') return;
-    if (act.key(e)) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-  });
-
-  /** Every picked key of the rows on screen (for "unpick one"). */
-  function allPicked(v              )           {
-    const out           = [];
-    for (const r of v.rows) for (const ch of CHANNELS) for (const k of r.clip?.keys[ch] ?? []) if (v.picked({ key: r.key, ch, t: k.t })) out.push({ key: r.key, ch, t: k.t });
-    return out;
-  }
-
-  /** Only the time line and the readout: every frame while ▶ plays (the rows stay as they are). */
-  function place(v               = view()) {
-    const x = xOf(Math.min(v.time, span()));
-    playhead.style.transform = `translateX(${x.toFixed(1)}px)`;
-    (playhead.firstChild               ).textContent = v.time.toFixed(1);
-    const now = head.querySelector('[data-part=tl-now]');
-    if (now) now.textContent = clock(v.time);
-    ruler.setAttribute('aria-valuenow', v.time.toFixed(2));
-    ruler.setAttribute('aria-valuemax', span().toFixed(2));
-  }
-
-  function renderRuler(v              ) {
-    ruler.replaceChildren();
-    ruler.setAttribute('aria-label', t('tl.ruler'));
-    ruler.title = t('tl.ruler');
-    const s = span();
-    // A tick every second (every half on a wide plate with a short span), labelled on whole seconds.
-    const step = s <= 4 && !v.narrow ? 0.5 : s <= 12 ? 1 : s <= 40 ? 5 : 10;
-    for (let x = 0; x <= s + 1e-6; x += step) {
-      const whole = Math.abs(x - Math.round(x)) < 1e-6;
-      ruler.append(h('span', { class: `tl-tick${whole ? '' : ' half'}`, style: `left:${xOf(x)}px`, text: whole ? `${Math.round(x)}s` : '' }));
-    }
-    const c = v.clip;
-    // Past the picked clip's end: shaded (keys cannot go there; its length is the field in the head).
-    if (c && c.len < s) lanes.append(h('div', { class: 'tl-after', style: `left:${xOf(c.len)}px` }));
-  }
-
-  function render() {
-    const v = view();
-    el.classList.toggle('rec', v.auto);
-    el.classList.toggle('narrow', v.narrow);
-    renderHead(v);
-    renderRows(v);
-    renderRuler(v);
-    place(v);
-  }
-
-  // The track's width changes with the window: the keys' places come from it.
-  new ResizeObserver(() => el.isConnected && !el.hidden && render()).observe(track);
-
-  return { el, render, place };
-}
-
-__def(__exports, "createTimelinePanel", () => createTimelinePanel);
-};
-__defs[41] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -13909,18 +15261,37 @@ __defs[41] = function (__exports) {
 //
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
-                                                                                                                                           
+                                                                                                                                                                                   
+const { motionRunner, whenOf } = __require(19);
+const { libOf } = __require(27);
 const { h } = __require(16);
-const { icon } = __require(27);
+const { icon } = __require(20);
                                                      
-const { sameMotion } = __require(24);
-const { createTimelinePanel } = __require(40);
-const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, freeName, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip } = __require(23);
+const { sameMotion: sameFile } = __require(28);
+
+/**
+ * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
+ * (motion-model sameMotion) would see only `use` + when for a clip that uses a Library motion, so a key moved would
+ * not count as a change: compare the clips with their keys, and the Library names too.
+ */
+const sameMotion = (a                           , b                           ) => {
+  const inline = (m                           ) => (m?.clips ? { clips: m.clips.map(({ use, ...c }) => ({ ...c, name: `${c.name}\u0000${use ?? ''}` })) } : m);
+  return sameFile(inline(a), inline(b));
+};
+const { createTimelinePanel } = __require(22);
+const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip } = __require(21);
                                                    
 
                                
                                                                                                        
                               
+     
+                                                                                                                     
+                                                                                                              
+     
+                              
+                                                                                                                              
+                                          
                   
                                
              
@@ -13975,7 +15346,9 @@ function createTimeline(d              , makePanel                             =
     before.set(key, store().get(key));
     startPose.set(key, was ?? shownPose(key) );
   };
+  const gestureNames = new Map                ();
   const finish = () => {
+    gestureNames.clear();
     const from = before;
     before = null;
     startPose.clear();
@@ -13986,13 +15359,45 @@ function createTimeline(d              , makePanel                             =
   let sentPoses = '';
   let sentPath = '';
 
-  const store = () => d.store;
+  const raw = () => d.store;
+  const lib = () => d.lib;
+  /**
+   * An object's motion as the timeline works on it: each attachment with its Library motion's len / repeat / keys filled
+   * in (`use` kept), so every edit below — keys, length, repeat — is a clip edit as before. A clip whose motion is not
+   * in the Library (deleted) is left out.
+   */
+  const resolve = (m               )                => {
+    if (!m?.clips) return m;
+    const clips = m.clips.flatMap((c) => {
+      if (!c.use) return [c];
+      const l = lib().get(c.use);
+      return l ? [{ ...c, name: c.name || c.use, len: l.len, repeat: l.repeat, keys: l.keys }] : [];
+    });
+    return clips.length ? { clips } : null;
+  };
+  /**
+   * The other way: each clip's len / repeat / keys go to its Library motion (named by `use`, or by its own name for a
+   * clip made here), the object keeps { use, when, until }. A `start: true` from a template becomes when: start.
+   */
+  const put = (key        , m               ) => {
+    if (!m?.clips?.length) return raw().set(key, m && !m.clips ? m : null);
+    const atts = m.clips.map((c) => {
+      const use = c.use ?? c.name;
+      lib().set(use, libOf({ ...c, name: use }));
+      const a             = { name: c.name, use, len: c.len, when: (c.when && typeof c.when === 'object' ? c.when : whenOf(c))              , keys: {} };
+      if (c.until) a.until = c.until;
+      return a;
+    });
+    raw().set(key, { clips: atts });
+  };
+  /** The store as the timeline sees it (resolved clips); every edit below goes through it. */
+  const store = () => ({ get: (k        ) => resolve(raw().get(k)), set: put, keys: () => raw().keys() });
   const dim = () => d.dim();
   const clipsOf = (key        )               => store().get(key)?.clips ?? [];
   const clipOf = (key        )                    => {
     const cs = clipsOf(key);
     const want = chosen.get(key);
-    return cs.find((c) => c.name === want) ?? cs.find((c) => c.start) ?? cs[0] ?? null;
+    return cs.find((c) => c.name === want) ?? cs.find((c) => whenOf(c).on === 'start') ?? cs[0] ?? null;
   };
   const focus = () => d.picked() ?? (focusKey && d.place(focusKey) ? focusKey : null);
   const shown = () => open && d.usable();
@@ -14031,6 +15436,7 @@ function createTimeline(d              , makePanel                             =
         sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0) }
       : { type: 'studio:timeline/path', key: null };
     const sig = JSON.stringify(msg);
+    sendArea(force);
     if (!force && sig === sentPath) return;
     sentPath = sig;
     d.send(msg);
@@ -14073,7 +15479,11 @@ function createTimeline(d              , makePanel                             =
     let m = store().get(key);
     let c = clipOf(key);
     if (!c) {
-      c = { name: freeName([], 'Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', start: true, keys: {} };
+      // One name for the whole gesture: a live drag remakes this first clip at every pose (from the motion before it),
+      // and the Library already holds the name it took on the first pose.
+      const name = gestureNames.get(key) ?? lib().free('Motion');
+      gestureNames.set(key, name);
+      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
       chosen.set(key, c.name);
     }
     const name = c.name;
@@ -14086,7 +15496,8 @@ function createTimeline(d              , makePanel                             =
     return m;
   }
   /** Is a gesture on `key` a key now (● on, the timeline open), or a move of its place? */
-  const records = (key        ) => shown() && auto && (!!clipOf(key) || time > 0) && !!d.place(key);
+  // While Try runs the scene, a move is never a key (the time line is the game's clock then, not a moment of the clip).
+  const records = (key        ) => !trying && shown() && auto && (!!clipOf(key) || time > 0) && !!d.place(key);
   /** What `key` shows now (its place + its clip at the time line). */
   const shownPose = (key        )                   => {
     const place = d.place(key);
@@ -14140,6 +15551,7 @@ function createTimeline(d              , makePanel                             =
   }
   function play() {
     if (!shown()) return;
+    stopTry();
     const c = focus() ? clipOf(focus() ) : null;
     // From the end of a `once`: back to the start (as any player does).
     if (c && (c.repeat ?? 'once') === 'once' && time >= c.len - 1e-3) time = 0;
@@ -14190,6 +15602,22 @@ function createTimeline(d              , makePanel                             =
       picked: (r) => sel.some((s) => s.key === r.key && s.ch === r.ch && sameT(s.t, r.t)),
       ease: sel.length ? (eases.size === 1 ? [...eases][0]  : 'mixed') : null,
       narrow: d.narrow(),
+      when: c ? (whenOf(c)              ) : null,
+      until: c?.until ?? null,
+      uses: c ? usage(c.use ?? c.name).length : 0,
+      cues: cues().map((q) => ({ id: q.id, label: q.label, ai: q.ai, on: !!trying && q.hits.some(([k, n]) => trying .run.playing().get(k) === n) })),
+      trying: !!trying,
+      cueNames: cueNames(),
+      afterOpts: moving().flatMap((k) => clipsOf(k).filter((x) => !(k === key && x.name === c?.name)).map((x) => ({ key: k, use: x.use ?? x.name, label: `${d.label(k)} · ${x.name}` }))),
+      rowWhen: (k        ) => {
+        const x = clipOf(k);
+        return x ? { when: whenOf(x)              , until: x.until ?? null, repeat: x.repeat ?? 'once' } : null;
+      },
+      defaultArea: () => {
+        const place = key ? d.place(key) : undefined;
+        return { p: (place?.p ?? [0, 0, 0]).map((v) => Math.round(v * 100) / 100), size: dim() === '3d' ? [3, 2, 3] : [200, 200] };
+      },
+      player: d.order().find((k) => /player|hero/i.test(k)) ?? null,
     };
   }
 
@@ -14212,13 +15640,179 @@ function createTimeline(d              , makePanel                             =
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
     const pose = shownPose(key) ;
-    let c = clipOf(key) ?? { name: 'Motion', len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once'                , start: true, keys: {} };
+    let c = clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once'                , when: { on: 'start' }              , keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p']                   )) c = setKey(c, ch, time, offsetOf(place, pose, ch, dim()));
     chosen.set(key, name);
     one(key, withClip(store().get(key), name, c));
     return true;
+  }
+
+  // ----- the Library's motions (studio-motion-triggers) -----
+  /** Rename a Library motion and every clip that uses it (here, in the other levels, and a clip that waits for its end). */
+  function renameLib(from        , to        , record = true)          {
+    if (!lib().rename(from, to)) return false;
+    const fix = (m               )                => (m?.clips ? { clips: m.clips.map((c) => {
+      const w = c.when && typeof c.when === 'object' && c.when.on === 'after' && c.when.use === from ? { ...c.when, use: to } : c.when;
+      return c.use === from ? { ...c, use: to, name: c.name === from ? to : c.name, when: w } : { ...c, when: w };
+    }) } : m);
+    for (const k of raw().keys()) raw().set(k, fix(raw().get(k)));
+    for (const w of d.others()) for (const k of Object.keys(w)) w[k] = fix(w[k] ) ?? w[k] ;
+    for (const [k, v] of chosen) if (v === from) chosen.set(k, to);
+    if (record) d.undo.push({ changes: [{ kind: 'motion-rename', key: to, from, to }] });
+    refresh();
+    return true;
+  }
+  /** The objects (in this level) a Library motion is on, with when each starts / stops. */
+  function usage(name        )                                                                {
+    const out                                                                = [];
+    for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) if (c.use === name) out.push({ key: k, when: whenOf(c)              , ...(c.until ? { until: c.until } : {}) });
+    return out;
+  }
+  /** Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). */
+  function attach(key        , name        ) {
+    const l = lib().get(name);
+    if (!l || clipsOf(key).some((c) => (c.use ?? c.name) === name) || clipsOf(key).length >= MAX_CLIPS) return;
+    const when             = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
+    chosen.set(key, name);
+    one(key, withClip(store().get(key), name, { ...l, use: name, when }));
+  }
+  function detach(key        , name        ) {
+    if (chosen.get(key) === name) chosen.delete(key);
+    sel = sel.filter((r) => r.key !== key);
+    one(key, withClip(store().get(key), name, null));
+  }
+  /** "Hop" → "Hop 2": the same keys, its own from now on. One undo step. Returns the new name. */
+  function duplicateLib(name        )                {
+    const l = lib().get(name);
+    if (!l) return null;
+    const n = lib().free(name);
+    lib().set(n, { ...l, name: n });
+    d.undo.push({ changes: [{ kind: 'motion-lib', key: n, from: null, to: lib().get(n) }] });
+    d.changed();
+    return n;
+  }
+  /** Delete a Library motion: it comes off every object here (one undo step) and in the other levels. */
+  function deleteLib(name        ) {
+    const l = lib().get(name);
+    if (!l) return;
+    const changes           = [];
+    for (const k of raw().keys()) {
+      if (!(raw().get(k)?.clips ?? []).some((c) => c.use === name)) continue;
+      const from = store().get(k);
+      const to = withClip(from, (from?.clips ?? []).find((c) => c.use === name) .name, null);
+      changes.push({ kind: 'motion', key: k, from, to });
+      put(k, to);
+      if (chosen.get(k) === name) chosen.delete(k);
+    }
+    for (const w of d.others()) for (const k of Object.keys(w)) {
+      const clips = (w[k] .clips ?? []).filter((c) => c.use !== name);
+      if (clips.length) w[k] = { clips };
+      else delete w[k];
+    }
+    lib().set(name, null);
+    changes.push({ kind: 'motion-lib', key: name, from: l, to: null });
+    d.undo.push({ changes });
+    refresh();
+    if (shown()) panel.render();
+    d.changed();
+  }
+
+  // ----- Try: the scene's cues, played by the loader's own rules (motionRunner) -----
+                                                                                                                    
+  let trying                                                                           = null;
+  /** One ▶ per thing that can happen in this scene (deduplicated): the game starting, each key, each object's click… */
+  function cues()        {
+    const out = new Map             ();
+    const addCue = (id        , label        , ai         , ev                         , hit                   ) => {
+      const c = out.get(id) ?? { id, label, ai, ev, hits: [] };
+      if (hit) c.hits.push(hit);
+      out.set(id, c);
+    };
+    addCue('start', d.t('tl.try.start'), false, { on: 'start' });
+    for (const key of moving()) {
+      const name = d.label(key);
+      for (const c of clipsOf(key)) {
+        const w = whenOf(c)              ;
+        const hit                   = [key, c.name];
+        if (w.on === 'start' || w.on === 'time') out.get('start') .hits.push(hit);
+        else if (w.on === 'key') addCue(`key:${w.key}`, keyName(w.key), false, { on: 'key', key: w.key }, hit);
+        else if (w.on === 'click') addCue(`click:${key}`, d.t('tl.try.click', { name }), false, { on: 'click', key }, hit);
+        else if (w.on === 'enter') addCue(`enter:${key}`, d.t('tl.try.enter', { name }), false, { on: 'enter', key }, hit);
+        else if (w.on === 'touch') addCue(`touch:${key}`, d.t('tl.try.touch', { name }), true, { on: 'touch', key }, hit);
+        else if (w.on === 'cue') addCue(`cue:${w.cue}`, w.cue, true, { on: 'cue', cue: w.cue }, hit);
+        else if (w.on === 'say') addCue(`say:${key}:${c.use ?? c.name}`, d.t('tl.try.say', { name: `${name} · ${c.name}` }), true, { on: 'say', key, use: c.use ?? c.name }, hit);
+        if (c.until?.cue) addCue(`cue:${c.until.cue}`, c.until.cue, true, { on: 'cue', cue: c.until.cue });
+      }
+    }
+    return [...out.values()];
+  }
+  /** Press a cue's ▶: the scene runs as the game would (from "the game starts" if it was not running), then that happens. */
+  function tryCue(id        ) {
+    const cue = cues().find((c) => c.id === id);
+    if (!cue) return;
+    if (playing) stop();
+    const now = performance.now();
+    if (!trying || id === 'start') {
+      if (trying) cancelAnimationFrame(trying.raf);
+      const objs = moving().map((key) => ({ key, clips: clipsOf(key).map((c) => ({ ...c, when: whenOf(c) })) }));
+      trying = { run: motionRunner(objs), t0: now, raf: 0 };
+      trying.run.fire({ on: 'start' }, now);
+      const loop = () => {
+        if (!trying) return;
+        const t = performance.now();
+        const at = trying.run.step(t, () => null);
+        const poses                                     = [];
+        for (const k of moving()) {
+          const o = at.get(k)                       ;
+          poses.push({ key: k, pose: o ? compose(d.place(k) , o, dim()) : d.place(k)  });
+        }
+        if (poses.length) d.send({ type: 'studio:timeline/pose', poses });
+        time = (t - trying.t0) / 1000;
+        sentPoses = '';
+        panel.place();
+        const lit = JSON.stringify([...trying.run.playing()]);
+        if (lit !== litWas) (litWas = lit), panel.render();
+        trying.raf = requestAnimationFrame(loop);
+      };
+      trying.raf = requestAnimationFrame(loop);
+    }
+    if (id !== 'start') trying.run.fire(cue.ev, now);
+    panel.render();
+  }
+  let litWas = '';
+  function stopTry() {
+    if (!trying) return;
+    cancelAnimationFrame(trying.raf);
+    trying = null;
+    time = 0;
+    refresh(true);
+    panel.render();
+  }
+  /** Known cue names (this level's clips), for the menus: the ones in use first, as written. */
+  function cueNames()           {
+    const out = new Set        ();
+    for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) {
+      const w = whenOf(c)              ;
+      if (w.on === 'cue') out.add(w.cue);
+      if (c.until?.cue) out.add(c.until.cue);
+    }
+    return [...out];
+  }
+  /** The picked clip's area, drawn in the game as a box (when it starts as someone enters it). */
+  let sentArea = '';
+  function sendArea(force = false) {
+    const key = shown() ? d.picked() : null;
+    const c = key ? clipOf(key) : null;
+    const w = c ? (whenOf(c)              ) : null;
+    const msg                = key && w?.on === 'enter' && w.area
+      ? { type: 'studio:timeline/area', key, area: structuredClone(w.area), label: d.t('tl.area.label', { size: w.area.size.map((v) => Math.round(v * 10) / 10).join(' × ') }) }
+      : { type: 'studio:timeline/area', key: null };
+    const sig = JSON.stringify(msg);
+    if (!force && sig === sentArea) return;
+    sentArea = sig;
+    d.send(msg);
   }
 
   const panel = makePanel(view, {
@@ -14243,9 +15837,10 @@ function createTimeline(d              , makePanel                             =
         const cs = clipsOf(key);
         if (cs.length >= MAX_CLIPS) return;
         const kind = value.slice(4)            ;
-        const c = fromTemplate(kind, freeName(cs, kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
-        // The first motion of an object plays at the start; another waits for a cue (one start per object).
-        c.start = !cs.some((x) => x.start);
+        // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
+        const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
+        // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
+        c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
         chosen.set(key, c.name);
         openRows.add(key);
         time = 0;
@@ -14267,9 +15862,13 @@ function createTimeline(d              , makePanel                             =
       const key = focus();
       const c = key ? clipOf(key) : null;
       if (!key || !c) return;
-      const n = freeName(clipsOf(key).filter((x) => x !== c), name.slice(0, 40));
-      chosen.set(key, n);
-      one(key, withClip(store().get(key), c.name, { ...c, name: n }));
+      // The Library motion is renamed, with every object that uses it (the name is the asset's, not this object's).
+      const from = c.use ?? c.name;
+      const n = name.slice(0, 40).trim();
+      if (!n || n === from) return;
+      renameLib(from, lib().free(n));
+      panel.render();
+      d.changed();
     },
     len: (s) => editClip((c) => {
       // Not shorter than its last key (the keys would fall off the end); 0.1 s … 10 minutes.
@@ -14277,18 +15876,20 @@ function createTimeline(d              , makePanel                             =
       return { ...c, len: Math.min(MAX_LEN, Math.max(MIN_LEN, last, Math.round(s * 1000) / 1000)) };
     }),
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
-    start(on) {
-      const key = focus();
-      const c = key ? clipOf(key) : null;
-      if (!key || !c) return;
-      // One clip per object plays at the start: choosing it here makes the others wait for a cue.
-      let m = store().get(key);
-      for (const x of m?.clips ?? []) if (x.name !== c.name && x.start && on) m = withClip(m, x.name, { ...x, start: undefined });
-      const next             = { ...c, start: on || undefined };
-      if (on) delete next.when;
-      one(key, withClip(m, c.name, next));
-    },
-    when: (text) => editClip((c) => ({ ...c, when: text.trim() || undefined })),
+    // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
+    setWhen: (w) => editClip((c) => {
+      const out             = { ...c, when: w };
+      delete out.start;
+      return out;
+    }),
+    setUntil: (u) => editClip((c) => {
+      const out             = { ...c };
+      if (u) out.until = u;
+      else delete out.until;
+      return out;
+    }),
+    tryCue: (id) => tryCue(id),
+    tryStop: () => stopTry(),
     ease(e) {
       if (!sel.length) return;
       const next = new Map                       ();
@@ -14346,6 +15947,7 @@ function createTimeline(d              , makePanel                             =
     open = on;
     if (!on) {
       stop();
+      stopTry();
       sel = [];
     }
     sentPoses = '';
@@ -14390,7 +15992,7 @@ function createTimeline(d              , makePanel                             =
     if (mod && k === 'v' && clipboard) {
       const key = focus() ?? sel[0]?.key;
       if (!key) return false;
-      const c = clipOf(key) ?? { name: 'Motion', len: 1, repeat: 'once'                , start: true, keys: {} };
+      const c = clipOf(key) ?? { name: lib().free('Motion'), len: 1, repeat: 'once'                , when: { on: 'start' }              , keys: {} };
       const r = pasteKeys(c, clipboard, time, dim());
       sel = r.pasted.map((p) => ({ key, ch: p.ch, t: p.t }));
       chosen.set(key, c.name);
@@ -14485,6 +16087,16 @@ function createTimeline(d              , makePanel                             =
       return true;
     },
     onMessage(m               )          {
+      if (m.type === 'studio:timeline/area-moved') {
+        const c = clipOf(m.key);
+        const w = c ? (whenOf(c)              ) : null;
+        if (!c || w?.on !== 'enter') return true;
+        begin(m.key);
+        const nc             = { ...c, when: { ...w, area: { ...w.area, p: m.p.slice() } } };
+        const from = m.end ? finish() : before;
+        commit(new Map([[m.key, withClip(store().get(m.key), c.name, nc)]]), from, m.end);
+        return true;
+      }
       if (m.type !== 'studio:timeline/point') return false;
       const c = clipOf(m.key);
       if (!c?.keys.p?.[m.i]) return true;
@@ -14496,8 +16108,16 @@ function createTimeline(d              , makePanel                             =
       return true;
     },
     /** Undo / redo of a `motion` change. */
-    apply(c                                     , dir                 ) {
-      store().set(c.key, dir === 'undo' ? c.from : c.to);
+    apply(c                                                                      , dir                 ) {
+      if (c.kind === 'motion-lib') lib().set(c.key, dir === 'undo' ? c.from : c.to);
+      else if (c.kind === 'motion-rename') (dir === 'undo' ? renameLib(c.to, c.from, false) : renameLib(c.from, c.to, false));
+      else store().set(c.key, dir === 'undo' ? c.from : c.to);
+      if (c.kind !== 'motion') {
+        refresh();
+        if (shown()) panel.render();
+        d.changed();
+        return;
+      }
       const names = new Set((store().get(c.key)?.clips ?? []).map((x) => x.name));
       if (chosen.has(c.key) && !names.has(chosen.get(c.key) )) chosen.delete(c.key);
       sel = sel.filter((r) => keyTimes(clipOf(r.key), [r.ch]).some((t) => sameT(t, r.t)));
@@ -14508,43 +16128,80 @@ function createTimeline(d              , makePanel                             =
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
       stop();
+      stopTry();
+      sentArea = '';
       sentPoses = '';
       sentPath = '';
       finish();
       keyDrag = null;
     },
-    /** The card's Motion row: the clip menu (this object's motions) and the button that opens the timeline. */
+    /**
+     * The card's Motion row: this object's motions (each with when it starts), the Library's other motions to attach
+     * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
+     */
     cardRow(key        )                {
       const cs = clipsOf(key);
       const c = clipOf(key);
-      const sel = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
-      if (!cs.length) sel.append(h('option', { value: '', text: d.t('motion.none') }));
+      const pick = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
+      if (!cs.length) pick.append(h('option', { value: '', text: d.t('motion.none') }));
+      const mine = h('optgroup', { label: d.t('motion.on') });
       for (const x of cs) {
-        const o = h('option', { value: x.name, text: `${x.name} · ${Math.round(x.len * 10) / 10} s` });
+        const o = h('option', { value: x.name, text: `${x.name} · ${d.t(`tl.when.short.${whenOf(x).on}`)}` });
         if (x.name === c?.name) o.selected = true;
-        sel.append(o);
+        mine.append(o);
       }
-      sel.disabled = !cs.length;
-      sel.addEventListener('change', () => {
-        chosen.set(key, sel.value);
-        refresh();
-        if (shown()) panel.render();
+      if (cs.length) pick.append(mine);
+      const others = lib().list().filter((m) => !cs.some((x) => (x.use ?? x.name) === m.name));
+      if (others.length && cs.length < MAX_CLIPS) {
+        const g = h('optgroup', { label: d.t('motion.attach') });
+        for (const m of others) g.append(h('option', { value: `attach:${m.name}`, text: `${m.name} · ${Math.round(m.len * 10) / 10} s` }));
+        pick.append(g);
+      }
+      if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
+      pick.addEventListener('change', () => {
+        const v = pick.value;
+        if (v.startsWith('attach:')) attach(key, v.slice(7));
+        else if (v === 'detach' && c) detach(key, c.name);
+        else {
+          chosen.set(key, v);
+          refresh();
+          if (shown()) panel.render();
+        }
+        d.changed();
       });
+      pick.disabled = !cs.length && !others.length;
       const btn = h('button', { type: 'button', class: `motion-tl${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline' },
         onclick: () => {
           focusKey = key;
           setOpen(!open);
         } }, h('span', { class: 'tl-diamond' }), h('span', { text: d.t('tl.open') }));
-      const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, sel, icon('chevronDown')), btn);
+      const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, pick, icon('chevronDown')), btn);
       return [h('span', { class: 'f-l', text: d.t('motion.label') }), cells];
     },
+    // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.
+    usage,
+    attach,
+    detach,
+    duplicateLib,
+    deleteLib,
+    renameLib: (from        , to        )                => {
+      const n = lib().free(to.trim().slice(0, 40));
+      if (!renameLib(from, n)) return null;
+      d.changed();
+      return n;
+    },
+    tryCue,
+    stopTry,
+    /** An object's motion as the timeline sees it (each clip with its Library motion's keys): tests, the Library. */
+    motionOf: (key        ) => store().get(key),
     /** ● Auto key on / off (the plate's button; tests). */
     setAuto(on         ) {
       auto = on;
       if (shown()) panel.render();
     },
     /** Tests and the ⌘K list. */
-    state: () => ({ open, auto, time, playing: !!playing, sel: sel.slice(), clip: focus() ? clipOf(focus() )?.name ?? null : null }),
+    state: () => ({ open, auto, time, playing: !!playing, sel: sel.slice(), clip: focus() ? clipOf(focus() )?.name ?? null : null, trying: !!trying,
+      lit: trying ? Object.fromEntries(trying.run.playing()) : {}, cues: cues().map((q) => q.id) }),
     setTime(t        ) {
       if (playing) stop();
       time = snapT(t, MAX_LEN, true);
@@ -14558,7 +16215,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[42] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -14595,7 +16252,7 @@ __defs[42] = function (__exports) {
 // moves the words into the ask box (focused, not sent). Typing in the ask box still shows suggestions (the `typed`
 // mode below), and those still read the ask box: there the words were written in it on purpose.
 const { h } = __require(16);
-const { icon } = __require(27);
+const { icon } = __require(20);
 
                                                                         
 
@@ -14864,7 +16521,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[43] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -14965,7 +16622,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[44] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -14988,7 +16645,11 @@ const { LIMITS } = __require(0);
                                                   
                                    
                                                                                                                           
-                                                                            
+                                                                           
+                                                                                                                        
+                                                                                             
+                                                                                       
+                                                                     
 
                             
                     
@@ -15016,7 +16677,7 @@ class UndoStack {
 
   /** Record a finished gesture. No-op when nothing changed. Clears redo. */
   push(e           )          {
-    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion') || JSON.stringify(c.from) !== JSON.stringify(c.to));
+    const changes = e.changes.filter((c) => (c.kind !== 'pose' && c.kind !== 'motion' && c.kind !== 'motion-lib' && c.kind !== 'motion-rename') || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });
@@ -15069,7 +16730,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[45] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -15189,7 +16850,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[46] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -15202,8 +16863,8 @@ __defs[46] = function (__exports) {
 // keys in the third grey, three columns on a PC (Edit · Tools · View), one on a phone. Only what applies to this game
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
-const { icon } = __require(27);
-const { KEYMAP, keysOf } = __require(38);
+const { icon } = __require(20);
+const { KEYMAP, keysOf } = __require(41);
 
                                     
                          
@@ -15268,7 +16929,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[47] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -15495,7 +17156,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[48] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -15766,7 +17427,7 @@ __def(__exports, "worldOf", () => worldOf);
 __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[49] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -15782,7 +17443,7 @@ __defs[49] = function (__exports) {
 // What each row does is main.ts's (it owns the game frame, the models and the draft); this file only draws and asks.
                                                    
 const { h } = __require(16);
-const { icon } = __require(27);
+const { icon } = __require(20);
                                           
 
                                   
@@ -15879,7 +17540,7 @@ function createLevelSwitch(d                 ) {
 
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[50] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -16069,7 +17730,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[51] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -16180,7 +17841,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[52] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -16337,7 +17998,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[53] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -16364,7 +18025,7 @@ __defs[53] = function (__exports) {
 // finger's 44 px.
                                                 
 const { h } = __require(16);
-const { icon } = __require(27);
+const { icon } = __require(20);
 
                               
                   
@@ -16407,7 +18068,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[54] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -16465,7 +18126,7 @@ __def(__exports, "uiAsPlacement", () => uiAsPlacement);
 __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[55] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -16542,7 +18203,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[56] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -16564,41 +18225,44 @@ const { validateLibrary, validatePlacement } = __require(3);
 const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } = __require(15);
 const { DRAG_FILE } = __require(13);
 const { createLibraryObjects, DRAG_OBJECT } = __require(18);
-const { rulesFor } = __require(19);
-const { samePose } = __require(25);
+const { createLibraryMotions } = __require(23);
+const { rulesFor } = __require(24);
+const { samePose } = __require(29);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setExtraText, translate } = __require(26);
-const { NEXT_STEPS, renderNextSteps } = __require(28);
-const { statusCovers } = __require(29);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(30);
-const { bounces, saveLoud } = __require(31);
-const { askView: questionView } = __require(32);
-const { playLine, playWords } = __require(33);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(34);
-const { renderSettings } = __require(36);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(35);
-const { dropTarget, hasLayer, layerTarget } = __require(21);
-const { createPlacementPanel } = __require(39);
-const { createTimeline } = __require(41);
-const { icon, setButton } = __require(27);
-const { createPalette } = __require(42);
-const { fitPicture } = __require(43);
-const { PlacementModel } = __require(25);
-const { UndoStack, poseChange } = __require(44);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(37);
+const { detectLang, setExtraText, translate } = __require(30);
+const { NEXT_STEPS, renderNextSteps } = __require(31);
+const { statusCovers } = __require(32);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(33);
+const { bounces, saveLoud } = __require(34);
+const { askView: questionView } = __require(35);
+const { playLine, playWords } = __require(36);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(37);
+const { renderSettings } = __require(39);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(38);
+const { dropTarget, hasLayer, layerTarget } = __require(26);
+const { createPlacementPanel } = __require(42);
+const { createTimeline } = __require(43);
+const { motionLibrary } = __require(27);
+const { attachWorld, roundLib } = __require(28);
+const { icon, setButton } = __require(20);
+const { createPalette } = __require(44);
+const { fitPicture } = __require(45);
+const { PlacementModel } = __require(29);
+const { UndoStack, poseChange } = __require(46);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(40);
 const { displayName, forgetNames, noteItems, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(38);
-const { installTooltips } = __require(45);
-const { createShortcutSheet } = __require(46);
-const { createContextMenu } = __require(47);
-const { Levels, worldOf } = __require(48);
-const { createLevelSwitch } = __require(49);
-const { contextRows } = __require(50);
-const { bigChanges, createSafeSave } = __require(51);
-const { createUnsavedGuard, lostBy, playAsks } = __require(52);
-const { createLayerSwitch } = __require(53);
-const { uiAsPlacement, uiEntries, withUi } = __require(54);
-const { barPress, gripEnd, readFold, writeFold } = __require(55);
+const { keyOf, tipText } = __require(41);
+const { installTooltips } = __require(47);
+const { createShortcutSheet } = __require(48);
+const { createContextMenu } = __require(49);
+const { Levels, worldOf } = __require(50);
+const { createLevelSwitch } = __require(51);
+const { contextRows } = __require(52);
+const { bigChanges, createSafeSave } = __require(53);
+const { createUnsavedGuard, lostBy, playAsks } = __require(54);
+const { createLayerSwitch } = __require(55);
+const { uiAsPlacement, uiEntries, withUi } = __require(56);
+const { barPress, gripEnd, readFold, writeFold } = __require(57);
 
                                                                         
 
@@ -16760,6 +18424,9 @@ function start(host            ) {
     get store() {
       return worldModel.motion;
     },
+    // The Library's motions: one for the whole file, across levels (studio-motion-triggers, motion-library.ts).
+    lib: motionLibrary,
+    others: () => levels.list.filter((e) => e.id !== levels.current).map((e) => (e.world.motion ||= {})),
     undo,
     send: (m) => send(m),
     dim: () => dim,
@@ -17473,11 +19140,12 @@ function start(host            ) {
       applyPose(k, pose);
     },
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
-    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}) })),
+    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
     answering: () => answering(),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
     assets: () => (libraryShown() ? filePick : []),
+    motions: () => (libraryShown() ? libraryMotions.picked() : []),
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
@@ -17530,6 +19198,35 @@ function start(host            ) {
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
+  // The Library's motions (studio-motion-triggers, library-motions.ts): the "Motion" filter, attach, the ask's motions.
+  const libraryMotions = createLibraryMotions({
+    t,
+    list: () => motionLibrary.list(),
+    usage: (name) => timeline.usage(name),
+    items: () => worldItems,
+    picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
+    multi: () => multi,
+    attach: (key, name) => timeline.attach(key, name),
+    duplicate: (name) => timeline.duplicateLib(name),
+    remove: (name) => timeline.deleteLib(name),
+    rename: (name, to) => timeline.renameLib(name, to),
+    askAi: host.offline ? undefined : () => focusAsk(),
+    changed: () => (renderShelf(), placementPanel.render()),
+  });
+
+  /**
+   * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
+   * (`on`: keys with when / until), so "make this crate Hop when the player walks up" reaches the AI with both names.
+   */
+  function requestMotions()                                {
+    if (!libraryShown()) return {};
+    const out                  = [];
+    for (const name of libraryMotions.picked()) {
+      const m = motionLibrary.get(name);
+      if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name) });
+    }
+    return out.length ? { motions: out } : {};
+  }
 
   /**
    * The Library's "Add to scene" (2026-10-18; also its tiles' menu and a tile dropped on the Scene row): one copy of
@@ -18013,7 +19710,7 @@ function start(host            ) {
       return it ? displayName(it, t) : k;
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion' : 'move';
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0] ) : t('undo.n', { n: keys.length }) });
   }
@@ -18130,7 +19827,7 @@ function start(host            ) {
       if (c.kind === 'pose') {
         flush();
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
-      } else if (c.kind === 'motion') timeline.apply(c, dir);
+      } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -18148,7 +19845,7 @@ function start(host            ) {
     }
     flush();
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && c.kind !== 'motion').map((c) => c.key));
+    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && c.kind !== 'pose' && !c.kind.startsWith('motion')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]  : null;
@@ -18184,6 +19881,7 @@ function start(host            ) {
     },
     // The objects, for the Library's one grid (no `showObjects`: the Library narrows to a file's objects itself).
     objects: libraryObjects,
+    motions: libraryMotions,
     switchTool: (id) => switchTool(id),
     changed: () => renderButtons(),
     phone,
@@ -19338,13 +21036,18 @@ function start(host            ) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere();
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.
    */
-  const fileNow = ()                => levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
-    uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
+  const fileNow = ()                => {
+    const f = levels.compose(withUi(worldModel.result(), uiSeen ? uiEntries(uiModel.result()) : fileUi,
+      uiSeen ? [iframe.clientWidth, iframe.clientHeight] : fileUiView ?? null));
+    // The Library's motions sit at the top, also with levels (studio-motion-triggers). Absent with none: same bytes.
+    const motions = motionLibrary.result((m) => roundLib(m, dim));
+    return motions ? { ...f, motions } : f;
+  };
   const dirtyCount = () => placementDirty() + Object.values(tools).reduce((n, tl) => n + (tl ? tl.dirty() : 0), 0) + toolsDirty();
 
   // ----- the draft and Save (rebrand 2026-10-16, play test the same day) -----
@@ -19526,6 +21229,7 @@ function start(host            ) {
           worldModel.markSaved();
           uiModel.markSaved();
           levels.markSaved();
+          motionLibrary.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -20482,7 +22186,10 @@ function start(host            ) {
       }
       const v = placement ? validatePlacement(placement) : null;
       const saved = v && v.ok ? v.value : null;
+      // The Library's motions first: reading each level's clips below asks it for the motion each clip is.
+      motionLibrary.restore(saved);
       levels.load(saved);
+      for (const e of levels.list) if (e.world.motion) e.world.motion = attachWorld(e.world.motion, motionLibrary, saved?.dim ?? dim);
       if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
       else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
@@ -20504,7 +22211,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[57] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -20683,19 +22390,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[58] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(56);
-const { createLocalHost } = __require(57);
+const { start } = __require(58);
+const { createLocalHost } = __require(59);
 
 start(createLocalHost());
 
 
 };
-__require(58);
+__require(60);
 })();

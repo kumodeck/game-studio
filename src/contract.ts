@@ -912,6 +912,11 @@ export type ShellToBridge =
    */
   | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean }
   /**
+   * studio-motion-triggers (2026-10-22): the picked clip's area ("the player enters an area"), a box in the world with a
+   * point in its middle to drag (across the ground; Shift: up / down). null = none drawn.
+   */
+  | { type: 'studio:timeline/area'; key: string | null; area?: MotionArea | null; label?: string }
+  /**
    * One keyboard/button step on the selected object (arrows, Q/E, PageUp/Down,
    * +/-). `hold: true` marks auto-repeat: the bridge folds a run of held steps
    * into one undo step (ends when a non-hold step or another gesture arrives,
@@ -1082,6 +1087,8 @@ export type BridgeToShell =
    * undo step for the whole drag).
    */
   | { type: 'studio:timeline/point'; key: string; i: number; v: number[]; end: boolean }
+  /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. */
+  | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean }
   /** Answer to placement/copy: the copies made (with their poses) and the keys that could not be copied. */
   | { type: 'studio:placement/added'; items: Array<{ key: string; from: string; pose: Pose; ghost?: boolean }>; failed: string[] }
   /** `size`: the side asked for (placement/thumbs), so the editor can tell a Library tile's picture from a list row's. */
@@ -1242,6 +1249,12 @@ export interface StudioRequestInput {
    */
   assets?: string[];
   /**
+   * "ask" only (studio-motion-triggers, 2026-10-22): motions picked in the Library that the words are about ("make this
+   * crate do this Hop when the player walks up"): each with its length and what it is on now (`on`: object keys and
+   * their `when`). The AI wires the moment in the game's code (playMotion(key, name) works for any Library motion).
+   */
+  motions?: RequestMotion[];
+  /**
    * UI stage 1: 'ui' when the objects are the game's HTML UI (data-studio-key elements, picked in the UI layer), so
    * the AI changes that element's HTML / CSS, not a world object. Absent = the world, as before.
    */
@@ -1267,6 +1280,15 @@ export interface StudioRequestInput {
   paused?: boolean;
   chat?: string;
   history?: ChatLine[];
+}
+
+/** A Library motion named in an ask (StudioRequestInput.motions). */
+export interface RequestMotion {
+  name: string;
+  len: number;
+  repeat?: MotionRepeat;
+  /** The objects it is on now and when each starts. */
+  on: Array<{ key: string; when?: MotionWhen; until?: MotionUntil }>;
 }
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -1649,6 +1671,12 @@ export interface PlacementFile {
    */
   motion?: Record<string, Motion>;
   /**
+   * Optional (studio-motion-triggers, 2026-10-22): the Library's motions, named, each a clip without "when" (len /
+   * repeat / keys). Objects use them by name (`motion.<key>.clips[].use`). Always at the top, also with `levels`: a
+   * motion is an asset any level's object can use. Absent when there is none.
+   */
+  motions?: LibraryMotion[];
+  /**
    * Optional (levels, 2026-10-22, CONTRACT.md §4.1): a game with several levels. Each level holds its own world part
    * (`objects` / `added` / `removed` / `order` / `motion`, the same shapes as above); the list's order is the person's.
    * With `levels`, the top `objects` is {} and the top has no added / removed / order / motion. Absent for a game with one level —
@@ -1706,10 +1734,60 @@ export interface MotionClip {
   len: number;
   /** once (default: stays on its last pose), loop, pingpong (there and back). */
   repeat?: MotionRepeat;
-  /** true = plays as soon as the game starts (one clip per object at most). Absent = waits for a cue (playMotion). */
+  /**
+   * studio-timeline's shape (still read): true = plays as soon as the game starts. Since studio-motion-triggers
+   * (2026-10-22) the editor writes `when: { on: 'start' }` instead and never writes `start`.
+   */
   start?: boolean;
-  /** For a clip that waits: when it should play, in the person's words, for the AI ("when the player comes near"). */
-  when?: string;
+  /**
+   * When it starts (studio-motion-triggers, CONTRACT.md §4.1 "When a motion plays"). A string is studio-timeline's
+   * shape (the person's words for the AI), read as `{ on: 'say', say }`. Absent on a clip with `use` = the game starts.
+   */
+  when?: MotionWhen | string;
+  /** When it stops (absent = never: a once clip ends on its last pose, a loop / pingpong goes on). */
+  until?: MotionUntil;
+  /**
+   * The Library motion this clip is (studio-motion-triggers): its len / repeat / keys come from `motions` in the file.
+   * In the file a clip with `use` has no len / repeat / keys of its own; inside the editor they are filled in from the
+   * Library (timeline-wire.ts reads and writes the two together).
+   */
+  use?: string;
+  keys: MotionKeys;
+}
+
+/**
+ * When an object's motion starts (studio-motion-triggers, 2026-10-22). The loader runs `start`, `time`, `key`, `click`,
+ * `after` and `enter` (when it can find `who`) by itself; `touch`, `cue` and `say` need the game's code (the AI adds
+ * touch(key) / cue(name) / playMotion(key, name) where it happens).
+ */
+export type MotionWhen =
+  | { on: 'start' }
+  | { on: 'time'; after: number }
+  | { on: 'key'; key: string }
+  | { on: 'click' }
+  | { on: 'after'; use: string; key?: string }
+  | { on: 'enter'; area: MotionArea; who?: string }
+  | { on: 'touch' }
+  | { on: 'cue'; cue: string }
+  | { on: 'say'; say?: string };
+export type MotionTrigger = MotionWhen['on'];
+/** A box in the world: its middle `p` and its size (3D [x, y, z] / [w, h, d] m; 2D [x, y] / [w, h] px). */
+export interface MotionArea {
+  p: number[];
+  size: number[];
+}
+/** When a motion stops: after `times` rounds, or when a named cue comes; `then` = stay where it is (default) or go back to its first pose. */
+export interface MotionUntil {
+  times?: number;
+  cue?: string;
+  then?: 'stay' | 'reset';
+}
+
+/** A motion in the Library (studio-motion-triggers): placement.json's top `motions`. A clip without "when". */
+export interface LibraryMotion {
+  name: string;
+  len: number;
+  repeat?: MotionRepeat;
   keys: MotionKeys;
 }
 
@@ -1853,6 +1931,22 @@ export interface LibraryObjects {
   multi(): boolean;
 }
 
+/**
+ * The Library's motions (studio-motion-triggers, 2026-10-22; shell/library-motions.ts): the "Motion" filter's tiles and
+ * the picked motion's detail. The Library (tools/library/panel.ts) puts them in its one grid, like the objects.
+ */
+export interface LibraryMotions {
+  count(): number;
+  /** The tiles for this search, and how many motions they are. */
+  tiles(q: string): { tiles: HTMLElement[]; n: number };
+  /** The picked motion's detail (and a key that changes with it), or null with none picked. */
+  detail(): { el: HTMLElement; key: string } | null;
+  /** Drop the pick (a file or an object was opened alone). */
+  clear(): void;
+  /** Called right before a press on a motion's tile picks it (`add`: Shift / Multi-select keeps the other picks). */
+  onPick(fn: (add: boolean) => void): void;
+}
+
 export interface ShellContext {
   host: StudioHost;
   lang: Lang;
@@ -1885,6 +1979,8 @@ export interface ShellContext {
    * without it leave it out and the Library lists files only, as before.
    */
   objects?: LibraryObjects;
+  /** Optional (studio-motion-triggers, 2026-10-22): the Library's motions, shown under the "Motion" filter and in All. */
+  motions?: LibraryMotions;
   switchTool(id: ToolId): void;
   /** Tell the shell that dirty() changed (re-renders the Save button). */
   changed(): void;

@@ -12,7 +12,7 @@
 // - Pictures are shown with <img> only (SVG included), so an SVG file cannot
 //   run a script in the shell.
 
-import type { AssetRef, Lang, LibraryFileUse, LibraryObjects, LoadEntry, StudioHost } from '../../contract.ts';
+import type { AssetRef, Lang, LibraryFileUse, LibraryMotions, LibraryObjects, LoadEntry, StudioHost } from '../../contract.ts';
 import { ASSET_EXT } from '../../contract.ts';
 import { assetsOfKey, buildRows, filterRows, normalizeList, SHELVES, shelfOfType } from './marks.ts';
 import type { Badge, LibraryRow, Shelf } from './marks.ts';
@@ -93,6 +93,8 @@ export interface LibraryDeps {
    * detail at a time (an object's or a file's). Absent (the dev harness, older shells) = assets only, as before.
    */
   objects?: LibraryObjects;
+  /** The Library's motions (studio-motion-triggers, 2026-10-22): the "Motion" filter, and All. Absent = none. */
+  motions?: LibraryMotions;
   /**
    * What the Library shows (All / 3D / 2D / Sound / Other and the search), kept by the caller across
    * re-mounts (a language or layout change mounts a new panel; the view should not jump back to All). Mutated here.
@@ -193,6 +195,9 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   let state: LibraryState = emptyState();
   let saved: LibraryState = emptyState();
   const objects = deps.objects;
+  const motions = deps.motions;
+  /** The motions are in the grid on All and on Motion (not while a file's objects narrow it). */
+  const showsMotions = () => !!motions && (filter.shelf === 'all' || filter.shelf === 'motion') && !objects?.band();
   // Kept by the caller across re-mounts (index.ts); a fresh one in the dev harness.
   const filter: LibraryView = deps.view || { shelf: 'all', q: '' };
   /** The shelf the game's objects sit on (3D or 2D), or null without objects (the dev harness: files only). */
@@ -202,7 +207,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
    * narrows them (then only those objects: the band above the grid says so and has the × back).
    */
   const showsObjects = () => !!objects && (filter.shelf === 'all' || filter.shelf === objShelf());
-  const showsFiles = () => !objects?.band();
+  const showsFiles = () => !objects?.band() && filter.shelf !== 'motion';
   /** The detail last drawn (a file's path or the picked objects' keys): a new one scrolls the phone sheet up to it. */
   let lastDetail = '';
   /**
@@ -503,7 +508,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     chips.replaceChildren();
     chips.dataset.shelf = filter.shelf;
     chips.setAttribute('aria-label', L('filterShow'));
-    const n: Record<Shelf, number> = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0 };
+    const n: Record<Shelf, number> = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0, motion: motions?.count() ?? 0 };
+    n.all += n.motion;
     for (const r of rows) n[shelfOfType(r.type)]++;
     const os = objShelf();
     if (os) {
@@ -528,6 +534,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     const list = showFiles ? filterRows(rows, filter) : [];
     // The objects first (what is in the game), then the files they are made from: one grid ("one Library").
     const objs = showsObjects() ? objects!.tiles(filter.q.trim().toLowerCase()) : null;
+    const mots = showsMotions() ? motions!.tiles(filter.q.trim().toLowerCase()) : null;
     // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
     // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
     // While "Couldn't read the folder" shows, it takes the count's place (same cell in shell.css).
@@ -539,8 +546,16 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
     else count.textContent = fileCount ? L('countBoth', { o: objs.n, f: list.length }) : objs.n ? L('countObjects', { n: objs.n }) : '';
     grid.replaceChildren();
+    // The Motion filter: the motions only, and a line when there are none (they are made on the timeline).
+    if (filter.shelf === 'motion') {
+      count.textContent = L('countMotions', { n: mots?.n ?? 0 });
+      if (mots?.tiles.length) grid.append(...mots.tiles);
+      else grid.append(h('div', 'gsl-empty', L('noMotionsYet')));
+      return;
+    }
     if (objs) {
       grid.append(...objs.tiles);
+      if (mots) grid.append(...mots.tiles);
       if (!showFiles) {
         if (!objs.tiles.length) grid.append(h('div', 'gsl-empty', objects!.count() ? L('emptyObjects') : L('noObjectsYet')));
         return;
@@ -635,16 +650,18 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   function renderDetail() {
     const row = rows.find((r) => r.path === openPath);
     // One detail at a time: the open file's, else the picked objects' (an open file drops the pick, see open()).
-    const obj = !row && objects ? objects.detail() : null;
-    detail.hidden = !row && !obj;
+    const mot = !row && motions ? motions.detail() : null;
+    const obj = !row && !mot && objects ? objects.detail() : null;
+    detail.hidden = !row && !obj && !mot;
     wrap.classList.toggle('gsl-has-detail', !detail.hidden);
-    detail.dataset.kind = row ? 'file' : obj ? 'object' : '';
+    detail.dataset.kind = row ? 'file' : mot ? 'motion' : obj ? 'object' : '';
     detail.replaceChildren();
-    const key = row ? `file:${row.path}` : obj ? `obj:${obj.key}` : '';
+    const key = row ? `file:${row.path}` : mot ? mot.key : obj ? `obj:${obj.key}` : '';
     // Phone: the detail sits at the top of the sheet, under its head; a new one picked further down scrolls the sheet
     // back up to it (scrolling the detail itself into view hid the Scene | Library switch above it).
     if (key && key !== lastDetail && !still && getComputedStyle(detail).order !== '0') requestAnimationFrame(() => wrap.scrollTo?.({ top: 0 }));
     lastDetail = key;
+    if (mot) detail.append(mot.el);
     if (obj) detail.append(obj.el);
     if (!row) return;
 
@@ -957,7 +974,14 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     picking = false;
     deleting = false;
     // Shift / Multi-select: the files stay picked with the objects; the detail shows the objects now.
-    if (!add) pickedFiles.clear();
+    if (!add) (pickedFiles.clear(), motions?.clear());
+    openPath = null;
+  });
+  // A press on a motion's tile: the same (one detail at a time; Shift / Multi-select keeps the objects and files).
+  motions?.onPick((add) => {
+    picking = false;
+    deleting = false;
+    if (!add) (pickedFiles.clear(), objects?.clear());
     openPath = null;
   });
   saveBtn.addEventListener('click', () => void save());
@@ -971,7 +995,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     // Multi-select acts on the objects: in the bar while objects are shown.
     if (objects) {
       const mb = objects.multiButton();
-      if (!showsObjects()) mb.remove();
+      if (!showsObjects() && !showsMotions()) mb.remove();
       else if (mb.parentElement !== bar) bar.insertBefore(mb, addBtn);
     }
     renderChips();

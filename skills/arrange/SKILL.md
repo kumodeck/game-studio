@@ -326,7 +326,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — wire it with `playMotion(key, name)` where their words say (§4 Motion). A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
@@ -512,8 +512,9 @@ for example "Reload the game: the rock should be left of the house, and the seco
   changes, whichever way below the user chose: see "Copies and deletions" after the two ways.
 - `ui` and `uiView` (optional): the game's **HTML UI** (title, score, buttons) the user moved or resized in the
   editor's UI layer. See "The UI (`ui`)" after "Copies and deletions".
-- `motion` (optional): objects the user made **move by themselves** in the editor, with keys on a timeline (named
-  motions: "Open", "Row"). See "Motion (`motion`)" after "The UI".
+- `motion` / `motions` (optional): objects the user made **move by themselves** in the editor, with keys on a timeline;
+  the motions are Library assets (`motions`: "Open", "Row") and each object says which it uses and when it starts and
+  stops (`motion`). See "Motion (`motions`, `motion`)" after "The UI".
 
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
@@ -669,50 +670,72 @@ also to marked elements the game adds later, such as a game-over screen). A game
 Check after applying: reload the game **without the editor** (or Play) and compare with what the user saw; then open
 the editor, press **U** (World | UI) and see that Save shows no unsaved count.
 
-### Motion (`motion`)
+### Motion (`motions`, `motion`)
 
 The editor has a **timeline** (like Unity's Animation window or Blender's Dope Sheet): the user moves the time line,
-moves / turns / resizes an object, and a **key** is set at that moment; the object goes from key to key. An object can
-have several **named motions** (clips: "Open", "Close", "Spin"). Saved by key:
+moves / turns / resizes an object, and a **key** is set at that moment; the object goes from key to key. A motion
+("Open", "Bob", "Hop") is an **asset in the Library** (`motions`, at the top of the file — also with `levels`): one
+motion can be on several objects. Each object says **which** motion it uses and **when** it starts and stops:
 
 ```json
+"motions": [
+  { "name": "Bob", "len": 2, "repeat": "pingpong", "keys": { "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 2, "v": [0, 0.4, 0] }] } },
+  { "name": "Hop", "len": 0.6, "keys": { "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 0.3, "v": [0, 1, 0] }, { "t": 0.6, "v": [0, 0, 0] }] } }
+],
 "motion": {
-  "rowboat": { "clips": [ { "name": "Row", "len": 4, "repeat": "pingpong", "start": true, "keys": {
-    "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 2, "v": [-3.1, 0.8, -1.2] }, { "t": 4, "v": [-6, 0, 0], "ease": "linear" }] } } ] },
-  "door": { "clips": [
-    { "name": "Open", "len": 1, "when": "when the player walks up to it", "keys": { "r": [{ "t": 0, "v": [0, 0, 0] }, { "t": 1, "v": [0, 1.5708, 0] }] } },
-    { "name": "Close", "len": 1, "keys": { "r": [{ "t": 0, "v": [0, 1.5708, 0] }, { "t": 1, "v": [0, 0, 0] }] } } ] }
+  "buoy":  { "clips": [{ "use": "Bob", "when": { "on": "start" } }] },
+  "crate": { "clips": [{ "use": "Hop", "when": { "on": "key", "key": "KeyE" }, "until": { "times": 3 } }] },
+  "chest": { "clips": [{ "name": "Open", "use": "Hop", "when": { "on": "cue", "cue": "chest-opened" } }] },
+  "door":  { "clips": [{ "use": "Hop", "when": { "on": "touch" } }] },
+  "gate":  { "clips": [{ "use": "Hop", "when": { "on": "say", "say": "when the player has all three keys" } }] }
 }
 ```
 
-- Every value is an **offset from the object's place** (its `p` / `r` / `s` in `objects`, or where the code puts it):
-  `p` is added to the position (`[x, y, z]` m; 2D `[x, y]` px), `r` is added to the angles (`[x, y, z]` radians, y =
-  turning round the up axis; 2D `[angle]`), `s` multiplies the size. A property with no keys is not touched.
-- `t` = seconds into the clip, `len` = the clip's length. `repeat`: `once` (default: plays, then stays on its last
-  pose), `loop`, `pingpong` (there and back). `ease` on a key = how it goes to the next one: `ease` (default: starts
-  and stops slowly), `linear`, `step` (jumps at the next key). The position goes through its keys on a smooth curve.
-- `start: true` = plays as soon as the game starts. A clip **without** `start` **waits for a cue**; `when` holds the
-  user's words for when ("when the player walks up to it").
-- An older file may still have `path` / `speed` / `repeat` / `spin` per key (the editor's first version): the loader
-  plays it too; the editor turns it into a clip at the next Save.
+- Every key value is an **offset from the object's place** (its `p` / `r` / `s` in `objects`, or where the code puts
+  it): `p` is added to the position (`[x, y, z]` m; 2D `[x, y]` px), `r` is added to the angles (`[x, y, z]` radians,
+  y = turning round the up axis; 2D `[angle]`), `s` multiplies the size. A property with no keys is not touched.
+- `t` = seconds, `len` = the motion's length. `repeat`: `once` (default: plays, then stays on its last pose), `loop`,
+  `pingpong`. `ease` on a key: `ease` (default), `linear`, `step`. The position goes through its keys on a smooth curve.
+- **When it starts** (`when.on`) and who makes it happen:
+
+  | `when.on` | Means | Who |
+  |---|---|---|
+  | `start` | the game (this level) starts | the loader, no code |
+  | `time` (`after`: s) | that long after the start | the loader |
+  | `key` (`key`: a `KeyboardEvent.code`, `"KeyE"`, `"Space"`) | that key is pressed | the loader |
+  | `click` | the object is clicked / tapped | the loader |
+  | `after` (`use`, `key?`) | another motion ended (on `key`, else this object) | the loader |
+  | `enter` (`area`: `{ p, size }` world, `who?`) | `who` walks into the box | the loader, when it finds `who` by its key — else **you**: `setPlayer(player)` |
+  | `touch` | the player touches this object | **you**: `touch('door')` where the game sees the touch |
+  | `cue` (`cue`: `"chest-opened"`) | a named moment of the game | **you**: `cue('chest-opened')` where it happens |
+  | `say` (`say`: the user's words) | in the user's words | **you**: `playMotion('gate', 'Hop')` at that moment (no words: ask once) |
+
+- **When it stops** (`until`, absent = never): `times` = after that many rounds; `cue` = when that cue comes (you call
+  `cue('…')` there too); `then: "reset"` = back to its first pose (default: stays where it is).
+- A clip with `name` beside `use` is called by that name (`playMotion('chest', 'Open')`). A file of the timeline's
+  first shape (keys inside each clip, `start: true`, `when` as words) is still played; the editor rewrites it.
 
 **With the loader (Way 1)**:
 
-1. `start` clips need **no code**: `applyPlacement()` plays them from the game's own frames and returns their keys in
-   `report.motion`. Say so in one line ("The boat now rows back and forth. Press Play to see it.").
-2. **Cues**: for each clip without `start`, read `when`, find that moment in the game's code (the player comes near the
-   door, a button is pressed, the level begins) and add one line there:
+1. `start` / `time` / `key` / `click` / `after` / `enter` need **no code**: `applyPlacement()` runs them from the game's
+   own frames (keys and clicks included) and returns their keys in `report.motion`. Say so in one line ("The crate
+   hops when you press E. Press Play to see it."). `report.motionWaits` lists the clips that wait for your code.
+2. **The ones that need the game** — add one line where the moment happens:
 
    ```js
-   import { applyPlacement, playMotion } from './studio-placement.js';
-   // …where the moment happens:
-   playMotion('door', 'Open');   // from its first key; the clip playing on that object stops where it is
+   import { applyPlacement, cue, touch, setPlayer, playMotion } from './studio-placement.js';
+   cue('chest-opened');        // when: { on: 'cue' } (and until: { cue })
+   touch('door');              // when: { on: 'touch' }: in the collision / overlap code
+   setPlayer(player);          // when: { on: 'enter' } whose `who` is not a key the loader can find
+   playMotion('gate', 'Hop');  // when: { on: 'say' }: read the words, find that moment
    ```
 
-   No `when`? Ask the user once ("When should the door open?"), then add it. `stopMotion('door')` stops one object
-   (`stopMotion()` all of them).
-3. **The code already sets that object's position or angle every frame** (its own update, a physics body, a tween):
-   the two would fight. Use the clip in that code instead and take the key out of `motion`:
+3. **Motions picked in the Library** (an `ask` with `motions`: "make this crate Hop when the player walks up"): wire
+   the moment in the game's code with `playMotion(key, name)` — it plays any Library motion on any object, attached
+   or not (the loader finds the object by its key). **Do not write `motions` / `motion` in placement.json**: they are
+   the editor's; say in one line what you wired, so the user can also attach it in the editor.
+4. **The code already sets that object's position or angle every frame** (its own update, a physics body, a tween):
+   the two would fight. Use the motion in that code instead and take the key out of `motion`:
 
    ```js
    import { clipOf, clipAt } from './studio-placement.js';
@@ -726,11 +749,12 @@ have several **named motions** (clips: "Open", "Close", "Spin"). Saved by key:
 
 **Writing it into the code (Way 2)** (the user asks for it, or there is no loader): copy the keys into an array in the
 code and interpolate between the two keys around `t` (`ease`: `f = f * f * (3 - 2 * f)`; `step`: hold the earlier
-key), adding the result to the object's place every frame; the loader's `trackAt(keys, t, smooth)` is that maths if
-you may import it. Then remove the key from `motion`.
+key), adding the result to the object's place every frame, started and stopped where `when` / `until` say; the loader's
+`trackAt(keys, t, smooth)` is that maths if you may import it. Then remove the key from `motion`.
 
-Check: ▶ Play in the editor (it plays the saved file and the draft's `start` clips) — the object moves as the user's
-timeline showed it; for a cue, do what `when` says in the game and watch it play.
+Check: ▶ Play in the editor (it plays the saved file and the draft: the game starting, keys, timers, ends) — then do
+what `when` says in the game (press E, walk into the area, open the chest) and watch it play. In the editor the user
+can try every cue with the timeline's **Try** ▶ buttons.
 
 ### Levels (`levels`)
 

@@ -21,13 +21,13 @@
 // Positions: the place and the keys are the object's PARENT space; toScreen / toGround speak the scene's. They agree
 // for objects at the top of the scene (every starter's); an object inside a moved group draws its path off by the
 // group's offset (stage 2).
-import type { BridgeToShell, Lang, MotionKey, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
+import type { BridgeToShell, Lang, MotionArea, MotionKey, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { trackAt } from '../loader/studio-placement.js';
 
 const YOU = '#ff6b1a';
-const WORDS: Record<Lang, { point: (t: string) => string }> = {
-  en: { point: (t) => `Key at ${t} s: drag to move it, Shift+drag for up and down` },
-  ja: { point: (t) => `${t} 秒のキー：引いて動かす・Shift で上下` },
+const WORDS: Record<Lang, { point: (t: string) => string; area: string }> = {
+  en: { point: (t) => `Key at ${t} s: drag to move it, Shift+drag for up and down`, area: 'The area: drag to move it, Shift+drag for up and down' },
+  ja: { point: (t) => `${t} 秒のキー：引いて動かす・Shift で上下`, area: '範囲：引いて動かす・Shift で上下' },
 };
 
 const CSS = `
@@ -80,6 +80,8 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
   };
 
   let shown: Shown | null = null;
+  // The picked clip's area (studio-motion-triggers): a box in world space; its middle is a dot to drag (i = -1).
+  let area: { key: string; a: MotionArea; label: string } | null = null;
   let drag: { i: number; id: number; h: number; up: boolean; y0: number; mpp: number; start: number[] } | null = null;
   let drawn = '';
 
@@ -102,12 +104,24 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
   const draw = () => {
     const a = d.adapter();
     const s = shown;
-    if (!s || !s.keys.length || !a.toScreen || s.base.length !== 3) {
+    const hasPath = !!s && !!s.keys.length && !!a.toScreen && s.base.length === 3;
+    const hasArea = !!area && !!a.toScreen && area.a.p.length === 3;
+    if (!hasPath && !hasArea) {
       if (svg.firstChild) svg.replaceChildren();
       drawn = '';
       return;
     }
     const scr = (w: number[]) => a.toScreen!(w);
+    if (!hasPath) {
+      const sig = JSON.stringify([areaSig(scr), drag?.i ?? 0]);
+      if (sig === drawn) return;
+      drawn = sig;
+      mount();
+      svg.replaceChildren();
+      drawArea(scr);
+      return;
+    }
+    if (!s) return;
     const pts = curve(s);
     const ground = (w: number[]) => [w[0]!, s.base[1]!, w[2]!];
     const line = pts.map(scr);
@@ -116,7 +130,7 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
     const keysS = keysW.map(scr);
     const dropS = keysW.map((w) => scr(ground(w)));
     const nowS = s.now ? scr(s.now.map((v, i) => v + (s.base[i] ?? 0))) : null;
-    const sig = JSON.stringify([line, keysS, nowS, s.sel, drag?.i ?? -1, d.lang()]);
+    const sig = JSON.stringify([line, keysS, nowS, s.sel, drag?.i ?? -1, d.lang(), hasArea ? areaSig(scr) : null]);
     if (sig === drawn) return;
     drawn = sig;
     mount();
@@ -195,7 +209,72 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
       hit.append(tip);
     });
     if (nowS) circle(nowS, 5, 'none', YOU, 2);
+    if (hasArea) drawArea(scr);
   };
+
+  /** The area's 8 corners in the scene (bottom 4, then top 4). */
+  const corners = (b: MotionArea) => {
+    const [x, y, z] = b.p as [number, number, number];
+    const [w, h, dd] = b.size.map((v) => v / 2) as [number, number, number];
+    return [[-1, -1, -1], [1, -1, -1], [1, -1, 1], [-1, -1, 1], [-1, 1, -1], [1, 1, -1], [1, 1, 1], [-1, 1, 1]].map(([i, j, k]) => [x + i! * w, y + j! * h, z + k! * dd]);
+  };
+  const areaSig = (scr: (w: number[]) => [number, number] | null) => (area ? [corners(area.a).map(scr), scr(area.a.p), area.label] : null);
+  /** The box: dashed white edges, an orange floor, a white dot with an orange ring in its middle (dragged like a key's dot). */
+  function drawArea(scr: (w: number[]) => [number, number] | null) {
+    if (!area) return;
+    const c = corners(area.a).map(scr);
+    const NSs = NS;
+    const poly = (ix: number[], fill: string) => {
+      const ps = ix.map((i) => c[i]);
+      if (ps.some((p) => !p)) return;
+      const el = doc.createElementNS(NSs, 'polygon');
+      el.setAttribute('points', ps.map((p) => `${p![0].toFixed(1)},${p![1].toFixed(1)}`).join(' '));
+      el.setAttribute('fill', fill);
+      svg.append(el);
+    };
+    poly([0, 1, 2, 3], 'rgba(255,107,26,.18)');
+    for (const [i, j] of [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]] as Array<[number, number]>) {
+      const p = c[i], q = c[j];
+      if (!p || !q) continue;
+      const el = doc.createElementNS(NSs, 'path');
+      el.setAttribute('d', `M${p[0].toFixed(1)} ${p[1].toFixed(1)}L${q[0].toFixed(1)} ${q[1].toFixed(1)}`);
+      el.setAttribute('stroke', 'rgba(255,255,255,.92)');
+      el.setAttribute('stroke-width', '1.5');
+      el.setAttribute('stroke-dasharray', '5 4');
+      el.setAttribute('fill', 'none');
+      svg.append(el);
+    }
+    const m = scr(area.a.p);
+    if (!m) return;
+    const dot = doc.createElementNS(NSs, 'circle');
+    dot.setAttribute('cx', m[0].toFixed(1));
+    dot.setAttribute('cy', m[1].toFixed(1));
+    dot.setAttribute('r', drag?.i === -1 ? '8.5' : '7.5');
+    dot.setAttribute('fill', drag?.i === -1 ? YOU : '#fff');
+    dot.setAttribute('stroke', drag?.i === -1 ? '#fff' : YOU);
+    dot.setAttribute('stroke-width', '2.5');
+    svg.append(dot);
+    const top = c[6];
+    if (top && area.label) {
+      const t = doc.createElementNS(NSs, 'text');
+      t.setAttribute('x', (top[0] + 8).toFixed(1));
+      t.setAttribute('y', (top[1] - 6).toFixed(1));
+      t.textContent = area.label;
+      svg.append(t);
+    }
+    const hit = doc.createElementNS(NSs, 'circle');
+    hit.setAttribute('cx', m[0].toFixed(1));
+    hit.setAttribute('cy', m[1].toFixed(1));
+    hit.setAttribute('r', win.matchMedia?.('(pointer: coarse)').matches ? '22' : '16');
+    hit.setAttribute('class', `hit${drag?.i === -1 ? ' on' : ''}`);
+    hit.setAttribute('data-point', '-1');
+    hit.setAttribute('data-part', 'tl-area');
+    hit.setAttribute('aria-label', WORDS[d.lang()].area);
+    const tip = doc.createElementNS(NSs, 'title');
+    tip.textContent = WORDS[d.lang()].area;
+    hit.append(tip);
+    svg.append(hit);
+  }
 
   // ----- dragging a key's dot -----
   const pointOf = (e: PointerEvent): number | null => {
@@ -211,6 +290,22 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
   };
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
   const moveTo = (e: PointerEvent, end: boolean) => {
+    if (drag && drag.i === -1 && area) {
+      const b = area.a;
+      let p = b.p.slice();
+      if (drag.up || e.shiftKey) {
+        if (!drag.up) (drag.up = true), (drag.y0 = e.clientY), (drag.start = b.p.slice());
+        p = drag.start.slice();
+        p[1] = r3((drag.start[1] ?? 0) + (drag.y0 - e.clientY) * drag.mpp);
+      } else {
+        const hit = d.adapter().toGround?.(e.clientX, e.clientY, drag.h);
+        if (hit) p = [r3(hit[0]!), b.p[1] ?? 0, r3(hit[2]!)];
+      }
+      area = { ...area, a: { ...b, p } };
+      d.post({ type: 'studio:timeline/area-moved', key: area.key, p, end });
+      d.markDirty();
+      return;
+    }
     if (!drag || !shown) return;
     const s = shown;
     const k = s.keys[drag.i];
@@ -230,7 +325,18 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
     d.markDirty();
   };
   const onDown = (e: PointerEvent) => {
-    const i = shown ? pointOf(e) : null;
+    const i = shown || area ? pointOf(e) : null;
+    if (i === -1 && area) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      take(e);
+      const w = area.a.p;
+      const a = d.adapter();
+      const p0 = a.toScreen?.(w), p1 = a.toScreen?.([w[0]!, w[1]! + 1, w[2]!]);
+      const px = p0 && p1 ? Math.abs(p1[1] - p0[1]) : 0;
+      drag = { i: -1, id: e.pointerId, h: w[1] ?? 0, up: e.shiftKey, y0: e.clientY, mpp: px > 0.5 ? 1 / px : 0.02, start: w.slice() };
+      drawn = '';
+      return;
+    }
     if (i === null || !shown) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     take(e);
@@ -273,6 +379,10 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
           }
         }
         d.markDirty();
+      } else if (msg.type === 'studio:timeline/area') {
+        if (!(drag?.i === -1 && area && msg.key === area.key)) area = msg.key && msg.area ? { key: msg.key, a: structuredClone(msg.area), label: msg.label ?? '' } : null;
+        drawn = '';
+        d.markDirty();
       } else if (msg.type === 'studio:timeline/path') {
         // While a dot is dragged, the shell's echo of the same key keeps the dot under the finger (ours is newer).
         if (drag && shown && msg.key === shown.key) {
@@ -290,6 +400,7 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
     },
     clear() {
       shown = null;
+      area = null;
       drag = null;
       draw();
     },

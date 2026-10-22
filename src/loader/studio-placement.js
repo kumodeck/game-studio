@@ -46,6 +46,15 @@
 // itself (▶ on the card) and must see the place, not a point along the way. A game that writes the object's position
 // every frame itself (physics, its own update) wins over this; the skill tells the AI to put the motion into that code.
 // report.motion = the keys that move; stopMotion() stops them all (a game that wants to take over).
+//
+// `motions` + `when` / `until` (studio-motion-triggers, 2026-10-22: "a motion starts when something happens, stops when
+// something happens, or runs the whole game"): `motions` at the top are the Library's motions (len / repeat / keys);
+// an object's clip `{ use: 'Hop', when, until }` uses one by name. When it starts:
+//   start · time (after N s) · key (KeyboardEvent.code) · click (Pixi: a tap on it; three: the game's camera, learnt
+//   from scene.onBeforeRender) · after (another clip ended) · enter (an object walks into a box: `who`'s key, or
+//   setPlayer(obj)) — all run here; touch · cue · say need the game: touch(key), cue(name), playMotion(key, name).
+// until: { times } rounds, { cue } a named cue; then 'reset' = back to its first pose. motionRunner() is the one place
+// for these rules; the editor's "Try" uses it too. report.motionWaits = the clips that wait for the game's code.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -121,7 +130,7 @@ export async function applyPlacement(root, source = './placement.json', opts = {
     if (o && !(Array.isArray(w) && w.some((v, i) => Math.abs(v - [o.position.x, o.position.y, o.position.z][i]) > 1e-3))) (o.visible = false), report.applied.push(r.key);
   }
   if (!three && Array.isArray(data.order)) applyOrder(root, data.order, report);
-  if (data.motion && typeof data.motion === 'object') runMotion(root, data.motion, n, three, report);
+  if ((data.motion && typeof data.motion === 'object') || Array.isArray(data.motions)) runMotion(root, data, n, three, report);
   if (report.missing.length) warn(report.missing.length + ' key(s) not found, ignored: ' + report.missing.slice(0, 10).join(', '));
   if (report.skipped.length) warn(report.skipped.length + ' entr(ies) with bad values, ignored: ' + report.skipped.slice(0, 10).join(', '));
   return report;
@@ -130,12 +139,18 @@ export async function applyPlacement(root, source = './placement.json', opts = {
 // The keys moved by this file (any copy of it on the page): the editor's ▶ Play (bridge/play-arrange.ts) leaves them
 // alone, so an object is never moved twice. A global symbol, because the game and the editor each load their own copy.
 const MOVING = Symbol.for('game-studio.motion');
-// Every object this file can move (studio-timeline, 2026-10-22): key → { o, three, base, clips, legacy }. `base` is the
-// pose after `objects` (the place every key is an offset from). What plays now is in `movers` (key → { clip | legacy,
-// t0 }); one shared frame loop runs them while there are any.
+// Every object this file can move: key → { o, three, base, clips }. `base` is the pose after `objects` (the place every
+// key is an offset from); `clips` are resolved (a Library motion's len / repeat / keys filled in, `when` read).
+// `run` decides what plays when (motionRunner, shared with the editor's "Try"); one frame loop poses what it says.
 const known = new Map();
-const movers = new Map();
+let run = null;
 let ticking = false;
+// The world given to applyPlacement and the Library's motions in its file: playMotion(key, name) can start a Library
+// motion on an object it was never attached to ("make the crate Hop when…": the AI's one line).
+let world = null;
+let library = [];
+// setPlayer(obj): who walks into the areas of `enter` clips that name no `who` (or a `who` the loader cannot find).
+let player = null;
 
 /**
  * Stop the motion of one object (`key`), or of every object (no key). The objects stay where they are now. A stopped
@@ -143,28 +158,189 @@ let ticking = false;
  */
 export function stopMotion(key) {
   if (key === undefined) {
-    movers.clear();
+    if (run) run.stop();
+    olds.clear();
     if (globalThis[MOVING]) globalThis[MOVING].clear();
-  } else movers.delete(key);
+  } else {
+    if (run) run.stop(key);
+    const k = known.get(key);
+    if (k) olds.delete(k);
+  }
 }
 
 /**
- * Play one of an object's named motions (a clip made on the editor's timeline) from its start: the cue a game gives
- * ("the player reached the door" → playMotion('door', 'Open')). The clip that was playing on that object stops where
- * it is and this one takes over from its own first key. false = no such object / clip, or inside the editor.
+ * Play one of an object's named motions from its start: the cue a game gives ("the player reached the door" →
+ * playMotion('door', 'Open')). The name is the object's clip, or any Library motion (`motions` in the file), even one
+ * that is not on this object. The clip playing on that object stops where it is and this one takes over.
+ * false = no such object / motion, or inside the editor.
  */
 export function playMotion(key, name) {
-  const k = known.get(key);
-  const clip = k && k.clips.find((c) => c && c.name === name);
-  if (!clip || editing()) return false;
-  start(key, { clip });
+  if (editing()) return false;
+  let k = known.get(key);
+  let clip = k && k.clips.find((c) => c.name === name);
+  if (!clip) {
+    const lib = library.find((m) => m && m.name === name);
+    const o = !lib ? null : k ? k.o : world && findByKey(world, key, !!world.isObject3D);
+    if (!o) return false;
+    if (!k) k = remember(key, o, !!world.isObject3D, []);
+    clip = { ...lib, use: name, when: { on: 'say' } };
+    k.clips.push(clip);
+  }
+  ensureRun().play(key, clip, performance.now());
+  tickSoon();
   return true;
+}
+
+/** A named cue happened in the game ("chest-opened"): the clips that start on it start, the ones that stop on it stop. */
+export function cue(name) {
+  return fire({ on: 'cue', cue: name });
+}
+
+/** The player touched this object (the game's own collision): its clips that start on a touch start. */
+export function touch(key) {
+  return fire({ on: 'touch', key });
+}
+
+/** The object that walks into areas (`enter` clips): for a game whose player has no key the loader can find. */
+export function setPlayer(obj) {
+  player = obj || null;
+  tickSoon();
+}
+
+function fire(ev) {
+  if (!run || editing()) return false;
+  const n = run.fire(ev, performance.now());
+  tickSoon();
+  return n > 0;
 }
 
 /** An object's clip by name (for a game that moves the object itself: clipAt(clipOf('door', 'Open'), seconds)). */
 export function clipOf(key, name) {
   const k = known.get(key);
-  return (k && k.clips.find((c) => c && c.name === name)) || null;
+  return (k && k.clips.find((c) => c.name === name)) || resolveClip(library.find((m) => m && m.name === name) ? { use: name } : null, library);
+}
+
+/**
+ * When a clip starts, in one shape: studio-motion-triggers' `when` object, or studio-timeline's (`start: true` = at
+ * once; else a string `when` = the person's words for the AI; a clip with `use` and no `when` = at once).
+ */
+export function whenOf(c) {
+  if (!c || typeof c !== 'object') return { on: 'say' };
+  const w = c.when;
+  if (w && typeof w === 'object' && typeof w.on === 'string') return w;
+  if (c.start === true || (c.use && w === undefined)) return { on: 'start' };
+  return typeof w === 'string' && w.trim() ? { on: 'say', say: w } : { on: 'say' };
+}
+
+/** A clip as it plays: a `use` clip gets its Library motion's len / repeat / keys; null = bad, or a motion not there. */
+export function resolveClip(c, lib) {
+  if (!c || typeof c !== 'object') return null;
+  if (typeof c.use === 'string') {
+    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && x.keys && typeof x.keys === 'object');
+    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: m.keys, when: whenOf(c), until: c.until } : null;
+  }
+  return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c) } : null;
+}
+
+/**
+ * What plays when (studio-motion-triggers, 2026-10-22): one place for the rules, used by this file in the game and by
+ * the editor's "Try" (the same answers in both). No DOM, no scene: it is told what happened (fire), asked where things
+ * are (step) and answers each moving key's offsets (clipAt's shape).
+ *   objs: [{ key, clips }] with resolved clips (resolveClip). The rules:
+ *   - a clip starts on its `when` (fire's event, or by itself: `time` after `after` seconds, `after` when that clip
+ *     ends, `enter` when the player's position goes into the area: step's `where(who)`); again = from its start;
+ *   - one clip per object plays: a new one takes over where the last one is (as playMotion always did);
+ *   - `until.times` = after that many rounds (a loop: len; a pingpong: there and back; a once: its length),
+ *     `until.cue` = when that cue fires; `then: 'reset'` puts it back on its first pose, else it stays where it is.
+ */
+export function motionRunner(objs) {
+  const list = (Array.isArray(objs) ? objs : []).filter((x) => x && Array.isArray(x.clips));
+  const movers = new Map();
+  const held = new Map();
+  let t0 = null;
+  const timed = new Set();
+  const inside = new Map();
+  const ok = (v) => typeof v === 'number' && isFinite(v);
+  const round = (c) => (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1);
+  const hits = (w, ev, key) => {
+    if (!w || w.on !== ev.on) return false;
+    if (ev.on === 'key') return w.key === ev.key;
+    if (ev.on === 'cue') return w.cue === ev.cue;
+    if (ev.on === 'after') return w.use === ev.use && (w.key || key) === ev.key;
+    if (ev.on === 'click' || ev.on === 'touch' || ev.on === 'enter' || ev.on === 'say') return ev.key === key && (ev.on !== 'say' || !ev.use || ev.use === w.use);
+    return true;
+  };
+  const play = (key, clip, now) => {
+    movers.set(key, { clip, t0: now });
+    held.delete(key);
+  };
+  const end = (key, r, at, now, out) => {
+    movers.delete(key);
+    const pose = r.clip.until && r.clip.until.then === 'reset' ? clipAt(r.clip, 0) : at;
+    held.set(key, pose);
+    out.set(key, pose);
+    fireAt({ on: 'after', key, use: r.clip.use || r.clip.name }, now);
+  };
+  function fireAt(ev, now) {
+    let n = 0;
+    if (ev.on === 'start') t0 = now;
+    for (const { key, clips } of list) {
+      for (const c of clips) if (hits(c.when, ev, key)) (play(key, c, now), n++);
+      const r = movers.get(key);
+      if (ev.on === 'cue' && r && r.clip.until && r.clip.until.cue === ev.cue) {
+        const out = new Map();
+        end(key, r, clipAt(r.clip, (now - r.t0) / 1000), now, out);
+        n++;
+      }
+    }
+    return n;
+  }
+  return {
+    fire: fireAt,
+    play,
+    /** Stop one key, or all (no key): they stay where they are, nothing more plays on them until fired again. */
+    stop(key) {
+      if (key === undefined) (movers.clear(), held.clear());
+      else movers.delete(key), held.delete(key);
+    },
+    /** Something still to watch: a clip playing, a timer not fired yet, an area. */
+    busy: () => movers.size > 0 || list.some(({ clips }) => clips.some((c) => (c.when && c.when.on === 'enter') || (c.when && c.when.on === 'time' && t0 !== null && !timed.has(c)))),
+    /** Where things are at `now` (ms): key → offsets ({ p, r, s }) for every object playing or holding its last pose. */
+    step(now, where) {
+      const out = new Map();
+      if (t0 !== null) for (const { key, clips } of list) for (const c of clips) {
+        const w = c.when;
+        if (w && w.on === 'time' && !timed.has(c) && (now - t0) / 1000 >= (ok(w.after) ? w.after : 0)) (timed.add(c), play(key, c, now));
+      }
+      if (where) for (const { key, clips } of list) for (const c of clips) {
+        const w = c.when;
+        if (!w || w.on !== 'enter' || !w.area || !Array.isArray(w.area.p) || !Array.isArray(w.area.size)) continue;
+        const p = where(w.who || null);
+        const isIn = !!p && w.area.p.every((v, i) => Math.abs((p[i] || 0) - v) <= Math.abs(w.area.size[i] || 0) / 2);
+        if (isIn && !inside.get(c)) play(key, c, now);
+        inside.set(c, isIn);
+      }
+      for (const [key, r] of [...movers]) {
+        const t = Math.max(0, (now - r.t0) / 1000);
+        const u = r.clip.until;
+        const stopAt = u && ok(u.times) && u.times > 0 ? u.times * round(r.clip) : null;
+        // A `once` clip with rounds plays again from its start each round ("hop 3 times"), then stops at its end.
+        const again = stopAt !== null && r.clip.repeat !== 'loop' && r.clip.repeat !== 'pingpong';
+        const tt = (u2) => (again ? Math.min(u2, stopAt) % round(r.clip) || (u2 > 0 ? round(r.clip) : 0) : u2);
+        if (stopAt !== null && t >= stopAt) end(key, r, clipAt(r.clip, again ? round(r.clip) : stopAt - 1e-6), now, out);
+        else {
+          const at = clipAt(r.clip, tt(t));
+          if (again) at.done = false;
+          out.set(key, at);
+          if (at.done) end(key, r, at, now, out);
+        }
+      }
+      for (const [key, at] of held) if (!out.has(key)) out.set(key, at);
+      return out;
+    },
+    /** What each object plays now (key → clip name): the editor's rows light up with it. */
+    playing: () => new Map([...movers].map(([k, r]) => [k, r.clip.name])),
+  };
 }
 
 /**
@@ -262,21 +438,51 @@ function poseAt(o, base, at, three) {
 
 const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
 
-function start(key, what) {
-  movers.set(key, { ...what, t0: performance.now() });
-  if (ticking || typeof requestAnimationFrame !== 'function') return;
+function remember(key, o, three, clips) {
+  const base = three
+    ? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }
+    : { p: [o.position.x, o.position.y], r: [o.rotation], s: [o.scale.x, o.scale.y] };
+  const k = { o, three, base, clips };
+  known.set(key, k);
+  (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+  return k;
+}
+
+function ensureRun() {
+  if (!run) run = motionRunner([...known].map(([key, k]) => ({ key, clips: k.clips })));
+  return run;
+}
+
+// Where `who` is in the world (an `enter` area's test): the object with that key, else setPlayer's.
+function whereIs(who) {
+  const o = (who && world && findByKey(world, who, !!world.isObject3D)) || player;
+  if (!o || !o.position) return null;
+  if (o.getWorldPosition) {
+    const v = o.getWorldPosition(o.position.clone());
+    return [v.x, v.y, v.z];
+  }
+  return [o.position.x, o.position.y];
+}
+
+// One loop per applyPlacement: a new file (another level, the game restarted) starts a new generation and the old loop
+// ends at its next frame, so two loops never pose the same object.
+let gen = 0;
+function tickSoon() {
+  if (ticking || !run || typeof requestAnimationFrame !== 'function') return;
   ticking = true;
+  const g = gen;
   const tick = (now) => {
-    if (!movers.size) return void (ticking = false);
-    for (const [key, r] of movers) {
+    if (g !== gen) return;
+    if (!run.busy() && !olds.size) return void (ticking = false);
+    for (const [k, l] of olds) {
+      if (k.o.parent === null) olds.delete(k);
+      else poseAt(k.o, k.base, legacyAt(l.m, (now - l.t0) / 1000, l.n), k.three);
+    }
+    for (const [key, at] of run.step(now, whereIs)) {
       const k = known.get(key);
       // The object left the scene (another level was built; three and Pixi set parent to null): forget it.
-      if (!k || k.o.parent === null) {
-        movers.delete(key);
-        continue;
-      }
-      const t = Math.max(0, (now - r.t0) / 1000);
-      poseAt(k.o, k.base, r.clip ? clipAt(r.clip, t) : legacyAt(r.legacy, t, k.three ? 3 : 2), k.three);
+      if (!k || k.o.parent === null) run.stop(key);
+      else poseAt(k.o, k.base, at, k.three);
     }
     requestAnimationFrame(tick);
   };
@@ -284,30 +490,116 @@ function start(key, what) {
 }
 
 /**
- * The `motion` part of the file: each object's clips (a timeline's named motions: `start: true` plays at once, the
- * others wait for playMotion) or the older path / spin. Nothing runs inside the editor (studio=edit in the URL): there
- * the editor owns every pose and plays the timeline itself.
+ * The `motion` part of the file: each object's clips (a Library motion it uses, or keys of its own), each starting on
+ * its `when` (whenOf) — or the older path / spin. Nothing runs inside the editor (studio=edit in the URL): there the
+ * editor owns every pose and plays the timeline itself. Keys and clicks are listened to once per page.
  */
-function runMotion(root, motion, n, three, report) {
+function runMotion(root, data, n, three, report) {
+  world = root;
+  library = Array.isArray(data.motions) ? data.motions.filter((m) => m && typeof m.name === 'string') : [];
+  const motion = data.motion && typeof data.motion === 'object' ? data.motion : {};
   if (editing()) return;
+  gen++;
+  ticking = false;
+  known.clear();
+  clicks.clear();
+  olds.clear();
+  if (run) run.stop();
+  run = null;
   const list = [];
+  const legacy = [];
+  const warn2 = [];
   for (const key of Object.keys(motion)) {
     const m = motion[key], o = findByKey(root, key, three);
     if (!o || !m || typeof m !== 'object') continue;
-    const clips = Array.isArray(m.clips) ? m.clips.filter((c) => c && typeof c === 'object' && typeof c.name === 'string' && c.keys && typeof c.keys === 'object') : [];
-    const legacy = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
-    if (!clips.length && !legacy) continue;
-    const base = three
-      ? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }
-      : { p: [o.position.x, o.position.y], r: [o.rotation], s: [o.scale.x, o.scale.y] };
-    known.set(key, { o, three, base, clips });
-    (globalThis[MOVING] || (globalThis[MOVING] = new Set())).add(key);
+    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library)).filter(Boolean) : [];
+    const old = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
+    if (!clips.length && !old) continue;
+    // The older path / spin plays at once, as a clip of the same shape (clipAt is not its maths: a frame function).
+    const k = remember(key, o, three, clips);
+    if (old) legacy.push([key, k, m]);
+    for (const c of clips) {
+      const w = c.when;
+      if (w.on === 'click') clickable(key, o, three);
+      if (w.on === 'enter' && !(w.who && findByKey(root, w.who, three)) && !player) warn2.push(key + ': no player for its area (setPlayer)');
+      if (w.on === 'touch' || w.on === 'cue' || w.on === 'say') warn2.push(key + ' · ' + c.name + ': waits for the game (' + w.on + ')');
+    }
     list.push(key);
-    const first = clips.find((c) => c.start === true);
-    if (legacy) start(key, { legacy: m });
-    else if (first) start(key, { clip: first });
   }
-  if (list.length) report.motion = list;
+  if (!list.length) return;
+  report.motion = list;
+  if (warn2.length) report.motionWaits = warn2;
+  ensureRun().fire({ on: 'start' }, performance.now());
+  listen(three);
+  for (const [, k, m] of legacy) olds.set(k, { m, t0: performance.now(), n });
+  tickSoon();
+}
+
+// v0.1.13's path / spin (no clip, so the runner does not know it): object → { m, t0, n }, posed by the same frame loop.
+const olds = new Map();
+
+let listening = false;
+const clicks = new Map();
+let view = null;
+function listen(three) {
+  if (listening || typeof addEventListener !== 'function') return;
+  listening = true;
+  addEventListener('keydown', (e) => {
+    const tag = e.target && e.target.tagName;
+    if (e.repeat || tag === 'INPUT' || tag === 'TEXTAREA') return;
+    fire({ on: 'key', key: e.code });
+  });
+  // three: the camera and canvas the game draws with, learnt from the scene's onBeforeRender (no import of three here).
+  if (three && world && world.isScene) {
+    const was = world.onBeforeRender;
+    world.onBeforeRender = function (renderer, scene, camera) {
+      view = { camera, canvas: renderer && renderer.domElement };
+      if (typeof was === 'function') return was.apply(this, arguments);
+    };
+    addEventListener('pointerdown', (e) => {
+      if (!view || !view.camera || e.target !== view.canvas) return;
+      const hit = clickedKey(e, view);
+      if (hit) fire({ on: 'click', key: hit });
+    });
+  }
+}
+
+/** Pixi: the object itself takes taps. three: noted, found by clickedKey from the drawn picture. */
+function clickable(key, o, three) {
+  clicks.set(key, o);
+  if (!three && typeof o.on === 'function') {
+    o.eventMode = 'static';
+    o.cursor = 'pointer';
+    o.on('pointertap', () => fire({ on: 'click', key }));
+  }
+}
+
+// The nearest clickable object under the pointer: each one's bounding sphere, projected with the game's camera.
+function clickedKey(e, v) {
+  const r = v.canvas.getBoundingClientRect();
+  const x = e.clientX - r.left, y = e.clientY - r.top;
+  let best = null, bestD = Infinity;
+  for (const [key, o] of clicks) {
+    if (o.parent === null) continue;
+    o.updateWorldMatrix && o.updateWorldMatrix(true, true);
+    o.traverse((m) => {
+      const g = m.geometry;
+      if (!g || !m.visible) return;
+      if (!g.boundingSphere && g.computeBoundingSphere) g.computeBoundingSphere();
+      if (!g.boundingSphere) return;
+      const c = g.boundingSphere.center.clone().applyMatrix4(m.matrixWorld);
+      const rad = g.boundingSphere.radius * m.matrixWorld.getMaxScaleOnAxis();
+      const camPos = v.camera.getWorldPosition(c.clone());
+      const dist = c.distanceTo(camPos);
+      const p = c.clone().project(v.camera);
+      if (p.z > 1 || p.z < -1) return;
+      const sx = ((p.x + 1) / 2) * r.width, sy = ((1 - p.y) / 2) * r.height;
+      const fov = v.camera.fov ? (v.camera.fov * Math.PI) / 180 : 1;
+      const sr = Math.max(8, (rad / Math.max(1e-6, dist * Math.tan(fov / 2))) * (r.height / 2));
+      if (Math.hypot(sx - x, sy - y) <= sr && dist < bestD) (best = key), (bestD = dist);
+    });
+  }
+  return best;
 }
 
 /**

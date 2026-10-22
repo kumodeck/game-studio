@@ -14,21 +14,40 @@
 //
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
-import type { BridgeToShell, Dim, Motion, MotionChannel, MotionClip, MotionEase, MotionRepeat, Pose, ShellToBridge } from '../contract.ts';
+import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
+import { motionRunner, whenOf } from '../loader/studio-placement.js';
+import { libOf, type MotionLibrary } from './motion-library.ts';
 import { h } from './dom.ts';
 import { icon } from './icons.ts';
 import type { MotionStore } from './motion-model.ts';
-import { sameMotion } from './motion-model.ts';
+import { sameMotion as sameFile } from './motion-model.ts';
+
+/**
+ * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
+ * (motion-model sameMotion) would see only `use` + when for a clip that uses a Library motion, so a key moved would
+ * not count as a change: compare the clips with their keys, and the Library names too.
+ */
+const sameMotion = (a: Motion | null | undefined, b: Motion | null | undefined) => {
+  const inline = (m: Motion | null | undefined) => (m?.clips ? { clips: m.clips.map(({ use, ...c }) => ({ ...c, name: `${c.name}\u0000${use ?? ''}` })) } : m);
+  return sameFile(inline(a), inline(b));
+};
 import { createTimelinePanel, type TimelineView } from './timeline-panel.ts';
 import {
-  CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, freeName, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
-  offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets, type Template,
+  CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
+  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets, type Template,
 } from './timeline-model.ts';
 import type { Change, UndoStack } from './undo.ts';
 
 export interface TimelineDeps {
   /** The world's motions (worldModel.motion; a getter: a game with levels has one model per level). */
   readonly store: MotionStore;
+  /**
+   * The Library's motions (studio-motion-triggers, 2026-10-22; motion-library.ts): the store's clips are attachments
+   * (`use` + when / until); their len / repeat / keys live here. This file reads and writes the two together.
+   */
+  readonly lib: MotionLibrary;
+  /** The other levels' motions (their world parts waiting in levels.ts): a rename or a delete in the Library reaches them. */
+  others(): Array<Record<string, Motion>>;
   undo: UndoStack;
   send(m: ShellToBridge): void;
   dim(): Dim;
@@ -83,7 +102,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     before.set(key, store().get(key));
     startPose.set(key, was ?? shownPose(key)!);
   };
+  const gestureNames = new Map<string, string>();
   const finish = () => {
+    gestureNames.clear();
     const from = before;
     before = null;
     startPose.clear();
@@ -94,13 +115,45 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   let sentPoses = '';
   let sentPath = '';
 
-  const store = () => d.store;
+  const raw = () => d.store;
+  const lib = () => d.lib;
+  /**
+   * An object's motion as the timeline works on it: each attachment with its Library motion's len / repeat / keys filled
+   * in (`use` kept), so every edit below — keys, length, repeat — is a clip edit as before. A clip whose motion is not
+   * in the Library (deleted) is left out.
+   */
+  const resolve = (m: Motion | null): Motion | null => {
+    if (!m?.clips) return m;
+    const clips = m.clips.flatMap((c) => {
+      if (!c.use) return [c];
+      const l = lib().get(c.use);
+      return l ? [{ ...c, name: c.name || c.use, len: l.len, repeat: l.repeat, keys: l.keys }] : [];
+    });
+    return clips.length ? { clips } : null;
+  };
+  /**
+   * The other way: each clip's len / repeat / keys go to its Library motion (named by `use`, or by its own name for a
+   * clip made here), the object keeps { use, when, until }. A `start: true` from a template becomes when: start.
+   */
+  const put = (key: string, m: Motion | null) => {
+    if (!m?.clips?.length) return raw().set(key, m && !m.clips ? m : null);
+    const atts = m.clips.map((c) => {
+      const use = c.use ?? c.name;
+      lib().set(use, libOf({ ...c, name: use }));
+      const a: MotionClip = { name: c.name, use, len: c.len, when: (c.when && typeof c.when === 'object' ? c.when : whenOf(c)) as MotionWhen, keys: {} };
+      if (c.until) a.until = c.until;
+      return a;
+    });
+    raw().set(key, { clips: atts });
+  };
+  /** The store as the timeline sees it (resolved clips); every edit below goes through it. */
+  const store = () => ({ get: (k: string) => resolve(raw().get(k)), set: put, keys: () => raw().keys() });
   const dim = () => d.dim();
   const clipsOf = (key: string): MotionClip[] => store().get(key)?.clips ?? [];
   const clipOf = (key: string): MotionClip | null => {
     const cs = clipsOf(key);
     const want = chosen.get(key);
-    return cs.find((c) => c.name === want) ?? cs.find((c) => c.start) ?? cs[0] ?? null;
+    return cs.find((c) => c.name === want) ?? cs.find((c) => whenOf(c).on === 'start') ?? cs[0] ?? null;
   };
   const focus = () => d.picked() ?? (focusKey && d.place(focusKey) ? focusKey : null);
   const shown = () => open && d.usable();
@@ -139,6 +192,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
         sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0) }
       : { type: 'studio:timeline/path', key: null };
     const sig = JSON.stringify(msg);
+    sendArea(force);
     if (!force && sig === sentPath) return;
     sentPath = sig;
     d.send(msg);
@@ -181,7 +235,11 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     let m = store().get(key);
     let c = clipOf(key);
     if (!c) {
-      c = { name: freeName([], 'Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', start: true, keys: {} };
+      // One name for the whole gesture: a live drag remakes this first clip at every pose (from the motion before it),
+      // and the Library already holds the name it took on the first pose.
+      const name = gestureNames.get(key) ?? lib().free('Motion');
+      gestureNames.set(key, name);
+      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
       chosen.set(key, c.name);
     }
     const name = c.name;
@@ -194,7 +252,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     return m;
   }
   /** Is a gesture on `key` a key now (● on, the timeline open), or a move of its place? */
-  const records = (key: string) => shown() && auto && (!!clipOf(key) || time > 0) && !!d.place(key);
+  // While Try runs the scene, a move is never a key (the time line is the game's clock then, not a moment of the clip).
+  const records = (key: string) => !trying && shown() && auto && (!!clipOf(key) || time > 0) && !!d.place(key);
   /** What `key` shows now (its place + its clip at the time line). */
   const shownPose = (key: string): Pose | undefined => {
     const place = d.place(key);
@@ -248,6 +307,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
   function play() {
     if (!shown()) return;
+    stopTry();
     const c = focus() ? clipOf(focus()!) : null;
     // From the end of a `once`: back to the start (as any player does).
     if (c && (c.repeat ?? 'once') === 'once' && time >= c.len - 1e-3) time = 0;
@@ -298,6 +358,22 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       picked: (r) => sel.some((s) => s.key === r.key && s.ch === r.ch && sameT(s.t, r.t)),
       ease: sel.length ? (eases.size === 1 ? [...eases][0]! : 'mixed') : null,
       narrow: d.narrow(),
+      when: c ? (whenOf(c) as MotionWhen) : null,
+      until: c?.until ?? null,
+      uses: c ? usage(c.use ?? c.name).length : 0,
+      cues: cues().map((q) => ({ id: q.id, label: q.label, ai: q.ai, on: !!trying && q.hits.some(([k, n]) => trying!.run.playing().get(k) === n) })),
+      trying: !!trying,
+      cueNames: cueNames(),
+      afterOpts: moving().flatMap((k) => clipsOf(k).filter((x) => !(k === key && x.name === c?.name)).map((x) => ({ key: k, use: x.use ?? x.name, label: `${d.label(k)} · ${x.name}` }))),
+      rowWhen: (k: string) => {
+        const x = clipOf(k);
+        return x ? { when: whenOf(x) as MotionWhen, until: x.until ?? null, repeat: x.repeat ?? 'once' } : null;
+      },
+      defaultArea: () => {
+        const place = key ? d.place(key) : undefined;
+        return { p: (place?.p ?? [0, 0, 0]).map((v) => Math.round(v * 100) / 100), size: dim() === '3d' ? [3, 2, 3] : [200, 200] };
+      },
+      player: d.order().find((k) => /player|hero/i.test(k)) ?? null,
     };
   }
 
@@ -320,13 +396,179 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
     const pose = shownPose(key)!;
-    let c = clipOf(key) ?? { name: 'Motion', len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, start: true, keys: {} };
+    let c = clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p'] as MotionChannel[])) c = setKey(c, ch, time, offsetOf(place, pose, ch, dim()));
     chosen.set(key, name);
     one(key, withClip(store().get(key), name, c));
     return true;
+  }
+
+  // ----- the Library's motions (studio-motion-triggers) -----
+  /** Rename a Library motion and every clip that uses it (here, in the other levels, and a clip that waits for its end). */
+  function renameLib(from: string, to: string, record = true): boolean {
+    if (!lib().rename(from, to)) return false;
+    const fix = (m: Motion | null): Motion | null => (m?.clips ? { clips: m.clips.map((c) => {
+      const w = c.when && typeof c.when === 'object' && c.when.on === 'after' && c.when.use === from ? { ...c.when, use: to } : c.when;
+      return c.use === from ? { ...c, use: to, name: c.name === from ? to : c.name, when: w } : { ...c, when: w };
+    }) } : m);
+    for (const k of raw().keys()) raw().set(k, fix(raw().get(k)));
+    for (const w of d.others()) for (const k of Object.keys(w)) w[k] = fix(w[k]!) ?? w[k]!;
+    for (const [k, v] of chosen) if (v === from) chosen.set(k, to);
+    if (record) d.undo.push({ changes: [{ kind: 'motion-rename', key: to, from, to }] });
+    refresh();
+    return true;
+  }
+  /** The objects (in this level) a Library motion is on, with when each starts / stops. */
+  function usage(name: string): Array<{ key: string; when: MotionWhen; until?: MotionUntil }> {
+    const out: Array<{ key: string; when: MotionWhen; until?: MotionUntil }> = [];
+    for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) if (c.use === name) out.push({ key: k, when: whenOf(c) as MotionWhen, ...(c.until ? { until: c.until } : {}) });
+    return out;
+  }
+  /** Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). */
+  function attach(key: string, name: string) {
+    const l = lib().get(name);
+    if (!l || clipsOf(key).some((c) => (c.use ?? c.name) === name) || clipsOf(key).length >= MAX_CLIPS) return;
+    const when: MotionWhen = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
+    chosen.set(key, name);
+    one(key, withClip(store().get(key), name, { ...l, use: name, when }));
+  }
+  function detach(key: string, name: string) {
+    if (chosen.get(key) === name) chosen.delete(key);
+    sel = sel.filter((r) => r.key !== key);
+    one(key, withClip(store().get(key), name, null));
+  }
+  /** "Hop" → "Hop 2": the same keys, its own from now on. One undo step. Returns the new name. */
+  function duplicateLib(name: string): string | null {
+    const l = lib().get(name);
+    if (!l) return null;
+    const n = lib().free(name);
+    lib().set(n, { ...l, name: n });
+    d.undo.push({ changes: [{ kind: 'motion-lib', key: n, from: null, to: lib().get(n) }] });
+    d.changed();
+    return n;
+  }
+  /** Delete a Library motion: it comes off every object here (one undo step) and in the other levels. */
+  function deleteLib(name: string) {
+    const l = lib().get(name);
+    if (!l) return;
+    const changes: Change[] = [];
+    for (const k of raw().keys()) {
+      if (!(raw().get(k)?.clips ?? []).some((c) => c.use === name)) continue;
+      const from = store().get(k);
+      const to = withClip(from, (from?.clips ?? []).find((c) => c.use === name)!.name, null);
+      changes.push({ kind: 'motion', key: k, from, to });
+      put(k, to);
+      if (chosen.get(k) === name) chosen.delete(k);
+    }
+    for (const w of d.others()) for (const k of Object.keys(w)) {
+      const clips = (w[k]!.clips ?? []).filter((c) => c.use !== name);
+      if (clips.length) w[k] = { clips };
+      else delete w[k];
+    }
+    lib().set(name, null);
+    changes.push({ kind: 'motion-lib', key: name, from: l, to: null });
+    d.undo.push({ changes });
+    refresh();
+    if (shown()) panel.render();
+    d.changed();
+  }
+
+  // ----- Try: the scene's cues, played by the loader's own rules (motionRunner) -----
+  type Cue = { id: string; label: string; ai: boolean; ev: Record<string, unknown>; hits: Array<[string, string]> };
+  let trying: { run: ReturnType<typeof motionRunner>; t0: number; raf: number } | null = null;
+  /** One ▶ per thing that can happen in this scene (deduplicated): the game starting, each key, each object's click… */
+  function cues(): Cue[] {
+    const out = new Map<string, Cue>();
+    const addCue = (id: string, label: string, ai: boolean, ev: Record<string, unknown>, hit?: [string, string]) => {
+      const c = out.get(id) ?? { id, label, ai, ev, hits: [] };
+      if (hit) c.hits.push(hit);
+      out.set(id, c);
+    };
+    addCue('start', d.t('tl.try.start'), false, { on: 'start' });
+    for (const key of moving()) {
+      const name = d.label(key);
+      for (const c of clipsOf(key)) {
+        const w = whenOf(c) as MotionWhen;
+        const hit: [string, string] = [key, c.name];
+        if (w.on === 'start' || w.on === 'time') out.get('start')!.hits.push(hit);
+        else if (w.on === 'key') addCue(`key:${w.key}`, keyName(w.key), false, { on: 'key', key: w.key }, hit);
+        else if (w.on === 'click') addCue(`click:${key}`, d.t('tl.try.click', { name }), false, { on: 'click', key }, hit);
+        else if (w.on === 'enter') addCue(`enter:${key}`, d.t('tl.try.enter', { name }), false, { on: 'enter', key }, hit);
+        else if (w.on === 'touch') addCue(`touch:${key}`, d.t('tl.try.touch', { name }), true, { on: 'touch', key }, hit);
+        else if (w.on === 'cue') addCue(`cue:${w.cue}`, w.cue, true, { on: 'cue', cue: w.cue }, hit);
+        else if (w.on === 'say') addCue(`say:${key}:${c.use ?? c.name}`, d.t('tl.try.say', { name: `${name} · ${c.name}` }), true, { on: 'say', key, use: c.use ?? c.name }, hit);
+        if (c.until?.cue) addCue(`cue:${c.until.cue}`, c.until.cue, true, { on: 'cue', cue: c.until.cue });
+      }
+    }
+    return [...out.values()];
+  }
+  /** Press a cue's ▶: the scene runs as the game would (from "the game starts" if it was not running), then that happens. */
+  function tryCue(id: string) {
+    const cue = cues().find((c) => c.id === id);
+    if (!cue) return;
+    if (playing) stop();
+    const now = performance.now();
+    if (!trying || id === 'start') {
+      if (trying) cancelAnimationFrame(trying.raf);
+      const objs = moving().map((key) => ({ key, clips: clipsOf(key).map((c) => ({ ...c, when: whenOf(c) })) }));
+      trying = { run: motionRunner(objs), t0: now, raf: 0 };
+      trying.run.fire({ on: 'start' }, now);
+      const loop = () => {
+        if (!trying) return;
+        const t = performance.now();
+        const at = trying.run.step(t, () => null);
+        const poses: Array<{ key: string; pose: Pose }> = [];
+        for (const k of moving()) {
+          const o = at.get(k) as Offsets | undefined;
+          poses.push({ key: k, pose: o ? compose(d.place(k)!, o, dim()) : d.place(k)! });
+        }
+        if (poses.length) d.send({ type: 'studio:timeline/pose', poses });
+        time = (t - trying.t0) / 1000;
+        sentPoses = '';
+        panel.place();
+        const lit = JSON.stringify([...trying.run.playing()]);
+        if (lit !== litWas) (litWas = lit), panel.render();
+        trying.raf = requestAnimationFrame(loop);
+      };
+      trying.raf = requestAnimationFrame(loop);
+    }
+    if (id !== 'start') trying.run.fire(cue.ev, now);
+    panel.render();
+  }
+  let litWas = '';
+  function stopTry() {
+    if (!trying) return;
+    cancelAnimationFrame(trying.raf);
+    trying = null;
+    time = 0;
+    refresh(true);
+    panel.render();
+  }
+  /** Known cue names (this level's clips), for the menus: the ones in use first, as written. */
+  function cueNames(): string[] {
+    const out = new Set<string>();
+    for (const k of raw().keys()) for (const c of raw().get(k)?.clips ?? []) {
+      const w = whenOf(c) as MotionWhen;
+      if (w.on === 'cue') out.add(w.cue);
+      if (c.until?.cue) out.add(c.until.cue);
+    }
+    return [...out];
+  }
+  /** The picked clip's area, drawn in the game as a box (when it starts as someone enters it). */
+  let sentArea = '';
+  function sendArea(force = false) {
+    const key = shown() ? d.picked() : null;
+    const c = key ? clipOf(key) : null;
+    const w = c ? (whenOf(c) as MotionWhen) : null;
+    const msg: ShellToBridge = key && w?.on === 'enter' && w.area
+      ? { type: 'studio:timeline/area', key, area: structuredClone(w.area), label: d.t('tl.area.label', { size: w.area.size.map((v) => Math.round(v * 10) / 10).join(' × ') }) }
+      : { type: 'studio:timeline/area', key: null };
+    const sig = JSON.stringify(msg);
+    if (!force && sig === sentArea) return;
+    sentArea = sig;
+    d.send(msg);
   }
 
   const panel = makePanel(view, {
@@ -351,9 +593,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
         const cs = clipsOf(key);
         if (cs.length >= MAX_CLIPS) return;
         const kind = value.slice(4) as Template;
-        const c = fromTemplate(kind, freeName(cs, kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
-        // The first motion of an object plays at the start; another waits for a cue (one start per object).
-        c.start = !cs.some((x) => x.start);
+        // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
+        const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : d.t(`tl.tpl.${kind}`)), dim());
+        // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
+        c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
         chosen.set(key, c.name);
         openRows.add(key);
         time = 0;
@@ -375,9 +618,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       const key = focus();
       const c = key ? clipOf(key) : null;
       if (!key || !c) return;
-      const n = freeName(clipsOf(key).filter((x) => x !== c), name.slice(0, 40));
-      chosen.set(key, n);
-      one(key, withClip(store().get(key), c.name, { ...c, name: n }));
+      // The Library motion is renamed, with every object that uses it (the name is the asset's, not this object's).
+      const from = c.use ?? c.name;
+      const n = name.slice(0, 40).trim();
+      if (!n || n === from) return;
+      renameLib(from, lib().free(n));
+      panel.render();
+      d.changed();
     },
     len: (s) => editClip((c) => {
       // Not shorter than its last key (the keys would fall off the end); 0.1 s … 10 minutes.
@@ -385,18 +632,20 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       return { ...c, len: Math.min(MAX_LEN, Math.max(MIN_LEN, last, Math.round(s * 1000) / 1000)) };
     }),
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
-    start(on) {
-      const key = focus();
-      const c = key ? clipOf(key) : null;
-      if (!key || !c) return;
-      // One clip per object plays at the start: choosing it here makes the others wait for a cue.
-      let m = store().get(key);
-      for (const x of m?.clips ?? []) if (x.name !== c.name && x.start && on) m = withClip(m, x.name, { ...x, start: undefined });
-      const next: MotionClip = { ...c, start: on || undefined };
-      if (on) delete next.when;
-      one(key, withClip(m, c.name, next));
-    },
-    when: (text) => editClip((c) => ({ ...c, when: text.trim() || undefined })),
+    // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
+    setWhen: (w) => editClip((c) => {
+      const out: MotionClip = { ...c, when: w };
+      delete out.start;
+      return out;
+    }),
+    setUntil: (u) => editClip((c) => {
+      const out: MotionClip = { ...c };
+      if (u) out.until = u;
+      else delete out.until;
+      return out;
+    }),
+    tryCue: (id) => tryCue(id),
+    tryStop: () => stopTry(),
     ease(e) {
       if (!sel.length) return;
       const next = new Map<string, Motion | null>();
@@ -454,6 +703,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     open = on;
     if (!on) {
       stop();
+      stopTry();
       sel = [];
     }
     sentPoses = '';
@@ -498,7 +748,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (mod && k === 'v' && clipboard) {
       const key = focus() ?? sel[0]?.key;
       if (!key) return false;
-      const c = clipOf(key) ?? { name: 'Motion', len: 1, repeat: 'once' as MotionRepeat, start: true, keys: {} };
+      const c = clipOf(key) ?? { name: lib().free('Motion'), len: 1, repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
       const r = pasteKeys(c, clipboard, time, dim());
       sel = r.pasted.map((p) => ({ key, ch: p.ch, t: p.t }));
       chosen.set(key, c.name);
@@ -593,6 +843,16 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       return true;
     },
     onMessage(m: BridgeToShell): boolean {
+      if (m.type === 'studio:timeline/area-moved') {
+        const c = clipOf(m.key);
+        const w = c ? (whenOf(c) as MotionWhen) : null;
+        if (!c || w?.on !== 'enter') return true;
+        begin(m.key);
+        const nc: MotionClip = { ...c, when: { ...w, area: { ...w.area, p: m.p.slice() } } };
+        const from = m.end ? finish() : before;
+        commit(new Map([[m.key, withClip(store().get(m.key), c.name, nc)]]), from, m.end);
+        return true;
+      }
       if (m.type !== 'studio:timeline/point') return false;
       const c = clipOf(m.key);
       if (!c?.keys.p?.[m.i]) return true;
@@ -604,8 +864,16 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       return true;
     },
     /** Undo / redo of a `motion` change. */
-    apply(c: Extract<Change, { kind: 'motion' }>, dir: 'undo' | 'redo') {
-      store().set(c.key, dir === 'undo' ? c.from : c.to);
+    apply(c: Extract<Change, { kind: 'motion' | 'motion-lib' | 'motion-rename' }>, dir: 'undo' | 'redo') {
+      if (c.kind === 'motion-lib') lib().set(c.key, dir === 'undo' ? c.from : c.to);
+      else if (c.kind === 'motion-rename') (dir === 'undo' ? renameLib(c.to, c.from, false) : renameLib(c.from, c.to, false));
+      else store().set(c.key, dir === 'undo' ? c.from : c.to);
+      if (c.kind !== 'motion') {
+        refresh();
+        if (shown()) panel.render();
+        d.changed();
+        return;
+      }
       const names = new Set((store().get(c.key)?.clips ?? []).map((x) => x.name));
       if (chosen.has(c.key) && !names.has(chosen.get(c.key)!)) chosen.delete(c.key);
       sel = sel.filter((r) => keyTimes(clipOf(r.key), [r.ch]).some((t) => sameT(t, r.t)));
@@ -616,43 +884,80 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
       stop();
+      stopTry();
+      sentArea = '';
       sentPoses = '';
       sentPath = '';
       finish();
       keyDrag = null;
     },
-    /** The card's Motion row: the clip menu (this object's motions) and the button that opens the timeline. */
+    /**
+     * The card's Motion row: this object's motions (each with when it starts), the Library's other motions to attach
+     * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
+     */
     cardRow(key: string): HTMLElement[] {
       const cs = clipsOf(key);
       const c = clipOf(key);
-      const sel = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
-      if (!cs.length) sel.append(h('option', { value: '', text: d.t('motion.none') }));
+      const pick = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
+      if (!cs.length) pick.append(h('option', { value: '', text: d.t('motion.none') }));
+      const mine = h('optgroup', { label: d.t('motion.on') });
       for (const x of cs) {
-        const o = h('option', { value: x.name, text: `${x.name} · ${Math.round(x.len * 10) / 10} s` });
+        const o = h('option', { value: x.name, text: `${x.name} · ${d.t(`tl.when.short.${whenOf(x).on}`)}` });
         if (x.name === c?.name) o.selected = true;
-        sel.append(o);
+        mine.append(o);
       }
-      sel.disabled = !cs.length;
-      sel.addEventListener('change', () => {
-        chosen.set(key, sel.value);
-        refresh();
-        if (shown()) panel.render();
+      if (cs.length) pick.append(mine);
+      const others = lib().list().filter((m) => !cs.some((x) => (x.use ?? x.name) === m.name));
+      if (others.length && cs.length < MAX_CLIPS) {
+        const g = h('optgroup', { label: d.t('motion.attach') });
+        for (const m of others) g.append(h('option', { value: `attach:${m.name}`, text: `${m.name} · ${Math.round(m.len * 10) / 10} s` }));
+        pick.append(g);
+      }
+      if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
+      pick.addEventListener('change', () => {
+        const v = pick.value;
+        if (v.startsWith('attach:')) attach(key, v.slice(7));
+        else if (v === 'detach' && c) detach(key, c.name);
+        else {
+          chosen.set(key, v);
+          refresh();
+          if (shown()) panel.render();
+        }
+        d.changed();
       });
+      pick.disabled = !cs.length && !others.length;
       const btn = h('button', { type: 'button', class: `motion-tl${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline' },
         onclick: () => {
           focusKey = key;
           setOpen(!open);
         } }, h('span', { class: 'tl-diamond' }), h('span', { text: d.t('tl.open') }));
-      const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, sel, icon('chevronDown')), btn);
+      const cells = h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, pick, icon('chevronDown')), btn);
       return [h('span', { class: 'f-l', text: d.t('motion.label') }), cells];
     },
+    // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.
+    usage,
+    attach,
+    detach,
+    duplicateLib,
+    deleteLib,
+    renameLib: (from: string, to: string): string | null => {
+      const n = lib().free(to.trim().slice(0, 40));
+      if (!renameLib(from, n)) return null;
+      d.changed();
+      return n;
+    },
+    tryCue,
+    stopTry,
+    /** An object's motion as the timeline sees it (each clip with its Library motion's keys): tests, the Library. */
+    motionOf: (key: string) => store().get(key),
     /** ● Auto key on / off (the plate's button; tests). */
     setAuto(on: boolean) {
       auto = on;
       if (shown()) panel.render();
     },
     /** Tests and the ⌘K list. */
-    state: () => ({ open, auto, time, playing: !!playing, sel: sel.slice(), clip: focus() ? clipOf(focus()!)?.name ?? null : null }),
+    state: () => ({ open, auto, time, playing: !!playing, sel: sel.slice(), clip: focus() ? clipOf(focus()!)?.name ?? null : null, trying: !!trying,
+      lit: trying ? Object.fromEntries(trying.run.playing()) : {}, cues: cues().map((q) => q.id) }),
     setTime(t: number) {
       if (playing) stop();
       time = snapT(t, MAX_LEN, true);
