@@ -24,18 +24,22 @@ export interface MorePop {
   place(anchor: HTMLElement): void;
 }
 
-export function createMorePop(host: () => HTMLElement, label: string, onHide: () => void): MorePop {
-  const el = h('div', { class: 'tl-more', role: 'dialog', 'aria-label': label, dataset: { part: 'tl-more' } });
+/**
+ * `opts` (studio-motion-focus: the "+ Link an object" list uses the same popover): `left` = its left edge on the
+ * button's left edge (the button is at the plate's left end; ⋯ is at the right), `width` (420 by default), `part`.
+ */
+export function createMorePop(host: () => HTMLElement, label: string, onHide: () => void, opts: { left?: boolean; width?: number; part?: string } = {}): MorePop {
+  const el = h('div', { class: 'tl-more', role: 'dialog', 'aria-label': label, dataset: { part: opts.part ?? 'tl-more' } });
   let open = false;
   let anchor: HTMLElement | null = null;
   const place = (a: HTMLElement) => {
     anchor = a;
     const r = a.getBoundingClientRect();
     const vw = window.innerWidth;
-    const w = Math.min(420, vw - 16);
+    const w = Math.min(opts.width ?? 420, vw - 16);
     el.style.width = `${w}px`;
-    // Right edge on the button's right edge, kept 8 px inside the window; above it (the plate is at the bottom).
-    el.style.left = `${Math.max(8, Math.min(vw - w - 8, r.right - w))}px`;
+    // Right edge on the button's right edge (or left on left), kept 8 px inside the window; above it (the plate is at the bottom).
+    el.style.left = `${Math.max(8, Math.min(vw - w - 8, opts.left ? r.left : r.right - w))}px`;
     el.style.bottom = `${Math.max(8, window.innerHeight - r.top + 6)}px`;
   };
   const outside = (e: PointerEvent) => {

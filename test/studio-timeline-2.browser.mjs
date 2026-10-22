@@ -5,12 +5,13 @@
 //   3. the line hovered: a "+" follows it; clicked: a key at that moment (4 keys), the time line there, the new point picked;
 //   4. Point ▾ → Corner: the point is a diamond; a double-click on it: smooth again;
 //   5. "+ or": a second way to start (a click), its Try ▶; changed to "enters an area": the box, a corner dragged = its size;
-//   6. New: Scene — the crate (no motion) picked shows "+ Add crate to …", pressed: in the scene; K keys it;
+//   6. New: Scene — "+ Link an object" → the crate (studio-motion-focus: the way in; it was "+ Add crate to …" on the
+//      crate's own row); K keys it;
 //   7. Save: handles, a `when` list and the scene's `tracks` in placement.json, and the schema takes it;
 //   8. no page errors.
 // And pictures (`--shots <dir> --no-checks`): PC 1280×800, the side window 400×900, a phone 390×844 × light and dark —
 // `1-handles` (a bent point picked: its handles, the "+" on the line on PC), `2-when` ("E or enters an area": the box
-// with its corners, the second row), `3-scene` (a scene of three objects, the crate's "+ Add" row).
+// with its corners, the second row), `3-scene` (a scene of three objects: the boat picked, the buoy and the barrel linked).
 //
 //   node test/studio-timeline-2.browser.mjs [--shots <dir>] [--only pc,side,phone] [--themes light,dark] [--lang en|ja] [--no-checks]
 // Exit 1 on a failure.
@@ -219,17 +220,20 @@ async function run(size, theme) {
       await page.eval(choose('tl-clip', 'new:scene'));
       await sleep(700);
       const sceneChip = await page.eval(`(document.querySelector('[data-part=tl-scene]') || {}).textContent || ''`);
-      check(/1/.test(sceneChip), `the head says it is a scene ("${sceneChip}")`);
+      // A scene of one says nothing yet (studio-motion-focus: "Linked · n" from two on).
+      check(!sceneChip, `a scene of one: no "Linked" yet ("${sceneChip}")`);
       const sceneName = (await state()).clip;
       await page.eval(`${TL}.setTime(1)`);
       await page.eval(`${TL}.onKey({ key: 'k', ctrl: false, meta: false, shift: false })`);
       await sleep(300);
+      await page.eval(`document.querySelector('[data-part=tl-link]').click()`);
+      await sleep(500);
+      const linkItem = await page.eval(`!!document.querySelector('[data-part=tl-link-item][data-key=crate]')`);
+      check(linkItem, '"+ Link an object" lists the crate');
+      await page.eval(`document.querySelector('[data-part=tl-link-item][data-key=crate]').click()`);
+      await sleep(500);
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
-      const joinRow = await page.eval(`(document.querySelector('[data-part=tl-join]') || {}).textContent || ''`);
-      check(/crate/.test(joinRow), `the crate's row is the way in ("${joinRow}")`);
-      await page.eval(`document.querySelector('[data-part=tl-join]').click()`);
-      await sleep(500);
       await page.eval(`${TL}.onKey({ key: 'k', ctrl: false, meta: false, shift: false })`);
       await sleep(500);
       const sc = await page.eval(`(document.querySelector('[data-part=tl-scene]') || {}).textContent || ''`);
@@ -268,11 +272,10 @@ async function run(size, theme) {
       await page.eval(`${TL}.onKey({ key: 'Escape', ctrl: false, meta: false, shift: false }, true)`);
       await sleep(900);
       await shot(page, '2-when');
-      // 3: the scene "Arrival" (three objects), the crate picked: its "+ Add" row.
+      // 3: the scene "Arrival" (three objects: the boat picked, the buoy and the barrel linked).
       await page.eval(choose('tl-clip', 'Arrival'));
       await sleep(500);
       await page.eval(`${TL}.setTime(1.5)`);
-      await page.eval(`studioShell.actions.select('crate')`);
       await sleep(1000);
       await shot(page, '3-scene');
     }

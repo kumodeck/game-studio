@@ -14,6 +14,7 @@ Press **▶ Play** to play your game right where you’re editing it. Press **Ed
 
 - **▶ Play** (or <kbd>P</kbd>) plays the game as you arranged it, saved or not. The top bar says **Playing**.
 - **Edit** (or <kbd>P</kbd>) takes you back. Everything is where it was before you pressed Play: your layout, your camera, what you selected. Anything the game moved while you played (the hero, an enemy) goes back too.
+- Your [motions](motion.md) play too, whatever starts them: the start, a time, a key, a click, an area, or a cue from your game’s code. Back in Edit they stop, and everything is back in its place. Still the same page.
 - The game’s own state, like the score or a timer, isn’t part of your layout. To start that over, use **Play from the start** in Play’s ▾ menu (or <kbd>⌘</kbd><kbd>K</kbd>). It opens the game fresh.
 
 ### Changes you haven’t saved
@@ -27,6 +28,8 @@ If you press Play with changes that aren’t saved, the editor asks first:
 - **Cancel** (or <kbd>Esc</kbd>) stays in Edit.
 
 Going back from Play to Edit never asks.
+
+A game with an older copy of the loader (`studio-placement.js`) plays in the same page too: in the editor it runs with the editor’s own loader. The file in your game isn’t changed, so outside the editor (a published game) your game still uses its copy. Before you publish a game with motions, ask your AI to copy the new loader into it.
 
 ## Pause and talk to your AI
 

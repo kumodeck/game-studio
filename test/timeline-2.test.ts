@@ -221,7 +221,7 @@ test('wire: "or" — a second way to start, its Try ▶, the row says both; the 
   assert.deepEqual(r.store.get('boat')!.clips![0]!.when, { on: 'click' }, 'back to one');
 });
 
-test('wire: a scene — made from the clip menu, an object joins (+ Add, or moved with auto key), one "when", taken out, undo', () => {
+test('wire: a scene — made from the clip menu, objects linked to it (studio-motion-focus: "+ Link an object"), one "when", taken out, undo', () => {
   const r = rig();
   r.acts().clip('new:scene');
   const name = r.view().scene!.name;
@@ -231,14 +231,11 @@ test('wire: a scene — made from the clip menu, an object joins (+ Add, or move
   r.tl.setTime(2);
   r.tl.moved('boat', { p: [3, 0, 0], r: 0, s: 1 }, true, { p: [0, 0, 0], r: 0, s: 1 });
   assert.deepEqual(r.lib.get(name)!.tracks!.boat!.p!.map((k) => k.v), [[0, 0, 0], [3, 0, 0]]);
-  // The crate (no motion of its own) picked: its row is the way in.
-  r.pick('crate');
-  let v = r.view();
-  assert.ok(v.scene, 'the scene stays open');
-  assert.deepEqual(v.rows.map((x) => [x.key, x.member]), [['boat', true], ['crate', false]]);
-  r.acts().join!('crate');
+  // The crate (no motion of its own) linked from the boat's plate.
+  r.acts().link!('crate');
   assert.deepEqual(r.view().rows.map((x) => [x.key, x.member]), [['boat', true], ['crate', true]]);
-  // The buoy joins by being moved with ● on.
+  // The buoy linked too, then picked and moved with ● on: its keys go in its track of the scene.
+  r.acts().link!('buoy');
   r.pick('buoy');
   r.tl.setTime(1);
   r.tl.moved('buoy', { p: [5, -1, 0], r: 0, s: 1 }, true, { p: [5, 0, 0], r: 0, s: 1 });
@@ -257,8 +254,7 @@ test('wire: a scene — made from the clip menu, an object joins (+ Add, or move
   assert.deepEqual(Object.keys(r.lib.get(name)!.tracks!).sort(), ['boat', 'crate']);
   r.undoAll();
   assert.deepEqual(r.lib.get(name)!.tracks!.buoy!.p!.map((k) => k.v), [[0, 0, 0], [0, -1, 0]]);
-  // The rock has motions of its own? No — but picking an object with its own motion closes the scene.
-  r.store.set('rock', { clips: [{ name: 'Row', use: 'Row', len: 3, when: { on: 'start' }, keys: {} }] });
+  // Another object picked closes the scene (studio-motion-focus: even one with no motion — the rows are its own).
   r.pick('rock');
   assert.equal(r.view().scene, null);
   // Picking a member opens it again.

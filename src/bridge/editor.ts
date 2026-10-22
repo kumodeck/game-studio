@@ -16,6 +16,7 @@ import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
 import { createUiExtras } from './ui-extras.ts';
+import { loaderPlay } from './play-switch.ts';
 
 export interface EditorDeps {
   /** The world's adapter as found (self-check runs on it, before game rules); null = an HTML-only game (UI only). */
@@ -175,6 +176,8 @@ export function createEditor(deps: EditorDeps): Editor {
   let inset: Inset = { top: 0, right: 0, bottom: 0, left: 0 };
   let theme: 'dark' | 'light' = 'dark';
   let aiMarks: { keys: string[]; label: string | null } = { keys: [], label: null };
+  // The strip's Motion button as the editor page last described it (placement/motion), kept for a new input (a layer switch).
+  let motionBtn = { show: false, has: false, label: '', open: false };
   // The game's UI shown (faded) while the world is edited: the shell's eye button (core/ui-peek). Off = hidden, the
   // default every time the editor opens (paintLayers).
   let uiPeek = false;
@@ -201,6 +204,8 @@ export function createEditor(deps: EditorDeps): Editor {
   const ready = () => {
     post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
       drop: adapter.dim === '3d' && !!adapter.drop,
+      // The game's loader can run every motion in this page (play-switch.ts): ▶ Play then never needs a new page for them.
+      ...(loaderPlay(win).length ? { motionHere: true } : {}),
       ...(uiStack ? { layers: (world ? ['world', 'ui'] : ['ui']) as EditLayer[], layer } : {}) });
   };
   /**
@@ -946,6 +951,7 @@ export function createEditor(deps: EditorDeps): Editor {
     input.setInset(inset);
     input.setTheme(theme);
     if (aiMarks.keys.length) input.setAiMarks(aiMarks.keys, aiMarks.label);
+    input.setMotion(motionBtn);
     input.setLang(lang);
   };
   // A core/layer that came before editing started (the shell sends it right after core/edit on a reload).
@@ -1049,6 +1055,14 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:placement/tool':
           input?.setTool(msg.tool === 'move' || msg.tool === 'rotate' || msg.tool === 'lift' || msg.tool === 'scale' ? msg.tool : null);
+          dirtyFrame = true;
+          break;
+        case 'studio:placement/motion':
+          // studio-motion-tool: the Motion button after the strip's tools. `label` is shown as text only (title, aria).
+          motionBtn = { show: !!msg.show, has: !!msg.has, label: typeof msg.label === 'string' ? msg.label.slice(0, 160) : '', open: !!(msg as { open?: boolean }).open };
+          input?.setMotion(motionBtn);
+          // Its key or ⌘K in the editor page: answered as a press on the button (motion-press with its place).
+          if ((msg as { press?: boolean }).press) input?.pressMotion();
           dirtyFrame = true;
           break;
         case 'studio:placement/look':

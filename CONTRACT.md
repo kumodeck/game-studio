@@ -426,9 +426,15 @@ Asked for: the second stage of the timeline — the path's shape by hand, a key 
   the usual attachment (`use`); the editor writes the same `when` / `until` / len / repeat to all of them (the head acts
   on the scene). The loader's `resolveClip(c, lib, key)` gives each object its track (`scene: true`), and the runner
   starts the scene's other objects at the same moment when one starts. On the timeline: the clip menu's "New: Scene —
-  several objects"; while a scene is open the rows are its objects, the picked object outside it gets "+ Add … to …"
-  (or joins when moved with Auto key on), × on a row takes an object out (its track goes; undo brings it back). A scene
-  motion dropped on an object from the Library puts that object in the scene. Shell side: `shell/scene-motion.ts`.
+  several objects"; × on a linked row takes an object out (its track goes; undo brings it back). A scene motion dropped
+  on an object from the Library puts that object in the scene. Shell side: `shell/scene-motion.ts`.
+- **The rows are the picked object's** (studio-motion-focus, 2026-10-23): the picked object first (several picked:
+  those), then the objects linked to it (its scene's), in the list's order; another object picked closes the scene.
+  "+ Link an object" under the rows puts another object in the shown motion — from its list, or a click in the game
+  while the list is open (the pick stays: `timeline.linkPick`). An ordinary motion that gets its first link becomes a
+  scene motion (`tracks`, the picked object's keys as its track); one shared with other objects is copied first
+  ("Hop 2"); the last link taken off makes it ordinary again (`keys`), so link + unlink leaves the file as it was. Each
+  is one undo step (the Library change in it). ⋯'s "Show every motion in the scene" shows every moving object's row.
 
 ### 1.10 Levels (2026-10-22)
 
@@ -508,7 +514,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | bridge → shell | `core/hello` | Edit script loaded (`contract`) |
 | | `core/wait` | Waiting: `no-adapter`, `no-frame`, `no-objects` |
 | | `core/check` | Self-check result |
-| | `core/ready` | Adapter `kind`, `dim`, `version`, `editing`; UI stage 1: `layers?: ['world', 'ui']` (only for a game with a UI seat — absent, no switch is shown) and `layer` (the one edited now; `kind` / `dim` / `rise` / `fly` are that layer's adapter's: the UI is `dom-ui`, `2d`) |
+| | `core/ready` | Adapter `kind`, `dim`, `version`, `editing`; UI stage 1: `layers?: ['world', 'ui']` (only for a game with a UI seat — absent, no switch is shown) and `layer` (the one edited now; `kind` / `dim` / `rise` / `fly` are that layer's adapter's: the UI is `dom-ui`, `2d`); `motionHere: true` when the game's loader can run the draft's motions in this page (§3.5.3, studio-no-reload) |
 | | `core/view-state` | Opaque edit-camera state (the shell keeps it across reloads) |
 | | `core/key` | Key pressed while the game frame has focus |
 | | `core/error` | Adapter threw |
@@ -523,12 +529,13 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/menu` | `{ open }`: the strip's choices (the ▾ on turn / size) opened or closed in the game |
 | | `placement/context` | `{ key, x, y, touch }`: a right-click (Mac: also Control-click) or a long press on the game: the editor page opens the menu for that place. `key` = the object under it (null = nothing / only the ground); an object not picked yet was picked first, without moving the camera |
 | | `placement/at-is` | `{ id, key }`: the answer to `placement/at` (the same test as a tap; `key` null = nothing there) |
+| | `placement/motion-press` | `{ key, x, y, w, h, touch, keyboard }`: the strip's Motion button pressed (or A / 5 with the game page focused; studio-motion-tool). The editor opens the pick's motion on the timeline, or — none yet — its small menu at the button (`x y w h`, the game page's px; 0 × 0 for a key) |
 | | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
 | | `library/previewed` | `{ url, ok }` |
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
-| | `core/play` | `{ on, motion?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it, the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
+| | `core/play` | `{ on, motion?, motions?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start, every `when` through the game's loader; `motions` = the Library's); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it, the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
 | | `ui/screen` · `ui/sample` · `ui/set` · `ui/state` · `ui/theme-set` · `ui/props-get` | UI stages 2–3 (§1.11; only after `core/ready` listed `layers`): show a screen (`id` null = as the game shows it); a sample text (`null` = its own); one look field (`name`, `value`, `state?`; `null` = the game's own; `quiet` = no `ui/props` back, for the values the file holds, given again when a page opens); a button's look; a theme variable; ask for an element's props |
 | | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
@@ -541,6 +548,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/hover` | `{ keys }`: the mouse is over these objects' row in the list, the card or the ask chip — lit in your colour, softer than the pick (`[]` = none) |
 | | `placement/at` | `{ id, x, y }`: which object is at this point of the game page (its own px)? A Library motion is held over the game (studio-motion-flow). Answered at once by `placement/at-is`; nothing is picked |
 | | `placement/tool` | `{ tool: 'move' \| 'lift' \| 'rotate' \| 'scale' \| null }`: choose the strip's tool (the keys and ⌘K when the editor page has focus) |
+| | `placement/motion` | `{ show, has, label, open?, press? }`: the strip's Motion button after the four tools (studio-motion-tool, 2026-10-22). `show` = the pick can have a motion (one world object in 3D); `has` = it has one (a dot on the button); `label` = its tooltip, in the editor's words; `open` = its menu is open in the editor page (pressed look); `press` = A / 5 or ⌘K in the editor page — answered by `placement/motion-press` with the button's place |
 | | `placement/look` | `{ on }`: Space is held in the editor page — a drag in the game looks around even with a tool chosen |
 | | `placement/menu` | `{ open: false }`: close the strip's choices (a press or Escape in the editor page while they are open) |
 | | `core/ui` | `{ handlePx, inset?, theme? }`: strip button size; `inset` = px the shell's floating plates cover on each side (`rightTo`: how far down the right one reaches); the strip and "bring into view" keep clear of them. When an inset grows (a phone's list sheet opens) the bridge slides the view — pan only, the least move — so the picked object and its strip sit in the part still seen |
@@ -986,11 +994,41 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
 - The edit page's game clock stops with every hold of the game
   (`core/time.ts` `clock`), so the first frame of Play steps one frame, not the
   time spent editing.
+- **Motions** (studio-no-reload, 2026-10-22): the draft's motions play in the
+  same page, every `when` included (a key, a click, an area, another motion's
+  end, a cue, the game's `playMotion()` / `cue()` / `touch()`). The game's own
+  copy of the loader runs them through its play hook: `studio-placement.js`
+  adds `{ has, start({ motion, motions }), stop() }` to the global set
+  `Symbol.for('game-studio.play')`, and the copy that placed a world (the
+  game's) answers `has()`; the editor page says so in `core/ready`
+  (`motionHere: true`). `core/play` carries `motions` (the Library's, for the
+  clips' `use`). Edit stops them before every object goes back. What the loader
+  does not move (a game without it, a copy the editor made) the editor's own
+  runner moves (`play-arrange.ts` moveInPlay: the start, a time, a key, another
+  clip's end).
+- **The game's copy of the loader** (integrate 1023, 2026-10-23): a game keeps
+  the copy it was given, and an older one has no play hook. The local server
+  (`src/server/loader-copy.mjs`) answers a request for the game's copy with
+  its own loader (the one its editor was built with), so the edit page and
+  every Play page it opens run the current loader. The file on disk is never
+  changed (outside the editor the game runs its copy). A file is taken for a
+  copy when all three hold: its name is `studio-placement.js` (any folder of
+  the game, at most 512 KB); its first line starts with one of the loader's
+  headers — `// KUMODeck Game Studio placement loader` (the built file, every
+  version) or `// studio-placement.js: apply placement.json` (the source in
+  `src/loader`); and it has `export async function applyPlacement(`. Anything
+  else with that name goes out as it is. Every export of an older copy is in
+  the current loader (exports are only ever added), so the game's imports keep
+  working.
 - A new Play page is still opened when the page's editor is not up (loading, no
-  adapter) and when a motion of the draft waits for the game's cue (a clip
-  without `start`: a page opened for Edit never ran the loader's motions).
-  `studio:play/reload` (the AI's fix) opens a new Play page; Edit after a new
-  Play page opens a new edit page, as before.
+  adapter, a soft reload under way), and when a clip waits for what only the
+  game's loader sees (a click, an area, a touch, a cue, the game's code) while
+  the page's loader has no play hook (`motionHere` absent;
+  `src/shell/play-here.ts`): a host that serves the game's own older copy as it
+  is (the local server no longer does, above). `studio:play/reload` (the AI's fix) and
+  **Play from the start** open a new Play page; Edit after a new Play page opens
+  a new edit page, as before (a Play page has no editor: the bridge starts one
+  only in a page opened with `studio=edit`).
 - Screen tests: `__gameStudio._debug` is absent while the page plays (as on a
   Play page), and `_play.playing()` says whether it plays.
 

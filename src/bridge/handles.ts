@@ -44,6 +44,15 @@ export const TOOL_NUMBERS: Record<HandleKind, string> = { move: '1', lift: '2', 
 export const toolFromKey = (key: string): HandleKind | null =>
   (Object.keys(TOOL_KEYS) as HandleKind[]).find((k) => TOOL_KEYS[k] === key.toUpperCase() || TOOL_NUMBERS[k] === key) ?? null;
 
+/**
+ * The Motion button's keys (studio-motion-tool, 2026-10-22): A ("animate") and 5, the strip's order after 1–4. Not a
+ * tool (nothing is dragged with it): a press opens the pick's motion, or its small menu. A is also fly-left (W A S D),
+ * but only with nothing picked or the right button held — the same split as S (Size / fly back); the Motion keys
+ * work with something picked. shell/keymap.ts lists them; test/keymap.test.ts keeps the two the same.
+ */
+export const MOTION_KEYS = ['A', '5'] as const;
+export const isMotionKey = (key: string): boolean => (MOTION_KEYS as readonly string[]).includes(key.toUpperCase());
+
 export const HANDLE_LABELS: Record<Lang, Record<HandleKind, string>> = {
   en: { move: 'Move (M)', rotate: 'Turn (T)', lift: 'Height (H)', scale: 'Size (S)' },
   ja: { move: '移動（M）', rotate: '回す（T）', lift: '高さ（H）', scale: '大きさ（S）' },
@@ -140,6 +149,14 @@ const ICONS: Record<HandleKind, string> = {
   scale: '<path d="M5 19 19 5M13.5 5H19v5.5M5 13.5V19h5.5"/>',
 };
 
+/**
+ * The Motion button's picture: a dotted path from a small point to the thing at its end (a ring) — "this goes from
+ * here to there over time". Not the timeline's ◆ (a key, one moment) nor ▶ (Play, which runs the whole game).
+ */
+// The thing at the top LEFT (not right, as first drawn): the top right corner is where the dot goes, and the ring
+// there hid it (the first run's pictures, 2026-10-22).
+const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dasharray="0.01 3.2"/><circle cx="20" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="5.5" cy="6.5" r="2.6"/>';
+
 export interface Outline {
   /** Viewport CSS px the mask covers. */
   x: number;
@@ -168,6 +185,13 @@ export interface Handles {
   /** The one line at the bottom of the game (the first time a tool is chosen), or null. */
   hint(text: string | null): void;
   setLabels(labels: Record<HandleKind, string>): void;
+  /**
+   * The Motion button after the tools (studio-motion-tool): `show` = the pick can have a motion, `has` = it has one (the
+   * dot), `label` = the tooltip (the editor's words), `open` = its menu is open in the editor page (the button pressed).
+   */
+  setMotion(m: { show: boolean; has: boolean; label: string; open: boolean }): void;
+  /** The Motion button's box on screen (null = not shown): the editor's menu opens at it, also for the A / 5 keys. */
+  motionRect(): DOMRect | null;
   /**
    * The selection's outline: the shape when the adapter gave one, else one
    * rounded box per rect. `tag` = the name tag over it (null = none).
@@ -234,7 +258,19 @@ button.rest { color: #f5f5f7; background: rgba(255,255,255,.12); }
    loudest thing on the game after the object itself (review 2, photo 03; the light editor's was black). */
 button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cursor: grabbing; transition-duration: 0s; }
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
-button[hidden] { display: none; }
+button[hidden], .tsep[hidden] { display: none; }
+/* The Motion button (studio-motion-tool, 2026-10-22) sits after a hairline: the four tools change how the thing stands
+   (a drag does it), Motion changes what it does over time (a press opens it). The same button as the tools — size,
+   ink, ground — so the strip stays one object; the hairline is the menu's own (.msep). */
+.tsep { align-self: stretch; width: .5px; margin: 5px 3px; background: rgba(255,255,255,.14); flex: none; }
+.root.light .tsep { background: rgba(0,0,0,.1); }
+.row.big .tsep { margin: 10px 4px; }
+button[data-studio-motion] { cursor: pointer; }
+/* "This thing moves": a 5 px dot in the button's own ink, top right — no new colour on the game (orange is your pick,
+   violet the AI's). A finger strip: 6 px, 7 in. */
+.dot { position: absolute; right: 3px; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: none; pointer-events: none; }
+button.has .dot { display: block; }
+.row.big .dot { right: 7px; top: 7px; width: 6px; height: 6px; }
 /* Touch: past 44 px for the finger, whatever the drawn size. */
 @media (pointer: coarse) { button::after { content: ""; position: absolute; inset: -2px; } }
 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6px; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -445,6 +481,19 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     buttons[k] = b;
     row.appendChild(b);
   }
+  // The Motion button, after a hairline (hidden until the editor says the pick can have a motion: setMotion).
+  const motionSep = doc.createElement('div');
+  motionSep.className = 'tsep';
+  motionSep.setAttribute('role', 'separator');
+  motionSep.hidden = true;
+  const motionBtn = doc.createElement('button');
+  motionBtn.type = 'button';
+  motionBtn.dataset.studioMotion = '';
+  motionBtn.hidden = true;
+  motionBtn.setAttribute('aria-haspopup', 'menu');
+  motionBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${MOTION_ICON}</svg><span class="dot"></span>`; // static markup only
+  row.append(motionSep, motionBtn);
+  let motionShow = false;
   buttons.move.classList.add('rest');
   for (const k of kinds) buttons[k].setAttribute('aria-pressed', 'false');
   // One layer per kind of mark, bottom to top: ghosts, AI outlines, your outline, tags, strip, band.
@@ -667,11 +716,17 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
         positionMenu();
         return;
       }
-      const n = kinds.filter((k) => !buttons[k].hidden).length;
+      const tools = kinds.filter((k) => !buttons[k].hidden).length;
+      // The Motion button counts as a button; its hairline adds 8.5 px either way (.5 + 3 + 3 and one more 2 px gap on
+      // the mouse strip; .5 + 4 + 4 and no gaps on the finger strip).
+      motionBtn.hidden = !motionShow;
+      motionSep.hidden = !motionShow || tools === 0;
+      const n = tools + (motionShow ? 1 : 0);
       if (n === 0) row.style.display = 'none';
       // .big (finger size): no gaps, 2 px in (W1-2); else 2 px gaps, 4 px in.
       const big = size >= 40;
-      const rowW = big ? n * size + 4 : n * size + (n - 1) * 2 + 4;
+      const sepW = motionSep.hidden ? 0 : 8.5;
+      const rowW = (big ? n * size + 4 : n * size + (n - 1) * 2 + 4) + sepW;
       const rowH = big ? size + 4 : size + 8;
       const lo = 8 + inset.top, hi = vh - 8 - inset.bottom - rowH;
       // Under the object; above it when there is no room below (over the ask bar on a phone).
@@ -812,6 +867,17 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       hintEl.style.display = 'flex';
       positionHint();
     },
+    setMotion(m) {
+      motionShow = !!m.show;
+      motionBtn.classList.toggle('has', !!m.has);
+      motionBtn.classList.toggle('on', !!m.open);
+      motionBtn.setAttribute('aria-expanded', String(!!m.open));
+      if (motionBtn.title !== m.label) {
+        motionBtn.title = m.label;
+        motionBtn.setAttribute('aria-label', m.label);
+      }
+    },
+    motionRect: () => (motionShow && row.style.display !== 'none' && !motionBtn.hidden ? motionBtn.getBoundingClientRect() : null),
     setLabels(labels) {
       for (const k of kinds) {
         buttons[k].setAttribute('aria-label', labels[k]);
@@ -876,6 +942,14 @@ export function moreFromEvent(e: Event): 'axis' | 'scale' | null {
   for (const el of e.composedPath()) {
     const m = (el as HTMLElement).dataset?.studioMore;
     if (m === 'axis' || m === 'scale') return m;
+  }
+  return null;
+}
+
+/** The Motion button under a pointer event (its box in the page's px), or null. */
+export function motionFromEvent(e: Event): DOMRect | null {
+  for (const el of e.composedPath()) {
+    if ((el as HTMLElement).dataset?.studioMotion !== undefined && (el as HTMLElement).tagName === 'BUTTON') return (el as HTMLElement).getBoundingClientRect();
   }
   return null;
 }

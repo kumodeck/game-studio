@@ -128,7 +128,9 @@ async function run(size, theme) {
       check(plate.top > size.height * 0.6 && plate.width > size.width * 0.6, 'PC: at the foot of the game, across it');
       const ask = await j(`JSON.stringify(document.querySelector('[data-part=bar]').getBoundingClientRect())`);
       check(ask.bottom <= plate.top + 1, `the ask bar sits above it (${Math.round(ask.bottom)} ≤ ${Math.round(plate.top)})`);
-      check(plate.keys.some((k) => k.key === 'buoy'), 'the buoy\'s row (its older spin, read as a clip) is on the plate');
+      // Since motion-focus (2026-10-23: "basically only the selected object"): the plate shows the picked object's rows
+      // only; the buoy's older spin is still read as a clip (checked after Save below) but not drawn here.
+      check(!plate.keys.some((k) => k.key === 'buoy'), 'only the picked object\'s rows: the buoy is not on the plate');
       // 3. 2 s on the ruler, then drag the boat.
       const r2 = await rulerAt(2);
       await page.click(Math.round(r2.x), Math.round(r2.y));

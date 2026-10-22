@@ -34,7 +34,11 @@ export interface MenuItem {
   checked?: boolean;
   run(): void;
 }
-export type MenuEntry = MenuItem | { sep: true };
+/**
+ * `head`: a small title over the rows that follow (studio-motion-tool, 2026-10-22: the strip's Motion menu has two
+ * lists — new kinds and the Library's motions — and "Hop" alone did not say which). Not a row: no highlight, no key.
+ */
+export type MenuEntry = MenuItem | { sep: true } | { head: string };
 
 export interface ContextMenuDeps {
   /** Phone layout: 44 px rows, no keys. */
@@ -112,6 +116,10 @@ export function createContextMenu(d: ContextMenuDeps) {
     for (const e of entries) {
       if ('sep' in e) {
         el.append(h('div', { class: 'ctx-sep', role: 'separator' }));
+        continue;
+      }
+      if ('head' in e) {
+        el.append(h('div', { class: 'ctx-head', role: 'presentation', text: e.head }));
         continue;
       }
       const btn = h('button', { type: 'button', class: 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },

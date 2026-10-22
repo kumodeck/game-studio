@@ -46,8 +46,10 @@ import { validateLibrary, validatePlacement } from '../schema/index.ts';
 import { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } from '../tools/library/index.ts';
 import { DRAG_FILE } from '../tools/library/panel.ts';
 import { createLibraryObjects, DRAG_OBJECT } from './library-objects.ts';
+import { motionsPlayHere } from './play-here.ts';
 import { createLibraryMotions } from './library-motions.ts';
 import { createMotionDrag } from './motion-drag.ts';
+import { createMotionTool } from './motion-tool.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
 import { h, safeImageSrc } from './dom.ts';
@@ -116,6 +118,8 @@ const RISE_STEP = 0.1;
 const RISE_KEY_STEP = 0.05;
 /** 1–4: the same tools in the 3D strip's order (basics pass, 2026-10-18; bridge/handles.ts TOOL_NUMBERS). 2 is Height: nothing in 2D. */
 const STRIP_NUMBERS: Record<string, StripTool> = { '1': 'move', '2': 'lift', '3': 'rotate', '4': 'scale' };
+/** A / 5: the strip's Motion button (studio-motion-tool; the same as the game page's bridge/handles.ts MOTION_KEYS). */
+const MOTION_KEYS = new Set(['a', '5']);
 const STRIP_ICONS: Record<StripTool, string> = { move: 'toolMove', lift: 'toolLift', rotate: 'toolRotate', scale: 'toolScale' };
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -152,6 +156,8 @@ export function start(host: StudioHost) {
   let canRise = false;
   // Drop to floor (End): the 3D adapter can set things on the surface below (snap to surfaces, 2026-10-19).
   let canDrop = false;
+  // The game's loader runs every motion in the edit page (core/ready `motionHere`, play-here.ts).
+  let motionHere = false;
   /** It can fly with W A S D (core/ready `fly`: 3D adapters with view.fly; camera-wasd 2026-10-18). */
   let canFly = false;
   let adapterInfo = '';
@@ -256,6 +262,9 @@ export function start(host: StudioHost) {
     dim: () => dim,
     usable: () => editing && !playing && editLayer === 'world' && dim === '3d' && tool === 'placement' && page === 'tool',
     picked: () => (editing && editLayer === 'world' && group.length <= 1 ? selected : null),
+    // studio-motion-focus: the rows are the picked objects; a click in the game while "+ Link an object" is open links.
+    group: () => (editing && editLayer === 'world' ? group.slice() : []),
+    reselect: (k) => selectObject(k),
     place: (k) => worldModel.pose(k),
     order: () => worldItems.map((i) => i.key),
     label: (k) => {
@@ -784,6 +793,8 @@ export function start(host: StudioHost) {
       app.dataset.menu = on ? place || 'open' : 'closed';
       // The phone's camera ↑↓ step aside while a menu is up (sendInset).
       sendInset();
+      // The strip's Motion button looks pressed while its menu is up.
+      motionTool.sync();
     },
   });
   app.append(ctxMenu.catcher, ctxMenu.el);
@@ -1090,16 +1101,18 @@ export function start(host: StudioHost) {
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
+  /** A thing a motion can go on: a world object, not the ground / sky (a drop, the strip's Motion button). */
+  function motionable(k: string): boolean {
+    const it = worldItems.find((i) => i.key === k);
+    return !!it && !it.backdrop && it.held !== 'ground';
+  }
   // A Library motion picked up and dropped on an object in the game (studio-motion-flow, motion-drag.ts).
   const motionDrag = createMotionDrag({
     t,
     app,
     frame: () => iframe,
     send: (m) => send(m),
-    target: (k) => {
-      const it = worldItems.find((i) => i.key === k);
-      return it && !it.backdrop && it.held !== 'ground' ? displayName(it, t) : null;
-    },
+    target: (k) => (motionable(k) ? displayName(worldItems.find((i) => i.key === k)!, t) : null),
     drop: (k, name) => attachAndShow(k, name),
     can: () => editing && !playing && dim === '3d',
   });
@@ -1155,6 +1168,41 @@ export function start(host: StudioHost) {
     rename: (name, to) => timeline.renameLib(name, to),
     askAi: host.offline ? undefined : () => focusAsk(),
     changed: () => (renderShelf(), placementPanel.render()),
+  });
+
+  // The strip's Motion button (studio-motion-tool, motion-tool.ts): what it shows, and its press — the timeline on the
+  // pick's motion, or the small menu (new from a template / from the Library). The same target rule as a drop.
+  const motionTool = createMotionTool({
+    t,
+    send: (m) => send(m),
+    target: () => {
+      if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
+      return motionable(selected) ? selected : null;
+    },
+    motions: (k) => {
+      const names = (timeline.motionOf(k)?.clips ?? []).map((c) => c.name);
+      const first = timeline.clipName(k);
+      return first ? [first, ...names.filter((n) => n !== first)] : names;
+    },
+    library: () => motionLibrary.list(),
+    room: (k) => timeline.room(k),
+    keyText: () => keyOf('motion', isMac()),
+    make: (k, kind) => {
+      if (timeline.makeFrom(k, kind)) renderShelf();
+    },
+    attach: (k, name) => attachAndShow(k, name),
+    open: (k, name) => timeline.show(k, name),
+    menu: (entries, x, y, o, avoid) => {
+      ctxMenu.show(entries, x, y, { ...o, floor: menuFloor() });
+      // Never over the button it came from (a menu moved to fit the window): above the button, else under it.
+      const r = ctxMenu.el.getBoundingClientRect();
+      if (avoid && r.top < avoid.bottom && r.bottom > avoid.top) {
+        const above = avoid.top - r.height - 6;
+        ctxMenu.el.style.top = `${Math.round(above >= 8 ? above : avoid.bottom + 6)}px`;
+      }
+    },
+    menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
+    frame: () => iframe,
   });
 
   /**
@@ -1381,6 +1429,8 @@ export function start(host: StudioHost) {
         const key = Object.keys(STRIP_KEYS).find((c) => STRIP_KEYS[c] === k)!.toUpperCase();
         act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, `${t('pal.tool.words')} ${keyOf(k, mac)}`);
       }
+      // The strip's Motion button (studio-motion-tool): the same press, from here (the menu opens at the button).
+      if (motionTool.target()) act('tool-motion', motionTool.words(), 'toolMotion', () => pressMotion(), keyOf('motion', mac), `${t('pal.tool.motion.words')} ${t('pal.tool.words')}`);
     }
     // Drop to floor (End; snap to surfaces, 2026-10-19): what is picked, set on the surface under it.
     if (keys.length && editing && dim === '3d' && canDrop) act('drop', t('keys.drop'), 'chevronDown', () => dropToFloor(), keyOf('drop', mac), t('pal.drop.words'));
@@ -1546,13 +1596,15 @@ export function start(host: StudioHost) {
     if (!entries.length) return;
     // A phone: the menu never covers the card or the ask box (review 2 ②): its bottom stays 8 px above the higher of
     // the two (the card sits on the ask bar when something is picked).
-    let floor: number | undefined;
-    if (phone()) {
-      const card = placementPanel.cardEl;
-      const tops = [bar, card.hidden || !card.isConnected ? null : card].filter((e): e is HTMLElement => !!e && !!e.offsetParent).map((e) => e.getBoundingClientRect().top).filter((v) => v > 0);
-      if (tops.length) floor = Math.min(...tops);
-    }
-    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, floor, label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, floor: menuFloor(), label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+  }
+
+  /** A phone: the y a menu's bottom stays above (the higher of the card and the ask box), else undefined (the window). */
+  function menuFloor(): number | undefined {
+    if (!phone()) return undefined;
+    const card = placementPanel.cardEl;
+    const tops = [bar, card.hidden || !card.isConnected ? null : card].filter((e): e is HTMLElement => !!e && !!e.offsetParent).map((e) => e.getBoundingClientRect().top).filter((v) => v > 0);
+    return tops.length ? Math.min(...tops) : undefined;
   }
 
   /** What a press at this element of the editor page opens: a list row, a Library tile, or the list's empty part. */
@@ -2570,6 +2622,10 @@ export function start(host: StudioHost) {
     if (!isStudioMessage(ev.data)) return;
     const m = ev.data as BridgeToShell;
     onBridge(m);
+    // The strip's Motion button follows the pick, its motions and the layer (deduplicated: most messages change nothing;
+    // a new game page has none, so it is told again).
+    if (m.type === 'studio:core/hello' || m.type === 'studio:core/ready') motionTool.reset();
+    motionTool.sync();
     for (const cb of listeners.get(m.type) || []) {
       try {
         cb(m);
@@ -2596,6 +2652,7 @@ export function start(host: StudioHost) {
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
+    if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -2638,6 +2695,7 @@ export function start(host: StudioHost) {
         canRise = !!m.rise;
         canFly = !!m.fly;
         canDrop = !!m.drop;
+        motionHere = !!m.motionHere;
         // A new game page starts with its UI hidden over the world: say so again when it was shown (setUiPeek).
         if (uiPeek && editLayers && editLayers.length > 1) send({ type: 'studio:core/ui-peek', on: true });
         adapterInfo = `${m.kind}${m.version ? ' ' + m.version : ''}`;
@@ -2870,6 +2928,8 @@ export function start(host: StudioHost) {
         break;
       }
       case 'studio:placement/selected':
+        // "+ Link an object" open on the timeline (studio-motion-focus): the click links that object; the pick stays.
+        if (editLayer === 'world' && timeline.linkPick(m.key)) break;
         uiWire.picked(m.key);
         selected = m.key;
         group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
@@ -3325,18 +3385,12 @@ export function start(host: StudioHost) {
   }
   /**
    * Can ▶ Play happen in the page on screen? Its editor is up and has listed its objects (a page still loading, one
-   * with no adapter, a level being opened: a new page as before), and no motion of the draft waits for the game's cue
-   * (a clip without `start`: a page opened for Edit never ran the loader's motions, so the game's playMotion() would
-   * find nothing there — bridge/play-switch.ts).
+   * with no adapter, a level being opened: a new page as before), and its motions can play there (play-here.ts: always
+   * with the game's loader's play hook, `motionHere`; without it, those the editor's own runner plays).
    */
   function canPlayHere(): boolean {
     if (!bridgeAlive || phase !== 'ready' || !editing || swapping) return false;
-    const motion = worldModel.result().motion;
-    for (const m of Object.values(motion || {})) {
-      const clips = (m as { clips?: Array<{ start?: boolean }> } | undefined)?.clips;
-      if (Array.isArray(clips) && clips.some((c) => c && c.start !== true)) return false;
-    }
-    return true;
+    return motionsPlayHere(worldModel.result().motion, motionHere);
   }
   /** Play in the page on screen (see togglePlay). */
   function playInPage() {
@@ -3354,7 +3408,8 @@ export function start(host: StudioHost) {
     // from that moment and Edit would come back to it. Its ▶ preview stops, as a new page stopped it (loadGame).
     timeline.reset();
     timeline.refresh(true);
-    send({ type: 'studio:core/play', on: true, motion: worldModel.result().motion });
+    // `motions`: the Library's, for the clips that use one by name (as placement.json's `motions` on a Play page).
+    send({ type: 'studio:core/play', on: true, motion: worldModel.result().motion, motions: motionLibrary.result((m) => roundLib(m, dim)) });
     renderAll();
   }
   /** Back to Edit in the same page: the layout, the camera, the pick, the timeline as they were. */
@@ -3710,6 +3765,11 @@ export function start(host: StudioHost) {
       setStripTool(strip);
       return true;
     }
+    // A / 5: the strip's Motion button (studio-motion-tool), as a press on it.
+    if (!e.shift && MOTION_KEYS.has(k) && selected && editing && !blind && motionTool.target()) {
+      pressMotion();
+      return true;
+    }
     if (k === 'escape') {
       // First the strip's open choices, then the chosen tool, then the pick (the same order as in the game).
       if (stripMenu) closeStripMenu();
@@ -3739,6 +3799,10 @@ export function start(host: StudioHost) {
   document.addEventListener('pointerdown', () => {
     if (stripMenu) closeStripMenu();
   }, true);
+  /** The Motion button pressed from the editor page (A / 5, ⌘K): the game page answers with the button's place (motion-press). */
+  function pressMotion() {
+    send({ type: 'studio:placement/motion', ...motionTool.state(), press: true });
+  }
   function setStripTool(k: StripTool | null) {
     stripTool = k;
     send({ type: 'studio:placement/tool', tool: k });
@@ -3930,6 +3994,7 @@ export function start(host: StudioHost) {
   // The count at the last render: the Save bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
   let prevUnsaved = 0;
   function renderButtons() {
+    motionTool.sync();
     const n = dirtyCount();
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
     // apart). With nothing to undo they stay where they are, dimmed, and say so ("Nothing to undo  ⌘Z").
@@ -4021,6 +4086,7 @@ export function start(host: StudioHost) {
 
   let lastPage = '';
   function renderAll(remount = false) {
+    motionTool.sync();
     document.documentElement.lang = lang;
     keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';

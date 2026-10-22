@@ -47,8 +47,10 @@ export async function launch() {
   const proc = spawn(bin, [
     '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${profile}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu-sandbox',
-    // SwiftShader keeps WebGL working without a GPU (CI, sandboxes).
-    '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+    // SwiftShader keeps WebGL working without a GPU (CI, sandboxes). STUDIO_ANGLE=metal (or gl, d3d11…) draws with the
+    // machine's GPU instead, still headless: timings as a person's browser sees them (studio-no-reload, 2026-10-22 — a
+    // WebGL resize takes ~1 s in SwiftShader and a few ms on a GPU, so "Edit is up in 300 ms" is measured that way).
+    `--use-angle=${process.env.STUDIO_ANGLE || 'swiftshader'}`, '--enable-unsafe-swiftshader',
     '--hide-scrollbars', '--mute-audio', 'about:blank',
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const wsUrl = await new Promise((resolve, reject) => {

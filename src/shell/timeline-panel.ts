@@ -18,6 +18,7 @@ import type { MotionArea, MotionChannel, MotionClip, MotionEase, MotionRepeat, M
 import { h } from './dom.ts';
 import { icon } from './icons.ts';
 import type { PointKind } from './path-edit.ts';
+import { fillLinkList, type LinkItem } from './timeline-link.ts';
 import { createMorePop } from './timeline-more.ts';
 import { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES, type KeyRef, type Template } from './timeline-model.ts';
 
@@ -44,7 +45,7 @@ export interface TimelineRow {
   picked: boolean;
   open: boolean;
   clip: MotionClip | null;
-  /** studio-timeline-2, with a scene open: in it (× takes it out), or not (the picked object: "+ Add … to …"). */
+  /** studio-timeline-2, with a scene open: in it (studio-motion-focus: a linked row's × takes it out). */
   member?: boolean;
 }
 
@@ -93,6 +94,13 @@ export interface TimelineView {
   point?: PointKind | 'mixed' | null;
   /** studio-motion-panel: the cue (an id of `cues`) that starts the focused clip — the line's ▷ Try. */
   tryId?: string | null;
+  // studio-motion-focus (2026-10-23): the rows are the picked object's.
+  /** "+ Link an object" under the rows (null: not now — nothing focused, or every motion shown); `linking` = its list is open. */
+  link?: { linking: boolean; items(): LinkItem[] } | null;
+  /** ⋯'s "Show every motion in the scene" is on (the rows as before: every moving object). */
+  all?: boolean;
+  /** How many objects move in the scene (⋯ is there for "every motion" even when the focused object has none). */
+  moving?: number;
 }
 
 export interface TimelineActs {
@@ -126,9 +134,13 @@ export interface TimelineActs {
   coachDone(): void;
   /** studio-timeline-2: the picked path points made smooth / corners (Point ▾). */
   point?(kind: PointKind): void;
-  /** studio-timeline-2: an object put in the open scene, or taken out of it. */
-  join?(key: string): void;
+  /** studio-motion-focus: an object linked to the focused motion (the list, or a click in the game), a linked row's ×. */
+  link?(key: string): void;
+  /** The list opened / closed: while it is open a click on an object in the game links it. */
+  linking?(on: boolean): void;
   leave?(key: string): void;
+  /** ⋯'s "Show every motion in the scene" on / off (the rows' "Show only the picked one" turns it off). */
+  showAll?(on: boolean): void;
   /**
    * studio-motion-panel: ✦ Ask AI on the focused clip — the chat box below gets the "object · motion" chip and the cursor.
    * Absent = no AI here (the web demo): no button.
@@ -150,6 +162,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     head.querySelector('[data-part=tl-more-btn]')?.setAttribute('aria-expanded', 'false');
     head.querySelector('[data-part=tl-more-btn]')?.classList.remove('on');
   });
+  // studio-motion-focus: "+ Link an object"'s list, the same popover as ⋯ with its left edge on the button.
+  const linkPop = createMorePop(() => el.closest<HTMLElement>('.shell') ?? document.body, t('tl.link'), () => act.linking?.(false), { left: true, width: 300, part: 'tl-link-pop' });
   const ruler = h('div', { class: 'tl-ruler', role: 'slider', 'aria-valuemin': '0', dataset: { part: 'tl-ruler' } });
   const names = h('div', { class: 'tl-names' });
   const lanes = h('div', { class: 'tl-lanes', dataset: { part: 'tl-lanes' } });
@@ -216,7 +230,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     clipSel.classList.add('tl-clip-pick');
     const items: Node[] = [play, time, auto, clipSel];
     // A scene (studio-timeline-2): says what it is — one motion, this many objects (its rows below).
-    if (c && v.scene) items.push(h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) }));
+    // Linked (studio-motion-focus): said once there are two (a scene of one is the object's own motion, nothing to say).
+    if (c && v.scene && v.scene.n > 1) items.push(h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) }));
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
     // Point ▾ (studio-timeline-2) and Keys ▾: only while a point / keys are picked — what the pick is, where the pick is
@@ -234,10 +249,13 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       ease.classList.add('tl-ease-pick');
       items.push(h('span', { class: 'tl-lbl tl-ease-lbl', text: t('tl.ease') }), ease);
     }
-    if (c) {
+    // ⋯ also with no motion here when others move: its "Show every motion in the scene" (studio-motion-focus).
+    if (c || v.moving) {
       const open = more.open;
       items.push(h('button', { type: 'button', class: `icon-btn tl-more-btn${open ? ' on' : ''}`, title: t('tl.moreTip'), 'aria-label': t('tl.more'), 'aria-haspopup': 'dialog', 'aria-expanded': String(open),
         dataset: { action: 'tl-more', part: 'tl-more-btn' }, onclick: (e: Event) => toggleMore(e.currentTarget as HTMLElement) }, icon('more')));
+    }
+    if (c) {
       // ✦ Ask AI (a review of 2026-10-22: "a press puts the motion's and the object's names in the AI chat box, and you talk there"):
       // the chat box below gets the "object · motion" chip and the cursor; the words are the person's, nothing is sent yet.
       if (act.ask) items.push(h('button', { type: 'button', class: 'tl-ask', title: t('tl.askTip', { name: `${v.rows.find((r) => r.key === v.focus)?.label ?? v.focus} · ${c.name}` }),
@@ -247,7 +265,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // Narrow: the end of the first row (▶ time ● ⋯ ✦ ⌄); the motion and its "when" start a new one (shell.css). Nothing on PC.
     items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
     head.replaceChildren(...items);
-    if (!c) more.hide();
+    if (!c && !v.moving) more.hide();
     else if (more.open) renderMore(v);
   }
 
@@ -351,9 +369,18 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   function renderMore(v: TimelineView) {
     const c = v.clip;
     const w = v.when;
-    if (!c || !w) return more.hide();
     const row = (part: string, label: string, ...kids: Array<Node | null>) =>
       h('div', { class: 'tl-more-row', dataset: { part } }, h('span', { class: 'tl-more-k', text: label }), h('div', { class: 'tl-more-v' }, ...kids));
+    // Rows: every motion in the scene (studio-motion-focus, 2026-10-23: the plate shows the picked object only; the
+    // whole scene stays one press away, here, where the sometimes-used things are). Last: it is about the plate, not the motion.
+    const allRow = row('tl-more-all', t('tl.all.k'), act.showAll ? h('button', { type: 'button', class: `tl-all${v.all ? ' on' : ''}`, 'aria-pressed': String(!!v.all), dataset: { part: 'tl-all' },
+      onclick: () => (more.hide(), act.showAll!(!v.all)) }, icon('list'), h('span', { text: t(v.all ? 'tl.all.off' : 'tl.all') })) : null);
+    const btn0 = head.querySelector<HTMLElement>('[data-part=tl-more-btn]');
+    if (!c || !w) {
+      if (!v.moving || !btn0) return more.hide();
+      more.el.replaceChildren(allRow);
+      return more.place(btn0);
+    }
     const rows: HTMLElement[] = [];
     rows.push(row('tl-more-repeat', t('tl.repeat'), select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))));
     // Stops ▾: never / after N rounds / a cue; then: stay or go back.
@@ -391,6 +418,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     rows.push(row('tl-tries', t('tl.try'), ...tries));
     // The motion is the Library's: used by 2 or more objects, a key changed here changes them all — say so, small.
     if (v.uses > 1 && !v.scene) rows.push(h('p', { class: 'tl-uses', title: t('tl.usesTip'), dataset: { part: 'tl-uses' }, text: t('tl.usesLong', { n: v.uses }) }));
+    rows.push(allRow);
     more.el.replaceChildren(...rows);
     const btn = head.querySelector<HTMLElement>('[data-part=tl-more-btn]');
     if (btn) more.place(btn);
@@ -502,7 +530,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       lanes.append(h('p', { class: 'tl-empty', text: t('tl.empty') }));
       return;
     }
-    let y = 0;
+    // Every motion shown: what the rows are, and the way back — on top (below, it scrolled out of a plate of 5 rows).
+    let y = allRow(v, 0);
     for (const r of v.rows) {
       const chs = CHANNELS.filter((ch) => r.clip?.keys[ch]?.length);
       const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key } },
@@ -516,25 +545,17 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
           const ai = AI_TRIGGERS.includes(rw.when.on);
           return h('span', { class: `tl-whenchip${ai ? ' ai' : ''}`, dataset: { part: 'tl-whenchip' }, text: whensShort(t, rw.whens ?? [rw.when], rw.until, rw.repeat) });
         })(),
-        // studio-timeline-2: a scene's object can be taken out (shown on hover / always on a phone).
-        v.scene && r.member && act.leave ? h('button', { type: 'button', class: 'icon-btn tl-leave', title: t('tl.scene.leave', { name: r.label, scene: v.scene.name }), 'aria-label': t('tl.scene.leave', { name: r.label, scene: v.scene.name }),
+        // A linked object can be unlinked (studio-timeline-2's ×; studio-motion-focus: not the row being made — the
+        // picked / focused one is what the others are linked to). Shown on hover; on a phone always.
+        v.scene && r.member && !r.picked && r.key !== v.focus && act.leave ? h('button', { type: 'button', class: 'icon-btn tl-leave', title: t('tl.scene.leave', { name: r.label, scene: v.scene.name }), 'aria-label': t('tl.scene.leave', { name: r.label, scene: v.scene.name }),
           dataset: { part: 'tl-leave', key: r.key }, onclick: () => act.leave!(r.key) }, icon('close')) : null);
-      // The picked object, not in the open scene: its row is the way in ("+ Add crate to “Arrival”").
-      if (v.scene && r.member === false) {
-        name.classList.add('tl-join-name');
-        names.append(name);
-        const join = h('div', { class: 'tl-lane tl-join', style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } },
-          h('button', { type: 'button', class: 'tl-join-btn', dataset: { part: 'tl-join', key: r.key }, onclick: () => act.join?.(r.key) }, `+ ${t('tl.scene.join', { name: r.label, scene: v.scene.name })}`),
-          v.narrow ? null : h('span', { class: 'tl-join-or', text: t('tl.scene.joinOr') }));
-        lanes.append(join);
-        y += ROW;
-        continue;
-      }
       names.append(name);
       const lane = h('div', { class: `tl-lane${r.picked ? ' picked' : ''}`, style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } });
       lanes.append(lane);
       laneList.push({ key: r.key, ch: null, y });
       drawKeys(lane, r, null, keyTimes(r.clip), v);
+      // A linked object with no key yet (just linked): what gives it some, where they will be.
+      if (v.scene && r.member && r.key !== v.focus && !keyTimes(r.clip).length) lane.append(h('span', { class: 'tl-lane-hint', text: t('tl.link.empty') }));
       y += ROW;
       if (!r.open) continue;
       for (const ch of CHANNELS) {
@@ -546,7 +567,41 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
         y += ROW;
       }
     }
+    y = linkRow(v, y);
     lanes.style.height = `${y}px`;
+  }
+
+  /**
+   * Under the rows (studio-motion-focus): "+ Link an object" — quiet (the second colour, no fill) because the picked
+   * object's own motion is the plate's subject; while its list is open the lane says "or click an object in the game".
+   * With every motion shown (allRow, above the rows): what the rows are now, and the way back.
+   */
+  function allRow(v: TimelineView, y: number): number {
+    if (!v.all || !act.showAll) return y;
+    names.append(h('div', { class: 'tl-name tl-link-name', style: `height:${ROW}px` },
+      h('button', { type: 'button', class: 'tl-link', dataset: { part: 'tl-all-off' }, onclick: () => act.showAll!(false) }, icon('close'), h('span', { text: t('tl.all.off') }))));
+    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, h('span', { class: 'tl-lane-hint', text: t('tl.all.on') })));
+    return y + ROW;
+  }
+  function linkRow(v: TimelineView, y: number): number {
+    if (!v.link || !act.link) return y;
+    const on = v.link.linking;
+    const btn = h('button', { type: 'button', class: `tl-link${on ? ' on' : ''}`, 'aria-expanded': String(on), 'aria-haspopup': 'dialog',
+      title: t('tl.linkTip', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '' }), dataset: { part: 'tl-link' }, onclick: () => toggleLink(btn) }, icon('plus'), h('span', { text: t('tl.link') }));
+    names.append(h('div', { class: 'tl-name tl-link-name', style: `height:${ROW}px` }, btn));
+    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, on && !v.narrow ? h('span', { class: 'tl-lane-hint', text: t('tl.link.hint') }) : null));
+    return y + ROW;
+  }
+  /** "+ Link an object" pressed: its list over it (the scene's objects), or closed. */
+  function toggleLink(btn: HTMLElement) {
+    if (linkPop.open) return linkPop.hide();
+    const v = view();
+    if (!v.link) return;
+    more.hide();
+    linkPop.show(btn);
+    const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
+    fillLinkList(linkPop.el, { title: t('tl.link.title', { name }), find: t('tl.link.find'), none: t('tl.link.none'), items: v.link.items(), focus: !v.narrow, pick: (k) => act.link!(k) });
+    act.linking?.(true);
   }
 
   function drawKeys(lane: HTMLElement, r: TimelineRow, ch: MotionChannel | null, times: number[], v: TimelineView) {
@@ -709,6 +764,12 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     renderHead(v);
     if (had) (inMore ? more.el : el).querySelector<HTMLSelectElement>(`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderRows(v);
+    // The link list follows its button (drawn anew with the rows), and closes once it is done (linked, or Esc in the game).
+    if (linkPop.open) {
+      const b = names.querySelector<HTMLElement>('[data-part=tl-link]');
+      if (!v.link?.linking || !b) linkPop.hide();
+      else linkPop.place(b);
+    }
     renderRuler(v);
     renderCoach(v);
     place(v);
@@ -747,6 +808,6 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   new ResizeObserver(() => el.isConnected && !el.hidden && render()).observe(track);
 
     /** ⋯ closed (the plate was hidden: the Library, Play, fold). Optional for the tests' stand-in panels. */
-  const closeMore: (() => void) | undefined = () => more.hide();
+  const closeMore: (() => void) | undefined = () => (more.hide(), linkPop.hide());
   return { el, render, place, focusStarts, closeMore };
 }

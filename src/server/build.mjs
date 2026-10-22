@@ -35,7 +35,9 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // 28 KB since the timeline's second stage (studio-timeline-2, 2026-10-22): the path's handles (a Bézier span where a
 // handle was bent, handlesOf shared with the editor), `when` as a list ("E or a click") and scene motions (`tracks`:
 // several objects in one motion, started together); 23.5 → 24.9 KB (over the 24 KB line).
-const LOADER_LIMIT = 28 * 1024;
+// 29 KB since Play in the editor's own page for every motion (studio-no-reload, 2026-10-22): the play hook (start /
+// stop the draft's motions in the edit page, so ▶ Play never opens the game again for a clip that waits); 27.6 → 28.1 KB.
+const LOADER_LIMIT = 29 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;

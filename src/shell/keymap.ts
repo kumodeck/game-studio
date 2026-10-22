@@ -61,6 +61,9 @@ export const KEYMAP: KeyDef[] = [
   { id: 'lift', group: 'tools', keys: ['H', '2'], dim: '3d' },
   { id: 'rotate', group: 'tools', keys: ['T', '3'] },
   { id: 'scale', group: 'tools', keys: ['S', '4'] },
+  // The strip's Motion button (studio-motion-tool, 2026-10-22): A ("animate") and 5, after the four tools' 1–4. With
+  // something picked only — A with nothing picked flies left (the fly row), as S is Size / fly back.
+  { id: 'motion', group: 'tools', keys: ['A', '5'], dim: '3d', when: 'picked' },
   { id: 'axis', group: 'tools', keys: ['R'], dim: '3d' },
   // Esc: puts a chosen strip tool down first; with no tool chosen it deselects (the edit row).
   { id: 'noTool', group: 'tools', keys: ['Esc'], when: 'tool' },

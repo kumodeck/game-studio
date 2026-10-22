@@ -46,3 +46,23 @@ export function likeScene(c: MotionClip, from: MotionClip): MotionClip {
 
 /** "Scene · 3 objects": how many objects a Library motion moves (1 for an ordinary one). */
 export const sceneSize = (l: LibraryMotion | null | undefined) => (l?.tracks ? Object.keys(l.tracks).length : 1);
+
+// ----- linking (studio-motion-focus, 2026-10-23) -----
+// A request (2026-10-23): "mostly I only need the object I picked; sometimes I want it to work with other objects, so let me add
+// the ones to link". The timeline shows the picked object's row only, and "+ Link an object" puts another object in the
+// same motion — a scene motion above, nothing new: an ordinary motion that gets its first linked object becomes one
+// (`tracks`, the picked object's keys as its track), and one whose last linked object is taken off becomes ordinary
+// again (`keys`), so link + unlink leaves the file as it was.
+
+/** An ordinary Library motion as a scene of one: `key`'s keys become its track (the rest of it stays). */
+export function asScene(l: LibraryMotion, key: string): LibraryMotion {
+  const out: LibraryMotion = { ...structuredClone(l), keys: {}, tracks: { [key]: structuredClone(l.keys ?? {}) } };
+  return out;
+}
+
+/** A scene left with one object (`key`) as an ordinary motion again: that object's track becomes its keys. */
+export function asOrdinary(l: LibraryMotion, key: string): LibraryMotion {
+  const out: LibraryMotion = { ...structuredClone(l), keys: structuredClone(l.tracks?.[key] ?? {}) };
+  delete out.tracks;
+  return out;
+}

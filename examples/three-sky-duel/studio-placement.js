@@ -3,6 +3,8 @@ const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
 export async function applyPlacement(root, source = './placement.json', opts = {}) {
 const report = { applied: [], missing: [], unstable: [], skipped: [] };
+const three = !!(root && root.isObject3D);
+if (root && typeof root === 'object' && root.nodeType !== 9) last = { root, n: three ? 3 : 2, three };
 let data = source;
 if (typeof source === 'string') {
 try {
@@ -14,7 +16,6 @@ warn('could not read ' + source + ' (' + e.message + ')');
 return report;
 }
 }
-const three = !!(root && root.isObject3D);
 const dim = three ? '3d' : '2d';
 if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
 warn('not a placement file');
@@ -305,7 +306,28 @@ else o.rotation = base.r[0] + (at.r[0] || 0);
 }
 if (at.s) three ? o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1], base.s[2] * at.s[2]) : o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1]);
 }
-const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+let here = false;
+const editing = () => !here && typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+let last = null;
+const hook = {
+has: () => !!last,
+start(d) {
+if (!last) return [];
+here = true;
+const r = {};
+runMotion(last.root, { motion: d && d.motion, motions: d && d.motions }, last.n, last.three, r);
+return r.motion || [];
+},
+stop() {
+here = false;
+gen++;
+ticking = false;
+stopMotion();
+known.clear();
+run = null;
+},
+};
+if (typeof globalThis !== 'undefined') (globalThis[Symbol.for('game-studio.play')] || (globalThis[Symbol.for('game-studio.play')] = new Set())).add(hook);
 function remember(key, o, three, clips) {
 const base = three
 ? { p: [o.position.x, o.position.y, o.position.z], r: [o.rotation.x, o.rotation.y, o.rotation.z], s: [o.scale.x, o.scale.y, o.scale.z] }

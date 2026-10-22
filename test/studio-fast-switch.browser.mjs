@@ -2,7 +2,7 @@
 // again — tedious") in a headless browser: the real local server, the built editor, the starters.
 // bridge/play-switch.ts says what the switch does; contract.ts `studio:core/play`.
 //
-//   node test/studio-fast-switch.browser.mjs [--only time,cove,ruins,fresh,crumb] [--times <n>] [--before <studio-ui dir>]
+//   node test/studio-fast-switch.browser.mjs [--only time,cove,ruins,fresh,when,old,scene2d,levels,crumb] [--times <n>] [--before <studio-ui dir>]
 //
 // time   Lantern Cove (three.js) and Firefly Ruins (PixiJS), PC 1280×800: ▶ Play and back to Edit, `--times` rounds
 //        (3), timed in the editor's own page from the press to:
@@ -15,15 +15,27 @@
 //        one frame (not the time spent editing), the boats sailing. Back in Edit: the same page, every object where it
 //        was before Play (what the game moved is not kept), the same edit camera, the pick, Save · 1. Play again,
 //        pause (❚❚), Edit while paused, Play: the game runs again.
-// ruins  Firefly Ruins (2D), PC: Play and back in the same page; the poses as in Edit.
+// ruins  Firefly Ruins (2D), PC: Play and back in the same page; the poses as in Edit. With no placement.json yet, the
+//        game's loader still offers to play motions in the page (studio-no-reload).
 // fresh  Lantern Cove, PC: Play's ▾ → "Play from the start": a new page (the mark is gone), playing; Edit after it opens
 //        a new edit page (as before the fast switch).
+// when   (studio-no-reload, 2026-10-22: "when I go back to edit after playing, don't load") Lantern Cove with motions
+//        saved in placement.json that wait for something (a key, a cue, a scene motion of two objects on a cue, an area)
+//        and one at the start: ▶ Play in the same page (before: a new Play page every time), the start's clip moving,
+//        E moving the crate, the game's cue() (the loader the game imported) rolling the barrel and the scene's two
+//        objects; Edit: the same page, every object back at the layout, nothing moving; Play again: from the start.
+// old    (integrate 1023, 2026-10-23: a real game kept a copy of the loader from before the play hook) `when`
+//        with the game's studio-placement.js replaced by an older copy (test/old-loader, v0.1.23): the editor's server
+//        answers it with its own loader (src/server/loader-copy.mjs), so ▶ Play → Edit stays in the same page; the
+//        copy on disk is unchanged.
+// scene2d Firefly Ruins (PixiJS) with a clip at the start and one on a cue: the same in 2D.
+// levels Three Isles (levels) with a cue motion on Meadow's flag: Play and Edit in the same page, the flag's clip runs.
 // crumb  Three Isles (three levels; level-crumb, 2026-10-22) at every size (PC 1280×800, a side window 420×800, a phone
 //        390×844 by touch) in light and dark: go to Canyon from the top bar's level crumb, ▶ Play in the same page on
 //        Canyon — the crumb is the level's name as words then (no menu) — and Edit: the same page, the crumb a button
 //        again, still Canyon.
 import assert from 'node:assert/strict';
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -124,10 +136,12 @@ const check = (ok, what) => {
   if (!ok) failed++;
 };
 
-function gameFolder(src) {
+function gameFolder(src, file) {
   const root = mkdtempSync(join(tmpdir(), 'fast-switch-'));
-  cpSync(join(PKG, src), root, { recursive: true });
+  cpSync(resolve(PKG, src), root, { recursive: true });
   for (const f of ['placement.json', '.studio/requests', '.studio/status.json', '.studio/watch.json']) rmSync(join(root, f), { recursive: true, force: true });
+  // A saved placement.json (motions that wait for something): saved, so ▶ Play asks nothing.
+  if (file) writeFileSync(join(root, 'placement.json'), JSON.stringify(file, null, 2));
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'en' }));
   return root;
@@ -135,8 +149,9 @@ function gameFolder(src) {
 
 const browser = await launch();
 /** `vp`: the window (PC 1280×800 by default); touch = the phone emulation, dark = the dark theme. */
-async function open(src, uiDir, vp = { w: 1280, h: 800 }) {
-  const root = gameFolder(src);
+async function open(src, uiDir, vp = { w: 1280, h: 800 }, file, prepare) {
+  const root = gameFolder(src, file);
+  if (prepare) prepare(root);
   const srv = await startStudioServer({ root, uiDir: uiDir || join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {}, env: { CLAUDECODE: '1' } });
   const page = await newPage(browser, { width: vp.w, height: vp.h, mobile: !!vp.touch });
   if (!vp.touch) await page.send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: vp.w < 600 ? 2 : 1, mobile: false });
@@ -149,28 +164,207 @@ async function open(src, uiDir, vp = { w: 1280, h: 800 }) {
 }
 
 /** `TIMES` rounds of Play → Edit; the times (ms) of each. */
-async function rounds(src, uiDir) {
-  const g = await open(src, uiDir);
-  const play = [], edit = [];
+async function rounds(src, uiDir, file) {
+  const g = await open(src, uiDir, undefined, file);
+  const play = [], edit = [], same = [];
   try {
     for (let i = 0; i < TIMES; i++) {
+      // Which rounds stayed in the first page (studio-no-reload: the list of the cases that still load a page).
+      await g.page.eval(`(${GW}.__roundMark = true, true)`);
       play.push(await g.page.eval(timed(IN.play, ANSWER.play)));
       if (play[play.length - 1].screen < 0) console.log('    play parts:', await g.page.eval(PLAY_PARTS));
       await sleep(1500);
       edit.push(await g.page.eval(timed(IN.edit, ANSWER.edit)));
       if (edit[edit.length - 1].screen < 0) console.log('    edit: still not up after 60 s');
+      same.push((await g.page.eval(`${GW}.__roundMark === true`)) === true);
       await sleep(1500);
     }
   } finally {
     await g.close();
   }
-  return { play, edit };
+  return { play, edit, same };
 }
 const median = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
 
+// Motions that wait for something (studio-motion-triggers' shape), saved. Lantern Cove: the buoy at the start, the crate
+// on E, the barrel (lifted) on the game's cue, a scene motion (two objects, one motion: studio-timeline-2) on a cue, the rowboat
+// on an area the player sails into.
+const WHEN_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
+  motions: [
+    { name: 'Bob', len: 2, repeat: 'pingpong', keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 0.8, 0] }] } },
+    { name: 'Hop', len: 0.8, keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 0.4, v: [0, 1.4, 0] }, { t: 0.8, v: [0, 0, 0] }] } },
+    { name: 'Lift', len: 2, keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 3, 0] }] } },
+    { name: 'Pair', len: 2, tracks: { 'pine-1': { p: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 2, 0] }] }, 'pine-2': { p: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 2, 0] }] } } },
+    { name: 'Row', len: 3, repeat: 'pingpong', keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 3, v: [-5, 0, 0] }] } },
+  ],
+  motion: {
+    buoy: { clips: [{ use: 'Bob', when: { on: 'start' } }] },
+    crate: { clips: [{ use: 'Hop', when: { on: 'key', key: 'KeyE' } }] },
+    barrel: { clips: [{ use: 'Lift', when: { on: 'cue', cue: 'barrel-hit' } }] },
+    'pine-1': { clips: [{ use: 'Pair', when: { on: 'cue', cue: 'pair' } }] },
+    'pine-2': { clips: [{ use: 'Pair', when: { on: 'cue', cue: 'pair' } }] },
+    rowboat: { clips: [{ use: 'Row', when: { on: 'enter', area: { p: [10, 0.5, 4], size: [4, 2, 3] }, who: 'player' } }] },
+  } };
+// Firefly Ruins (2D): the tree sways at the start, the bell rings (a turn) on a cue.
+const RUINS_FILE = { version: 1, tool: 'placement', dim: '2d', space: 'local', objects: {},
+  motions: [
+    { name: 'Sway', len: 2, repeat: 'pingpong', keys: { p: [{ t: 0, v: [0, 0] }, { t: 2, v: [40, 0] }] } },
+    { name: 'Ring', len: 1, keys: { r: [{ t: 0, v: [0] }, { t: 1, v: [1] }] } },
+  ],
+  motion: { tree: { clips: [{ use: 'Sway', when: { on: 'start' } }] }, bell: { clips: [{ use: 'Ring', when: { on: 'cue', cue: 'ring' } }] } } };
+// The loader the game imported (the same module: the same URL, imported in the game's own window), for its cue():
+// what the game's code would call.
+const LOADER = (path) => `${GW}.eval(${JSON.stringify(`import(${JSON.stringify(path)})`)})`;
+const poseOf = (list, k) => list.find((i) => i.key === k)?.pose;
+
+/** Play → checks while playing (`during`) → Edit → back at the layout, all in the first page. */
+async function sameRound(g, tag, during) {
+  const { page } = g;
+  await page.eval(`(${GW}.__fastSwitchMark = ${JSON.stringify(tag)}, true)`);
+  // Every frame of the editor's page from Play to Edit: no "loading" shown (the status line's opening / waiting / finding
+  // words) and no second game frame (a page loading under the one on screen).
+  await page.eval(`(() => { const w = window; w.__seen = { loading: 0, frames: 1 }; w.__seenOn = true;
+    const f = () => { if (!w.__seenOn) return; const st = document.querySelector('[data-part=status]')?.textContent || '';
+      if (/Opening your game|Waiting for the game|Finding objects/.test(st)) w.__seen.loading++;
+      w.__seen.frames = Math.max(w.__seen.frames, document.querySelectorAll('iframe.game').length); requestAnimationFrame(f); };
+    requestAnimationFrame(f); return true; })()`);
+  const editList = await j(page, IN.list);
+  await page.eval(`document.querySelector('button.play').click()`);
+  await page.waitFor(IN.play, 30000).catch(async (e) => {
+    console.log('    play parts:', await page.eval(PLAY_PARTS));
+    throw e;
+  });
+  check((await page.eval(`${GW}.__fastSwitchMark`)) === tag, 'Play: the same page (no reload)');
+  await during(editList);
+  const t = await page.eval(timed(IN.edit, ANSWER.edit));
+  check(t.screen >= 0, `Edit: up in ${t.screen} ms (the page answered in ${t.page} ms)`);
+  check((await page.eval(`${GW}.__fastSwitchMark`)) === tag, 'Edit: the same page (no reload)');
+  await sleep(300);
+  const seen = await j(page, `(window.__seenOn = false, JSON.stringify(window.__seen))`);
+  check(seen.loading === 0 && seen.frames === 1, `Play → Edit: no loading shown (${seen.loading} frames), one game page (${seen.frames})`);
+  const back = await j(page, IN.list);
+  const off = samePoses(back, editList, 0.01);
+  check(off.length === 0, `Edit: every object back at the layout${off.length ? ` (off: ${off.join(', ')})` : ''}`);
+  await sleep(800);
+  const still = samePoses(await j(page, IN.list), back, 1e-4);
+  check(still.length === 0, `Edit: nothing moves${still.length ? ` (moving: ${still.join(', ')})` : ''}`);
+  return editList;
+}
+
+async function when(old = false) {
+  console.log(old ? 'old: the same with an older copy of the loader in the game (no play hook), PC' : 'when: Lantern Cove with motions that wait for something, PC');
+  const OLD = join(PKG, 'test/old-loader/studio-placement.js');
+  const g = await open('starters/lantern-cove', null, undefined, WHEN_FILE, old ? (root) => cpSync(OLD, join(root, 'studio-placement.js')) : undefined);
+  const { page } = g;
+  try {
+    if (old) {
+      // What the game's own import got: the editor's loader (its play hook found a world), not the copy on disk.
+      const hooks = await page.eval(`(() => { const s = ${GW}[Symbol.for('game-studio.play')]; return s ? [...s].filter((h) => h.has()).length : -1; })()`);
+      check(hooks === 1, `old: the game's import is answered with the editor's loader (play hooks with a world: ${hooks})`);
+      // The editor's own loader is /__studio/studio-placement.js (here the source file: the test runs src/server).
+      const same = await page.eval(`Promise.all(['/studio-placement.js', '/__studio/studio-placement.js'].map((u) => ${GW}.fetch(u).then((r) => r.text()))).then(([a, b]) => a === b && /game-studio\\.play/.test(a))`);
+      check(same === true, 'old: /studio-placement.js is the current loader');
+      check(readFileSync(join(g.root, 'studio-placement.js'), 'utf8') === readFileSync(OLD, 'utf8'), 'old: the copy on disk is unchanged');
+    }
+    const moved = (a, b, k) => !close(poseOf(a, k)?.p, poseOf(b, k)?.p, 0.01) || !close(arr(poseOf(a, k)?.r), arr(poseOf(b, k)?.r), 0.01);
+    const playing = async (editList) => {
+      // Up to 6 s: headless software GL draws a few frames a second, and the first Play's resize of the game takes
+      // seconds there (a few ms on a GPU: STUDIO_ANGLE=metal).
+      let now;
+      const t0 = Date.now();
+      for (let i = 0; i < 30 && !moved((now = await j(page, IN.list)), editList, 'buoy'); i++) await sleep(200);
+      check(moved(now, editList, 'buoy'), `Play: the buoy bobs (at the start; seen after ${Date.now() - t0} ms, y ${poseOf(editList, 'buoy')?.p[1]} → ${poseOf(now, 'buoy')?.p[1]})`);
+      check(!moved(now, editList, 'crate') && !moved(now, editList, 'barrel'), 'Play: the crate and the barrel wait');
+      await page.eval(`(() => { const w = ${GW}; w.dispatchEvent(new w.KeyboardEvent('keydown', { code: 'KeyE', key: 'e' })); return true; })()`);
+      for (let i = 0; i < 10 && !moved((now = await j(page, IN.list)), editList, 'crate'); i++) await sleep(100);
+      check(moved(now, editList, 'crate'), 'Play: E — the crate hops');
+      const cue = await page.eval(`${LOADER('/studio-placement.js')}.then((m) => [m.cue('barrel-hit'), m.cue('pair')])`);
+      check(Array.isArray(cue) && cue.every(Boolean), `Play: the game's cue() starts them (${JSON.stringify(cue)})`);
+      // Polled (software GL's first Play draws a frame a second or slower; see the buoy above).
+      const all = (l) => ['barrel', 'pine-1', 'pine-2'].every((k) => moved(l, editList, k));
+      for (let i = 0; i < 30 && !all((now = await j(page, IN.list))); i++) await sleep(200);
+      check(moved(now, editList, 'barrel'), 'Play: the cue lifts the barrel');
+      check(moved(now, editList, 'pine-1') && moved(now, editList, 'pine-2'), 'Play: the scene motion moves both pines');
+    };
+    await sameRound(g, 'when-1', playing);
+    // The game's calls do nothing in Edit (the editor owns every pose).
+    const cueInEdit = await page.eval(`${LOADER('/studio-placement.js')}.then((m) => m.cue('barrel-hit'))`);
+    check(cueInEdit === false, "Edit: the game's cue() does nothing");
+    await sameRound(g, 'when-1', playing);
+  } catch (e) {
+    check(false, e.message);
+  } finally {
+    await g.close();
+  }
+}
+
+async function scene2d() {
+  console.log('scene2d: Firefly Ruins (PixiJS) with motions, PC');
+  const g = await open('starters/firefly-ruins', null, undefined, RUINS_FILE);
+  const { page } = g;
+  try {
+    await sameRound(g, '2d', async (editList) => {
+      await sleep(1000);
+      let now = await j(page, IN.list);
+      check(!close(poseOf(now, 'tree')?.p, poseOf(editList, 'tree')?.p, 0.5), 'Play: the tree sways (at the start)');
+      const cue = await page.eval(`${LOADER('/studio-placement.js')}.then((m) => m.cue('ring'))`);
+      check(cue === true, "Play: the game's cue('ring')");
+      await sleep(500);
+      now = await j(page, IN.list);
+      check(!close(arr(poseOf(now, 'bell')?.r), arr(poseOf(editList, 'bell')?.r), 0.01), 'Play: the bell turns');
+    });
+  } catch (e) {
+    check(false, e.message);
+  } finally {
+    await g.close();
+  }
+}
+
+async function levels() {
+  console.log('levels: Three Isles with a cue motion on Meadow\'s flag, PC');
+  const file = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
+    motions: [{ name: 'Rise', len: 1, keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 1, v: [0, 3, 0] }] } }],
+    levels: [{ id: 'meadow', objects: {}, motion: { flag: { clips: [{ use: 'Rise', when: { on: 'cue', cue: 'rise' } }] } } }] };
+  const g = await open('examples/three-isles', null, undefined, file);
+  const { page } = g;
+  try {
+    await sameRound(g, 'levels', async (editList) => {
+      check((await page.eval(`${GW}.document.getElementById('level')?.textContent`)) === 'Meadow', 'Play: on Meadow');
+      const cue = await page.eval(`${LOADER('/studio-placement.js')}.then((m) => m.cue('rise'))`);
+      check(cue === true, "Play: the game's cue('rise')");
+      await sleep(600);
+      const now = await j(page, IN.list);
+      check((poseOf(now, 'flag')?.p[1] ?? 0) > (poseOf(editList, 'flag')?.p[1] ?? 0) + 0.3, 'Play: the flag rises');
+    });
+    check(/Meadow/.test(await page.eval(`document.querySelector('.brand .level-switch')?.textContent || ''`)), 'Edit: still Meadow');
+  } catch (e) {
+    check(false, e.message);
+  } finally {
+    await g.close();
+  }
+}
+
+/** A game that is all HTML (no world), as test/studio-ui-layer.browser.mjs makes it: a folder of its own. */
+function htmlOnly() {
+  const dir = mkdtempSync(join(tmpdir(), 'fast-switch-html-'));
+  writeFileSync(join(dir, 'index.html'), `<!doctype html><html><head><meta charset="utf-8"><title>Quiz Night</title>
+<style>html,body{margin:0;height:100%;background:#123;color:#fff;font:600 20px system-ui}
+.q{position:absolute;left:50%;top:30%;translate:-50% 0;font-size:40px}.score{position:fixed;right:20px;top:16px}</style></head>
+<body><div class="q" data-studio-key="question">Which planet is red?</div><div class="score" data-studio-key="score">Score 0</div>
+<script>requestAnimationFrame(function f(){ requestAnimationFrame(f); });</script></body></html>`);
+  return dir;
+}
+
 async function time() {
-  const all = { cove: ['Lantern Cove (three.js)', 'starters/lantern-cove'], ruins: ['Firefly Ruins (PixiJS)', 'starters/firefly-ruins'] };
-  for (const [name, src] of GAMES.map((g) => all[g])) {
+  // `when`: Lantern Cove with motions that wait for something (WHEN_FILE) — before studio-no-reload a new Play page.
+  const all = { cove: ['Lantern Cove (three.js)', 'starters/lantern-cove'], ruins: ['Firefly Ruins (PixiJS)', 'starters/firefly-ruins'],
+    when: ['Lantern Cove with motions that wait ("when")', 'starters/lantern-cove', WHEN_FILE], ruins2d: ['Firefly Ruins with motions', 'starters/firefly-ruins', RUINS_FILE],
+    // The other kinds of game (studio-no-reload's list of every case): a UI layer over a 3D world, levels, Phaser, a
+    // world made of HTML, and a game that is all HTML (the UI alone).
+    hud: ['Three HUD (a UI layer)', 'examples/three-hud'], isles: ['Three Isles (levels)', 'examples/three-isles'],
+    phaser: ['Phaser Garden', 'examples/phaser-garden'], dom: ['DOM Board (a world of HTML)', 'examples/dom-board'], html: ['HTML only (the UI alone)', htmlOnly] };
+  for (const [name, from, file] of GAMES.map((g) => all[g])) {
+    const src = typeof from === 'function' ? from() : from;
     console.log(`time: ${name}, ${TIMES} rounds`);
     const say = (tag, r) => {
       for (const k of ['play', 'edit']) {
@@ -178,11 +372,13 @@ async function time() {
         const late = r[k].filter((x) => x.late).length;
         console.log(`  ${tag}  ${k === 'play' ? 'Play' : 'Edit'}  page ${p.join(' / ')} ms (median ${median(p)})   screen ${s.join(' / ')} ms (median ${median(s)})${late ? `   answer after the screen: ${late}` : ''}`);
       }
+      console.log(`  ${tag}  same page: ${r.same.filter(Boolean).length} of ${r.same.length} rounds`);
     };
-    if (BEFORE) say('before', await rounds(src, resolve(BEFORE)));
-    const a = await rounds(src);
+    if (BEFORE) say('before', await rounds(src, resolve(BEFORE), file));
+    const a = await rounds(src, undefined, file);
     say('after ', a);
     check([...a.play, ...a.edit].every((x) => x.screen >= 0 && x.page >= 0), 'every round finished');
+    check(a.same.every(Boolean), 'every round in the same page (no reload)');
   }
 }
 
@@ -291,6 +487,8 @@ async function ruins() {
   const { page } = g;
   try {
     await page.eval(`(${GW}.__fastSwitchMark = 1, true)`);
+    // No placement.json yet (404): the game's loader can still play the draft's motions here (its play hook).
+    check((await page.eval(`[...(${GW}[Symbol.for('game-studio.play')] || [])].some((h) => h.has())`)) === true, 'no placement.json yet: the game\'s loader can play motions in this page');
     const editList = await j(page, IN.list);
     await page.eval(IN.probe);
     const f0 = await j(page, IN.pp);
@@ -387,6 +585,10 @@ try {
   if (want('cove')) await cove();
   if (want('ruins')) await ruins();
   if (want('fresh')) await fresh();
+  if (want('when')) await when();
+  if (want('old')) await when(true);
+  if (want('scene2d')) await scene2d();
+  if (want('levels')) await levels();
   if (want('time')) await time();
 } catch (e) {
   check(false, `${e.message}`);

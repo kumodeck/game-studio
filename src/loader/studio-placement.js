@@ -75,6 +75,10 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
  */
 export async function applyPlacement(root, source = './placement.json', opts = {}) {
   const report = { applied: [], missing: [], unstable: [], skipped: [] };
+  const three = !!(root && root.isObject3D);
+  // The world the play hook moves (below), kept before the file is read: a game with no placement.json yet (404) still
+  // plays the editor's draft motions in its edit page.
+  if (root && typeof root === 'object' && root.nodeType !== 9) last = { root, n: three ? 3 : 2, three };
   let data = source;
   if (typeof source === 'string') {
     try {
@@ -86,7 +90,6 @@ export async function applyPlacement(root, source = './placement.json', opts = {
       return report;
     }
   }
-  const three = !!(root && root.isObject3D);
   const dim = three ? '3d' : '2d';
   if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
     warn('not a placement file');
@@ -489,7 +492,39 @@ function poseAt(o, base, at, three) {
   if (at.s) three ? o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1], base.s[2] * at.s[2]) : o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1]);
 }
 
-const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+// `here`: the editor's page plays now (▶ Play in the same page, play hook below): the motions run as on a Play page.
+let here = false;
+const editing = () => !here && typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+
+// ▶ Play in the editor's own page (studio-no-reload, 2026-10-22: "when I go back to edit after playing, don't load"):
+// the edit page becomes Play without opening the game again, so the motions this file runs on a Play page — every
+// `when` (a click, an area, a cue, the game's playMotion()) — must start in that page too, from the draft the editor
+// sends (it may differ from the file the page read, or the page may have read none). The editor finds this copy through
+// a global set (the game and the editor each load their own copy; only the game's has a world: `last`, the root of the
+// last applyPlacement given one):
+//   start({ motion, motions }) → the keys it moves; stop() → they stop where they are (the editor puts them back).
+// Before, a page opened for Edit never started them, and the editor opened a new Play page whenever a clip waited for
+// something (bridge/play-switch.ts).
+let last = null;
+const hook = {
+  has: () => !!last,
+  start(d) {
+    if (!last) return [];
+    here = true;
+    const r = {};
+    runMotion(last.root, { motion: d && d.motion, motions: d && d.motions }, last.n, last.three, r);
+    return r.motion || [];
+  },
+  stop() {
+    here = false;
+    gen++;
+    ticking = false;
+    stopMotion();
+    known.clear();
+    run = null;
+  },
+};
+if (typeof globalThis !== 'undefined') (globalThis[Symbol.for('game-studio.play')] || (globalThis[Symbol.for('game-studio.play')] = new Set())).add(hook);
 
 function remember(key, o, three, clips) {
   const base = three

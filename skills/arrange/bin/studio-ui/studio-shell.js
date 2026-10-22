@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.23 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.24 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1044,6 +1044,14 @@ const MSG_PREFIX = 'studio:';
                                                               
                                                                                                    
                                                              
+     
+                                                                                                                    
+                                                                                                                        
+                                                                                                                    
+                                                                                                                    
+                                                                                                          
+     
+                                                                                                                    
                                                                                              
                                                   
      
@@ -1095,14 +1103,16 @@ const MSG_PREFIX = 'studio:';
                                                                                                                   
                                                                                                                       
                                                                                                                    
-                                                                                                              
+                                                                                                                  
+                                                                                                                    
+                                                                                         
                                                                                                                       
                                                                                                                      
                                                                                                      
                                                                                                                     
                                                        
      
-                                                                                                    
+                                                                                                                         
      
                                                                                                                      
                                                                                                                    
@@ -1169,6 +1179,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                 
                                                                                                                   
                      
+         
+                                                                                                                         
+                                                                                                                       
+                                                                                                            
+         
+                           
          
                                                                                                                   
                                                                                                                    
@@ -1243,6 +1259,13 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
      
                                                                                                   
+     
+                                                                                                                       
+                                                                                                                      
+                                                                                                                      
+                                                 
+     
+                                                                                                                                         
                                                                                  
                                                                       
                                                                                            
@@ -8428,6 +8451,10 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
  */
 async function applyPlacement(root, source = './placement.json', opts = {}) {
   const report = { applied: [], missing: [], unstable: [], skipped: [] };
+  const three = !!(root && root.isObject3D);
+  // The world the play hook moves (below), kept before the file is read: a game with no placement.json yet (404) still
+  // plays the editor's draft motions in its edit page.
+  if (root && typeof root === 'object' && root.nodeType !== 9) last = { root, n: three ? 3 : 2, three };
   let data = source;
   if (typeof source === 'string') {
     try {
@@ -8439,7 +8466,6 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
       return report;
     }
   }
-  const three = !!(root && root.isObject3D);
   const dim = three ? '3d' : '2d';
   if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
     warn('not a placement file');
@@ -8842,7 +8868,39 @@ function poseAt(o, base, at, three) {
   if (at.s) three ? o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1], base.s[2] * at.s[2]) : o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1]);
 }
 
-const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+// `here`: the editor's page plays now (▶ Play in the same page, play hook below): the motions run as on a Play page.
+let here = false;
+const editing = () => !here && typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+
+// ▶ Play in the editor's own page (studio-no-reload, 2026-10-22: "when I go back to edit after playing, don't load"):
+// the edit page becomes Play without opening the game again, so the motions this file runs on a Play page — every
+// `when` (a click, an area, a cue, the game's playMotion()) — must start in that page too, from the draft the editor
+// sends (it may differ from the file the page read, or the page may have read none). The editor finds this copy through
+// a global set (the game and the editor each load their own copy; only the game's has a world: `last`, the root of the
+// last applyPlacement given one):
+//   start({ motion, motions }) → the keys it moves; stop() → they stop where they are (the editor puts them back).
+// Before, a page opened for Edit never started them, and the editor opened a new Play page whenever a clip waited for
+// something (bridge/play-switch.ts).
+let last = null;
+const hook = {
+  has: () => !!last,
+  start(d) {
+    if (!last) return [];
+    here = true;
+    const r = {};
+    runMotion(last.root, { motion: d && d.motion, motions: d && d.motions }, last.n, last.three, r);
+    return r.motion || [];
+  },
+  stop() {
+    here = false;
+    gen++;
+    ticking = false;
+    stopMotion();
+    known.clear();
+    run = null;
+  },
+};
+if (typeof globalThis !== 'undefined') (globalThis[Symbol.for('game-studio.play')] || (globalThis[Symbol.for('game-studio.play')] = new Set())).add(hook);
 
 function remember(key, o, three, clips) {
   const base = three
@@ -9353,6 +9411,48 @@ __def(__exports, "findByKey", () => findByKey);
 };
 __defs[20] = function (__exports) {
 'use strict';
+// play-here.ts
+
+// Can ▶ Play happen in the page on screen (no new page, no loading)? The motions' part of main.ts canPlayHere.
+//
+// WHY (studio-no-reload, 2026-10-22; a try of the editor: "when I go back to edit after playing, don't load — let me go back at
+// once"): since the fast switch (v0.1.18) Play turned the edit page itself into Play, but a draft with any motion
+// that did not start at once (a clip with a `when`: a key, a click, an area, a cue…) still opened a new Play page,
+// because a page opened for Edit never started the loader's motions. Someone trying motions met that page load almost
+// every time. Now the game's loader starts them in the edit page (studio-placement.js play hook, bridge/play-switch.ts),
+// and the page says so (core/ready `motionHere`).
+//
+// Without the hook (a game with no loader, or an older copy of it served as it is: the local server answers the game's
+// copy with its own loader since integrate 1023, src/server/loader-copy.mjs) the editor's own runner (play-arrange.ts
+// moveInPlay) plays what needs nothing of the game: the start, a time, a key, another clip's end. A clip that waits for
+// what only the game's loader sees (a click on the object, an area, a touch, a cue, the game's playMotion) opens a new
+// Play page there, as before — an older loader on a Play page does run those.
+const { whensOf } = __require(19);
+
+/** The starts the editor's own runner plays (motionRunner fires `start` and `key`; `time` and `after` come by themselves). */
+const BY_EDITOR = new Set(['start', 'time', 'key', 'after']);
+
+/**
+ * True when every motion of `motion` (placement.json's world `motion`) can play in this page. `motionHere`: the
+ * page's loader has its play hook (core/ready).
+ */
+function motionsPlayHere(motion                                     , motionHere         )          {
+  if (motionHere) return true;
+  for (const m of Object.values(motion || {})) {
+    const clips = (m                                     )?.clips;
+    if (!Array.isArray(clips)) continue;
+    for (const c of clips) {
+      if (!c || typeof c !== 'object') continue;
+      if (whensOf(c).some((w                ) => !BY_EDITOR.has(w.on))) return false;
+    }
+  }
+  return true;
+}
+
+__def(__exports, "motionsPlayHere", () => motionsPlayHere);
+};
+__defs[21] = function (__exports) {
+'use strict';
 // icons.ts
 
 // Line icons for the shell, drawn here (no icon font, no images from a
@@ -9458,6 +9558,8 @@ const PATHS                         = {
   toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
   toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
   toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
+  // The strip's Motion button (studio-motion-tool; bridge/handles.ts MOTION_ICON on this grid): a path to the thing at its end.
+  toolMotion: 'M16.5 16c-3.75 0-4.2-5.8-7.1-7.9S5.8 6.7 4.6 5.4|o 16.5 16|O 4.6 5.4 2.2',
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
@@ -9532,7 +9634,67 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[21] = function (__exports) {
+__defs[22] = function (__exports) {
+'use strict';
+// timeline-link.ts
+
+// "+ Link an object"'s list (studio-motion-focus, 2026-10-23): the scene's objects to put in the picked object's motion.
+// A request (2026-10-23): "sometimes I want it to work with other objects, so let me add the ones to link". The plate's rows are the
+// picked object only; this is the way to add the others — from the list (a find field: a scene has hundreds of
+// objects), or, while it is open, a click on the object in the game (timeline-wire.ts linkPick).
+//
+// WHY the ⋯ popover (timeline-more.ts) and not a menu of its own: the same glass, the same Esc / press-outside, the same
+// place above the plate — only its left edge on the button's. A press in the game does not close it (the game is
+// another document): that press is the "click it in the game" way.
+// WHY the list's order is the scene list's (left column), not "moving ones first": what links is often still (a door,
+// a lamp); the same order as the list the person already knows. A moving one says its motion's name, small.
+const { h } = __require(16);
+
+                           
+              
+                
+                                                    
+               
+ 
+
+/** Fill `el` (the popover) with the title, the find field and the objects; `pick` = one chosen. */
+function fillLinkList(el             , o                                                                                                           ) {
+  const list = h('div', { class: 'tl-link-list', role: 'listbox', 'aria-label': o.title });
+  const find = h('input', { type: 'search', class: 'tl-link-find', placeholder: o.find, 'aria-label': o.find, autocomplete: 'off', spellcheck: false, dataset: { part: 'tl-link-find' } });
+  const draw = () => {
+    const q = find.value.trim().toLowerCase();
+    const its = o.items.filter((i) => !q || i.label.toLowerCase().includes(q) || i.key.toLowerCase().includes(q));
+    list.replaceChildren(...(its.length
+      ? its.map((i) => h('button', { type: 'button', class: 'tl-link-item', role: 'option', dataset: { part: 'tl-link-item', key: i.key }, onclick: () => o.pick(i.key) },
+        h('span', { class: 'tl-link-name', text: i.label }), i.note ? h('span', { class: 'tl-clipname', text: i.note }) : null))
+      : [h('p', { class: 'tl-link-none', text: o.none })]));
+  };
+  find.addEventListener('input', draw);
+  find.addEventListener('keydown', (e) => {
+    // Enter = the first one found; ↓ = into the list (Esc is the popover's: closes it).
+    if (e.key === 'Enter') list.querySelector                   ('.tl-link-item')?.click();
+    if (e.key === 'ArrowDown') (e.preventDefault(), list.querySelector                   ('.tl-link-item')?.focus());
+    if (e.key !== 'Escape') e.stopPropagation();
+  });
+  list.addEventListener('keydown', (e) => {
+    const its = [...list.querySelectorAll                   ('.tl-link-item')];
+    const i = its.indexOf(document.activeElement                     );
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      const n = i + (e.key === 'ArrowDown' ? 1 : -1);
+      (n < 0 ? find : its[Math.min(n, its.length - 1)])?.focus();
+    }
+  });
+  draw();
+  el.replaceChildren(h('div', { class: 'tl-link-title', text: o.title }), find, list);
+  // A phone's keyboard would cover half the screen for a list one can just tap: the field takes the keys on a PC only.
+  if (o.focus) find.focus({ preventScroll: true });
+}
+
+__def(__exports, "fillLinkList", () => fillLinkList);
+};
+__defs[23] = function (__exports) {
 'use strict';
 // timeline-more.ts
 
@@ -9562,18 +9724,22 @@ const { h } = __require(16);
                                    
  
 
-function createMorePop(host                   , label        , onHide            )          {
-  const el = h('div', { class: 'tl-more', role: 'dialog', 'aria-label': label, dataset: { part: 'tl-more' } });
+/**
+ * `opts` (studio-motion-focus: the "+ Link an object" list uses the same popover): `left` = its left edge on the
+ * button's left edge (the button is at the plate's left end; ⋯ is at the right), `width` (420 by default), `part`.
+ */
+function createMorePop(host                   , label        , onHide            , opts                                                    = {})          {
+  const el = h('div', { class: 'tl-more', role: 'dialog', 'aria-label': label, dataset: { part: opts.part ?? 'tl-more' } });
   let open = false;
   let anchor                     = null;
   const place = (a             ) => {
     anchor = a;
     const r = a.getBoundingClientRect();
     const vw = window.innerWidth;
-    const w = Math.min(420, vw - 16);
+    const w = Math.min(opts.width ?? 420, vw - 16);
     el.style.width = `${w}px`;
-    // Right edge on the button's right edge, kept 8 px inside the window; above it (the plate is at the bottom).
-    el.style.left = `${Math.max(8, Math.min(vw - w - 8, r.right - w))}px`;
+    // Right edge on the button's right edge (or left on left), kept 8 px inside the window; above it (the plate is at the bottom).
+    el.style.left = `${Math.max(8, Math.min(vw - w - 8, opts.left ? r.left : r.right - w))}px`;
     el.style.bottom = `${Math.max(8, window.innerHeight - r.top + 6)}px`;
   };
   const outside = (e              ) => {
@@ -9613,7 +9779,7 @@ function createMorePop(host                   , label        , onHide           
 
 __def(__exports, "createMorePop", () => createMorePop);
 };
-__defs[22] = function (__exports) {
+__defs[24] = function (__exports) {
 'use strict';
 // timeline-model.ts
 
@@ -9961,7 +10127,7 @@ __def(__exports, "clock", () => clock);
 __def(__exports, "withClip", () => withClip);
 __def(__exports, "legacyOffsets", () => legacyOffsets);
 };
-__defs[23] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // timeline-panel.ts
 
@@ -9983,10 +10149,11 @@ __defs[23] = function (__exports) {
 // red = recording (● and the time line while auto key is on — the colour every camera and DAW uses for "writing now").
                                                                                                                                               
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
                                                 
-const { createMorePop } = __require(21);
-const { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES } = __require(22);
+const { fillLinkList } = __require(22);
+const { createMorePop } = __require(23);
+const { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES } = __require(24);
 
 /** Starts menu, in two groups: what the loader plays by itself, then what your AI connects in the game's code. */
 const SELF_TRIGGERS                  = ['start', 'time', 'key', 'click', 'after', 'enter'];
@@ -10011,7 +10178,7 @@ function whenShort(t                                                            
                   
                 
                           
-                                                                                                                  
+                                                                                                          
                    
  
 
@@ -10060,6 +10227,13 @@ function whensShort(t                                                           
                                      
                                                                                                         
                         
+                                                                        
+                                                                                                                                  
+                                                          
+                                                                                              
+                
+                                                                                                                  
+                  
  
 
                                
@@ -10093,9 +10267,13 @@ function whensShort(t                                                           
                     
                                                                                    
                                 
-                                                                                
+                                                                                                                          
                            
+                                                                                              
+                              
                             
+                                                                                                           
+                              
      
                                                                                                                            
                                                    
@@ -10117,6 +10295,8 @@ function createTimelinePanel(view                    , act              ) {
     head.querySelector('[data-part=tl-more-btn]')?.setAttribute('aria-expanded', 'false');
     head.querySelector('[data-part=tl-more-btn]')?.classList.remove('on');
   });
+  // studio-motion-focus: "+ Link an object"'s list, the same popover as ⋯ with its left edge on the button.
+  const linkPop = createMorePop(() => el.closest             ('.shell') ?? document.body, t('tl.link'), () => act.linking?.(false), { left: true, width: 300, part: 'tl-link-pop' });
   const ruler = h('div', { class: 'tl-ruler', role: 'slider', 'aria-valuemin': '0', dataset: { part: 'tl-ruler' } });
   const names = h('div', { class: 'tl-names' });
   const lanes = h('div', { class: 'tl-lanes', dataset: { part: 'tl-lanes' } });
@@ -10183,7 +10363,8 @@ function createTimelinePanel(view                    , act              ) {
     clipSel.classList.add('tl-clip-pick');
     const items         = [play, time, auto, clipSel];
     // A scene (studio-timeline-2): says what it is — one motion, this many objects (its rows below).
-    if (c && v.scene) items.push(h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) }));
+    // Linked (studio-motion-focus): said once there are two (a scene of one is the object's own motion, nothing to say).
+    if (c && v.scene && v.scene.n > 1) items.push(h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) }));
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
     // Point ▾ (studio-timeline-2) and Keys ▾: only while a point / keys are picked — what the pick is, where the pick is
@@ -10201,10 +10382,13 @@ function createTimelinePanel(view                    , act              ) {
       ease.classList.add('tl-ease-pick');
       items.push(h('span', { class: 'tl-lbl tl-ease-lbl', text: t('tl.ease') }), ease);
     }
-    if (c) {
+    // ⋯ also with no motion here when others move: its "Show every motion in the scene" (studio-motion-focus).
+    if (c || v.moving) {
       const open = more.open;
       items.push(h('button', { type: 'button', class: `icon-btn tl-more-btn${open ? ' on' : ''}`, title: t('tl.moreTip'), 'aria-label': t('tl.more'), 'aria-haspopup': 'dialog', 'aria-expanded': String(open),
         dataset: { action: 'tl-more', part: 'tl-more-btn' }, onclick: (e       ) => toggleMore(e.currentTarget               ) }, icon('more')));
+    }
+    if (c) {
       // ✦ Ask AI (a review of 2026-10-22: "a press puts the motion's and the object's names in the AI chat box, and you talk there"):
       // the chat box below gets the "object · motion" chip and the cursor; the words are the person's, nothing is sent yet.
       if (act.ask) items.push(h('button', { type: 'button', class: 'tl-ask', title: t('tl.askTip', { name: `${v.rows.find((r) => r.key === v.focus)?.label ?? v.focus} · ${c.name}` }),
@@ -10214,7 +10398,7 @@ function createTimelinePanel(view                    , act              ) {
     // Narrow: the end of the first row (▶ time ● ⋯ ✦ ⌄); the motion and its "when" start a new one (shell.css). Nothing on PC.
     items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
     head.replaceChildren(...items);
-    if (!c) more.hide();
+    if (!c && !v.moving) more.hide();
     else if (more.open) renderMore(v);
   }
 
@@ -10318,9 +10502,18 @@ function createTimelinePanel(view                    , act              ) {
   function renderMore(v              ) {
     const c = v.clip;
     const w = v.when;
-    if (!c || !w) return more.hide();
     const row = (part        , label        , ...kids                    ) =>
       h('div', { class: 'tl-more-row', dataset: { part } }, h('span', { class: 'tl-more-k', text: label }), h('div', { class: 'tl-more-v' }, ...kids));
+    // Rows: every motion in the scene (studio-motion-focus, 2026-10-23: the plate shows the picked object only; the
+    // whole scene stays one press away, here, where the sometimes-used things are). Last: it is about the plate, not the motion.
+    const allRow = row('tl-more-all', t('tl.all.k'), act.showAll ? h('button', { type: 'button', class: `tl-all${v.all ? ' on' : ''}`, 'aria-pressed': String(!!v.all), dataset: { part: 'tl-all' },
+      onclick: () => (more.hide(), act.showAll (!v.all)) }, icon('list'), h('span', { text: t(v.all ? 'tl.all.off' : 'tl.all') })) : null);
+    const btn0 = head.querySelector             ('[data-part=tl-more-btn]');
+    if (!c || !w) {
+      if (!v.moving || !btn0) return more.hide();
+      more.el.replaceChildren(allRow);
+      return more.place(btn0);
+    }
     const rows                = [];
     rows.push(row('tl-more-repeat', t('tl.repeat'), select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                ))));
     // Stops ▾: never / after N rounds / a cue; then: stay or go back.
@@ -10358,6 +10551,7 @@ function createTimelinePanel(view                    , act              ) {
     rows.push(row('tl-tries', t('tl.try'), ...tries));
     // The motion is the Library's: used by 2 or more objects, a key changed here changes them all — say so, small.
     if (v.uses > 1 && !v.scene) rows.push(h('p', { class: 'tl-uses', title: t('tl.usesTip'), dataset: { part: 'tl-uses' }, text: t('tl.usesLong', { n: v.uses }) }));
+    rows.push(allRow);
     more.el.replaceChildren(...rows);
     const btn = head.querySelector             ('[data-part=tl-more-btn]');
     if (btn) more.place(btn);
@@ -10469,7 +10663,8 @@ function createTimelinePanel(view                    , act              ) {
       lanes.append(h('p', { class: 'tl-empty', text: t('tl.empty') }));
       return;
     }
-    let y = 0;
+    // Every motion shown: what the rows are, and the way back — on top (below, it scrolled out of a plate of 5 rows).
+    let y = allRow(v, 0);
     for (const r of v.rows) {
       const chs = CHANNELS.filter((ch) => r.clip?.keys[ch]?.length);
       const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key } },
@@ -10483,25 +10678,17 @@ function createTimelinePanel(view                    , act              ) {
           const ai = AI_TRIGGERS.includes(rw.when.on);
           return h('span', { class: `tl-whenchip${ai ? ' ai' : ''}`, dataset: { part: 'tl-whenchip' }, text: whensShort(t, rw.whens ?? [rw.when], rw.until, rw.repeat) });
         })(),
-        // studio-timeline-2: a scene's object can be taken out (shown on hover / always on a phone).
-        v.scene && r.member && act.leave ? h('button', { type: 'button', class: 'icon-btn tl-leave', title: t('tl.scene.leave', { name: r.label, scene: v.scene.name }), 'aria-label': t('tl.scene.leave', { name: r.label, scene: v.scene.name }),
+        // A linked object can be unlinked (studio-timeline-2's ×; studio-motion-focus: not the row being made — the
+        // picked / focused one is what the others are linked to). Shown on hover; on a phone always.
+        v.scene && r.member && !r.picked && r.key !== v.focus && act.leave ? h('button', { type: 'button', class: 'icon-btn tl-leave', title: t('tl.scene.leave', { name: r.label, scene: v.scene.name }), 'aria-label': t('tl.scene.leave', { name: r.label, scene: v.scene.name }),
           dataset: { part: 'tl-leave', key: r.key }, onclick: () => act.leave (r.key) }, icon('close')) : null);
-      // The picked object, not in the open scene: its row is the way in ("+ Add crate to “Arrival”").
-      if (v.scene && r.member === false) {
-        name.classList.add('tl-join-name');
-        names.append(name);
-        const join = h('div', { class: 'tl-lane tl-join', style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } },
-          h('button', { type: 'button', class: 'tl-join-btn', dataset: { part: 'tl-join', key: r.key }, onclick: () => act.join?.(r.key) }, `+ ${t('tl.scene.join', { name: r.label, scene: v.scene.name })}`),
-          v.narrow ? null : h('span', { class: 'tl-join-or', text: t('tl.scene.joinOr') }));
-        lanes.append(join);
-        y += ROW;
-        continue;
-      }
       names.append(name);
       const lane = h('div', { class: `tl-lane${r.picked ? ' picked' : ''}`, style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } });
       lanes.append(lane);
       laneList.push({ key: r.key, ch: null, y });
       drawKeys(lane, r, null, keyTimes(r.clip), v);
+      // A linked object with no key yet (just linked): what gives it some, where they will be.
+      if (v.scene && r.member && r.key !== v.focus && !keyTimes(r.clip).length) lane.append(h('span', { class: 'tl-lane-hint', text: t('tl.link.empty') }));
       y += ROW;
       if (!r.open) continue;
       for (const ch of CHANNELS) {
@@ -10513,7 +10700,41 @@ function createTimelinePanel(view                    , act              ) {
         y += ROW;
       }
     }
+    y = linkRow(v, y);
     lanes.style.height = `${y}px`;
+  }
+
+  /**
+   * Under the rows (studio-motion-focus): "+ Link an object" — quiet (the second colour, no fill) because the picked
+   * object's own motion is the plate's subject; while its list is open the lane says "or click an object in the game".
+   * With every motion shown (allRow, above the rows): what the rows are now, and the way back.
+   */
+  function allRow(v              , y        )         {
+    if (!v.all || !act.showAll) return y;
+    names.append(h('div', { class: 'tl-name tl-link-name', style: `height:${ROW}px` },
+      h('button', { type: 'button', class: 'tl-link', dataset: { part: 'tl-all-off' }, onclick: () => act.showAll (false) }, icon('close'), h('span', { text: t('tl.all.off') }))));
+    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, h('span', { class: 'tl-lane-hint', text: t('tl.all.on') })));
+    return y + ROW;
+  }
+  function linkRow(v              , y        )         {
+    if (!v.link || !act.link) return y;
+    const on = v.link.linking;
+    const btn = h('button', { type: 'button', class: `tl-link${on ? ' on' : ''}`, 'aria-expanded': String(on), 'aria-haspopup': 'dialog',
+      title: t('tl.linkTip', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '' }), dataset: { part: 'tl-link' }, onclick: () => toggleLink(btn) }, icon('plus'), h('span', { text: t('tl.link') }));
+    names.append(h('div', { class: 'tl-name tl-link-name', style: `height:${ROW}px` }, btn));
+    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, on && !v.narrow ? h('span', { class: 'tl-lane-hint', text: t('tl.link.hint') }) : null));
+    return y + ROW;
+  }
+  /** "+ Link an object" pressed: its list over it (the scene's objects), or closed. */
+  function toggleLink(btn             ) {
+    if (linkPop.open) return linkPop.hide();
+    const v = view();
+    if (!v.link) return;
+    more.hide();
+    linkPop.show(btn);
+    const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
+    fillLinkList(linkPop.el, { title: t('tl.link.title', { name }), find: t('tl.link.find'), none: t('tl.link.none'), items: v.link.items(), focus: !v.narrow, pick: (k) => act.link (k) });
+    act.linking?.(true);
   }
 
   function drawKeys(lane             , r             , ch                      , times          , v              ) {
@@ -10676,6 +10897,12 @@ function createTimelinePanel(view                    , act              ) {
     renderHead(v);
     if (had) (inMore ? more.el : el).querySelector                   (`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderRows(v);
+    // The link list follows its button (drawn anew with the rows), and closes once it is done (linked, or Esc in the game).
+    if (linkPop.open) {
+      const b = names.querySelector             ('[data-part=tl-link]');
+      if (!v.link?.linking || !b) linkPop.hide();
+      else linkPop.place(b);
+    }
     renderRuler(v);
     renderCoach(v);
     place(v);
@@ -10714,7 +10941,7 @@ function createTimelinePanel(view                    , act              ) {
   new ResizeObserver(() => el.isConnected && !el.hidden && render()).observe(track);
 
     /** ⋯ closed (the plate was hidden: the Library, Play, fold). Optional for the tests' stand-in panels. */
-  const closeMore                           = () => more.hide();
+  const closeMore                           = () => (more.hide(), linkPop.hide());
   return { el, render, place, focusStarts, closeMore };
 }
 
@@ -10725,7 +10952,7 @@ __def(__exports, "whenShort", () => whenShort);
 __def(__exports, "whensShort", () => whensShort);
 __def(__exports, "createTimelinePanel", () => createTimelinePanel);
 };
-__defs[24] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // library-motions.ts
 
@@ -10753,7 +10980,7 @@ __defs[24] = function (__exports) {
 const { clipAt } = __require(19);
 const { h } = __require(16);
 const { displayName } = __require(14);
-const { whenShort } = __require(23);
+const { whenShort } = __require(25);
 
                                      
                                                                  
@@ -11083,7 +11310,7 @@ function createLibraryMotions(d                    )                     {
 __def(__exports, "motionPicture", () => motionPicture);
 __def(__exports, "createLibraryMotions", () => createLibraryMotions);
 };
-__defs[25] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // motion-drag.ts
 
@@ -11294,7 +11521,143 @@ function createMotionDrag(d                ) {
 
 __def(__exports, "createMotionDrag", () => createMotionDrag);
 };
-__defs[26] = function (__exports) {
+__defs[28] = function (__exports) {
+'use strict';
+// motion-tool.ts
+
+// The Motion button in the object's tool strip (studio-motion-tool, 2026-10-22). The strip itself is the game page's
+// (bridge/handles.ts draws it, bridge/input.ts reports the press as placement/motion-press); this file decides what
+// the button shows and what a press does, with the editor's own pieces — nothing new underneath:
+//   no motion yet  →  a small menu at the button: New motion (Back and forth / Round / Once / Spin, timeline-model
+//                     TEMPLATES) and From the Library (its motions). A choice puts it on the thing and opens the
+//                     timeline with "✓ attached · When does it move?" (timeline-wire show(), as a drop does since v0.1.19)
+//   a motion       →  the timeline opens on it. The button wears a small dot ("this thing moves").
+//
+// WHY (a review of the strip, 2026-10-22: "wouldn't a motion button go well here?"): v0.1.19 attaches a motion by
+// dragging it from the Library onto the thing, and the card has "+ New motion" — but with the thing picked in the game,
+// the one control next to it (the strip) had no way in. Before that (v0.1.18): "I couldn't tell how to make a motion and
+// then put it on objects."
+//
+// WHY the editor's menu (context-menu.ts) and not choices drawn in the game page like the turn button's: the Library
+// motions are names (words, any number of them), and the game page has only icon rows. The context menu already has
+// the glass, the keys, Esc, a finger's size and "a press outside only closes it".
+//
+// WHY no "Empty" row: an empty motion has no keys and nothing moves until the person moves the thing on the timeline —
+// the card's "+ New motion" is that way in. The strip's menu is the quick way: pick a kind, it moves at once.
+                                                                   
+                                                                
+                                                    
+
+/** The menu's kinds, in the timeline's order (its clip menu's "New: …"), without "empty" (see the header). */
+const STRIP_TEMPLATES             = ['pingpong', 'loop', 'once', 'spin'];
+
+                                 
+                                                                 
+                               
+                                                                                                                  
+                          
+                                                                            
+                                 
+                               
+                             
+                                                               
+                             
+                                                                                 
+                    
+                                                                                                              
+                                          
+                                                                                        
+                                          
+                                                    
+                                        
+                                                                                                     
+                                                                                                
+                                                     
+                      
+                                                         
+                                    
+ 
+
+function createMotionTool(d                ) {
+  // What the game page was last told (a frame that changes nothing sends nothing).
+  let sent = '';
+
+  /** What it does, in words: "Motion — make one or attach one", or "Motion: Hop — open on the timeline" (⌘K's row too). */
+  function words(key = d.target())         {
+    const names = key ? d.motions(key) : [];
+    return names.length ? d.t('pal.tool.motionHas', { name: names[0]  }) : d.t('pal.tool.motion');
+  }
+  /** The tooltip: the words and the key, two spaces apart (keymap.ts tipText's way, as the tools' tooltips). */
+  function label(key = d.target())         {
+    const k = d.keyText();
+    return k ? `${words(key)}  ${k}` : words(key);
+  }
+  /** What the button shows now. */
+  function state() {
+    const key = d.target();
+    return { show: !!key, has: !!key && d.motions(key).length > 0, label: label(key), open: !!key && d.menuOpen() };
+  }
+
+  /** Tell the game page what the button shows now (after a pick, an attach, an undo, a layer switch…). */
+  function sync() {
+    const m = { type: 'studio:placement/motion'         , ...state() };
+    const sig = JSON.stringify(m);
+    if (sig === sent) return;
+    sent = sig;
+    d.send(m);
+  }
+
+  /** The rows of the menu for `key` (no motion yet): the kinds, then the Library's motions when it has any. */
+  function entries(key        )              {
+    const out              = [{ head: d.t('motion.tool.new') }];
+    for (const kind of STRIP_TEMPLATES) out.push({ id: `motion-new-${kind}`, label: d.t(`tl.tpl.${kind}`), run: () => d.make(key, kind) });
+    const lib = d.library();
+    if (lib.length && d.room(key)) {
+      out.push({ sep: true }, { head: d.t('motion.tool.lib') });
+      for (const m of lib) out.push({ id: `motion-lib-${m.name}`, label: m.name, key: `${Math.round(m.len * 10) / 10} s`, run: () => d.attach(key, m.name) });
+    }
+    return out;
+  }
+
+  /**
+   * The button pressed (placement/motion-press) or its key typed in the editor page: open the motion, or the menu at
+   * the button. `at` = the button in the game page's px (w 0 = not known: under the middle of the game).
+   */
+  function press(key        , at                                                , touch         , keyboard         ) {
+    if (d.target() !== key) return;
+    const names = d.motions(key);
+    if (names.length) {
+      d.open(key, names[0] );
+      sync();
+      return;
+    }
+    const f = d.frame()?.getBoundingClientRect();
+    const fx = f?.left ?? 0, fy = f?.top ?? 0;
+    const btn = at.w > 0 ? new DOMRect(fx + at.x, fy + at.y, at.w, at.h) : null;
+    // A mouse: under the button from its left edge, as a menu button's menu. A finger: above the button, centred on it
+    // (context-menu.ts puts a touch menu above the point, so the finger does not cover the rows). No button (a key with
+    // the strip off screen): the game's middle.
+    const x = btn ? (touch ? btn.left + btn.width / 2 : btn.left) : fx + (f?.width ?? 0) / 2;
+    const y = btn ? (touch ? btn.top : btn.bottom + 6) : fy + (f?.height ?? 0) / 2;
+    d.menu(entries(key), x, y, { place: 'motion', touch, keyboard, label: d.t('motion.tool.menu') }, btn);
+    sync();
+  }
+
+  /**
+   * A new game page (a reload, back from Play, another level): it starts with the button hidden, so the next sync must
+   * send even if nothing changed here (the first test run caught it: the button missing after the page came up again).
+   */
+  function reset() {
+    sent = '';
+  }
+
+  return { sync, press, reset, entries, label, words, state, target: () => d.target() };
+}
+
+__def(__exports, "STRIP_TEMPLATES", () => STRIP_TEMPLATES);
+__def(__exports, "createMotionTool", () => createMotionTool);
+};
+__defs[29] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -11548,7 +11911,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[27] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // pose-compare.ts
 
@@ -11601,7 +11964,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[28] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -11740,7 +12103,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[29] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // motion-library.ts
 
@@ -11869,7 +12232,7 @@ __def(__exports, "libOf", () => libOf);
 __def(__exports, "MotionLibrary", () => MotionLibrary);
 __def(__exports, "motionLibrary", () => motionLibrary);
 };
-__defs[30] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -11890,8 +12253,8 @@ __defs[30] = function (__exports) {
 // turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
                                                                                                       
 const { whenOf } = __require(19);
-const { motionLibrary } = __require(29);
-const { CHANNELS, toClips } = __require(22);
+const { motionLibrary } = __require(32);
+const { CHANNELS, toClips } = __require(24);
 
 /** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
 function roundWhen(w            , r                                  , step        )             {
@@ -12088,7 +12451,7 @@ __def(__exports, "attachAll", () => attachAll);
 __def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[31] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -12112,9 +12475,9 @@ __defs[31] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 __require(0);
-const { hasLayer, orderOfLayer } = __require(28);
-const { roundPose, samePose } = __require(27);
-const { MotionStore } = __require(30);
+const { hasLayer, orderOfLayer } = __require(31);
+const { roundPose, samePose } = __require(30);
+const { MotionStore } = __require(33);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -12652,11 +13015,11 @@ class PlacementModel {
   }
 }
 
-__def(__exports, "roundPose", () => __require(27).roundPose);
-__def(__exports, "samePose", () => __require(27).samePose);
+__def(__exports, "roundPose", () => __require(30).roundPose);
+__def(__exports, "samePose", () => __require(30).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[32] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -12845,11 +13208,21 @@ const en = {
   'ask.motion': 'e.g. start when the player walks up · slower',
   'tl.tpl.scene': 'Scene — several objects',
   'tl.scene.new': 'Scene',
-  'tl.scene': 'Scene · {n}',
-  'tl.sceneTip': 'One motion that moves several objects together (a cutscene): one time line, one “Starts”',
-  'tl.scene.join': 'Add {name} to “{scene}”',
-  'tl.scene.joinOr': 'or move it with ● Auto key on',
-  'tl.scene.leave': 'Take {name} out of “{scene}”',
+  // studio-motion-focus: "Scene · 3" said "linked" — the plate's word for objects that move in one motion.
+  'tl.scene': 'Linked · {n}',
+  'tl.sceneTip': 'These objects move in one motion: one time line, one “Starts”',
+  'tl.scene.leave': 'Unlink {name} (it stops moving with “{scene}”)',
+  'tl.link': 'Link an object',
+  'tl.linkTip': 'Add an object that moves with {name}: pick it from the list, or click it in the game',
+  'tl.link.title': 'Moves with {name}',
+  'tl.link.find': 'Find an object…',
+  'tl.link.none': 'Nothing here to link',
+  'tl.link.hint': 'or click an object in the game',
+  'tl.link.empty': 'Move it with ● Auto key on: its keys go here',
+  'tl.all': 'Show every motion in the scene',
+  'tl.all.k': 'Rows',
+  'tl.all.on': 'Every motion in the scene',
+  'tl.all.off': 'Show only the selected one',
   'lib.motion.scene': 'Scene · {n} objects',
   'undo.n': '{n} objects',
   'tool.library': 'Library',
@@ -13268,6 +13641,13 @@ const en = {
   'pal.tool.lift': 'Height tool — drag up or down',
   'pal.tool.rotate': 'Turn tool — drag sideways',
   'pal.tool.scale': 'Size tool — drag right to grow',
+  // studio-motion-tool (2026-10-22): the strip's Motion button — its tooltip and its ⌘K row (with the motion's name when it has one).
+  'pal.tool.motion': 'Motion — make one or attach one',
+  'pal.tool.motionHas': 'Motion: {name} — open on the timeline',
+  'pal.tool.motion.words': 'motion animate animation move timeline template library strip 動き モーション',
+  'motion.tool.new': 'New motion',
+  'motion.tool.lib': 'From the Library',
+  'motion.tool.menu': 'Motion for this object',
   'pal.tool.words': 'tool strip move height turn rotate tilt size scale 道具',
   'ai.tagAdded': 'AI added {n}',
   'ai.tagMoved': 'AI moved {n}',
@@ -13292,6 +13672,7 @@ const en = {
   'keys.lift': 'Height tool',
   'keys.rotate': 'Turn tool',
   'keys.scale': 'Size tool',
+  'keys.motion': 'Motion of the selection',
   'keys.axis': 'Next turn axis',
   'keys.noTool': 'Put the tool down',
   'keys.nudge': 'Nudge (Shift: 1 px)',
@@ -13584,11 +13965,20 @@ const ja                               = {
   'ask.motion': '例: プレイヤーが近づいたら動き出す・もっとゆっくり',
   'tl.tpl.scene': '場面（いくつかの物）',
   'tl.scene.new': '場面',
-  'tl.scene': '場面 · {n}',
-  'tl.sceneTip': 'いくつかの物を一緒に動かす 1 本の動き（カットシーン）：時刻は 1 本、「動き出す」も 1 つ',
-  'tl.scene.join': '{name} を “{scene}” に入れる',
-  'tl.scene.joinOr': '● 自動キーのまま動かしても入ります',
-  'tl.scene.leave': '{name} を “{scene}” から出す',
+  'tl.scene': '連携 · {n}',
+  'tl.sceneTip': 'この物たちは 1 本の動きで一緒に動きます：時刻は 1 本、「動き出す」も 1 つ',
+  'tl.scene.leave': '{name} の連携を外す（“{scene}” で動かなくなる）',
+  'tl.link': '連携する物',
+  'tl.linkTip': '{name} と一緒に動く物を足す：一覧から選ぶか、ゲームの中でクリック',
+  'tl.link.title': '{name} と一緒に動く物',
+  'tl.link.find': '物を探す…',
+  'tl.link.none': '連携できる物はありません',
+  'tl.link.hint': 'または ゲームの中で物をクリック',
+  'tl.link.empty': '● 自動キーのまま動かすと、ここにキーが打たれます',
+  'tl.all': '場面の動きを全部見る',
+  'tl.all.k': '行',
+  'tl.all.on': '場面の動きを全部表示中',
+  'tl.all.off': '選んだ物だけにする',
   'lib.motion.scene': '場面 · {n} つの物',
   'undo.n': '{n} 個',
   'tool.library': 'ライブラリ',
@@ -13960,6 +14350,12 @@ const ja                               = {
   'pal.tool.lift': '高さの道具 — 上下に引く',
   'pal.tool.rotate': '回す道具 — 横に引く',
   'pal.tool.scale': '大きさの道具 — 右に引くと大きく',
+  'pal.tool.motion': '動き — 作る・付ける',
+  'pal.tool.motionHas': '動き: {name} — タイムラインで開く',
+  'pal.tool.motion.words': '動き モーション アニメーション タイムライン テンプレート ライブラリ 道具 motion animate',
+  'motion.tool.new': '新しい動き',
+  'motion.tool.lib': 'ライブラリから',
+  'motion.tool.menu': 'この物の動き',
   'pal.tool.words': '道具 移動 高さ 回す 大きさ tool move height turn size',
   'ai.tagAdded': 'AI が足した {n} 個',
   'ai.tagMoved': 'AI が動かした {n} 個',
@@ -13982,6 +14378,7 @@ const ja                               = {
   'keys.lift': '高さの道具',
   'keys.rotate': '回す道具',
   'keys.scale': '大きさの道具',
+  'keys.motion': '選んだ物の動き',
   'keys.axis': '回す軸を切り替える',
   'keys.noTool': '道具を置く',
   'keys.nudge': '少しずつ動かす（Shift で 1px）',
@@ -14124,7 +14521,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[33] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -14145,7 +14542,7 @@ __defs[33] = function (__exports) {
 // - No prices in the UI (they change); a link to the pricing page instead.
                                                                              
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
 
 /** The only place the KUMODeck site address appears in the shell. */
 const KUMODECK_PRICING_URL = 'https://kumodeck.com/pricing';
@@ -14227,7 +14624,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[34] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -14571,7 +14968,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[35] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -14599,7 +14996,7 @@ __defs[35] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(34);
+const { statusCovers } = __require(37);
 
                                                                                                                                                                          
 
@@ -14742,7 +15139,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[36] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -14788,7 +15185,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[37] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -14867,7 +15264,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[38] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -14880,7 +15277,7 @@ __defs[38] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(35);
+const { moreIn } = __require(38);
 
                                 
                  
@@ -14946,7 +15343,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[39] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -15009,7 +15406,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[40] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -15097,7 +15494,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[41] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -15106,8 +15503,8 @@ __defs[41] = function (__exports) {
 // the caller), so there is no separate Apply/Save step to forget.
                                                     
 const { h } = __require(16);
-const { icon } = __require(20);
-const { DEFAULT_UI, UI_LIMITS } = __require(40);
+const { icon } = __require(21);
+const { DEFAULT_UI, UI_LIMITS } = __require(43);
 
                                
                          
@@ -15190,14 +15587,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[42] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(28);
+const { hasLayer } = __require(31);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -15294,7 +15691,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[43] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -15361,6 +15758,9 @@ const KEYMAP           = [
   { id: 'lift', group: 'tools', keys: ['H', '2'], dim: '3d' },
   { id: 'rotate', group: 'tools', keys: ['T', '3'] },
   { id: 'scale', group: 'tools', keys: ['S', '4'] },
+  // The strip's Motion button (studio-motion-tool, 2026-10-22): A ("animate") and 5, after the four tools' 1–4. With
+  // something picked only — A with nothing picked flies left (the fly row), as S is Size / fly back.
+  { id: 'motion', group: 'tools', keys: ['A', '5'], dim: '3d', when: 'picked' },
   { id: 'axis', group: 'tools', keys: ['R'], dim: '3d' },
   // Esc: puts a chosen strip tool down first; with no tool chosen it deselects (the edit row).
   { id: 'noTool', group: 'tools', keys: ['Esc'], when: 'tool' },
@@ -15443,7 +15843,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[44] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -15475,10 +15875,10 @@ __defs[44] = function (__exports) {
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
 const { h, safeImageSrc } = __require(16);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(28);
-const { groupLayerPossible, sameKind } = __require(42);
-const { icon, setButton } = __require(20);
-const { tipText } = __require(43);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(31);
+const { groupLayerPossible, sameKind } = __require(45);
+const { icon, setButton } = __require(21);
+const { tipText } = __require(46);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -16562,7 +16962,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[45] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -16690,7 +17090,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[46] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -16743,12 +17143,34 @@ function likeScene(c            , from            )             {
 /** "Scene · 3 objects": how many objects a Library motion moves (1 for an ordinary one). */
 const sceneSize = (l                                  ) => (l?.tracks ? Object.keys(l.tracks).length : 1);
 
+// ----- linking (studio-motion-focus, 2026-10-23) -----
+// A request (2026-10-23): "mostly I only need the object I picked; sometimes I want it to work with other objects, so let me add
+// the ones to link". The timeline shows the picked object's row only, and "+ Link an object" puts another object in the
+// same motion — a scene motion above, nothing new: an ordinary motion that gets its first linked object becomes one
+// (`tracks`, the picked object's keys as its track), and one whose last linked object is taken off becomes ordinary
+// again (`keys`), so link + unlink leaves the file as it was.
+
+/** An ordinary Library motion as a scene of one: `key`'s keys become its track (the rest of it stays). */
+function asScene(l               , key        )                {
+  const out                = { ...structuredClone(l), keys: {}, tracks: { [key]: structuredClone(l.keys ?? {}) } };
+  return out;
+}
+
+/** A scene left with one object (`key`) as an ordinary motion again: that object's track becomes its keys. */
+function asOrdinary(l               , key        )                {
+  const out                = { ...structuredClone(l), keys: structuredClone(l.tracks?.[key] ?? {}) };
+  delete out.tracks;
+  return out;
+}
+
 __def(__exports, "sceneMembers", () => sceneMembers);
 __def(__exports, "joinClip", () => joinClip);
 __def(__exports, "likeScene", () => likeScene);
 __def(__exports, "sceneSize", () => sceneSize);
+__def(__exports, "asScene", () => asScene);
+__def(__exports, "asOrdinary", () => asOrdinary);
 };
-__defs[47] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -16767,8 +17189,8 @@ __defs[47] = function (__exports) {
                                                                                                        
 const { whenOf } = __require(19);
 const { h } = __require(16);
-const { icon } = __require(20);
-const { whenShort } = __require(23);
+const { icon } = __require(21);
+const { whenShort } = __require(25);
 
                                  
                                                                  
@@ -16848,7 +17270,7 @@ function motionCardRow(d                )                {
 
 __def(__exports, "motionCardRow", () => motionCardRow);
 };
-__defs[48] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -16870,12 +17292,12 @@ __defs[48] = function (__exports) {
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                               
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(45);
-const { joinClip, likeScene, sceneMembers } = __require(46);
-const { libOf } = __require(29);
-const { motionCardRow } = __require(47);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(48);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers } = __require(49);
+const { libOf } = __require(32);
+const { motionCardRow } = __require(50);
                                                      
-const { sameMotion: sameFile } = __require(30);
+const { sameMotion: sameFile } = __require(33);
 
 /**
  * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
@@ -16886,8 +17308,8 @@ const sameMotion = (a                           , b                           ) 
   const inline = (m                           ) => (m?.clips ? { clips: m.clips.map(({ use, ...c }) => ({ ...c, name: `${c.name}\u0000${use ?? ''}` })) } : m);
   return sameFile(inline(a), inline(b));
 };
-const { createTimelinePanel } = __require(23);
-const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip } = __require(22);
+const { createTimelinePanel } = __require(25);
+const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip } = __require(24);
                                                    
 
                                
@@ -16907,6 +17329,16 @@ const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, from
                     
                                                            
                           
+     
+                                                                                                                       
+                                        
+     
+                     
+     
+                                                                                                                 
+                                                                                                              
+     
+                               
                                                                             
                                        
                                                                   
@@ -17052,12 +17484,20 @@ function createTimeline(d              , makePanel                             =
   // The scene shown on the plate (its Library name), or null. While it is open the rows are its objects, the head acts
   // on it (whichever object is picked), and an object picked that has no motion of its own can join it.
   let scene                = null;
+  // studio-motion-focus: ⋯'s "Show every motion in the scene" (the rows as they were before: every moving object), and
+  // "+ Link an object" open (its list on screen: a click on an object in the game links it — linkPick).
+  let all = false;
+  let linking = false;
   const members = (name = scene) => (name ? sceneMembers(store(), name).filter((k) => !!d.place(k)) : []);
-  /** Open / close the scene as the pick changes: a picked object showing a scene clip opens it; an object with motions of its own (not in it) closes it. */
+  /**
+   * Open / close the scene as the pick changes: a picked object showing a scene clip opens it; any other object picked
+   * closes it (studio-motion-focus: the rows are the picked object's — before, an object with no motion of its own kept
+   * the scene open to show "+ Add crate to “Arrival”"; "+ Link an object" is the one way in now).
+   */
   function syncScene() {
     const p = d.picked();
     if (scene && !members().length) scene = null;
-    if (scene && p && !members().includes(p) && clipsOf(p).length) scene = null;
+    if (scene && p && !members().includes(p)) scene = null;
     if (!scene && p) {
       const c = clipOf(p);
       if (c?.scene) openScene(c.use );
@@ -17069,9 +17509,10 @@ function createTimeline(d              , makePanel                             =
   }
   /** The object whose clip the head shows and edits: the focus, or with a scene open, a member (the picked one if it is). */
   const head = () => {
-    if (!scene) return focus();
-    const ms = members(), p = d.picked();
-    return p && ms.includes(p) ? p : ms[0] ?? focus();
+    const f = focus();
+    if (!scene) return f;
+    const ms = members();
+    return f && ms.includes(f) ? f : ms[0] ?? f;
   };
   const shown = () => open && d.usable();
   /** The keys with a motion that are in the scene now. */
@@ -17117,10 +17558,12 @@ function createTimeline(d              , makePanel                             =
 
   // ----- edits: one place for "store, undo, show" -----
   /** Put new motions in the store; `end` = also one undo step from `from` (the motions before the gesture). */
-  function commit(next                            , from                                   , end         ) {
+  // `pre`: Library changes that go first in the same undo step (studio-motion-focus: a motion turned into a scene by a
+  // link, or back by an unlink — undo applies the step backwards, so the Library's own shape is put back last).
+  function commit(next                            , from                                   , end         , pre           = []) {
     for (const [k, m] of next) store().set(k, m);
     if (end) {
-      const changes           = [];
+      const changes           = [...pre];
       for (const [k, m] of next) {
         const was = from?.get(k) ?? null;
         if (!sameMotion(was, m)) changes.push({ kind: 'motion', key: k, from: was, to: m });
@@ -17156,17 +17599,9 @@ function createTimeline(d              , makePanel                             =
     const place = d.place(key);
     if (!place) return store().get(key);
     let m = store().get(key);
+    // (studio-timeline-2 also put an object moved with ● on into the open scene; studio-motion-focus took that out —
+    // another object picked closes the scene, and "+ Link an object" is the one way in.)
     let c = clipOf(key);
-    // A scene open and this object not in it (it has no motion of its own: syncScene): moving it with ● on puts it in
-    // the scene (Unity's Animation window records another object under the same Animator into the same clip).
-    if (scene && !c?.scene) {
-      const l = lib().get(scene);
-      const ms = members();
-      if (l?.tracks && ms.length) {
-        c = joinClip(l, clipOf(ms[0] ));
-        chosen.set(key, scene);
-      }
-    }
     if (!c) {
       // One name for the whole gesture: a live drag remakes this first clip at every pose (from the motion before it),
       // and the Library already holds the name it took on the first pose.
@@ -17266,19 +17701,87 @@ function createTimeline(d              , makePanel                             =
     return lens.length ? Math.max(1, ...lens) : 4;
   };
 
+  /**
+   * The rows (studio-motion-focus, 2026-10-23; a request: "every other object's motion shows up too — mostly I only
+   * need the one I picked"): the picked object first, the other picked ones, then the objects linked to it (the open
+   * scene's) in the list's order. ⋯'s "Show every motion" adds every moving object (the rows as they were before).
+   * WHY the picked one first: it is the one being made; on the screen in the request it was the last of five rows.
+   */
   function rows() {
     const p = d.picked();
-    // A scene open: its objects only (and the picked one, which may join it).
-    const keys = new Set(scene ? members() : moving());
-    if (p && d.place(p)) keys.add(p);
     const order = d.order();
     const at = (k        ) => {
       const i = order.indexOf(k);
       return i < 0 ? 1e9 : i;
     };
+    const byList = (ks          ) => ks.slice().sort((a, b) => at(a) - at(b));
+    const keys           = [];
+    const add = (k                           ) => k && d.place(k) && !keys.includes(k) && keys.push(k);
+    add(head());
+    for (const k of byList(d.group?.() ?? (p ? [p] : []))) add(k);
+    for (const k of byList(members())) add(k);
+    if (all) for (const k of byList(moving())) add(k);
     const ms = scene ? members() : [];
-    return [...keys].sort((a, b) => at(a) - at(b)).map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: scene && !ms.includes(k) ? null : clipOf(k),
-      ...(scene ? { member: ms.includes(k) } : {}) }));
+    return keys.map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k), ...(scene ? { member: ms.includes(k) } : {}) }));
+  }
+
+  // ----- linking (studio-motion-focus; scene-motion.ts asScene / asOrdinary) -----
+  /** The objects "+ Link an object" offers: the scene's, in the list's order, without the rows already on the plate. */
+  function linkable()                                                      {
+    const shown = new Set(rows().map((r) => r.key));
+    return d.order().filter((k) => !shown.has(k) && !!d.place(k) && clipsOf(k).length < MAX_CLIPS)
+      .map((k) => ({ key: k, label: d.label(k), note: clipOf(k)?.name ?? '' }));
+  }
+  /**
+   * Put `other` in the motion the head shows: a scene already → it joins; an ordinary motion → it becomes a scene of
+   * the two (its keys the head's track); none yet → an empty one for both (moving either with ● sets its keys). A
+   * motion other objects use too is copied first ("Hop 2"), so theirs stays as it is. One undo step.
+   */
+  function link(other        )          {
+    const key = head();
+    if (!key || other === key || !d.place(key) || !d.place(other) || clipsOf(other).length >= MAX_CLIPS) return false;
+    const from = new Map                       ([[key, store().get(key)], [other, store().get(other)]]);
+    const next = new Map                       ();
+    const pre           = [];
+    let c = clipOf(key);
+    if (c?.scene) {
+      if (members(c.use).includes(other)) return false;
+    } else {
+      if (!c && clipsOf(key).length >= MAX_CLIPS) return false;
+      const base             = c ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
+      const was = base.use ?? base.name;
+      const name = c && usage(was).length > 1 ? lib().free(was) : was;
+      const before = lib().get(name) ?? null;
+      lib().set(name, asScene(libOf({ ...base, name }), key));
+      pre.push({ kind: 'motion-lib', key: name, from: before, to: lib().get(name) });
+      c = { ...base, name: base.name === was ? name : base.name, use: name, scene: true };
+      delete c.start;
+      next.set(key, withClip(store().get(key), base.name, c));
+    }
+    const l = lib().get(c.use ) ;
+    next.set(other, withClip(store().get(other), l.name, joinClip(l, c)));
+    chosen.set(key, c.name);
+    chosen.set(other, l.name);
+    openScene(l.name);
+    linking = false;
+    commit(next, from, true, pre);
+    return true;
+  }
+  /** Take `key` out of the open scene (its row's ×). The last one left makes it an ordinary motion again. One undo step. */
+  function unlink(key        ) {
+    const name = scene;
+    const c = name ? clipsOf(key).find((x) => x.use === name) : null;
+    const l = name ? lib().get(name) : null;
+    if (!name || !c || !l) return;
+    const pre           = [];
+    const rest = Object.keys(l.tracks ?? {}).filter((k) => k !== key);
+    if (rest.length === 1) {
+      lib().set(name, asOrdinary(l, rest[0] ));
+      pre.push({ kind: 'motion-lib', key: name, from: l, to: lib().get(name) });
+    }
+    sel = sel.filter((r) => r.key !== key);
+    chosen.delete(key);
+    commit(new Map([[key, withClip(store().get(key), c.name, null)]]), new Map([[key, store().get(key)]]), true, pre);
   }
 
   /** The picked position keys' point kind (the head's "Point ▾", studio-timeline-2): one kind, 'mixed', or null with none picked. */
@@ -17323,6 +17826,10 @@ function createTimeline(d              , makePanel                             =
       when: c ? (whenOf(c)              ) : null,
       whens: c ? (whensOf(c)                ) : [],
       scene: scene && c?.scene ? { name: scene, n: members().length } : null,
+      // studio-motion-focus: "+ Link an object" under the rows (not while every motion is shown), and ⋯'s "every motion".
+      link: key && !all && d.place(key) ? { linking, items: linkable } : null,
+      all,
+      moving: moving().length,
       point: pointOf(),
       // The line's ▷ (studio-motion-panel): the cue that starts this clip (its first way; "the game starts" for start / time).
       tryId: key && c ? (qs.find((q) => q.hits.some(([k, n]) => k === key && n === c.name))?.id ?? null) : null,
@@ -17366,8 +17873,7 @@ function createTimeline(d              , makePanel                             =
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
     const pose = shownPose(key) ;
-    const sl = scene && !clipOf(key)?.scene && members().length ? lib().get(scene) : null;
-    let c = (sl?.tracks ? joinClip(sl, clipOf(members()[0] )) : null) ?? clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once'                , when: { on: 'start' }              , keys: {} };
+    let c = clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once'                , when: { on: 'start' }              , keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p']                   )) {
@@ -17522,6 +18028,18 @@ function createTimeline(d              , makePanel                             =
       render();
     }
     if (focusStarts && shown()) (panel.focusStarts(), (focusStarts = false));
+  }
+  /**
+   * studio-motion-tool (2026-10-22): a new motion from a template on `key` — the strip's Motion button on a thing with
+   * none — shown at once with "✓ attached · When does it move?", the same moment as an attach. Its name, or null.
+   */
+  function makeFrom(key        , kind          )                {
+    if (!d.place(key) || clipsOf(key).length >= MAX_CLIPS) return null;
+    focusKey = key;
+    newClip(key, kind);
+    const name = chosen.get(key) ?? null;
+    if (name) show(key, name, true);
+    return name;
   }
   /** Attach from the card's menu (already in the Scene): attach, then show it with its "when" open. */
   function attachShow(key        , name        ) {
@@ -17711,19 +18229,18 @@ function createTimeline(d              , makePanel                             =
       }
       if (next.size) commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
     },
-    join(key) {
-      const l = scene ? lib().get(scene) : null;
-      const ms = members();
-      if (!l?.tracks || !d.place(key) || ms.includes(key) || clipsOf(key).length >= MAX_CLIPS) return;
-      chosen.set(key, l.name);
-      one(key, withClip(store().get(key), l.name, joinClip(l, ms[0] ? clipOf(ms[0]) : null)));
+    // studio-motion-focus: "+ Link an object" (its list, or a click in the game while it is open), a row's ×, ⋯'s rows.
+    link: (key) => void link(key),
+    linking(on) {
+      if (linking === on) return;
+      linking = on;
+      panel.render();
     },
-    leave(key) {
-      const c = scene ? clipsOf(key).find((x) => x.use === scene) : null;
-      if (!c) return;
-      sel = sel.filter((r) => r.key !== key);
-      chosen.delete(key);
-      one(key, withClip(store().get(key), c.name, null));
+    leave: (key) => unlink(key),
+    showAll(on) {
+      all = on;
+      panel.render();
+      d.layout();
     },
     tryCue: (id) => tryCue(id),
     tryStop: () => stopTry(),
@@ -17888,6 +18405,19 @@ function createTimeline(d              , makePanel                             =
     shownPose,
     placeFor,
     records,
+    /**
+     * studio-motion-focus: an object picked in the game (placement/selected). With "+ Link an object" open it is linked
+     * to the shown motion instead, and the pick goes back to the object being made: true = taken here (the shell does
+     * not change its selection). A click on nothing just closes the list.
+     */
+    linkPick(key               )          {
+      if (!linking || !shown()) return false;
+      const h = head();
+      linking = false;
+      if (!(key && key !== h && linkable().some((x) => x.key === key) && link(key))) panel.render();
+      if (h) d.reselect?.(h);
+      return true;
+    },
     /** The person pressed something else (the game, the card): the editor's keys are the scene's again. */
     untouch: () => (touched = false),
     onKey,
@@ -18055,8 +18585,13 @@ function createTimeline(d              , makePanel                             =
     attach,
     // studio-motion-flow: the plate on an object, from outside it (the Library's "+ New motion", a drop, its "Attach").
     make,
+    makeFrom,
     show,
     detach,
+    /** The motion the timeline shows for `key` first (the chosen one, else the one that plays at the start), or null. */
+    clipName: (key        )                => clipOf(key)?.name ?? null,
+    /** More motions can go on `key` (MAX_CLIPS). */
+    room: (key        )          => clipsOf(key).length < MAX_CLIPS,
     duplicateLib,
     deleteLib,
     renameLib: (from        , to        )                => {
@@ -18090,7 +18625,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[49] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -18142,7 +18677,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[50] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -18179,7 +18714,7 @@ __defs[50] = function (__exports) {
 // moves the words into the ask box (focused, not sent). Typing in the ask box still shows suggestions (the `typed`
 // mode below), and those still read the ask box: there the words were written in it on purpose.
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
 
                                                                         
 
@@ -18448,7 +18983,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[51] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -18549,7 +19084,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[52] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -18665,7 +19200,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[53] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -18785,7 +19320,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[54] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -18798,8 +19333,8 @@ __defs[54] = function (__exports) {
 // keys in the third grey, three columns on a PC (Edit · Tools · View), one on a phone. Only what applies to this game
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
-const { icon } = __require(20);
-const { KEYMAP, keysOf } = __require(43);
+const { icon } = __require(21);
+const { KEYMAP, keysOf } = __require(46);
 
                                     
                          
@@ -18866,7 +19401,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[55] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -18906,7 +19441,11 @@ const { h } = __require(16);
                     
               
  
-                                                 
+/**
+ * `head`: a small title over the rows that follow (studio-motion-tool, 2026-10-22: the strip's Motion menu has two
+ * lists — new kinds and the Library's motions — and "Hop" alone did not say which). Not a row: no highlight, no key.
+ */
+                                                                    
 
                                   
                                            
@@ -18984,6 +19523,10 @@ function createContextMenu(d                 ) {
     for (const e of entries) {
       if ('sep' in e) {
         el.append(h('div', { class: 'ctx-sep', role: 'separator' }));
+        continue;
+      }
+      if ('head' in e) {
+        el.append(h('div', { class: 'ctx-head', role: 'presentation', text: e.head }));
         continue;
       }
       const btn = h('button', { type: 'button', class: 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
@@ -19093,7 +19636,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[56] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -19399,7 +19942,7 @@ __def(__exports, "worldOf", () => worldOf);
 __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[57] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -19424,7 +19967,7 @@ __defs[57] = function (__exports) {
 // places, it does not count them); the tooltip and the menu's order still say it.
                                                    
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
                                           
 
                                   
@@ -19543,7 +20086,7 @@ function createLevelSwitch(d                 ) {
 
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[58] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -19739,7 +20282,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[59] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -19850,7 +20393,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[60] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -20007,7 +20550,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[61] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -20034,7 +20577,7 @@ __defs[61] = function (__exports) {
 // finger's 44 px.
                                                 
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
 
                               
                   
@@ -20077,7 +20620,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[62] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -20166,7 +20709,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[63] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -20191,7 +20734,7 @@ __defs[63] = function (__exports) {
 // live in the game and becomes one step when the picker closes. Nothing here talks to the game: the deps do.
                                                        
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
 
                              
                                                                  
@@ -20315,7 +20858,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[64] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -20332,7 +20875,7 @@ __defs[64] = function (__exports) {
                                                    
                                                    
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
 
                                 
                                                                  
@@ -20378,7 +20921,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[65] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -20591,7 +21134,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[66] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -20610,7 +21153,7 @@ __defs[66] = function (__exports) {
 // (the skill asks the AI, once, whether to gather its colours into variables).
                                                  
 const { h } = __require(16);
-const { icon } = __require(20);
+const { icon } = __require(21);
 
                               
                                                                  
@@ -20681,7 +21224,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[67] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -20697,11 +21240,11 @@ __defs[67] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(63);
-const { withLooks } = __require(62);
-const { createUiScreens } = __require(64);
-const { UiStyleModel, validLook, validTheme } = __require(65);
-const { createUiTheme } = __require(66);
+const { createUiCard } = __require(66);
+const { withLooks } = __require(65);
+const { createUiScreens } = __require(67);
+const { UiStyleModel, validLook, validTheme } = __require(68);
+const { createUiTheme } = __require(69);
                                                    
 
                              
@@ -20896,7 +21439,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[68] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -20973,7 +21516,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[69] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -20995,47 +21538,49 @@ const { validateLibrary, validatePlacement } = __require(3);
 const { filesOfObject, filesOfObjects, libraryAct, libraryFile, libraryHoldStill, libraryParts, libraryPickedFiles, libraryRedraw, libraryShowPick, libraryTool, openAsset } = __require(15);
 const { DRAG_FILE } = __require(13);
 const { createLibraryObjects, DRAG_OBJECT } = __require(18);
-const { createLibraryMotions } = __require(24);
-const { createMotionDrag } = __require(25);
-const { rulesFor } = __require(26);
-const { samePose } = __require(31);
+const { motionsPlayHere } = __require(20);
+const { createLibraryMotions } = __require(26);
+const { createMotionDrag } = __require(27);
+const { createMotionTool } = __require(28);
+const { rulesFor } = __require(29);
+const { samePose } = __require(34);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setExtraText, translate } = __require(32);
-const { NEXT_STEPS, renderNextSteps } = __require(33);
-const { statusCovers } = __require(34);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(35);
-const { bounces, saveLoud } = __require(36);
-const { askView: questionView } = __require(37);
-const { playLine, playWords } = __require(38);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(39);
-const { renderSettings } = __require(41);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(40);
-const { dropTarget, hasLayer, layerTarget } = __require(28);
-const { createPlacementPanel } = __require(44);
-const { createTimeline } = __require(48);
-const { createMotionAsk } = __require(49);
-const { motionLibrary } = __require(29);
-const { attachWorld, roundLib } = __require(30);
-const { icon, setButton } = __require(20);
-const { createPalette } = __require(50);
-const { fitPicture } = __require(51);
-const { PlacementModel } = __require(31);
-const { UndoStack, poseChange } = __require(52);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(42);
+const { detectLang, setExtraText, translate } = __require(35);
+const { NEXT_STEPS, renderNextSteps } = __require(36);
+const { statusCovers } = __require(37);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(38);
+const { bounces, saveLoud } = __require(39);
+const { askView: questionView } = __require(40);
+const { playLine, playWords } = __require(41);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(42);
+const { renderSettings } = __require(44);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(43);
+const { dropTarget, hasLayer, layerTarget } = __require(31);
+const { createPlacementPanel } = __require(47);
+const { createTimeline } = __require(51);
+const { createMotionAsk } = __require(52);
+const { motionLibrary } = __require(32);
+const { attachWorld, roundLib } = __require(33);
+const { icon, setButton } = __require(21);
+const { createPalette } = __require(53);
+const { fitPicture } = __require(54);
+const { PlacementModel } = __require(34);
+const { UndoStack, poseChange } = __require(55);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(45);
 const { displayName, forgetNames, noteItems, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(43);
-const { installTooltips } = __require(53);
-const { createShortcutSheet } = __require(54);
-const { createContextMenu } = __require(55);
-const { Levels, worldOf } = __require(56);
-const { createLevelSwitch } = __require(57);
-const { contextRows } = __require(58);
-const { bigChanges, createSafeSave } = __require(59);
-const { createUnsavedGuard, lostBy, playAsks } = __require(60);
-const { createLayerSwitch } = __require(61);
-const { uiAsPlacement, uiEntries, withUi } = __require(62);
-const { createUiWire } = __require(67);
-const { barPress, gripEnd, readFold, writeFold } = __require(68);
+const { keyOf, tipText } = __require(46);
+const { installTooltips } = __require(56);
+const { createShortcutSheet } = __require(57);
+const { createContextMenu } = __require(58);
+const { Levels, worldOf } = __require(59);
+const { createLevelSwitch } = __require(60);
+const { contextRows } = __require(61);
+const { bigChanges, createSafeSave } = __require(62);
+const { createUnsavedGuard, lostBy, playAsks } = __require(63);
+const { createLayerSwitch } = __require(64);
+const { uiAsPlacement, uiEntries, withUi } = __require(65);
+const { createUiWire } = __require(70);
+const { barPress, gripEnd, readFold, writeFold } = __require(71);
 
                                                                         
 
@@ -21065,6 +21610,8 @@ const RISE_STEP = 0.1;
 const RISE_KEY_STEP = 0.05;
 /** 1–4: the same tools in the 3D strip's order (basics pass, 2026-10-18; bridge/handles.ts TOOL_NUMBERS). 2 is Height: nothing in 2D. */
 const STRIP_NUMBERS                            = { '1': 'move', '2': 'lift', '3': 'rotate', '4': 'scale' };
+/** A / 5: the strip's Motion button (studio-motion-tool; the same as the game page's bridge/handles.ts MOTION_KEYS). */
+const MOTION_KEYS = new Set(['a', '5']);
 const STRIP_ICONS                            = { move: 'toolMove', lift: 'toolLift', rotate: 'toolRotate', scale: 'toolScale' };
 const isMac = () => /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -21101,6 +21648,8 @@ function start(host            ) {
   let canRise = false;
   // Drop to floor (End): the 3D adapter can set things on the surface below (snap to surfaces, 2026-10-19).
   let canDrop = false;
+  // The game's loader runs every motion in the edit page (core/ready `motionHere`, play-here.ts).
+  let motionHere = false;
   /** It can fly with W A S D (core/ready `fly`: 3D adapters with view.fly; camera-wasd 2026-10-18). */
   let canFly = false;
   let adapterInfo = '';
@@ -21205,6 +21754,9 @@ function start(host            ) {
     dim: () => dim,
     usable: () => editing && !playing && editLayer === 'world' && dim === '3d' && tool === 'placement' && page === 'tool',
     picked: () => (editing && editLayer === 'world' && group.length <= 1 ? selected : null),
+    // studio-motion-focus: the rows are the picked objects; a click in the game while "+ Link an object" is open links.
+    group: () => (editing && editLayer === 'world' ? group.slice() : []),
+    reselect: (k) => selectObject(k),
     place: (k) => worldModel.pose(k),
     order: () => worldItems.map((i) => i.key),
     label: (k) => {
@@ -21733,6 +22285,8 @@ function start(host            ) {
       app.dataset.menu = on ? place || 'open' : 'closed';
       // The phone's camera ↑↓ step aside while a menu is up (sendInset).
       sendInset();
+      // The strip's Motion button looks pressed while its menu is up.
+      motionTool.sync();
     },
   });
   app.append(ctxMenu.catcher, ctxMenu.el);
@@ -22039,16 +22593,18 @@ function start(host            ) {
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
+  /** A thing a motion can go on: a world object, not the ground / sky (a drop, the strip's Motion button). */
+  function motionable(k        )          {
+    const it = worldItems.find((i) => i.key === k);
+    return !!it && !it.backdrop && it.held !== 'ground';
+  }
   // A Library motion picked up and dropped on an object in the game (studio-motion-flow, motion-drag.ts).
   const motionDrag = createMotionDrag({
     t,
     app,
     frame: () => iframe,
     send: (m) => send(m),
-    target: (k) => {
-      const it = worldItems.find((i) => i.key === k);
-      return it && !it.backdrop && it.held !== 'ground' ? displayName(it, t) : null;
-    },
+    target: (k) => (motionable(k) ? displayName(worldItems.find((i) => i.key === k) , t) : null),
     drop: (k, name) => attachAndShow(k, name),
     can: () => editing && !playing && dim === '3d',
   });
@@ -22104,6 +22660,41 @@ function start(host            ) {
     rename: (name, to) => timeline.renameLib(name, to),
     askAi: host.offline ? undefined : () => focusAsk(),
     changed: () => (renderShelf(), placementPanel.render()),
+  });
+
+  // The strip's Motion button (studio-motion-tool, motion-tool.ts): what it shows, and its press — the timeline on the
+  // pick's motion, or the small menu (new from a template / from the Library). The same target rule as a drop.
+  const motionTool = createMotionTool({
+    t,
+    send: (m) => send(m),
+    target: () => {
+      if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
+      return motionable(selected) ? selected : null;
+    },
+    motions: (k) => {
+      const names = (timeline.motionOf(k)?.clips ?? []).map((c) => c.name);
+      const first = timeline.clipName(k);
+      return first ? [first, ...names.filter((n) => n !== first)] : names;
+    },
+    library: () => motionLibrary.list(),
+    room: (k) => timeline.room(k),
+    keyText: () => keyOf('motion', isMac()),
+    make: (k, kind) => {
+      if (timeline.makeFrom(k, kind)) renderShelf();
+    },
+    attach: (k, name) => attachAndShow(k, name),
+    open: (k, name) => timeline.show(k, name),
+    menu: (entries, x, y, o, avoid) => {
+      ctxMenu.show(entries, x, y, { ...o, floor: menuFloor() });
+      // Never over the button it came from (a menu moved to fit the window): above the button, else under it.
+      const r = ctxMenu.el.getBoundingClientRect();
+      if (avoid && r.top < avoid.bottom && r.bottom > avoid.top) {
+        const above = avoid.top - r.height - 6;
+        ctxMenu.el.style.top = `${Math.round(above >= 8 ? above : avoid.bottom + 6)}px`;
+      }
+    },
+    menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
+    frame: () => iframe,
   });
 
   /**
@@ -22330,6 +22921,8 @@ function start(host            ) {
         const key = Object.keys(STRIP_KEYS).find((c) => STRIP_KEYS[c] === k) .toUpperCase();
         act(`tool-${k}`, t(`pal.tool.${k}`), stripTool === k ? 'check' : STRIP_ICONS[k], () => setStripTool(k), key, `${t('pal.tool.words')} ${keyOf(k, mac)}`);
       }
+      // The strip's Motion button (studio-motion-tool): the same press, from here (the menu opens at the button).
+      if (motionTool.target()) act('tool-motion', motionTool.words(), 'toolMotion', () => pressMotion(), keyOf('motion', mac), `${t('pal.tool.motion.words')} ${t('pal.tool.words')}`);
     }
     // Drop to floor (End; snap to surfaces, 2026-10-19): what is picked, set on the surface under it.
     if (keys.length && editing && dim === '3d' && canDrop) act('drop', t('keys.drop'), 'chevronDown', () => dropToFloor(), keyOf('drop', mac), t('pal.drop.words'));
@@ -22495,13 +23088,15 @@ function start(host            ) {
     if (!entries.length) return;
     // A phone: the menu never covers the card or the ask box (review 2 ②): its bottom stays 8 px above the higher of
     // the two (the card sits on the ask bar when something is picked).
-    let floor                    ;
-    if (phone()) {
-      const card = placementPanel.cardEl;
-      const tops = [bar, card.hidden || !card.isConnected ? null : card].filter((e)                   => !!e && !!e.offsetParent).map((e) => e.getBoundingClientRect().top).filter((v) => v > 0);
-      if (tops.length) floor = Math.min(...tops);
-    }
-    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, floor, label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+    ctxMenu.show(entries, x, y, { place, touch: o.touch, keyboard: o.keyboard, floor: menuFloor(), label: place === 'object' && name ? t('ctx.menu', { name }) : place === 'scene' ? t('ctx.menuScene') : undefined });
+  }
+
+  /** A phone: the y a menu's bottom stays above (the higher of the card and the ask box), else undefined (the window). */
+  function menuFloor()                     {
+    if (!phone()) return undefined;
+    const card = placementPanel.cardEl;
+    const tops = [bar, card.hidden || !card.isConnected ? null : card].filter((e)                   => !!e && !!e.offsetParent).map((e) => e.getBoundingClientRect().top).filter((v) => v > 0);
+    return tops.length ? Math.min(...tops) : undefined;
   }
 
   /** What a press at this element of the editor page opens: a list row, a Library tile, or the list's empty part. */
@@ -23519,6 +24114,10 @@ function start(host            ) {
     if (!isStudioMessage(ev.data)) return;
     const m = ev.data                 ;
     onBridge(m);
+    // The strip's Motion button follows the pick, its motions and the layer (deduplicated: most messages change nothing;
+    // a new game page has none, so it is told again).
+    if (m.type === 'studio:core/hello' || m.type === 'studio:core/ready') motionTool.reset();
+    motionTool.sync();
     for (const cb of listeners.get(m.type) || []) {
       try {
         cb(m);
@@ -23545,6 +24144,7 @@ function start(host            ) {
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
+    if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -23587,6 +24187,7 @@ function start(host            ) {
         canRise = !!m.rise;
         canFly = !!m.fly;
         canDrop = !!m.drop;
+        motionHere = !!m.motionHere;
         // A new game page starts with its UI hidden over the world: say so again when it was shown (setUiPeek).
         if (uiPeek && editLayers && editLayers.length > 1) send({ type: 'studio:core/ui-peek', on: true });
         adapterInfo = `${m.kind}${m.version ? ' ' + m.version : ''}`;
@@ -23819,6 +24420,8 @@ function start(host            ) {
         break;
       }
       case 'studio:placement/selected':
+        // "+ Link an object" open on the timeline (studio-motion-focus): the click links that object; the pick stays.
+        if (editLayer === 'world' && timeline.linkPick(m.key)) break;
         uiWire.picked(m.key);
         selected = m.key;
         group = m.keys && m.keys.length ? m.keys.slice() : m.key ? [m.key] : [];
@@ -24274,18 +24877,12 @@ function start(host            ) {
   }
   /**
    * Can ▶ Play happen in the page on screen? Its editor is up and has listed its objects (a page still loading, one
-   * with no adapter, a level being opened: a new page as before), and no motion of the draft waits for the game's cue
-   * (a clip without `start`: a page opened for Edit never ran the loader's motions, so the game's playMotion() would
-   * find nothing there — bridge/play-switch.ts).
+   * with no adapter, a level being opened: a new page as before), and its motions can play there (play-here.ts: always
+   * with the game's loader's play hook, `motionHere`; without it, those the editor's own runner plays).
    */
   function canPlayHere()          {
     if (!bridgeAlive || phase !== 'ready' || !editing || swapping) return false;
-    const motion = worldModel.result().motion;
-    for (const m of Object.values(motion || {})) {
-      const clips = (m                                                      )?.clips;
-      if (Array.isArray(clips) && clips.some((c) => c && c.start !== true)) return false;
-    }
-    return true;
+    return motionsPlayHere(worldModel.result().motion, motionHere);
   }
   /** Play in the page on screen (see togglePlay). */
   function playInPage() {
@@ -24303,7 +24900,8 @@ function start(host            ) {
     // from that moment and Edit would come back to it. Its ▶ preview stops, as a new page stopped it (loadGame).
     timeline.reset();
     timeline.refresh(true);
-    send({ type: 'studio:core/play', on: true, motion: worldModel.result().motion });
+    // `motions`: the Library's, for the clips that use one by name (as placement.json's `motions` on a Play page).
+    send({ type: 'studio:core/play', on: true, motion: worldModel.result().motion, motions: motionLibrary.result((m) => roundLib(m, dim)) });
     renderAll();
   }
   /** Back to Edit in the same page: the layout, the camera, the pick, the timeline as they were. */
@@ -24659,6 +25257,11 @@ function start(host            ) {
       setStripTool(strip);
       return true;
     }
+    // A / 5: the strip's Motion button (studio-motion-tool), as a press on it.
+    if (!e.shift && MOTION_KEYS.has(k) && selected && editing && !blind && motionTool.target()) {
+      pressMotion();
+      return true;
+    }
     if (k === 'escape') {
       // First the strip's open choices, then the chosen tool, then the pick (the same order as in the game).
       if (stripMenu) closeStripMenu();
@@ -24688,6 +25291,10 @@ function start(host            ) {
   document.addEventListener('pointerdown', () => {
     if (stripMenu) closeStripMenu();
   }, true);
+  /** The Motion button pressed from the editor page (A / 5, ⌘K): the game page answers with the button's place (motion-press). */
+  function pressMotion() {
+    send({ type: 'studio:placement/motion', ...motionTool.state(), press: true });
+  }
   function setStripTool(k                  ) {
     stripTool = k;
     send({ type: 'studio:placement/tool', tool: k });
@@ -24879,6 +25486,7 @@ function start(host            ) {
   // The count at the last render: the Save bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
   let prevUnsaved = 0;
   function renderButtons() {
+    motionTool.sync();
     const n = dirtyCount();
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
     // apart). With nothing to undo they stay where they are, dimmed, and say so ("Nothing to undo  ⌘Z").
@@ -24970,6 +25578,7 @@ function start(host            ) {
 
   let lastPage = '';
   function renderAll(remount = false) {
+    motionTool.sync();
     document.documentElement.lang = lang;
     keySheet.render();
     app.dataset.layout = phone() ? 'phone' : 'pc';
@@ -25275,7 +25884,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[70] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -25454,19 +26063,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[71] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(69);
-const { createLocalHost } = __require(70);
+const { start } = __require(72);
+const { createLocalHost } = __require(73);
 
 start(createLocalHost());
 
 
 };
-__require(71);
+__require(74);
 })();

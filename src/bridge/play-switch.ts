@@ -27,9 +27,16 @@
 // enemy's health, things the game made or took away while playing. For those, "Play from the start" (⌘K, Play's ▾)
 // opens a new page as Play always did.
 //
+// The motions (studio-no-reload, 2026-10-22: "when I go back to edit after playing, don't load"): the game's own copy of
+// the loader (studio-placement.js) runs them from the draft, every `when` included (a click, an area, a cue, the game's
+// playMotion()) — its play hook (loaderPlay below). Before, a page opened for Edit never started the loader's motions,
+// so a draft with a clip that waits for something opened a new Play page (= loading) every time. What the loader does
+// not move (a game without it, an older copy, a copy the editor made that the loader cannot find) moveInPlay moves, as
+// it did. Back in Edit both stop before everything goes back.
+//
 // Not here (the shell decides, main.ts canPlayHere): a page whose editor is not up (still loading, no adapter), and a
-// draft with motions that wait for the game's cue (a page loaded for Edit never ran the loader's motions, so the
-// game's playMotion() finds nothing): those open a new Play page as before.
+// draft whose motions wait for something only the game's loader runs when this page's loader is an older copy without
+// the hook (core/ready `motionHere` false): those open a new Play page as before.
 import type { Pose, StudioAdapter } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 import type { Editor } from './editor.ts';
@@ -45,9 +52,27 @@ export interface PlaySwitchDeps {
 
 export interface PlaySwitch {
   /** studio:core/play from the shell. Runs in the order sent (Play waits for the first moments; Edit waits for Play). */
-  handle(m: { on: boolean; motion?: Record<string, unknown>; viewState?: unknown }): void;
+  handle(m: { on: boolean; motion?: Record<string, unknown>; motions?: unknown[]; viewState?: unknown }): void;
   /** Is the page playing now (tests, through _play). */
   readonly playing: boolean;
+}
+
+/** The loader's play hook (studio-placement.js `hook`): one per copy of the loader on the page. */
+interface LoaderPlay {
+  has(): boolean;
+  start(d: { motion?: Record<string, unknown>; motions?: unknown[] }): string[];
+  stop(): void;
+}
+/** The copies of the loader on the page that can play here: those that placed a world (the game's, not the editor's). */
+export function loaderPlay(win: Window & typeof globalThis): LoaderPlay[] {
+  const set = (win as unknown as Record<symbol, Set<LoaderPlay> | undefined>)[Symbol.for('game-studio.play')];
+  return set ? [...set].filter((h) => {
+    try {
+      return h.has();
+    } catch {
+      return false;
+    }
+  }) : [];
 }
 
 export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
@@ -70,7 +95,10 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
     }
   };
 
-  async function go(motion: Record<string, unknown> | undefined) {
+  // The loader copies that run this Play's motions (stopped in back()).
+  let loaders: LoaderPlay[] = [];
+
+  async function go(motion: Record<string, unknown> | undefined, motions: unknown[] | undefined) {
     if (playing) return;
     await editor.settled();
     playing = true;
@@ -90,15 +118,27 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
       }
     }
     editor.handle({ type: 'studio:core/edit', on: false });
-    // The world's motions, through the editor's copies layer (a copy that moves is the editor's object). Its first
-    // listed layer is the world's when the game has one (editor.ts playLayers).
-    const world = layers[0]?.edits;
     let moving: string[] = [];
-    if (world && motion && typeof motion === 'object') {
-      try {
-        moving = moveInPlay(world, { motion }, win, () => run === mine && playing);
-      } catch (e) {
-        console.warn('[studio] Play: the motions could not start:', e);
+    if (motion && typeof motion === 'object') {
+      // The game's loader first: it runs every `when`, on the objects the game itself holds. The keys it moves go into
+      // its global set, which moveInPlay leaves alone.
+      loaders = loaderPlay(win);
+      for (const h of loaders) {
+        try {
+          moving.push(...h.start({ motion, motions }));
+        } catch (e) {
+          console.warn('[studio] Play: the loader could not start the motions:', e);
+        }
+      }
+      // The rest through the editor's copies layer (a copy that moves is the editor's object). Its first listed layer
+      // is the world's when the game has one (editor.ts playLayers).
+      const world = layers[0]?.edits;
+      if (world) {
+        try {
+          moving.push(...moveInPlay(world, { motion, motions }, win, () => run === mine && playing));
+        } catch (e) {
+          console.warn('[studio] Play: the motions could not start:', e);
+        }
       }
     }
     playAsk.wake(Promise.resolve(moving));
@@ -114,6 +154,15 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
     playAsk.sleep();
     if (playAsk.hold) playAsk.hold.pause();
     else core.time.freeze();
+    // The loader's motions stop where they are; everything goes back just below.
+    for (const h of loaders) {
+      try {
+        h.stop();
+      } catch {
+        /* the poses below */
+      }
+    }
+    loaders = [];
     for (const l of kept) {
       try {
         l.raw.watch?.(false);
@@ -141,7 +190,7 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
       return playing;
     },
     handle(m) {
-      chain = chain.then(() => (m.on ? go(m.motion) : back(m.viewState))).catch((e) => console.warn('[studio] Play / Edit switch failed:', e));
+      chain = chain.then(() => (m.on ? go(m.motion, m.motions) : back(m.viewState))).catch((e) => console.warn('[studio] Play / Edit switch failed:', e));
     },
   };
 }

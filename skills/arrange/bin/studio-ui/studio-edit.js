@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.23 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.24 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4529,6 +4529,14 @@ const MSG_PREFIX = 'studio:';
                                                               
                                                                                                    
                                                              
+     
+                                                                                                                    
+                                                                                                                        
+                                                                                                                    
+                                                                                                                    
+                                                                                                          
+     
+                                                                                                                    
                                                                                              
                                                   
      
@@ -4580,14 +4588,16 @@ const MSG_PREFIX = 'studio:';
                                                                                                                   
                                                                                                                       
                                                                                                                    
-                                                                                                              
+                                                                                                                  
+                                                                                                                    
+                                                                                         
                                                                                                                       
                                                                                                                      
                                                                                                      
                                                                                                                     
                                                        
      
-                                                                                                    
+                                                                                                                         
      
                                                                                                                      
                                                                                                                    
@@ -4654,6 +4664,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                 
                                                                                                                   
                      
+         
+                                                                                                                         
+                                                                                                                       
+                                                                                                            
+         
+                           
          
                                                                                                                   
                                                                                                                    
@@ -4728,6 +4744,13 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
      
                                                                                                   
+     
+                                                                                                                       
+                                                                                                                      
+                                                                                                                      
+                                                 
+     
+                                                                                                                                         
                                                                                  
                                                                       
                                                                                            
@@ -7026,6 +7049,10 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
  */
 async function applyPlacement(root, source = './placement.json', opts = {}) {
   const report = { applied: [], missing: [], unstable: [], skipped: [] };
+  const three = !!(root && root.isObject3D);
+  // The world the play hook moves (below), kept before the file is read: a game with no placement.json yet (404) still
+  // plays the editor's draft motions in its edit page.
+  if (root && typeof root === 'object' && root.nodeType !== 9) last = { root, n: three ? 3 : 2, three };
   let data = source;
   if (typeof source === 'string') {
     try {
@@ -7037,7 +7064,6 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
       return report;
     }
   }
-  const three = !!(root && root.isObject3D);
   const dim = three ? '3d' : '2d';
   if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
     warn('not a placement file');
@@ -7440,7 +7466,39 @@ function poseAt(o, base, at, three) {
   if (at.s) three ? o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1], base.s[2] * at.s[2]) : o.scale.set(base.s[0] * at.s[0], base.s[1] * at.s[1]);
 }
 
-const editing = () => typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+// `here`: the editor's page plays now (▶ Play in the same page, play hook below): the motions run as on a Play page.
+let here = false;
+const editing = () => !here && typeof location !== 'undefined' && /[?&]studio=edit(&|$)/.test(location.search);
+
+// ▶ Play in the editor's own page (studio-no-reload, 2026-10-22: "when I go back to edit after playing, don't load"):
+// the edit page becomes Play without opening the game again, so the motions this file runs on a Play page — every
+// `when` (a click, an area, a cue, the game's playMotion()) — must start in that page too, from the draft the editor
+// sends (it may differ from the file the page read, or the page may have read none). The editor finds this copy through
+// a global set (the game and the editor each load their own copy; only the game's has a world: `last`, the root of the
+// last applyPlacement given one):
+//   start({ motion, motions }) → the keys it moves; stop() → they stop where they are (the editor puts them back).
+// Before, a page opened for Edit never started them, and the editor opened a new Play page whenever a clip waited for
+// something (bridge/play-switch.ts).
+let last = null;
+const hook = {
+  has: () => !!last,
+  start(d) {
+    if (!last) return [];
+    here = true;
+    const r = {};
+    runMotion(last.root, { motion: d && d.motion, motions: d && d.motions }, last.n, last.three, r);
+    return r.motion || [];
+  },
+  stop() {
+    here = false;
+    gen++;
+    ticking = false;
+    stopMotion();
+    known.clear();
+    run = null;
+  },
+};
+if (typeof globalThis !== 'undefined') (globalThis[Symbol.for('game-studio.play')] || (globalThis[Symbol.for('game-studio.play')] = new Set())).add(hook);
 
 function remember(key, o, three, clips) {
   const base = three
@@ -9793,6 +9851,15 @@ const TOOL_NUMBERS                             = { move: '1', lift: '2', rotate:
 const toolFromKey = (key        )                    =>
   (Object.keys(TOOL_KEYS)                ).find((k) => TOOL_KEYS[k] === key.toUpperCase() || TOOL_NUMBERS[k] === key) ?? null;
 
+/**
+ * The Motion button's keys (studio-motion-tool, 2026-10-22): A ("animate") and 5, the strip's order after 1–4. Not a
+ * tool (nothing is dragged with it): a press opens the pick's motion, or its small menu. A is also fly-left (W A S D),
+ * but only with nothing picked or the right button held — the same split as S (Size / fly back); the Motion keys
+ * work with something picked. shell/keymap.ts lists them; test/keymap.test.ts keeps the two the same.
+ */
+const MOTION_KEYS = ['A', '5']         ;
+const isMotionKey = (key        )          => (MOTION_KEYS                     ).includes(key.toUpperCase());
+
 const HANDLE_LABELS                                           = {
   en: { move: 'Move (M)', rotate: 'Turn (T)', lift: 'Height (H)', scale: 'Size (S)' },
   ja: { move: '移動（M）', rotate: '回す（T）', lift: '高さ（H）', scale: '大きさ（S）' },
@@ -9889,6 +9956,14 @@ const ICONS                             = {
   scale: '<path d="M5 19 19 5M13.5 5H19v5.5M5 13.5V19h5.5"/>',
 };
 
+/**
+ * The Motion button's picture: a dotted path from a small point to the thing at its end (a ring) — "this goes from
+ * here to there over time". Not the timeline's ◆ (a key, one moment) nor ▶ (Play, which runs the whole game).
+ */
+// The thing at the top LEFT (not right, as first drawn): the top right corner is where the dot goes, and the ring
+// there hid it (the first run's pictures, 2026-10-22).
+const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dasharray="0.01 3.2"/><circle cx="20" cy="19" r="1.3" fill="currentColor" stroke="none"/><circle cx="5.5" cy="6.5" r="2.6"/>';
+
                           
                                          
             
@@ -9917,6 +9992,13 @@ const ICONS                             = {
                                                                                            
                                   
                                                       
+     
+                                                                                                                         
+                                                                                                                         
+     
+                                                                                    
+                                                                                                                      
+                               
      
                                                                            
                                                                       
@@ -9983,7 +10065,19 @@ button.rest { color: #f5f5f7; background: rgba(255,255,255,.12); }
    loudest thing on the game after the object itself (review 2, photo 03; the light editor's was black). */
 button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cursor: grabbing; transition-duration: 0s; }
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
-button[hidden] { display: none; }
+button[hidden], .tsep[hidden] { display: none; }
+/* The Motion button (studio-motion-tool, 2026-10-22) sits after a hairline: the four tools change how the thing stands
+   (a drag does it), Motion changes what it does over time (a press opens it). The same button as the tools — size,
+   ink, ground — so the strip stays one object; the hairline is the menu's own (.msep). */
+.tsep { align-self: stretch; width: .5px; margin: 5px 3px; background: rgba(255,255,255,.14); flex: none; }
+.root.light .tsep { background: rgba(0,0,0,.1); }
+.row.big .tsep { margin: 10px 4px; }
+button[data-studio-motion] { cursor: pointer; }
+/* "This thing moves": a 5 px dot in the button's own ink, top right — no new colour on the game (orange is your pick,
+   violet the AI's). A finger strip: 6 px, 7 in. */
+.dot { position: absolute; right: 3px; top: 3px; width: 5px; height: 5px; border-radius: 50%; background: currentColor; display: none; pointer-events: none; }
+button.has .dot { display: block; }
+.row.big .dot { right: 7px; top: 7px; width: 6px; height: 6px; }
 /* Touch: past 44 px for the finger, whatever the drawn size. */
 @media (pointer: coarse) { button::after { content: ""; position: absolute; inset: -2px; } }
 svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6px; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
@@ -10194,6 +10288,19 @@ function createHandles(doc          , hasLift         )          {
     buttons[k] = b;
     row.appendChild(b);
   }
+  // The Motion button, after a hairline (hidden until the editor says the pick can have a motion: setMotion).
+  const motionSep = doc.createElement('div');
+  motionSep.className = 'tsep';
+  motionSep.setAttribute('role', 'separator');
+  motionSep.hidden = true;
+  const motionBtn = doc.createElement('button');
+  motionBtn.type = 'button';
+  motionBtn.dataset.studioMotion = '';
+  motionBtn.hidden = true;
+  motionBtn.setAttribute('aria-haspopup', 'menu');
+  motionBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${MOTION_ICON}</svg><span class="dot"></span>`; // static markup only
+  row.append(motionSep, motionBtn);
+  let motionShow = false;
   buttons.move.classList.add('rest');
   for (const k of kinds) buttons[k].setAttribute('aria-pressed', 'false');
   // One layer per kind of mark, bottom to top: ghosts, AI outlines, your outline, tags, strip, band.
@@ -10416,11 +10523,17 @@ function createHandles(doc          , hasLift         )          {
         positionMenu();
         return;
       }
-      const n = kinds.filter((k) => !buttons[k].hidden).length;
+      const tools = kinds.filter((k) => !buttons[k].hidden).length;
+      // The Motion button counts as a button; its hairline adds 8.5 px either way (.5 + 3 + 3 and one more 2 px gap on
+      // the mouse strip; .5 + 4 + 4 and no gaps on the finger strip).
+      motionBtn.hidden = !motionShow;
+      motionSep.hidden = !motionShow || tools === 0;
+      const n = tools + (motionShow ? 1 : 0);
       if (n === 0) row.style.display = 'none';
       // .big (finger size): no gaps, 2 px in (W1-2); else 2 px gaps, 4 px in.
       const big = size >= 40;
-      const rowW = big ? n * size + 4 : n * size + (n - 1) * 2 + 4;
+      const sepW = motionSep.hidden ? 0 : 8.5;
+      const rowW = (big ? n * size + 4 : n * size + (n - 1) * 2 + 4) + sepW;
       const rowH = big ? size + 4 : size + 8;
       const lo = 8 + inset.top, hi = vh - 8 - inset.bottom - rowH;
       // Under the object; above it when there is no room below (over the ask bar on a phone).
@@ -10561,6 +10674,17 @@ function createHandles(doc          , hasLift         )          {
       hintEl.style.display = 'flex';
       positionHint();
     },
+    setMotion(m) {
+      motionShow = !!m.show;
+      motionBtn.classList.toggle('has', !!m.has);
+      motionBtn.classList.toggle('on', !!m.open);
+      motionBtn.setAttribute('aria-expanded', String(!!m.open));
+      if (motionBtn.title !== m.label) {
+        motionBtn.title = m.label;
+        motionBtn.setAttribute('aria-label', m.label);
+      }
+    },
+    motionRect: () => (motionShow && row.style.display !== 'none' && !motionBtn.hidden ? motionBtn.getBoundingClientRect() : null),
     setLabels(labels) {
       for (const k of kinds) {
         buttons[k].setAttribute('aria-label', labels[k]);
@@ -10629,6 +10753,14 @@ function moreFromEvent(e       )                          {
   return null;
 }
 
+/** The Motion button under a pointer event (its box in the page's px), or null. */
+function motionFromEvent(e       )                 {
+  for (const el of e.composedPath()) {
+    if ((el               ).dataset?.studioMotion !== undefined && (el               ).tagName === 'BUTTON') return (el               ).getBoundingClientRect();
+  }
+  return null;
+}
+
 /** The choice under a pointer event (the strip's menu), or null. */
 function choiceFromEvent(e       )                {
   for (const el of e.composedPath()) {
@@ -10653,6 +10785,8 @@ function handleFromEvent(e       )                    {
 __def(__exports, "TOOL_KEYS", () => TOOL_KEYS);
 __def(__exports, "TOOL_NUMBERS", () => TOOL_NUMBERS);
 __def(__exports, "toolFromKey", () => toolFromKey);
+__def(__exports, "MOTION_KEYS", () => MOTION_KEYS);
+__def(__exports, "isMotionKey", () => isMotionKey);
 __def(__exports, "HANDLE_LABELS", () => HANDLE_LABELS);
 __def(__exports, "READOUT_WORDS", () => READOUT_WORDS);
 __def(__exports, "TOOL_HINT", () => TOOL_HINT);
@@ -10663,6 +10797,7 @@ __def(__exports, "TURN_WAY_WORDS", () => TURN_WAY_WORDS);
 __def(__exports, "MANY_LABEL", () => MANY_LABEL);
 __def(__exports, "createHandles", () => createHandles);
 __def(__exports, "moreFromEvent", () => moreFromEvent);
+__def(__exports, "motionFromEvent", () => motionFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
@@ -11021,7 +11156,7 @@ const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
 const { keyStep } = __require(29);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey } = __require(30);
+const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(30);
                                                      
 const { createRiseButtons } = __require(31);
 const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(32);
@@ -11062,6 +11197,10 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                          
                                                                           
                     
+                                                                                   
+                                                                                    
+                                                                                                          
+                      
                                                                               
                              
                                                                                                         
@@ -11781,6 +11920,14 @@ function attachInput(deps           )              {
     return { dist: Math.hypot(a .x - b .x, a .y - b .y), cx: (a .x + b .x) / 2, cy: (a .y + b .y) / 2 };
   };
 
+  // The Motion button as the editor page last described it (placement/motion): shown, has a motion, its words.
+  let motion = { show: false, has: false, label: '', open: false };
+  /** Tell the editor page the Motion button was pressed (`r` = the button's box; null = off screen: a key). */
+  const pressMotion = (r                , touch         , keyboard         ) => {
+    if (!state.selected) return;
+    post({ type: 'studio:placement/motion-press', key: state.selected, x: r?.left ?? 0, y: r?.top ?? 0, w: r?.width ?? 0, h: r?.height ?? 0, touch, keyboard });
+  };
+
   const onDown = (e              ) => {
     const h = handleFromEvent(e);
     block(e);
@@ -11824,6 +11971,16 @@ function attachInput(deps           )              {
       toggleMenu(more);
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
+      return;
+    }
+    // The Motion button (studio-motion-tool, 2026-10-22): not a tool — the editor page opens the pick's motion, or its
+    // small menu at the button. On the press, as a menu button does (the editor's menu then takes the release).
+    const mot = motionFromEvent(e);
+    if (mot) {
+      if (handles.menuOpen()) menu(null);
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      if (state.selected && !p.menu && motion.show) pressMotion(mot, p.type !== 'mouse', false);
       return;
     }
     // A choice in the strip's menu (turn axis / resize mode): it is used at once — its tool is chosen and the
@@ -12165,6 +12322,11 @@ function attachInput(deps           )              {
       chooseTool(tk, 'key');
       return;
     }
+    // A / 5: the Motion button (studio-motion-tool), as a press on it. After fly: A with the right button held flies.
+    if (!e.shiftKey && key && motion.show && isMotionKey(e.key) && !e.repeat && !typingIn(e.target)) {
+      pressMotion(handles.motionRect(), false, true);
+      return;
+    }
     // R: the next turn axis (3D, one or several picked), with the choices shown for a moment of feedback.
     if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
       setAxis('next');
@@ -12430,6 +12592,14 @@ function attachInput(deps           )              {
     },
     closeMenu() {
       if (handles.menuOpen()) menu(null);
+    },
+    setMotion(m) {
+      motion = { show: !!m.show, has: !!m.has, label: String(m.label || ''), open: !!m.open };
+      handles.setMotion(motion);
+      place();
+    },
+    pressMotion() {
+      if (motion.show) pressMotion(handles.motionRect(), false, true);
     },
     setLook(on) {
       spaceHeld = !!on;
@@ -13726,6 +13896,966 @@ __def(__exports, "createUiExtras", () => createUiExtras);
 };
 __defs[37] = function (__exports) {
 'use strict';
+// ../shell/layers.ts
+
+// Draw order (2D layers) in the shell: which object is in front of which.
+// Pure functions over the item list (no DOM), so they are unit-tested.
+//
+// The adapter reports, per object, `layer` (the sibling list it is drawn in,
+// usually its parent) and `pose.z` (its place among the LISTED objects of that
+// list, 0 = back). Changing the order is one setPose with a new z, so undo,
+// redo and the Save count reuse the pose machinery.
+//
+// WHY every target is "the z of another listed sibling" and never z ± 1: the
+// adapter's ranks can have gaps (objects hidden by the game's rules are still
+// counted), and moving to a sibling's z puts the object just past that
+// sibling in the direction of travel. So "forward" always passes exactly one
+// thing the person can see.
+//
+// Ground / background (Item.backdrop, play test 2026-10-16): "to back"
+// once put a rock behind the ground, where it vanished. The backdrops at the
+// back of a list stay there: they have no targets of their own, and nothing
+// else goes behind them ("to back" = just in front of the ground).
+                                           
+
+                                                                    
+
+/** True when the adapter can change the draw order of this object. */
+const hasLayer = (it                  )                                 =>
+  !!it && typeof it.layer === 'string' && typeof it.pose.z === 'number';
+
+/** Listed objects drawn in the same list as `key`, back → front. */
+function siblingsOf(items        , key        )         {
+  const it = items.find((i) => i.key === key);
+  if (!hasLayer(it)) return [];
+  return items.filter((i) => hasLayer(i) && i.layer === it.layer).sort((a, b) => a.pose.z  - b.pose.z );
+}
+
+/**
+ * How many siblings (back → front list) are ground / background kept at the
+ * back: the lowest place anything else may take.
+ */
+function floorOf(sib        )         {
+  let n = 0;
+  while (n < sib.length && sib[n] .backdrop) n++;
+  return n;
+}
+
+/** The z to send for a button/shortcut, or null when the object is already there (or is the ground). */
+function layerTarget(items        , key        , op         )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib.length < 2 || sib[i] .backdrop) return null;
+  const floor = floorOf(sib);
+  const to = op === 'toFront' ? sib.length - 1 : op === 'toBack' ? floor : op === 'forward' ? i + 1 : i - 1;
+  if (to < floor || to >= sib.length || to === i) return null;
+  return sib[to] .pose.z ;
+}
+
+/**
+ * The z to send after a drag in the list. `frontIndex` = where the object was
+ * dropped among its siblings as the list shows them (front first, 0 = top),
+ * counted with the dragged object taken out.
+ */
+function dropTarget(items        , key        , frontIndex        )                {
+  const sib = siblingsOf(items, key);
+  const i = sib.findIndex((s) => s.key === key);
+  if (i < 0 || sib[i] .backdrop) return null;
+  const n = sib.length;
+  // Front-first position k ↔ back-first rank n-1-k; dropped below the ground = just in front of it.
+  const rank = Math.max(floorOf(sib), n - 1 - Math.max(0, Math.min(n - 1, Math.round(frontIndex))));
+  return rank === i ? null : sib[rank] .pose.z ;
+}
+
+/** Keys of one list, back → front (what placement.json `order[].keys` holds). */
+function orderOfLayer(items        , layer        )           {
+  return items.filter((i) => hasLayer(i) && i.layer === layer).sort((a, b) => a.pose.z  - b.pose.z ).map((i) => i.key);
+}
+
+                           
+             
+                                                                                                 
+                
+ 
+                             
+                                                                                         
+                
+                   
+ 
+
+/**
+ * The object list in draw order, front on top. Lists drawn inside a listed
+ * object (Pixi: sprites in a container) are shown right under that object,
+ * indented. Objects without a layer are not included (the caller shows them
+ * after, as before).
+ */
+function layerBlocks(items        )               {
+  const layered = items.filter(hasLayer);
+  const keys = new Set(items.map((i) => i.key));
+  const byLayer = new Map                ();
+  for (const it of layered) {
+    const arr = byLayer.get(it.layer ) || [];
+    arr.push(it);
+    byLayer.set(it.layer , arr);
+  }
+  for (const arr of byLayer.values()) arr.sort((a, b) => b.pose.z  - a.pose.z );
+  const done = new Set        ();
+  const walk = (layer        , depth        , rows            ) => {
+    if (done.has(layer)) return; // a malformed adapter could report a cycle
+    done.add(layer);
+    for (const it of byLayer.get(layer) || []) {
+      rows.push({ item: it, depth });
+      if (byLayer.has(it.key)) walk(it.key, depth + 1, rows);
+    }
+  };
+  const blocks               = [];
+  for (const layer of byLayer.keys()) {
+    if (keys.has(layer)) continue; // drawn inside a listed object: shown under it
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  // Lists whose parent object is listed but never reached (cycles): still show them.
+  for (const layer of byLayer.keys()) {
+    if (done.has(layer)) continue;
+    const rows             = [];
+    walk(layer, 0, rows);
+    blocks.push({ layer, rows });
+  }
+  return blocks;
+}
+
+__def(__exports, "hasLayer", () => hasLayer);
+__def(__exports, "siblingsOf", () => siblingsOf);
+__def(__exports, "floorOf", () => floorOf);
+__def(__exports, "layerTarget", () => layerTarget);
+__def(__exports, "dropTarget", () => dropTarget);
+__def(__exports, "orderOfLayer", () => orderOfLayer);
+__def(__exports, "layerBlocks", () => layerBlocks);
+};
+__defs[38] = function (__exports) {
+'use strict';
+// ../shell/pose-compare.ts
+
+// Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
+// Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
+// poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
+const { LIMITS } = __require(13);
+
+function roundTo(v        , step        )         {
+  return Math.round(v / step) * step;
+}
+
+/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
+function roundPose(p      , dim     )       {
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
+  const out       = { p: p.p.map((v) => fix(v, step)) };
+  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
+  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
+  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
+  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
+  return out;
+}
+
+/**
+ * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
+ *
+ * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
+ * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
+ * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
+ * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
+ */
+function sameAngle(a                    , b                    )          {
+  if (a === undefined || b === undefined) return a === b;
+  const TAU = Math.PI * 2;
+  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
+  // Half a rounding step: values one step apart (a real nudge) still differ.
+  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
+}
+
+function samePose(a                  , b                  , dim     )          {
+  if (!a || !b) return a === b;
+  const x = roundPose(a, dim), y = roundPose(b, dim);
+  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
+  if (!sameAngle(x.r, y.r)) return false;
+  if (!x.t || !y.t) return !x.t === !y.t;
+  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
+}
+
+__def(__exports, "roundPose", () => roundPose);
+__def(__exports, "samePose", () => samePose);
+};
+__defs[39] = function (__exports) {
+'use strict';
+// ../shell/timeline-model.ts
+
+// The timeline's pure logic (studio-timeline, 2026-10-22; CONTRACT.md §1.9): clips and
+// their keys, the pose an object shows at a time, the older motion shape read as a clip, the templates, and the key
+// edits the panel makes (set, move, delete, copy / paste, ease). No DOM: unit-tested in test/timeline.test.ts.
+//
+// WHY offsets from the place, not absolute values (Unity's clips hold absolute ones): the object's place
+// (`objects` in placement.json) keeps its meaning — moving the object with the timeline folded carries the whole
+// motion along, a level that puts the same object elsewhere reuses the motion, and the AI reads "turns 90° from where
+// it stands". Position is added, angles are added, size is multiplied.
+// WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
+// the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
+                                                                                                                        
+const { clipAt, motionAt } = __require(20);
+
+const CHANNELS                  = ['p', 'r', 's'];
+/** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
+const SAME_T = 0.0005;
+/** Keys dragged on the timeline snap to this (seconds); Alt drags freely. 1/20 s: fine enough for game motion, coarse enough to land on 1.0. */
+const SNAP_T = 0.05;
+const MIN_LEN = 0.1;
+const MAX_LEN = 600;
+const MAX_CLIPS = 16;
+const MAX_KEYS = 256;
+/** A new key's ease (Blender's and Unity's default curve: starts slowly, stops slowly). */
+const DEFAULT_EASE             = 'ease';
+
+                                                                                     
+
+const rt = (t        ) => Math.round(t * 1000) / 1000;
+const zeros = (n        ) => Array.from({ length: n }, () => 0);
+const ones = (n        ) => Array.from({ length: n }, () => 1);
+/** How many numbers one key of a channel holds: p / s 3 in 3D, 2 in 2D; r 3 in 3D, 1 in 2D. */
+const width = (ch               , dim     ) => (dim === '3d' ? 3 : ch === 'r' ? 1 : 2);
+/** The key value that changes nothing (the rest of a channel). */
+const restOf = (ch               , dim     ) => (ch === 's' ? ones(width(ch, dim)) : zeros(width(ch, dim)));
+
+/** Where a clip is at `t` (the loader's own maths, so the editor and the game agree). */
+function offsetsAt(clip                               , t        )                              {
+  return clipAt(clip, t)                               ;
+}
+
+/** The pose shown for an object at its place with these offsets. */
+function compose(place      , at         , dim     )       {
+  const out       = structuredClone(place);
+  if (at.p) out.p = place.p.map((v, i) => v + (at.p [i] ?? 0));
+  if (at.r) {
+    if (dim === '3d') {
+      out.r = (place.r ?? 0) + (at.r[1] ?? 0);
+      const tx = (place.t?.[0] ?? 0) + (at.r[0] ?? 0), tz = (place.t?.[1] ?? 0) + (at.r[2] ?? 0);
+      // A tilt only when there is one: a pose without `t` leaves the game's own x / z angles alone (contract Pose.t).
+      if (place.t || Math.abs(tx) > 1e-9 || Math.abs(tz) > 1e-9) out.t = [tx, tz];
+    } else out.r = (place.r ?? 0) + (at.r[0] ?? 0);
+  }
+  if (at.s) {
+    const n = width('s', dim);
+    const base = Array.isArray(place.s) ? place.s : Array.from({ length: n }, () => (typeof place.s === 'number' ? place.s : 1));
+    const s = base.map((v, i) => v * (at.s [i] ?? 1));
+    out.s = s.every((v) => Math.abs(v - s[0] ) < 1e-9) && !Array.isArray(place.s) ? s[0]  : s;
+  }
+  return out;
+}
+
+/** The offsets that turn `place` into `pose` (compose's inverse), for one channel. */
+function offsetOf(place      , pose      , ch               , dim     )           {
+  if (ch === 'p') return pose.p.map((v, i) => v - (place.p[i] ?? 0));
+  if (ch === 'r') {
+    if (dim !== '3d') return [(pose.r ?? 0) - (place.r ?? 0)];
+    return [(pose.t?.[0] ?? 0) - (place.t?.[0] ?? 0), (pose.r ?? 0) - (place.r ?? 0), (pose.t?.[1] ?? 0) - (place.t?.[1] ?? 0)];
+  }
+  const n = width('s', dim);
+  const vec = (s           ) => (Array.isArray(s) ? s : Array.from({ length: n }, () => (typeof s === 'number' ? s : 1)));
+  const a = vec(place.s), b = vec(pose.s);
+  return b.map((v, i) => (a[i] ? v / a[i]  : 1));
+}
+
+/** The channels whose value differs between two poses (what a drag / a typed number changed). */
+function changedChannels(a      , b      , dim     )                  {
+  const diff = (x          , y          , eps        ) => x.some((v, i) => Math.abs(v - (y[i] ?? 0)) > eps);
+  const out                  = [];
+  if (diff(a.p, b.p, 1e-6)) out.push('p');
+  if (diff(offsetOf(a, b, 'r', dim), zeros(width('r', dim)), 1e-6)) out.push('r');
+  if (diff(offsetOf(a, b, 's', dim), ones(width('s', dim)), 1e-6)) out.push('s');
+  return out;
+}
+
+// ----- the older shape (v0.1.13) as a clip -----
+
+/**
+ * A motion in the timeline's shape: its clips as they are, or the older path / speed / repeat / spin turned into one
+ * clip "Motion" that plays at the start. The path becomes position keys at the times the old constant speed reached
+ * each point (straight lines: 'linear'); a loop gets its way back to the start as a last key; a spin becomes one turn
+ * (0 → 360°, linear) that loops. With both, the spin is spread over the path's time.
+ */
+function toClips(m                           , dim     )                {
+  if (!m) return null;
+  if (m.clips?.length) return { clips: m.clips.map((c) => structuredClone(c)) };
+  const keys                     = {};
+  let len = 0;
+  let repeat               = 'loop';
+  if (m.path?.length) {
+    const n = m.path[0] .length;
+    const pts = [zeros(n), ...m.path.map((q) => q.slice())];
+    repeat = m.repeat ?? 'pingpong';
+    if (repeat === 'loop') pts.push(zeros(n));
+    const speed = m.speed && m.speed > 0 ? m.speed : 1;
+    let t = 0;
+    keys.p = pts.map((v, i) => {
+      if (i) t += Math.hypot(...v.map((x, k) => x - pts[i - 1] [k] )) / speed;
+      return { t: rt(t), v, ease: 'linear'               };
+    });
+    len = Math.max(MIN_LEN, rt(t));
+  }
+  if (m.spin) {
+    const turn = Math.sign(m.spin) * Math.PI * 2;
+    const T = len || rt(Math.abs(turn / m.spin));
+    len ||= Math.max(MIN_LEN, T);
+    const v = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
+    keys.r = [{ t: 0, v: v(0), ease: 'linear' }, { t: len, v: v(keys.p ? m.spin * len : turn), ease: 'linear' }];
+  }
+  if (!keys.p && !keys.r) return null;
+  return { clips: [{ name: 'Motion', len, repeat, start: true, keys }] };
+}
+
+// ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
+
+// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
+                                                                                 
+const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
+
+/**
+ * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
+ * so the person drags them where they want (in the scene, or on the timeline).
+ */
+function fromTemplate(kind          , name        , dim     )             {
+  const d = dim === '3d' ? 3 : 150;
+  const v = (x        , z        ) => (dim === '3d' ? [x, 0, z] : [x, z]);
+  const k = (t        , val          , ease             = DEFAULT_EASE)            => ({ t, v: val, ease });
+  switch (kind) {
+    case 'pingpong':
+      return { name, len: 2, repeat: 'pingpong', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
+    case 'once':
+      return { name, len: 2, repeat: 'once', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
+    case 'loop':
+      // A round: right, away, back, home — through the points on a curve (the position's smooth way).
+      return { name, len: 4, repeat: 'loop', keys: { p: [k(0, v(0, 0), 'linear'), k(1, v(d, 0), 'linear'), k(2, v(d, -d), 'linear'), k(3, v(0, -d), 'linear'), k(4, v(0, 0), 'linear')] } };
+    case 'spin': {
+      const r = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
+      return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
+    }
+    case 'scene':
+      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
+    default:
+      return { name, len: 2, repeat: 'once', keys: {} };
+  }
+}
+
+/** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
+function freeName(clips              , base        )         {
+  const taken = new Set(clips.map((c) => c.name));
+  if (!taken.has(base)) return base;
+  for (let i = 2; ; i++) if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
+}
+
+// ----- keys -----
+
+/** A key picked on the timeline: object, channel, time (a time names a key: two keys of a channel never share one). */
+                         
+              
+                    
+            
+ 
+const refId = (r        ) => `${r.key}\n${r.ch}\n${rt(r.t)}`;
+const sameT = (a        , b        ) => Math.abs(a - b) < SAME_T;
+
+const sorted = (ks             ) => ks.slice().sort((a, b) => a.t - b.t);
+
+/** The clip with a key at `t` on `ch` (replacing one at that moment, keeping its ease); the length grows to hold it. */
+function setKey(c            , ch               , t        , v          , ease             )             {
+  const out = structuredClone(c);
+  const ks = out.keys[ch] ?? [];
+  const at = ks.findIndex((k) => sameT(k.t, t));
+  const key            = { t: rt(t), v: v.slice(), ease: ease ?? (at >= 0 ? ks[at] .ease : undefined) ?? DEFAULT_EASE };
+  // A key set again keeps the path's handles it had (studio-timeline-2): moving a bent point keeps it bent.
+  if (at >= 0 && ks[at] .in) key.in = ks[at] .in .slice();
+  if (at >= 0 && ks[at] .out) key.out = ks[at] .out .slice();
+  if (at >= 0) ks[at] = key;
+  else if (ks.length < MAX_KEYS) ks.push(key);
+  out.keys[ch] = sorted(ks);
+  if (t > out.len) out.len = Math.min(MAX_LEN, rt(t));
+  return out;
+}
+
+/** Keys of `c` (this object's) that `sel` picks. */
+const picks = (sel          , key        ) => sel.filter((r) => r.key === key);
+const isPicked = (sel          , ch               , t        ) => sel.some((r) => r.ch === ch && sameT(r.t, t));
+
+/** The clip without the picked keys. A channel left with no key goes (that property then stays as placed). */
+function deleteKeys(c            , key        , sel          )             {
+  const mine = picks(sel, key);
+  const out = structuredClone(c);
+  for (const ch of CHANNELS) {
+    const ks = (out.keys[ch] ?? []).filter((k) => !isPicked(mine, ch, k.t));
+    if (ks.length) out.keys[ch] = ks;
+    else delete out.keys[ch];
+  }
+  return out;
+}
+
+/**
+ * The clip with the picked keys moved by `dt` seconds (kept between 0 and the length). A moved key that lands on a
+ * key that was not moved replaces it (the dragged one wins, as in Blender). Returns the moved refs' new times too.
+ */
+function moveKeys(c            , key        , sel          , dt        )                                        {
+  const mine = picks(sel, key);
+  const out = structuredClone(c);
+  const moved           = [];
+  for (const ch of CHANNELS) {
+    const ks = out.keys[ch];
+    if (!ks) continue;
+    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(out.len, Math.max(0, k.t + dt))) }));
+    const stay = ks.filter((k) => !isPicked(mine, ch, k.t) && !go.some((g) => sameT(g.t, k.t)));
+    // Two moved keys squeezed onto one moment (against 0 or the end): the later one wins.
+    const merged = new Map                   ();
+    for (const k of go) merged.set(Math.round(k.t * 1000), k);
+    out.keys[ch] = sorted([...stay, ...merged.values()]);
+    for (const k of merged.values()) moved.push({ key, ch, t: k.t });
+  }
+  return { clip: out, moved };
+}
+
+/** The picked keys' ease set to `ease`. */
+function easeKeys(c            , key        , sel          , ease            )             {
+  const mine = picks(sel, key);
+  const out = structuredClone(c);
+  for (const ch of CHANNELS) for (const k of out.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) k.ease = ease;
+  return out;
+}
+
+/** What ⌘C holds: keys by channel, their times from the earliest one copied (so ⌘V puts the first at the playhead). */
+                                                                                                                             
+
+function copyKeys(c            , key        , sel          )         {
+  const mine = picks(sel, key);
+  const out         = [];
+  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease, ...(k.in ? { in: k.in.slice() } : {}), ...(k.out ? { out: k.out.slice() } : {}) });
+  const t0 = Math.min(...out.map((k) => k.dt));
+  return out.map((k) => ({ ...k, dt: rt(k.dt - t0) }));
+}
+
+/** ⌘V: the copied keys put on this clip from `at` (a channel the clip's object cannot take — another dim — is skipped). */
+function pasteKeys(c            , keys        , at        , dim     )                                                                        {
+  let out = c;
+  const pasted                                          = [];
+  for (const k of keys) {
+    if (k.v.length !== width(k.ch, dim)) continue;
+    const t = rt(at + k.dt);
+    if (t > MAX_LEN) continue;
+    out = setKey(out, k.ch, t, k.v, k.ease);
+    // The handles come along (a bent point pasted is bent the same way).
+    const got = out.keys[k.ch] .find((x) => sameT(x.t, t)) ;
+    if (k.in) got.in = k.in.slice();
+    if (k.out) got.out = k.out.slice();
+    pasted.push({ ch: k.ch, t });
+  }
+  return { clip: out, pasted };
+}
+
+/** Every key time of a clip (any channel), for the object's summary row. */
+function keyTimes(c                               , chs                  = CHANNELS)           {
+  const ts           = [];
+  for (const ch of chs) for (const k of c?.keys[ch] ?? []) if (!ts.some((t) => sameT(t, k.t))) ts.push(k.t);
+  return ts.sort((a, b) => a - b);
+}
+
+/** Snap a time to the timeline's grid (and to 0 … max). */
+function snapT(t        , max        , free = false)         {
+  const s = free ? rt(t) : Math.round(t / SNAP_T) * SNAP_T;
+  return rt(Math.min(max, Math.max(0, s)));
+}
+
+/** A KeyboardEvent.code as a person reads it: "KeyE" → "E", "Digit1" → "1", "ArrowUp" → "↑", "Space" → "Space". */
+function keyName(code        )         {
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  const arrows                         = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
+  return arrows[code] ?? code;
+}
+
+/** "0:01.6" — minutes, seconds and a tenth (the time readout; tabular figures keep it still while it runs). */
+function clock(t        )         {
+  const s = Math.max(0, t);
+  const m = Math.floor(s / 60);
+  const rest = s - m * 60;
+  return `${m}:${rest.toFixed(1).padStart(4, '0')}`;
+}
+
+/** A motion (the store's shape) with clip `name` replaced by `c` (or added; null = removed). Empty → null. */
+function withClip(m               , name        , c                   )                {
+  // In place (a rename keeps the clip where it was in the menu), removed, or added at the end.
+  const clips = (m?.clips ?? []).slice();
+  const i = clips.findIndex((x) => x.name === name);
+  if (i >= 0) c ? (clips[i] = c) : clips.splice(i, 1);
+  else if (c) clips.push(c);
+  return clips.length ? { clips } : null;
+}
+
+/** The older motion's pose at `t` (the editor still previews one it could not turn into a clip, e.g. a bad file). */
+function legacyOffsets(m        , t        , dim     )          {
+  const a = motionAt(m, t)                                          ;
+  return { p: a.off, r: m.spin ? (dim === '3d' ? [0, a.turn, 0] : [a.turn]) : null, s: null };
+}
+
+__def(__exports, "CHANNELS", () => CHANNELS);
+__def(__exports, "SAME_T", () => SAME_T);
+__def(__exports, "SNAP_T", () => SNAP_T);
+__def(__exports, "MIN_LEN", () => MIN_LEN);
+__def(__exports, "MAX_LEN", () => MAX_LEN);
+__def(__exports, "MAX_CLIPS", () => MAX_CLIPS);
+__def(__exports, "MAX_KEYS", () => MAX_KEYS);
+__def(__exports, "DEFAULT_EASE", () => DEFAULT_EASE);
+__def(__exports, "width", () => width);
+__def(__exports, "restOf", () => restOf);
+__def(__exports, "offsetsAt", () => offsetsAt);
+__def(__exports, "compose", () => compose);
+__def(__exports, "offsetOf", () => offsetOf);
+__def(__exports, "changedChannels", () => changedChannels);
+__def(__exports, "toClips", () => toClips);
+__def(__exports, "TEMPLATES", () => TEMPLATES);
+__def(__exports, "fromTemplate", () => fromTemplate);
+__def(__exports, "freeName", () => freeName);
+__def(__exports, "refId", () => refId);
+__def(__exports, "sameT", () => sameT);
+__def(__exports, "setKey", () => setKey);
+__def(__exports, "deleteKeys", () => deleteKeys);
+__def(__exports, "moveKeys", () => moveKeys);
+__def(__exports, "easeKeys", () => easeKeys);
+__def(__exports, "copyKeys", () => copyKeys);
+__def(__exports, "pasteKeys", () => pasteKeys);
+__def(__exports, "keyTimes", () => keyTimes);
+__def(__exports, "snapT", () => snapT);
+__def(__exports, "keyName", () => keyName);
+__def(__exports, "clock", () => clock);
+__def(__exports, "withClip", () => withClip);
+__def(__exports, "legacyOffsets", () => legacyOffsets);
+};
+__defs[40] = function (__exports) {
+'use strict';
+// play-arrange.ts
+
+// ▶ Play inside the editor: the game as the editor shows it — the arrangement on screen, saved or not.
+//
+// WHY (a try of the editor, 2026-10-21: "I moved things, pressed Play without Save, and everything was reset. People want to try
+// a change in Play first, then save it"): before, Play showed only what the game's own code does. A game that reads
+// placement.json itself (the loader, src/loader) got the moves because the editor writes its hidden draft before Play
+// (shell/main.ts keepNow); a game that does not (one the AI just made, before "add the loader") came up at its code's
+// layout, and so did every UI move. Since the polish pass of 2026-10-16 Play already showed the copies and deletions
+// (they lived only in placement.json); now it shows the moves, the draw orders and the UI places as well.
+//
+// The file is the editor's draft (the same placement.json the loader reads: on disk with the local studio, in this
+// browser in the web demo, src/hosts/browser/game-placement.js), read by the bridge when Play opens the page. Nothing is
+// written: Save still writes the file the AI is told about.
+//
+// Only what the page shows AS ITS CODE MAKES IT is changed, so applying twice is harmless:
+//   - a moved object only while it stands at its `was` (the code's own pose): a game whose loader already put it
+//     there is left alone, and so is an object the game itself moved since (physics, a boat on the waves);
+//   - a copy only when the page does not have that key; a deletion only while the object still looks as `was`;
+//   - a reordered list only while it is still in the code's order (`was`).
+// The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
+// offset again rather than adding to it.
+                                                                                   
+const { hasLayer, orderOfLayer } = __require(37);
+const { samePose } = __require(38);
+const { compose, legacyOffsets } = __require(39);
+const { motionRunner, resolveClip } = __require(20);
+
+                                                                                                                                  
+                                                                                                   
+                                                                         
+                                                             
+                           
+                
+                                  
+                  
+                      
+                  
+                                   
+                                                                          
+                      
+ 
+
+const nums = (v         )                => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
+const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
+/** A pose of the file, or null when it is not one (the file is untrusted: a hand edit, an older version). */
+function poseOf(e                                                        , base       )              {
+  if (!nums(e.p)) return null;
+  const out       = { p: e.p.slice() };
+  const r = num(e.r) ? e.r : base?.r;
+  if (r !== undefined) out.r = r;
+  const s = num(e.s) || nums(e.s) ? e.s : base?.s;
+  if (s !== undefined) out.s = Array.isArray(s) ? s.slice() : s;
+  const t = nums(e.t) && e.t.length === 2 ? e.t : base?.t;
+  if (t) out.t = [t[0] , t[1] ];
+  return out;
+}
+const flat = (p      )       => ({ ...p, z: undefined });
+
+/**
+ * Put the file's arrangement on the page's objects (see the top of this file). Returns how many changes were made.
+ * `a`: the page's adapter, with objects listed.
+ */
+function arrangeInPlay(a               , file                 )         {
+  if (!file || typeof file !== 'object') return 0;
+  const dim      = file.dim === '2d' ? '2d' : '3d';
+  let shown = 0;
+  const list = () => a.list();
+  const find = (k        ) => list().find((i) => i.key === k);
+  const put = (k        , p      , what        ) => {
+    try {
+      if (a.setPose(k, p)) shown++;
+    } catch (err) {
+      console.warn(`[studio] could not show ${what} ${k} in Play:`, err);
+    }
+  };
+
+  // Deletions first: an object deleted in the editor is not among the moves.
+  if (a.remove && Array.isArray(file.removed)) {
+    for (const r of file.removed) {
+      const it = typeof r?.key === 'string' ? find(r.key) : undefined;
+      if (!it || (typeof r.label === 'string' && r.label !== it.label)) continue;
+      const wp = r.was && nums(r.was.p) ? r.was.p : null;
+      if (wp && it.pose && it.pose.p.some((v, i) => Math.abs(v - (wp[i] ?? 0)) > 1e-3)) continue;
+      try {
+        if (a.remove(it.key)) shown++;
+      } catch {
+        /* keep it */
+      }
+    }
+  }
+
+  // Moves: only an object the page shows where its code puts it (`was`).
+  if (file.objects && typeof file.objects === 'object') {
+    for (const [k, e] of Object.entries(file.objects)) {
+      const it = e && typeof e === 'object' ? find(k) : undefined;
+      if (!it || !e.was) continue;
+      const was = poseOf(e.was, it.pose), want = poseOf(e, it.pose);
+      if (!was || !want) continue;
+      if (!samePose(flat(it.pose), flat(was), dim) || samePose(flat(it.pose), flat(want), dim)) continue;
+      put(k, want, 'the move of');
+    }
+  }
+
+  // Copies (polish pass 2026-10-16): a clone of the original as it stands, so it looks right but does not act (a boat
+  // that floats, a coin that spins) until the AI adds it to the code. A key the page already has is left alone.
+  if (a.clone && Array.isArray(file.added)) {
+    for (const e of file.added) {
+      if (typeof e?.key !== 'string' || typeof e.from !== 'string') continue;
+      if (find(e.key) || !find(e.from)) continue;
+      const pose = poseOf(e);
+      if (!pose) continue;
+      try {
+        if (!a.clone(e.from, e.key)) continue;
+        a.setPose(e.key, pose);
+        shown++;
+      } catch (err) {
+        console.warn('[studio] could not show the copy ' + e.key + ' in Play:', err);
+      }
+    }
+  }
+
+  // Draw orders (2D): a list still in the code's order gets the editor's (z slots, as the editor's own reorder does).
+  if (Array.isArray(file.order)) {
+    for (const o of file.order) {
+      if (typeof o?.in !== 'string' || !Array.isArray(o.keys)) continue;
+      const layer = o.in;
+      const raw = list().filter((i) => hasLayer(i) && i.layer === layer);
+      const now = orderOfLayer(raw, layer);
+      const keys = (o.keys             ).filter((k)              => typeof k === 'string' && now.includes(k));
+      if (keys.join('\n') === now.filter((k) => keys.includes(k)).join('\n')) continue;
+      if (Array.isArray(o.was)) {
+        const was = (o.was             ).filter((k)              => typeof k === 'string');
+        if (now.filter((k) => was.includes(k)).join('\n') !== was.filter((k) => now.includes(k)).join('\n')) continue;
+      }
+      const slots = raw.filter((i) => keys.includes(i.key)).map((i) => i.pose.z ).sort((x, y) => x - y);
+      keys.forEach((k, i) => {
+        const it = raw.find((x) => x.key === k) ;
+        put(k, { ...find(k)?.pose ?? it.pose, z: slots[i]  }, 'the draw order of');
+      });
+    }
+  }
+  return shown;
+}
+
+/**
+ * The draft's motions in ▶ Play (motion-gui, 2026-10-22; the timeline's clips since studio-timeline), for a game whose
+ * loader does not run them: a game the AI made before "add the loader", or one with an older copy of it. Every frame
+ * of the page (its own requestAnimationFrame: Play is not frozen), each object is put at its place + its clip that
+ * plays at the start (clipAt) — or the older path / spin (motionAt) — through the adapter, as the loader would. A clip
+ * that waits for a cue does not play here: the cue is the game's code, which the AI writes. Keys the page's loader
+ * already moves (the global set it keeps, src/loader) are left alone, so nothing moves twice. Call after arrangeInPlay
+ * (the place is the arranged one). Returns the keys it moves.
+ * `live`: ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts) — false once the page is back in Edit, and
+ * the motions stop there (the page's loop would otherwise go on moving them under the editor). Absent = for the page's
+ * life, as a Play page always was.
+ */
+function moveInPlay(a               , file                 , win                            , live                )           {
+  const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
+  if (!motion) return [];
+  const byLoader = (win                                                      )[Symbol.for('game-studio.motion')];
+  const items = a.list();
+  const runs                                                                           = [];
+  // Clips (a Library motion by `use`, or keys of their own) start and stop by the loader's own rules (motionRunner,
+  // studio-motion-triggers): the game starting, a time, a key, another clip's end. Cues the game's code gives (touch,
+  // a named cue, words) cannot happen here: the AI writes them.
+  const lib = Array.isArray(file .motions) ? file .motions : [];
+  const clipped                                                                    = [];
+  for (const [key, m] of Object.entries(motion)) {
+    if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
+    const it = items.find((i) => i.key === key);
+    if (!it) continue;
+    const dim      = it.pose.p.length === 3 ? '3d' : '2d';
+    const mm = m          ;
+    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib, key)).filter(Boolean)                ) : [];
+    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
+    if (clips.length) clipped.push({ key, clips, base: structuredClone(flat(it.pose)), dim });
+    else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
+  }
+  if (!runs.length && !clipped.length) return [];
+  const t0 = win.performance.now();
+  const run = motionRunner(clipped.map((c) => ({ key: c.key, clips: c.clips })));
+  run.fire({ on: 'start' }, t0);
+  // Any of a clip's ways to start (studio-timeline-2: `whens`, from resolveClip) may be a key.
+  if (clipped.some((c) => c.clips.some((x) => ((x                                                  ).whens ?? [x.when                   ]).some((w) => w?.on === 'key')))) {
+    win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
+  }
+  const tick = (now        ) => {
+    if (live && !live()) return;
+    const t = Math.max(0, (now - t0) / 1000);
+    for (const r of runs) {
+      try {
+        a.setPose(r.key, compose(r.base, r.at(t), r.dim));
+      } catch {
+        /* the game took it away: the others go on */
+      }
+    }
+    for (const [key, at] of run.step(now, () => null)) {
+      const c = clipped.find((x) => x.key === key);
+      try {
+        if (c) a.setPose(key, compose(c.base, at           , c.dim));
+      } catch {
+        /* gone */
+      }
+    }
+    win.requestAnimationFrame(tick);
+  };
+  win.requestAnimationFrame(tick);
+  return [...runs.map((r) => r.key), ...clipped.map((c) => c.key)];
+}
+
+__def(__exports, "arrangeInPlay", () => arrangeInPlay);
+__def(__exports, "moveInPlay", () => moveInPlay);
+};
+__defs[41] = function (__exports) {
+'use strict';
+// play-switch.ts
+
+// ▶ Play and back in the same page (fast switch, 2026-10-22; a try of the editor: "every time I play and go back to edit it loads
+// again — tedious"). CONTRACT.md §3.5.2, contract.ts `studio:core/play`.
+//
+// Before: Play and Edit each opened the game page again (`?studio=edit` or not). Going back to Edit took seconds: the
+// game loads, the adapter is found, the list is made, every row's picture drawn again. Now the edit page itself becomes
+// Play and comes back:
+//
+//   Play (go)   1. wait for the editor's first moments (its watch of what the game moves, the self-check: both move
+//                  objects and put them back; a start in between would start from a moment of the watch)
+//               2. keep where everything stands — the edit layout: each layer's listed poses (copies included) and,
+//                  where the adapter can (three.js), the whole scene (watch(true), as the editor's own watch does)
+//               3. the editor puts its tools away (core/edit off: the game's own camera and HUD, no handles, no input)
+//               4. the draft's motions start (moveInPlay, as a Play page's loader would; see `live`)
+//               5. the game goes on: frames, clock (core/time.ts `clock`: the time spent editing is not a frame step),
+//                  sound (a pause's hold, when Edit held it); play-ask wakes (play/hello: ask, pause, move work as on a
+//                  Play page)
+//   Edit (back) 1. play-ask sleeps (Move, the chat, the field put away), the motions stop
+//               2. the game is held as a pause holds it (frames, clock, sound, the mouse let go)
+//               3. everything goes back to where Play found it: what the game moved while playing (the hero, an enemy,
+//                  the camera) is not kept. "Put in layout" from a pause is the shell's: it sends those after this.
+//               4. the editor is up again on the edit camera it had (core/edit on with the shell's view state)
+//
+// WHY "Play starts from the layout, Edit goes back to it" (the call made for this change, as recommended): Edit is where the
+// layout is made, so what Edit shows must be the layout, never "wherever the game left things" (a person would save a
+// moment of play as their layout without knowing). And Play from the same picture the person just arranged is what
+// they asked to see. What does NOT go back: the game's own state that is not an object's pose — the score, a timer, an
+// enemy's health, things the game made or took away while playing. For those, "Play from the start" (⌘K, Play's ▾)
+// opens a new page as Play always did.
+//
+// The motions (studio-no-reload, 2026-10-22: "when I go back to edit after playing, don't load"): the game's own copy of
+// the loader (studio-placement.js) runs them from the draft, every `when` included (a click, an area, a cue, the game's
+// playMotion()) — its play hook (loaderPlay below). Before, a page opened for Edit never started the loader's motions,
+// so a draft with a clip that waits for something opened a new Play page (= loading) every time. What the loader does
+// not move (a game without it, an older copy, a copy the editor made that the loader cannot find) moveInPlay moves, as
+// it did. Back in Edit both stop before everything goes back.
+//
+// Not here (the shell decides, main.ts canPlayHere): a page whose editor is not up (still loading, no adapter), and a
+// draft whose motions wait for something only the game's loader runs when this page's loader is an older copy without
+// the hook (core/ready `motionHere` false): those open a new Play page as before.
+                                                          
+                                             
+                                          
+const { moveInPlay } = __require(40);
+                                                   
+
+                                 
+                                  
+             
+                 
+                         
+ 
+
+                             
+                                                                                                                         
+                                                                                                               
+                                                        
+                            
+ 
+
+/** The loader's play hook (studio-placement.js `hook`): one per copy of the loader on the page. */
+                      
+                 
+                                                                                
+               
+ 
+/** The copies of the loader on the page that can play here: those that placed a world (the game's, not the editor's). */
+function loaderPlay(win                            )               {
+  const set = (win                                                          )[Symbol.for('game-studio.play')];
+  return set ? [...set].filter((h) => {
+    try {
+      return h.has();
+    } catch {
+      return false;
+    }
+  }) : [];
+}
+
+function createPlaySwitch(d                )             {
+  const { win, core, editor, playAsk } = d;
+  let playing = false;
+  // Which Play this is: the motions of an earlier one stop (moveInPlay `live`).
+  let run = 0;
+  // Where Play found everything (go 2.), per layer.
+  let kept                                                                                    = [];
+  // The edit camera as it was at Play (the world's; the UI has none): exactly what Edit comes back to. The shell's kept
+  // view state (core/view-state) can lag a glide's last step, and a camera a hair off reads as "it moved".
+  let editView          = undefined;
+  let chain                = Promise.resolve();
+
+  const listOf = (a               ) => {
+    try {
+      return a.list();
+    } catch {
+      return [];
+    }
+  };
+
+  // The loader copies that run this Play's motions (stopped in back()).
+  let loaders               = [];
+
+  async function go(motion                                     , motions                       ) {
+    if (playing) return;
+    await editor.settled();
+    playing = true;
+    const mine = ++run;
+    const layers = editor.playLayers();
+    try {
+      editView = editor.layer() === 'world' ? editor.driven.view.state() : undefined;
+    } catch {
+      editView = undefined;
+    }
+    kept = layers.map((l) => ({ ...l, poses: listOf(l.edits).map((i) => [i.key, structuredClone(i.pose)]                  ) }));
+    for (const l of layers) {
+      try {
+        l.raw.watch?.(true);
+      } catch {
+        /* the listed poses above still go back */
+      }
+    }
+    editor.handle({ type: 'studio:core/edit', on: false });
+    let moving           = [];
+    if (motion && typeof motion === 'object') {
+      // The game's loader first: it runs every `when`, on the objects the game itself holds. The keys it moves go into
+      // its global set, which moveInPlay leaves alone.
+      loaders = loaderPlay(win);
+      for (const h of loaders) {
+        try {
+          moving.push(...h.start({ motion, motions }));
+        } catch (e) {
+          console.warn('[studio] Play: the loader could not start the motions:', e);
+        }
+      }
+      // The rest through the editor's copies layer (a copy that moves is the editor's object). Its first listed layer
+      // is the world's when the game has one (editor.ts playLayers).
+      const world = layers[0]?.edits;
+      if (world) {
+        try {
+          moving.push(...moveInPlay(world, { motion, motions }, win, () => run === mine && playing));
+        } catch (e) {
+          console.warn('[studio] Play: the motions could not start:', e);
+        }
+      }
+    }
+    playAsk.wake(Promise.resolve(moving));
+    // Held by a pause before (Edit holds the game with it, back below): its resume brings the sound back too.
+    if (playAsk.hold?.paused) playAsk.hold.resume();
+    else core.time.thaw();
+  }
+
+  function back(viewState         ) {
+    if (!playing) return;
+    playing = false;
+    run++;
+    playAsk.sleep();
+    if (playAsk.hold) playAsk.hold.pause();
+    else core.time.freeze();
+    // The loader's motions stop where they are; everything goes back just below.
+    for (const h of loaders) {
+      try {
+        h.stop();
+      } catch {
+        /* the poses below */
+      }
+    }
+    loaders = [];
+    for (const l of kept) {
+      try {
+        l.raw.watch?.(false);
+      } catch {
+        /* the listed poses below */
+      }
+    }
+    for (const l of kept) {
+      for (const [key, pose] of l.poses) {
+        try {
+          l.edits.setPose(key, pose);
+        } catch {
+          /* the game took it away: the others go back */
+        }
+      }
+    }
+    kept = [];
+    const view = editView !== undefined ? editView : viewState;
+    editView = undefined;
+    editor.handle({ type: 'studio:core/edit', on: true, viewState: view });
+  }
+
+  return {
+    get playing() {
+      return playing;
+    },
+    handle(m) {
+      chain = chain.then(() => (m.on ? go(m.motion, m.motions) : back(m.viewState))).catch((e) => console.warn('[studio] Play / Edit switch failed:', e));
+    },
+  };
+}
+
+__def(__exports, "loaderPlay", () => loaderPlay);
+__def(__exports, "createPlaySwitch", () => createPlaySwitch);
+};
+__defs[42] = function (__exports) {
+'use strict';
 // editor.ts
 
 // Edit session inside the game page: applies shell messages to the adapter,
@@ -13746,6 +14876,7 @@ const { drivenBetween, WATCH_MS } = __require(34);
 const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
 const { createTimelineView } = __require(35);
 const { createUiExtras } = __require(36);
+const { loaderPlay } = __require(41);
 
                              
                                                                                                                      
@@ -13905,6 +15036,8 @@ function createEditor(deps            )         {
   let inset        = { top: 0, right: 0, bottom: 0, left: 0 };
   let theme                   = 'dark';
   let aiMarks                                           = { keys: [], label: null };
+  // The strip's Motion button as the editor page last described it (placement/motion), kept for a new input (a layer switch).
+  let motionBtn = { show: false, has: false, label: '', open: false };
   // The game's UI shown (faded) while the world is edited: the shell's eye button (core/ui-peek). Off = hidden, the
   // default every time the editor opens (paintLayers).
   let uiPeek = false;
@@ -13931,6 +15064,8 @@ function createEditor(deps            )         {
   const ready = () => {
     post({ type: 'studio:core/ready', kind: adapter.kind, dim: adapter.dim, version: adapter.version, editing: state.editing, rise: adapter.dim === '3d' && !!adapter.view.rise, fly: adapter.dim === '3d' && !!adapter.view.fly,
       drop: adapter.dim === '3d' && !!adapter.drop,
+      // The game's loader can run every motion in this page (play-switch.ts): ▶ Play then never needs a new page for them.
+      ...(loaderPlay(win).length ? { motionHere: true } : {}),
       ...(uiStack ? { layers: (world ? ['world', 'ui'] : ['ui'])               , layer } : {}) });
   };
   /**
@@ -14676,6 +15811,7 @@ function createEditor(deps            )         {
     input.setInset(inset);
     input.setTheme(theme);
     if (aiMarks.keys.length) input.setAiMarks(aiMarks.keys, aiMarks.label);
+    input.setMotion(motionBtn);
     input.setLang(lang);
   };
   // A core/layer that came before editing started (the shell sends it right after core/edit on a reload).
@@ -14779,6 +15915,14 @@ function createEditor(deps            )         {
           break;
         case 'studio:placement/tool':
           input?.setTool(msg.tool === 'move' || msg.tool === 'rotate' || msg.tool === 'lift' || msg.tool === 'scale' ? msg.tool : null);
+          dirtyFrame = true;
+          break;
+        case 'studio:placement/motion':
+          // studio-motion-tool: the Motion button after the strip's tools. `label` is shown as text only (title, aria).
+          motionBtn = { show: !!msg.show, has: !!msg.has, label: typeof msg.label === 'string' ? msg.label.slice(0, 160) : '', open: !!(msg                      ).open };
+          input?.setMotion(motionBtn);
+          // Its key or ⌘K in the editor page: answered as a press on the button (motion-press with its place).
+          if ((msg                       ).press) input?.pressMotion();
           dirtyFrame = true;
           break;
         case 'studio:placement/look':
@@ -14973,7 +16117,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[38] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -15036,7 +16180,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[39] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -15143,6 +16287,8 @@ const PATHS                         = {
   toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
   toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
   toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
+  // The strip's Motion button (studio-motion-tool; bridge/handles.ts MOTION_ICON on this grid): a path to the thing at its end.
+  toolMotion: 'M16.5 16c-3.75 0-4.2-5.8-7.1-7.9S5.8 6.7 4.6 5.4|o 16.5 16|O 4.6 5.4 2.2',
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */
@@ -15217,7 +16363,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[40] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -15429,7 +16575,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[41] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -15568,7 +16714,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[42] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -15588,7 +16734,7 @@ __defs[42] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(39);
+const { icon } = __require(44);
 
                            
                     
@@ -15915,7 +17061,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[43] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -15950,7 +17096,7 @@ __defs[43] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(37);
+const { createEditor } = __require(42);
 const { drivenBetween } = __require(34);
 const { nativeSetTimeout } = __require(0);
 
@@ -16316,7 +17462,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[44] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -16342,12 +17488,12 @@ __defs[44] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(38);
-const { icon } = __require(39);
-const { shootPage } = __require(40);
-const { createPauseHold, isPauseKey } = __require(41);
-const { CHAT_CSS, createChat } = __require(42);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(43);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(43);
+const { icon } = __require(44);
+const { shootPage } = __require(45);
+const { createPauseHold, isPauseKey } = __require(46);
+const { CHAT_CSS, createChat } = __require(47);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(48);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -17281,916 +18427,6 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[45] = function (__exports) {
-'use strict';
-// ../shell/layers.ts
-
-// Draw order (2D layers) in the shell: which object is in front of which.
-// Pure functions over the item list (no DOM), so they are unit-tested.
-//
-// The adapter reports, per object, `layer` (the sibling list it is drawn in,
-// usually its parent) and `pose.z` (its place among the LISTED objects of that
-// list, 0 = back). Changing the order is one setPose with a new z, so undo,
-// redo and the Save count reuse the pose machinery.
-//
-// WHY every target is "the z of another listed sibling" and never z ± 1: the
-// adapter's ranks can have gaps (objects hidden by the game's rules are still
-// counted), and moving to a sibling's z puts the object just past that
-// sibling in the direction of travel. So "forward" always passes exactly one
-// thing the person can see.
-//
-// Ground / background (Item.backdrop, play test 2026-10-16): "to back"
-// once put a rock behind the ground, where it vanished. The backdrops at the
-// back of a list stay there: they have no targets of their own, and nothing
-// else goes behind them ("to back" = just in front of the ground).
-                                           
-
-                                                                    
-
-/** True when the adapter can change the draw order of this object. */
-const hasLayer = (it                  )                                 =>
-  !!it && typeof it.layer === 'string' && typeof it.pose.z === 'number';
-
-/** Listed objects drawn in the same list as `key`, back → front. */
-function siblingsOf(items        , key        )         {
-  const it = items.find((i) => i.key === key);
-  if (!hasLayer(it)) return [];
-  return items.filter((i) => hasLayer(i) && i.layer === it.layer).sort((a, b) => a.pose.z  - b.pose.z );
-}
-
-/**
- * How many siblings (back → front list) are ground / background kept at the
- * back: the lowest place anything else may take.
- */
-function floorOf(sib        )         {
-  let n = 0;
-  while (n < sib.length && sib[n] .backdrop) n++;
-  return n;
-}
-
-/** The z to send for a button/shortcut, or null when the object is already there (or is the ground). */
-function layerTarget(items        , key        , op         )                {
-  const sib = siblingsOf(items, key);
-  const i = sib.findIndex((s) => s.key === key);
-  if (i < 0 || sib.length < 2 || sib[i] .backdrop) return null;
-  const floor = floorOf(sib);
-  const to = op === 'toFront' ? sib.length - 1 : op === 'toBack' ? floor : op === 'forward' ? i + 1 : i - 1;
-  if (to < floor || to >= sib.length || to === i) return null;
-  return sib[to] .pose.z ;
-}
-
-/**
- * The z to send after a drag in the list. `frontIndex` = where the object was
- * dropped among its siblings as the list shows them (front first, 0 = top),
- * counted with the dragged object taken out.
- */
-function dropTarget(items        , key        , frontIndex        )                {
-  const sib = siblingsOf(items, key);
-  const i = sib.findIndex((s) => s.key === key);
-  if (i < 0 || sib[i] .backdrop) return null;
-  const n = sib.length;
-  // Front-first position k ↔ back-first rank n-1-k; dropped below the ground = just in front of it.
-  const rank = Math.max(floorOf(sib), n - 1 - Math.max(0, Math.min(n - 1, Math.round(frontIndex))));
-  return rank === i ? null : sib[rank] .pose.z ;
-}
-
-/** Keys of one list, back → front (what placement.json `order[].keys` holds). */
-function orderOfLayer(items        , layer        )           {
-  return items.filter((i) => hasLayer(i) && i.layer === layer).sort((a, b) => a.pose.z  - b.pose.z ).map((i) => i.key);
-}
-
-                           
-             
-                                                                                                 
-                
- 
-                             
-                                                                                         
-                
-                   
- 
-
-/**
- * The object list in draw order, front on top. Lists drawn inside a listed
- * object (Pixi: sprites in a container) are shown right under that object,
- * indented. Objects without a layer are not included (the caller shows them
- * after, as before).
- */
-function layerBlocks(items        )               {
-  const layered = items.filter(hasLayer);
-  const keys = new Set(items.map((i) => i.key));
-  const byLayer = new Map                ();
-  for (const it of layered) {
-    const arr = byLayer.get(it.layer ) || [];
-    arr.push(it);
-    byLayer.set(it.layer , arr);
-  }
-  for (const arr of byLayer.values()) arr.sort((a, b) => b.pose.z  - a.pose.z );
-  const done = new Set        ();
-  const walk = (layer        , depth        , rows            ) => {
-    if (done.has(layer)) return; // a malformed adapter could report a cycle
-    done.add(layer);
-    for (const it of byLayer.get(layer) || []) {
-      rows.push({ item: it, depth });
-      if (byLayer.has(it.key)) walk(it.key, depth + 1, rows);
-    }
-  };
-  const blocks               = [];
-  for (const layer of byLayer.keys()) {
-    if (keys.has(layer)) continue; // drawn inside a listed object: shown under it
-    const rows             = [];
-    walk(layer, 0, rows);
-    blocks.push({ layer, rows });
-  }
-  // Lists whose parent object is listed but never reached (cycles): still show them.
-  for (const layer of byLayer.keys()) {
-    if (done.has(layer)) continue;
-    const rows             = [];
-    walk(layer, 0, rows);
-    blocks.push({ layer, rows });
-  }
-  return blocks;
-}
-
-__def(__exports, "hasLayer", () => hasLayer);
-__def(__exports, "siblingsOf", () => siblingsOf);
-__def(__exports, "floorOf", () => floorOf);
-__def(__exports, "layerTarget", () => layerTarget);
-__def(__exports, "dropTarget", () => dropTarget);
-__def(__exports, "orderOfLayer", () => orderOfLayer);
-__def(__exports, "layerBlocks", () => layerBlocks);
-};
-__defs[46] = function (__exports) {
-'use strict';
-// ../shell/pose-compare.ts
-
-// Pose rounding and comparison: the file's precision (1 mm or 0.1 px, 1e-4 rad) and "the same pose".
-// Split out of placement-model.ts (2026-10-21) so the game page's ▶ Play code (bridge/play-arrange.ts) compares
-// poses exactly as the editor does without bundling the whole model into studio-edit.js (it added 37 KB).
-const { LIMITS } = __require(13);
-
-function roundTo(v        , step        )         {
-  return Math.round(v / step) * step;
-}
-
-/** Round a pose to the file's precision (1 mm or 0.1 px, 1e-4 rad). */
-function roundPose(p      , dim     )       {
-  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
-  const fix = (v        , s        ) => Number(roundTo(v, s).toFixed(6));
-  const out       = { p: p.p.map((v) => fix(v, step)) };
-  if (p.r !== undefined) out.r = fix(p.r, LIMITS.stepAngle);
-  if (p.s !== undefined) out.s = Array.isArray(p.s) ? p.s.map((v) => fix(v, 0.0001)) : fix(p.s, 0.0001);
-  // 3D tilt (rotation.x, rotation.z): only when the object was tipped (see Pose.t).
-  if (p.t !== undefined && dim === '3d') out.t = [fix(p.t[0], LIMITS.stepAngle), fix(p.t[1], LIMITS.stepAngle)];
-  return out;
-}
-
-/**
- * Two angles (already rounded) are the same turn: compared around the circle, not as numbers.
- *
- * WHY (90° bug, 2026-10-17): turning a 3D object past 90° about the up axis makes three.js write the same
- * rotation as x = ±π, y = π − θ, z = ±π. π rounds to 3.1416 in the file, which is a hair MORE than π, so the
- * adapter reads it back wrapped into (−π, π] as −3.14159 — the same turn, a different number. Comparing the
- * rounded JSON made every reopen of such a save show "Save · 1" with nothing changed.
- */
-function sameAngle(a                    , b                    )          {
-  if (a === undefined || b === undefined) return a === b;
-  const TAU = Math.PI * 2;
-  const d = Math.abs((((a - b) % TAU) + TAU) % TAU);
-  // Half a rounding step: values one step apart (a real nudge) still differ.
-  return Math.min(d, TAU - d) < LIMITS.stepAngle / 2;
-}
-
-function samePose(a                  , b                  , dim     )          {
-  if (!a || !b) return a === b;
-  const x = roundPose(a, dim), y = roundPose(b, dim);
-  if (JSON.stringify(x.p) !== JSON.stringify(y.p) || JSON.stringify(x.s) !== JSON.stringify(y.s)) return false;
-  if (!sameAngle(x.r, y.r)) return false;
-  if (!x.t || !y.t) return !x.t === !y.t;
-  return sameAngle(x.t[0], y.t[0]) && sameAngle(x.t[1], y.t[1]);
-}
-
-__def(__exports, "roundPose", () => roundPose);
-__def(__exports, "samePose", () => samePose);
-};
-__defs[47] = function (__exports) {
-'use strict';
-// ../shell/timeline-model.ts
-
-// The timeline's pure logic (studio-timeline, 2026-10-22; CONTRACT.md §1.9): clips and
-// their keys, the pose an object shows at a time, the older motion shape read as a clip, the templates, and the key
-// edits the panel makes (set, move, delete, copy / paste, ease). No DOM: unit-tested in test/timeline.test.ts.
-//
-// WHY offsets from the place, not absolute values (Unity's clips hold absolute ones): the object's place
-// (`objects` in placement.json) keeps its meaning — moving the object with the timeline folded carries the whole
-// motion along, a level that puts the same object elsewhere reuses the motion, and the AI reads "turns 90° from where
-// it stands". Position is added, angles are added, size is multiplied.
-// WHY every change returns a new clip / motion: the undo stack keeps whole motions (`{ kind: 'motion', from, to }`,
-// the change motion-gui added), so one edit = one snapshot, and nothing here mutates what the store holds.
-                                                                                                                        
-const { clipAt, motionAt } = __require(20);
-
-const CHANNELS                  = ['p', 'r', 's'];
-/** Two keys closer than this (seconds) are the same moment: a new key there replaces the old one. */
-const SAME_T = 0.0005;
-/** Keys dragged on the timeline snap to this (seconds); Alt drags freely. 1/20 s: fine enough for game motion, coarse enough to land on 1.0. */
-const SNAP_T = 0.05;
-const MIN_LEN = 0.1;
-const MAX_LEN = 600;
-const MAX_CLIPS = 16;
-const MAX_KEYS = 256;
-/** A new key's ease (Blender's and Unity's default curve: starts slowly, stops slowly). */
-const DEFAULT_EASE             = 'ease';
-
-                                                                                     
-
-const rt = (t        ) => Math.round(t * 1000) / 1000;
-const zeros = (n        ) => Array.from({ length: n }, () => 0);
-const ones = (n        ) => Array.from({ length: n }, () => 1);
-/** How many numbers one key of a channel holds: p / s 3 in 3D, 2 in 2D; r 3 in 3D, 1 in 2D. */
-const width = (ch               , dim     ) => (dim === '3d' ? 3 : ch === 'r' ? 1 : 2);
-/** The key value that changes nothing (the rest of a channel). */
-const restOf = (ch               , dim     ) => (ch === 's' ? ones(width(ch, dim)) : zeros(width(ch, dim)));
-
-/** Where a clip is at `t` (the loader's own maths, so the editor and the game agree). */
-function offsetsAt(clip                               , t        )                              {
-  return clipAt(clip, t)                               ;
-}
-
-/** The pose shown for an object at its place with these offsets. */
-function compose(place      , at         , dim     )       {
-  const out       = structuredClone(place);
-  if (at.p) out.p = place.p.map((v, i) => v + (at.p [i] ?? 0));
-  if (at.r) {
-    if (dim === '3d') {
-      out.r = (place.r ?? 0) + (at.r[1] ?? 0);
-      const tx = (place.t?.[0] ?? 0) + (at.r[0] ?? 0), tz = (place.t?.[1] ?? 0) + (at.r[2] ?? 0);
-      // A tilt only when there is one: a pose without `t` leaves the game's own x / z angles alone (contract Pose.t).
-      if (place.t || Math.abs(tx) > 1e-9 || Math.abs(tz) > 1e-9) out.t = [tx, tz];
-    } else out.r = (place.r ?? 0) + (at.r[0] ?? 0);
-  }
-  if (at.s) {
-    const n = width('s', dim);
-    const base = Array.isArray(place.s) ? place.s : Array.from({ length: n }, () => (typeof place.s === 'number' ? place.s : 1));
-    const s = base.map((v, i) => v * (at.s [i] ?? 1));
-    out.s = s.every((v) => Math.abs(v - s[0] ) < 1e-9) && !Array.isArray(place.s) ? s[0]  : s;
-  }
-  return out;
-}
-
-/** The offsets that turn `place` into `pose` (compose's inverse), for one channel. */
-function offsetOf(place      , pose      , ch               , dim     )           {
-  if (ch === 'p') return pose.p.map((v, i) => v - (place.p[i] ?? 0));
-  if (ch === 'r') {
-    if (dim !== '3d') return [(pose.r ?? 0) - (place.r ?? 0)];
-    return [(pose.t?.[0] ?? 0) - (place.t?.[0] ?? 0), (pose.r ?? 0) - (place.r ?? 0), (pose.t?.[1] ?? 0) - (place.t?.[1] ?? 0)];
-  }
-  const n = width('s', dim);
-  const vec = (s           ) => (Array.isArray(s) ? s : Array.from({ length: n }, () => (typeof s === 'number' ? s : 1)));
-  const a = vec(place.s), b = vec(pose.s);
-  return b.map((v, i) => (a[i] ? v / a[i]  : 1));
-}
-
-/** The channels whose value differs between two poses (what a drag / a typed number changed). */
-function changedChannels(a      , b      , dim     )                  {
-  const diff = (x          , y          , eps        ) => x.some((v, i) => Math.abs(v - (y[i] ?? 0)) > eps);
-  const out                  = [];
-  if (diff(a.p, b.p, 1e-6)) out.push('p');
-  if (diff(offsetOf(a, b, 'r', dim), zeros(width('r', dim)), 1e-6)) out.push('r');
-  if (diff(offsetOf(a, b, 's', dim), ones(width('s', dim)), 1e-6)) out.push('s');
-  return out;
-}
-
-// ----- the older shape (v0.1.13) as a clip -----
-
-/**
- * A motion in the timeline's shape: its clips as they are, or the older path / speed / repeat / spin turned into one
- * clip "Motion" that plays at the start. The path becomes position keys at the times the old constant speed reached
- * each point (straight lines: 'linear'); a loop gets its way back to the start as a last key; a spin becomes one turn
- * (0 → 360°, linear) that loops. With both, the spin is spread over the path's time.
- */
-function toClips(m                           , dim     )                {
-  if (!m) return null;
-  if (m.clips?.length) return { clips: m.clips.map((c) => structuredClone(c)) };
-  const keys                     = {};
-  let len = 0;
-  let repeat               = 'loop';
-  if (m.path?.length) {
-    const n = m.path[0] .length;
-    const pts = [zeros(n), ...m.path.map((q) => q.slice())];
-    repeat = m.repeat ?? 'pingpong';
-    if (repeat === 'loop') pts.push(zeros(n));
-    const speed = m.speed && m.speed > 0 ? m.speed : 1;
-    let t = 0;
-    keys.p = pts.map((v, i) => {
-      if (i) t += Math.hypot(...v.map((x, k) => x - pts[i - 1] [k] )) / speed;
-      return { t: rt(t), v, ease: 'linear'               };
-    });
-    len = Math.max(MIN_LEN, rt(t));
-  }
-  if (m.spin) {
-    const turn = Math.sign(m.spin) * Math.PI * 2;
-    const T = len || rt(Math.abs(turn / m.spin));
-    len ||= Math.max(MIN_LEN, T);
-    const v = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
-    keys.r = [{ t: 0, v: v(0), ease: 'linear' }, { t: len, v: v(keys.p ? m.spin * len : turn), ease: 'linear' }];
-  }
-  if (!keys.p && !keys.r) return null;
-  return { clips: [{ name: 'Motion', len, repeat, start: true, keys }] };
-}
-
-// ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
-
-// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
-                                                                                 
-const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
-
-/**
- * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
- * so the person drags them where they want (in the scene, or on the timeline).
- */
-function fromTemplate(kind          , name        , dim     )             {
-  const d = dim === '3d' ? 3 : 150;
-  const v = (x        , z        ) => (dim === '3d' ? [x, 0, z] : [x, z]);
-  const k = (t        , val          , ease             = DEFAULT_EASE)            => ({ t, v: val, ease });
-  switch (kind) {
-    case 'pingpong':
-      return { name, len: 2, repeat: 'pingpong', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'once':
-      return { name, len: 2, repeat: 'once', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'loop':
-      // A round: right, away, back, home — through the points on a curve (the position's smooth way).
-      return { name, len: 4, repeat: 'loop', keys: { p: [k(0, v(0, 0), 'linear'), k(1, v(d, 0), 'linear'), k(2, v(d, -d), 'linear'), k(3, v(0, -d), 'linear'), k(4, v(0, 0), 'linear')] } };
-    case 'spin': {
-      const r = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
-      return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
-    }
-    case 'scene':
-      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
-    default:
-      return { name, len: 2, repeat: 'once', keys: {} };
-  }
-}
-
-/** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
-function freeName(clips              , base        )         {
-  const taken = new Set(clips.map((c) => c.name));
-  if (!taken.has(base)) return base;
-  for (let i = 2; ; i++) if (!taken.has(`${base} ${i}`)) return `${base} ${i}`;
-}
-
-// ----- keys -----
-
-/** A key picked on the timeline: object, channel, time (a time names a key: two keys of a channel never share one). */
-                         
-              
-                    
-            
- 
-const refId = (r        ) => `${r.key}\n${r.ch}\n${rt(r.t)}`;
-const sameT = (a        , b        ) => Math.abs(a - b) < SAME_T;
-
-const sorted = (ks             ) => ks.slice().sort((a, b) => a.t - b.t);
-
-/** The clip with a key at `t` on `ch` (replacing one at that moment, keeping its ease); the length grows to hold it. */
-function setKey(c            , ch               , t        , v          , ease             )             {
-  const out = structuredClone(c);
-  const ks = out.keys[ch] ?? [];
-  const at = ks.findIndex((k) => sameT(k.t, t));
-  const key            = { t: rt(t), v: v.slice(), ease: ease ?? (at >= 0 ? ks[at] .ease : undefined) ?? DEFAULT_EASE };
-  // A key set again keeps the path's handles it had (studio-timeline-2): moving a bent point keeps it bent.
-  if (at >= 0 && ks[at] .in) key.in = ks[at] .in .slice();
-  if (at >= 0 && ks[at] .out) key.out = ks[at] .out .slice();
-  if (at >= 0) ks[at] = key;
-  else if (ks.length < MAX_KEYS) ks.push(key);
-  out.keys[ch] = sorted(ks);
-  if (t > out.len) out.len = Math.min(MAX_LEN, rt(t));
-  return out;
-}
-
-/** Keys of `c` (this object's) that `sel` picks. */
-const picks = (sel          , key        ) => sel.filter((r) => r.key === key);
-const isPicked = (sel          , ch               , t        ) => sel.some((r) => r.ch === ch && sameT(r.t, t));
-
-/** The clip without the picked keys. A channel left with no key goes (that property then stays as placed). */
-function deleteKeys(c            , key        , sel          )             {
-  const mine = picks(sel, key);
-  const out = structuredClone(c);
-  for (const ch of CHANNELS) {
-    const ks = (out.keys[ch] ?? []).filter((k) => !isPicked(mine, ch, k.t));
-    if (ks.length) out.keys[ch] = ks;
-    else delete out.keys[ch];
-  }
-  return out;
-}
-
-/**
- * The clip with the picked keys moved by `dt` seconds (kept between 0 and the length). A moved key that lands on a
- * key that was not moved replaces it (the dragged one wins, as in Blender). Returns the moved refs' new times too.
- */
-function moveKeys(c            , key        , sel          , dt        )                                        {
-  const mine = picks(sel, key);
-  const out = structuredClone(c);
-  const moved           = [];
-  for (const ch of CHANNELS) {
-    const ks = out.keys[ch];
-    if (!ks) continue;
-    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(out.len, Math.max(0, k.t + dt))) }));
-    const stay = ks.filter((k) => !isPicked(mine, ch, k.t) && !go.some((g) => sameT(g.t, k.t)));
-    // Two moved keys squeezed onto one moment (against 0 or the end): the later one wins.
-    const merged = new Map                   ();
-    for (const k of go) merged.set(Math.round(k.t * 1000), k);
-    out.keys[ch] = sorted([...stay, ...merged.values()]);
-    for (const k of merged.values()) moved.push({ key, ch, t: k.t });
-  }
-  return { clip: out, moved };
-}
-
-/** The picked keys' ease set to `ease`. */
-function easeKeys(c            , key        , sel          , ease            )             {
-  const mine = picks(sel, key);
-  const out = structuredClone(c);
-  for (const ch of CHANNELS) for (const k of out.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) k.ease = ease;
-  return out;
-}
-
-/** What ⌘C holds: keys by channel, their times from the earliest one copied (so ⌘V puts the first at the playhead). */
-                                                                                                                             
-
-function copyKeys(c            , key        , sel          )         {
-  const mine = picks(sel, key);
-  const out         = [];
-  for (const ch of CHANNELS) for (const k of c.keys[ch] ?? []) if (isPicked(mine, ch, k.t)) out.push({ ch, dt: k.t, v: k.v.slice(), ease: k.ease, ...(k.in ? { in: k.in.slice() } : {}), ...(k.out ? { out: k.out.slice() } : {}) });
-  const t0 = Math.min(...out.map((k) => k.dt));
-  return out.map((k) => ({ ...k, dt: rt(k.dt - t0) }));
-}
-
-/** ⌘V: the copied keys put on this clip from `at` (a channel the clip's object cannot take — another dim — is skipped). */
-function pasteKeys(c            , keys        , at        , dim     )                                                                        {
-  let out = c;
-  const pasted                                          = [];
-  for (const k of keys) {
-    if (k.v.length !== width(k.ch, dim)) continue;
-    const t = rt(at + k.dt);
-    if (t > MAX_LEN) continue;
-    out = setKey(out, k.ch, t, k.v, k.ease);
-    // The handles come along (a bent point pasted is bent the same way).
-    const got = out.keys[k.ch] .find((x) => sameT(x.t, t)) ;
-    if (k.in) got.in = k.in.slice();
-    if (k.out) got.out = k.out.slice();
-    pasted.push({ ch: k.ch, t });
-  }
-  return { clip: out, pasted };
-}
-
-/** Every key time of a clip (any channel), for the object's summary row. */
-function keyTimes(c                               , chs                  = CHANNELS)           {
-  const ts           = [];
-  for (const ch of chs) for (const k of c?.keys[ch] ?? []) if (!ts.some((t) => sameT(t, k.t))) ts.push(k.t);
-  return ts.sort((a, b) => a - b);
-}
-
-/** Snap a time to the timeline's grid (and to 0 … max). */
-function snapT(t        , max        , free = false)         {
-  const s = free ? rt(t) : Math.round(t / SNAP_T) * SNAP_T;
-  return rt(Math.min(max, Math.max(0, s)));
-}
-
-/** A KeyboardEvent.code as a person reads it: "KeyE" → "E", "Digit1" → "1", "ArrowUp" → "↑", "Space" → "Space". */
-function keyName(code        )         {
-  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
-  if (/^Digit\d$/.test(code)) return code.slice(5);
-  const arrows                         = { ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
-  return arrows[code] ?? code;
-}
-
-/** "0:01.6" — minutes, seconds and a tenth (the time readout; tabular figures keep it still while it runs). */
-function clock(t        )         {
-  const s = Math.max(0, t);
-  const m = Math.floor(s / 60);
-  const rest = s - m * 60;
-  return `${m}:${rest.toFixed(1).padStart(4, '0')}`;
-}
-
-/** A motion (the store's shape) with clip `name` replaced by `c` (or added; null = removed). Empty → null. */
-function withClip(m               , name        , c                   )                {
-  // In place (a rename keeps the clip where it was in the menu), removed, or added at the end.
-  const clips = (m?.clips ?? []).slice();
-  const i = clips.findIndex((x) => x.name === name);
-  if (i >= 0) c ? (clips[i] = c) : clips.splice(i, 1);
-  else if (c) clips.push(c);
-  return clips.length ? { clips } : null;
-}
-
-/** The older motion's pose at `t` (the editor still previews one it could not turn into a clip, e.g. a bad file). */
-function legacyOffsets(m        , t        , dim     )          {
-  const a = motionAt(m, t)                                          ;
-  return { p: a.off, r: m.spin ? (dim === '3d' ? [0, a.turn, 0] : [a.turn]) : null, s: null };
-}
-
-__def(__exports, "CHANNELS", () => CHANNELS);
-__def(__exports, "SAME_T", () => SAME_T);
-__def(__exports, "SNAP_T", () => SNAP_T);
-__def(__exports, "MIN_LEN", () => MIN_LEN);
-__def(__exports, "MAX_LEN", () => MAX_LEN);
-__def(__exports, "MAX_CLIPS", () => MAX_CLIPS);
-__def(__exports, "MAX_KEYS", () => MAX_KEYS);
-__def(__exports, "DEFAULT_EASE", () => DEFAULT_EASE);
-__def(__exports, "width", () => width);
-__def(__exports, "restOf", () => restOf);
-__def(__exports, "offsetsAt", () => offsetsAt);
-__def(__exports, "compose", () => compose);
-__def(__exports, "offsetOf", () => offsetOf);
-__def(__exports, "changedChannels", () => changedChannels);
-__def(__exports, "toClips", () => toClips);
-__def(__exports, "TEMPLATES", () => TEMPLATES);
-__def(__exports, "fromTemplate", () => fromTemplate);
-__def(__exports, "freeName", () => freeName);
-__def(__exports, "refId", () => refId);
-__def(__exports, "sameT", () => sameT);
-__def(__exports, "setKey", () => setKey);
-__def(__exports, "deleteKeys", () => deleteKeys);
-__def(__exports, "moveKeys", () => moveKeys);
-__def(__exports, "easeKeys", () => easeKeys);
-__def(__exports, "copyKeys", () => copyKeys);
-__def(__exports, "pasteKeys", () => pasteKeys);
-__def(__exports, "keyTimes", () => keyTimes);
-__def(__exports, "snapT", () => snapT);
-__def(__exports, "keyName", () => keyName);
-__def(__exports, "clock", () => clock);
-__def(__exports, "withClip", () => withClip);
-__def(__exports, "legacyOffsets", () => legacyOffsets);
-};
-__defs[48] = function (__exports) {
-'use strict';
-// play-arrange.ts
-
-// ▶ Play inside the editor: the game as the editor shows it — the arrangement on screen, saved or not.
-//
-// WHY (a try of the editor, 2026-10-21: "I moved things, pressed Play without Save, and everything was reset. People want to try
-// a change in Play first, then save it"): before, Play showed only what the game's own code does. A game that reads
-// placement.json itself (the loader, src/loader) got the moves because the editor writes its hidden draft before Play
-// (shell/main.ts keepNow); a game that does not (one the AI just made, before "add the loader") came up at its code's
-// layout, and so did every UI move. Since the polish pass of 2026-10-16 Play already showed the copies and deletions
-// (they lived only in placement.json); now it shows the moves, the draw orders and the UI places as well.
-//
-// The file is the editor's draft (the same placement.json the loader reads: on disk with the local studio, in this
-// browser in the web demo, src/hosts/browser/game-placement.js), read by the bridge when Play opens the page. Nothing is
-// written: Save still writes the file the AI is told about.
-//
-// Only what the page shows AS ITS CODE MAKES IT is changed, so applying twice is harmless:
-//   - a moved object only while it stands at its `was` (the code's own pose): a game whose loader already put it
-//     there is left alone, and so is an object the game itself moved since (physics, a boat on the waves);
-//   - a copy only when the page does not have that key; a deletion only while the object still looks as `was`;
-//   - a reordered list only while it is still in the code's order (`was`).
-// The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
-// offset again rather than adding to it.
-                                                                                   
-const { hasLayer, orderOfLayer } = __require(45);
-const { samePose } = __require(46);
-const { compose, legacyOffsets } = __require(47);
-const { motionRunner, resolveClip } = __require(20);
-
-                                                                                                                                  
-                                                                                                   
-                                                                         
-                                                             
-                           
-                
-                                  
-                  
-                      
-                  
-                                   
-                                                                          
-                      
- 
-
-const nums = (v         )                => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isFinite(x));
-const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
-/** A pose of the file, or null when it is not one (the file is untrusted: a hand edit, an older version). */
-function poseOf(e                                                        , base       )              {
-  if (!nums(e.p)) return null;
-  const out       = { p: e.p.slice() };
-  const r = num(e.r) ? e.r : base?.r;
-  if (r !== undefined) out.r = r;
-  const s = num(e.s) || nums(e.s) ? e.s : base?.s;
-  if (s !== undefined) out.s = Array.isArray(s) ? s.slice() : s;
-  const t = nums(e.t) && e.t.length === 2 ? e.t : base?.t;
-  if (t) out.t = [t[0] , t[1] ];
-  return out;
-}
-const flat = (p      )       => ({ ...p, z: undefined });
-
-/**
- * Put the file's arrangement on the page's objects (see the top of this file). Returns how many changes were made.
- * `a`: the page's adapter, with objects listed.
- */
-function arrangeInPlay(a               , file                 )         {
-  if (!file || typeof file !== 'object') return 0;
-  const dim      = file.dim === '2d' ? '2d' : '3d';
-  let shown = 0;
-  const list = () => a.list();
-  const find = (k        ) => list().find((i) => i.key === k);
-  const put = (k        , p      , what        ) => {
-    try {
-      if (a.setPose(k, p)) shown++;
-    } catch (err) {
-      console.warn(`[studio] could not show ${what} ${k} in Play:`, err);
-    }
-  };
-
-  // Deletions first: an object deleted in the editor is not among the moves.
-  if (a.remove && Array.isArray(file.removed)) {
-    for (const r of file.removed) {
-      const it = typeof r?.key === 'string' ? find(r.key) : undefined;
-      if (!it || (typeof r.label === 'string' && r.label !== it.label)) continue;
-      const wp = r.was && nums(r.was.p) ? r.was.p : null;
-      if (wp && it.pose && it.pose.p.some((v, i) => Math.abs(v - (wp[i] ?? 0)) > 1e-3)) continue;
-      try {
-        if (a.remove(it.key)) shown++;
-      } catch {
-        /* keep it */
-      }
-    }
-  }
-
-  // Moves: only an object the page shows where its code puts it (`was`).
-  if (file.objects && typeof file.objects === 'object') {
-    for (const [k, e] of Object.entries(file.objects)) {
-      const it = e && typeof e === 'object' ? find(k) : undefined;
-      if (!it || !e.was) continue;
-      const was = poseOf(e.was, it.pose), want = poseOf(e, it.pose);
-      if (!was || !want) continue;
-      if (!samePose(flat(it.pose), flat(was), dim) || samePose(flat(it.pose), flat(want), dim)) continue;
-      put(k, want, 'the move of');
-    }
-  }
-
-  // Copies (polish pass 2026-10-16): a clone of the original as it stands, so it looks right but does not act (a boat
-  // that floats, a coin that spins) until the AI adds it to the code. A key the page already has is left alone.
-  if (a.clone && Array.isArray(file.added)) {
-    for (const e of file.added) {
-      if (typeof e?.key !== 'string' || typeof e.from !== 'string') continue;
-      if (find(e.key) || !find(e.from)) continue;
-      const pose = poseOf(e);
-      if (!pose) continue;
-      try {
-        if (!a.clone(e.from, e.key)) continue;
-        a.setPose(e.key, pose);
-        shown++;
-      } catch (err) {
-        console.warn('[studio] could not show the copy ' + e.key + ' in Play:', err);
-      }
-    }
-  }
-
-  // Draw orders (2D): a list still in the code's order gets the editor's (z slots, as the editor's own reorder does).
-  if (Array.isArray(file.order)) {
-    for (const o of file.order) {
-      if (typeof o?.in !== 'string' || !Array.isArray(o.keys)) continue;
-      const layer = o.in;
-      const raw = list().filter((i) => hasLayer(i) && i.layer === layer);
-      const now = orderOfLayer(raw, layer);
-      const keys = (o.keys             ).filter((k)              => typeof k === 'string' && now.includes(k));
-      if (keys.join('\n') === now.filter((k) => keys.includes(k)).join('\n')) continue;
-      if (Array.isArray(o.was)) {
-        const was = (o.was             ).filter((k)              => typeof k === 'string');
-        if (now.filter((k) => was.includes(k)).join('\n') !== was.filter((k) => now.includes(k)).join('\n')) continue;
-      }
-      const slots = raw.filter((i) => keys.includes(i.key)).map((i) => i.pose.z ).sort((x, y) => x - y);
-      keys.forEach((k, i) => {
-        const it = raw.find((x) => x.key === k) ;
-        put(k, { ...find(k)?.pose ?? it.pose, z: slots[i]  }, 'the draw order of');
-      });
-    }
-  }
-  return shown;
-}
-
-/**
- * The draft's motions in ▶ Play (motion-gui, 2026-10-22; the timeline's clips since studio-timeline), for a game whose
- * loader does not run them: a game the AI made before "add the loader", or one with an older copy of it. Every frame
- * of the page (its own requestAnimationFrame: Play is not frozen), each object is put at its place + its clip that
- * plays at the start (clipAt) — or the older path / spin (motionAt) — through the adapter, as the loader would. A clip
- * that waits for a cue does not play here: the cue is the game's code, which the AI writes. Keys the page's loader
- * already moves (the global set it keeps, src/loader) are left alone, so nothing moves twice. Call after arrangeInPlay
- * (the place is the arranged one). Returns the keys it moves.
- * `live`: ▶ Play in the same page (fast switch, 2026-10-22; play-switch.ts) — false once the page is back in Edit, and
- * the motions stop there (the page's loop would otherwise go on moving them under the editor). Absent = for the page's
- * life, as a Play page always was.
- */
-function moveInPlay(a               , file                 , win                            , live                )           {
-  const motion = file && typeof file === 'object' && file.motion && typeof file.motion === 'object' ? file.motion : null;
-  if (!motion) return [];
-  const byLoader = (win                                                      )[Symbol.for('game-studio.motion')];
-  const items = a.list();
-  const runs                                                                           = [];
-  // Clips (a Library motion by `use`, or keys of their own) start and stop by the loader's own rules (motionRunner,
-  // studio-motion-triggers): the game starting, a time, a key, another clip's end. Cues the game's code gives (touch,
-  // a named cue, words) cannot happen here: the AI writes them.
-  const lib = Array.isArray(file .motions) ? file .motions : [];
-  const clipped                                                                    = [];
-  for (const [key, m] of Object.entries(motion)) {
-    if (byLoader?.has(key) || !m || typeof m !== 'object') continue;
-    const it = items.find((i) => i.key === key);
-    if (!it) continue;
-    const dim      = it.pose.p.length === 3 ? '3d' : '2d';
-    const mm = m          ;
-    const clips = Array.isArray(mm.clips) ? (mm.clips.map((c) => resolveClip(c, lib, key)).filter(Boolean)                ) : [];
-    const pathOk = Array.isArray(mm.path) && mm.path.length > 0 && mm.path.every((q) => nums(q) && q.length === it.pose.p.length);
-    if (clips.length) clipped.push({ key, clips, base: structuredClone(flat(it.pose)), dim });
-    else if (!mm.clips && (pathOk || num(mm.spin))) runs.push({ key, at: (t) => legacyOffsets(mm, t, dim), base: structuredClone(flat(it.pose)), dim });
-  }
-  if (!runs.length && !clipped.length) return [];
-  const t0 = win.performance.now();
-  const run = motionRunner(clipped.map((c) => ({ key: c.key, clips: c.clips })));
-  run.fire({ on: 'start' }, t0);
-  // Any of a clip's ways to start (studio-timeline-2: `whens`, from resolveClip) may be a key.
-  if (clipped.some((c) => c.clips.some((x) => ((x                                                  ).whens ?? [x.when                   ]).some((w) => w?.on === 'key')))) {
-    win.addEventListener('keydown', (e) => !e.repeat && run.fire({ on: 'key', key: e.code }, win.performance.now()));
-  }
-  const tick = (now        ) => {
-    if (live && !live()) return;
-    const t = Math.max(0, (now - t0) / 1000);
-    for (const r of runs) {
-      try {
-        a.setPose(r.key, compose(r.base, r.at(t), r.dim));
-      } catch {
-        /* the game took it away: the others go on */
-      }
-    }
-    for (const [key, at] of run.step(now, () => null)) {
-      const c = clipped.find((x) => x.key === key);
-      try {
-        if (c) a.setPose(key, compose(c.base, at           , c.dim));
-      } catch {
-        /* gone */
-      }
-    }
-    win.requestAnimationFrame(tick);
-  };
-  win.requestAnimationFrame(tick);
-  return [...runs.map((r) => r.key), ...clipped.map((c) => c.key)];
-}
-
-__def(__exports, "arrangeInPlay", () => arrangeInPlay);
-__def(__exports, "moveInPlay", () => moveInPlay);
-};
-__defs[49] = function (__exports) {
-'use strict';
-// play-switch.ts
-
-// ▶ Play and back in the same page (fast switch, 2026-10-22; a try of the editor: "every time I play and go back to edit it loads
-// again — tedious"). CONTRACT.md §3.5.2, contract.ts `studio:core/play`.
-//
-// Before: Play and Edit each opened the game page again (`?studio=edit` or not). Going back to Edit took seconds: the
-// game loads, the adapter is found, the list is made, every row's picture drawn again. Now the edit page itself becomes
-// Play and comes back:
-//
-//   Play (go)   1. wait for the editor's first moments (its watch of what the game moves, the self-check: both move
-//                  objects and put them back; a start in between would start from a moment of the watch)
-//               2. keep where everything stands — the edit layout: each layer's listed poses (copies included) and,
-//                  where the adapter can (three.js), the whole scene (watch(true), as the editor's own watch does)
-//               3. the editor puts its tools away (core/edit off: the game's own camera and HUD, no handles, no input)
-//               4. the draft's motions start (moveInPlay, as a Play page's loader would; see `live`)
-//               5. the game goes on: frames, clock (core/time.ts `clock`: the time spent editing is not a frame step),
-//                  sound (a pause's hold, when Edit held it); play-ask wakes (play/hello: ask, pause, move work as on a
-//                  Play page)
-//   Edit (back) 1. play-ask sleeps (Move, the chat, the field put away), the motions stop
-//               2. the game is held as a pause holds it (frames, clock, sound, the mouse let go)
-//               3. everything goes back to where Play found it: what the game moved while playing (the hero, an enemy,
-//                  the camera) is not kept. "Put in layout" from a pause is the shell's: it sends those after this.
-//               4. the editor is up again on the edit camera it had (core/edit on with the shell's view state)
-//
-// WHY "Play starts from the layout, Edit goes back to it" (the call made for this change, as recommended): Edit is where the
-// layout is made, so what Edit shows must be the layout, never "wherever the game left things" (a person would save a
-// moment of play as their layout without knowing). And Play from the same picture the person just arranged is what
-// they asked to see. What does NOT go back: the game's own state that is not an object's pose — the score, a timer, an
-// enemy's health, things the game made or took away while playing. For those, "Play from the start" (⌘K, Play's ▾)
-// opens a new page as Play always did.
-//
-// Not here (the shell decides, main.ts canPlayHere): a page whose editor is not up (still loading, no adapter), and a
-// draft with motions that wait for the game's cue (a page loaded for Edit never ran the loader's motions, so the
-// game's playMotion() finds nothing): those open a new Play page as before.
-                                                          
-                                             
-                                          
-const { moveInPlay } = __require(48);
-                                                   
-
-                                 
-                                  
-             
-                 
-                         
- 
-
-                             
-                                                                                                                         
-                                                                                          
-                                                        
-                            
- 
-
-function createPlaySwitch(d                )             {
-  const { win, core, editor, playAsk } = d;
-  let playing = false;
-  // Which Play this is: the motions of an earlier one stop (moveInPlay `live`).
-  let run = 0;
-  // Where Play found everything (go 2.), per layer.
-  let kept                                                                                    = [];
-  // The edit camera as it was at Play (the world's; the UI has none): exactly what Edit comes back to. The shell's kept
-  // view state (core/view-state) can lag a glide's last step, and a camera a hair off reads as "it moved".
-  let editView          = undefined;
-  let chain                = Promise.resolve();
-
-  const listOf = (a               ) => {
-    try {
-      return a.list();
-    } catch {
-      return [];
-    }
-  };
-
-  async function go(motion                                     ) {
-    if (playing) return;
-    await editor.settled();
-    playing = true;
-    const mine = ++run;
-    const layers = editor.playLayers();
-    try {
-      editView = editor.layer() === 'world' ? editor.driven.view.state() : undefined;
-    } catch {
-      editView = undefined;
-    }
-    kept = layers.map((l) => ({ ...l, poses: listOf(l.edits).map((i) => [i.key, structuredClone(i.pose)]                  ) }));
-    for (const l of layers) {
-      try {
-        l.raw.watch?.(true);
-      } catch {
-        /* the listed poses above still go back */
-      }
-    }
-    editor.handle({ type: 'studio:core/edit', on: false });
-    // The world's motions, through the editor's copies layer (a copy that moves is the editor's object). Its first
-    // listed layer is the world's when the game has one (editor.ts playLayers).
-    const world = layers[0]?.edits;
-    let moving           = [];
-    if (world && motion && typeof motion === 'object') {
-      try {
-        moving = moveInPlay(world, { motion }, win, () => run === mine && playing);
-      } catch (e) {
-        console.warn('[studio] Play: the motions could not start:', e);
-      }
-    }
-    playAsk.wake(Promise.resolve(moving));
-    // Held by a pause before (Edit holds the game with it, back below): its resume brings the sound back too.
-    if (playAsk.hold?.paused) playAsk.hold.resume();
-    else core.time.thaw();
-  }
-
-  function back(viewState         ) {
-    if (!playing) return;
-    playing = false;
-    run++;
-    playAsk.sleep();
-    if (playAsk.hold) playAsk.hold.pause();
-    else core.time.freeze();
-    for (const l of kept) {
-      try {
-        l.raw.watch?.(false);
-      } catch {
-        /* the listed poses below */
-      }
-    }
-    for (const l of kept) {
-      for (const [key, pose] of l.poses) {
-        try {
-          l.edits.setPose(key, pose);
-        } catch {
-          /* the game took it away: the others go back */
-        }
-      }
-    }
-    kept = [];
-    const view = editView !== undefined ? editView : viewState;
-    editView = undefined;
-    editor.handle({ type: 'studio:core/edit', on: true, viewState: view });
-  }
-
-  return {
-    get playing() {
-      return playing;
-    },
-    handle(m) {
-      chain = chain.then(() => (m.on ? go(m.motion) : back(m.viewState))).catch((e) => console.warn('[studio] Play / Edit switch failed:', e));
-    },
-  };
-}
-
-__def(__exports, "createPlaySwitch", () => createPlaySwitch);
-};
 __defs[50] = function (__exports) {
 'use strict';
 // levels.ts
@@ -18344,10 +18580,10 @@ const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
 const { findDomUi, uiAdapterFromPort } = __require(22);
 const { runSelfCheck } = __require(23);
-const { createEditor } = __require(37);
-const { startPlayAsk } = __require(44);
-const { createPlaySwitch } = __require(49);
-const { arrangeInPlay, moveInPlay } = __require(48);
+const { createEditor } = __require(42);
+const { startPlayAsk } = __require(49);
+const { createPlaySwitch } = __require(41);
+const { arrangeInPlay, moveInPlay } = __require(40);
 const { applyPlacement, placementForLevel } = __require(20);
 const { pickLevel } = __require(50);
 const { watchEarlyTaps } = __require(51);

@@ -17,7 +17,7 @@
 import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionKey, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
 import { motionRunner, whenOf, whensOf } from '../loader/studio-placement.js';
 import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from './path-edit.ts';
-import { joinClip, likeScene, sceneMembers } from './scene-motion.ts';
+import { asOrdinary, asScene, joinClip, likeScene, sceneMembers } from './scene-motion.ts';
 import { libOf, type MotionLibrary } from './motion-library.ts';
 import { motionCardRow } from './motion-card.ts';
 import type { MotionStore } from './motion-model.ts';
@@ -56,6 +56,16 @@ export interface TimelineDeps {
   usable(): boolean;
   /** The one picked object (null with none or several). */
   picked(): string | null;
+  /**
+   * studio-motion-focus: every picked object (Multi-select / a box), for the rows — the timeline shows the picked ones
+   * only. Absent = the one of picked().
+   */
+  group?(): string[];
+  /**
+   * studio-motion-focus: give the pick back to `key` after a click in the game linked another object ("+ Link an
+   * object" open: the click is a link, not a pick). Absent = no linking from the game (the list still links).
+   */
+  reselect?(key: string): void;
   /** Where an object stands (its place: the model's pose, saved or not). */
   place(key: string): Pose | undefined;
   /** The scene's objects in the list's order (rows follow it). */
@@ -201,12 +211,20 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   // The scene shown on the plate (its Library name), or null. While it is open the rows are its objects, the head acts
   // on it (whichever object is picked), and an object picked that has no motion of its own can join it.
   let scene: string | null = null;
+  // studio-motion-focus: ⋯'s "Show every motion in the scene" (the rows as they were before: every moving object), and
+  // "+ Link an object" open (its list on screen: a click on an object in the game links it — linkPick).
+  let all = false;
+  let linking = false;
   const members = (name = scene) => (name ? sceneMembers(store(), name).filter((k) => !!d.place(k)) : []);
-  /** Open / close the scene as the pick changes: a picked object showing a scene clip opens it; an object with motions of its own (not in it) closes it. */
+  /**
+   * Open / close the scene as the pick changes: a picked object showing a scene clip opens it; any other object picked
+   * closes it (studio-motion-focus: the rows are the picked object's — before, an object with no motion of its own kept
+   * the scene open to show "+ Add crate to “Arrival”"; "+ Link an object" is the one way in now).
+   */
   function syncScene() {
     const p = d.picked();
     if (scene && !members().length) scene = null;
-    if (scene && p && !members().includes(p) && clipsOf(p).length) scene = null;
+    if (scene && p && !members().includes(p)) scene = null;
     if (!scene && p) {
       const c = clipOf(p);
       if (c?.scene) openScene(c.use!);
@@ -218,9 +236,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
   /** The object whose clip the head shows and edits: the focus, or with a scene open, a member (the picked one if it is). */
   const head = () => {
-    if (!scene) return focus();
-    const ms = members(), p = d.picked();
-    return p && ms.includes(p) ? p : ms[0] ?? focus();
+    const f = focus();
+    if (!scene) return f;
+    const ms = members();
+    return f && ms.includes(f) ? f : ms[0] ?? f;
   };
   const shown = () => open && d.usable();
   /** The keys with a motion that are in the scene now. */
@@ -266,10 +285,12 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
 
   // ----- edits: one place for "store, undo, show" -----
   /** Put new motions in the store; `end` = also one undo step from `from` (the motions before the gesture). */
-  function commit(next: Map<string, Motion | null>, from: Map<string, Motion | null> | null, end: boolean) {
+  // `pre`: Library changes that go first in the same undo step (studio-motion-focus: a motion turned into a scene by a
+  // link, or back by an unlink — undo applies the step backwards, so the Library's own shape is put back last).
+  function commit(next: Map<string, Motion | null>, from: Map<string, Motion | null> | null, end: boolean, pre: Change[] = []) {
     for (const [k, m] of next) store().set(k, m);
     if (end) {
-      const changes: Change[] = [];
+      const changes: Change[] = [...pre];
       for (const [k, m] of next) {
         const was = from?.get(k) ?? null;
         if (!sameMotion(was, m)) changes.push({ kind: 'motion', key: k, from: was, to: m });
@@ -305,17 +326,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const place = d.place(key);
     if (!place) return store().get(key);
     let m = store().get(key);
+    // (studio-timeline-2 also put an object moved with ● on into the open scene; studio-motion-focus took that out —
+    // another object picked closes the scene, and "+ Link an object" is the one way in.)
     let c = clipOf(key);
-    // A scene open and this object not in it (it has no motion of its own: syncScene): moving it with ● on puts it in
-    // the scene (Unity's Animation window records another object under the same Animator into the same clip).
-    if (scene && !c?.scene) {
-      const l = lib().get(scene);
-      const ms = members();
-      if (l?.tracks && ms.length) {
-        c = joinClip(l, clipOf(ms[0]!));
-        chosen.set(key, scene);
-      }
-    }
     if (!c) {
       // One name for the whole gesture: a live drag remakes this first clip at every pose (from the motion before it),
       // and the Library already holds the name it took on the first pose.
@@ -415,19 +428,87 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     return lens.length ? Math.max(1, ...lens) : 4;
   };
 
+  /**
+   * The rows (studio-motion-focus, 2026-10-23; a request: "every other object's motion shows up too — mostly I only
+   * need the one I picked"): the picked object first, the other picked ones, then the objects linked to it (the open
+   * scene's) in the list's order. ⋯'s "Show every motion" adds every moving object (the rows as they were before).
+   * WHY the picked one first: it is the one being made; on the screen in the request it was the last of five rows.
+   */
   function rows() {
     const p = d.picked();
-    // A scene open: its objects only (and the picked one, which may join it).
-    const keys = new Set(scene ? members() : moving());
-    if (p && d.place(p)) keys.add(p);
     const order = d.order();
     const at = (k: string) => {
       const i = order.indexOf(k);
       return i < 0 ? 1e9 : i;
     };
+    const byList = (ks: string[]) => ks.slice().sort((a, b) => at(a) - at(b));
+    const keys: string[] = [];
+    const add = (k: string | null | undefined) => k && d.place(k) && !keys.includes(k) && keys.push(k);
+    add(head());
+    for (const k of byList(d.group?.() ?? (p ? [p] : []))) add(k);
+    for (const k of byList(members())) add(k);
+    if (all) for (const k of byList(moving())) add(k);
     const ms = scene ? members() : [];
-    return [...keys].sort((a, b) => at(a) - at(b)).map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: scene && !ms.includes(k) ? null : clipOf(k),
-      ...(scene ? { member: ms.includes(k) } : {}) }));
+    return keys.map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k), ...(scene ? { member: ms.includes(k) } : {}) }));
+  }
+
+  // ----- linking (studio-motion-focus; scene-motion.ts asScene / asOrdinary) -----
+  /** The objects "+ Link an object" offers: the scene's, in the list's order, without the rows already on the plate. */
+  function linkable(): Array<{ key: string; label: string; note: string }> {
+    const shown = new Set(rows().map((r) => r.key));
+    return d.order().filter((k) => !shown.has(k) && !!d.place(k) && clipsOf(k).length < MAX_CLIPS)
+      .map((k) => ({ key: k, label: d.label(k), note: clipOf(k)?.name ?? '' }));
+  }
+  /**
+   * Put `other` in the motion the head shows: a scene already → it joins; an ordinary motion → it becomes a scene of
+   * the two (its keys the head's track); none yet → an empty one for both (moving either with ● sets its keys). A
+   * motion other objects use too is copied first ("Hop 2"), so theirs stays as it is. One undo step.
+   */
+  function link(other: string): boolean {
+    const key = head();
+    if (!key || other === key || !d.place(key) || !d.place(other) || clipsOf(other).length >= MAX_CLIPS) return false;
+    const from = new Map<string, Motion | null>([[key, store().get(key)], [other, store().get(other)]]);
+    const next = new Map<string, Motion | null>();
+    const pre: Change[] = [];
+    let c = clipOf(key);
+    if (c?.scene) {
+      if (members(c.use).includes(other)) return false;
+    } else {
+      if (!c && clipsOf(key).length >= MAX_CLIPS) return false;
+      const base: MotionClip = c ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
+      const was = base.use ?? base.name;
+      const name = c && usage(was).length > 1 ? lib().free(was) : was;
+      const before = lib().get(name) ?? null;
+      lib().set(name, asScene(libOf({ ...base, name }), key));
+      pre.push({ kind: 'motion-lib', key: name, from: before, to: lib().get(name) });
+      c = { ...base, name: base.name === was ? name : base.name, use: name, scene: true };
+      delete c.start;
+      next.set(key, withClip(store().get(key), base.name, c));
+    }
+    const l = lib().get(c.use!)!;
+    next.set(other, withClip(store().get(other), l.name, joinClip(l, c)));
+    chosen.set(key, c.name);
+    chosen.set(other, l.name);
+    openScene(l.name);
+    linking = false;
+    commit(next, from, true, pre);
+    return true;
+  }
+  /** Take `key` out of the open scene (its row's ×). The last one left makes it an ordinary motion again. One undo step. */
+  function unlink(key: string) {
+    const name = scene;
+    const c = name ? clipsOf(key).find((x) => x.use === name) : null;
+    const l = name ? lib().get(name) : null;
+    if (!name || !c || !l) return;
+    const pre: Change[] = [];
+    const rest = Object.keys(l.tracks ?? {}).filter((k) => k !== key);
+    if (rest.length === 1) {
+      lib().set(name, asOrdinary(l, rest[0]!));
+      pre.push({ kind: 'motion-lib', key: name, from: l, to: lib().get(name) });
+    }
+    sel = sel.filter((r) => r.key !== key);
+    chosen.delete(key);
+    commit(new Map([[key, withClip(store().get(key), c.name, null)]]), new Map([[key, store().get(key)]]), true, pre);
   }
 
   /** The picked position keys' point kind (the head's "Point ▾", studio-timeline-2): one kind, 'mixed', or null with none picked. */
@@ -472,6 +553,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       when: c ? (whenOf(c) as MotionWhen) : null,
       whens: c ? (whensOf(c) as MotionWhen[]) : [],
       scene: scene && c?.scene ? { name: scene, n: members().length } : null,
+      // studio-motion-focus: "+ Link an object" under the rows (not while every motion is shown), and ⋯'s "every motion".
+      link: key && !all && d.place(key) ? { linking, items: linkable } : null,
+      all,
+      moving: moving().length,
       point: pointOf(),
       // The line's ▷ (studio-motion-panel): the cue that starts this clip (its first way; "the game starts" for start / time).
       tryId: key && c ? (qs.find((q) => q.hits.some(([k, n]) => k === key && n === c.name))?.id ?? null) : null,
@@ -515,8 +600,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
     const pose = shownPose(key)!;
-    const sl = scene && !clipOf(key)?.scene && members().length ? lib().get(scene) : null;
-    let c = (sl?.tracks ? joinClip(sl, clipOf(members()[0]!)) : null) ?? clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
+    let c = clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p'] as MotionChannel[])) {
@@ -671,6 +755,18 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       render();
     }
     if (focusStarts && shown()) (panel.focusStarts(), (focusStarts = false));
+  }
+  /**
+   * studio-motion-tool (2026-10-22): a new motion from a template on `key` — the strip's Motion button on a thing with
+   * none — shown at once with "✓ attached · When does it move?", the same moment as an attach. Its name, or null.
+   */
+  function makeFrom(key: string, kind: Template): string | null {
+    if (!d.place(key) || clipsOf(key).length >= MAX_CLIPS) return null;
+    focusKey = key;
+    newClip(key, kind);
+    const name = chosen.get(key) ?? null;
+    if (name) show(key, name, true);
+    return name;
   }
   /** Attach from the card's menu (already in the Scene): attach, then show it with its "when" open. */
   function attachShow(key: string, name: string) {
@@ -860,19 +956,18 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       }
       if (next.size) commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
     },
-    join(key) {
-      const l = scene ? lib().get(scene) : null;
-      const ms = members();
-      if (!l?.tracks || !d.place(key) || ms.includes(key) || clipsOf(key).length >= MAX_CLIPS) return;
-      chosen.set(key, l.name);
-      one(key, withClip(store().get(key), l.name, joinClip(l, ms[0] ? clipOf(ms[0]) : null)));
+    // studio-motion-focus: "+ Link an object" (its list, or a click in the game while it is open), a row's ×, ⋯'s rows.
+    link: (key) => void link(key),
+    linking(on) {
+      if (linking === on) return;
+      linking = on;
+      panel.render();
     },
-    leave(key) {
-      const c = scene ? clipsOf(key).find((x) => x.use === scene) : null;
-      if (!c) return;
-      sel = sel.filter((r) => r.key !== key);
-      chosen.delete(key);
-      one(key, withClip(store().get(key), c.name, null));
+    leave: (key) => unlink(key),
+    showAll(on) {
+      all = on;
+      panel.render();
+      d.layout();
     },
     tryCue: (id) => tryCue(id),
     tryStop: () => stopTry(),
@@ -1037,6 +1132,19 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     shownPose,
     placeFor,
     records,
+    /**
+     * studio-motion-focus: an object picked in the game (placement/selected). With "+ Link an object" open it is linked
+     * to the shown motion instead, and the pick goes back to the object being made: true = taken here (the shell does
+     * not change its selection). A click on nothing just closes the list.
+     */
+    linkPick(key: string | null): boolean {
+      if (!linking || !shown()) return false;
+      const h = head();
+      linking = false;
+      if (!(key && key !== h && linkable().some((x) => x.key === key) && link(key))) panel.render();
+      if (h) d.reselect?.(h);
+      return true;
+    },
     /** The person pressed something else (the game, the card): the editor's keys are the scene's again. */
     untouch: () => (touched = false),
     onKey,
@@ -1204,8 +1312,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     attach,
     // studio-motion-flow: the plate on an object, from outside it (the Library's "+ New motion", a drop, its "Attach").
     make,
+    makeFrom,
     show,
     detach,
+    /** The motion the timeline shows for `key` first (the chosen one, else the one that plays at the start), or null. */
+    clipName: (key: string): string | null => clipOf(key)?.name ?? null,
+    /** More motions can go on `key` (MAX_CLIPS). */
+    room: (key: string): boolean => clipsOf(key).length < MAX_CLIPS,
     duplicateLib,
     deleteLib,
     renameLib: (from: string, to: string): string | null => {

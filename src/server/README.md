@@ -21,6 +21,7 @@ dependencies). It is the local implementation of the host interface (contract 3)
 - `which-ai.mjs` - which AI is behind the editor (Claude / Codex / unknown), from the wake hook and the environment it was started in: the AI line's "More in Claude" (2026-10-21)
 - `play-chat.mjs` - the chat over a paused game kept as `.studio/chat/<first request id>.json`: the person's turns (server, POST /request) and the AI's (`--status … --note`) (2026-10-22)
 - `ai-undo.mjs` - the game files' signature (the editor reloads the game when it changes) and the snapshots in `.studio/undo/` behind "Undo AI change"
+- `loader-copy.mjs` - the game's copy of the loader (`studio-placement.js`, any version) is answered with the editor's own, the file on disk unchanged: an older copy has no play hook and ▶ Play would open a new page (integrate 1023, 2026-10-23; how a copy is known: CONTRACT.md §3.5.3)
 - `files.mjs` - what may be served or written (inside the folder only, no dot-files, no overwrites)
 - `assets.mjs` - asset list with `refsInCode` and names in code that match no file
 - `next-steps.mjs` - text written to `.studio/next-step.md` for the "next step" menu
@@ -53,4 +54,4 @@ dependencies). It is the local implementation of the host interface (contract 3)
 | `POST /__studio/api/kumo/image` | `{ prompt, width?, height?, quality?, tiling?, format?, name?, acceptTerms? }` → `{ path, costUsdMicros, balanceCents }`; refusals are 422 `{ error, code }` (`signed_out`, `needs_terms`, `not_enough`, `not_open`, ...) |
 | `POST /__studio/api/kumo/model3d` | `{ prompt, texture?, acceptTerms? }` → the job; `GET /__studio/api/kumo/model3d/<id>` until it has `path` |
 | `GET /__studio/api/lan-qr.svg` | with `--lan` only: QR code of the editor link |
-| `GET /<path>` | game files; HTML gets `<script src="/__studio/studio-edit.js">` first in `<head>` |
+| `GET /<path>` | game files; HTML gets `<script src="/__studio/studio-edit.js">` first in `<head>`; the game's copy of the loader (`studio-placement.js`) is answered with the editor's own (loader-copy.mjs) |

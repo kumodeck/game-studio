@@ -20,7 +20,8 @@
 //   /__studio/studio-placement.js   the loader (so a game can try it before copying it in)
 //   /__studio/api/...     JSON API (see handleApi)
 //   /__studio/<file>      other files of the built UI (studio-edit.js, shell assets)
-//   /<anything else>      the game folder; HTML responses get the edit script injected
+//   /<anything else>      the game folder; HTML responses get the edit script injected, and the game's copy of
+//                         the loader (studio-placement.js) is answered with the editor's own (loader-copy.mjs)
 
 import http from 'node:http';
 import { promises as fs } from 'node:fs';
@@ -37,6 +38,7 @@ import { listAssets } from './assets.mjs';
 import { nextStepMarkdown, NEXT_STEP_IDS } from './next-steps.mjs';
 import { encodeQR, qrToSvg } from './qr.mjs';
 import { embedded } from './embedded.mjs';
+import { isLoaderCopy, mayBeLoaderCopy } from './loader-copy.mjs';
 import { createKumo } from './kumo.mjs';
 import { listGameFiles, codeSignature, snapshotGame, restoreGame } from './ai-undo.mjs';
 import { readWatch, handoffLine, wakeAlive } from './ai-watch.mjs';
@@ -625,6 +627,11 @@ async function serveGameFile(req, res, pathname, ctx) {
     // Inject into the response only; the file on disk is never changed.
     const html = await fs.readFile(r.abs, 'utf8');
     return sendBody(req, res, 200, 'text/html; charset=utf-8', injectEditScript(html, EDIT_SCRIPT_URL, GAME_ADAPTER_URL, GAME_TOOLS_URL));
+  }
+  // The game's copy of the loader goes out as the editor's own (loader-copy.mjs: an older copy has no play hook, and
+  // ▶ Play would open a new page). The file on disk stays as it is.
+  if (mayBeLoaderCopy(r.abs, r.stat.size) && isLoaderCopy(await fs.readFile(r.abs, 'utf8'))) {
+    return sendBody(req, res, 200, 'text/javascript; charset=utf-8', embedded('studio-placement.js'));
   }
   return sendFile(req, res, r.abs, r.stat);
 }

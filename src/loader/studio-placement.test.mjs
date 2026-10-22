@@ -230,6 +230,62 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
     }
   });
 
+  // ▶ Play in the editor's own page (studio-no-reload, 2026-10-22): the editor starts the draft's motions through the
+  // loader's play hook, every `when` included, and stops them back in Edit (bridge/play-switch.ts).
+  test(`${label}: the play hook runs the draft's motions in an edit page, and stops them`, async () => {
+    // This copy's hook: the copies register in the order this file imports them (source, then built).
+    const hooks = [...globalThis[Symbol.for('game-studio.play')]];
+    const hook = hooks[label === 'source' ? 0 : 1];
+    const s = threeScene();
+    const frames = [];
+    const keep = { raf: globalThis.requestAnimationFrame, loc: globalThis.location, now: performance.now, ael: globalThis.addEventListener };
+    let now = 1000;
+    performance.now = () => now;
+    globalThis.requestAnimationFrame = (cb) => frames.push(cb);
+    globalThis.addEventListener = () => {};
+    try {
+      globalThis.location = { search: '?studio=edit&parent=x' };
+      // The page as Edit opened it: the file read, nothing moving.
+      const r = await applyPlacement(s.scene, { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: { hero: { p: [1, 0, 0] } } });
+      assert.equal(r.motion, undefined);
+      assert.equal(hook.has(), true, 'a copy that placed a world can play here');
+      assert.equal(mod.playMotion('hero', 'Hop'), false, 'Edit: the game\'s playMotion() does nothing');
+      // ▶ Play: the draft (not the file the page read): one clip at the start, one on a cue.
+      const motions = [{ name: 'Hop', len: 1, keys: { p: [{ t: 0, v: [0, 0, 0], ease: 'linear' }, { t: 1, v: [0, 2, 0] }] } }];
+      const keys = hook.start({ motion: { hero: { clips: [{ use: 'Hop' }] }, tree: { clips: [{ use: 'Hop', when: { on: 'cue', cue: 'go' } }] } }, motions });
+      assert.deepEqual(keys, ['hero', 'tree']);
+      now = 1500;
+      frames.shift()(now);
+      assert.deepEqual([s.marked.position.x, s.marked.position.y], [1, 1], 'from the edit layout: half way up at 0.5 s');
+      assert.equal(mod.cue('go'), true, "the game's cue() works in the playing edit page");
+      now = 2000;
+      frames.shift()(now);
+      assert.equal(s.tree1.position.y, 1);
+      // Back to Edit: they stop (the editor puts things back), and the game's calls do nothing again.
+      hook.stop();
+      assert.equal(mod.cue('go'), false);
+      assert.equal(mod.playMotion('hero', 'Hop'), false);
+      frames.splice(0).forEach((f) => f(3000));
+      assert.equal(frames.length, 0, 'no frame loop left');
+      assert.equal(s.tree1.position.y, 1, 'stopped where it was');
+      // Play again: from its start again.
+      s.marked.position.y = 0;
+      now = 3000;
+      hook.start({ motion: { hero: { clips: [{ use: 'Hop' }] } }, motions });
+      now = 3250;
+      frames.shift()(now);
+      assert.equal(s.marked.position.y, 0.5, 'a second Play starts the clip again');
+      hook.stop();
+    } finally {
+      globalThis.requestAnimationFrame = keep.raf;
+      globalThis.addEventListener = keep.ael;
+      performance.now = keep.now;
+      if (keep.loc === undefined) delete globalThis.location;
+      else globalThis.location = keep.loc;
+      mod.stopMotion();
+    }
+  });
+
   test(`${label}: motion runs from the game's frames, not inside the editor`, async () => {
     const s = threeScene();
     const frames = [];
@@ -465,6 +521,7 @@ for (const [label, file] of [['source', './studio-placement.js'], ['built', path
 // 28 KB since the timeline's second stage (handles, `when` lists, scenes: studio-timeline-2, 2026-10-22; 24 since
 // motion triggers, 16 since the timeline, 12 since motion-gui, 9 since UI stage 1, 6 before). The same limit as
 // src/server/build.mjs LOADER_LIMIT.
-test('the built loader is under 28 KB', () => {
-  assert.ok(readFileSync(BUILT).length < 28 * 1024);
+// 29 KB since the play hook (▶ Play in the editor's own page for every motion: studio-no-reload, 2026-10-22).
+test('the built loader is under 29 KB', () => {
+  assert.ok(readFileSync(BUILT).length < 29 * 1024);
 });

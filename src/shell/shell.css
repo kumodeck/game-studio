@@ -1275,9 +1275,14 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* The chosen one of a list (the level on screen): the check in the text colour, not the third grey of a key. */
 .ctx-key.ctx-check { color: var(--text); padding-left: 16px; }
 .ctx-sep { flex: none; height: .5px; margin: 4px 10px; background: var(--line-2); }
+/* A list's small title (the strip's Motion menu: "New motion" / "From the Library"): the third grey in the small size,
+   sitting on the rows it names (more room above than under), as a Mac menu's section title. */
+.ctx-head { flex: none; padding: 8px 10px 4px; font-size: var(--fs-s); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-head:first-child { padding-top: 4px; }
 .shell[data-layout="phone"] .ctx-menu { min-width: 224px; padding: 8px; border-radius: var(--R); }
 .shell[data-layout="phone"] .ctx-row { border-radius: calc(var(--R) - 8px); padding: 0 12px; }
 .shell[data-layout="phone"] .ctx-sep { margin: 4px 12px; }
+.shell[data-layout="phone"] .ctx-head { padding-left: 12px; padding-right: 12px; }
 /* A long press on a row or a tile must not also start the phone's own text selection or its picture callout. */
 .shell[data-layout="phone"] .obj, .shell[data-layout="phone"] .assets-page .gsl-tile { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 
@@ -1515,15 +1520,34 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-scene { font-size: var(--fs-s); font-weight: 600; color: var(--you-text, var(--you)); background: var(--you-soft); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
 .tl-leave { width: 20px; min-height: 20px; padding: 0; margin-left: auto; flex: none; color: var(--text-3); opacity: 0; transition: opacity var(--dur) var(--ease); }
 .tl-leave .icon { width: 10px; height: 10px; }
-/* No hover on a phone: the × shows on the picked row only (on every row it would eat the short names column). */
-.tl-name:hover .tl-leave, .tl-leave:focus-visible, .timeline.narrow .tl-name.picked .tl-leave { opacity: 1; }
-.timeline.narrow .tl-name:not(.picked) .tl-leave { display: none; }
-.tl-name.tl-join-name { color: var(--you-text, var(--you)); }
-.tl-lane.tl-join { display: flex; align-items: center; gap: 10px; padding-left: 8px; }
-.tl-join-btn { height: calc(var(--tl-row) - 6px); padding: 0 10px; border-radius: 8px; font-size: var(--fs-s); font-weight: 600; color: var(--you-text, var(--you));
-  border: 1px dashed var(--you); background: transparent; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.tl-join-btn:hover { background: var(--you-soft); }
-.tl-join-or { font-size: var(--fs-s); color: var(--text-3); white-space: nowrap; }
+/* No hover on a phone: the × shows always (studio-motion-focus: it is on the linked rows, never the picked one). */
+.tl-name:hover .tl-leave, .tl-leave:focus-visible, .timeline.narrow .tl-leave { opacity: 1; }
+/* "+ Link an object" (studio-motion-focus, 2026-10-23): one quiet line under the rows — the second colour, no fill until
+   hovered or open; the picked object's motion stays the plate's subject. The lane beside it says "or click an object in
+   the game" while its list is open; a linked row with no key yet says how to give it some (the third colour, small). */
+.tl-name.tl-link-name { padding-left: 4px; }
+.tl-link { display: inline-flex; align-items: center; gap: 6px; height: calc(var(--tl-row) - 6px); padding: 0 8px; border-radius: 7px; color: var(--text-2);
+  font-size: var(--fs-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tl-link .icon { width: 12px; height: 12px; flex: none; }
+.tl-link:hover, .tl-link.on { background: var(--raise-2); color: var(--text); }
+.tl-lane-hint { position: absolute; left: 14px; right: 8px; top: 0; line-height: var(--tl-row); font-size: var(--fs-s); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+/* A phone's names column is 96 px: the button runs over the (empty) lane beside it rather than being cut. */
+.timeline.narrow .tl-name.tl-link-name { overflow: visible; position: relative; z-index: 1; }
+.timeline.narrow .tl-link { max-width: none; overflow: visible; }
+/* The list (a .tl-more popover with its left edge on the button): a find field, then the scene's objects. */
+.tl-more[data-part="tl-link-pop"] { padding: 8px; }
+.tl-link-title { font-size: var(--fs-s); color: var(--text-2); padding: 2px 6px 6px; }
+.tl-link-find { width: 100%; height: 30px; box-sizing: border-box; border-radius: 8px; background: var(--raise); padding: 0 10px; margin-bottom: 4px; color: var(--text); }
+.tl-link-list { max-height: min(280px, 40vh); overflow: hidden auto; overscroll-behavior: contain; }
+.tl-link-item { display: flex; width: 100%; align-items: center; gap: 8px; height: 28px; padding: 0 8px; border-radius: 7px; justify-content: flex-start; text-align: left; }
+.tl-link-item:hover, .tl-link-item:focus-visible { background: var(--raise-2); }
+.tl-link-item .tl-link-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-link-item .tl-clipname { margin-left: auto; flex: none; }
+.tl-link-none { margin: 0; padding: 8px; font-size: var(--fs-s); color: var(--text-3); }
+.shell[data-layout="phone"] .tl-link-item { height: 40px; }
+.tl-all { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 8px; background: var(--raise-2); font-size: var(--fs-s); white-space: nowrap; }
+.tl-all .icon { width: 13px; height: 13px; }
+.tl-all.on { background: var(--you-soft); color: var(--you-text, var(--you)); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-head button, .shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select { min-height: 40px; height: 40px; }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select { font-size: max(16px, var(--fs)); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-key::after { inset: -14px; }

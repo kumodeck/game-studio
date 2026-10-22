@@ -9,6 +9,7 @@ import { promises as fs } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { startStudioServer } from './server.mjs';
+import { isLoaderCopy, mayBeLoaderCopy } from './loader-copy.mjs';
 import { injectEditScript, safeAssetName } from './files.mjs';
 
 const PKG = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -120,6 +121,53 @@ test('HTML responses get the edit script first in <head>; the file on disk is un
   assert.equal(r.headers['cache-control'], 'no-store');
   assert.equal(r.headers['x-content-type-options'], 'nosniff');
   assert.match(r.headers['content-security-policy'], /frame-ancestors 'self'/);
+});
+
+test('the game\'s copy of the loader goes out as the editor\'s own; the file on disk and look-alikes stay (integrate 1023)', async (t) => {
+  const s = await start();
+  t.after(() => s.srv.close());
+  // An older copy: the built file's header, applyPlacement, no play hook (as a game keeps it from before v0.1.24).
+  const old = '// KUMODeck Game Studio placement loader (MIT). Applies placement.json to a three.js Scene or PixiJS stage.\n'
+    + 'export async function applyPlacement(root, source) { return { applied: [] }; }\nexport function stopMotion() {}\n';
+  await fs.writeFile(path.join(s.root, 'studio-placement.js'), old);
+  await fs.mkdir(path.join(s.root, 'js'));
+  await fs.writeFile(path.join(s.root, 'js/studio-placement.js'), old);
+  // Same name, not the loader (the game's own file): as it is.
+  await fs.mkdir(path.join(s.root, 'own'));
+  const own = '// my placement helpers\nexport async function applyPlacement() {}\n';
+  await fs.writeFile(path.join(s.root, 'own/studio-placement.js'), own);
+  const current = await (await s.req('GET', '/__studio/studio-placement.js')).text;
+  assert.match(current, /game-studio\.play/);
+  for (const p of ['/studio-placement.js', '/js/studio-placement.js']) {
+    const r = await s.req('GET', p);
+    assert.equal(r.status, 200);
+    assert.match(r.headers['content-type'], /^text\/javascript/);
+    assert.equal(r.text, current, p);
+  }
+  assert.equal((await s.req('GET', '/own/studio-placement.js')).text, own);
+  assert.equal(await fs.readFile(path.join(s.root, 'studio-placement.js'), 'utf8'), old);
+  // HEAD answers the same length, no body.
+  const h = await s.req('HEAD', '/studio-placement.js');
+  assert.equal(Number(h.headers['content-length']), Buffer.byteLength(current));
+});
+
+test('isLoaderCopy: every shape the loader was copied in, and nothing else', () => {
+  const pkg = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
+  return Promise.all([
+    fs.readFile(path.join(pkg, 'skills/arrange/bin/studio-placement.js'), 'utf8'),
+    fs.readFile(path.join(pkg, 'src/loader/studio-placement.js'), 'utf8'),
+  ]).then(([built, source]) => {
+    assert.equal(isLoaderCopy(built), true);
+    assert.equal(isLoaderCopy(source), true);
+    assert.equal(isLoaderCopy('\uFEFF' + built), true);
+    assert.equal(isLoaderCopy('// KUMODeck Game Studio placement loader\nexport const x = 1;\n'), false);
+    assert.equal(isLoaderCopy("export * from '../../src/loader/studio-placement.js';\n"), false);
+    assert.equal(isLoaderCopy(undefined), false);
+    assert.equal(mayBeLoaderCopy('/g/js/studio-placement.js', 1000), true);
+    assert.equal(mayBeLoaderCopy('/g/studio-placement.js.map', 1000), false);
+    assert.equal(mayBeLoaderCopy('/g/my-studio-placement.js', 1000), false);
+    assert.equal(mayBeLoaderCopy('/g/studio-placement.js', 10 * 1024 * 1024), false);
+  });
 });
 
 test('injectEditScript handles pages without <head> and with attributes', () => {

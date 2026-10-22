@@ -90,7 +90,7 @@ import { nativeClearTimeout, nativeNow, nativeSetTimeout } from '../core/native.
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
-import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, moreFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
+import { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
 import type { EditsAdapter } from '../core/edits.ts';
 import { createRiseButtons, type RiseDir } from './rise.ts';
 import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type DetentState } from './snap.ts';
@@ -131,6 +131,10 @@ export interface InputHandle {
   setTool(tool: HandleKind | null): void;
   /** Close the strip's choices (a press or Escape in the editor page). */
   closeMenu(): void;
+  /** The strip's Motion button (studio-motion-tool; contract placement/motion). */
+  setMotion(m: { show: boolean; has: boolean; label: string; open: boolean }): void;
+  /** The Motion button's key or ⌘K in the editor page: report it as a press on the button (its place). */
+  pressMotion(): void;
   /** Space held in the shell: a drag looks around even with a tool chosen. */
   setLook(on: boolean): void;
   /** The fly keys held in the shell (studio:core/fly): the camera flies while any is held, [] stops. */
@@ -850,6 +854,14 @@ export function attachInput(deps: InputDeps): InputHandle {
     return { dist: Math.hypot(a!.x - b!.x, a!.y - b!.y), cx: (a!.x + b!.x) / 2, cy: (a!.y + b!.y) / 2 };
   };
 
+  // The Motion button as the editor page last described it (placement/motion): shown, has a motion, its words.
+  let motion = { show: false, has: false, label: '', open: false };
+  /** Tell the editor page the Motion button was pressed (`r` = the button's box; null = off screen: a key). */
+  const pressMotion = (r: DOMRect | null, touch: boolean, keyboard: boolean) => {
+    if (!state.selected) return;
+    post({ type: 'studio:placement/motion-press', key: state.selected, x: r?.left ?? 0, y: r?.top ?? 0, w: r?.width ?? 0, h: r?.height ?? 0, touch, keyboard });
+  };
+
   const onDown = (e: PointerEvent) => {
     const h = handleFromEvent(e);
     block(e);
@@ -893,6 +905,16 @@ export function attachInput(deps: InputDeps): InputHandle {
       toggleMenu(more);
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
+      return;
+    }
+    // The Motion button (studio-motion-tool, 2026-10-22): not a tool — the editor page opens the pick's motion, or its
+    // small menu at the button. On the press, as a menu button does (the editor's menu then takes the release).
+    const mot = motionFromEvent(e);
+    if (mot) {
+      if (handles.menuOpen()) menu(null);
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      if (state.selected && !p.menu && motion.show) pressMotion(mot, p.type !== 'mouse', false);
       return;
     }
     // A choice in the strip's menu (turn axis / resize mode): it is used at once — its tool is chosen and the
@@ -1234,6 +1256,11 @@ export function attachInput(deps: InputDeps): InputHandle {
       chooseTool(tk, 'key');
       return;
     }
+    // A / 5: the Motion button (studio-motion-tool), as a press on it. After fly: A with the right button held flies.
+    if (!e.shiftKey && key && motion.show && isMotionKey(e.key) && !e.repeat && !typingIn(e.target)) {
+      pressMotion(handles.motionRect(), false, true);
+      return;
+    }
     // R: the next turn axis (3D, one or several picked), with the choices shown for a moment of feedback.
     if ((e.key === 'r' || e.key === 'R') && key && canTurn()) {
       setAxis('next');
@@ -1499,6 +1526,14 @@ export function attachInput(deps: InputDeps): InputHandle {
     },
     closeMenu() {
       if (handles.menuOpen()) menu(null);
+    },
+    setMotion(m) {
+      motion = { show: !!m.show, has: !!m.has, label: String(m.label || ''), open: !!m.open };
+      handles.setMotion(motion);
+      place();
+    },
+    pressMotion() {
+      if (motion.show) pressMotion(handles.motionRect(), false, true);
     },
     setLook(on) {
       spaceHeld = !!on;

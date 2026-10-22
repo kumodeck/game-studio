@@ -101,6 +101,8 @@ const PATHS: Record<string, string> = {
   toolLift: 'M10 3.5v13|M7 6.5l3-3 3 3|M7 13.5l3 3 3-3',
   toolRotate: 'M16 10a6 6 0 1 1-1.76-4.24|M14.75 3v3.25H11.5',
   toolScale: 'M4.5 15.5 15.5 4.5|M11 4.5h4.5V9|M4.5 11v4.5H9',
+  // The strip's Motion button (studio-motion-tool; bridge/handles.ts MOTION_ICON on this grid): a path to the thing at its end.
+  toolMotion: 'M16.5 16c-3.75 0-4.2-5.8-7.1-7.9S5.8 6.7 4.6 5.4|o 16.5 16|O 4.6 5.4 2.2',
 };
 
 /** Icons drawn filled as well as stroked (they read too thin as outlines). */

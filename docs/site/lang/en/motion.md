@@ -2,13 +2,24 @@
 title: Motion
 nav: Motion
 order: 4
-written-for: 0.1.18
+written-for: 0.1.23
 description: Make things move with the timeline, choose when a motion starts and stops, and reuse motions from the Library.
 ---
 
 # Motion
 
 Make a boat sail, a door open, a coin spin. You set where a thing is at a few moments in time, and the editor fills in the movement between them. Motion works in 3D games.
+
+## Start from the tool strip
+
+The quickest way: select something in the game, then press **Motion** at the right end of the tool strip under it (or press <kbd>A</kbd>).
+
+![The Motion button in the tool strip, with its menu: New motion and From the Library](media/motion-strip.webp)
+
+- **New motion**: choose **Back and forth**, **Round**, **Once** or **Spin**. It moves right away.
+- **From the Library**: choose a motion you already made.
+
+The timeline opens on it and asks **When does it move?** (see [When it starts](#when-it-starts)). Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
 
 ## The timeline
 
@@ -20,8 +31,8 @@ Its top is one line, with what you use every time: **▶** (or <kbd>Space</kbd>)
 
 - The **ruler** is time. Drag on it to see that moment. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
 - Click the length after the time to type a new one, in seconds.
-- Each object has a row. Open it to see **Position**, **Angle** and **Size** on their own rows.
-- **⋯** has the rest: **Repeat**, **Stops**, other ways to start, and **Try**.
+- The rows are the **selected object** (with several selected, each of them), and the objects you [link](#linking-several-things-in-one-motion) to it. Open a row to see **Position**, **Angle** and **Size** on their own rows.
+- **⋯** has the rest: **Repeat**, **Stops**, other ways to start, **Try**, and **Show every motion in the scene** (every moving object’s row; **Show only the selected one** goes back).
 
 ## Keys
 
@@ -95,17 +106,21 @@ The **▶** next to **Starts** runs the scene as if this motion’s start just h
 
 **Try** in **⋯** shows one ▶ for each way a motion can start in this scene, like “Game starts” or “Click boat.” Press one to run the scene as if that just happened. **Stop** ends it.
 
-## Scenes: several things in one motion
+## Linking: several things in one motion
 
-A **scene** moves several objects together, like a short cutscene: the boat rows in, the buoy dips, the barrel rolls off the pier.
+The timeline shows the selected object only. When a motion should move other things too, like a short cutscene (the crate hops, the buoy dips, the barrel rolls off the pier), link them to it.
 
-![A scene with three objects on one timeline, and the crate’s + Add row](media/motion-scene.webp)
+![+ Link an object: the scene’s objects in a list, or click one in the game](media/motion-link.webp)
 
-1. In the motion menu at the top of the timeline, choose **New: Scene — several objects**. It starts with the selected object.
-2. Select another object. Its row says **+ Add crate to “Arrival”**. Press it, or just move the object with **Auto key** on.
-3. Each object has its own row of keys, on one time line. **Starts** and **Stops** are the scene’s: all of them start together.
+1. Under the rows, press **+ Link an object**.
+2. Choose one from the list (type to find it by name), or click it in the game while the list is open. The selected object stays selected.
+3. It gets a row of its own on the same time line. Move it with **Auto key** on to set its keys. The top says **Linked · 2**.
 
-**×** on a row takes that object out of the scene. Dropping a scene from the Library onto an object adds that object to it.
+![The crate with the buoy and the barrel linked: one motion, one time line](media/motion-scene.webp)
+
+**Starts** and **Stops** are shared: all of them start together. Selecting a linked object shows the same rows, with it on top. **×** on a linked row unlinks it (its own motions stay). Unlink the last one and the motion is the selected object’s alone again.
+
+You can also start from **New: Scene — several objects** in the motion menu, or drop a linked motion from the Library onto an object to link it.
 
 ## The motion Library
 

@@ -1028,6 +1028,14 @@ export type ShellToBridge =
   | { type: 'studio:placement/axis'; axis: TurnAxis | 'next' }
   /** Choose the strip's tool (the M / H / T / S keys and ⌘K when the shell has focus), or none. */
   | { type: 'studio:placement/tool'; tool: StripTool | null }
+  /**
+   * The strip's Motion button (studio-motion-tool, 2026-10-22): shown after the four tools when the pick can have a
+   * motion (`show`: one world object of a 3D game, not the ground / sky), with a dot when it has one (`has`). `label` =
+   * its tooltip and the name read aloud, in the editor's words (the shell's i18n: the name of the motion is in it).
+   * `open` = its menu is open in the editor page (the button looks pressed). `press` = its key (A / 5) or ⌘K in the
+   * editor page: the bridge answers placement/motion-press with the button's place, as for a press on it.
+   */
+  | { type: 'studio:placement/motion'; show: boolean; has: boolean; label: string; open?: boolean; press?: boolean }
   /** Space is held in the shell: a drag in the game looks around even with a tool chosen. */
   | { type: 'studio:placement/look'; on: boolean }
   /**
@@ -1079,14 +1087,16 @@ export type ShellToBridge =
    *   - `on: true`: the edit page becomes Play — the editor puts its tools away (as core/edit off: the game's own
    *     camera and HUD, no handles), the game's frames, clock and sound go on from the edit layout, and the page says
    *     play/hello as a Play page does (ask while playing, pause, move while paused). `motion`: the editor's draft
-   *     motions (placement.json `motion`, world part), played from their start as a Play page's loader would.
+   *     motions (placement.json `motion`, world part), played from their start as a Play page's loader would, and
+   *     `motions` the Library's (placement.json `motions`, for the clips' `use`). Every `when` runs when the game's
+   *     loader has its play hook (core/ready `motionHere`, studio-no-reload 2026-10-22).
    *   - `on: false`: the game is held (frames, clock, sound), every object goes back to where Play found it (what the
    *     game moved while playing is not kept: Edit shows the layout), and the editor is up again on `viewState` (the
    *     edit camera): core/ready `editing: true` and the list follow, as on a page that just opened.
    * Only sent to a page whose editor is up. "Play from the start" (⌘K, Play's ▾) still opens a new page, for a game
    * whose score, enemies or timers should start again.
    */
-  | { type: 'studio:core/play'; on: boolean; motion?: Record<string, unknown>; viewState?: unknown }
+  | { type: 'studio:core/play'; on: boolean; motion?: Record<string, unknown>; motions?: unknown[]; viewState?: unknown }
   /**
    * Ask while playing (§3.5): the editor answers the bridge's play/hello when an AI is behind the host (never in the
    * offline web demo, where nothing is shown). `words`: the overlay's strings in the person's language (the bridge
@@ -1153,6 +1163,12 @@ export type BridgeToShell =
   | { type: 'studio:core/ready'; kind: AdapterKind; dim: Dim; version?: string; editing: boolean; rise?: boolean; fly?: boolean;
       /** `drop`: the adapter can drop to floor (snap to surfaces, adapter drop): End / ⌘K / the menu offer it. */
       drop?: boolean;
+      /**
+       * `motionHere` (studio-no-reload, 2026-10-22): the game's loader (studio-placement.js with its play hook) runs the
+       * draft's motions in this page on core/play — every `when`, the game's playMotion() / cue() included. Absent (no
+       * loader, or an older copy): a draft whose clips wait for something opens a new Play page, as before.
+       */
+      motionHere?: boolean;
       /**
        * UI stage 1: the layers this game has, only when it has a UI (an element marked data-studio-key) — absent,
        * the editor is exactly as before (no switch, no `ui` in placement.json). `layer`: the one being edited now;
@@ -1227,6 +1243,13 @@ export type BridgeToShell =
    * moving the camera — and sent `placement/selected` before this. `x` / `y` = the point in the game page's own px.
    */
   | { type: 'studio:placement/context'; key: string | null; x: number; y: number; touch: boolean }
+  /**
+   * The strip's Motion button pressed (or its keys, A / 5, while the game page has focus): the editor opens the pick's
+   * motion on the timeline, or, with none yet, its small menu (new from a template / from the Library) at the button.
+   * `x` `y` `w` `h` = the button in the game page's own px (0 × 0 for a key: the menu opens under the strip's place);
+   * `touch` = a finger (the menu goes above it).
+   */
+  | { type: 'studio:placement/motion-press'; key: string; x: number; y: number; w: number; h: number; touch: boolean; keyboard: boolean }
   /** Answer to placement/at: the object at that point (null = nothing there). */
   | { type: 'studio:placement/at-is'; id: number; key: string | null }
   | { type: 'studio:library/assets'; loads: LoadEntry[]; uses: Record<string, AssetRef[]> }

@@ -49,7 +49,8 @@ draw order is a main 2D move). PC is unchanged. `test/studio-narrow.browser.mjs`
 2D draw order (layers): `layers.ts` (pure helpers: button/drag targets, the
 front-first list) — the card's Layer row and the list's grips in
 `placement-panel.ts`, one undo step per change in `main.ts`, the `order`
-entries of placement.json in `placement-model.ts`.
+entries of placement.json in `placement-model.ts`. `play-here.ts`: can ▶ Play happen in the page on screen for the draft's
+motions (studio-no-reload: always with the game's loader's play hook; without it, those the editor runs itself).
 
 Copy, delete, several at once (CONTRACT.md §1.8): `edit-ops.ts` (pure
 helpers: copy keys, group draw-order moves, "all of this kind"); the card's
@@ -199,3 +200,9 @@ the game's own; `set` / `setWas` / `theme` of placement.json; the validator's ru
 Since studio-motion-panel (2026-10-22) the plate's top is one line (▶ · time · ● · the motion · Starts ▷ · ⋯ · ✦ Ask AI · ⌄):
 `timeline-more.ts` is the ⋯ panel (Repeat, Stops, the other ways it starts, every cue to Try), and `motion-ask.ts` remembers
 the motion "Ask AI" was pressed on, so the chat box's chip reads "crate · Hop" and the request carries that motion.
+
+Since studio-motion-focus (2026-10-23) the rows are the picked object's (several picked: those) and the objects linked to
+it: "+ Link an object" under the rows opens `timeline-link.ts`'s list (or a click in the game links, through
+`timeline.linkPick` in main.ts's placement/selected) — a link makes the motion a scene motion (`scene-motion.ts`
+asScene / asOrdinary), nothing new. ⋯'s "Show every motion in the scene" shows every moving object's row again.
+`test/motion-focus.test.ts`, `test/studio-motion-focus.browser.mjs`.
