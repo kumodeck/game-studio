@@ -52,11 +52,6 @@ export interface PlacementPanelDeps {
   /** Phone layout (no Shift key, no box: the hints say so). */
   phone(): boolean;
   /**
-   * Levels (2026-10-22, level-switch.ts): the button that takes the place of "In this scene" in a game with levels;
-   * null (or absent) = the title as before.
-   */
-  levelSwitch?(): HTMLElement | null;
-  /**
    * UI stage 2 (2026-10-22, ui-screens.ts): the UI list's head in a game with screens ("Title ⌄  1 of 4"); null (or
    * absent) = "On screen" as before.
    */
@@ -950,10 +945,11 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       onclick: () => d.setMulti(!on) });
     // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
     const uiList = d.items().every((i) => i.kinds.includes('ui'));
-    // A game with levels: the head names the level (and opens the levels' menu) instead (levels, 2026-10-22).
+    // A game with levels keeps this title: the level is named (and switched) in the top bar's path since level-crumb
+    // (2026-10-22); for a few hours it was this head ("Meadow ⌄ 1 of 3"), which nobody found.
     // A game with screens (UI stage 2): the UI list's head names the screen shown, and opens the screens' menu.
-    const lvl = uiList ? d.uiHead?.() ?? null : d.levelSwitch?.() ?? null;
-    listTools.append(lvl || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
+    const head = uiList ? d.uiHead?.() ?? null : null;
+    listTools.append(head || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };

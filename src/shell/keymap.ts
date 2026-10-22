@@ -43,6 +43,8 @@ export interface KeyDef {
    * Rows are not added for it: the condition is on the row that has the key.
    */
   when?: 'picked' | 'nothing' | 'tool';
+  /** Only in games with levels (the top bar's level crumb, level-switch.ts). */
+  levels?: true;
 }
 
 export const KEYMAP: KeyDef[] = [
@@ -96,6 +98,10 @@ export const KEYMAP: KeyDef[] = [
   // ⇧U: the game's UI shown / hidden while the world is edited (a try of the editor, 2026-10-20: hidden by default, "in the way").
   // Shift + the layer's own key: the same thing (the UI), looked at instead of switched to. Plain U stays the switch.
   { id: 'uiPeek', group: 'view', keys: ['⇧U'], ui: true },
+  // [ / ]: the level before / after (level-crumb, 2026-10-22), as the levels' menu writes on those rows. Plain keys:
+  // ⌘[ / ⌘] are the 2D layers' below. Free in this table and in the game frame (input.ts sends every key up).
+  { id: 'levelPrev', group: 'view', keys: ['['], label: 'level.prev', levels: true },
+  { id: 'levelNext', group: 'view', keys: [']'], label: 'level.next', levels: true },
   { id: 'forward', group: 'layers', keys: ['⌘]'], label: 'layer.forward', dim: '2d' },
   { id: 'backward', group: 'layers', keys: ['⌘['], label: 'layer.backward', dim: '2d' },
   { id: 'toFront', group: 'layers', keys: ['⇧⌘]'], label: 'layer.toFront', dim: '2d' },

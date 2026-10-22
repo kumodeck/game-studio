@@ -125,3 +125,16 @@ test('the sheet never shows one key in two rows without saying when', () => {
   }
   for (const w of ['picked', 'nothing', 'tool']) for (const lang of ['en', 'ja'] as const) assert.notEqual(translate(lang, `keys.when.${w}`), `keys.when.${w}`);
 });
+
+// level-crumb (2026-10-22): [ / ] go to the level before / after; only in a game with levels (the sheet hides them
+// otherwise), named in both languages, and read by main.ts without ⌘ (⌘[ / ⌘] stay the 2D layers').
+test('the level keys: [ and ], only with levels, read without ⌘', () => {
+  const prev = KEYMAP.find((k) => k.id === 'levelPrev')!, next = KEYMAP.find((k) => k.id === 'levelNext')!;
+  assert.deepEqual([prev.keys, next.keys], [['['], [']']]);
+  assert.ok(prev.levels && next.levels);
+  for (const lang of ['en', 'ja'] as const) assert.notEqual(translate(lang, 'level.prev'), 'level.prev');
+  const main = readFileSync(new URL('../src/shell/main.ts', import.meta.url), 'utf8');
+  assert.ok(main.includes("if (!mod && (k === '[' || k === ']') && levels.active && editing && !playing)"));
+  const sheet = readFileSync(new URL('../src/shell/shortcuts.ts', import.meta.url), 'utf8');
+  assert.ok(sheet.includes('(!x.levels || !!d.hasLevels?.())'));
+});

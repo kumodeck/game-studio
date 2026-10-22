@@ -16,6 +16,8 @@ export interface ShortcutSheetDeps {
   dim(): '2d' | '3d';
   /** The game has a UI layer (rows marked `ui` in the key table show only then). */
   hasUi?(): boolean;
+  /** The game has levels (rows marked `levels` show only then). */
+  hasLevels?(): boolean;
   /** Opened / closed (main.ts shows the scrim and tells the game what is covered). */
   changed(open: boolean): void;
 }
@@ -32,7 +34,7 @@ export function createShortcutSheet(d: ShortcutSheetDeps) {
     const groups: KeyGroup[] = d.dim() === '2d' ? ['edit', 'tools', 'view', 'layers'] : ['edit', 'tools', 'view'];
     for (const g of groups) {
       const dl = h('dl', { class: 'keys-list' });
-      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()))) {
+      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()) && (!x.levels || !!d.hasLevels?.()))) {
         const keys = keysOf(k.id, d.mac());
         // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
         const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');

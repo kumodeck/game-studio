@@ -330,16 +330,29 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .list-hint { display: block; width: 100%; padding: 4px 0 0; font-size: var(--fs-s); }
 .list-tools:has(.list-hint) { flex-wrap: wrap; }
 .list-scroll { min-height: 0; }
-/* Levels (2026-10-22, level-switch.ts): in a game with levels the list's head names the level — the title's grey,
-   size and weight, so it reads as the same heading — and pressing it opens the levels' menu. No fill until hovered. */
-.level-switch { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; min-height: 22px; margin-left: -6px; padding: 0 6px; border-radius: 6px;
-  color: var(--text-2); font-size: var(--fs-s); font-weight: 600; }
-.level-switch:hover, .shell[data-menu="levels"] .level-switch { background: var(--raise-3); color: var(--text); }
+/* Levels (2026-10-22, level-switch.ts): the level is a part of the top bar's path since level-crumb (2026-10-22) —
+   ▣ Studio / Three Isles / Meadow ⌄ / Scene. The crumb reads as the path's own words (the text colour, the game's
+   name's weight one step down: it is a place inside the game), a chevron in the third grey, and the bar's capsule fill
+   only while hovered or open. Before that the switch was the Scene list's head ("Meadow ⌄ 1 of 3"), which read as a
+   title and was missed. */
+.level-crumb { display: contents; }
+.level-crumb[hidden], .level-add-slot[hidden] { display: none; }
+.level-switch { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 220px; height: 26px; margin: 0 -6px; padding: 0 6px;
+  border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 500; }
+.level-switch:hover, .shell[data-menu="levels"] .level-switch { background: var(--raise-3); }
 .level-switch .level-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .level-switch .icon { flex: none; width: 12px; height: 12px; color: var(--text-3); }
-.level-switch .level-n { flex: none; margin-left: 2px; color: var(--text-3); font-weight: 500; }
-.level-rename { min-width: 0; width: 160px; height: 24px; margin-left: -6px; padding: 0 6px; border: 1px solid var(--line-2); border-radius: 6px;
-  background: var(--studio-card); color: var(--text); font: inherit; font-size: var(--fs-s); font-weight: 600; }
+/* While playing: the level's name as plain words (you are in it; the menu would reload the game). */
+.level-here { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 500; }
+.level-rename { flex: 0 1 180px; min-width: 80px; width: 180px; height: 26px; margin: 0 -6px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 999px;
+  background: var(--studio-card); color: var(--text); font: inherit; font-weight: 500; }
+/* "+ Level" after the path, in a game without levels: the third grey and the small size (the adapter's words beside
+   it are the same), no plate until hovered — a door that is there, not a button that asks to be pressed. */
+.level-add-slot { display: inline-flex; }
+.level-add { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px 0 5px; border: 0; background: transparent;
+  color: var(--text-3); font: inherit; font-size: var(--fs-s); }
+.level-add:hover { background: var(--raise-3); color: var(--text-2); }
+.level-add .icon { width: 12px; height: 12px; }
 .objects { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; position: relative; }
 .obj { height: var(--h); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: var(--r); cursor: pointer; white-space: nowrap; min-width: 0; color: var(--text); user-select: none; -webkit-user-select: none; }
 .obj:hover { background: var(--raise); }
@@ -862,6 +875,14 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .top { padding: 0 6px 0 16px; gap: 4px; }
 .shell[data-layout="phone"] .brand .app, .shell[data-layout="phone"] .brand .sep, .shell[data-layout="phone"] .brand .here { display: none; }
 .shell[data-layout="phone"] .brand .title { font-size: var(--fs-l); font-weight: 600; }
+/* Levels on a phone: the game's name and the level, "Three Isles / Meadow ⌄" (the path's other parts are hidden
+   here). The level a finger high, kept whole (up to 42% of the screen; a % here is of the small path box): the game's name gives way first — the first
+   try let both shrink and read "Three Is… / Mead…".
+   "+ Level" is not in the phone's bar (no room beside Undo / Save / Play): "…" (All actions) has "Add a level". */
+.shell[data-layout="phone"] .level-crumb .sep { display: inline; }
+.shell[data-layout="phone"] .level-switch { flex: 0 0 auto; max-width: 42vw; height: 36px; font-size: var(--fs-l); }
+.shell[data-layout="phone"] .level-rename { height: 36px; font-size: var(--fs-l); }
+.shell[data-layout="phone"] .level-add-slot { display: none; }
 .shell[data-layout="phone"] .top-right { gap: 2px; }
 .shell[data-layout="phone"] .peer { display: none; }
 .shell[data-layout="phone"] .save-state { padding: 0 6px; }
@@ -933,8 +954,6 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* A grid, not a wrapping flex row: a wrapping row pushed the "…" button down to a line of its own. */
 .shell[data-layout="phone"] .side-head-tools, .shell[data-layout="phone"] .side-head-tools .list-tools { display: contents; }
 .shell[data-layout="phone"] .side-head-tools .list-title { display: none; }
-/* Levels: on a phone the level's head is the sheet head's second row, at the left, a finger high. */
-.shell[data-layout="phone"] .side-head-tools .level-switch, .shell[data-layout="phone"] .side-head-tools .level-rename { grid-area: 2 / 1 / 3 / -1; justify-self: start; min-height: 36px; margin: 2px 0 0 4px; }
 .shell[data-layout="phone"] .side-head-tools .toggle { grid-area: 1 / 2; justify-self: end; display: block; max-width: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shell[data-layout="phone"] .side-head-tools .list-hint { grid-area: 3 / 1 / 4 / -1; padding: 4px; }
 /* The narrowest phones (280–340): the switch and "…" alone fill the row, so Multi-select takes a short row of its

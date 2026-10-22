@@ -2,7 +2,7 @@
 // again — tedious") in a headless browser: the real local server, the built editor, the starters.
 // bridge/play-switch.ts says what the switch does; contract.ts `studio:core/play`.
 //
-//   node test/studio-fast-switch.browser.mjs [--only time,cove,ruins,fresh] [--times <n>] [--before <studio-ui dir>]
+//   node test/studio-fast-switch.browser.mjs [--only time,cove,ruins,fresh,crumb] [--times <n>] [--before <studio-ui dir>]
 //
 // time   Lantern Cove (three.js) and Firefly Ruins (PixiJS), PC 1280×800: ▶ Play and back to Edit, `--times` rounds
 //        (3), timed in the editor's own page from the press to:
@@ -18,6 +18,10 @@
 // ruins  Firefly Ruins (2D), PC: Play and back in the same page; the poses as in Edit.
 // fresh  Lantern Cove, PC: Play's ▾ → "Play from the start": a new page (the mark is gone), playing; Edit after it opens
 //        a new edit page (as before the fast switch).
+// crumb  Three Isles (three levels; level-crumb, 2026-10-22) at every size (PC 1280×800, a side window 420×800, a phone
+//        390×844 by touch) in light and dark: go to Canyon from the top bar's level crumb, ▶ Play in the same page on
+//        Canyon — the crumb is the level's name as words then (no menu) — and Edit: the same page, the crumb a button
+//        again, still Canyon.
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -130,11 +134,13 @@ function gameFolder(src) {
 }
 
 const browser = await launch();
-async function open(src, uiDir) {
+/** `vp`: the window (PC 1280×800 by default); touch = the phone emulation, dark = the dark theme. */
+async function open(src, uiDir, vp = { w: 1280, h: 800 }) {
   const root = gameFolder(src);
   const srv = await startStudioServer({ root, uiDir: uiDir || join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {}, env: { CLAUDECODE: '1' } });
-  const page = await newPage(browser, { width: 1280, height: 800 });
-  await page.send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+  const page = await newPage(browser, { width: vp.w, height: vp.h, mobile: !!vp.touch });
+  if (!vp.touch) await page.send('Emulation.setDeviceMetricsOverride', { width: vp.w, height: vp.h, deviceScaleFactor: vp.w < 600 ? 2 : 1, mobile: false });
+  if (vp.dark) await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
   await page.goto(srv.url);
   await page.waitFor(IN.edit, 90000);
   // The editor's first moments (its watch of the game, the self-check, the list's pictures).
@@ -330,7 +336,54 @@ async function fresh() {
   }
 }
 
+async function crumb() {
+  const SIZES = [{ id: 'pc', w: 1280, h: 800 }, { id: 'side', w: 420, h: 800 }, { id: 'phone', w: 390, h: 844, touch: true }];
+  for (const sz of SIZES) for (const dark of [false, true]) {
+    console.log(`crumb: Three Isles, ${sz.id} ${sz.w}×${sz.h} ${dark ? 'dark' : 'light'}`);
+    const g = await open('examples/three-isles', null, { ...sz, dark });
+    const { page } = g;
+    const tap = async (sel) => {
+      const at = JSON.parse(await page.eval(`(() => { const b = [...document.querySelectorAll(${JSON.stringify(sel)})].find((e) => e.offsetParent && !e.disabled); if (!b) return null;
+        const r = b.getBoundingClientRect(); return JSON.stringify([r.left + Math.min(r.width / 2, 30), r.top + r.height / 2]); })()`) || 'null');
+      if (!at) throw new Error(`${sel} is not on screen`);
+      if (sz.touch) await page.tap(at[0], at[1]);
+      else await page.click(at[0], at[1]);
+      await sleep(300);
+    };
+    try {
+      const crumbText = `document.querySelector('.brand .level-switch')?.offsetParent ? document.querySelector('.brand .level-switch').textContent : ''`;
+      check(/Meadow/.test(await page.eval(crumbText)), 'the crumb in the top bar: Meadow');
+      // The crumb fits the bar: not under Play, not cut to nothing.
+      const fit = await j(page, `JSON.stringify((() => { const c = document.querySelector('.brand .level-switch').getBoundingClientRect(); const p = document.querySelector('button.play').getBoundingClientRect();
+        return { w: Math.round(c.width), clear: c.right <= p.left, top: c.top >= 0 && c.bottom <= document.querySelector('.top').getBoundingClientRect().bottom }; })())`);
+      check(fit.w >= 40 && fit.clear && fit.top, `the crumb fits the bar (${fit.w} px wide, left of Play: ${fit.clear})`);
+      await tap('.brand .level-switch');
+      await page.waitFor(`!!document.querySelector('[data-part=context-menu]:not([hidden]) [data-action="ctx-level:canyon"]')`, 3000);
+      await tap('[data-part=context-menu] [data-action="ctx-level:canyon"]');
+      await page.waitFor(`${FR}?.src.includes('studioLevel=canyon') && /Canyon/.test(${crumbText})`, 10000);
+      await page.waitFor(IN.edit, 90000);
+      await sleep(SETTLE / 2);
+      await page.eval(`(${GW}.__fastSwitchMark = 'canyon', true)`);
+      await pressPlay(page);
+      await page.waitFor(IN.play, 30000);
+      check((await page.eval(`${GW}.__fastSwitchMark`)) === 'canyon', 'Play: the same page');
+      check((await page.eval(`${GW}.document.getElementById('level')?.textContent`)) === 'Canyon', 'Play: on Canyon');
+      const words = await page.eval(`(() => { const e = document.querySelector('.brand .level-here'); return e && e.offsetParent ? e.textContent : ''; })()`);
+      check(words === 'Canyon' && !(await page.eval(`!!document.querySelector('.brand .level-switch')`)), `Play: the crumb is words ("${words}"), no menu`);
+      await page.eval(`document.querySelector('button.play').click()`);
+      await page.waitFor(IN.edit, 30000);
+      check((await page.eval(`${GW}.__fastSwitchMark`)) === 'canyon', 'Edit: the same page');
+      check(/Canyon/.test(await page.eval(crumbText)), 'Edit: the crumb a button again, on Canyon');
+    } catch (e) {
+      check(false, e.message);
+    } finally {
+      await g.close();
+    }
+  }
+}
+
 try {
+  if (want('crumb')) await crumb();
   if (want('cove')) await cove();
   if (want('ruins')) await ruins();
   if (want('fresh')) await fresh();

@@ -64,6 +64,12 @@ export class Levels {
   dim: Dim = '3d';
   /** True once the game has two levels or more (or the file already had levels): the switch shows, the file has `levels`. */
   active = false;
+  /**
+   * The game's one level, when its code says it has levels but only one (studio.levels with one entry; level-crumb,
+   * 2026-10-22). Its code can already build a level by id, so "+ Level" can make the second one right here (start());
+   * a game that never says its levels needs its code changed first, so "+ Level" asks the AI instead (main.ts).
+   */
+  single: LevelInfo | null = null;
 
   /** The saved file, at the editor's start (before the game is on screen). */
   load(file: PlacementFile | null): void {
@@ -72,6 +78,7 @@ export class Levels {
     this.code = null;
     this.structDirty = 0;
     this.active = false;
+    this.single = null;
     if (file?.dim) this.dim = file.dim;
     if (!file?.levels?.length) return;
     for (const l of file.levels) {
@@ -122,8 +129,11 @@ export class Levels {
   fromGame(levels: LevelInfo[], current: string, world?: WorldPart): boolean {
     const ids = levels.map((l) => l.id);
     if (!this.active && !this.list.length) {
-      // One level: nothing changes (no switch, the file keeps its bytes).
-      if (levels.length < 2) return false;
+      // One level: nothing changes (no switch, the file keeps its bytes) until the person adds one (start()).
+      if (levels.length < 2) {
+        this.single = levels[0] ?? null;
+        return false;
+      }
       this.list = levels.map((l) => ({ id: l.id, ...(l.label ? { codeLabel: l.label } : {}), world: emptyWorld(), dirty: 0 }));
       const e = this.entry(current);
       if (e && world) e.world = structuredClone(world);
@@ -143,6 +153,7 @@ export class Levels {
     }
     this.code = ids;
     this.active = true;
+    this.single = null;
     if (this.has(current)) this.current = current;
     else if (!this.has(this.current)) this.current = this.list[0]?.id || '';
     return true;
@@ -208,7 +219,31 @@ export class Levels {
     return out;
   }
 
+  /**
+   * The level `by` places from the one on screen (-1 = the one before, +1 = the next; the "[" / "]" keys), or '' at an
+   * end. No wrapping round: "]" on the last level doing nothing says it is the last.
+   */
+  step(by: -1 | 1): string {
+    const i = this.index();
+    return i < 0 ? '' : this.list[i + by]?.id || '';
+  }
+
   // ----- what the person does (each is one change until Save) -----
+
+  /**
+   * "+ Level" in a game whose code has one level (`single`): that level becomes the list's first, with `world` (the
+   * live model's layout), and a copy of it is made right after (copy()). Returns the copy's id ('' = no single level).
+   */
+  start(world: WorldPart): string {
+    const one = this.single;
+    if (this.active || !one) return '';
+    this.list = [{ id: one.id, ...(one.label ? { codeLabel: one.label } : {}), world: worldOf(world), dirty: 0 }];
+    this.code = [one.id];
+    this.current = one.id;
+    this.active = true;
+    this.single = null;
+    return this.copy(world);
+  }
 
   /**
    * A new level copied from the one on screen (its world part = `world`, the live model's), right after it.

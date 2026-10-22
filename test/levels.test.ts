@@ -90,6 +90,48 @@ test('deleting the level on screen goes to its neighbour; the last level stays',
   assert.equal(lv.remove('meadow'), null, 'never the last one');
 });
 
+// level-crumb (2026-10-22): "+ Level" in a game whose code has one level, and the [ / ] keys.
+test('a game whose code has one level: "+ Level" makes the second one from what is on screen', () => {
+  const lv = new Levels();
+  lv.load(file({ rock }));
+  assert.equal(lv.fromGame([{ id: 'main', label: 'Island' }], 'main', { objects: { rock } }), false, 'no crumb yet');
+  assert.deepEqual(lv.single, { id: 'main', label: 'Island' });
+  const id = lv.start({ objects: { rock } });
+  assert.equal(id, 'island-2');
+  assert.equal(lv.active, true);
+  assert.equal(lv.single, null);
+  assert.deepEqual(lv.list.map((e) => lv.labelOf(e.id)), ['Island', 'Island 2']);
+  assert.equal(lv.build(id), 'main', 'built from the code\'s one level');
+  assert.equal(lv.dirtyElsewhere(), 1, 'one change on Save');
+  const out = lv.compose(file({ rock }));
+  assert.deepEqual(out.levels!.map((l) => [l.id, l.from ?? null, Object.keys(l.objects || {})]), [['main', null, ['rock']], ['island-2', 'main', ['rock']]]);
+  assert.deepEqual(out.levelsWas, ['main']);
+  assert.ok(validatePlacement(out).ok);
+  // The page that opens on the copy says the same one level: the person's list stays.
+  assert.equal(lv.fromGame([{ id: 'main', label: 'Island' }], 'island-2'), true);
+  assert.deepEqual(lv.list.map((e) => e.id), ['main', 'island-2']);
+});
+
+test('a game that never says its levels: "+ Level" has nothing to start from (main.ts asks the AI)', () => {
+  const lv = new Levels();
+  lv.load(file({ rock }));
+  assert.equal(lv.single, null);
+  assert.equal(lv.start({ objects: { rock } }), '');
+  assert.equal(lv.active, false);
+  const f = file({ rock });
+  assert.equal(lv.compose(f), f);
+});
+
+test('step: the level before / after the one on screen, no wrapping round', () => {
+  const lv = new Levels();
+  lv.fromGame(CODE, 'meadow');
+  assert.equal(lv.step(-1), '');
+  assert.equal(lv.step(1), 'cave');
+  lv.current = 'summit';
+  assert.equal(lv.step(-1), 'cave');
+  assert.equal(lv.step(1), '');
+});
+
 test('the code changes under the editor: an applied copy and a new level are taken in, the person\'s order stays', () => {
   const lv = new Levels();
   lv.fromGame(CODE, 'meadow');

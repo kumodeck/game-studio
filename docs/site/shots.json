@@ -29,6 +29,7 @@
     { "as": "motion-when", "run": "when", "file": "after-pc-light-1-when.png" },
     { "as": "motion-library", "run": "when", "file": "after-pc-light-3-library.png" },
     { "as": "levels", "run": "levels", "file": "after-pc-light-2-menu.png" },
+    { "as": "levels-add", "run": "levels", "file": "after-pc-light-3-none.png" },
     { "as": "ui-layer", "run": "ui", "file": "ui-pc-moved.png" },
     { "as": "ui-screens", "run": "ui2", "file": "after-pc-light-screens.png" },
     { "as": "ui-text", "run": "ui2", "file": "after-pc-light-text.png" },

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.21 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.22 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -12781,7 +12781,19 @@ const en = {
   'list.titleUi': 'On screen',
   // Levels (2026-10-22, level-switch.ts): the list's head names the level; pressing it opens the levels' menu.
   'level.of': '{n} of {total}',
-  'level.switch': 'Level: {name}. Press to switch levels, or to copy, rename, reorder or delete them',
+  'level.switch': 'Level {where}: {name}. Press to switch levels, or to copy, rename, reorder or delete them',
+  // The top bar's level crumb and "+ Level" (level-crumb, 2026-10-22; level-switch.ts).
+  'level.prev': 'Previous level',
+  'level.next': 'Next level',
+  'level.add': 'Level',
+  'level.addTip': 'Add a level: make a second level from this one',
+  // Written into the ask field by "+ Level" in a game whose code has no levels yet; sent only when the person presses Enter.
+  'level.addAsk': 'Give this game levels: make what is on screen now the first level, and add a second level as a copy of it.',
+  'level.pal.open': 'Levels… (on {name})',
+  'level.pal.prev': 'Previous level: {name}',
+  'level.pal.next': 'Next level: {name}',
+  'level.pal.add': 'Add a level',
+  'level.pal.words': 'level levels stage map world switch go next previous add new レベル ステージ マップ 面 切り替え 次 前 足す',
   'level.menu': 'Levels',
   'level.new': 'New level from {name}',
   'level.rename': 'Rename…',
@@ -13439,7 +13451,17 @@ const ja                               = {
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
   'level.of': '{n} / {total}',
-  'level.switch': 'レベル: {name}。押すとレベルを切り替え・写す・名前を変える・並べ替え・消す',
+  'level.switch': 'レベル {where}: {name}。押すとレベルを切り替え・写す・名前を変える・並べ替え・消す',
+  'level.prev': '前のレベル',
+  'level.next': '次のレベル',
+  'level.add': 'レベル',
+  'level.addTip': 'レベルを足す: このレベルを写して 2 つ目のレベルを作る',
+  'level.addAsk': 'このゲームにレベルを付けて。今の画面を 1 つ目のレベルにして、それを写した 2 つ目のレベルを足して。',
+  'level.pal.open': 'レベル…（今は {name}）',
+  'level.pal.prev': '前のレベル: {name}',
+  'level.pal.next': '次のレベル: {name}',
+  'level.pal.add': 'レベルを足す',
+  'level.pal.words': 'level levels stage map world switch go next previous add new レベル ステージ マップ 面 切り替え 次 前 足す',
   'level.menu': 'レベル',
   'level.new': '{name} を写して新しいレベル',
   'level.rename': '名前を変える…',
@@ -14874,6 +14896,8 @@ __defs[42] = function (__exports) {
                                                                              
      
                                        
+                                                                                
+                
  
 
 const KEYMAP           = [
@@ -14927,6 +14951,10 @@ const KEYMAP           = [
   // ⇧U: the game's UI shown / hidden while the world is edited (a try of the editor, 2026-10-20: hidden by default, "in the way").
   // Shift + the layer's own key: the same thing (the UI), looked at instead of switched to. Plain U stays the switch.
   { id: 'uiPeek', group: 'view', keys: ['⇧U'], ui: true },
+  // [ / ]: the level before / after (level-crumb, 2026-10-22), as the levels' menu writes on those rows. Plain keys:
+  // ⌘[ / ⌘] are the 2D layers' below. Free in this table and in the game frame (input.ts sends every key up).
+  { id: 'levelPrev', group: 'view', keys: ['['], label: 'level.prev', levels: true },
+  { id: 'levelNext', group: 'view', keys: [']'], label: 'level.next', levels: true },
   { id: 'forward', group: 'layers', keys: ['⌘]'], label: 'layer.forward', dim: '2d' },
   { id: 'backward', group: 'layers', keys: ['⌘['], label: 'layer.backward', dim: '2d' },
   { id: 'toFront', group: 'layers', keys: ['⇧⌘]'], label: 'layer.toFront', dim: '2d' },
@@ -15025,11 +15053,6 @@ const { toneThumb } = __require(17);
                  
                                                                
                    
-     
-                                                                                                                    
-                                            
-     
-                                     
      
                                                                                                                     
                                      
@@ -15924,10 +15947,11 @@ function createPlacementPanel(d                    )                 {
       onclick: () => d.setMulti(!on) });
     // "In this scene" is the world's; the UI's list is "On screen" (Ive review 3 ⑤: titles and scores are not in a scene).
     const uiList = d.items().every((i) => i.kinds.includes('ui'));
-    // A game with levels: the head names the level (and opens the levels' menu) instead (levels, 2026-10-22).
+    // A game with levels keeps this title: the level is named (and switched) in the top bar's path since level-crumb
+    // (2026-10-22); for a few hours it was this head ("Meadow ⌄ 1 of 3"), which nobody found.
     // A game with screens (UI stage 2): the UI list's head names the screen shown, and opens the screens' menu.
-    const lvl = uiList ? d.uiHead?.() ?? null : d.levelSwitch?.() ?? null;
-    listTools.append(lvl || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
+    const head = uiList ? d.uiHead?.() ?? null : null;
+    listTools.append(head || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };
@@ -17884,6 +17908,8 @@ const { KEYMAP, keysOf } = __require(42);
                      
                                                                                     
                     
+                                                                   
+                        
                                                                                       
                                
  
@@ -17900,7 +17926,7 @@ function createShortcutSheet(d                   ) {
     const groups             = d.dim() === '2d' ? ['edit', 'tools', 'view', 'layers'] : ['edit', 'tools', 'view'];
     for (const g of groups) {
       const dl = h('dl', { class: 'keys-list' });
-      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()))) {
+      for (const k of KEYMAP.filter((x) => x.group === g && (!x.dim || x.dim === d.dim()) && (!x.ui || !!d.hasUi?.()) && (!x.levels || !!d.hasLevels?.()))) {
         const keys = keysOf(k.id, d.mac());
         // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
         const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
@@ -18238,6 +18264,12 @@ class Levels {
   dim      = '3d';
   /** True once the game has two levels or more (or the file already had levels): the switch shows, the file has `levels`. */
   active = false;
+  /**
+   * The game's one level, when its code says it has levels but only one (studio.levels with one entry; level-crumb,
+   * 2026-10-22). Its code can already build a level by id, so "+ Level" can make the second one right here (start());
+   * a game that never says its levels needs its code changed first, so "+ Level" asks the AI instead (main.ts).
+   */
+  single                   = null;
 
   /** The saved file, at the editor's start (before the game is on screen). */
   load(file                      )       {
@@ -18246,6 +18278,7 @@ class Levels {
     this.code = null;
     this.structDirty = 0;
     this.active = false;
+    this.single = null;
     if (file?.dim) this.dim = file.dim;
     if (!file?.levels?.length) return;
     for (const l of file.levels) {
@@ -18296,8 +18329,11 @@ class Levels {
   fromGame(levels             , current        , world            )          {
     const ids = levels.map((l) => l.id);
     if (!this.active && !this.list.length) {
-      // One level: nothing changes (no switch, the file keeps its bytes).
-      if (levels.length < 2) return false;
+      // One level: nothing changes (no switch, the file keeps its bytes) until the person adds one (start()).
+      if (levels.length < 2) {
+        this.single = levels[0] ?? null;
+        return false;
+      }
       this.list = levels.map((l) => ({ id: l.id, ...(l.label ? { codeLabel: l.label } : {}), world: emptyWorld(), dirty: 0 }));
       const e = this.entry(current);
       if (e && world) e.world = structuredClone(world);
@@ -18317,6 +18353,7 @@ class Levels {
     }
     this.code = ids;
     this.active = true;
+    this.single = null;
     if (this.has(current)) this.current = current;
     else if (!this.has(this.current)) this.current = this.list[0]?.id || '';
     return true;
@@ -18382,7 +18419,31 @@ class Levels {
     return out;
   }
 
+  /**
+   * The level `by` places from the one on screen (-1 = the one before, +1 = the next; the "[" / "]" keys), or '' at an
+   * end. No wrapping round: "]" on the last level doing nothing says it is the last.
+   */
+  step(by        )         {
+    const i = this.index();
+    return i < 0 ? '' : this.list[i + by]?.id || '';
+  }
+
   // ----- what the person does (each is one change until Save) -----
+
+  /**
+   * "+ Level" in a game whose code has one level (`single`): that level becomes the list's first, with `world` (the
+   * live model's layout), and a copy of it is made right after (copy()). Returns the copy's id ('' = no single level).
+   */
+  start(world           )         {
+    const one = this.single;
+    if (this.active || !one) return '';
+    this.list = [{ id: one.id, ...(one.label ? { codeLabel: one.label } : {}), world: worldOf(world), dirty: 0 }];
+    this.code = [one.id];
+    this.current = one.id;
+    this.active = true;
+    this.single = null;
+    return this.copy(world);
+  }
 
   /**
    * A new level copied from the one on screen (its world part = `world`, the live model's), right after it.
@@ -18443,16 +18504,25 @@ __defs[53] = function (__exports) {
 'use strict';
 // level-switch.ts
 
-// The level switch (levels, 2026-10-22; CONTRACT.md §1.10). In a game with levels, the
-// list's head — "In this scene" — becomes the level's name: "Meadow ⌄  1 of 3". Pressing it opens the levels' menu
-// (the same plate as the right-click menu, context-menu.ts): every level (✓ on the one on screen), then New level from
-// Meadow, Rename…, Move up, Move down, Delete level. Rename turns the head into a text field in place.
+// The level switch (levels, 2026-10-22; CONTRACT.md §1.10), in the top bar's path since level-crumb (2026-10-22).
 //
-// Look (the design's rule: the tools quieter than the game): no new button. The words that already said where you
-// are become the way to go somewhere else — the head keeps the list title's grey and size, the chevron is the
-// card's chevronDown, and "1 of 3" is the third grey. No colour: orange stays "what you picked".
+// Where: ▣ Studio / Three Isles / Meadow ⌄ / Scene. The level is a place you are in, between the game and the Scene,
+// so it is a part of the path that already says where you are. Pressing it opens the levels' menu (the same plate
+// as the right-click menu, context-menu.ts): every level (✓ on the one on screen, "[" / "]" on its neighbours), then
+// New level from Meadow, Rename…, Move up, Move down, Delete level. Rename turns the crumb into a text field in place.
+// History: the first version (same day) made the Scene list's head the switch ("Meadow ⌄  1 of 3" instead of "In
+// this scene"). A try of the editor (10/22): "where to switch levels is hard to find too" — the head read as a title,
+// and a game without levels had no way in at all. The list's head is "In this scene" again: one door, not two.
 //
-// What each row does is main.ts's (it owns the game frame, the models and the draft); this file only draws and asks.
+// A game WITHOUT levels gets a quiet "+ Level" after the path (addButton). Chosen over a ⌄ on the game's name with
+// one row "Add levels…" (the other plan drawn for it): nobody opens a menu to find one row, and the
+// "+" sits where the level will appear. It is the third grey and small, like the path's own words: the tools stay
+// quieter than the game. What it does is main.ts's (a game whose code has one level gets the second one at once;
+// otherwise the request is written into the ask field for the AI — nothing is sent until Enter).
+//
+// Look: no colour (orange stays "what you picked"); the crumb has the path's text colour and weight, a chevron in the
+// third grey, and the bar's capsule fill only while hovered or open. "1 of 3" left the visible crumb (the path names
+// places, it does not count them); the tooltip and the menu's order still say it.
                                                    
 const { h } = __require(16);
 const { icon } = __require(20);
@@ -18462,10 +18532,12 @@ const { icon } = __require(20);
                                                                  
                  
      
-                                                                                                                   
+                                                                                                                     
                                                      
      
                                                       
+                                                                                                         
+                                               
                        
                
                                           
@@ -18480,7 +18552,10 @@ function createLevelSwitch(d                 ) {
     const lv = d.levels;
     const cur = lv.current;
     const i = lv.index();
-    const rows              = lv.list.map((e) => ({ id: `level:${e.id}`, label: lv.labelOf(e.id), checked: e.id === cur, run: () => e.id !== cur && d.go(e.id) }));
+    const prev = lv.step(-1), next = lv.step(1);
+    const rows              = lv.list.map((e) => ({ id: `level:${e.id}`, label: lv.labelOf(e.id), checked: e.id === cur,
+      key: e.id === prev ? d.keyOf('levelPrev') || undefined : e.id === next ? d.keyOf('levelNext') || undefined : undefined,
+      run: () => e.id !== cur && d.go(e.id) }));
     rows.push(
       { sep: true },
       { id: 'level-new', label: d.t('level.new', { name: lv.labelOf(cur) }), run: () => d.copy() },
@@ -18497,20 +18572,28 @@ function createLevelSwitch(d                 ) {
   let field                          = null;
   function startRename() {
     renaming = true;
-    // The head is drawn again by the list (renderListTools); the field takes its place there.
+    // The crumb is drawn again by the bar (renderAll); the field takes its place there.
     const old = el;
-    const field = render();
-    if (field) old?.replaceWith(field);
+    const f = render(true);
+    if (f) old?.replaceWith(f);
   }
 
-  /** The head for the list: the button, or the name field while renaming. null = a game without levels. */
-  function render()                     {
+  /** Open the menu from the crumb (also ⌘K's "Levels…"). */
+  function open() {
+    if (el?.isConnected && el instanceof HTMLButtonElement) d.openMenu(entries(), el.getBoundingClientRect());
+  }
+
+  /**
+   * The crumb: the button, or the name field while renaming; `live` = false while playing (the level's name as plain
+   * words: you are in it, the menu would reload the game under the person's hands). null = a game without levels.
+   */
+  function render(live = true)                     {
     const lv = d.levels;
     if (!lv.active || !lv.list.length) return (el = null);
     const name = lv.labelOf(lv.current);
-    if (renaming) {
-      // The same field across redraws of the list (a picture arriving redraws its head): what is typed and the focus
-      // stay. A blur commits only when the field is still on the page and the focus went elsewhere.
+    if (renaming && live) {
+      // The same field across redraws of the bar (any renderAll): what is typed and the focus stay. A blur commits
+      // only when the field is still on the page and the focus went elsewhere.
       if (field) {
         requestAnimationFrame(() => field && document.activeElement !== field && field.focus());
         return (el = field);
@@ -18527,7 +18610,7 @@ function createLevelSwitch(d                 ) {
         else input.replaceWith(render() || h('span'));
       };
       input.addEventListener('keydown', (e) => {
-        // The editor's own keys (⌘Z, Delete, arrows…) must not act on the scene while typing a name.
+        // The editor's own keys (⌘Z, Delete, arrows, [ ]…) must not act on the scene while typing a name.
         e.stopPropagation();
         if (e.key === 'Enter') finish(true);
         else if (e.key === 'Escape') finish(false);
@@ -18539,15 +18622,24 @@ function createLevelSwitch(d                 ) {
       });
       return (el = input);
     }
-    const b = h('button', { type: 'button', class: 'level-switch', dataset: { action: 'levels', part: 'level-switch' }, 'aria-haspopup': 'menu', title: d.t('level.switch', { name }) },
+    const where = d.t('level.of', { n: lv.index() + 1, total: lv.list.length });
+    if (!live) return (el = h('span', { class: 'level-here', text: name, title: `${name} · ${where}`, dataset: { part: 'level-here' } }));
+    const b = h('button', { type: 'button', class: 'level-switch', dataset: { action: 'levels', part: 'level-switch' }, 'aria-haspopup': 'menu', title: d.t('level.switch', { name, where }) },
       h('span', { class: 'level-name', text: name }),
-      icon('chevronDown'),
-      h('span', { class: 'level-n mono', text: d.t('level.of', { n: lv.index() + 1, total: lv.list.length }) }));
+      icon('chevronDown'));
     b.addEventListener('click', () => d.openMenu(entries(), b.getBoundingClientRect()));
     return (el = b);
   }
 
-  return { render, entries, isRenaming: () => renaming };
+  /** "+ Level" after the path, for a game without levels (main.ts decides when it shows and what it does). */
+  function addButton(run            )              {
+    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, title: d.t('level.addTip') },
+      icon('plus'), h('span', { text: d.t('level.add') }));
+    b.addEventListener('click', run);
+    return b;
+  }
+
+  return { render, entries, open, addButton, isRenaming: () => renaming };
 }
 
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
@@ -20403,10 +20495,14 @@ function start(host            ) {
   const toolsRow = h('div', { class: 'game-tools', role: 'toolbar', dataset: { part: 'tools' } });
   // Buttons added by .studio/ui/shell.js (studioShell.addButton), kept across re-renders.
   const customTools                      = [];
-  // Where you are, always in one line: ▣ Studio / <the game> / Scene.
+  // Where you are, always in one line: ▣ Studio / <the game> / Scene — and, in a game with levels, the level between
+  // the game and the Scene (▣ Studio / Three Isles / Meadow ⌄ / Scene; level-crumb, 2026-10-22). A game without levels
+  // gets "+ Level" after the path instead (level-switch.ts says why there). Both slots are filled by renderLevelCrumb().
+  const levelSlot = h('span', { class: 'level-crumb', hidden: true, dataset: { part: 'level-crumb' } });
+  const levelAddSlot = h('span', { class: 'level-add-slot', hidden: true });
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), levelSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), levelAddSlot, h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -20707,6 +20803,7 @@ function start(host            ) {
     mac: isMac,
     dim: () => dim,
     hasUi: () => !!editLayers && editLayers.length > 1,
+    hasLevels: () => levels.active,
     changed: (on) => {
       keysScrim.hidden = !on;
       app.dataset.keys = on ? 'open' : 'closed';
@@ -20726,12 +20823,13 @@ function start(host            ) {
     },
   });
   app.append(ctxMenu.catcher, ctxMenu.el);
-  // The list's head in a game with levels (level-switch.ts); what its rows do is below (goLevel and the rest).
+  // The level in the top bar's path (level-switch.ts); what its rows do is below (goLevel and the rest).
   const levelSwitch = createLevelSwitch({
     t,
     levels,
-    // Under the head from its left edge, for a finger too; where there is no room below (a phone's sheet), above it —
-    // never over it (a menu moved up to fit covered the head that says which level it is about).
+    keyOf: (id) => (phone() ? '' : keyOf(id, isMac())),
+    // Under the crumb from its left edge, for a finger too; where there is no room below, above it — never over it
+    // (a menu moved up to fit covered the crumb that says which level it is about).
     openMenu: (entries, head) => {
       ctxMenu.show(entries, head.left, head.bottom + 2, { place: 'levels', label: t('level.menu') });
       const m = ctxMenu.el.getBoundingClientRect();
@@ -20914,7 +21012,6 @@ function start(host            ) {
   // ----- tools -----
   const placementPanel = createPlacementPanel({
     t,
-    levelSwitch: () => levelSwitch.render(),
     uiHead: () => uiWire.head(),
     uiLook: (k) => uiWire.look(k),
     uiFoot: () => uiWire.foot(),
@@ -21282,6 +21379,14 @@ function start(host            ) {
     if (dirtyCount() > 0) act('save', t('btn.save'), 'check', () => void handOff(), keyOf('save', mac), 'save 保存');
     // The timeline (studio-timeline, 2026-10-22): open / fold it from here too (the card's Motion row is the other door).
     if (editing && !playing && dim === '3d' && editLayer === 'world') act('timeline', t(timeline.isOpen() ? 'tl.fold' : 'tl.open'), 'play', () => timeline.toggle(), undefined, 'timeline keyframe animation motion animate key タイムライン キーフレーム アニメーション 動き');
+    // Levels (level-crumb, 2026-10-22): the crumb's menu, the level before / after with their keys, or "+ Level".
+    if (levels.active && editing && !playing) {
+      const words = t('level.pal.words');
+      act('levels', t('level.pal.open', { name: levels.labelOf(levels.current) }), 'chevronDown', () => levelSwitch.open(), undefined, words);
+      const prev = levels.step(-1), next = levels.step(1);
+      if (prev) act('level-prev', t('level.pal.prev', { name: levels.labelOf(prev) }), 'chevronUp', () => void goLevel(prev), keyOf('levelPrev', mac), words);
+      if (next) act('level-next', t('level.pal.next', { name: levels.labelOf(next) }), 'chevronDown', () => void goLevel(next), keyOf('levelNext', mac), words);
+    } else if (levelAddable()) act('level-add', t('level.pal.add'), 'plus', addLevel, undefined, t('level.pal.words'));
     if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
     else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
     // World ⇄ UI (UI stage 1): only in a game with both.
@@ -23401,11 +23506,38 @@ function start(host            ) {
     loadGame();
     renderAll();
   }
-  /** A rename / move / delete that keeps the level on screen: the head and the Save count again, the draft soon. */
+  /** A rename / move / delete that keeps the level on screen: the crumb and the Save count again, the draft soon. */
   function levelsChanged(changed         ) {
     if (!changed) return;
     renderAll();
     keepSoon();
+  }
+  /** The top bar's level: the crumb (a game with levels; plain words while playing), or "+ Level" after the path. */
+  function renderLevelCrumb() {
+    const crumb = levelSwitch.render(!playing);
+    levelSlot.hidden = !crumb;
+    if (!crumb) levelSlot.replaceChildren();
+    else if (crumb.parentElement !== levelSlot) levelSlot.replaceChildren(h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), crumb);
+    const add = levelAddable();
+    levelAddSlot.hidden = !add;
+    levelAddSlot.replaceChildren(...(add ? [levelSwitch.addButton(addLevel)] : []));
+  }
+  /**
+   * "+ Level" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
+   * needs the AI for it (its code must build a level by id), so not without one (host.offline).
+   */
+  function levelAddable()          {
+    return !levels.active && editing && !playing && page === 'tool' && tool === 'placement' && editLayer === 'world' && (!!levels.single || !host.offline);
+  }
+  /**
+   * "+ Level": a game whose code has one level gets its second one here and now (a copy of what is on screen, opened
+   * at once, as "New level from …"). Any other game: the request goes into the ask field, for the person to send
+   * (Enter) — levels need a few lines in the game's code (skills/arrange SKILL.md §4), which only the AI can write.
+   */
+  function addLevel() {
+    const id = levels.start(worldModel.result());
+    if (id) void goLevel(id);
+    else focusAsk(t('level.addAsk'));
   }
 
   /** The game page's address: the editor's (`?studio=edit`) or Play's, on the level shown. */
@@ -23524,6 +23656,13 @@ function start(host            ) {
     }
     if (!mod && (k === 'delete' || k === 'backspace') && editing && (selected || group.length)) {
       removeSelection();
+      return true;
+    }
+    // Levels (level-crumb, 2026-10-22): [ the level before, ] the next one, as the menu's rows say. Plain keys, no
+    // ⌘: ⌘[ / ⌘] are the 2D layers' (below), and "[ ]" read as "back / forward" the same way. No wrapping round.
+    if (!mod && (k === '[' || k === ']') && levels.active && editing && !playing) {
+      const id = levels.step(k === '[' ? -1 : 1);
+      if (id) void goLevel(id);
       return true;
     }
     // Layers (2D): ⌘] forward, ⌘[ backward, ⇧⌘] to front, ⇧⌘[ to back (Ctrl
@@ -23929,6 +24068,7 @@ function start(host            ) {
     (header.querySelector('.app')               ).textContent = t('app.brand');
     const sceneWord = (id        ) => (id === 'placement' && editLayer === 'ui' ? t('uiLayer.ui') : t('tool.' + id));
     (header.querySelector('.here')               ).textContent = playing ? t('status.playingShort') : page === 'settings' ? t('btn.settings') : page === 'next' ? t('btn.next') : sceneWord(tool);
+    renderLevelCrumb();
     // (Playing with changes not saved: v0.1.7–0.1.8 had a quiet "· unsaved changes" after "Playing" here. Since the
     // second look of 2026-10-21 (B) the orange Save beside Play, and ▶ Play asks first — Save and play / Try without
     // saving — so nothing more is said once playing: togglePlay, save-loud.ts.)
