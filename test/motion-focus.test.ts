@@ -68,7 +68,7 @@ test('rows: the picked object only — not every moving one; several picked: tho
   assert.equal(r.view().span, 2);
   r.acts().showAll!(true);
   assert.equal(r.view().all, true);
-  assert.deepEqual(r.rows(), ['buoy', 'boat'], 'every moving object, the picked first');
+  assert.deepEqual(r.rows(), ['boat', 'buoy'], 'every moving object, in the list\'s order (studio-ui-lead2: the picked one is not moved up)');
   assert.equal(r.view().link, null, 'no "+ Link" while every motion is shown');
   r.acts().showAll!(false);
   assert.deepEqual(r.rows(), ['buoy']);
@@ -111,16 +111,16 @@ test('link: an ordinary motion becomes a scene of two (the picked object\'s keys
   assert.deepEqual(r.lib.get('Row')!.tracks!.boat, { p: ROW });
 });
 
-test('link: three objects, one time line; the linked one picked shows the same rows (itself first); × takes one out', () => {
+test('link: three objects, one time line; the linked one picked shows the same rows in the same order (studio-ui-lead2); × takes one out', () => {
   const r = rig();
   r.acts().link!('crate');
   r.acts().link!('buoy');
-  assert.deepEqual(r.rows(), ['boat', 'buoy', 'crate']);
+  assert.deepEqual(r.rows(), ['boat', 'crate', 'buoy'], 'the scene\'s order: the boat, then the linked ones as they were linked (saved with the motion)');
   assert.equal(r.view().scene!.n, 3);
   assert.deepEqual(r.store.get('buoy')!.clips!.map((c) => c.use), ['Bob', 'Row'], 'the buoy keeps its Bob');
   // The crate gets keys: moved with ● on, they go in its track of Row.
   r.pick('crate');
-  assert.deepEqual(r.rows(), ['crate', 'boat', 'buoy'], 'the crate picked: its links come along, itself first');
+  assert.deepEqual(r.rows(), ['boat', 'crate', 'buoy'], 'the crate picked: the same rows, the same order (a pick moves no row)');
   r.tl.setTime(1);
   r.tl.moved('crate', { p: [9, 1, 9], r: 0, s: 1 }, true, { p: [9, 0, 9], r: 0, s: 1 });
   assert.deepEqual(r.lib.get('Row')!.tracks!.crate!.p!.map((k) => k.v), [[0, 0, 0], [0, 1, 0]]);
@@ -130,7 +130,7 @@ test('link: three objects, one time line; the linked one picked shows the same r
   for (const k of ['boat', 'buoy', 'crate']) assert.deepEqual(r.store.get(k)!.clips!.find((c) => c.use === 'Row')!.when, { on: 'click' }, k);
   // × on the buoy: out; the other two stay linked; its Bob stays.
   r.acts().leave!('buoy');
-  assert.deepEqual(r.rows(), ['crate', 'boat']);
+  assert.deepEqual(r.rows(), ['boat', 'crate']);
   assert.deepEqual(r.store.get('buoy')!.clips!.map((c) => c.use), ['Bob']);
   assert.deepEqual(Object.keys(r.lib.get('Row')!.tracks!).sort(), ['boat', 'crate']);
   // Something else picked: its own row only (the scene closes).

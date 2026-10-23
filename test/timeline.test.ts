@@ -12,7 +12,7 @@ import { MotionStore, roundMotion, sameMotion } from '../src/shell/motion-model.
 import { MotionLibrary, motionLibrary } from '../src/shell/motion-library.ts';
 import { whenOf } from '../src/loader/studio-placement.js';
 import {
-  changedChannels, compose, copyKeys, deleteKeys, easeKeys, blankClip, sceneClip, keyTimes, moveKeys, offsetOf, offsetsAt, pasteKeys, setKey, toClips, withClip,
+  changedChannels, compose, copyKeys, deleteKeys, easeKeys, blankClip, keyTimes, moveKeys, offsetOf, offsetsAt, pasteKeys, setKey, toClips, withClip,
 } from '../src/shell/timeline-model.ts';
 import { createTimeline } from '../src/shell/timeline-wire.ts';
 import { clipAt, trackAt } from '../src/loader/studio-placement.js';
@@ -137,12 +137,9 @@ test('keys: set (replace at the same moment, the length grows), move, delete, ea
   assert.deepEqual(withClip({ clips: [c] }, 'M', { ...c, name: 'N' })!.clips!.map((x) => x.name), ['N'], 'a rename keeps its place');
 });
 
-test('a new motion has no keys; a scene starts empty (studio-no-presets: no kinds to start from)', () => {
+test('a new motion has no keys (studio-no-presets: no kinds to start from; studio-ui-lead2: no empty scene either — linking makes one)', () => {
   assert.deepEqual(blankClip('M').keys, {});
   assert.equal(blankClip('M').repeat, 'once');
-  const sc = sceneClip('Scene');
-  assert.equal(sc.scene, true);
-  assert.deepEqual(sc.keys, {});
 });
 
 test('the older shape (v0.1.13) is read as one clip', () => {

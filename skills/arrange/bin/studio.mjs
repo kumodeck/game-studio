@@ -701,7 +701,7 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
     if (!isObject(c)) return fail(at, 'must be an object');
     // A Library motion (studio-motion-triggers) is a clip without "when"; an object's clip that uses one has no len /
     // repeat / keys of its own.
-    if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys', 'tracks'], at, fail);
+    if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys', 'tracks', 'order'], at, fail);
     else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until'], at, fail);
     else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys'], at, fail);
     const o = {};
@@ -742,7 +742,17 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
         if (!KEY_RE.test(k)) fail(`${at}.tracks`, `${JSON.stringify(k)}: key must match ` + KEY_RE);
         else o.tracks[k] = readKeys(c.tracks[k], n, bound, step, len, `${at}.tracks[${JSON.stringify(k)}]`, fail);
       }
-    } else o.keys = readKeys(c.keys, n, bound, step, len, `${at}.keys`, fail);
+      // The rows' order (studio-ui-lead2): the tracks' keys, each once. An array keeps its order through the canonical
+      // text (object keys are sorted there), so this is where the person's arrangement lives.
+      if (c.order !== undefined) {
+        const ok = Array.isArray(c.order) && c.order.length === ks.length && c.order.every((k) => typeof k === 'string' && ks.includes(k)) && new Set(c.order).size === c.order.length;
+        if (!ok) fail(`${at}.order`, 'must list the tracks\' keys, each once');
+        else o.order = c.order.slice();
+      }
+    } else {
+      if (c.order !== undefined) fail(`${at}.order`, 'only a motion with tracks has an order');
+      o.keys = readKeys(c.keys, n, bound, step, len, `${at}.keys`, fail);
+    }
     if (o.name !== undefined && o.len !== undefined) out.push(o);
   });
   return out;

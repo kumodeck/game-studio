@@ -3,9 +3,10 @@
 // a fresh `view()` each render; every press goes back as one call on `act`.
 //
 //   ▶  0:01.6 / [4.0] s   ● Auto key   When does it move? [When the game starts ▾] ▷        ⋯  ✦ Ask AI  ⌄
-//   Keys picked · 2   To the next key [Eases in and out ▾]   Path turns [Smoothly ▾]   🗑 Delete   ← only while keys are picked
+//   2 selected   Pace [Smooth (slow start & stop) ▾]   Path [Smooth curve ▾]   🗑 Delete   ← only while keys are picked
 //        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
-//   ▾ rowboat · Row   ◇─────────◇──────◇               ← one row per object (its keys at any property)
+//   ⠿ ▾ rowboat · Row   ◇─────────◇──────◇          +  ← one row per object (its keys at any property); ⠿ = drag the
+//   ⠿ ▾ buoy            ◇──────◇                     ×    row (a scene's rows keep the person's order); + links an object
 //       Position ◆─────────◆──────◆                     ← ▾ opens position / angle / size
 //
 // The line (studio-ui-lead, 2026-10-23; a hands-on try of v0.1.26 at 1800 px: "not one thing on it is readable"): what a
@@ -162,6 +163,11 @@ export interface TimelineActs {
   point?(kind: PointKind): void;
   /** studio-motion-focus: an object linked to the focused motion (the list, or a click in the game), a linked row's ×. */
   link?(key: string): void;
+  /**
+   * studio-ui-lead2 (2026-10-23): a scene's row dragged by its grip (or ↑ / ↓ on the grip) to index `to` among the
+   * other rows of the scene. The order is the scene's, saved with it. Absent = no grips.
+   */
+  reorder?(key: string, to: number): void;
   /** The list opened / closed: while it is open a click on an object in the game links it. */
   linking?(on: boolean): void;
   leave?(key: string): void;
@@ -263,7 +269,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       // ✦ Ask AI (a review of 2026-10-22: "a press puts the motion's and the object's names in the AI chat box, and you talk there"):
       // the chat box below gets the "object · motion" chip and the cursor; the words are the person's, nothing is sent yet.
       if (act.ask) items.push(h('button', { type: 'button', class: 'tl-ask', title: t('tl.askTip', { name: `${v.rows.find((r) => r.key === v.focus)?.label ?? v.focus} · ${c.name}` }),
-        dataset: { action: 'tl-ask', part: 'tl-ask' }, onclick: () => act.ask!() }, icon('spark'), h('span', { class: 'tl-ask-w', text: t('tl.ask') })));
+        // Narrow (studio-ui-lead2): "✦ AI" — a phone's light screen showed a pale square with nothing readable in it.
+        dataset: { action: 'tl-ask', part: 'tl-ask' }, onclick: () => act.ask!() }, icon('spark'), h('span', { class: 'tl-ask-w', text: t('tl.ask') }), h('span', { class: 'tl-ask-s', 'aria-hidden': 'true', text: t('tl.askShort') })));
     }
     items.push(h('button', { type: 'button', class: 'icon-btn tl-fold', dataset: { action: 'tl-fold' }, title: t('tl.fold'), 'aria-label': t('tl.fold'), onclick: () => (more.hide(), act.fold()) }, icon('chevronDown')));
     // Narrow: the end of the first row (▶ time ● ⋯ ✦ ⌄); the motion and its "when" start a new one (shell.css). Nothing on PC.
@@ -403,10 +410,15 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       h('div', { class: 'tl-more-row', dataset: { part } }, h('span', { class: 'tl-more-k', text: label }), h('div', { class: 'tl-more-v' }, ...kids));
     // Rows: every motion in the scene (studio-motion-focus, 2026-10-23: the plate shows the picked object only; the
     // whole scene stays one press away, here, where the sometimes-used things are). Last: it is about the plate, not the motion.
-    const allRow = row('tl-more-all', t('tl.all.k'), act.showAll ? h('button', { type: 'button', class: `tl-all${v.all ? ' on' : ''}`, 'aria-pressed': String(!!v.all), dataset: { part: 'tl-all' },
-      onclick: () => (more.hide(), act.showAll!(!v.all)) }, icon('list'), h('span', { text: t(v.all ? 'tl.all.off' : 'tl.all') })) : null);
     const btn0 = head.querySelector<HTMLElement>('[data-part=tl-more-btn]');
-    // studio-ui-lead: the motion's menu (which motion, + Make a motion, a scene, rename, take off) — first: it says
+    // "Tracks" (studio-ui-lead2: Gemini's word for the row; it was "Rows"): "+ Link an object" in words (the row's "+"
+    // opens the same list: pressed from here, the list opens on that "+"), then every motion / only the picked one.
+    const allRow = row('tl-more-all', t('tl.all.k'),
+      v.link && act.link ? h('button', { type: 'button', class: 'tl-all', dataset: { part: 'tl-more-link' }, title: t('tl.linkTip', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '' }),
+        onclick: () => (more.hide(), toggleLink(names.querySelector<HTMLElement>('[data-part=tl-link]') ?? btn0 ?? more.el)) }, icon('plus'), h('span', { text: t('tl.link') })) : null,
+      act.showAll ? h('button', { type: 'button', class: `tl-all${v.all ? ' on' : ''}`, 'aria-pressed': String(!!v.all), dataset: { part: 'tl-all' },
+        onclick: () => (more.hide(), act.showAll!(!v.all)) }, icon('list'), h('span', { text: t(v.all ? 'tl.all.off' : 'tl.all') })) : null);
+    // studio-ui-lead: the motion's menu (which motion, + Make a motion, rename, take off) — first: it says
     // what the rows below are about. It was on the line, where it shrank to "Mo…".
     const clipRow = row('tl-more-clip', t('tl.clip'), clipMenu(v));
     if (!c || !w) {
@@ -415,20 +427,22 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       return more.place(btn0);
     }
     const rows: HTMLElement[] = [clipRow];
-    rows.push(row('tl-more-repeat', t('tl.repeat'), select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))));
-    // Stops ▾: never / after N rounds / a cue; then: stay or go back.
+    // "Loop & End" (studio-ui-lead2, 2026-10-23; Gemini's words — "it is where loop, back and forth and stop are
+    // chosen"): one row for the repeat menu and Stops ▾ (never / after N rounds / a cue) with, once it stops, stay or go
+    // back. They were two rows, "Repeat" and "Stops" (a hands-on try read the old "how it stops" heading as nothing).
+    const loop: Node[] = [select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))];
     const u = v.until;
     const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
-    const stops: Node[] = [select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
-      act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) }))];
-    if (u?.times) stops.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
+    loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+      act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
+    if (u?.times) loop.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
       const n = Math.round(parseFloat(x));
       if (n >= 1) act.setUntil({ ...u, times: Math.min(1000, n) });
       else render();
     }, 'decimal'), h('span', { class: 'tl-of', text: t('tl.until.timesUnit') }));
-    if (u?.cue) stops.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
-    if (u) stops.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
-    rows.push(row('tl-more-stops', t('tl.stops'), ...stops));
+    if (u?.cue) loop.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
+    if (u) loop.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
+    rows.push(row('tl-more-loop', t('tl.loopEnd'), ...loop));
     // The other ways it starts (studio-timeline-2): each with its field and ×, then "+ or" (up to 4 in all).
     const ws = v.whens?.length ? v.whens : [w];
     const ors: Node[] = [];
@@ -567,7 +581,11 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     let y = allRow(v, 0);
     for (const r of v.rows) {
       const chs = CHANNELS.filter((ch) => r.clip?.keys[ch]?.length);
-      const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key } },
+      // studio-ui-lead2: a scene's rows (two or more) carry a grip — the order is the person's, dragged here (or ↑ / ↓
+      // on the grip), never changed by a pick (the picked row is lit where it is).
+      const drag = !!(v.scene && v.scene.n > 1 && r.member && act.reorder);
+      const name = h('div', { class: `tl-name${r.picked ? ' picked' : ''}`, style: `height:${ROW}px`, dataset: { row: r.key, ...(drag ? { drag: '1' } : {}) } },
+        drag ? grip(r) : null,
         h('button', { type: 'button', class: `tl-twist${r.open ? ' open' : ''}`, 'aria-expanded': String(r.open), title: t('tl.expand'), 'aria-label': t('tl.expand'), onclick: () => act.openRow(r.key) }, icon('chevronRight')),
         h('button', { type: 'button', class: 'tl-obj', text: r.label, onclick: () => act.pickRow(r.key) }),
         r.clip && !v.scene ? h('span', { class: 'tl-clipname', text: r.clip.name }) : null,
@@ -582,7 +600,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
         // A linked object can be unlinked (studio-timeline-2's ×; studio-motion-focus: not the row being made — the
         // picked / focused one is what the others are linked to). Shown on hover; on a phone always.
         v.scene && r.member && !r.picked && r.key !== v.focus && act.leave ? h('button', { type: 'button', class: 'icon-btn tl-leave', title: t('tl.scene.leave', { name: r.label, scene: v.scene.name }), 'aria-label': t('tl.scene.leave', { name: r.label, scene: v.scene.name }),
-          dataset: { part: 'tl-leave', key: r.key }, onclick: () => act.leave!(r.key) }, icon('close')) : null);
+          dataset: { part: 'tl-leave', key: r.key }, onclick: () => act.leave!(r.key) }, icon('close')) : null,
+        // The focused row's "+" (studio-ui-lead2): link an object to its motion — it was a row of its own under the
+        // rows ("+ Link an object"), which took one of the plate's five rows always. The words are its tooltip and in ⋯.
+        r.key === v.focus && v.link && act.link ? linkBtn(v) : null);
       names.append(name);
       const lane = h('div', { class: `tl-lane${r.picked ? ' picked' : ''}`, style: `top:${y}px;height:${ROW}px`, dataset: { lane: r.key } });
       lanes.append(lane);
@@ -601,14 +622,11 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
         y += ROW;
       }
     }
-    y = linkRow(v, y);
     lanes.style.height = `${y}px`;
   }
 
   /**
-   * Under the rows (studio-motion-focus): "+ Link an object" — quiet (the second colour, no fill) because the picked
-   * object's own motion is the plate's subject; while its list is open the lane says "or click an object in the game".
-   * With every motion shown (allRow, above the rows): what the rows are now, and the way back.
+   * With every motion shown (allRow, above the rows; studio-motion-focus): what the rows are now, and the way back.
    */
   function allRow(v: TimelineView, y: number): number {
     if (!v.all || !act.showAll) return y;
@@ -617,16 +635,20 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, h('span', { class: 'tl-lane-hint', text: t('tl.all.on') })));
     return y + ROW;
   }
-  function linkRow(v: TimelineView, y: number): number {
-    if (!v.link || !act.link) return y;
-    const on = v.link.linking;
-    const btn = h('button', { type: 'button', class: `tl-link${on ? ' on' : ''}`, 'aria-expanded': String(on), 'aria-haspopup': 'dialog',
-      title: t('tl.linkTip', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '' }), dataset: { part: 'tl-link' }, onclick: () => toggleLink(btn) }, icon('plus'), h('span', { text: t('tl.link') }));
-    names.append(h('div', { class: 'tl-name tl-link-name', style: `height:${ROW}px` }, btn));
-    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, on && !tightNow ? h('span', { class: 'tl-lane-hint', text: t('tl.link.hint') }) : null));
-    return y + ROW;
+  /**
+   * The focused row's "+" (studio-ui-lead2, 2026-10-23): link an object to the motion on the plate. Quiet (the third
+   * colour, no fill; lit while its list is open) at the row's right end, where a linked row has its ×. Until now
+   * "+ Link an object" was a row of its own under the rows: readable, but one of the plate's five rows, always (the
+   * next-five list of studio-ui-lead). The words stay as its tooltip, in ⋯'s "Tracks" row, and as the list's title.
+   */
+  function linkBtn(v: TimelineView): HTMLElement {
+    const on = !!v.link?.linking;
+    const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
+    const btn = h('button', { type: 'button', class: `icon-btn tl-link-add${on ? ' on' : ''}`, 'aria-expanded': String(on), 'aria-haspopup': 'dialog',
+      title: t('tl.linkTip', { name }), 'aria-label': t('tl.link'), dataset: { part: 'tl-link' }, onclick: () => toggleLink(btn) }, icon('plus'));
+    return btn;
   }
-  /** "+ Link an object" pressed: its list over it (the scene's objects), or closed. */
+  /** "+" pressed (the row's, or ⋯'s "+ Link an object"): its list over it (the scene's objects), or closed. */
   function toggleLink(btn: HTMLElement) {
     if (linkPop.open) return linkPop.hide();
     const v = view();
@@ -634,8 +656,83 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     more.hide();
     linkPop.show(btn);
     const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
-    fillLinkList(linkPop.el, { title: t('tl.link.title', { name }), find: t('tl.link.find'), none: t('tl.link.none'), items: v.link.items(), focus: !tightNow, pick: (k) => act.link!(k) });
+    // "or click an object in the game" was the link row's lane; it is the list's second line now.
+    fillLinkList(linkPop.el, { title: t('tl.link.title', { name }), hint: t('tl.link.hint'), find: t('tl.link.find'), none: t('tl.link.none'), items: v.link.items(), focus: !tightNow, pick: (k) => act.link!(k) });
     act.linking?.(true);
+  }
+
+  // ----- the rows' order (studio-ui-lead2, 2026-10-23) -----
+  // The request: "while I put together several objects' motions, the one I pick jumps to the top and the order
+  // changes every time — I want to set the order myself". A scene's rows carry a grip at the left: a drag (pointer
+  // capture on the grip, as the list's draw-order grip in placement-panel.ts) or ↑ / ↓ with the grip focused moves the
+  // row; the wire keeps the order in the scene motion (saved with it). An orange line says where the row will land.
+  let rowDrag: { key: string; name: HTMLElement; lane: HTMLElement | null; mark: HTMLElement; y0: number; moved: boolean } | null = null;
+  const dragRows = () => [...names.querySelectorAll<HTMLElement>('.tl-name[data-drag]')];
+  /** Where a drop at `y` lands: the index among the other draggable rows (the dragged one left out). */
+  const dropIndex = (y: number, key: string) => {
+    const rows = dragRows().filter((r) => r.dataset.row !== key);
+    let i = 0;
+    for (const r of rows) {
+      const b = r.getBoundingClientRect();
+      if (y > b.top + b.height / 2) i++;
+    }
+    return { i, rows };
+  };
+  const showMark = (y: number) => {
+    const d = rowDrag!;
+    const { i, rows } = dropIndex(y, d.key);
+    if (!rows.length) return;
+    const top = i < rows.length ? rows[i]!.getBoundingClientRect().top - 1 : rows[rows.length - 1]!.getBoundingClientRect().bottom - 1;
+    d.mark.style.top = `${top - names.getBoundingClientRect().top}px`;
+    d.mark.hidden = false;
+  };
+  function grip(r: TimelineRow): HTMLElement {
+    const g = h('button', { type: 'button', class: 'tl-grip', title: t('tl.rowDrag'), 'aria-label': t('tl.rowDrag', { name: r.label }), dataset: { grip: r.key, part: 'tl-grip' } }, icon('grip'));
+    g.addEventListener('click', (e) => e.stopPropagation());
+    g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      e.preventDefault();
+      e.stopPropagation();
+      act.touched();
+      g.setPointerCapture(e.pointerId);
+      const name = g.closest<HTMLElement>('.tl-name')!;
+      const mark = h('div', { class: 'tl-drop-mark', hidden: true });
+      names.append(mark);
+      rowDrag = { key: r.key, name, lane: lanes.querySelector<HTMLElement>(`.tl-lane[data-lane="${CSS.escape(r.key)}"]:not([data-ch])`), mark, y0: e.clientY, moved: false };
+    });
+    g.addEventListener('pointermove', (e) => {
+      if (!rowDrag) return;
+      if (!rowDrag.moved && Math.abs(e.clientY - rowDrag.y0) > 4) {
+        rowDrag.moved = true;
+        rowDrag.name.classList.add('dragging');
+        rowDrag.lane?.classList.add('dragging');
+      }
+      if (rowDrag.moved) showMark(e.clientY);
+    });
+    const finish = (e: PointerEvent, drop: boolean) => {
+      if (!rowDrag) return;
+      const d = rowDrag;
+      rowDrag = null;
+      d.name.classList.remove('dragging');
+      d.lane?.classList.remove('dragging');
+      d.mark.remove();
+      if (!drop || !d.moved) return;
+      act.reorder?.(d.key, dropIndex(e.clientY, d.key).i);
+    };
+    g.addEventListener('pointerup', (e) => finish(e, true));
+    g.addEventListener('pointercancel', (e) => finish(e, false));
+    // ↑ / ↓ on the grip: one row up or down (the grip keeps the keyboard through the redraw: render()).
+    g.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rows = dragRows();
+      const i = rows.findIndex((x) => x.dataset.row === r.key);
+      // `to` is the index among the other rows (this one left out): up = i − 1, down = i + 1 (after the next one).
+      const to = Math.max(0, Math.min(rows.length - 1, i + (e.key === 'ArrowUp' ? -1 : 1)));
+      if (i >= 0 && to !== i) act.reorder?.(r.key, to);
+    });
+    return g;
   }
 
   function drawKeys(lane: HTMLElement, r: TimelineRow, ch: MotionChannel | null, times: number[], v: TimelineView) {
@@ -793,6 +890,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // …and ⋯'s menus the same (they are drawn anew with the head).
     const inMore = more.el.contains(document.activeElement);
     const had = document.activeElement instanceof HTMLSelectElement && (el.contains(document.activeElement) || inMore) ? document.activeElement.dataset.part : null;
+    // …and a row's grip (studio-ui-lead2): ↑ / ↓ on it redraws the rows; the keyboard stays on the same row's grip.
+    const gripHad = document.activeElement instanceof HTMLElement && names.contains(document.activeElement) ? document.activeElement.dataset.grip : undefined;
     el.classList.toggle('rec', v.auto);
     tightNow = v.narrow;
     el.classList.toggle('narrow', tightNow);
@@ -811,6 +910,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // there are two (studio-motion-focus: a scene of one is the object's own motion, nothing to say).
     rulerPad.replaceChildren(...(v.clip && v.scene && v.scene.n > 1 ? [h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) })] : []));
     renderRows(v);
+    if (gripHad) names.querySelector<HTMLElement>(`[data-grip="${CSS.escape(gripHad)}"]`)?.focus({ preventScroll: true });
     // The link list follows its button (drawn anew with the rows), and closes once it is done (linked, or Esc in the game).
     if (linkPop.open) {
       const b = names.querySelector<HTMLElement>('[data-part=tl-link]');
@@ -863,8 +963,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     opts.push(['-', '──────', true]);
     // studio-no-presets (2026-10-23): no kinds here any more (Back and forth, Round, Once, Spin — studio-tool-clear had
     // kept them on a thing that moves already). The review: "we don't need them". "+ Make a motion" is the strip's and
-    // the card's way (show it: the next move is its key); a scene is not a kind (it starts empty, for several objects).
-    opts.push(['new:make', t('tl.make'), !v.focus], ['new:scene', t('tl.new', { name: t('tl.tpl.scene') }), !v.focus]);
+    // the card's way (show it: the next move is its key). studio-ui-lead2 (10/23): "New: Scene — several objects" is
+    // gone too (the request: "Make a motion, New — I can't tell what either does"): one way in; several objects are
+    // the row's "+ Link an object" (a linked motion becomes a scene by itself).
+    opts.push(['new:make', t('tl.make'), !v.focus]);
     if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
     const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
       if (val === 'rename') return void renaming(c!.name);

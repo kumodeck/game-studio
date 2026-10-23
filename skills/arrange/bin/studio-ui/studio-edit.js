@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.28 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.29 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5533,6 +5533,12 @@ const RESULT_FILES                         = {
                                                                                                                      
      
                                       
+     
+                                                                                                                        
+                                                                                                                       
+                                                                                                  
+     
+                   
  
 
 /**
@@ -14538,10 +14544,8 @@ function toClips(m                           , dim     )                {
 function blankClip(name        )             {
   return { name, len: 2, repeat: 'once', keys: {} };
 }
-/** A scene (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts). Not a preset: no keys. */
-function sceneClip(name        )             {
-  return { name, len: 4, repeat: 'once', scene: true, keys: {} };
-}
+// (sceneClip — an empty scene from the clip menu's "New: Scene" — went with that menu line, studio-ui-lead2 2026-10-23:
+// a scene is made by linking an object to a motion, timeline-wire.ts link(); scene-motion.ts asScene.)
 
 /** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
 function freeName(clips              , base        )         {
@@ -14715,7 +14719,6 @@ __def(__exports, "offsetOf", () => offsetOf);
 __def(__exports, "changedChannels", () => changedChannels);
 __def(__exports, "toClips", () => toClips);
 __def(__exports, "blankClip", () => blankClip);
-__def(__exports, "sceneClip", () => sceneClip);
 __def(__exports, "freeName", () => freeName);
 __def(__exports, "refId", () => refId);
 __def(__exports, "sameT", () => sameT);

@@ -17,7 +17,7 @@
 import type { BridgeToShell, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionKey, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
 import { motionRunner, whenOf, whensOf } from '../loader/studio-placement.js';
 import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from './path-edit.ts';
-import { asOrdinary, asScene, joinClip, likeScene, sceneMembers } from './scene-motion.ts';
+import { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder as sceneOrder, withOrder, withTrack, withoutTrack } from './scene-motion.ts';
 import { libOf, type MotionLibrary } from './motion-library.ts';
 import { motionCardRow } from './motion-card.ts';
 import type { MotionStore } from './motion-model.ts';
@@ -35,7 +35,7 @@ const sameMotion = (a: Motion | null | undefined, b: Motion | null | undefined) 
 import { createTimelinePanel, type TimelineView } from './timeline-panel.ts';
 import {
   blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
-  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, sceneClip, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets,
+  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets,
 } from './timeline-model.ts';
 import type { Change, UndoStack } from './undo.ts';
 
@@ -198,7 +198,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const atts = m.clips.map((c) => {
       const use = c.use ?? c.name;
       const l = lib().get(use);
-      if (c.scene || l?.tracks) lib().set(use, { ...libOf({ ...c, name: use }), keys: {}, tracks: { ...(l?.tracks ?? {}), [key]: structuredClone(c.keys) } });
+      // A scene: this object's track set (a new one goes last in the rows' order — studio-ui-lead2, scene-motion.ts withTrack).
+      if (c.scene || l?.tracks) lib().set(use, withTrack(libOf({ ...c, name: use, tracks: l?.tracks ?? {}, order: l?.order }), key, c.keys));
       else lib().set(use, libOf({ ...c, name: use }));
       const a: MotionClip = { name: c.name, use, len: c.len, when: (c.when && typeof c.when === 'object' ? c.when : whenOf(c)) as MotionWhen, keys: {} };
       if (c.until) a.until = c.until;
@@ -210,9 +211,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function dropTracks(key: string, keep: Set<string>) {
     for (const l of lib().list()) {
       if (!l.tracks || !(key in l.tracks) || keep.has(l.name)) continue;
-      const tracks = { ...l.tracks };
-      delete tracks[key];
-      lib().set(l.name, { ...l, tracks });
+      lib().set(l.name, withoutTrack(l, key));
     }
   }
   /** The store as the timeline sees it (resolved clips); every edit below goes through it. */
@@ -462,9 +461,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
 
   /**
    * The rows (studio-motion-focus, 2026-10-23; a request: "every other object's motion shows up too — mostly I only
-   * need the one I picked"): the picked object first, the other picked ones, then the objects linked to it (the open
-   * scene's) in the list's order. ⋯'s "Show every motion" adds every moving object (the rows as they were before).
-   * WHY the picked one first: it is the one being made; on the screen in the request it was the last of five rows.
+   * need the one I picked"): the open scene's objects in the scene's own order (trackOrder), then the other picked
+   * ones in the list's order. ⋯'s "Show every motion" adds every moving object (the rows as they were before), in the
+   * list's order.
+   * WHY a pick never moves a row (studio-ui-lead2, 2026-10-23; the request: "while I put together several objects'
+   * motions, the one I pick jumps to the top and the order changes every time — annoying; I want to set the order
+   * myself"): studio-motion-focus put the picked one first, which reordered the rows on every click in the game. Now
+   * the picked row is lit (orange) where it is, and the order is the person's: the scene's tracks (dragged by the grip,
+   * reorderRow; saved with the motion), the list's for the rest.
    */
   function rows() {
     const p = d.picked();
@@ -476,12 +480,37 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const byList = (ks: string[]) => ks.slice().sort((a, b) => at(a) - at(b));
     const keys: string[] = [];
     const add = (k: string | null | undefined) => k && d.place(k) && !keys.includes(k) && keys.push(k);
+    for (const k of trackOrder()) add(k);
+    const picked = d.group?.() ?? (p ? [p] : []);
+    for (const k of byList(all ? [...moving(), ...picked] : picked)) add(k);
     add(head());
-    for (const k of byList(d.group?.() ?? (p ? [p] : []))) add(k);
-    for (const k of byList(members())) add(k);
-    if (all) for (const k of byList(moving())) add(k);
     const ms = scene ? members() : [];
     return keys.map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k), ...(scene ? { member: ms.includes(k) } : {}) }));
+  }
+  /** The open scene's objects in the scene's order: its Library motion's `order` (scene-motion.ts trackOrder), members only. */
+  function trackOrder(): string[] {
+    if (!scene) return [];
+    const ms = members();
+    const ts = sceneOrder(lib().get(scene)).filter((k) => ms.includes(k));
+    // A member whose track is not written yet (none in practice: joinClip writes an empty one) goes last.
+    return [...ts, ...ms.filter((k) => !ts.includes(k))];
+  }
+  /**
+   * A row dragged to a new place (its grip; studio-ui-lead2): `key` goes to index `to` among the scene's other rows.
+   * The order lives in the scene motion's `order` (contract LibraryMotion.order: an array, since the file sorts object
+   * keys), so it is saved with the motion and comes back with it — one undo step, a Library change (`motion-lib`).
+   */
+  function reorderRow(key: string, to: number) {
+    const name = scene;
+    const l = name ? lib().get(name) : null;
+    if (!name || !l?.tracks || !(key in l.tracks)) return;
+    const rest = trackOrder().filter((k) => k !== key);
+    const next = [...rest.slice(0, to), key, ...rest.slice(to)];
+    if (next.join('\n') === trackOrder().join('\n')) return;
+    lib().set(name, withOrder(l, next));
+    d.undo.push({ changes: [{ kind: 'motion-lib', key: name, from: l, to: lib().get(name) }] });
+    d.changed();
+    panel.render();
   }
 
   // ----- linking (studio-motion-focus; scene-motion.ts asScene / asOrdinary) -----
@@ -737,21 +766,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
 
   // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
-  /** A new scene on `key` (the clip menu's "New: Scene — several objects"; a scene starts empty, it is not a preset). */
-  function newScene(key: string) {
-    const cs = clipsOf(key);
-    if (cs.length >= MAX_CLIPS) return;
-    // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
-    const c = sceneClip(lib().free(d.t('tl.scene.new')));
-    // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
-    c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
-    making = null;
-    chosen.set(key, c.name);
-    openRows.add(key);
-    time = 0;
-    scene = c.name;
-    one(key, withClip(store().get(key), c.name, c));
-  }
+  // (studio-ui-lead2, 2026-10-23: the clip menu's "New: Scene — several objects" is gone — the request: "Make a motion,
+  // New — I can't tell what either does". One way in, "+ Make a motion"; several objects are "+ Link an object", which
+  // turns the motion into a scene (link() below). A scene made before plays and opens as it did.)
   /**
    * "Make a motion" (the strip's Motion button, the card's "+ Make a motion", the Library's, the clip menu's): the plate
    * opens on `key` with the time line at 1 s, and where it stands now is 0 s — the next move is the second key
@@ -953,7 +970,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       const key = head();
       if (!key) return;
       if (value === 'new:make') make(key);
-      else if (value === 'new:scene') newScene(key);
       else if (value === 'delete') {
         const c = clipOf(key);
         if (!c) return;
@@ -1033,6 +1049,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       panel.render();
     },
     leave: (key) => unlink(key),
+    // studio-ui-lead2: a row dragged by its grip (or ↑ / ↓ on it) to a new place among the scene's rows.
+    reorder: (key, to) => reorderRow(key, to),
     showAll(on) {
       all = on;
       panel.render();

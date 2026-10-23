@@ -1975,6 +1975,12 @@ export interface LibraryMotion {
    * them all at the same moment when any one of them starts (and playMotion(anyOfThem, name) plays the whole scene).
    */
   tracks?: Record<string, MotionKeys>;
+  /**
+   * The rows' order on the timeline (studio-ui-lead2, 2026-10-23: "I want to set the order myself"): the tracks' object
+   * keys, each once, as the person arranged them (dragged by the row's grip). Only with `tracks`. Absent = the tracks'
+   * keys as written (the file sorts object keys, so that is alphabetical). The loader ignores it.
+   */
+  order?: string[];
 }
 
 /**

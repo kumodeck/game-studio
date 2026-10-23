@@ -217,26 +217,18 @@ async function run(size, theme) {
       const after = ((await motion('rowboat'))?.clips?.[0]?.when ?? [])[1]?.area;
       check(!!before && !!after && JSON.stringify(before.size) !== JSON.stringify(after.size), `a corner dragged: the size ${JSON.stringify(before?.size)} → ${JSON.stringify(after?.size)}`);
       check(/motion|動き/i.test(await page.eval(UNDO)), 'one undo step');
-      // 6. A scene: New → Scene; the crate joins; K keys it.
-      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
-      await sleep(300);
-      await page.eval(choose('tl-clip', 'new:scene'));
-      await sleep(700);
-      const sceneChip = await page.eval(`(document.querySelector('[data-part=tl-scene]') || {}).textContent || ''`);
-      // A scene of one says nothing yet (studio-motion-focus: "Linked · n" from two on).
-      check(!sceneChip, `a scene of one: no "Linked" yet ("${sceneChip}")`);
-      const sceneName = (await state()).clip;
-      await page.eval(`${TL}.setTime(1)`);
-      await page.eval(`${TL}.onKey({ key: 'k', ctrl: false, meta: false, shift: false })`);
-      await sleep(300);
-      await page.eval(`document.querySelector('[data-part=tl-link]').click()`);
-      await sleep(500);
-      const linkItem = await page.eval(`!!document.querySelector('[data-part=tl-link-item][data-key=crate]')`);
-      check(linkItem, '"+ Link an object" lists the crate');
-      await page.eval(`document.querySelector('[data-part=tl-link-item][data-key=crate]').click()`);
-      await sleep(500);
+      // 6. A scene (studio-ui-lead2, 2026-10-23: no "New: Scene" in the clip menu any more — linking makes one): the crate
+      // (no motion) picked, its row's "+" links the boat; the crate's new motion is a scene of the two; K keys the crate.
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
+      await page.eval(`document.querySelector('[data-part=tl-link]').click()`);
+      await sleep(500);
+      const linkItem = await page.eval(`!!document.querySelector('[data-part=tl-link-item][data-key=rowboat]')`);
+      check(linkItem, 'the row\'s "+" (Link an object) lists the boat');
+      await page.eval(`document.querySelector('[data-part=tl-link-item][data-key=rowboat]').click()`);
+      await sleep(700);
+      const sceneName = (await state()).clip;
+      await page.eval(`${TL}.setTime(1)`);
       await page.eval(`${TL}.onKey({ key: 'k', ctrl: false, meta: false, shift: false })`);
       await sleep(500);
       const sc = await page.eval(`(document.querySelector('[data-part=tl-scene]') || {}).textContent || ''`);

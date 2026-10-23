@@ -39,7 +39,7 @@ Its top is one line, with what you use every time: **▶** (or <kbd>Space</kbd>)
 - The **ruler** is time. Drag on it to see that moment. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
 - Click the length after the time to type a new one, in seconds.
 - The rows are the **selected object** (with several selected, each of them), and the objects you [link](#linking-several-things-in-one-motion) to it. Open a row to see **Position**, **Angle** and **Size** on their own rows.
-- **⋯** has the rest: **Motion** (which of this object’s motions, **+ Make a motion**, **New: Scene**, **Rename…**, **Take it off this object**), **Repeat**, **Stops**, other ways to start, **Try**, and **Show every motion in the scene** (every moving object’s row; **Show only the selected one** goes back).
+- **⋯** has the rest: **Motion** (which of this object’s motions, **+ Make a motion**, **Rename…**, **Take it off this object**), **Loop & End**, **Trigger** (other ways to start), **Try**, and **Tracks** (**+ Link an object** and **Show every motion in the scene**: every moving object’s row; **Show only the selected one** goes back).
 
 ## Keys
 
@@ -65,18 +65,18 @@ In 3D, the object’s way through its position keys is drawn in the scene, with 
 ![A picked point of the boat’s path with its two handles, and the + on the line](media/motion-path.webp)
 
 - **Bend the path.** Select a key (on the timeline or its dot) and two **handles** show. Drag one to bend the path there; the other one follows. <kbd>Alt</kbd>-drag moves only one, for a sharp turn.
-- **Make a corner.** Double-click a dot (or choose **Path turns → At a corner** on the picked keys’ row). The path comes straight in and goes straight out. Double-click again for a smooth point.
+- **Make a corner.** Double-click a dot (or choose **Path → Sharp corner** on the picked keys’ row). The path comes straight in and goes straight out. Double-click again for a smooth point.
 - **Add a key on the path.** Point at the line: a **+** follows it with the time. Click to set a key at that moment, without changing the path’s shape.
 
 ## How keys flow into each other
 
-Select keys and a **Keys picked · 1** row shows under the top line. **To the next key** chooses how they go on to the next one:
+Select keys and a **1 selected** row shows under the top line. **Pace** chooses how they go on to the next one:
 
-- **Eases in and out**: starts slow, ends slow. The default.
-- **Same speed**: the same speed all the way.
-- **Holds, then jumps**: stays put, then jumps to the next key.
+- **Smooth (slow start & stop)**: starts slow, ends slow. The default.
+- **Steady**: the same speed all the way.
+- **Hold, then jump**: stays put, then jumps to the next key.
 
-The same row has **Path turns** (with position keys picked: **Smoothly** or **At a corner**) and **Delete**.
+The same row has **Path** (with position keys picked: **Smooth curve** or **Sharp corner**) and **Delete**.
 
 **Repeat** (in **⋯**) sets what happens at the end: **Once**, **Repeats**, or **Back and forth**.
 
@@ -103,7 +103,7 @@ In **⋯**, **+ or** adds another way to start, like “a key is pressed **or** 
 
 ![Starts: a key is pressed, or the player enters an area — the area with its corners](media/motion-or.webp)
 
-**Stops** (in **⋯**) chooses when it ends: **Never**, **After some rounds**, or **A cue**. Then it **Stays there** or **Goes back**.
+**Stops** (in **⋯**, under **Loop & End**) chooses when it ends: **Never**, **After some rounds**, or **A cue**. Then it **Stays there** or **Goes back**.
 
 ## Try it
 
@@ -117,15 +117,15 @@ The timeline shows the selected object only. When a motion should move other thi
 
 ![+ Link an object: the scene’s objects in a list, or click one in the game](media/motion-link.webp)
 
-1. Under the rows, press **+ Link an object**.
+1. Press the **+** at the right end of the selected object’s row (**Link an object**; also under **Tracks** in **⋯**).
 2. Choose one from the list (type to find it by name), or click it in the game while the list is open. The selected object stays selected.
 3. It gets a row of its own on the same time line. Move it with **Auto key** on to set its keys. The rows’ top-left corner says **Linked · 2**.
 
 ![The crate with the buoy and the barrel linked: one motion, one time line](media/motion-scene.webp)
 
-**When does it move?** and **Stops** are shared: all of them start together. Selecting a linked object shows the same rows, with it on top. **×** on a linked row unlinks it (its own motions stay). Unlink the last one and the motion is the selected object’s alone again.
+**When does it move?** and **Stops** are shared: all of them start together. Selecting a linked object shows the same rows in the same order (its row lights up). Drag the **⠿** at a row’s left to change the order (saved with the motion). **×** on a linked row unlinks it (its own motions stay). Unlink the last one and the motion is the selected object’s alone again.
 
-You can also start from **New: Scene — several objects** under **Motion** in **⋯**, or drop a linked motion from the Library onto an object to link it.
+You can also drop a linked motion from the Library onto an object to link it.
 
 ## The motion Library
 

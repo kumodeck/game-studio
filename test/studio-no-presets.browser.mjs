@@ -141,8 +141,8 @@ async function run(theme) {
     const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
     await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
     await sleep(200);
-    check(clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && clipOpts.some(([v]) => v === 'new:scene')
-      && !clipOpts.some(([v, t]) => /^new:(?!make$|scene$)/.test(v) || WORDS.kinds.test(t)), `${tag}: the clip menu — make one, a scene, no kind (${clipOpts.map((o) => o[1]).join(' | ')})`);
+    check(clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && !clipOpts.some(([v]) => v === 'new:scene')
+      && !clipOpts.some(([v, t]) => /^new:(?!make$)/.test(v) || WORDS.kinds.test(t)), `${tag}: the clip menu — make one, no scene (studio-ui-lead2), no kind (${clipOpts.map((o) => o[1]).join(' | ')})`);
     const when = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-starts] optgroup')].map((g) => [g.label, [...g.children].map((o) => o.textContent)]))`);
     check(when?.[0]?.[0] === WORDS.self && when[0][1].length >= 5 && when?.[1]?.[0] === WORDS.ai, `${tag}: "When" — ${JSON.stringify(when)}`);
     // A picture of the "When" menu: a native menu does not show in a screenshot, so it is drawn as a list for the shot only.

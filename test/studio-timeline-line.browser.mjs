@@ -4,9 +4,9 @@
 //   1. a motion attached from the Library (the card's From Library, on the crate): the line is ▶ · the time · ● Auto key ·
 //      "When does it move?" [the menu, ringed] ▷ … ⋯ ✦ ⌄ — no motion menu, no "✓ attached", no Point / Keys; nothing on
 //      it is cut or ends in "…", and on PC it is one line (two on a phone);
-//   2. a key picked on the boat's row: the picked keys' row under the line — "Keys picked · 1", "To the next key ▾",
-//      "Path turns ▾", Delete — readable; Delete takes the key, ⌘Z brings it back;
-//   3. ⋯ holds the motion's menu (this motion, + Make a motion, a scene, rename, take off);
+//   2. a key picked on the boat's row: the picked keys' row under the line — "1 selected", "Pace ▾", "Path ▾", Delete
+//      (Gemini's words, studio-ui-lead2) — readable; Delete takes the key, ⌘Z brings it back;
+//   3. ⋯ holds the motion's menu (this motion, + Make a motion, rename, take off; no "New: Scene" since studio-ui-lead2);
 //   4. (PC) making a motion from the strip: the line is the step ("✓ Moves 0–1 s …") and Done only, no "when" until Done;
 //      after Done, "When does it move?" ringed;
 //   5. the rows: the picked object's name is not cut, and no "when" chip on it (the line says it);
@@ -51,9 +51,9 @@ const check = (ok, what) => {
 const TL = `window.__studioTimeline`;
 const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
 const WORDS = LANG === 'ja'
-  ? { when: 'いつ動く？', sel: '選んだキー · 1', toNext: '次のキーまで', ease: 'ゆっくり出て、ゆっくり着く', turns: '道の曲がり方', smooth: 'なめらかに', del: '消す',
+  ? { when: 'いつ動く？', sel: '選択中: 1', toNext: '進み方', ease: 'なめらかに（自然な加減速）', turns: '通り道', smooth: '丸くなめらかに', del: '消す',
     made: /^✓ 0〜1 秒の動きができました/, done: '終わる', motion: '動き', make: '＋ 動きを作る', off: 'この物から外す' }
-  : { when: 'When does it move?', sel: 'Keys picked · 1', toNext: 'To the next key', ease: 'Eases in and out', turns: 'Path turns', smooth: 'Smoothly', del: 'Delete',
+  : { when: 'When does it move?', sel: '1 selected', toNext: 'Pace', ease: 'Smooth (slow start & stop)', turns: 'Path', smooth: 'Smooth curve', del: 'Delete',
     made: /^✓ Moves 0–1 s\./, done: 'Done', motion: 'Motion', make: '+ Make a motion', off: 'Take it off this object' };
 
 // The boat has "Motion" (keys at 0, 1.5 and 3 s, lifted in the middle, turning); the Library has "Hop" for the crate.
@@ -158,8 +158,8 @@ async function run(size, theme) {
     const clipLabel = await text('[data-part=tl-more] [data-part=tl-more-clip] .tl-more-k');
     await shot('3-more');
     if (!BEFORE) {
-      check(!!clipOpts && clipLabel === WORDS.motion && clipOpts.some(([v]) => v === 'Motion') && clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && clipOpts.some(([v]) => v === 'new:scene') && clipOpts.some(([v]) => v === 'rename') && clipOpts.some(([v, t]) => v === 'delete' && t === WORDS.off),
-        `${tag}: ⋯ has "${WORDS.motion}": the motion, + Make a motion, a scene, rename, take off (${(clipOpts || []).map((o) => o[1]).join(' | ')})`);
+      check(!!clipOpts && clipLabel === WORDS.motion && clipOpts.some(([v]) => v === 'Motion') && clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && !clipOpts.some(([v]) => v === 'new:scene') && clipOpts.some(([v]) => v === 'rename') && clipOpts.some(([v, t]) => v === 'delete' && t === WORDS.off),
+        `${tag}: ⋯ has "${WORDS.motion}": the motion, + Make a motion, rename, take off — no scene line (${(clipOpts || []).map((o) => o[1]).join(' | ')})`);
       check(!(await j(`JSON.stringify(!!document.querySelector('[data-part=tl-head] [data-part=tl-clip]'))`)), `${tag}: and the line has none`);
     }
     await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);

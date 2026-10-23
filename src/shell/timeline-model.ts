@@ -132,10 +132,8 @@ export function toClips(m: Motion | null | undefined, dim: Dim): Motion | null {
 export function blankClip(name: string): MotionClip {
   return { name, len: 2, repeat: 'once', keys: {} };
 }
-/** A scene (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts). Not a preset: no keys. */
-export function sceneClip(name: string): MotionClip {
-  return { name, len: 4, repeat: 'once', scene: true, keys: {} };
-}
+// (sceneClip — an empty scene from the clip menu's "New: Scene" — went with that menu line, studio-ui-lead2 2026-10-23:
+// a scene is made by linking an object to a motion, timeline-wire.ts link(); scene-motion.ts asScene.)
 
 /** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
 export function freeName(clips: MotionClip[], base: string): string {

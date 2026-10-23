@@ -437,7 +437,9 @@ Asked for: the second stage of the timeline — the path's shape by hand, a key 
   timeline's second row: the first with its field, then "or" + each other one with its field and ×, then "+ or". The
   area of an `enter` (wherever it is in the list) is drawn; its four floor corners resize it from the opposite corner
   (Shift: its height): `studio:timeline/area-moved { key, p, size, end }`.
-- **Scene motions**: a Library motion with `tracks` (object key → keys, 1–16) instead of `keys`. Each object in it has
+- **Scene motions**: a Library motion with `tracks` (object key → keys, 1–16) instead of `keys`, and optionally `order`
+  (the tracks' keys, each once: the rows' order on the timeline as the person arranged them — studio-ui-lead2, 2026-10-23;
+  an array because the file sorts object keys; absent = the keys as written; the loader ignores it). Each object in it has
   the usual attachment (`use`); the editor writes the same `when` / `until` / len / repeat to all of them (the head acts
   on the scene). The loader's `resolveClip(c, lib, key)` gives each object its track (`scene: true`), and the runner
   starts the scene's other objects at the same moment when one starts. On the timeline: the clip menu's "New: Scene —

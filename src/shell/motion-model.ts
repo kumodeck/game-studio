@@ -45,7 +45,8 @@ export function roundLib(m: LibraryMotion, dim: Dim = '3d'): LibraryMotion {
   const head = { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}) };
   if (!m.tracks) return { ...head, keys: c.keys };
   // The file has `tracks` instead of `keys` (LibraryMotion.keys stays {} in the editor; the cast leaves it out).
-  return { ...head, tracks: Object.fromEntries(Object.entries(m.tracks).map(([k, ks]) => [k, one(ks).keys])) } as LibraryMotion;
+  // …and the rows' order with them (studio-ui-lead2): the file sorts object keys, the array keeps the person's order.
+  return { ...head, tracks: Object.fromEntries(Object.entries(m.tracks).map(([k, ks]) => [k, one(ks).keys])), ...(m.order?.length ? { order: m.order.slice() } : {}) } as LibraryMotion;
 }
 
 /** Same motion (the file's rounding), so a drag that ends where it began is not a change. */

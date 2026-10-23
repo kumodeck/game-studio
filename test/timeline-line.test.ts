@@ -31,7 +31,7 @@ const between = (s: string, from: string, to: string) => s.slice(s.indexOf(from)
 test('the picked keys\' row and the line say what they are, in both languages; the maker\'s chips are gone', () => {
   for (const lang of ['en', 'ja'] as const) {
     const t = (k: string, v?: Record<string, string | number>) => translate(lang, k, v);
-    // The row: "Keys picked · 2", then a label for each menu that says what it does.
+    // The row: "2 selected", then a label for each menu that says what it does.
     assert.match(t('tl.sel', { n: 2 }), /2/);
     assert.notEqual(t('tl.sel', { n: 2 }), 'tl.sel');
     assert.ok(!['Keys', 'キー', 'Point', '点'].includes(t('tl.ease')) && !['Keys', 'キー', 'Point', '点'].includes(t('tl.point')), `${lang}: labels that say something (${t('tl.ease')} / ${t('tl.point')})`);
@@ -44,16 +44,16 @@ test('the picked keys\' row and the line say what they are, in both languages; t
     assert.equal(t('tl.made'), 'tl.made', `${lang}: tl.made is gone`);
     assert.notEqual(t('tl.made.more'), 'tl.made.more');
   }
-  // The words themselves (to be read by Gemini: the report lists them).
-  assert.equal(translate('ja', 'tl.ease'), '次のキーまで');
-  assert.equal(translate('ja', 'tl.ease.ease'), 'ゆっくり出て、ゆっくり着く');
-  assert.equal(translate('ja', 'tl.point'), '道の曲がり方');
-  assert.equal(translate('ja', 'tl.point.smooth'), 'なめらかに');
-  assert.equal(translate('ja', 'tl.sel', { n: 1 }), '選んだキー · 1');
-  assert.equal(translate('en', 'tl.ease'), 'To the next key');
-  assert.equal(translate('en', 'tl.ease.ease'), 'Eases in and out');
-  assert.equal(translate('en', 'tl.point'), 'Path turns');
-  assert.equal(translate('en', 'tl.sel', { n: 1 }), 'Keys picked · 1');
+  // The words themselves: Gemini's (studio-ui-lead2, 2026-10-23; wording-gemini-1023b — test/ui-lead2.test.ts has the whole table).
+  assert.equal(translate('ja', 'tl.ease'), '進み方');
+  assert.equal(translate('ja', 'tl.ease.ease'), 'なめらかに（自然な加減速）');
+  assert.equal(translate('ja', 'tl.point'), '通り道');
+  assert.equal(translate('ja', 'tl.point.smooth'), '丸くなめらかに');
+  assert.equal(translate('ja', 'tl.sel', { n: 1 }), '選択中: 1');
+  assert.equal(translate('en', 'tl.ease'), 'Pace');
+  assert.equal(translate('en', 'tl.ease.ease'), 'Smooth (slow start & stop)');
+  assert.equal(translate('en', 'tl.point'), 'Path');
+  assert.equal(translate('en', 'tl.sel', { n: 1 }), '1 selected');
 });
 
 // ----- 2. the CSS -----

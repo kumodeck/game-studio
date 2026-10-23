@@ -28,15 +28,15 @@ test('no kind\'s words on screen: the template keys are gone in both languages, 
   for (const lang of ['en', 'ja'] as const) for (const k of ['empty', 'pingpong', 'loop', 'once', 'spin']) {
     assert.equal(translate(lang, `tl.tpl.${k}`), `tl.tpl.${k}`, `${lang}: tl.tpl.${k} is gone`);
   }
-  // The scene stays (it starts empty, for several objects: not a kind of motion).
-  assert.notEqual(translate('ja', 'tl.tpl.scene'), 'tl.tpl.scene');
+  // The scene line went too (studio-ui-lead2, 2026-10-23: "Make a motion, New — I can't tell what either does"; linking makes a scene).
+  assert.equal(translate('ja', 'tl.tpl.scene'), 'tl.tpl.scene');
   // The kinds' own words (the review's quote) nowhere in the tables but the repeat setting of ⋯.
   const i18n = readFileSync(join(SRC, 'i18n.ts'), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l) && !/'tl\.repeat\./.test(l)).join('\n');
   for (const w of ['行ったり来たり', 'ぐるっと回る', 'その場で回る', "'Round'", "'Spin'", "'Back and forth'"]) assert.ok(!i18n.includes(w), `"${w}" is not a word on screen`);
   // No source picks a template any more (the clip menu, the strip, the card, ⌘K, the Library).
   for (const f of readdirSync(SRC).filter((n) => n.endsWith('.ts'))) {
     const code = readFileSync(join(SRC, f), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
-    assert.doesNotMatch(code, /tl\.tpl\.(?!scene)|fromTemplate|TEMPLATES|makeFrom|new:(pingpong|loop|once|spin|empty)/, f);
+    assert.doesNotMatch(code, /tl\.tpl\.|fromTemplate|TEMPLATES|makeFrom|new:(pingpong|loop|once|spin|empty|scene)/, f);
   }
   // The two ways in, in both languages.
   assert.equal(translate('ja', 'motion.tool.make'), '動きを作る');

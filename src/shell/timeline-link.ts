@@ -18,7 +18,7 @@ export interface LinkItem {
 }
 
 /** Fill `el` (the popover) with the title, the find field and the objects; `pick` = one chosen. */
-export function fillLinkList(el: HTMLElement, o: { title: string; find: string; none: string; items: LinkItem[]; focus: boolean; pick(key: string): void }) {
+export function fillLinkList(el: HTMLElement, o: { title: string; hint?: string; find: string; none: string; items: LinkItem[]; focus: boolean; pick(key: string): void }) {
   const list = h('div', { class: 'tl-link-list', role: 'listbox', 'aria-label': o.title });
   const find = h('input', { type: 'search', class: 'tl-link-find', placeholder: o.find, 'aria-label': o.find, autocomplete: 'off', spellcheck: false, dataset: { part: 'tl-link-find' } });
   const draw = () => {
@@ -47,7 +47,8 @@ export function fillLinkList(el: HTMLElement, o: { title: string; find: string; 
     }
   });
   draw();
-  el.replaceChildren(h('div', { class: 'tl-link-title', text: o.title }), find, list);
+  // The second line (studio-ui-lead2): "or click an object in the game" — it was the link row's lane; the row is gone.
+  el.replaceChildren(h('div', { class: 'tl-link-title', text: o.title }), o.hint ? h('div', { class: 'tl-link-hint', text: o.hint }) : null, find, list);
   // A phone's keyboard would cover half the screen for a list one can just tap: the field takes the keys on a PC only.
   if (o.focus) find.focus({ preventScroll: true });
 }

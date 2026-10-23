@@ -221,19 +221,20 @@ test('wire: "or" — a second way to start, its Try ▶, the row says both; the 
   assert.deepEqual(r.store.get('boat')!.clips![0]!.when, { on: 'click' }, 'back to one');
 });
 
-test('wire: a scene — made from the clip menu, objects linked to it (studio-motion-focus: "+ Link an object"), one "when", taken out, undo', () => {
+test('wire: a scene — made by linking (studio-ui-lead2: no "New: Scene"; the crate with no motion links the boat), one "when", taken out, undo', () => {
   const r = rig();
-  r.acts().clip('new:scene');
+  r.pick('crate');
+  r.acts().link!('boat');
   const name = r.view().scene!.name;
-  assert.equal(r.view().scene!.n, 1);
+  assert.equal(r.view().scene!.n, 2);
   assert.ok(r.lib.get(name)!.tracks, 'a Library motion with tracks');
-  // The boat's first key in the scene.
+  assert.deepEqual(r.view().rows.map((x) => [x.key, x.member]), [['crate', true], ['boat', true]], 'the rows in the scene\'s order: the crate (its motion) first');
+  // The boat's first key in the scene (picked: a member, the scene stays open; its row stays second).
+  r.pick('boat');
+  assert.deepEqual(r.view().rows.map((x) => x.key), ['crate', 'boat'], 'a pick moves no row (studio-ui-lead2)');
   r.tl.setTime(2);
   r.tl.moved('boat', { p: [3, 0, 0], r: 0, s: 1 }, true, { p: [0, 0, 0], r: 0, s: 1 });
   assert.deepEqual(r.lib.get(name)!.tracks!.boat!.p!.map((k) => k.v), [[0, 0, 0], [3, 0, 0]]);
-  // The crate (no motion of its own) linked from the boat's plate.
-  r.acts().link!('crate');
-  assert.deepEqual(r.view().rows.map((x) => [x.key, x.member]), [['boat', true], ['crate', true]]);
   // The buoy linked too, then picked and moved with ● on: its keys go in its track of the scene.
   r.acts().link!('buoy');
   r.pick('buoy');

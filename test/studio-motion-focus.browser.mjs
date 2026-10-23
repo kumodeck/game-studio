@@ -117,7 +117,7 @@ async function run(size, theme) {
 
     const rows = () => j(ROWS);
     if (full) check(JSON.stringify(await rows()) === '["crate"]', `${tag}: one row, the picked crate (${JSON.stringify(await rows())})`);
-    check(!!(await j(PLATE('[data-part=tl-link]'))), `${tag}: "+ Link an object" under the rows`);
+    check(!!(await j(PLATE('[data-part=tl-link]'))), `${tag}: the row's "+" (Link an object; studio-ui-lead2: it was a row under the rows)`);
 
     // 2. The list.
     await press('[data-part=tl-link]');

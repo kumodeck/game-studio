@@ -20,12 +20,15 @@ import type { LibraryMotion, Motion, MotionClip, PlacementFile } from '../contra
  * A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). A scene motion
  * (studio-timeline-2: `tracks`, several objects' keys) keeps `keys` empty in the editor.
  */
-export function libOf(c: Pick<MotionClip, 'name' | 'len' | 'repeat' | 'keys'> & { tracks?: LibraryMotion['tracks'] }): LibraryMotion {
+export function libOf(c: Pick<MotionClip, 'name' | 'len' | 'repeat' | 'keys'> & { tracks?: LibraryMotion['tracks']; order?: string[] }): LibraryMotion {
+  // `order` (studio-ui-lead2: the rows' order) only with tracks, and only the keys that are tracks.
+  const order = c.tracks && c.order ? c.order.filter((k, i, a) => k in c.tracks! && a.indexOf(k) === i) : null;
   return { name: c.name, len: c.len, ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}), keys: c.tracks ? {} : structuredClone(c.keys ?? {}),
-    ...(c.tracks ? { tracks: structuredClone(c.tracks) } : {}) };
+    ...(c.tracks ? { tracks: structuredClone(c.tracks) } : {}), ...(order?.length ? { order } : {}) };
 }
 
-const sig = (m: LibraryMotion) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null]);
+// The order is part of the motion (a reorder is a change to save — studio-ui-lead2).
+const sig = (m: LibraryMotion) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null, m.order ?? null]);
 
 export class MotionLibrary {
   private now = new Map<string, LibraryMotion>();
