@@ -154,8 +154,14 @@ test('wire: Try — the cues of the scene, played by the loader\'s rules', () =>
     now = 1500;
     frames.shift()!(now);
     const pose = (k: string) => (r.sent.filter((m) => m.type === 'studio:timeline/pose').pop() as Extract<ShellToBridge, { type: 'studio:timeline/pose' }>).poses.find((p) => p.key === k)!.pose;
-    assert.deepEqual(pose('barrel').p, [5, 1, 0], 'the game started: the barrel hops');
+    // studio-preview-rows (2026-10-24): only the timeline's rows are shown moving — the crate is picked, the barrel
+    // (its Hop runs from the start) is not on the timeline and stays at its place.
+    assert.deepEqual(pose('barrel').p, [5, 0, 0], 'the game started, but the barrel is not a row: it stays');
     assert.deepEqual(pose('crate').p, [0, 0, 0], 'the crate waits for E');
+    r.acts().showAll(true);
+    frames.shift()!(now);
+    assert.deepEqual(pose('barrel').p, [5, 1, 0], '⋯ "Show every motion": the barrel is a row now, and hops');
+    r.acts().showAll(false);
     r.tl.tryCue('key:KeyE');
     now = 2000;
     frames.shift()!(now);

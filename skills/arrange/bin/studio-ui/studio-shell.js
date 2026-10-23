@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.43 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.44 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -18701,8 +18701,16 @@ function createTimeline(d              , makePanel                             =
   const shown = () => open && d.usable();
   /** The keys with a motion that are in the scene now. */
   const moving = () => store().keys().filter((k) => !!d.place(k));
-  const offsets = (key        , at = time)                 => {
-    const c = clipOf(key);
+  /**
+   * An object's offsets at `at` — only for the timeline's rows (studio-preview-rows, 2026-10-24; a request, made while making
+   * sea-stack's motion in Lantern Cove: "I'm making the motion of the object I picked, but when I play it other objects
+   * start moving too — I want to play only the objects lined up on the timeline I'm on"). Every other object stays at
+   * its place (where the editor puts it) through ▶, the time line and a cue's ▶; "Play" shows the whole game.
+   * WHY here and not in each sender: refresh / ▶ / shownPose / placeFor all ask this, so what the game page shows, the
+   * card's numbers and where a drag lands agree. `rs` = rowKeys() worked out once by a caller that loops.
+   */
+  const offsets = (key        , at = time, rs              = rowKeys())                 => {
+    const c = rs.has(key) ? clipOf(key) : null;
     return c ? offsetsAt(c, at) : null;
   };
 
@@ -18710,9 +18718,10 @@ function createTimeline(d              , makePanel                             =
   /** Every moving object at its place + its clip now (open), or at its place (folded). `force`: send even if unchanged. */
   function refresh(force = false) {
     const poses                                     = [];
+    const rs = rowKeys();
     for (const k of moving()) {
       const place = d.place(k) ;
-      const at = shown() ? offsets(k) : null;
+      const at = shown() ? offsets(k, time, rs) : null;
       poses.push({ key: k, pose: at ? compose(place, at, dim()) : place });
     }
     const sig = JSON.stringify(poses);
@@ -18884,15 +18893,17 @@ function createTimeline(d              , makePanel                             =
     else time = Math.min(run, len);
     // Every object at the same running time (each with its own repeat).
     const poses                                     = [];
+    const rs = rowKeys();
     for (const k of moving()) {
-      const at = offsets(k, rep === 'once' || !c ? time : run);
+      const at = offsets(k, rep === 'once' || !c ? time : run, rs);
       if (at) poses.push({ key: k, pose: compose(d.place(k) , at, dim()) });
     }
     if (poses.length) (d.send({ type: 'studio:timeline/pose', poses }), d.numbers());
     sentPoses = '';
     panel.place();
     sendPath();
-    if (rep === 'once' && run >= len && moving().every((k) => (clipOf(k)?.repeat ?? 'once') === 'once')) return void stop();
+    // Ends when every row's clip is a `once` (studio-preview-rows: a loop elsewhere in the game no longer keeps ▶ going).
+    if (rep === 'once' && run >= len && moving().filter((k) => rs.has(k)).every((k) => (clipOf(k)?.repeat ?? 'once') === 'once')) return void stop();
     raf = requestAnimationFrame(tick);
   }
   function play() {
@@ -18936,6 +18947,12 @@ function createTimeline(d              , makePanel                             =
    */
   function rows() {
     const p = d.picked();
+    const ms = scene ? members() : [];
+    return [...rowKeys()].map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k), ...(scene ? { member: ms.includes(k) } : {}) }));
+  }
+  /** The rows' objects in their order (rows() without what each row draws): also the objects ▶ moves (offsets). */
+  function rowKeys()              {
+    const p = d.picked();
     const order = d.order();
     const at = (k        ) => {
       const i = order.indexOf(k);
@@ -18948,8 +18965,7 @@ function createTimeline(d              , makePanel                             =
     const picked = d.group?.() ?? (p ? [p] : []);
     for (const k of byList(all ? [...moving(), ...picked] : picked)) add(k);
     add(head());
-    const ms = scene ? members() : [];
-    return keys.map((k) => ({ key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: clipOf(k), ...(scene ? { member: ms.includes(k) } : {}) }));
+    return new Set(keys);
   }
   /** The open scene's objects in the scene's order: its Library motion's `order` (scene-motion.ts trackOrder), members only. */
   function trackOrder()           {
@@ -19370,8 +19386,11 @@ function createTimeline(d              , makePanel                             =
         const t = performance.now();
         const at = trying.run.step(t, () => null);
         const poses                                     = [];
+        // studio-preview-rows: the runner plays the whole scene (so a row's "after X ends" still starts on time), but
+        // only the rows are shown moving — an "after" chained to an object not on the timeline stays at its place.
+        const rs = rowKeys();
         for (const k of moving()) {
-          const o = at.get(k)                       ;
+          const o = rs.has(k) ? (at.get(k)                       ) : undefined;
           poses.push({ key: k, pose: o ? compose(d.place(k) , o, dim()) : d.place(k)  });
         }
         if (poses.length) d.send({ type: 'studio:timeline/pose', poses });
@@ -19529,6 +19548,8 @@ function createTimeline(d              , makePanel                             =
     reorder: (key, to) => reorderRow(key, to),
     showAll(on) {
       all = on;
+      // The rows changed, and with them what ▶ moves (studio-preview-rows).
+      if (!playing && !trying) refresh();
       panel.render();
       d.layout();
     },
@@ -19738,7 +19759,9 @@ function createTimeline(d              , makePanel                             =
     /** Draw again (the pick, the scene, the layout changed). */
     render() {
       render();
-      if (shown()) sendPath();
+      // studio-preview-rows: the rows follow the pick, so an object that left them goes back to its place (and one
+      // that joined shows its motion at the time line). Unchanged poses send nothing.
+      if (shown()) (sendPath(), playing || trying || refresh());
     },
     refresh,
     shownPose,
