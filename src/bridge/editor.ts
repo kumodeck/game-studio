@@ -166,7 +166,7 @@ export function createEditor(deps: EditorDeps): Editor {
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
   const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
-    markDirty: () => (dirtyFrame = true) });
+    markDirty: () => (dirtyFrame = true), inHand: () => input?.inHand() ?? [] });
   let lang: Lang = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -1128,6 +1128,18 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:tool/saved':
           toolHost.saved(msg.ids);
+          break;
+        case 'studio:timeline/recording':
+          // studio-motion-move: what the game moves takes every tool as a motion's point while recording (hold.ts).
+          if (!!hold.recording !== !!msg.on) {
+            hold.recording = !!msg.on;
+            // The UI layer has nothing the game moves; the world's list is read again when it comes back.
+            if (state.editing && layer === 'world') {
+              refreshItems();
+              postSelected();
+              input?.selectionChanged();
+            }
+          }
           break;
         case 'studio:timeline/pose':
         case 'studio:timeline/path':

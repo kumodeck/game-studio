@@ -112,10 +112,22 @@ export const OFF_LINES: Record<Lang, Record<'game' | 'ground' | 'locked' | 'none
  * moves it, that a move here sets where it starts — Move itself is the plain Move, with no menu in between. One line,
  * short; no "Ask AI" (the ask box below is where that happens). `parts` = what the game changes (Item.driven).
  */
-export function gameNote(lang: Lang, parts: readonly ('move' | 'lift' | 'turn' | 'size')[]): string {
+// `meets` (studio-motion-move, 2026-10-23): a motion is being recorded on it (Item.meets) — every tool makes a point of
+// the motion, so "a move here sets where it starts" would be wrong. The line says instead, once, that the game moves it
+// too and the two motions add up when played: the honest word the hands-on try asked for, not a dimmed tool.
+export function gameNote(lang: Lang, parts: readonly ('move' | 'lift' | 'turn' | 'size')[], meets = false): string {
   const moves = parts.includes('move') || parts.includes('lift');
   const what = (['move', 'turn', 'size'] as const).filter((k) => (k === 'move' ? moves : parts.includes(k)));
   if (!what.length) return '';
+  if (meets) {
+    if (lang === 'ja') {
+      const v = { move: '動かして', turn: '回して', size: '大きさを変えて' };
+      return `この物はゲームも${what.map((k) => v[k]).join('、')}います。遊ぶと、ゲームの動きと重なります。`;
+    }
+    const v = { move: 'moves', turn: 'turns', size: 'resizes' };
+    const list = what.length < 3 ? what.map((k) => v[k]).join(' and ') : `${v.move}, ${v.turn} and ${v.size}`;
+    return `Your game ${list} this too. When you play, its motion and this one add up.`;
+  }
   if (lang === 'ja') {
     const v = { move: '動かし', turn: '回し', size: '大きさを変え' };
     return `遊ぶとゲームが${what.map((k) => v[k]).join('、')}ます。${moves ? 'ここで動かすとスタート位置が変わります。' : ''}`;

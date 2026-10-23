@@ -221,6 +221,13 @@ export interface Item {
    */
   startSpot?: boolean;
   /**
+   * With held 'game' while a motion is being recorded (the timeline open with ● on: studio:timeline/recording): every
+   * tool works on it as on anything else — a move, a turn, a resize is a point of the motion, not its start spot — and
+   * the line under the strip says the game moves it too, so when played the two motions add up (studio-motion-move,
+   * 2026-10-23: "I try to make a motion, but moving is limited?"). `startSpot` is absent then.
+   */
+  meets?: boolean;
+  /**
    * Copy made in this edit session (copy / ⌘D, CONTRACT.md §1.8): the key of
    * the object it was copied from. Absent for objects the game itself makes.
    */
@@ -996,7 +1003,15 @@ export type ShellToBridge =
    * to the ground from each; `now` = the playhead's offset (a small ring), `sel` = indexes of the picked keys. `key`
    * null = draw nothing.
    */
-  | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean }
+  // `making`: the motion is being made step by step (the Motion button's "Make a motion"): the point the object stands
+  // on now is not taken by a press — a drag there moves the object, the next step (studio-motion-move, 2026-10-23).
+  | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean; making?: boolean }
+  /**
+   * studio-motion-move (2026-10-23): a move / turn / resize is a point of a motion now (the timeline open, ● on, no Try
+   * running) — or not any more. While on, a thing the game moves takes every tool as a motion's point (Item.meets),
+   * not as its start spot (Item.startSpot).
+   */
+  | { type: 'studio:timeline/recording'; on: boolean }
   /**
    * studio-motion-triggers (2026-10-22): the picked clip's area ("the player enters an area"), a box in the world with a
    * point in its middle to drag (across the ground; Shift: up / down). null = none drawn.

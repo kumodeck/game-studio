@@ -171,6 +171,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   // What the game page shows now, so a frame that changes nothing sends nothing.
   let sentPoses = '';
   let sentPath = '';
+  // What the game page was last told about recording (studio:timeline/recording), null = nothing yet.
+  let sentRec: boolean | null = null;
 
   const raw = () => d.store;
   const lib = () => d.lib;
@@ -292,15 +294,29 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     sentPoses = sig;
     sendPath(force);
   }
+  /**
+   * Tell the game page whether a move is a motion's point now (studio-motion-move, 2026-10-23): there, a thing the game
+   * moves takes every tool as a point, not as its start spot (bridge/hold.ts). The same test as records() without the
+   * object: the timeline on screen, ● on, no Try running.
+   */
+  function sendRec(force = false) {
+    const on = shown() && auto && !trying;
+    if (!force && on === sentRec) return;
+    sentRec = on;
+    d.send({ type: 'studio:timeline/recording', on });
+  }
   /** The picked object's path (its position keys), drawn in 3D in the game. */
   function sendPath(force = false) {
+    sendRec(force);
     const key = shown() ? d.picked() : null;
     const c = key ? clipOf(key) : null;
     const place = key ? d.place(key) : undefined;
     const ks = c?.keys.p;
     const msg: ShellToBridge = key && place && ks?.length
       ? { type: 'studio:timeline/path', key, base: place.p.slice(), keys: structuredClone(ks), now: offsets(key)?.p ?? null,
-        sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0) }
+        sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0),
+        // Making step by step: a press on the object where it stands is the next step, not a drag of that point.
+        ...(making?.shown && making.key === key ? { making: true } : {}) }
       : { type: 'studio:timeline/path', key: null };
     const sig = JSON.stringify(msg);
     sendArea(force);
@@ -898,6 +914,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (trying) cancelAnimationFrame(trying.raf);
       const objs = moving().map((key) => ({ key, clips: clipsOf(key).map((c) => ({ ...c, when: whenOf(c), whens: whensOf(c) })) }));
       trying = { run: motionRunner(objs), t0: now, raf: 0 };
+      sendRec();
       trying.run.fire({ on: 'start' }, now);
       const loop = () => {
         if (!trying) return;
@@ -968,6 +985,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     auto(on) {
       auto = on;
+      sendRec();
       panel.render();
     },
     fold: () => setOpen(false),
@@ -1438,6 +1456,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     /** ● Auto key on / off (the plate's button; tests). */
     setAuto(on: boolean) {
       auto = on;
+      sendRec();
       if (shown()) panel.render();
     },
     /** Tests and the ⌘K list. */

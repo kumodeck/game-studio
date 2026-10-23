@@ -155,6 +155,11 @@ export interface InputHandle {
    * size), null = nothing.
    */
   keyAt(x: number, y: number): string | null;
+  /**
+   * The objects a drag of the strip's tools holds right now (one, or a group's), [] between drags. The timeline's
+   * poses leave them alone meanwhile (timeline-path.ts handle: studio-motion-move, 2026-10-23).
+   */
+  inHand(): string[];
   detach(): void;
 }
 
@@ -454,7 +459,7 @@ export function attachInput(deps: InputDeps): InputHandle {
   const noteOf = (off: Partial<Record<HandleKind, string>>): string | null => {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
     if (picked.length === 1 && picked[0]!.held === 'game' && picked[0]!.driven?.length) {
-      const g = gameNote(lang, picked[0]!.driven.filter((k) => k !== 'lift' || adapter.dim === '3d'));
+      const g = gameNote(lang, picked[0]!.driven.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!picked[0]!.meets);
       if (g) return g;
     }
     for (const k of ['move', 'lift', 'rotate', 'scale'] as HandleKind[]) if (off[k]) return off[k]!;
@@ -1635,6 +1640,9 @@ export function attachInput(deps: InputDeps): InputHandle {
       aiLabel = label;
       shapes.ai.sig = '';
       place();
+    },
+    inHand() {
+      return mode.kind === 'handle' ? [mode.key] : mode.kind === 'group' ? mode.session.keys.slice() : [];
     },
     keyAt(x, y) {
       return tappableAt(adapter, state.items, win, x, y, UI.pickRadiusTouch)[0] ?? null;

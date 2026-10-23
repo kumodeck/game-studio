@@ -9,6 +9,9 @@
     game code moves most things every frame. What the editor should find while it watches the first moments
     (bridge/observe.ts → bridge/hold.ts):
       hex-1 … hex-4  orange hexagons the game slides toward the camera (place)   → held 'game', Move off
+      pillar         a tall blue pillar standing on the road, turned −60°, that the game slides toward you (place)
+                     → held 'game'; the tester's "blue pillar (2nd)" of NEON DASH (studio-motion-move, 2026-10-23): a
+                     thing standing on something is moved along the surface under it (adapter dragOnSurface)
       ring           a ring the game turns (angle)                                → held 'game', Turn off
       orb            a pickup the game pulses (size)                              → held 'game', Size off
       gate, ship     nothing moves them by themselves                             → every tool works
@@ -70,6 +73,11 @@
       scene.add(h);
       hexes.push(h);
     }
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, 4, .5), glow(0x3d7bff, 1.2));
+    pillar.name = 'pillar';
+    pillar.position.set(-1.5, 2, -10);
+    pillar.rotation.y = -Math.PI / 3;
+    scene.add(pillar);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, .12, 12, 48), glow(0x29e6ff, 1.8));
     ring.name = 'ring';
     ring.position.set(-3.2, 2.2, -14);
@@ -119,6 +127,8 @@
         h.position.z += 9 * dt;
         if (h.position.z > 8) h.position.z -= 40;
       }
+      pillar.position.z += 6 * dt;
+      if (pillar.position.z > 8) pillar.position.z -= 40;
       ring.rotation.y += 1.6 * dt;
       orb.scale.setScalar(1 + .25 * Math.sin(t * 4));
       ship.position.x = Math.max(-4, Math.min(4, ship.position.x + ((keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0)) * 8 * dt));

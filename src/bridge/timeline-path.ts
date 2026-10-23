@@ -63,6 +63,11 @@ export interface TimelineViewDeps {
   post(m: BridgeToShell): void;
   lang(): Lang;
   markDirty(): void;
+  /**
+   * The objects a drag of the strip's tools holds now (input.ts inHand). timeline/pose leaves them alone meanwhile
+   * (studio-motion-move, 2026-10-23). Absent = none.
+   */
+  inHand?(): string[];
 }
 
 export interface TimelineView {
@@ -73,7 +78,7 @@ export interface TimelineView {
   clear(): void;
 }
 
-type Shown = { key: string; base: number[]; keys: MotionKey[]; now: number[] | null; sel: number[] };
+type Shown = { key: string; base: number[]; keys: MotionKey[]; now: number[] | null; sel: number[]; making?: boolean };
 
 export function createTimelineView(d: TimelineViewDeps): TimelineView {
   const { win } = d;
@@ -556,6 +561,10 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
     if (at.point === undefined || at.point < 0) return;
     const k = shown.keys[at.point];
     if (!k) return;
+    // Making a motion step by step (studio-motion-move, 2026-10-23): the point where the object stands now is under the
+    // object, so a press on the object caught the point — the second drag moved the first step's end again instead of
+    // making the next one ("only one point is made"). Then the press goes on to the object; the other points still drag.
+    if (shown.making && shown.now && k.v.every((v, i) => Math.abs(v - (shown!.now![i] ?? 0)) < 1e-3)) return;
     take(e);
     begin(e, keyW(shown, at.point), { i: at.point, start: k.v.slice() });
   };
@@ -604,7 +613,16 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
     handle(msg) {
       if (msg.type === 'studio:timeline/pose') {
         const p = d.poser();
+        // What a drag holds right now is left where the drag put it (studio-motion-move, 2026-10-23). WHY: with ● on,
+        // each step of a drag comes back from the shell as this pose a moment later; setPose then dropped the adapter's
+        // grab (three.js: a new pivot), so the next step grabbed again at the pointer and lost its own travel. On a
+        // thing standing on the road (the move that follows the surface, measured step by step) almost nothing moved:
+        // NEON DASH's blue pillar stayed put, inched and came back while the card's X ran 9.5 → 8.6 → 8.2 → 8.7. The
+        // drag is newer than any pose about it (the same rule as a dragged dot's path, below); the pose after the drag
+        // ends comes next and puts it exactly where the motion says.
+        const held = new Set(d.inHand?.() ?? []);
         for (const e of msg.poses) {
+          if (held.has(e.key)) continue;
           try {
             p.setPose(e.key, e.pose as Pose);
           } catch {
@@ -623,12 +641,12 @@ export function createTimelineView(d: TimelineViewDeps): TimelineView {
         // While a dot is dragged, the shell's echo of the same key keeps the dot under the finger (ours is newer).
         // A handle's drag takes the shell's keys (the other handle lining up is worked out there); a point's keeps ours.
         if (drag && shown && msg.key === shown.key && !drag.side) {
-          shown = { ...shown, base: msg.base ?? shown.base, now: msg.now ?? null, sel: msg.sel ?? [] };
+          shown = { ...shown, base: msg.base ?? shown.base, now: msg.now ?? null, sel: msg.sel ?? [], making: !!msg.making };
         } else if (drag?.side && shown && msg.key === shown.key && msg.keys?.length) {
-          shown = { ...shown, base: msg.base ?? shown.base, keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] };
+          shown = { ...shown, base: msg.base ?? shown.base, keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [], making: !!msg.making };
         } else {
           drag = null;
-          shown = msg.key && msg.base && msg.keys?.length ? { key: msg.key, base: msg.base.slice(), keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] } : null;
+          shown = msg.key && msg.base && msg.keys?.length ? { key: msg.key, base: msg.base.slice(), keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [], making: !!msg.making } : null;
         }
         drawn = '';
         d.markDirty();

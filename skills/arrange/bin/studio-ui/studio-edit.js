@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.35 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.36 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -3796,6 +3796,13 @@ const CONTRACT_VERSION = 1;
      
                       
      
+                                                                                                                      
+                                                                                                                       
+                                                                                                                    
+                                                                                               
+     
+                  
+     
                                                                              
                                                                              
      
@@ -4571,7 +4578,15 @@ const MSG_PREFIX = 'studio:';
                                                                                                                      
                          
      
-                                                                                                                                                     
+                                                                                                                       
+                                                                                                                    
+                                                                                                                                                                       
+     
+                                                                                                                        
+                                                                                                                    
+                                            
+     
+                                                      
      
                                                                                                                          
                                                                                           
@@ -9210,9 +9225,14 @@ function offWhy(i                                                               
                               
                                                                                                                          
                        
+     
+                                                                                                                     
+                                                                                              
+     
+                      
  
 
-const createHoldState = ()            => ({ freed: new Set(), driven: new Map(), placing: new Set() });
+const createHoldState = ()            => ({ freed: new Set(), driven: new Map(), placing: new Set(), recording: false });
 
 /** The item as the editor shows it: `held` set, and the tools it cannot take turned off. */
 function holdItem(it      , s           , dim     )       {
@@ -9224,6 +9244,14 @@ function holdItem(it      , s           , dim     )       {
   const d = s.driven.get(it.key) ?? (it.copyOf && !s.placing?.has(it.key) ? s.driven.get(it.copyOf) : undefined);
   // The game's own motion wins over "ground": a road the game scrolls is not kept where it is put either.
   if (d && (d.move || d.lift || d.turn || d.size)) {
+    const driven = (['move', 'lift', 'turn', 'size']         ).filter((k) => d[k]);
+    // Recording a motion (studio-motion-move, 2026-10-23): every tool works as on anything else and makes a point of
+    // the motion. WHY: on NEON DASH a tester made a motion on a blue pillar the game slides — "I try to make a motion,
+    // but moving is limited? It doesn't go well." — and its turn stayed held (a ring could get no turn at all), the
+    // line said "Moving it here sets where it starts" while the drag was making points. Nothing is turned off here:
+    // when played, the game's own motion and this one add up, and the line says so (handles.ts gameNote `meets`) —
+    // said plainly, not hidden behind a dimmed tool.
+    if (s.recording) return { ...it, held: 'game', driven, meets: true };
     // Its place and height are where it starts (studio-move-plain, 2026-10-23: "the left of the strip was the plain
     // Move — now both ends look like Motion"): Move and Height work on it like on anything else, with no step first.
     // Before (studio-tool-clear) Move was dimmed with a slash and a press opened a menu whose "Set where it starts"
@@ -9236,7 +9264,7 @@ function holdItem(it      , s           , dim     )       {
     return {
       ...it,
       held: 'game',
-      driven: (['move', 'lift', 'turn', 'size']         ).filter((k) => d[k]),
+      driven,
       ...(start ? { startSpot: true } : {}),
       movable: it.movable !== false && (!d.move || start),
       liftable: it.liftable !== false && it.movable !== false && (!d.lift || start),
@@ -10085,10 +10113,22 @@ const OFF_LINES                                                                 
  * moves it, that a move here sets where it starts — Move itself is the plain Move, with no menu in between. One line,
  * short; no "Ask AI" (the ask box below is where that happens). `parts` = what the game changes (Item.driven).
  */
-function gameNote(lang      , parts                                                )         {
+// `meets` (studio-motion-move, 2026-10-23): a motion is being recorded on it (Item.meets) — every tool makes a point of
+// the motion, so "a move here sets where it starts" would be wrong. The line says instead, once, that the game moves it
+// too and the two motions add up when played: the honest word the hands-on try asked for, not a dimmed tool.
+function gameNote(lang      , parts                                                , meets = false)         {
   const moves = parts.includes('move') || parts.includes('lift');
   const what = (['move', 'turn', 'size']         ).filter((k) => (k === 'move' ? moves : parts.includes(k)));
   if (!what.length) return '';
+  if (meets) {
+    if (lang === 'ja') {
+      const v = { move: '動かして', turn: '回して', size: '大きさを変えて' };
+      return `この物はゲームも${what.map((k) => v[k]).join('、')}います。遊ぶと、ゲームの動きと重なります。`;
+    }
+    const v = { move: 'moves', turn: 'turns', size: 'resizes' };
+    const list = what.length < 3 ? what.map((k) => v[k]).join(' and ') : `${v.move}, ${v.turn} and ${v.size}`;
+    return `Your game ${list} this too. When you play, its motion and this one add up.`;
+  }
   if (lang === 'ja') {
     const v = { move: '動かし', turn: '回し', size: '大きさを変え' };
     return `遊ぶとゲームが${what.map((k) => v[k]).join('、')}ます。${moves ? 'ここで動かすとスタート位置が変わります。' : ''}`;
@@ -11561,6 +11601,11 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                            
      
                                              
+     
+                                                                                                                  
+                                                                                                
+     
+                     
                  
  
 
@@ -11860,7 +11905,7 @@ function attachInput(deps           )              {
   const noteOf = (off                                     )                => {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
     if (picked.length === 1 && picked[0] .held === 'game' && picked[0] .driven?.length) {
-      const g = gameNote(lang, picked[0] .driven.filter((k) => k !== 'lift' || adapter.dim === '3d'));
+      const g = gameNote(lang, picked[0] .driven.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!picked[0] .meets);
       if (g) return g;
     }
     for (const k of ['move', 'lift', 'rotate', 'scale']                ) if (off[k]) return off[k] ;
@@ -13042,6 +13087,9 @@ function attachInput(deps           )              {
       shapes.ai.sig = '';
       place();
     },
+    inHand() {
+      return mode.kind === 'handle' ? [mode.key] : mode.kind === 'group' ? mode.session.keys.slice() : [];
+    },
     keyAt(x, y) {
       return tappableAt(adapter, state.items, win, x, y, UI.pickRadiusTouch)[0] ?? null;
     },
@@ -13206,6 +13254,11 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
                                
                
                     
+     
+                                                                                                                   
+                                                     
+     
+                      
  
 
                                
@@ -13216,7 +13269,7 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
                 
  
 
-                                                                                                     
+                                                                                                                       
 
 function createTimelineView(d                  )               {
   const { win } = d;
@@ -13699,6 +13752,10 @@ function createTimelineView(d                  )               {
     if (at.point === undefined || at.point < 0) return;
     const k = shown.keys[at.point];
     if (!k) return;
+    // Making a motion step by step (studio-motion-move, 2026-10-23): the point where the object stands now is under the
+    // object, so a press on the object caught the point — the second drag moved the first step's end again instead of
+    // making the next one ("only one point is made"). Then the press goes on to the object; the other points still drag.
+    if (shown.making && shown.now && k.v.every((v, i) => Math.abs(v - (shown .now [i] ?? 0)) < 1e-3)) return;
     take(e);
     begin(e, keyW(shown, at.point), { i: at.point, start: k.v.slice() });
   };
@@ -13747,7 +13804,16 @@ function createTimelineView(d                  )               {
     handle(msg) {
       if (msg.type === 'studio:timeline/pose') {
         const p = d.poser();
+        // What a drag holds right now is left where the drag put it (studio-motion-move, 2026-10-23). WHY: with ● on,
+        // each step of a drag comes back from the shell as this pose a moment later; setPose then dropped the adapter's
+        // grab (three.js: a new pivot), so the next step grabbed again at the pointer and lost its own travel. On a
+        // thing standing on the road (the move that follows the surface, measured step by step) almost nothing moved:
+        // NEON DASH's blue pillar stayed put, inched and came back while the card's X ran 9.5 → 8.6 → 8.2 → 8.7. The
+        // drag is newer than any pose about it (the same rule as a dragged dot's path, below); the pose after the drag
+        // ends comes next and puts it exactly where the motion says.
+        const held = new Set(d.inHand?.() ?? []);
         for (const e of msg.poses) {
+          if (held.has(e.key)) continue;
           try {
             p.setPose(e.key, e.pose        );
           } catch {
@@ -13766,12 +13832,12 @@ function createTimelineView(d                  )               {
         // While a dot is dragged, the shell's echo of the same key keeps the dot under the finger (ours is newer).
         // A handle's drag takes the shell's keys (the other handle lining up is worked out there); a point's keeps ours.
         if (drag && shown && msg.key === shown.key && !drag.side) {
-          shown = { ...shown, base: msg.base ?? shown.base, now: msg.now ?? null, sel: msg.sel ?? [] };
+          shown = { ...shown, base: msg.base ?? shown.base, now: msg.now ?? null, sel: msg.sel ?? [], making: !!msg.making };
         } else if (drag?.side && shown && msg.key === shown.key && msg.keys?.length) {
-          shown = { ...shown, base: msg.base ?? shown.base, keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] };
+          shown = { ...shown, base: msg.base ?? shown.base, keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [], making: !!msg.making };
         } else {
           drag = null;
-          shown = msg.key && msg.base && msg.keys?.length ? { key: msg.key, base: msg.base.slice(), keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [] } : null;
+          shown = msg.key && msg.base && msg.keys?.length ? { key: msg.key, base: msg.base.slice(), keys: structuredClone(msg.keys), now: msg.now ?? null, sel: msg.sel ?? [], making: !!msg.making } : null;
         }
         drawn = '';
         d.markDirty();
@@ -15506,7 +15572,7 @@ function createEditor(deps            )         {
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
   const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
-    markDirty: () => (dirtyFrame = true) });
+    markDirty: () => (dirtyFrame = true), inHand: () => input?.inHand() ?? [] });
   let lang       = 'en';
   let loopId = 0;
   let dirtyFrame = true;
@@ -16468,6 +16534,18 @@ function createEditor(deps            )         {
           break;
         case 'studio:tool/saved':
           toolHost.saved(msg.ids);
+          break;
+        case 'studio:timeline/recording':
+          // studio-motion-move: what the game moves takes every tool as a motion's point while recording (hold.ts).
+          if (!!hold.recording !== !!msg.on) {
+            hold.recording = !!msg.on;
+            // The UI layer has nothing the game moves; the world's list is read again when it comes back.
+            if (state.editing && layer === 'world') {
+              refreshItems();
+              postSelected();
+              input?.selectionChanged();
+            }
+          }
           break;
         case 'studio:timeline/pose':
         case 'studio:timeline/path':

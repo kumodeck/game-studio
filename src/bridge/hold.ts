@@ -63,9 +63,14 @@ export interface HoldState {
   driven: Map<string, Driven>;
   /** Copies being put next to their original right now (editor.ts copy): that first step is the editor's, not a drag. */
   placing: Set<string>;
+  /**
+   * A motion is being recorded (the shell's studio:timeline/recording: the timeline open, ● on). What the game moves
+   * then takes every tool as a point of the motion (holdItem `meets`), not as its start spot.
+   */
+  recording?: boolean;
 }
 
-export const createHoldState = (): HoldState => ({ freed: new Set(), driven: new Map(), placing: new Set() });
+export const createHoldState = (): HoldState => ({ freed: new Set(), driven: new Map(), placing: new Set(), recording: false });
 
 /** The item as the editor shows it: `held` set, and the tools it cannot take turned off. */
 export function holdItem(it: Item, s: HoldState, dim: Dim): Item {
@@ -77,6 +82,14 @@ export function holdItem(it: Item, s: HoldState, dim: Dim): Item {
   const d = s.driven.get(it.key) ?? (it.copyOf && !s.placing?.has(it.key) ? s.driven.get(it.copyOf) : undefined);
   // The game's own motion wins over "ground": a road the game scrolls is not kept where it is put either.
   if (d && (d.move || d.lift || d.turn || d.size)) {
+    const driven = (['move', 'lift', 'turn', 'size'] as const).filter((k) => d[k]);
+    // Recording a motion (studio-motion-move, 2026-10-23): every tool works as on anything else and makes a point of
+    // the motion. WHY: on NEON DASH a tester made a motion on a blue pillar the game slides — "I try to make a motion,
+    // but moving is limited? It doesn't go well." — and its turn stayed held (a ring could get no turn at all), the
+    // line said "Moving it here sets where it starts" while the drag was making points. Nothing is turned off here:
+    // when played, the game's own motion and this one add up, and the line says so (handles.ts gameNote `meets`) —
+    // said plainly, not hidden behind a dimmed tool.
+    if (s.recording) return { ...it, held: 'game', driven, meets: true };
     // Its place and height are where it starts (studio-move-plain, 2026-10-23: "the left of the strip was the plain
     // Move — now both ends look like Motion"): Move and Height work on it like on anything else, with no step first.
     // Before (studio-tool-clear) Move was dimmed with a slash and a press opened a menu whose "Set where it starts"
@@ -89,7 +102,7 @@ export function holdItem(it: Item, s: HoldState, dim: Dim): Item {
     return {
       ...it,
       held: 'game',
-      driven: (['move', 'lift', 'turn', 'size'] as const).filter((k) => d[k]),
+      driven,
       ...(start ? { startSpot: true } : {}),
       movable: it.movable !== false && (!d.move || start),
       liftable: it.liftable !== false && it.movable !== false && (!d.lift || start),

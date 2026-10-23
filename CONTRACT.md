@@ -385,11 +385,17 @@ file shape is still read, and a clip that repeats back and forth plays as it did
   the whole motion before / after) and one Save count per object.
 - `studio:timeline/pose { poses }` (shell → bridge): each moving object at its place + its clip at the time line,
   worked out in the shell (the loader's `clipAt`), set through the copy/delete layer and reported to nobody. Folding
-  sends the places.
-- `studio:timeline/path { key, base, keys, now, sel }`: the picked object's position keys, drawn in 3D — the curve the
+  sends the places. An object a drag of the strip's tools holds right now is left alone (the drag is newer; the pose
+  after the drag ends puts it exactly) — studio-motion-move, 2026-10-23.
+- `studio:timeline/recording { on }` (shell → bridge): a move / turn / resize is a point of a motion now (the timeline
+  on screen, ● on, no Try running). While on, a thing the game moves (`held: 'game'`) takes every tool as a point
+  (`Item.meets`, no `startSpot`), and the line under the strip says the game's motion and this one add up when played.
+- `studio:timeline/path { key, base, keys, now, sel, making? }`: the picked object's position keys, drawn in 3D — the curve the
   object follows (the loader's `trackAt`), its shadow at the place's height, a dashed drop from each key, a dot per key
   (picked: orange), its time, a ring at the time line. A dot dragged moves on the ground at its height (`toGround`), or
   up / down with Shift (px → m measured at the dot); `studio:timeline/point { key, i, v, end }` back, one undo step.
+  `making`: the motion is being made step by step — a press on the dot where the object stands now goes to the object
+  (the next step), not to the dot.
 - Positions are the parent's space and the screen maths the scene's: right for objects at the top of the scene; a path
   inside a moved group is drawn off by the group's offset (stage 2).
 - ▶ Play: the page's loader plays the draft's start clips (and older motions); for the keys it does not (no loader, an
