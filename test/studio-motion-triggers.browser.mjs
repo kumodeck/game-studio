@@ -267,7 +267,7 @@ async function run(size, theme) {
       await sleep(300);
       const cline = await j(`JSON.stringify(document.querySelector('[data-part=card] [data-part=motion-timeline-line]')?.textContent ?? null)`);
       await fine(false);
-      check(/^Row · /.test(cline || ''), `the crate's card: its Motion line "${cline}"`);
+      check(cline === 'Row', `the crate's card: its Motion line "${cline}" (the name only since fix-0140)`);
       // 7. Save.
       await page.eval(`studioShell.actions.save()`);
       await sleep(1500);

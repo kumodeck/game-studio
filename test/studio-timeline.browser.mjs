@@ -116,7 +116,7 @@ async function run(size, theme) {
       return JSON.stringify({ row: !!q('motion-row'), make: !!q('motion-make'), fromLib: !!q('motion-from-lib'), line: q('motion-timeline-line')?.textContent ?? null }); })()`);
     if (full) check(!!row && !row.row && !row.make && !row.fromLib, `no motion yet: no Motion row on the card (${JSON.stringify(row)})`);
     // The picture runs start from PICTURE_FILE, where the boat already has "Row".
-    else check(!!row && !row.make && /^Row · /.test(row.line || ''), `the card's Motion line: "Row · …" (${JSON.stringify(row)})`);
+    else check(!!row && !row.make && row.line === 'Row', `the card's Motion line: "Row" — the name only since fix-0140 (${JSON.stringify(row)})`);
     if (full) {
       // The strip's Motion → "Make a motion" (motion-tool.ts).
       await page.waitFor(`!!${ROOT}.querySelector('[data-studio-motion]:not([hidden])')`, 15000).catch(() => {});

@@ -293,7 +293,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       lenPick.replaceWith(f);
       f.focus();
     });
-    const repeatPick = select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat));
+    // fix-0140 (⑦ of the first-run check, 2026-10-23): inside the sentence the repeat words are the sentence's own
+    // (tl.repeatLine.*: "gate moves once in 2 s", "moves back and forth in 3 s"); the list's capitalised labels
+    // (tl.repeat.*: "Once", "Back and forth") read "lighthouse moves Once in 2 s" here. Fine-tune's Loop & End keeps the labels.
+    const repeatPick = select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeatLine.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat));
     const out = h('span', { class: 'tl-line', dataset: { part: 'tl-line' } });
     // The template with marks in its three places, cut there (a word order of its own in each language).
     for (const bit of t('tl.line', { name: '\u0001', len: '\u0002', repeat: '\u0003' }).split(/([\u0001-\u0003])/)) {
@@ -453,7 +456,11 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const loop: Node[] = [select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))];
     const u = v.until;
     const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
-    loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+    // fix-0140 (② of the first-run check, 2026-10-23): "Loop & End [Once] [Never]" read as "once, but it never stops?"
+    // to a first-time maker. A motion that plays once already ends by itself, so the Stops menu is only for one that
+    // goes on (Repeats / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
+    // what it has stays visible and can be set back to Never.
+    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
       act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
     if (u?.times) loop.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
       const n = Math.round(parseFloat(x));
@@ -463,7 +470,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     if (u?.cue) loop.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
     if (u) loop.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
     rows.push(row('tl-more-loop', t('tl.loopEnd'), ...loop));
-    // The other ways it starts (studio-timeline-2): each with its field and ×, then "+ or" (up to 4 in all).
+    // The other ways it starts (studio-timeline-2): each with its field and ×, then "+ Another trigger" (up to 4 in all;
+    // fix-0140 ②: it was "+ or", in Japanese a one-letter button a first-time maker could not read).
     const ws = v.whens?.length ? v.whens : [w];
     const ors: Node[] = [];
     ws.slice(1).forEach((x, j) => {
@@ -911,14 +919,24 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     el.classList.toggle('rec', v.auto);
     tightNow = v.narrow;
     el.classList.toggle('narrow', tightNow);
+    el.classList.remove('snug');
     renderHead(v);
     // One line when it fits, else the narrow order (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them): measured, not a
     // width in px — what is on the line differs (a key's name, an area's size, "+1 more"), and nothing on it may shrink
     // to "…" (studio-ui-lead). ⌄ below ▶ = it wrapped.
-    if (!tightNow && !el.hidden && el.isConnected && fold().offsetTop > play().offsetTop + play().offsetHeight / 2) {
-      tightNow = true;
-      el.classList.add('narrow');
-      renderHead(v);
+    // fix-0140 (⑤ of the first-run check, 2026-10-23): a second trigger adds its "+1" chip, and at 1280 that alone
+    // tipped the line into the narrow order — two rows, "When does it move?" gone, "Ask {ai}" down to "✦ AI". A step
+    // before that now ('snug'): ▶ Preview as its icon (the word is its tooltip) and no ▷ Try on the line (Fine-tune's
+    // Try has it). Only when the line still wraps does it take the narrow order.
+    const wrapped = () => !el.hidden && el.isConnected && fold().offsetTop > play().offsetTop + play().offsetHeight / 2;
+    if (!tightNow && wrapped()) {
+      el.classList.add('snug');
+      if (wrapped()) {
+        el.classList.remove('snug');
+        tightNow = true;
+        el.classList.add('narrow');
+        renderHead(v);
+      }
     }
     renderFine(v);
     if (had) (inMore ? fineEl : el).querySelector<HTMLSelectElement>(`select[data-part="${had}"]`)?.focus({ preventScroll: true });

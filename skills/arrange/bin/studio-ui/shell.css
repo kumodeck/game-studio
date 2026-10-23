@@ -323,14 +323,18 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
    title and was missed. */
 .level-crumb { display: contents; }
 .level-crumb[hidden], .level-add-slot[hidden] { display: none; }
-.level-switch, .level-add { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 220px; height: 26px; margin: 0 -6px; padding: 0 6px;
+/* fix-0140 (① of the first-run check, 2026-10-23): the left margin was -6px too (so the words lined up with the path's
+   other words while the hover fill stuck out) — it pulled the crumb 6px over the last "/", which then read
+   "Scene /Level 1", stuck to the level and a little off the line. The left margin is 0 now: the "/" has the same space on
+   both sides as every other "/" in the path; the hover fill is the padding (it starts 6px before the words). */
+.level-switch, .level-add { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 220px; height: 26px; margin: 0 -6px 0 0; padding: 0 6px;
   border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 500; }
 .level-switch:hover, .shell[data-menu="levels"] .level-switch, .level-add:hover, .shell[data-menu="levels"] .level-add { background: var(--raise-3); }
 .level-switch .level-name, .level-add .level-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .level-switch .icon, .level-add .icon { flex: none; width: 12px; height: 12px; color: var(--text-3); }
 /* While playing: the level's name as plain words (you are in it; the menu would reload the game). */
 .level-here { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 500; }
-.level-rename { flex: 0 1 180px; min-width: 80px; width: 180px; height: 26px; margin: 0 -6px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 999px;
+.level-rename { flex: 0 1 180px; min-width: 80px; width: 180px; height: 26px; margin: 0 -6px 0 0; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 999px;
   background: var(--studio-card); color: var(--text); font: inherit; font-weight: 500; }
 /* A game without levels: "Level 1 ⌄" after "Scene" (level-menu2, 2026-10-23) — the crumb itself (.level-switch), the
    same words and chevron, no frame. v0.1.25 had a framed "Levels ⌄" pill here (studio-uniforms), which read as a
@@ -497,6 +501,11 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .motion-tl.on { background: var(--you-soft); color: var(--you-text); }
 .tl-diamond { width: 7px; height: 7px; transform: rotate(45deg); background: currentColor; border-radius: 1px; flex: none; }
 .f-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0 8px; }
+/* fix-0140 ⑥ (the first-run check, 2026-10-23): the files row's heading is the Japanese "Library" (5 characters), wider than the 48 px
+   column — it broke inside the word. Its column is as wide as its word (this row only: the numbers' rows keep 48 px, so X / Y / Z
+   still fit the 272 px card), and the word never breaks. */
+.f-row.assets-row, .shell[data-layout="phone"] .f-row.assets-row { grid-template-columns: max-content minmax(0, 1fr) auto; }
+.assets-row > .f-l { white-space: nowrap; }
 /* A UI element's look (UI stages 2–3, ui-card.ts): more rows of the same fill, under one hairline — the card grew, it
    is not a second panel. A value, a ↺ at the row's end only where something was changed. The colour fields show the
    GAME's colours (the swatch is the only colour the card has of its own: it is the thing being changed). */
@@ -1586,6 +1595,11 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    render() measures that and draws it in the narrow order instead (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them). */
 .timeline:not(.narrow) .tl-head > .tl-pick, .timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-line { flex: none; }
 .timeline:not(.narrow) .tl-line { flex-wrap: nowrap; }
+/* fix-0140 ⑤: the step before the narrow order (timeline-panel.ts render()): ▶ as its icon, no ▷ Try on the line —
+   so a second trigger's "+1" chip keeps the line one row, with "When does it move?" and "Ask {ai}" in words. */
+.timeline.snug .tl-play-w { display: none; }
+.timeline.snug .tl-head > .tl-play { width: var(--h); padding: 0; justify-content: center; }
+.timeline.snug .tl-head > .tl-try-this { display: none; }
 .tl-break { display: none; }
 .timeline.narrow .tl-head > .tl-break { display: block; flex-basis: 100%; height: 0; }
 .timeline.narrow .tl-head > .tl-gap { display: none; }
@@ -1673,6 +1687,10 @@ button.shelf-file.to:hover { background: var(--raise-2); }
   color: var(--text); font-size: 26px; font-weight: 300; line-height: 1; }
 .lib-motion-new:hover .lib-motion-plus span { background: var(--raise-3); }
 .lib-motion-hand { color: var(--text-3); }
+/* fix-0140 ⑥: the motion's length · repeat, and its points, each on its own line and never broken inside a word
+   (.gsl-path breaks anywhere — right for a long file path, wrong for the Japanese "3 points"). */
+.lib-motion-meta { overflow-wrap: normal; word-break: keep-all; }
+.lib-meta-part { white-space: nowrap; }
 .gsl-empty.gsl-empty-act { cursor: pointer; color: var(--you-text); }
 
 /* A motion held over the game (motion-drag.ts): the Library steps aside so the game shows, the game frame lets the

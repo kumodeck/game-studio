@@ -197,7 +197,8 @@ async function run(size, theme) {
       check(!!c && !c.row && !c.make && !c.fromLib, `no motion: no Motion row on the card (${JSON.stringify(c)})`);
       await select('barrel');
       const b = await card();
-      check(!!b?.row && /^Roll · /.test(b.line || '') && /barrel-hit/.test(b.line || ''), `a motion: one line, its name and when ("${b?.line}")`);
+      // fix-0140 (J1): the card's line is the motion's name only — when it plays is the timeline's sentence (it was cut here).
+      check(!!b?.row && b.line === 'Roll', `a motion: one line, its name ("${b?.line}")`);
       await page.eval(`document.querySelector('[data-part=card] [data-part=motion-timeline-line]')?.click()`);
       await sleep(700);
       check((await state()).open && (await state()).clip === 'Roll', `the line opens the timeline on it (${(await state()).clip})`);

@@ -246,7 +246,14 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
     const keys = keyCount(m);
     const title = h('b', { text: m.name, title: d.t('lib.motion.renameTip'), class: 'lib-motion-title', dataset: { part: 'motion-title' } });
     const head = h('div', { class: 'gsl-dtitle' }, title,
-      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }),
+      // fix-0140 (⑥ of the first-run check, 2026-10-23): "0.8 s · Once" and "3 points" on lines of their own — as one
+      // line in the narrow detail, .gsl-path's overflow-wrap:anywhere broke it mid-word (the Japanese "points" split in two).
+      // Each part ("2.0 s", "Back and forth") never breaks inside: in the narrow column the line breaks only at the "·"
+      // (English broke "Back and / forth" otherwise).
+      h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-meta' } },
+        ...d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`) }).split(' · ')
+          .flatMap((part, i) => [...(i ? [' · '] : []), h('span', { class: 'lib-meta-part', text: part })])),
+      h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-points' }, text: d.t('lib.motion.points', { n: keys }) }),
       // The hand, said where the attaching is (studio-motion-flow): the tile itself goes onto an object.
       ...(d.holdable ? [h('span', { class: 'gsl-path lib-motion-hand', text: d.t('lib.motion.dragTip') })] : []));
     // Rename: the title becomes a field (Enter / leaving keeps it, Esc goes back). Every object that uses it follows.

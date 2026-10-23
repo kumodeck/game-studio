@@ -1114,7 +1114,10 @@ export function start(host: StudioHost) {
     timeline.render();
     renderSheet();
     const on = !el.hidden;
+    const was = app.dataset.timeline;
     app.dataset.timeline = on ? 'open' : 'closed';
+    // fix-0140 ④: the AI field is one row or two depending on the timeline (renderPresence) — redrawn when it opens / closes.
+    if (was !== undefined && was !== app.dataset.timeline) renderPresence();
     const hgt = on && !phone() ? `${el.offsetHeight}px` : '0px';
     if (app.style.getPropertyValue('--tl-h') !== hgt) app.style.setProperty('--tl-h', hgt);
     sendInset();
@@ -2333,6 +2336,9 @@ export function start(host: StudioHost) {
   // placeholder in half — 2026-10-23).
   const PRESENCE_ROOM = 330;
   let lastPresence: AiPresence | null = null;
+  // Whether the presence WORDS fit beside the field, as last measured with the words showing (fix-0140 ④): while they
+  // are only the dot, the pill is 44 px and would always "fit", so the answer is kept from the last time it was words.
+  let wordsNarrow = false;
   function renderPresence() {
     if (host.offline) {
       presence.hidden = true;
@@ -2357,10 +2363,17 @@ export function start(host: StudioHost) {
     // watching, grey = not sure / away) — its own line above the field was one of the four blocks stacked at the foot
     // (a try in the side window, 10/21: "too hard to use from the Claude sidebar"). A press on the dot opens the same one line of what is
     // true and what to do (openHelp), so the words are one press away; the button's name carries them for a reader.
+    // PC with the motion timeline open (fix-0140 ④ of the first-run check, 2026-10-23): the words' own line above the
+    // field made the AI bar two rows tall, and with a path shown it covered the path's handles and the lower half of the
+    // area box (PC 1280, Japanese — the words do not fit beside the Japanese field). While the timeline is open the bar
+    // is one row: when the words would need a line of their own, they are the dot inside the field (as on a phone; a
+    // press on it opens the same line of what is true). English fits beside the field and keeps its words.
     const box = placementPanel.askEl;
     const w = box.offsetWidth;
-    const dotOnly = phone();
-    const narrow = !dotOnly && w > 0 && w < presence.offsetWidth + PRESENCE_ROOM;
+    if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM;
+    const tlOpen = !phone() && app.dataset.timeline === 'open';
+    const dotOnly = phone() || (tlOpen && wordsNarrow);
+    const narrow = !dotOnly && wordsNarrow;
     const want = narrow ? presenceRow : box;
     if (presence.parentElement !== want) {
       if (want === box) box.insertBefore(presence, box.querySelector('.ask-kbd'));

@@ -11,11 +11,9 @@
 // it with "When does it move?" open (timeline-wire show()). WHY no "when" menu of its own in the card: the timeline's
 // second row has every "when" with its field (seconds, key, area, cue…); a second, smaller copy here would drift.
 // Split out of timeline-wire.ts (970 lines) with this change; it only reads the timeline's state through `MotionCardDeps`.
-import type { LibraryMotion, MotionClip, MotionRepeat, MotionUntil, MotionWhen } from '../contract.ts';
-import { whenOf } from '../loader/studio-placement.js';
+import type { LibraryMotion, MotionClip } from '../contract.ts';
 import { h } from './dom.ts';
 import { icon } from './icons.ts';
-import { whenShort } from './timeline-panel.ts';
 
 export interface MotionCardDeps {
   t(key: string, vars?: Record<string, string | number>): string;
@@ -46,7 +44,7 @@ export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
   // "it's all over the place"): the card was a second way in — "+ Make a motion", "Use a saved motion ▾" and
   // "◆ Timeline", cut to "Use a sa…" / "Motion ▶ S…" on a 272 px card — beside the strip's Motion button. One way in
   // now (the plan's rule, docs 02-map): the strip's Motion. The card only SAYS what the object has, in one row —
-  // "Motion  ship’s motion · When game starts ›" — and a press on it opens the motion's timeline below the game.
+  // "Motion  ship’s motion ›" (fix-0140: the name only, see below) — and a press on it opens the motion's timeline below the game.
   // No motion = no row at all (an empty "Motion: none" row would be one more thing to read and nothing to do there).
   // Its other motions, attach / take off and "Ask AI about it" are the timeline's (its ⋯ Fine-tune and the strip's
   // menu): the MotionCardDeps keep those for the timeline-wire caller, the card no longer uses them.
@@ -54,14 +52,15 @@ export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
   const c = d.shown() ?? cs[0];
   if (!c) return [];
   const label = h('span', { class: 'f-l', text: d.t('motion.label') });
-  const w = whenOf(c) as MotionWhen;
-  // "When game starts" in full (the glossary's words): the timeline's short "▶ Start" with its signs is for its rows.
-  const when = w.on === 'start' && !c.until && (c.repeat ?? 'once') === 'once' ? d.t('tl.when.start')
-    : whenShort(d.t, w, (c.until ?? null) as MotionUntil | null, (c.repeat ?? 'once') as MotionRepeat);
+  // fix-0140 (J1 of the first-run check, 2026-10-23 — the same kind as a hands-on try's "I can't read anything in this
+  // UI"): the row was "lighthouse's motion · When game starts", and on a 1280 card it ended "lighthouse's motion ·
+  // When …" (cut the same way in Japanese). The row now says only the motion's name; WHEN it plays is the
+  // timeline's one-line sentence below the game (one place for it — a second, shorter copy here was the cut one).
+  // whenOf / whenShort stay out of the card on purpose: don't add "when" back here, widen the timeline's line instead.
   const more = cs.length > 1 ? ` +${cs.length - 1}` : '';
   const open = d.open();
   const btn = h('button', { type: 'button', class: `motion-line${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline-line' },
     onclick: () => (open ? undefined : d.toggle()) },
-  h('span', { class: 'motion-line-text', text: `${c.name} · ${when}${more}` }), icon('chevronRight'));
+  h('span', { class: 'motion-line-text', text: `${c.name}${more}` }), icon('chevronRight'));
   return [label, h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-row' } }, btn)];
 }

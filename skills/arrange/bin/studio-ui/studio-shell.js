@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.39 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.40 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -10710,7 +10710,10 @@ function createTimelinePanel(view                    , act              ) {
       lenPick.replaceWith(f);
       f.focus();
     });
-    const repeatPick = select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                ));
+    // fix-0140 (⑦ of the first-run check, 2026-10-23): inside the sentence the repeat words are the sentence's own
+    // (tl.repeatLine.*: "gate moves once in 2 s", "moves back and forth in 3 s"); the list's capitalised labels
+    // (tl.repeat.*: "Once", "Back and forth") read "lighthouse moves Once in 2 s" here. Fine-tune's Loop & End keeps the labels.
+    const repeatPick = select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeatLine.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                ));
     const out = h('span', { class: 'tl-line', dataset: { part: 'tl-line' } });
     // The template with marks in its three places, cut there (a word order of its own in each language).
     for (const bit of t('tl.line', { name: '\u0001', len: '\u0002', repeat: '\u0003' }).split(/([\u0001-\u0003])/)) {
@@ -10870,7 +10873,11 @@ function createTimelinePanel(view                    , act              ) {
     const loop         = [select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                ))];
     const u = v.until;
     const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
-    loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+    // fix-0140 (② of the first-run check, 2026-10-23): "Loop & End [Once] [Never]" read as "once, but it never stops?"
+    // to a first-time maker. A motion that plays once already ends by itself, so the Stops menu is only for one that
+    // goes on (Repeats / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
+    // what it has stays visible and can be set back to Never.
+    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
       act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
     if (u?.times) loop.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
       const n = Math.round(parseFloat(x));
@@ -10880,7 +10887,8 @@ function createTimelinePanel(view                    , act              ) {
     if (u?.cue) loop.push(cueMenu('tl-until-cue', t('tl.until.cue'), u.cue, v.cueNames, (n) => act.setUntil({ ...u, cue: n })));
     if (u) loop.push(select('tl-then', t('tl.then'), [['stay', t('tl.then.stay')], ['reset', t('tl.then.reset')]], u.then ?? 'stay', (x) => act.setUntil({ ...u, then: x === 'reset' ? 'reset' : undefined })));
     rows.push(row('tl-more-loop', t('tl.loopEnd'), ...loop));
-    // The other ways it starts (studio-timeline-2): each with its field and ×, then "+ or" (up to 4 in all).
+    // The other ways it starts (studio-timeline-2): each with its field and ×, then "+ Another trigger" (up to 4 in all;
+    // fix-0140 ②: it was "+ or", in Japanese a one-letter button a first-time maker could not read).
     const ws = v.whens?.length ? v.whens : [w];
     const ors         = [];
     ws.slice(1).forEach((x, j) => {
@@ -11328,14 +11336,24 @@ function createTimelinePanel(view                    , act              ) {
     el.classList.toggle('rec', v.auto);
     tightNow = v.narrow;
     el.classList.toggle('narrow', tightNow);
+    el.classList.remove('snug');
     renderHead(v);
     // One line when it fits, else the narrow order (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them): measured, not a
     // width in px — what is on the line differs (a key's name, an area's size, "+1 more"), and nothing on it may shrink
     // to "…" (studio-ui-lead). ⌄ below ▶ = it wrapped.
-    if (!tightNow && !el.hidden && el.isConnected && fold().offsetTop > play().offsetTop + play().offsetHeight / 2) {
-      tightNow = true;
-      el.classList.add('narrow');
-      renderHead(v);
+    // fix-0140 (⑤ of the first-run check, 2026-10-23): a second trigger adds its "+1" chip, and at 1280 that alone
+    // tipped the line into the narrow order — two rows, "When does it move?" gone, "Ask {ai}" down to "✦ AI". A step
+    // before that now ('snug'): ▶ Preview as its icon (the word is its tooltip) and no ▷ Try on the line (Fine-tune's
+    // Try has it). Only when the line still wraps does it take the narrow order.
+    const wrapped = () => !el.hidden && el.isConnected && fold().offsetTop > play().offsetTop + play().offsetHeight / 2;
+    if (!tightNow && wrapped()) {
+      el.classList.add('snug');
+      if (wrapped()) {
+        el.classList.remove('snug');
+        tightNow = true;
+        el.classList.add('narrow');
+        renderHead(v);
+      }
     }
     renderFine(v);
     if (had) (inMore ? fineEl : el).querySelector                   (`select[data-part="${had}"]`)?.focus({ preventScroll: true });
@@ -11690,7 +11708,14 @@ function createLibraryMotions(d                    )                     {
     const keys = keyCount(m);
     const title = h('b', { text: m.name, title: d.t('lib.motion.renameTip'), class: 'lib-motion-title', dataset: { part: 'motion-title' } });
     const head = h('div', { class: 'gsl-dtitle' }, title,
-      h('span', { class: 'gsl-path', text: d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`), n: keys }) }),
+      // fix-0140 (⑥ of the first-run check, 2026-10-23): "0.8 s · Once" and "3 points" on lines of their own — as one
+      // line in the narrow detail, .gsl-path's overflow-wrap:anywhere broke it mid-word (the Japanese "points" split in two).
+      // Each part ("2.0 s", "Back and forth") never breaks inside: in the narrow column the line breaks only at the "·"
+      // (English broke "Back and / forth" otherwise).
+      h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-meta' } },
+        ...d.t('lib.motion.meta', { len: (Math.round(m.len * 10) / 10).toFixed(1), repeat: d.t(`tl.repeat.${m.repeat ?? 'once'}`) }).split(' · ')
+          .flatMap((part, i) => [...(i ? [' · '] : []), h('span', { class: 'lib-meta-part', text: part })])),
+      h('span', { class: 'gsl-path lib-motion-meta', dataset: { part: 'motion-points' }, text: d.t('lib.motion.points', { n: keys }) }),
       // The hand, said where the attaching is (studio-motion-flow): the tile itself goes onto an object.
       ...(d.holdable ? [h('span', { class: 'gsl-path lib-motion-hand', text: d.t('lib.motion.dragTip') })] : []));
     // Rename: the title becomes a field (Enter / leaving keeps it, Esc goes back). Every object that uses it follows.
@@ -13667,7 +13692,8 @@ const en = {
   'lib.motion.on': 'on {names}',
   'lib.motion.free': 'Not attached yet',
   'lib.motion.onLabel': 'On',
-  'lib.motion.meta': '{len} s · {repeat} · {n} points',
+  'lib.motion.meta': '{len} s · {repeat}',
+  'lib.motion.points': '{n} points',
   'lib.motion.attach': 'Attach to {name}',
   'lib.motion.attachTo': 'Attach to',
   'lib.motion.attachPick': 'An object…',
@@ -13739,6 +13765,10 @@ const en = {
   'tl.repeat.once': 'Once',
   'tl.repeat.loop': 'Repeats',
   'tl.repeat.pingpong': 'Back and forth',
+  // fix-0140 ⑦: the same three inside the line's sentence, lower case ("gate moves once in 2 s"); the labels above stay for Loop & End.
+  'tl.repeatLine.once': 'once',
+  'tl.repeatLine.loop': 'on repeat',
+  'tl.repeatLine.pingpong': 'back and forth',
   'tl.ease': 'Pace',
   'tl.easeTip': 'Pace: how the picked points go on to the next one',
   'tl.ease.linear': 'Steady',
@@ -13811,7 +13841,7 @@ const en = {
   'tl.point.custom': 'Custom',
   'tl.when.or': 'or',
   'tl.when.orTip': 'Another way it starts: any of them starts it',
-  'tl.when.orAdd': '+ or',
+  'tl.when.orAdd': '+ Another trigger',
   'tl.when.orAddTip': 'Add another way it starts (E or a click…)',
   'tl.when.orRemove': 'Remove this one',
   'tl.more': 'Fine-tune',
@@ -14550,7 +14580,8 @@ const ja                               = {
   'lib.motion.on': '{names} に',
   'lib.motion.free': 'まだ付けていません',
   'lib.motion.onLabel': '付いている物',
-  'lib.motion.meta': '{len} 秒 · {repeat} · ポイント {n}',
+  'lib.motion.meta': '{len} 秒 · {repeat}',
+  'lib.motion.points': 'ポイント {n}',
   'lib.motion.attach': '{name} に付ける',
   'lib.motion.attachTo': '付ける',
   'lib.motion.attachPick': '物を選ぶ…',
@@ -14576,6 +14607,9 @@ const ja                               = {
   'tl.repeat.once': '1 回だけ',
   'tl.repeat.loop': 'くり返す',
   'tl.repeat.pingpong': '行って戻る',
+  'tl.repeatLine.once': '1 回だけ',
+  'tl.repeatLine.loop': 'くり返す',
+  'tl.repeatLine.pingpong': '行って戻る',
   'tl.ease': '進み方',
   'tl.easeTip': '進み方：選んだポイントから次のポイントへの速さの付き方',
   'tl.ease.linear': 'ずっと同じ速さ',
@@ -14595,7 +14629,7 @@ const ja                               = {
   'tl.area.label': '範囲 · {size}',
   'tl.try.say': '{name}',
   'tl.try.touch': '{name} に触れる',
-  'tl.try.enter': '{name} の近くに近づく',
+  'tl.try.enter': '{name} に近づく',
   'tl.try.click': '{name} をクリック',
   'tl.try.start': 'ゲーム開始',
   'tl.try.stop': '止める',
@@ -14629,7 +14663,7 @@ const ja                               = {
   'tl.when.say': 'カスタム…',
   'tl.when.cue': '合図を受け取ったら',
   'tl.when.touch': 'プレイヤーが触れると動く',
-  'tl.when.enter': '近くに近づいたら',
+  'tl.when.enter': '近づいたら',
   'tl.when.after': '前の動きが終わったら',
   'tl.when.click': 'これをタップしたら',
   'tl.when.key': 'ボタン・キーを押したら',
@@ -14647,7 +14681,7 @@ const ja                               = {
   'tl.point.custom': 'じぶんで調整',
   'tl.when.or': 'か',
   'tl.when.orTip': 'ほかのきっかけ：どれか 1 つで動き出す',
-  'tl.when.orAdd': '＋ か',
+  'tl.when.orAdd': '＋ 別のきっかけ',
   'tl.when.orAddTip': 'きっかけをもう 1 つ（E か クリック…）',
   'tl.when.orRemove': 'これを外す',
   'tl.more': '細かく調整',
@@ -18229,11 +18263,9 @@ __defs[51] = function (__exports) {
 // it with "When does it move?" open (timeline-wire show()). WHY no "when" menu of its own in the card: the timeline's
 // second row has every "when" with its field (seconds, key, area, cue…); a second, smaller copy here would drift.
 // Split out of timeline-wire.ts (970 lines) with this change; it only reads the timeline's state through `MotionCardDeps`.
-                                                                                                       
-const { whenOf } = __require(19);
+                                                                
 const { h } = __require(16);
 const { icon } = __require(21);
-const { whenShort } = __require(25);
 
                                  
                                                                  
@@ -18264,7 +18296,7 @@ function motionCardRow(d                )                {
   // "it's all over the place"): the card was a second way in — "+ Make a motion", "Use a saved motion ▾" and
   // "◆ Timeline", cut to "Use a sa…" / "Motion ▶ S…" on a 272 px card — beside the strip's Motion button. One way in
   // now (the plan's rule, docs 02-map): the strip's Motion. The card only SAYS what the object has, in one row —
-  // "Motion  ship’s motion · When game starts ›" — and a press on it opens the motion's timeline below the game.
+  // "Motion  ship’s motion ›" (fix-0140: the name only, see below) — and a press on it opens the motion's timeline below the game.
   // No motion = no row at all (an empty "Motion: none" row would be one more thing to read and nothing to do there).
   // Its other motions, attach / take off and "Ask AI about it" are the timeline's (its ⋯ Fine-tune and the strip's
   // menu): the MotionCardDeps keep those for the timeline-wire caller, the card no longer uses them.
@@ -18272,15 +18304,16 @@ function motionCardRow(d                )                {
   const c = d.shown() ?? cs[0];
   if (!c) return [];
   const label = h('span', { class: 'f-l', text: d.t('motion.label') });
-  const w = whenOf(c)              ;
-  // "When game starts" in full (the glossary's words): the timeline's short "▶ Start" with its signs is for its rows.
-  const when = w.on === 'start' && !c.until && (c.repeat ?? 'once') === 'once' ? d.t('tl.when.start')
-    : whenShort(d.t, w, (c.until ?? null)                      , (c.repeat ?? 'once')                );
+  // fix-0140 (J1 of the first-run check, 2026-10-23 — the same kind as a hands-on try's "I can't read anything in this
+  // UI"): the row was "lighthouse's motion · When game starts", and on a 1280 card it ended "lighthouse's motion ·
+  // When …" (cut the same way in Japanese). The row now says only the motion's name; WHEN it plays is the
+  // timeline's one-line sentence below the game (one place for it — a second, shorter copy here was the cut one).
+  // whenOf / whenShort stay out of the card on purpose: don't add "when" back here, widen the timeline's line instead.
   const more = cs.length > 1 ? ` +${cs.length - 1}` : '';
   const open = d.open();
   const btn = h('button', { type: 'button', class: `motion-line${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline-line' },
     onclick: () => (open ? undefined : d.toggle()) },
-  h('span', { class: 'motion-line-text', text: `${c.name} · ${when}${more}` }), icon('chevronRight'));
+  h('span', { class: 'motion-line-text', text: `${c.name}${more}` }), icon('chevronRight'));
   return [label, h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-row' } }, btn)];
 }
 
@@ -24076,7 +24109,10 @@ function start(host            ) {
     timeline.render();
     renderSheet();
     const on = !el.hidden;
+    const was = app.dataset.timeline;
     app.dataset.timeline = on ? 'open' : 'closed';
+    // fix-0140 ④: the AI field is one row or two depending on the timeline (renderPresence) — redrawn when it opens / closes.
+    if (was !== undefined && was !== app.dataset.timeline) renderPresence();
     const hgt = on && !phone() ? `${el.offsetHeight}px` : '0px';
     if (app.style.getPropertyValue('--tl-h') !== hgt) app.style.setProperty('--tl-h', hgt);
     sendInset();
@@ -25295,6 +25331,9 @@ function start(host            ) {
   // placeholder in half — 2026-10-23).
   const PRESENCE_ROOM = 330;
   let lastPresence                    = null;
+  // Whether the presence WORDS fit beside the field, as last measured with the words showing (fix-0140 ④): while they
+  // are only the dot, the pill is 44 px and would always "fit", so the answer is kept from the last time it was words.
+  let wordsNarrow = false;
   function renderPresence() {
     if (host.offline) {
       presence.hidden = true;
@@ -25319,10 +25358,17 @@ function start(host            ) {
     // watching, grey = not sure / away) — its own line above the field was one of the four blocks stacked at the foot
     // (a try in the side window, 10/21: "too hard to use from the Claude sidebar"). A press on the dot opens the same one line of what is
     // true and what to do (openHelp), so the words are one press away; the button's name carries them for a reader.
+    // PC with the motion timeline open (fix-0140 ④ of the first-run check, 2026-10-23): the words' own line above the
+    // field made the AI bar two rows tall, and with a path shown it covered the path's handles and the lower half of the
+    // area box (PC 1280, Japanese — the words do not fit beside the Japanese field). While the timeline is open the bar
+    // is one row: when the words would need a line of their own, they are the dot inside the field (as on a phone; a
+    // press on it opens the same line of what is true). English fits beside the field and keeps its words.
     const box = placementPanel.askEl;
     const w = box.offsetWidth;
-    const dotOnly = phone();
-    const narrow = !dotOnly && w > 0 && w < presence.offsetWidth + PRESENCE_ROOM;
+    if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM;
+    const tlOpen = !phone() && app.dataset.timeline === 'open';
+    const dotOnly = phone() || (tlOpen && wordsNarrow);
+    const narrow = !dotOnly && wordsNarrow;
     const want = narrow ? presenceRow : box;
     if (presence.parentElement !== want) {
       if (want === box) box.insertBefore(presence, box.querySelector('.ask-kbd'));

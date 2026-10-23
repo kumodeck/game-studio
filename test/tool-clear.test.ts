@@ -99,7 +99,7 @@ test('the words of the card, the Motion menu and "When" exist in both languages 
   }
   // studio-words-plan (2026-10-23; Gemini 1023c): short sentences, not Title Case labels.
   assert.equal(translate('en', 'tl.when.start'), 'When game starts');
-  assert.equal(translate('ja', 'tl.when.enter'), '近くに近づいたら');
+  assert.equal(translate('ja', 'tl.when.enter'), '近づいたら'); // fix-0140 ③: the old words said "near" twice
   assert.equal(translate('ja', 'tl.when.selfHead'), 'きっかけを選ぶ');
   assert.equal(translate('ja', 'tl.when.aiHead'), 'あなたの AI に仕掛けを作ってもらう');
   assert.equal(translate('ja', 'motion.tool.make'), '動きを作る');
