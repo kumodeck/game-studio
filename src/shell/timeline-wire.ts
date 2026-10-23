@@ -19,7 +19,7 @@ import { motionRunner, whenOf, whensOf } from '../loader/studio-placement.js';
 import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from './path-edit.ts';
 import { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder as sceneOrder, withOrder, withTrack, withoutTrack } from './scene-motion.ts';
 import { libOf, type MotionLibrary } from './motion-library.ts';
-import { motionCardRow } from './motion-card.ts';
+import { motionCardRow, type MotionCardDeps } from './motion-card.ts';
 import type { MotionStore } from './motion-model.ts';
 import { sameMotion as sameFile } from './motion-model.ts';
 
@@ -1536,8 +1536,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
      * The card's Motion row: this object's motions (each with when it starts), the Library's other motions to attach
      * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
      */
-    cardRow(key: string): HTMLElement[] {
+    cardRow(key: string, more: Pick<MotionCardDeps, 'menu' | 'say' | 'undoKey'> = {}): HTMLElement[] {
       return motionCardRow({
+        ...more,
+        // studio-motion-delete: the row's menu deletes the Library motion (every object, one undo step) and asks first
+        // when other objects have it (usage = this level's objects; other levels lose it too, as the Library's Delete).
+        remove: (name) => deleteLib(name),
+        usedBy: (name) => usage(name).length,
         t: d.t,
         clips: () => clipsOf(key),
         shown: () => clipOf(key),

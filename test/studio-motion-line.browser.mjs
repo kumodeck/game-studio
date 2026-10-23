@@ -2,10 +2,12 @@
 // it makes sense"; 10/23 "with a motion, the timeline should be out, not hidden"). In a headless browser, PC 1280×800 and
 // a phone 390×844, light and dark (`--themes`), one language a run (`--lang en|ja`), test/neon-run's gate and
 // examples/three-isles (`--games`):
-//   1. Make a motion → one move: the line is "▶ Preview  gate moves [Once ▾] in [1 s ▾] · When does it move? [▾]" with
-//      Fine-tune ✦ ⌄ — no ⋯, no time readout, no ● on it — and the timeline (ruler, the row, its points) under it; Save · 1;
-//      nothing on the line is cut or past the plate's edge (studio-timeline-line's measure); no first-time steps;
-//   2. ▶ Preview plays; "[1 s ▾]" → 2 s: the points go to 0 s and 2 s;
+//   1. Make a motion → one move: the line is "▶ Preview  Repeat [Once ▾] · When does it move? [▾]" with
+//      Fine-tune ✦ ⌄ — no ⋯, no time readout, no ● on it, no seconds (studio-no-sentence, 2026-10-24: the sentence
+//      "gate moves [Once ▾] in [1 s ▾]" is gone; seconds are the ruler's only) — and the timeline (ruler, the row, its
+//      points) under it; Save · 1; nothing on the line is cut or past the plate's edge (studio-timeline-line's measure);
+//   2. ▶ Preview plays; Repeat offers Once / Loop / Back and forth; the last point dragged later: the motion is longer
+//      (the length is the last point's place);
 //   3. Fine-tune: a sheet in the plate (● Rec motion, Loop & End, Trigger, Try, the motion's menu, Moving objects with
 //      "+ Link an object"); the row's "+" only now; a point picked → Pace changed;
 //   4. folded (⌄) and opened again, and the page reloaded: Fine-tune is still open (remembered);
@@ -55,8 +57,8 @@ const check = (ok, what) => {
 
 const TL = `window.__studioTimeline`;
 const WORDS = LANG === 'ja'
-  ? { play: '見る', fine: '細かく調整', len2: '2 秒', moves: /^(.+) が (\d+(?:\.\d)? 秒) で (1 回だけ) 動く$/, when: 'いつ動く？', rec: '動きを記録', link: '連携する物', pace: '進み方' }
-  : { play: 'Preview', fine: 'Fine-tune', len2: '2 s', moves: /^(.+) moves (Once) in (\d+(?:\.\d)? s)$/, when: 'When does it move?', rec: 'Rec motion', link: 'Link an object', pace: 'Pace' };
+  ? { play: '見る', fine: '細かく調整', rep: 'くり返し 1 回だけ', opts: ['1 回だけ', 'ループ', '行って戻る'], when: 'いつ動く？', rec: '動きを記録', link: '連携する物', pace: '進み方' }
+  : { play: 'Preview', fine: 'Fine-tune', rep: 'Repeat Once', opts: ['Once', 'Loop', 'Back and forth'], when: 'When does it move?', rec: 'Rec motion', link: 'Link an object', pace: 'Pace' };
 
 /** What is cut on the line, the picked keys' row and Fine-tune: a menu narrower than its words, a text that overflows, a part past the plate's edge. */
 const CUT = `(() => { const bad = []; const m = document.createElement('canvas').getContext('2d');
@@ -73,8 +75,12 @@ const CUT = `(() => { const bad = []; const m = document.createElement('canvas')
 /** The line's parts in order (data-part, or the class), skipping the gap, the break and the dot. */
 const PARTS = `JSON.stringify([...document.querySelector('[data-part=tl-head]').children].filter((c) => !/tl-gap|tl-break|tl-sep/.test(c.className))
   .map((c) => c.dataset.part || c.querySelector('[data-part]')?.dataset.part || [...c.classList].find((k) => k.startsWith('tl-'))))`;
-/** The sentence as it reads (the menus by their chosen words). */
-const SENTENCE = `JSON.stringify([...(document.querySelector('[data-part=tl-line]')?.children ?? [])].map((c) => c.querySelector('select')?.selectedOptions[0]?.textContent ?? c.textContent).join(' '))`;
+/** "Repeat [Once ▾]" as it reads (the menu by its chosen words), and the menu's words. */
+const REP = `JSON.stringify((() => { const r = document.querySelector('[data-part=tl-rep]'); const s = r?.querySelector('select'); const vis = !!r?.querySelector('.tl-rep-lbl')?.getClientRects().length;
+  return r ? { said: (vis ? r.querySelector('.tl-rep-lbl').textContent + ' ' : '') + (s?.selectedOptions[0]?.textContent ?? ''), opts: [...(s?.options ?? [])].map((o) => o.textContent) } : null; })())`;
+/** Seconds written anywhere on the line or in Fine-tune ("4 s", or the Japanese "4" + the word for seconds): the ruler alone says them. */
+const SECS = `JSON.stringify([...document.querySelectorAll('[data-part=tl-head], [data-part=tl-fine]')].flatMap((e) => [...e.querySelectorAll('select, span, b, button')])
+  .filter((e) => e.getClientRects().length && !e.children.length || e.tagName === 'SELECT').map((e) => e.tagName === 'SELECT' ? e.selectedOptions[0]?.textContent ?? '' : e.textContent).filter((x) => /\\d\\s*(s\\b|\\u79d2)/.test(x)))`;
 
 async function run(game, size, theme) {
   const tag = `${game} ${LANG} ${theme} ${size.id}`;
@@ -122,16 +128,21 @@ async function run(game, size, theme) {
     await page.eval(`document.querySelector('[data-part=tl-done]')?.click()`);
     await sleep(600);
     const parts = await j(PARTS);
-    const said = await j(SENTENCE);
+    const rep = await j(REP);
     const cut1 = await j(CUT);
     await shot('1-made');
     if (!BEFORE) {
-      check(parts[0] === 'tl-play' && parts[1] === 'tl-line' && parts.includes('tl-starts') && parts.includes('tl-fine-btn') && parts.includes('tl-fold'),
-        `${tag}: the line is ▶ · the sentence · when · Fine-tune ✦ ⌄ (${parts.join(' · ')})`);
+      // ⌄ on a phone is over the rows, in the names column's head (studio-fix-0142 ⑬), not in the line.
+      const fold = parts.includes('tl-fold') || (size.mobile && (await j(`JSON.stringify(!!document.querySelector('[data-part=timeline] .tl-ruler-pad .tl-fold'))`)));
+      check(parts[0] === 'tl-play' && parts[1] === 'tl-rep' && parts.includes('tl-starts') && parts.includes('tl-fine-btn') && fold,
+        `${tag}: the line is ▶ · Repeat · when · Fine-tune ✦ ⌄ (${parts.join(' · ')})`);
       check(!parts.includes('tl-more-btn') && !parts.includes('tl-now') && !parts.includes('tl-auto'), `${tag}: no ⋯, no time readout, no ● on the line`);
       const play = await j(`JSON.stringify(document.querySelector('[data-part=tl-play] .tl-play-w')?.textContent ?? null)`);
       check(play === WORDS.play, `${tag}: "▶ ${WORDS.play}" (${play})`);
-      check(WORDS.moves.test(said || ''), `${tag}: the sentence reads "${said}"`);
+      check(rep?.said === WORDS.rep, `${tag}: "${WORDS.rep}" — the word "Repeat" before the menu (${rep?.said})`);
+      check(JSON.stringify(rep?.opts) === JSON.stringify(WORDS.opts), `${tag}: Repeat offers ${WORDS.opts.join(' / ')} (${rep?.opts})`);
+      const secs = await j(SECS);
+      check(!secs.length && !(await j(`JSON.stringify(!!document.querySelector('[data-part=tl-len], [data-part=tl-line]'))`)), `${tag}: no seconds on the line (${JSON.stringify(secs)})`);
       const tl = await j(`(() => { const p = document.querySelector('[data-part=timeline]'); const vis = (s) => { const e = p?.querySelector(s); return !!e && e.getClientRects().length > 0 && e.getBoundingClientRect().height > 0; };
         return JSON.stringify({ ruler: vis('[data-part=tl-ruler]'), row: vis('.tl-name'), points: p ? [...p.querySelectorAll('[data-part=tl-key]')].filter((x) => !x.dataset.ch).length : 0, coach: !!p?.querySelector('.tl-coach, [data-part=tl-coach]') }); })()`);
       check(tl.ruler && tl.row && tl.points >= 2 && !tl.coach, `${tag}: the timeline is out — ruler, the row, its points — and no first-time steps (${JSON.stringify(tl)})`);
@@ -139,13 +150,23 @@ async function run(game, size, theme) {
       const n = await save();
       check(n === '1', `${tag}: one move = Save · 1 (${n})`);
       check(!(await j(`JSON.stringify(!!document.querySelector('[data-part=tl-link]'))`)), `${tag}: no "+ Link an object" on the row while Fine-tune is closed`);
-      // ---- 2. ▶ Preview, then 1 s → 2 s ----
+      // ---- 2. ▶ Preview, then the last point dragged later: a longer motion ----
       await press('[data-part=tl-play]');
       check(await j(`JSON.stringify(${TL}.state().playing || ${TL}.state().time > 0)`), `${tag}: ▶ ${WORDS.play} plays`);
-      await choose('[data-part=tl-len]', '2');
+      await press('[data-part=tl-play]');
+      const len0 = await j(`JSON.stringify(${TL}.motionOf(${JSON.stringify(k)})?.clips?.[0]?.len ?? null)`);
+      const lastAt = await j(`(() => { const ks = [...document.querySelectorAll('[data-part=tl-key]')].filter((e) => !e.dataset.ch); const x = ks.sort((a, b) => +b.dataset.t - +a.dataset.t)[0]; if (!x) return null;
+        const r = x.getBoundingClientRect(); const tr = document.querySelector('.tl-track').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2, w: tr.width }); })()`);
+      if (lastAt) {
+        // A third of the track to the right (inside the window): the motion gets about a third longer.
+        const dx = Math.round(Math.min(lastAt.w / 3, size.width - lastAt.x - 4));
+        size.mobile ? await page.touchDrag(Math.round(lastAt.x), Math.round(lastAt.y), Math.round(lastAt.x) + dx, Math.round(lastAt.y), 8) : await page.mouseDrag(Math.round(lastAt.x), Math.round(lastAt.y), Math.round(lastAt.x) + dx, Math.round(lastAt.y), 8);
+        await sleep(700);
+      }
+      const len1 = await j(`JSON.stringify(${TL}.motionOf(${JSON.stringify(k)})?.clips?.[0]?.len ?? null)`);
       const after = await pts(k);
-      check(JSON.stringify(after?.[0]) === '[0,2]', `${tag}: "[${WORDS.len2}]" — the points at 0 s and 2 s (${JSON.stringify(after)})`);
-      check(new RegExp(WORDS.len2).test((await j(SENTENCE)) || ''), `${tag}: the sentence says ${WORDS.len2}`);
+      check(!!lastAt && len1 > len0 + 0.2 && Math.abs((after?.[0]?.at(-1) ?? 0) - len1) < 0.06, `${tag}: the last point dragged later — the motion is longer, as long as its last point (${len0} s → ${len1} s, points ${JSON.stringify(after)})`);
+      await shot('1b-longer');
     }
     // ---- 3. Fine-tune ----
     if (BEFORE) await page.eval(`document.querySelector('[data-part=tl-more-btn]')?.click()`);
@@ -158,9 +179,11 @@ async function run(game, size, theme) {
       check(!!fine && ['tl-more-rec', 'tl-more-clip', 'tl-more-loop', 'tl-more-or', 'tl-tries', 'tl-more-all'].every((p) => fine.rows.includes(p)) && fine.rec === WORDS.rec && !fine.pop,
         `${tag}: Fine-tune is a sheet in the plate: ● ${WORDS.rec}, the motion, Loop & End, Trigger, Try, Moving objects (${JSON.stringify(fine)})`);
       check(!!fine && fine.link === WORDS.link, `${tag}: "+ ${WORDS.link}" in Fine-tune (${fine?.link})`);
+      const secs2 = await j(SECS);
+      check(!secs2.length, `${tag}: no seconds in Fine-tune either (${JSON.stringify(secs2)})`);
       check(await j(`JSON.stringify(!!document.querySelector('[data-part=tl-link]'))`), `${tag}: the row's "+" now that Fine-tune is open`);
       // A point picked → Pace.
-      const k2 = await j(`(() => { const x = [...document.querySelectorAll('[data-part=tl-key]')].find((e) => !e.dataset.ch && Math.abs(+e.dataset.t - 2) < 0.06); if (!x) return null; const r = x.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
+      const k2 = await j(`(() => { const x = [...document.querySelectorAll('[data-part=tl-key]')].find((e) => !e.dataset.ch && +e.dataset.t > 0.05); if (!x) return null; const r = x.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
       if (k2) size.mobile ? await page.tap(Math.round(k2.x), Math.round(k2.y)) : await page.click(Math.round(k2.x), Math.round(k2.y));
       await sleep(600);
       const pace = await j(`JSON.stringify(document.querySelector('[data-part=tl-sel] .tl-sel-lbl')?.textContent ?? null)`);

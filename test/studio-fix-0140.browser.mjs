@@ -3,7 +3,7 @@
 //   crumb  ① the path's last "/" has the same room on both sides as the others ("Scene / Level 1", not "Scene /Level 1");
 //   card   J1 the card's Motion line is the motion's name only, not cut; ⑥ the files row's "Library" on one line;
 //   line   ⑤ the boat has two triggers (a key, the player near): the timeline's line stays one row (PC), "When does it
-//          move?" and "Ask {ai}" in words; ⑦ the sentence's repeat words in lower case ("moves back and forth in 2 s");
+//          move?" and "Ask {ai}" in words; ⑦ the line's repeat word (lower case inside the sentence until studio-no-sentence, 2026-10-24; now "Repeat [Back and forth ▾]");
 //   ai     ④ with the timeline open the AI bar is one row (PC): no presence line of its own above the field;
 //   fine   ② "+ Another trigger"; Loop & End has Stops for the boat (back and forth) and none for the
 //          buoy (Once); ③ the near trigger says "near" once;
@@ -42,7 +42,7 @@ const ALL = { pc: { id: 'pc', width: 1280, height: 800 }, wide: { id: 'wide', wi
 const SIZES = take('--sizes', 'pc,wide,side,phone').split(',').map((s) => ALL[s]).filter(Boolean);
 const W = LANG === 'ja'
   ? { orAdd: '＋ 別のきっかけ', near: '近づいたら', whenAsk: 'いつ動く？', pingpong: '行って戻る' }
-  : { orAdd: '+ Another trigger', near: 'When player gets near', whenAsk: 'When does it move?', pingpong: 'back and forth' };
+  : { orAdd: '+ Another trigger', near: 'When player gets near', whenAsk: 'When does it move?', pingpong: 'Back and forth' };
 
 let failed = 0;
 const check = (ok, what) => {
@@ -132,7 +132,7 @@ async function run(size) {
         check(line?.whenAsk === W.whenAsk && !!line.askWords && !!line.more, `⑤ "${W.whenAsk}", "Ask …" in words and the "+1" chip all on it (${JSON.stringify(line)})`);
         check(!!ai && !ai.rowShown, `④ the AI bar is one row while the timeline is open (${JSON.stringify(ai)})`);
       }
-      check(line?.repeat === W.pingpong, `⑦ the sentence's repeat word "${line?.repeat}"`);
+      check(line?.repeat === W.pingpong, `⑦ the line's repeat word (the list's own since studio-no-sentence) "${line?.repeat}"`);
     }
     // ---- Fine-tune: ② ③ ----
     await page.eval(`document.querySelector('[data-part=tl-fine-btn]')?.click()`);

@@ -2,8 +2,8 @@
 // timeline's line is readable" — the motion menu "Mo…", the "attached" chip, "Point Sm…", "Keys Ea…"). In a headless browser, PC 1280×800 and a phone
 // 390×844, light and dark (`--themes`), one language a run (`--lang en|ja`):
 //   1. a motion attached from the Library (the strip's Motion → Use a saved motion → Hop, on the crate; the card's "From
-//      Library" went with studio-card-doors, plan step 3): the line is ▶ Preview · the sentence ("crate moves [Once ▾]
-//      in [0.8 s ▾]") · "When does it move?" [the menu, ringed] ▷ … Fine-tune ✦ ⌄ (studio-motion-line, plan step 4,
+//      Library" went with studio-card-doors, plan step 3): the line is ▶ Preview · "Repeat [Once ▾]" (the sentence
+//      "crate moves [Once ▾] in [0.8 s ▾]" until studio-no-sentence, 2026-10-24) · "When does it move?" [the menu, ringed] ▷ … Fine-tune ✦ ⌄ (studio-motion-line, plan step 4,
 //      2026-10-23: no time readout, no ● on the line, Fine-tune for ⋯) — no motion menu, no "✓ attached", no Point /
 //      Keys; nothing on it is cut or ends in "…", and on PC it is one line (two on a phone);
 //   2. a key picked on the boat's row: the picked keys' row under the line — "1 selected", "Pace ▾", "Path ▾", Delete
@@ -142,10 +142,11 @@ async function run(size, theme) {
     const rows1 = await j(ROWS);
     await shot('1-line');
     if (!BEFORE) {
-      // Plan step 4 (studio-motion-line, 2026-10-23): ▶ Preview · the sentence · "When does it move?" ▾ ▷ · Fine-tune ✦ ⌄ —
-      // the time readout and ● Rec motion left the line (the red line's cap, the sentence's [1 s ▾], Fine-tune).
-      const want = ['tl-play', 'tl-line', 'tl-sep', 'tl-lbl', 'tl-starts', 'tl-try-this', 'tl-fine-btn', 'tl-ask', 'tl-fold'];
-      check(JSON.stringify(parts1.filter((p) => p !== 'tl-try-this')) === JSON.stringify(want.filter((p) => p !== 'tl-try-this')), `${tag}: the line is ▶ · the sentence · "when" · Fine-tune ✦ ⌄ — no motion menu, no "attached", no Point / Keys (${parts1.join(' · ')})`);
+      // Plan step 4 (studio-motion-line, 2026-10-23): ▶ Preview · Repeat [▾] (the sentence until studio-no-sentence) · "When does it move?" ▾ ▷ · Fine-tune ✦ ⌄ —
+      // the time readout and ● Rec motion left the line (the red line's cap, the ruler's last point, Fine-tune).
+      // A phone's ⌄ is over the rows (the names column's head, studio-fix-0142 ⑬), not on the line.
+      const want = ['tl-play', 'tl-rep', 'tl-sep', 'tl-lbl', 'tl-starts', 'tl-try-this', 'tl-fine-btn', 'tl-ask', ...(size.mobile ? [] : ['tl-fold'])];
+      check(JSON.stringify(parts1.filter((p) => p !== 'tl-try-this')) === JSON.stringify(want.filter((p) => p !== 'tl-try-this')), `${tag}: the line is ▶ · Repeat · "when" · Fine-tune ✦ ⌄ — no motion menu, no "attached", no Point / Keys (${parts1.join(' · ')})`);
       const lbl = await text('[data-part=tl-head] .tl-when-lbl');
       const ringed = await j(`JSON.stringify(!!document.querySelector('[data-part=tl-head] .tl-starts.ask'))`);
       check((size.mobile || lbl === WORDS.when) && ringed, `${tag}: "${WORDS.when}" and the menu ringed (label "${lbl}", ringed ${ringed})`);

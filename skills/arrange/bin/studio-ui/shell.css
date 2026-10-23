@@ -503,6 +503,8 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .motion-line { flex: 1 1 auto; min-width: 0; justify-content: space-between; gap: 6px; padding: 0 6px 0 8px; background: none; color: var(--text); font-size: var(--fs-s); }
 .motion-line:hover { background: var(--raise); }
 .motion-line.on { color: var(--you-text); }
+.motion-more { flex: none; }
+.motion-more .icon { width: 16px; height: 16px; }
 .motion-line-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .motion-line .icon { width: 14px; height: 14px; color: var(--text-3); flex: none; }
 .motion-tl { background: var(--raise); padding: 0 10px; gap: 6px; font-size: var(--fs-s); }
@@ -1375,6 +1377,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    the AI's soft tint, not the grey of plain rows. */
 .ctx-row.ai { color: var(--ai-text); }
 .ctx-row.ai.on, .ctx-row.ai:hover:not(:disabled) { background: var(--ai-soft); }
+.ctx-row.danger { color: var(--danger); }
 .ctx-spark { display: inline-grid; vertical-align: -2px; margin-right: 6px; color: var(--ai); }
 .ctx-spark .icon { width: 13px; height: 13px; }
 .ctx-key { margin-left: auto; flex: none; color: var(--text-3); }
@@ -1589,10 +1592,10 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* The phone's cap, 176 px: two lines of "The old crate by the pier" beside the twist and the "+" (150 cut its second line). */
 .timeline.narrow { --tl-names: 96px; --tl-names-max: 176px; }
 .timeline.narrow .tl-head > * { order: 2; }
-.timeline.narrow .tl-head > .tl-play, .timeline.narrow .tl-head > .tl-line, .timeline.narrow .tl-head > .tl-first { order: 0; }
+.timeline.narrow .tl-head > .tl-play, .timeline.narrow .tl-head > .tl-rep, .timeline.narrow .tl-head > .tl-first { order: 0; }
 .timeline.narrow .tl-head > .tl-break { order: 1; }
 .timeline.narrow .tl-head > .tl-sep { display: none; }
-/* studio-motion-line: the first row is ▶ (its icon: "Preview" is its tooltip) · the sentence · ⌄; the second is "when"
+/* studio-motion-line: the first row is ▶ (its icon: "Preview" is its tooltip) · Repeat (the sentence until studio-no-sentence) · ⌄; the second is "when"
    then, at its right, Fine-tune · ✦. A phone's 390 px held neither row with the word "Preview" and ▷ Try on it (a try of
    2026-10-23: three rows) — ▷ Try is Fine-tune's "Try" there. */
 .timeline.narrow .tl-head > .tl-fold { order: 0; margin-left: auto; }
@@ -1617,8 +1620,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* PC: one line when it fits, and nothing on it shrinks (studio-ui-lead, 2026-10-23: before, the menus gave way first,
    to "Mo…" / "Ea…", and a hands-on try of 10/23 read nothing on it, even at 1800 px). When the line would wrap, timeline-panel.ts
    render() measures that and draws it in the narrow order instead (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them). */
-.timeline:not(.narrow) .tl-head > .tl-pick, .timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-line { flex: none; }
-.timeline:not(.narrow) .tl-line { flex-wrap: nowrap; }
+.timeline:not(.narrow) .tl-head > .tl-pick, .timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-rep { flex: none; }
 /* fix-0140 ⑤: the step before the narrow order (timeline-panel.ts render()): ▶ as its icon, no ▷ Try on the line —
    so a second trigger's "+1" chip keeps the line one row, with "When does it move?" and "Ask {ai}" in words. */
 .timeline.snug .tl-play-w { display: none; }
@@ -1773,14 +1775,14 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* (studio-motion-line, 2026-10-23: the first-time three steps over the plate, .tl-coach, are gone — the line says the next step.) */
 .timeline { position: relative; }
 
-/* studio-motion-line (2026-10-23): the line is a sentence — "▶ Preview  gate moves [Once ▾] in [1 s ▾] · When does it
-   move? [▾]" — and "Fine-tune" is a sheet in the plate, left of the rows (the mock: plan/shots/mock-fine.png), not a
+/* studio-motion-line (2026-10-23): the line — "▶ Preview  Repeat [Once ▾] · When does it move? [▾]" (a sentence,
+   "gate moves [Once ▾] in [1 s ▾]", until studio-no-sentence) — and "Fine-tune" is a sheet in the plate, left of the rows (the mock: plan/shots/mock-fine.png), not a
    popover over the game: the timeline stays out (the review of 10/23), the settings sit beside what they change. */
 .tl-play { width: auto; padding: 0 12px 0 9px; gap: 6px; border-radius: var(--r); font-weight: 600; white-space: nowrap; }
 .tl-play .icon { width: 13px; height: 13px; }
-.tl-line { display: inline-flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; min-width: 0; margin-left: 4px; }
-.tl-line-name { font-weight: 600; white-space: nowrap; }
-.tl-line-w { color: var(--text-2); white-space: nowrap; }
+/* studio-no-sentence (2026-10-24): "Repeat [Once ▾]" — the word and its menu as one piece (never wrapped apart). */
+.tl-rep { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; margin-left: 4px; }
+.tl-rep-lbl { font-size: var(--fs-s); color: var(--text-2); white-space: nowrap; }
 .tl-sep { color: var(--text-3); margin: 0 2px; }
 .tl-fine-btn { height: var(--h); padding: 0 8px 0 11px; gap: 4px; border-radius: var(--r); background: var(--raise); color: var(--text); white-space: nowrap; }
 .tl-fine-btn .icon { width: 12px; height: 12px; color: var(--text-3); }

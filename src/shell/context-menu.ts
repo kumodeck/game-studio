@@ -39,6 +39,12 @@ export interface MenuItem {
    * a plain row (which acts in the editor at once and never writes in the box) before it is pressed.
    */
   ai?: boolean;
+  /**
+   * The row that throws something away for good-ish (studio-motion-delete, 2026-10-24: the card's "Delete motion" — it comes
+   * off every object): the danger red, so it can be told from "Remove from this object" (the motion stays) before it is
+   * pressed. Still one press (⌘Z brings it back); the red is a "read me first", not a wall.
+   */
+  danger?: boolean;
   run(): void;
 }
 /**
@@ -66,6 +72,12 @@ export interface OpenOptions {
   label?: string;
   /** Page y the menu's bottom stays 8 px above (a phone's card / ask box); absent = the window's bottom. */
   floor?: number;
+  /**
+   * Delete / Backspace only close the menu (studio-motion-delete, 2026-10-24): a menu about a motion (the card's Motion
+   * row) must not pass Delete on to the editor, where it deletes the picked OBJECT — a person who pressed Delete to
+   * answer "Delete motion" would lose the object instead. Other menus keep "any other key goes on" (header).
+   */
+  holdDelete?: boolean;
 }
 
 /**
@@ -99,6 +111,7 @@ export function createContextMenu(d: ContextMenuDeps) {
   // Opened at this time (performance.now): a long press opens it before the finger lifts, and the browser may then
   // fire a click / contextmenu for the same press on what is under the finger.
   let openedAt = 0;
+  let holdDelete = false;
 
   const enabled = () => items.map((x, i) => (x.item.disabled ? -1 : i)).filter((i) => i >= 0);
   const highlight = (i: number) => {
@@ -136,7 +149,7 @@ export function createContextMenu(d: ContextMenuDeps) {
         el.append(h('div', { class: 'ctx-note', role: 'presentation', text: e.note }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
+      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
         h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
@@ -167,6 +180,7 @@ export function createContextMenu(d: ContextMenuDeps) {
     el.style.transformOrigin = `${x < p.left + r.width / 2 ? 'left' : 'right'} ${y < p.top + r.height / 2 ? 'top' : 'bottom'}`;
     el.style.visibility = '';
     open = true;
+    holdDelete = !!o.holdDelete;
     openedAt = performance.now();
     if (o.keyboard) move(1);
     else highlight(-1);
@@ -204,7 +218,7 @@ export function createContextMenu(d: ContextMenuDeps) {
         hide(false);
         x.item.run();
       }
-    } else if (k === 'Escape' || k === 'Tab') hide(true);
+    } else if (k === 'Escape' || k === 'Tab' || (holdDelete && (k === 'Delete' || k === 'Backspace'))) hide(true);
     else {
       // Any other key: the menu goes, the key goes on to the editor (window keydown in main.ts).
       hide(true);

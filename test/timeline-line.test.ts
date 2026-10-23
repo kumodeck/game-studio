@@ -76,7 +76,7 @@ test('nothing on the line may shrink to "…": no ellipsis and no px cap on the 
 });
 
 // ----- 3. the plate's code -----
-test('the line is ▶ · the sentence · when · Fine-tune ✦ ⌄; the motion menu is in Fine-tune; Point / Keys / Delete are the picked keys\' row', () => {
+test('the line is ▶ · Repeat · when · Fine-tune ✦ ⌄; the motion menu is in Fine-tune; Point / Keys / Delete are the picked keys\' row', () => {
   const panel = code('timeline-panel.ts');
   const head = between(panel, 'function renderHead(', 'const field = ');
   for (const part of ['tl-clip', 'tl-point', 'tl-ease', 'tl-attached', 'tl-scene']) assert.ok(!head.includes(`'${part}'`), `renderHead draws no ${part}`);
@@ -85,7 +85,7 @@ test('the line is ▶ · the sentence · when · Fine-tune ✦ ⌄; the motion m
   assert.ok(!head.includes("'tl-more-btn'") && !head.includes("'tl-now'") && !head.includes("'tl-auto'"), 'no ⋯, no time, no ● on the line');
   const when = between(panel, 'function whenItems(', 'function renderFine(');
   assert.ok(!when.includes('tl-attached') && !when.includes("'tl.attached'") && !when.includes("'tl.made'"), 'no "✓ attached" / "✓ moves from" chip');
-  assert.ok(when.includes("t('tl.whenAsk')") && when.includes("'tl-made'") && when.includes("'tl-done'") && when.includes('sentence(v, c)'), '"When does it move?" after the sentence; the making step with Done');
+  assert.ok(when.includes("t('tl.whenAsk')") && when.includes("'tl-made'") && when.includes("'tl-done'") && when.includes('repeatItems(c)'), '"When does it move?" after Repeat; the making step with Done');
   const more = between(panel, 'function renderFine(', 'function fresh(');
   assert.ok(more.includes('clipMenu(v)') && more.includes("'tl-more-clip'") && more.includes("'tl-more-rec'"), 'Fine-tune has ● Rec motion and the motion menu');
   const sel = between(panel, 'function renderSel(', 'function clipMenu(');

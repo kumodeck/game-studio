@@ -2,16 +2,17 @@
 // what a press on it means. No state of its own beyond a drag in progress: timeline-wire.ts owns the state and gives
 // a fresh `view()` each render; every press goes back as one call on `act`.
 //
-//   ▶ Preview  gate moves [Once ▾] in [1 s ▾] · When does it move? [When game starts ▾] ▷      [Fine-tune] ✦ Ask AI ⌄
+//   ▶ Preview  Repeat [Once ▾] · When does it move? [When game starts ▾] ▷      [Fine-tune] ✦ Ask AI ⌄
 //   2 selected   Pace [Smooth (slow start & stop) ▾]   Path [Smooth curve ▾]   🗑 Delete   ← only while keys are picked
 //        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
 //   ⠿ ▾ rowboat · Row   ◇─────────◇──────◇          +  ← one row per object (its keys at any property); ⠿ = drag the
 //   ⠿ ▾ buoy            ◇──────◇                     ×    row (a scene's rows keep the person's order); + links an object
 //       Position ◆─────────◆──────◆                     ← ▾ opens position / angle / size
 //
-// The line is one sentence (studio-motion-line, 2026-10-23; a review of 10/22 "cluttered, hard to follow", 10/23 "none of it
-// makes sense"): the three things a person changes — how long, once or again, when — said as what the motion does, and
-// ▶ to watch it. The timeline (ruler, rows, points) stays under it, always (the review of 10/23: "with a motion, the timeline
+// The line (studio-motion-line, 2026-10-23; a review of 10/22 "cluttered, hard to follow", 10/23 "none of it makes sense"):
+// ▶ to watch it, "Repeat [Once ▾]" and "When does it move? [▾]". It was one sentence, "gate moves [Once ▾] in [4 s ▾]",
+// until studio-no-sentence (2026-10-24, a hands-on try: "I can't make sense of it"; the seconds were also on the ruler, "which
+// one is right?"): the length is now the last point's place on the ruler, and nowhere else. The timeline (ruler, rows, points) stays under it, always (the review of 10/23: "with a motion, the timeline
 // should be out, not hidden away"). Everything else that ⋯ held — ● Rec motion, Loop & End, Trigger, Try, the motion's
 // menu, Moving objects, + Link an object — is "Fine-tune": a sheet in the plate, left of the rows (one place, not a
 // popover over the game), remembered open once opened (timeline-wire.ts FINE_SEEN). The ⋯ door is gone.
@@ -171,7 +172,7 @@ export interface TimelineActs {
   touched(): void;
   /** studio-motion-line: "Fine-tune" opened / closed (the wire remembers it). Absent = the sheet never opens. */
   fine?(on: boolean): void;
-  /** studio-motion-line: the line's "[1 s ▾]" — the motion takes `s` seconds, its points scaled. Absent = `len`. */
+  /** The motion takes `s` seconds, its points scaled (studio-motion-line's "[1 s ▾]"; no button since studio-no-sentence — the last point sets the length). */
   stretch?(seconds: number): void;
   /** studio-timeline-2: the picked path points made smooth / corners (Point ▾). */
   point?(kind: PointKind): void;
@@ -227,7 +228,14 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
 
   // Seconds ↔ px on the track (its own box: the names column is outside it).
   const pad = 12;
-  const span = () => Math.max(1, view().span);
+  // The ruler shows a little room past the longest motion (studio-no-sentence, 2026-10-24): the last point sets the
+  // length now (the line's "[4 s ▾]" is gone), and a last point on the ruler's very end had nowhere to be dragged to —
+  // a try: 1 s → 1.05 s. A quarter more, at least half a second (1 s → a 1.5 s ruler, 4 s → 5 s); the room is shaded
+  // (.tl-after) as before, and the red line still stops at the motion's end (the wire's span).
+  const span = () => {
+    const s = Math.max(1, view().span);
+    return s + Math.ceil(Math.max(0.5, s * 0.25) * 2) / 2;
+  };
   const xOf = (s: number) => pad + (s / span()) * Math.max(1, track.clientWidth - pad * 2);
   const tOf = (x: number) => ((x - pad) / Math.max(1, track.clientWidth - pad * 2)) * span();
   const localX = (e: PointerEvent) => e.clientX - track.getBoundingClientRect().left;
@@ -253,7 +261,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       // aria-label: narrow, the word is hidden (shell.css) and the icon alone stays.
       title: `${t(v.playing ? 'tl.pause' : 'tl.play')}  Space`, 'aria-label': t(v.playing ? 'tl.pause' : 'tl.play'), onclick: () => act.play(!v.playing) }, icon(v.playing ? 'pause' : 'play'), h('span', { class: 'tl-play-w', 'aria-hidden': 'true', text: t(v.playing ? 'tl.pause' : 'tl.play') })));
     // (The time readout "0:01.6 / 4.0 s" and ● Rec motion were on the line: the time is the red line's cap on the ruler,
-    // the length is the sentence's "[1 s ▾]", and ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
+    // the length is where the last point stands on the ruler (studio-no-sentence: seconds in one place only), and
+    // ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
     // Fine-tune: also with no motion here when others move (its "Moving objects", studio-motion-focus).
@@ -271,47 +280,25 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
         dataset: { action: 'tl-ask', part: 'tl-ask' }, onclick: () => act.ask!() }, icon('spark'), h('span', { class: 'tl-ask-w', text: t('tl.ask') }), h('span', { class: 'tl-ask-s', 'aria-hidden': 'true', text: t('tl.askShort') })));
     }
     items.push(h('button', { type: 'button', class: 'icon-btn tl-fold', dataset: { action: 'tl-fold' }, title: t('tl.fold'), 'aria-label': t('tl.fold'), onclick: () => (linkPop.hide(), act.fold()) }, icon('chevronDown')));
-    // Narrow: the end of the first row (▶ and the sentence); the "when", Fine-tune, ✦ and ⌄ start a new one (shell.css).
+    // Narrow: the end of the first row (▶ and Repeat); the "when", Fine-tune, ✦ and ⌄ start a new one (shell.css).
     items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
     head.replaceChildren(...items);
   }
 
-  /** The seconds the line's "[1 s ▾]" offers (and the motion's own length, when it is none of them). */
-  const LENS = [0.5, 1, 1.5, 2, 3, 4, 5, 8, 10];
-  const secs = (n: number) => String(Math.round(n * 10) / 10);
   /**
-   * The line's sentence (studio-motion-line): "gate moves [Once ▾] in [1 s ▾]" (Japanese: name, then length, then repeat)
-   * — `tl.line` with its three places ({name} {len} {repeat}) in each language's own order.
+   * The line's repeat (studio-no-sentence, 2026-10-24): "Repeat [Once ▾]" — the heading word always before the menu.
+   * It was a sentence (studio-motion-line, v0.1.37): "gate moves [Once ▾] in [4 s ▾]" (the Japanese: name, length, repeat).
+   * A hands-on try: "I can't make sense of it — loop and back and forth I get", "'Once' out of nowhere means nothing", and "the
+   * timeline writes seconds, and here it writes seconds too: which one is right?" So: the menu says what it chooses
+   * ("Repeat"), and the length is on the ruler only — the last point sets it (timeline-model.ts moveKeys); no seconds
+   * here or in Fine-tune.
    */
-  function sentence(v: TimelineView, c: MotionClip): HTMLElement {
-    const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
-    const len = c.len;
-    const opts: Array<[string, string]> = [...new Set([...LENS, Math.round(len * 10) / 10])].sort((a, b) => a - b).map((n) => [String(n), t('tl.lenOpt', { s: secs(n) })]);
-    opts.push(['other', t('tl.lenOther')]);
-    const lenPick = select('tl-len', t('tl.len'), opts, String(Math.round(len * 10) / 10), (val) => {
-      if (val !== 'other') return (act.stretch ?? act.len)(parseFloat(val));
-      // "Other…": the menu becomes a field (Enter / leaving keeps it, Esc goes back) — 0.1 s to 10 minutes.
-      const f = field('tl-len-field', t('tl.len'), secs(len), '3.5em', (x) => {
-        const n = parseFloat(x.replace(',', '.'));
-        if (n > 0) (act.stretch ?? act.len)(n);
-        else render();
-      }, 'decimal');
-      lenPick.replaceWith(f);
-      f.focus();
-    });
-    // fix-0140 (⑦ of the first-run check, 2026-10-23): inside the sentence the repeat words are the sentence's own
-    // (tl.repeatLine.*: "gate moves once in 2 s", "moves back and forth in 3 s"); the list's capitalised labels
-    // (tl.repeat.*: "Once", "Back and forth") read "lighthouse moves Once in 2 s" here. Fine-tune's Loop & End keeps the labels.
-    const repeatPick = select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeatLine.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat));
-    const out = h('span', { class: 'tl-line', dataset: { part: 'tl-line' } });
-    // The template with marks in its three places, cut there (a word order of its own in each language).
-    for (const bit of t('tl.line', { name: '\u0001', len: '\u0002', repeat: '\u0003' }).split(/([\u0001-\u0003])/)) {
-      if (bit === '\u0001') out.append(h('b', { class: 'tl-line-name', dataset: { part: 'tl-line-name' }, text: name }));
-      else if (bit === '\u0002') out.append(lenPick);
-      else if (bit === '\u0003') out.append(repeatPick);
-      else if (bit.trim()) out.append(h('span', { class: 'tl-line-w', text: bit.trim() }));
-    }
-    return out;
+  // One piece, the word and its menu together: narrow, the head hides its other labels ("When does it move?") — this
+  // one stays, so "Once" never shows up on its own.
+  function repeatItems(c: MotionClip): Node[] {
+    return [h('span', { class: 'tl-rep', dataset: { part: 'tl-rep' } },
+      h('span', { class: 'tl-rep-lbl', text: t('tl.repeat') }),
+      select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat)))];
   }
 
   /** A small text field that acts on Enter / leaving (Esc: as it was). */
@@ -400,8 +387,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       // "When does it move?" always (the brief: the one label on the line that reads as is); just attached or just
       // made (Done pressed), the menu is ringed — the next step — with no "✓ attached" chip before it (studio-ui-lead:
       // the row and the card say the name; "attached" was a maker's word, the ux review of 10/23).
-      // The sentence first (studio-motion-line): what the motion does — then when.
-      items.push(sentence(v, c), h('span', { class: 'tl-sep', 'aria-hidden': 'true', text: '·' }));
+      // How it repeats first ("Repeat [Once ▾]", studio-no-sentence; it was studio-motion-line's sentence) — then when.
+      items.push(...repeatItems(c), h('span', { class: 'tl-sep', 'aria-hidden': 'true', text: '·' }));
       items.push(h('span', { class: 'tl-lbl tl-when-lbl', text: t('tl.whenAsk') }));
       items.push(startsMenu('tl-starts', t('tl.starts'), w, v, 0, true), ...whenField(w, v, (x) => sendWhen(v, 0, x)));
       // The other ways it starts (studio-timeline-2's "or") live in Fine-tune; the line says there are some ("+1").
@@ -464,7 +451,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
     // fix-0140 (② of the first-run check, 2026-10-23): "Loop & End [Once] [Never]" read as "once, but it never stops?"
     // to a first-time maker. A motion that plays once already ends by itself, so the Stops menu is only for one that
-    // goes on (Repeats / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
+    // goes on (Loop / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
     // what it has stays visible and can be set back to Never.
     // fix-0141 (D10 of the first-run check, 2026-10-24): "When signaled" (the Japanese says "a signal") is the game's code speaking —
     // a cue only the AI can wire up — and a first-time maker could pick it and get a motion that never stops for a reason
@@ -791,7 +778,11 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const rowOf = (key: string) => view().rows.find((r) => r.key === key);
 
   // ----- presses on the track -----
-  let drag: { kind: 'scrub' | 'keys' | 'box'; x0: number; y0: number; id: number; moved: boolean; add: boolean; refs?: KeyRef[] } | null = null;
+  // `per` (keys): seconds per px when the press began. A drag can change the length (the last point sets it,
+  // timeline-model.ts moveKeys) and with it the ruler's scale; measuring the move in the old scale keeps the point
+  // from running away under the pointer as the ruler grows or shrinks.
+  let drag: { kind: 'scrub' | 'keys' | 'box'; x0: number; y0: number; id: number; moved: boolean; add: boolean; refs?: KeyRef[]; per?: number } | null = null;
+  const dtOf = (d: { x0: number; per?: number }, x: number) => (d.per !== undefined ? (x - d.x0) * d.per : tOf(x) - tOf(d.x0));
   track.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     act.touched();
@@ -815,7 +806,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       const on = refs.every((x) => v.picked(x));
       // A press on a picked key keeps the picking (so several drag together); Shift on a picked key unpicks it on release.
       if (!on) act.pickKeys(refs, add);
-      drag = { kind: 'keys', x0: x, y0: y, id: e.pointerId, moved: false, add: add && on, refs };
+      drag = { kind: 'keys', x0: x, y0: y, id: e.pointerId, moved: false, add: add && on, refs, per: span() / Math.max(1, track.clientWidth - pad * 2) };
       return;
     }
     drag = { kind: 'box', x0: x, y0: y, id: e.pointerId, moved: false, add };
@@ -827,7 +818,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) < 3) return;
     drag.moved = true;
     if (drag.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), false);
-    else if (drag.kind === 'keys') act.drag(tOf(x) - tOf(drag.x0), false, e.altKey);
+    else if (drag.kind === 'keys') act.drag(dtOf(drag, x), false, e.altKey);
     else {
       const [l, r] = [Math.min(x, drag.x0), Math.max(x, drag.x0)];
       const [tp, bt] = [Math.min(y, drag.y0), Math.max(y, drag.y0)];
@@ -844,7 +835,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const y = e.clientY - lanes.getBoundingClientRect().top;
     if (d.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), true);
     else if (d.kind === 'keys') {
-      if (d.moved) act.drag(cancel ? 0 : tOf(x) - tOf(d.x0), true, e.altKey);
+      if (d.moved) act.drag(cancel ? 0 : dtOf(d, x), true, e.altKey);
       else if (d.add && d.refs) {
         // Shift-press on a picked key without moving: unpick it (the keys it stood for, kept from the press).
         const off = d.refs;
@@ -914,7 +905,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       ruler.append(h('span', { class: `tl-tick${whole ? '' : ' half'}`, style: `left:${xOf(x)}px`, text: whole ? `${Math.round(x)}s` : '' }));
     }
     const c = v.clip;
-    // Past the picked clip's end: shaded (keys cannot go there; its length is the field in the head).
+    // Past the picked clip's end: shaded (drag its last point there and the motion gets longer — timeline-model.ts moveKeys).
     if (c && c.len < s) lanes.append(h('div', { class: 'tl-after', style: `left:${xOf(c.len)}px` }));
   }
 
@@ -958,7 +949,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // there are two (studio-motion-focus: a scene of one is the object's own motion, nothing to say).
     rulerPad.replaceChildren(...(v.clip && v.scene && v.scene.n > 1 ? [h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) })] : []));
     // A phone (studio-fix-0142, ⑬ of the fourth first-run check, 2026-10-24): ⌄ goes to the names column's head, over
-    // the rows (the right of "Linked · 2"). In the head it had a row of its own — the sentence fills the first row and
+    // the rows (the right of "Linked · 2"). In the head it had a row of its own — ▶ and Repeat fill the first row and
     // "when", Fine-tune and ✦ AI the second, at 44 px a finger each — which made a plate already 3/4 of the screen
     // taller. The side window keeps it in the head (there it fits on the first row). Moved after the measure above.
     const shell = el.closest<HTMLElement>('.shell');

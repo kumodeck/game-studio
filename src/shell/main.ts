@@ -1227,7 +1227,20 @@ export function start(host: StudioHost) {
     },
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
-    motion: (k) => timeline.cardRow(k),
+    // studio-motion-delete (2026-10-24): the Motion row's right-click / ⋯ menu — the ⋯'s plate like cardMenu's (under it,
+    // right edges together), a right-click's at the pointer; it holds Delete back (that key deletes the OBJECT).
+    motion: (k) => timeline.cardRow(k, {
+      menu: (at, entries) => {
+        const o = { place: 'card-motion', label: t('motion.label'), holdDelete: true };
+        if (!(at instanceof HTMLElement)) return ctxMenu.show(entries, at.x, at.y, o);
+        const r = at.getBoundingClientRect();
+        ctxMenu.show(entries, r.right, r.bottom + 4, o);
+        const m = ctxMenu.el.getBoundingClientRect();
+        ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+      },
+      say: (text) => showToast(text),
+      undoKey: keyOf('undo', isMac()),
+    }),
   });
 
   // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
@@ -1859,6 +1872,8 @@ export function start(host: StudioHost) {
     if (t?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
     e.preventDefault();
     cancelPress();
+    // The card's Motion row opens its own menu (motion-card.ts, studio-motion-delete): not the pick's over the game.
+    if (t?.closest?.('[data-part="motion-row"]')) return;
     // The same press's contextmenu after a long press opened the menu already (Android sends one).
     if (ctxMenu.justOpened() || ctxMenu.el.contains(t)) return;
     // Shift+F10 / the menu key: no pointer (0, 0 or no pointer type); the menu opens at the element.

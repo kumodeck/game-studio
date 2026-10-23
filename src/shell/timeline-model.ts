@@ -188,23 +188,36 @@ export function deleteKeys(c: MotionClip, key: string, sel: KeyRef[]): MotionCli
 }
 
 /**
- * The clip with the picked keys moved by `dt` seconds (kept between 0 and the length). A moved key that lands on a
+ * The clip with the picked keys moved by `dt` seconds (from 0 up to MAX_LEN). A moved key that lands on a
  * key that was not moved replaces it (the dragged one wins, as in Blender). Returns the moved refs' new times too.
+ *
+ * The length follows the last point (studio-no-sentence, 2026-10-24): the line's "[4 s ▾]" is gone — a hands-on try: "the
+ * timeline writes seconds and here it writes seconds too: which one is right?" — so the seconds live on the ruler only,
+ * and a motion gets longer or shorter by moving its last point. Before, a moved key stopped at the length (the menu
+ * was the way to change it). A gap the motion had after its last point (a pause before it loops) moves with it.
+ * A scene's length is shared with its other objects' tracks, so dragging one track only ever makes it longer.
  */
 export function moveKeys(c: MotionClip, key: string, sel: KeyRef[], dt: number): { clip: MotionClip; moved: KeyRef[] } {
   const mine = picks(sel, key);
   const out = structuredClone(c);
   const moved: KeyRef[] = [];
+  const lastOf = (m: MotionClip) => Math.max(0, ...CHANNELS.flatMap((ch) => (m.keys[ch] ?? []).map((k) => k.t)));
+  const before = lastOf(c);
   for (const ch of CHANNELS) {
     const ks = out.keys[ch];
     if (!ks) continue;
-    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(out.len, Math.max(0, k.t + dt))) }));
+    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(MAX_LEN, Math.max(0, k.t + dt))) }));
     const stay = ks.filter((k) => !isPicked(mine, ch, k.t) && !go.some((g) => sameT(g.t, k.t)));
     // Two moved keys squeezed onto one moment (against 0 or the end): the later one wins.
     const merged = new Map<number, MotionKey>();
     for (const k of go) merged.set(Math.round(k.t * 1000), k);
     out.keys[ch] = sorted([...stay, ...merged.values()]);
     for (const k of merged.values()) moved.push({ key, ch, t: k.t });
+  }
+  const after = lastOf(out);
+  if (after > 0 && !sameT(after, before)) {
+    const len = Math.min(MAX_LEN, Math.max(MIN_LEN, rt(after + Math.max(0, c.len - before))));
+    out.len = c.scene ? Math.max(c.len, len) : len;
   }
   return { clip: out, moved };
 }

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.44 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.45 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -10273,23 +10273,36 @@ function deleteKeys(c            , key        , sel          )             {
 }
 
 /**
- * The clip with the picked keys moved by `dt` seconds (kept between 0 and the length). A moved key that lands on a
+ * The clip with the picked keys moved by `dt` seconds (from 0 up to MAX_LEN). A moved key that lands on a
  * key that was not moved replaces it (the dragged one wins, as in Blender). Returns the moved refs' new times too.
+ *
+ * The length follows the last point (studio-no-sentence, 2026-10-24): the line's "[4 s ▾]" is gone — a hands-on try: "the
+ * timeline writes seconds and here it writes seconds too: which one is right?" — so the seconds live on the ruler only,
+ * and a motion gets longer or shorter by moving its last point. Before, a moved key stopped at the length (the menu
+ * was the way to change it). A gap the motion had after its last point (a pause before it loops) moves with it.
+ * A scene's length is shared with its other objects' tracks, so dragging one track only ever makes it longer.
  */
 function moveKeys(c            , key        , sel          , dt        )                                        {
   const mine = picks(sel, key);
   const out = structuredClone(c);
   const moved           = [];
+  const lastOf = (m            ) => Math.max(0, ...CHANNELS.flatMap((ch) => (m.keys[ch] ?? []).map((k) => k.t)));
+  const before = lastOf(c);
   for (const ch of CHANNELS) {
     const ks = out.keys[ch];
     if (!ks) continue;
-    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(out.len, Math.max(0, k.t + dt))) }));
+    const go = ks.filter((k) => isPicked(mine, ch, k.t)).map((k) => ({ ...k, t: rt(Math.min(MAX_LEN, Math.max(0, k.t + dt))) }));
     const stay = ks.filter((k) => !isPicked(mine, ch, k.t) && !go.some((g) => sameT(g.t, k.t)));
     // Two moved keys squeezed onto one moment (against 0 or the end): the later one wins.
     const merged = new Map                   ();
     for (const k of go) merged.set(Math.round(k.t * 1000), k);
     out.keys[ch] = sorted([...stay, ...merged.values()]);
     for (const k of merged.values()) moved.push({ key, ch, t: k.t });
+  }
+  const after = lastOf(out);
+  if (after > 0 && !sameT(after, before)) {
+    const len = Math.min(MAX_LEN, Math.max(MIN_LEN, rt(after + Math.max(0, c.len - before))));
+    out.len = c.scene ? Math.max(c.len, len) : len;
   }
   return { clip: out, moved };
 }
@@ -10445,16 +10458,17 @@ __defs[25] = function (__exports) {
 // what a press on it means. No state of its own beyond a drag in progress: timeline-wire.ts owns the state and gives
 // a fresh `view()` each render; every press goes back as one call on `act`.
 //
-//   ▶ Preview  gate moves [Once ▾] in [1 s ▾] · When does it move? [When game starts ▾] ▷      [Fine-tune] ✦ Ask AI ⌄
+//   ▶ Preview  Repeat [Once ▾] · When does it move? [When game starts ▾] ▷      [Fine-tune] ✦ Ask AI ⌄
 //   2 selected   Pace [Smooth (slow start & stop) ▾]   Path [Smooth curve ▾]   🗑 Delete   ← only while keys are picked
 //        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
 //   ⠿ ▾ rowboat · Row   ◇─────────◇──────◇          +  ← one row per object (its keys at any property); ⠿ = drag the
 //   ⠿ ▾ buoy            ◇──────◇                     ×    row (a scene's rows keep the person's order); + links an object
 //       Position ◆─────────◆──────◆                     ← ▾ opens position / angle / size
 //
-// The line is one sentence (studio-motion-line, 2026-10-23; a review of 10/22 "cluttered, hard to follow", 10/23 "none of it
-// makes sense"): the three things a person changes — how long, once or again, when — said as what the motion does, and
-// ▶ to watch it. The timeline (ruler, rows, points) stays under it, always (the review of 10/23: "with a motion, the timeline
+// The line (studio-motion-line, 2026-10-23; a review of 10/22 "cluttered, hard to follow", 10/23 "none of it makes sense"):
+// ▶ to watch it, "Repeat [Once ▾]" and "When does it move? [▾]". It was one sentence, "gate moves [Once ▾] in [4 s ▾]",
+// until studio-no-sentence (2026-10-24, a hands-on try: "I can't make sense of it"; the seconds were also on the ruler, "which
+// one is right?"): the length is now the last point's place on the ruler, and nowhere else. The timeline (ruler, rows, points) stays under it, always (the review of 10/23: "with a motion, the timeline
 // should be out, not hidden away"). Everything else that ⋯ held — ● Rec motion, Loop & End, Trigger, Try, the motion's
 // menu, Moving objects, + Link an object — is "Fine-tune": a sheet in the plate, left of the rows (one place, not a
 // popover over the game), remembered open once opened (timeline-wire.ts FINE_SEEN). The ⋯ door is gone.
@@ -10614,7 +10628,7 @@ function whensShort(t                                                           
                   
                                                                                                                  
                            
-                                                                                                                    
+                                                                                                                                                               
                                   
                                                                                    
                                 
@@ -10670,7 +10684,14 @@ function createTimelinePanel(view                    , act              ) {
 
   // Seconds ↔ px on the track (its own box: the names column is outside it).
   const pad = 12;
-  const span = () => Math.max(1, view().span);
+  // The ruler shows a little room past the longest motion (studio-no-sentence, 2026-10-24): the last point sets the
+  // length now (the line's "[4 s ▾]" is gone), and a last point on the ruler's very end had nowhere to be dragged to —
+  // a try: 1 s → 1.05 s. A quarter more, at least half a second (1 s → a 1.5 s ruler, 4 s → 5 s); the room is shaded
+  // (.tl-after) as before, and the red line still stops at the motion's end (the wire's span).
+  const span = () => {
+    const s = Math.max(1, view().span);
+    return s + Math.ceil(Math.max(0.5, s * 0.25) * 2) / 2;
+  };
   const xOf = (s        ) => pad + (s / span()) * Math.max(1, track.clientWidth - pad * 2);
   const tOf = (x        ) => ((x - pad) / Math.max(1, track.clientWidth - pad * 2)) * span();
   const localX = (e              ) => e.clientX - track.getBoundingClientRect().left;
@@ -10696,7 +10717,8 @@ function createTimelinePanel(view                    , act              ) {
       // aria-label: narrow, the word is hidden (shell.css) and the icon alone stays.
       title: `${t(v.playing ? 'tl.pause' : 'tl.play')}  Space`, 'aria-label': t(v.playing ? 'tl.pause' : 'tl.play'), onclick: () => act.play(!v.playing) }, icon(v.playing ? 'pause' : 'play'), h('span', { class: 'tl-play-w', 'aria-hidden': 'true', text: t(v.playing ? 'tl.pause' : 'tl.play') })));
     // (The time readout "0:01.6 / 4.0 s" and ● Rec motion were on the line: the time is the red line's cap on the ruler,
-    // the length is the sentence's "[1 s ▾]", and ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
+    // the length is where the last point stands on the ruler (studio-no-sentence: seconds in one place only), and
+    // ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
     // Fine-tune: also with no motion here when others move (its "Moving objects", studio-motion-focus).
@@ -10714,47 +10736,25 @@ function createTimelinePanel(view                    , act              ) {
         dataset: { action: 'tl-ask', part: 'tl-ask' }, onclick: () => act.ask () }, icon('spark'), h('span', { class: 'tl-ask-w', text: t('tl.ask') }), h('span', { class: 'tl-ask-s', 'aria-hidden': 'true', text: t('tl.askShort') })));
     }
     items.push(h('button', { type: 'button', class: 'icon-btn tl-fold', dataset: { action: 'tl-fold' }, title: t('tl.fold'), 'aria-label': t('tl.fold'), onclick: () => (linkPop.hide(), act.fold()) }, icon('chevronDown')));
-    // Narrow: the end of the first row (▶ and the sentence); the "when", Fine-tune, ✦ and ⌄ start a new one (shell.css).
+    // Narrow: the end of the first row (▶ and Repeat); the "when", Fine-tune, ✦ and ⌄ start a new one (shell.css).
     items.push(h('span', { class: 'tl-break', 'aria-hidden': 'true' }));
     head.replaceChildren(...items);
   }
 
-  /** The seconds the line's "[1 s ▾]" offers (and the motion's own length, when it is none of them). */
-  const LENS = [0.5, 1, 1.5, 2, 3, 4, 5, 8, 10];
-  const secs = (n        ) => String(Math.round(n * 10) / 10);
   /**
-   * The line's sentence (studio-motion-line): "gate moves [Once ▾] in [1 s ▾]" (Japanese: name, then length, then repeat)
-   * — `tl.line` with its three places ({name} {len} {repeat}) in each language's own order.
+   * The line's repeat (studio-no-sentence, 2026-10-24): "Repeat [Once ▾]" — the heading word always before the menu.
+   * It was a sentence (studio-motion-line, v0.1.37): "gate moves [Once ▾] in [4 s ▾]" (the Japanese: name, length, repeat).
+   * A hands-on try: "I can't make sense of it — loop and back and forth I get", "'Once' out of nowhere means nothing", and "the
+   * timeline writes seconds, and here it writes seconds too: which one is right?" So: the menu says what it chooses
+   * ("Repeat"), and the length is on the ruler only — the last point sets it (timeline-model.ts moveKeys); no seconds
+   * here or in Fine-tune.
    */
-  function sentence(v              , c            )              {
-    const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
-    const len = c.len;
-    const opts                          = [...new Set([...LENS, Math.round(len * 10) / 10])].sort((a, b) => a - b).map((n) => [String(n), t('tl.lenOpt', { s: secs(n) })]);
-    opts.push(['other', t('tl.lenOther')]);
-    const lenPick = select('tl-len', t('tl.len'), opts, String(Math.round(len * 10) / 10), (val) => {
-      if (val !== 'other') return (act.stretch ?? act.len)(parseFloat(val));
-      // "Other…": the menu becomes a field (Enter / leaving keeps it, Esc goes back) — 0.1 s to 10 minutes.
-      const f = field('tl-len-field', t('tl.len'), secs(len), '3.5em', (x) => {
-        const n = parseFloat(x.replace(',', '.'));
-        if (n > 0) (act.stretch ?? act.len)(n);
-        else render();
-      }, 'decimal');
-      lenPick.replaceWith(f);
-      f.focus();
-    });
-    // fix-0140 (⑦ of the first-run check, 2026-10-23): inside the sentence the repeat words are the sentence's own
-    // (tl.repeatLine.*: "gate moves once in 2 s", "moves back and forth in 3 s"); the list's capitalised labels
-    // (tl.repeat.*: "Once", "Back and forth") read "lighthouse moves Once in 2 s" here. Fine-tune's Loop & End keeps the labels.
-    const repeatPick = select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeatLine.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                ));
-    const out = h('span', { class: 'tl-line', dataset: { part: 'tl-line' } });
-    // The template with marks in its three places, cut there (a word order of its own in each language).
-    for (const bit of t('tl.line', { name: '\u0001', len: '\u0002', repeat: '\u0003' }).split(/([\u0001-\u0003])/)) {
-      if (bit === '\u0001') out.append(h('b', { class: 'tl-line-name', dataset: { part: 'tl-line-name' }, text: name }));
-      else if (bit === '\u0002') out.append(lenPick);
-      else if (bit === '\u0003') out.append(repeatPick);
-      else if (bit.trim()) out.append(h('span', { class: 'tl-line-w', text: bit.trim() }));
-    }
-    return out;
+  // One piece, the word and its menu together: narrow, the head hides its other labels ("When does it move?") — this
+  // one stays, so "Once" never shows up on its own.
+  function repeatItems(c            )         {
+    return [h('span', { class: 'tl-rep', dataset: { part: 'tl-rep' } },
+      h('span', { class: 'tl-rep-lbl', text: t('tl.repeat') }),
+      select('tl-repeat-line', t('tl.repeat'), (['once', 'loop', 'pingpong']                  ).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r                )))];
   }
 
   /** A small text field that acts on Enter / leaving (Esc: as it was). */
@@ -10843,8 +10843,8 @@ function createTimelinePanel(view                    , act              ) {
       // "When does it move?" always (the brief: the one label on the line that reads as is); just attached or just
       // made (Done pressed), the menu is ringed — the next step — with no "✓ attached" chip before it (studio-ui-lead:
       // the row and the card say the name; "attached" was a maker's word, the ux review of 10/23).
-      // The sentence first (studio-motion-line): what the motion does — then when.
-      items.push(sentence(v, c), h('span', { class: 'tl-sep', 'aria-hidden': 'true', text: '·' }));
+      // How it repeats first ("Repeat [Once ▾]", studio-no-sentence; it was studio-motion-line's sentence) — then when.
+      items.push(...repeatItems(c), h('span', { class: 'tl-sep', 'aria-hidden': 'true', text: '·' }));
       items.push(h('span', { class: 'tl-lbl tl-when-lbl', text: t('tl.whenAsk') }));
       items.push(startsMenu('tl-starts', t('tl.starts'), w, v, 0, true), ...whenField(w, v, (x) => sendWhen(v, 0, x)));
       // The other ways it starts (studio-timeline-2's "or") live in Fine-tune; the line says there are some ("+1").
@@ -10907,7 +10907,7 @@ function createTimelinePanel(view                    , act              ) {
     const kind = u?.times ? 'times' : u?.cue ? 'cue' : 'never';
     // fix-0140 (② of the first-run check, 2026-10-23): "Loop & End [Once] [Never]" read as "once, but it never stops?"
     // to a first-time maker. A motion that plays once already ends by itself, so the Stops menu is only for one that
-    // goes on (Repeats / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
+    // goes on (Loop / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
     // what it has stays visible and can be set back to Never.
     // fix-0141 (D10 of the first-run check, 2026-10-24): "When signaled" (the Japanese says "a signal") is the game's code speaking —
     // a cue only the AI can wire up — and a first-time maker could pick it and get a motion that never stops for a reason
@@ -11234,7 +11234,11 @@ function createTimelinePanel(view                    , act              ) {
   const rowOf = (key        ) => view().rows.find((r) => r.key === key);
 
   // ----- presses on the track -----
-  let drag                                                                                                                               = null;
+  // `per` (keys): seconds per px when the press began. A drag can change the length (the last point sets it,
+  // timeline-model.ts moveKeys) and with it the ruler's scale; measuring the move in the old scale keeps the point
+  // from running away under the pointer as the ruler grows or shrinks.
+  let drag                                                                                                                                             = null;
+  const dtOf = (d                              , x        ) => (d.per !== undefined ? (x - d.x0) * d.per : tOf(x) - tOf(d.x0));
   track.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     act.touched();
@@ -11258,7 +11262,7 @@ function createTimelinePanel(view                    , act              ) {
       const on = refs.every((x) => v.picked(x));
       // A press on a picked key keeps the picking (so several drag together); Shift on a picked key unpicks it on release.
       if (!on) act.pickKeys(refs, add);
-      drag = { kind: 'keys', x0: x, y0: y, id: e.pointerId, moved: false, add: add && on, refs };
+      drag = { kind: 'keys', x0: x, y0: y, id: e.pointerId, moved: false, add: add && on, refs, per: span() / Math.max(1, track.clientWidth - pad * 2) };
       return;
     }
     drag = { kind: 'box', x0: x, y0: y, id: e.pointerId, moved: false, add };
@@ -11270,7 +11274,7 @@ function createTimelinePanel(view                    , act              ) {
     if (!drag.moved && Math.hypot(x - drag.x0, y - drag.y0) < 3) return;
     drag.moved = true;
     if (drag.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), false);
-    else if (drag.kind === 'keys') act.drag(tOf(x) - tOf(drag.x0), false, e.altKey);
+    else if (drag.kind === 'keys') act.drag(dtOf(drag, x), false, e.altKey);
     else {
       const [l, r] = [Math.min(x, drag.x0), Math.max(x, drag.x0)];
       const [tp, bt] = [Math.min(y, drag.y0), Math.max(y, drag.y0)];
@@ -11287,7 +11291,7 @@ function createTimelinePanel(view                    , act              ) {
     const y = e.clientY - lanes.getBoundingClientRect().top;
     if (d.kind === 'scrub') act.scrub(Math.max(0, tOf(x)), true);
     else if (d.kind === 'keys') {
-      if (d.moved) act.drag(cancel ? 0 : tOf(x) - tOf(d.x0), true, e.altKey);
+      if (d.moved) act.drag(cancel ? 0 : dtOf(d, x), true, e.altKey);
       else if (d.add && d.refs) {
         // Shift-press on a picked key without moving: unpick it (the keys it stood for, kept from the press).
         const off = d.refs;
@@ -11357,7 +11361,7 @@ function createTimelinePanel(view                    , act              ) {
       ruler.append(h('span', { class: `tl-tick${whole ? '' : ' half'}`, style: `left:${xOf(x)}px`, text: whole ? `${Math.round(x)}s` : '' }));
     }
     const c = v.clip;
-    // Past the picked clip's end: shaded (keys cannot go there; its length is the field in the head).
+    // Past the picked clip's end: shaded (drag its last point there and the motion gets longer — timeline-model.ts moveKeys).
     if (c && c.len < s) lanes.append(h('div', { class: 'tl-after', style: `left:${xOf(c.len)}px` }));
   }
 
@@ -11401,7 +11405,7 @@ function createTimelinePanel(view                    , act              ) {
     // there are two (studio-motion-focus: a scene of one is the object's own motion, nothing to say).
     rulerPad.replaceChildren(...(v.clip && v.scene && v.scene.n > 1 ? [h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) })] : []));
     // A phone (studio-fix-0142, ⑬ of the fourth first-run check, 2026-10-24): ⌄ goes to the names column's head, over
-    // the rows (the right of "Linked · 2"). In the head it had a row of its own — the sentence fills the first row and
+    // the rows (the right of "Linked · 2"). In the head it had a row of its own — ▶ and Repeat fill the first row and
     // "when", Fine-tune and ✦ AI the second, at 44 px a finger each — which made a plate already 3/4 of the screen
     // taller. The side window keeps it in the head (there it fits on the first row). Moved after the measure above.
     const shell = el.closest             ('.shell');
@@ -13743,6 +13747,13 @@ const en = {
   'undo.motionNamed': 'change {name}',
   // The card's Motion row (motion-gui, 2026-10-22; since studio-timeline: timeline-wire.ts cardRow): how an object moves by itself.
   'motion.label': 'Motion',
+  // studio-motion-delete (2026-10-24): the card's Motion row menu (right-click / ⋯). Glossary 04-words: Remove from / Delete.
+  'motion.menu.detach': 'Remove from this object',
+  'motion.menu.delete': 'Delete motion',
+  'motion.delete.others': 'It also comes off {n} other objects',
+  'motion.delete.other1': 'It also comes off 1 other object',
+  'motion.removed': 'Removed “{name}”. It stays in the Library',
+  'motion.deleted': 'Deleted “{name}”. {key} brings it back',
   // A new motion's first name (studio-words-plan, 2026-10-23): it was "Motion" in both languages — the object's name
   // says whose it is (the word list, checked with Gemini on 10-23). Names already saved stay as they are.
   'motion.firstName': '{name}’s motion',
@@ -13798,10 +13809,6 @@ const en = {
   'hold.gameStart': 'Your game moves this while playing. Where you put it is where it starts; the game moves it on from there.',
   'tl.when.first': 'Pick a later time on the ruler, then move {name} there: that makes its motion',
   'tl.whenAsk': 'When does it move?',
-  // studio-motion-line (2026-10-23): the line's sentence — {name}, {len} ([1 s ▾]) and {repeat} ([Once ▾]) in this language's order.
-  'tl.line': '{name} moves {repeat} in {len}',
-  'tl.lenOpt': '{s} s',
-  'tl.lenOther': 'Other length…',
   'tl.on': 'On',
   'tl.off': 'Off',
   // The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender": keys on a time line).
@@ -13814,7 +13821,6 @@ const en = {
   'tl.auto': 'Rec motion',
   'tl.autoOn': 'Rec motion is on: moving, turning or resizing something adds a point at this time',
   'tl.autoOff': 'Rec motion is off: moving something moves where it stands, and its motion comes along',
-  'tl.len': 'Length in seconds',
   'tl.clip': 'Motion',
   'tl.noClip': 'No motion yet',
   'tl.rename': 'Rename',
@@ -13822,12 +13828,9 @@ const en = {
   'tl.delete': 'Take it off this object',
   'tl.repeat': 'Repeat',
   'tl.repeat.once': 'Once',
-  'tl.repeat.loop': 'Repeats',
+  // studio-no-sentence (2026-10-24): "Loop" — the word a hands-on try used ("loop and back and forth I get"); it was "Repeats".
+  'tl.repeat.loop': 'Loop',
   'tl.repeat.pingpong': 'Back and forth',
-  // fix-0140 ⑦: the same three inside the line's sentence, lower case ("gate moves once in 2 s"); the labels above stay for Loop & End.
-  'tl.repeatLine.once': 'once',
-  'tl.repeatLine.loop': 'on repeat',
-  'tl.repeatLine.pingpong': 'back and forth',
   'tl.ease': 'Pace',
   'tl.easeTip': 'Pace: how the picked points go on to the next one',
   'tl.ease.linear': 'Steady',
@@ -14602,6 +14605,12 @@ const ja                               = {
   // Right after the motion's name, no space (the Japanese reads as one phrase).
   'undo.motionNamed': '{name}を変更',
   'motion.label': '動き',
+  'motion.menu.detach': 'この物から外す',
+  'motion.menu.delete': '動きを削除',
+  'motion.delete.others': 'ほかの {n} つの物からも外れます',
+  'motion.delete.other1': 'ほかの 1 つの物からも外れます',
+  'motion.removed': '「{name}」を外しました。ライブラリに残っています',
+  'motion.deleted': '「{name}」を削除しました。{key} で戻せます',
   'motion.firstName': '{name} の動き',
   'motion.none': 'なし',
   'motion.make': '動きを作る',
@@ -14639,9 +14648,6 @@ const ja                               = {
   'hold.gameStart': 'ゲームが動かしている物です。置いた所がスタート位置になり、遊ぶとそこからゲームが動かします。',
   'tl.when.first': '目盛りで先の時刻を選んで、{name} をそこへ動かすと、動きができます',
   'tl.whenAsk': 'いつ動く？',
-  'tl.line': '{name} が {len} で {repeat} 動く',
-  'tl.lenOpt': '{s} 秒',
-  'tl.lenOther': 'ほかの長さ…',
   'tl.on': 'オン',
   'tl.off': 'オフ',
   'lib.motion.on': '{names} に',
@@ -14664,7 +14670,6 @@ const ja                               = {
   'tl.auto': '動きを記録',
   'tl.autoOn': '動きを記録 オン: 物を動かす・回す・大きさを変えると、この時刻にポイントが打たれる',
   'tl.autoOff': '動きを記録 オフ: 物を動かすと位置が変わり、動きもついてくる',
-  'tl.len': '長さ（秒）',
   'tl.clip': '動き',
   'tl.noClip': 'まだ動きはない',
   'tl.rename': '名前を変える',
@@ -14672,11 +14677,8 @@ const ja                               = {
   'tl.delete': 'この物から外す',
   'tl.repeat': 'くり返し',
   'tl.repeat.once': '1 回だけ',
-  'tl.repeat.loop': 'くり返す',
+  'tl.repeat.loop': 'ループ',
   'tl.repeat.pingpong': '行って戻る',
-  'tl.repeatLine.once': '1 回だけ',
-  'tl.repeatLine.loop': 'くり返す',
-  'tl.repeatLine.pingpong': '行って戻る',
   'tl.ease': '進み方',
   'tl.easeTip': '進み方：選んだポイントから次のポイントへの速さの付き方',
   'tl.ease.linear': 'ずっと同じ速さ',
@@ -18333,8 +18335,9 @@ __defs[51] = function (__exports) {
 // second row has every "when" with its field (seconds, key, area, cue…); a second, smaller copy here would drift.
 // Split out of timeline-wire.ts (970 lines) with this change; it only reads the timeline's state through `MotionCardDeps`.
                                                                 
+                                                   
 const { h } = __require(16);
-const { icon } = __require(21);
+const { icon, setButton } = __require(21);
 
                                  
                                                                  
@@ -18358,6 +18361,19 @@ const { icon } = __require(21);
                  
                                                                                                                             
                
+     
+                                                                                                                       
+                                                                                                              
+     
+                                                                                
+                                                                                                       
+                              
+                                                                                              
+                                
+                                                 
+                           
+                                                                                                   
+                   
  
 
 function motionCardRow(d                )                {
@@ -18383,10 +18399,65 @@ function motionCardRow(d                )                {
   const btn = h('button', { type: 'button', class: `motion-line${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline-line' },
     onclick: () => (open ? undefined : d.toggle()) },
   h('span', { class: 'motion-line-text', text: `${c.name}${more}` }), icon('chevronRight'));
-  return [label, h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-row' } }, btn)];
+  const row = h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-row' } }, btn);
+  if (d.menu) {
+    // studio-motion-delete (a request, 10/24: "is there a way to delete a motion?" — the answer was two places deep: the
+    // timeline's ⋯ Fine-tune → Motion → "Remove from this object", and the Library's motion → Delete). The row the card
+    // already has gets both, where the object is: a right-click on the row (as everywhere else in the editor) and a ⋯ at
+    // its right end (the same ⋯ as the card's head — for a trackpad without a right-click, and so it can be seen).
+    // It acts on the motion the row names (the shown one; "+1" others stay — pick another on the timeline for those).
+    // WHY a menu and not two buttons in the row: the row is one line on a 272 px card and already cuts long names.
+    const more = h('button', { type: 'button', class: 'icon-btn motion-more', dataset: { action: 'motion-more', part: 'motion-more' }, 'aria-haspopup': 'menu',
+      onclick: () => d.menu (more, motionMenu(d, c, more)) });
+    // Its name is what it holds (the card head's ⋯ does the same: no "More" word, glossary).
+    setButton(more, 'more', motionMenu(d, c, more).filter((e)                                                  => 'label' in e).map((e) => e.label).join(' · '), false);
+    row.append(more);
+    // main.ts's document listener (capture, runs first) only stops the browser's own menu for this row
+    // ([data-part="motion-row"]) and opens nothing; this one opens the motion's.
+    row.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const keyboard = !e.clientX && !e.clientY;
+      const r = row.getBoundingClientRect();
+      const at = keyboard ? { x: r.left + 12, y: r.bottom } : { x: e.clientX, y: e.clientY };
+      d.menu (at, motionMenu(d, c, at));
+    });
+  }
+  return [label, row];
+}
+
+/**
+ * The Motion row's menu (studio-motion-delete, 2026-10-24). Two rows, the glossary's two words (04-words: Remove from / Delete):
+ *   Remove from this object   — this object only; the motion stays in the Library (and on the other objects)
+ *   Delete motion  (red)      — the Library's motion goes: it comes off every object that has it
+ * Both one undo step (⌘Z). Delete asks first only when it would take the motion off OTHER objects too ("It also comes
+ * off 2 other objects" + Delete again, in the same menu plate — Esc / a press outside is "no"); on this object alone it
+ * just goes and the ask bar says "⌘Z brings it back" (a question every time would teach people to press through it).
+ * A motion of this object only (no Library motion behind it: `use` missing, an old file) has only "Remove".
+ */
+function motionMenu(d                , c            , at                                        )              {
+  const lib = c.use ?? c.name;
+  const inLib = !!d.remove && d.library().some((l) => l.name === lib);
+  const out              = [{ id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {
+    d.detach(c.name);
+    d.say?.(d.t('motion.removed', { name: c.name }));
+  } }];
+  if (!inLib) return out;
+  const gone = () => {
+    d.remove (lib);
+    d.say?.(d.t('motion.deleted', { name: lib, key: d.undoKey ?? '⌘Z' }));
+  };
+  out.push({ sep: true }, { id: 'motion-delete', label: d.t('motion.menu.delete'), danger: true, run: () => {
+    const others = Math.max(0, (d.usedBy?.(lib) ?? 1) - 1);
+    if (!others || !d.menu) return gone();
+    // The ask, where this menu was (under the ⋯, or at the right-click's point): one sentence and the same red row.
+    d.menu(at, [{ note: d.t(others === 1 ? 'motion.delete.other1' : 'motion.delete.others', { n: others }) }, { id: 'motion-delete-yes', label: d.t('motion.menu.delete'), danger: true, run: gone }]);
+  } });
+  return out;
 }
 
 __def(__exports, "motionCardRow", () => motionCardRow);
+__def(__exports, "motionMenu", () => motionMenu);
 };
 __defs[52] = function (__exports) {
 'use strict';
@@ -19927,8 +19998,13 @@ function createTimeline(d              , makePanel                             =
      * The card's Motion row: this object's motions (each with when it starts), the Library's other motions to attach
      * (studio-motion-triggers), detach the shown one; and the button that opens the timeline.
      */
-    cardRow(key        )                {
+    cardRow(key        , more                                                   = {})                {
       return motionCardRow({
+        ...more,
+        // studio-motion-delete: the row's menu deletes the Library motion (every object, one undo step) and asks first
+        // when other objects have it (usage = this level's objects; other levels lose it too, as the Library's Delete).
+        remove: (name) => deleteLib(name),
+        usedBy: (name) => usage(name).length,
         t: d.t,
         clips: () => clipsOf(key),
         shown: () => clipOf(key),
@@ -20933,6 +21009,12 @@ const { icon } = __require(21);
                                                                                                      
      
                
+     
+                                                                                                                             
+                                                                                                                        
+                                                                                            
+     
+                   
               
  
 /**
@@ -20960,6 +21042,12 @@ const { icon } = __require(21);
                  
                                                                                                             
                  
+     
+                                                                                                                        
+                                                                                                                    
+                                                                                                             
+     
+                       
  
 
 /**
@@ -20993,6 +21081,7 @@ function createContextMenu(d                 ) {
   // Opened at this time (performance.now): a long press opens it before the finger lifts, and the browser may then
   // fire a click / contextmenu for the same press on what is under the finger.
   let openedAt = 0;
+  let holdDelete = false;
 
   const enabled = () => items.map((x, i) => (x.item.disabled ? -1 : i)).filter((i) => i >= 0);
   const highlight = (i        ) => {
@@ -21030,7 +21119,7 @@ function createContextMenu(d                 ) {
         el.append(h('div', { class: 'ctx-note', role: 'presentation', text: e.note }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
+      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
         h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
@@ -21061,6 +21150,7 @@ function createContextMenu(d                 ) {
     el.style.transformOrigin = `${x < p.left + r.width / 2 ? 'left' : 'right'} ${y < p.top + r.height / 2 ? 'top' : 'bottom'}`;
     el.style.visibility = '';
     open = true;
+    holdDelete = !!o.holdDelete;
     openedAt = performance.now();
     if (o.keyboard) move(1);
     else highlight(-1);
@@ -21098,7 +21188,7 @@ function createContextMenu(d                 ) {
         hide(false);
         x.item.run();
       }
-    } else if (k === 'Escape' || k === 'Tab') hide(true);
+    } else if (k === 'Escape' || k === 'Tab' || (holdDelete && (k === 'Delete' || k === 'Backspace'))) hide(true);
     else {
       // Any other key: the menu goes, the key goes on to the editor (window keydown in main.ts).
       hide(true);
@@ -24395,7 +24485,20 @@ function start(host            ) {
     },
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
-    motion: (k) => timeline.cardRow(k),
+    // studio-motion-delete (2026-10-24): the Motion row's right-click / ⋯ menu — the ⋯'s plate like cardMenu's (under it,
+    // right edges together), a right-click's at the pointer; it holds Delete back (that key deletes the OBJECT).
+    motion: (k) => timeline.cardRow(k, {
+      menu: (at, entries) => {
+        const o = { place: 'card-motion', label: t('motion.label'), holdDelete: true };
+        if (!(at instanceof HTMLElement)) return ctxMenu.show(entries, at.x, at.y, o);
+        const r = at.getBoundingClientRect();
+        ctxMenu.show(entries, r.right, r.bottom + 4, o);
+        const m = ctxMenu.el.getBoundingClientRect();
+        ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+      },
+      say: (text) => showToast(text),
+      undoKey: keyOf('undo', isMac()),
+    }),
   });
 
   // ----- the objects in the Library (library-objects.ts, "one Library" 2026-10-18) -----
@@ -25027,6 +25130,8 @@ function start(host            ) {
     if (t?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
     e.preventDefault();
     cancelPress();
+    // The card's Motion row opens its own menu (motion-card.ts, studio-motion-delete): not the pick's over the game.
+    if (t?.closest?.('[data-part="motion-row"]')) return;
     // The same press's contextmenu after a long press opened the menu already (Android sends one).
     if (ctxMenu.justOpened() || ctxMenu.el.contains(t)) return;
     // Shift+F10 / the menu key: no pointer (0, 0 or no pointer type); the menu opens at the element.

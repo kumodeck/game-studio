@@ -2,7 +2,7 @@
 title: Motion
 nav: Motion
 order: 4
-written-for: 0.1.34
+written-for: 0.1.42
 description: Make things move with the timeline, choose when a motion starts and stops, and reuse motions from the Library.
 ---
 
@@ -22,19 +22,25 @@ There are two ways in, and no list of ready-made kinds: you make a motion by sho
 - Keep going: each time you move, turn or resize it again, a point is added one second after the last, and that second plays. **Done** (or <kbd>Esc</kbd>) stops adding. <kbd>⌘</kbd><kbd>Z</kbd> takes one step back at a time.
 - **Use a saved motion**: choose one you already made (only when the Library has some).
 
-![Made by showing it: the line “▶ Preview  gate moves Once in 1 s · When does it move?”, and the timeline under it with two points](media/motion-make.webp)
+![Made by showing it: the line “▶ Preview  Repeat Once · When does it move?”, and the timeline under it with two points](media/motion-make.webp)
 
-After **Done**, the timeline’s top line says what the motion does, in one sentence you can change:
+After **Done**, the timeline’s top line is where you change how it repeats and when it moves:
 
-**▶ Preview**  gate moves **[once ▾]** in **[1 s ▾]** · When does it move? **[When game starts ▾]**
+**▶ Preview** · Repeat **[Once ▾]** · When does it move? **[When game starts ▾]**
 
-- **[1 s ▾]** is how long it takes. Choose 2 s and the whole motion takes 2 s (its points spread out with it). **Other length…** lets you type one.
-- **[once ▾]** is **once**, **on repeat** or **back and forth**.
+- **Repeat** is **Once**, **Loop** or **Back and forth**.
 - **When does it move?** is [when it starts](#when-it-starts).
+- **How long** it takes is where its last point is on the timeline: the seconds are on the ruler, and only there. Drag the last point right to make it longer, left to make it shorter (the ruler has a little shaded room past the end for that).
 
-The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line with the motion’s name, like **Motion  ship’s motion ›**; press it to open the motion on the timeline, where the line’s sentence says when it plays. A thing with no motion has no such line: the strip’s Motion button is the way in. To change the timing of one point, drag it along the ruler.
+The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line with the motion’s name, like **Motion  ship’s motion ›**; press it to open the motion on the timeline, where the top line says when it plays. A thing with no motion has no such line: the strip’s Motion button is the way in. To change the timing of one point, drag it along the ruler.
 
 Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
+
+## Remove or delete a motion
+
+Right-click the **Motion** line on the card, or press the **⋯** at its right end.
+- **Remove from this object**: only this object stops moving; the motion stays in the Library (and on other objects).
+- **Delete motion** (red): the motion is gone from the Library and from every object. If other objects have it, one line asks first (**It also comes off 2 other objects**). Both are undone with <kbd>⌘</kbd><kbd>Z</kbd>. The <kbd>Delete</kbd> key still deletes the selected object, never its motion.
 
 ## The timeline
 
@@ -42,9 +48,9 @@ Select something with a motion, then press its **Motion** line on the card or th
 
 ![The timeline under the game, with the boat’s points and its path](media/timeline.webp)
 
-Its top is one line: **▶ Preview** (or <kbd>Space</kbd>), the sentence (*gate moves [once ▾] in [1 s ▾]*), **When does it move?**, then **Fine-tune**, **✦ Ask Claude** (your AI’s name) and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows: ▶ is its icon there). Under it is always the timeline itself: the ruler, the rows and their points. The motion’s name is at the left of its row, next to the object’s.
+Its top is one line: **▶ Preview** (or <kbd>Space</kbd>), **Repeat** (*[Once ▾]*), **When does it move?**, then **Fine-tune**, **✦ Ask Claude** (your AI’s name) and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows: ▶ is its icon there). Under it is always the timeline itself: the ruler, the rows and their points. The motion’s name is at the left of its row, next to the object’s.
 
-- The **ruler** is time. Drag on it to see that moment; the red line shows it in seconds. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
+- The **ruler** is time. Drag on it to see that moment; the red line shows it in seconds. The motion lasts up to its last point; the ruler is shaded after that. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
 - The rows are the **selected object** (with several selected, each of them), and the objects you [link](#linking-several-things-in-one-motion) to it. Open a row to see **Position**, **Angle** and **Size** on their own rows.
 - **Fine-tune** opens the finer settings beside the rows, in the timeline itself: **● Rec motion**, **Motion** (which of this object’s motions, **+ Make a motion**, **Rename**, **Take it off this object**), **Loop & End**, **Trigger** (other ways to start), **Try**, and **Moving objects** (**+ Link an object** and **Show all moving objects**: every moving object’s row; **Show only the selected one** goes back). Once you open it, the timeline opens with it open next time too; press **Fine-tune** again to close it.
 
@@ -87,7 +93,7 @@ Select points and a **1 selected** row shows under the top line. **Pace** choose
 
 The same row has **Path** (with position points picked: **Smooth curve** or **Sharp corner**) and **Delete**.
 
-**[Once ▾]** in the top line’s sentence (also under **Loop & End** in **Fine-tune**) sets what happens at the end: **Once**, **Repeats**, or **Back and forth**.
+**Repeat [Once ▾]** in the top line (also under **Loop & End** in **Fine-tune**) sets what happens at the end: **Once**, **Loop**, or **Back and forth**.
 
 ## When it starts
 
@@ -112,7 +118,7 @@ In **Fine-tune**, **Trigger**’s **+ Another trigger** adds another way to star
 
 ![Starts: a key is pressed, or the player enters an area — the area with its corners](media/motion-or.webp)
 
-For a motion that **Repeats** or goes **Back and forth**, **Stops** (in **Fine-tune**, under **Loop & End**) chooses when it ends (a motion that plays **Once** ends by itself, so it has no Stops): **Never**, **After some rounds**, or **When signaled**. Then it **Stays there** or **Goes back**.
+For a motion set to **Loop** or **Back and forth**, **Stops** (in **Fine-tune**, under **Loop & End**) chooses when it ends (a motion that plays **Once** ends by itself, so it has no Stops): **Never**, **After some rounds**, or **When signaled**. Then it **Stays there** or **Goes back**.
 
 ## Try it
 

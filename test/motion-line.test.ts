@@ -14,7 +14,7 @@ import { MotionLibrary } from '../src/shell/motion-library.ts';
 import { MotionStore } from '../src/shell/motion-model.ts';
 import { UndoStack, type Change } from '../src/shell/undo.ts';
 import { createTimeline } from '../src/shell/timeline-wire.ts';
-import { libCounted, stretchClip } from '../src/shell/timeline-model.ts';
+import { libCounted, moveKeys, stretchClip } from '../src/shell/timeline-model.ts';
 import type { TimelineActs, TimelineView } from '../src/shell/timeline-panel.ts';
 import { translate } from '../src/shell/i18n.ts';
 import type { MotionClip, Pose } from '../src/contract.ts';
@@ -96,18 +96,35 @@ test('"[1 s ▾]" → 2 s: the motion takes 2 s, its points scaled; a scene keep
 });
 
 // ----- 3. the words -----
-test('the sentence, in both languages: {name} {len} {repeat} in each one\'s order; the first-time steps are gone', () => {
-  const v = { name: 'gate', len: '[1 s]', repeat: '[Once]' };
-  assert.equal(translate('en', 'tl.line', v), 'gate moves [Once] in [1 s]');
-  assert.equal(translate('ja', 'tl.line', v), 'gate が [1 s] で [Once] 動く');
-  assert.equal(translate('ja', 'tl.lenOpt', { s: 1 }), '1 秒');
-  assert.equal(translate('en', 'tl.lenOpt', { s: 1 }), '1 s');
-  assert.equal(translate('ja', 'tl.more'), '細かく調整');
-  assert.equal(translate('ja', 'tl.play'), '見る');
+// studio-no-sentence (2026-10-24): the sentence "gate moves [Once ▾] in [1 s ▾]" is gone (a hands-on try: "I can't make sense
+// of it"; the seconds were on the ruler too, "which one is right?"). The line says "Repeat [Once ▾]"; "Loop", not "Repeats".
+test('the words: no sentence and no seconds menu; "Repeat" names the menu, Once / Loop / Back and forth; the first-time steps are gone', () => {
   for (const lang of ['en', 'ja'] as const) {
-    for (const k of ['tl.lenOther', 'tl.on', 'tl.off']) assert.notEqual(translate(lang, k), k, `${lang}: ${k}`);
+    for (const k of ['tl.line', 'tl.lenOpt', 'tl.lenOther', 'tl.len', 'tl.repeatLine.once', 'tl.repeatLine.loop', 'tl.repeatLine.pingpong']) assert.equal(translate(lang, k), k, `${lang}: ${k} is gone`);
+    for (const k of ['tl.on', 'tl.off']) assert.notEqual(translate(lang, k), k, `${lang}: ${k}`);
     for (const k of ['tl.coach.title', 'tl.coach.1', 'tl.coach.ok']) assert.equal(translate(lang, k), k, `${lang}: ${k} is gone`);
   }
+  assert.deepEqual(['tl.repeat', 'tl.repeat.once', 'tl.repeat.loop', 'tl.repeat.pingpong'].map((k) => translate('ja', k)), ['くり返し', '1 回だけ', 'ループ', '行って戻る']);
+  assert.deepEqual(['tl.repeat', 'tl.repeat.once', 'tl.repeat.loop', 'tl.repeat.pingpong'].map((k) => translate('en', k)), ['Repeat', 'Once', 'Loop', 'Back and forth']);
+  assert.equal(translate('ja', 'tl.more'), '細かく調整');
+  assert.equal(translate('ja', 'tl.play'), '見る');
+});
+
+test('the length follows the last point: dragged later, the motion is longer; earlier, shorter; a pause after it moves along; a scene only grows', () => {
+  const c: MotionClip = { name: 'm', len: 2, repeat: 'once', keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 1, v: [1, 0, 0] }, { t: 2, v: [2, 0, 0] }] } };
+  const last = (t: number) => [{ key: 'a', ch: 'p' as const, t }];
+  assert.equal(moveKeys(c, 'a', last(2), 1.5).clip.len, 3.5, 'later: longer (it used to stop at the end)');
+  assert.equal(moveKeys(c, 'a', last(2), -0.5).clip.len, 1.5, 'earlier: shorter');
+  assert.equal(moveKeys(c, 'a', last(1), 0.5).clip.len, 2, 'a middle point: the length stays');
+  assert.equal(moveKeys({ ...c, len: 3 }, 'a', last(2), 1).clip.len, 4, 'a second of pause after the last point stays a second');
+  assert.equal(moveKeys({ ...c, scene: true }, 'a', last(2), -1).clip.len, 2, 'a scene (other objects share its length): not shorter');
+  assert.equal(moveKeys({ ...c, scene: true }, 'a', last(2), 1).clip.len, 3, 'a scene: longer');
+});
+
+test('the line\'s code: "Repeat" always beside its menu, no seconds on the line or in Fine-tune', () => {
+  const panel = code('timeline-panel.ts');
+  assert.ok(!panel.includes("'tl-len'") && !panel.includes("'tl.len") && !panel.includes("'tl.line'"), 'no seconds menu and no sentence');
+  assert.match(panel, /h\('span', \{ class: 'tl-rep', dataset: \{ part: 'tl-rep' \} \},\s*h\('span', \{ class: 'tl-rep-lbl', text: t\('tl.repeat'\) \}\),\s*select\('tl-repeat-line'/, 'the word and the menu are one piece');
 });
 
 // ----- 4. the plate's code -----
