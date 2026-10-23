@@ -90,8 +90,9 @@ test('the words: F2 is Rename in the one key table; ✦ rows say "Ask AI to …"
   assert.deepEqual(KEYMAP.find((k) => k.id === 'rename')?.keys, ['F2']);
   for (const k of ['ctx.askObject', 'ctx.askMany', 'ctx.askGame', 'ctx.askMotion', 'ctx.nameAsk', 'ctx.nameAskMany', 'lib.askAboutIt', 'lib.addFileAi']) {
     const en = translate('en', k, { name: 'ship', n: 2 }), ja = translate('ja', k, { name: 'ship', n: 2 });
-    assert.match(en, /^Ask AI .*…$/, `${k}: ${en}`);
-    assert.match(ja, /AI に頼む…$/, `${k}: ${ja}`);
+    // The AI by its name (studio-words-plan: {ai}; no AI known in a test = "your AI").
+    assert.match(en, /^Ask your AI .*…$/, `${k}: ${en}`);
+    assert.match(ja, /あなたの AI に頼む…$/, `${k}: ${ja}`);
   }
   // A plain row never promises a draft: Rename has no "…" any more (it is a field, not a request).
   assert.equal(translate('en', 'ctx.rename'), 'Rename');
@@ -101,5 +102,5 @@ test('the words: F2 is Rename in the one key table; ✦ rows say "Ask AI to …"
   }
   // level-menu2 (2026-10-23): the line after New level / Duplicate is one short sentence with the undo key.
   assert.equal(translate('en', 'level.made', { name: 'Level 2', key: '⌘Z' }), 'Level 2 made. ⌘Z to undo.');
-  assert.equal(translate('ja', 'level.made', { name: 'レベル 2', key: '⌘Z' }), 'レベル 2 を作りました。⌘Z で取り消し');
+  assert.equal(translate('ja', 'level.made', { name: 'レベル 2', key: '⌘Z' }), 'レベル 2 を作りました。⌘Z で元に戻す');
 });

@@ -54,7 +54,7 @@ import { createMotionTool } from './motion-tool.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
 import { h, safeImageSrc } from './dom.ts';
-import { detectLang, setExtraText, translate } from './i18n.ts';
+import { detectLang, setAiName, setExtraText, translate } from './i18n.ts';
 import { NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
 import { statusCovers } from '../schema/handoff.mjs';
 import { aiBusy, aiPhase, moreIn, reloadDecision, type AiPhase } from './ai-flow.ts';
@@ -1073,14 +1073,9 @@ export function start(host: StudioHost) {
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
     ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
     answering: () => answering(),
-    // The whole-game placeholder by presence (ai-presence.ts): the AI's own name when it is there, "kept as a note"
-    // when the editor isn't sure (the half of the presence words that says nothing is lost).
-    askGame: () => {
-      if (host.offline) return t('ask.game');
-      const p = currentPresence();
-      const v = aiVars();
-      return p === 'away' || p === 'unsure' ? t('ask.gameKept', v) : aiAgent ? t('ask.gameAi', v) : t('ask.game');
-    },
+    // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
+    // presence words beside the field say that (it was "Write a note for Claude…" when unsure, a second wording).
+    askGame: () => t('ask.game', host.offline ? {} : aiVars()),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
     nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
@@ -2633,6 +2628,8 @@ export function start(host: StudioHost) {
         if (aiWatching) lastWatching = Date.now();
         if (r.seen) aiSeen = r.seen;
         aiAgent = r.agent;
+        // Every string's {ai} (i18n.ts setAiName): the AI's own name once the status says who it is.
+        setAiName(aiNameKey(aiAgent));
         if (r.code !== code) {
           code = r.code;
           codeSince = Date.now();

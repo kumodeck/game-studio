@@ -418,7 +418,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const answer = !!d.answering?.();
     const whole = (noObj && !files.length) || answer;
     const n = (noObj ? 0 : keys.length) + files.length;
-    const ph = answer ? d.t('ask.answer') : whole ? (d.askGame?.() ?? d.t('ask.game')) : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    // One placeholder whatever is picked (studio-words-plan, 2026-10-23): the chip beside it says what the ask is about.
+    const ph = answer ? d.t('ask.answer') : (d.askGame?.() ?? d.t('ask.game'));
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
     // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.

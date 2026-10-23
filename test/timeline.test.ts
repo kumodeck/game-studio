@@ -215,7 +215,7 @@ test('wire: open at 0 s with no motion yet, a move is still a move; after 0 s it
   assert.equal(r.tl.moved('boat', at([1, 0, 0]), false), true);
   assert.equal(r.tl.moved('boat', at([3, 0, -1]), true, at([0, 0, 0])), true);
   const c = r.tl.motionOf('boat')!.clips![0]!;
-  assert.equal(c.name, 'Motion');
+  assert.equal(c.name, 'motion.firstName', 'named after the object (studio-words-plan; this rig’s t() returns the key)');
   assert.deepEqual(whenOf(c), { on: 'start' }, 'the first motion plays at the start');
   assert.deepEqual(c.keys.p, [{ t: 0, v: [0, 0, 0], ease: 'ease' }, { t: 2, v: [3, 0, -1], ease: 'ease' }], 'a key at 0 s of how it stood, and one at 2 s');
   assert.equal(c.keys.r, undefined, 'only what changed is keyed');

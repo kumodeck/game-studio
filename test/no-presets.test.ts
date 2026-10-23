@@ -182,7 +182,7 @@ test('the clip menu offers "+ Make a motion" (the same way) and a scene — no k
   assert.equal(r.tl.state().time, 1);
   r.tl.moved('crate', at(0, 0, 2), true, at(2));
   const cs = r.tl.motionOf('crate')!.clips!;
-  assert.deepEqual(cs.map((c) => c.name), ['Motion', 'Motion 2']);
+  assert.deepEqual(cs.map((c) => c.name), ['motion.firstName', 'motion.firstName 2'], 'named after the object (motion.firstName), then free in the Library');
   assert.deepEqual(Object.keys(cs[1]!.keys), ['p', 's'], 'its own keys: the move back and the size');
   assert.deepEqual(cs[1]!.when, { on: 'say' }, 'a second motion waits');
   // A kind's value from an old page does nothing.

@@ -86,12 +86,13 @@ export const OFF_LINES: Record<Lang, Record<'game' | 'ground' | 'locked' | 'none
     game: {
       move: 'Your game moves this while playing. You choose only where it starts.',
       lift: 'Your game sets its height while playing. You can set the height it starts at.',
-      rotate: 'Your game turns this while playing. Ask AI to change how it turns.',
-      scale: 'Your game sets its size while playing. Ask AI to change it.',
+      rotate: 'Your game turns this while playing. Ask your AI to change how it turns.',
+      scale: 'Your game sets its size while playing. Ask your AI to change it.',
     },
-    ground: { move: 'Held still so it isn’t nudged by mistake. You can unlock it.', lift: 'Held still so it isn’t nudged by mistake. You can unlock it.', rotate: 'Held still so it isn’t nudged by mistake. You can unlock it.', scale: 'Held still so it isn’t nudged by mistake. You can unlock it.' },
-    locked: { move: 'The game’s rules keep this in place. Ask AI to change the rule.', lift: 'The game’s rules keep this in place. Ask AI to change the rule.', rotate: 'The game’s rules keep this in place. Ask AI to change the rule.', scale: 'The game’s rules keep this in place. Ask AI to change the rule.' },
-    none: { move: 'This one can’t be moved here. Ask AI to move it.', lift: 'This one’s height can’t be changed here. Ask AI to change it.', rotate: 'This one can’t be turned here. Ask AI to turn it.', scale: 'This one can’t be resized here. Ask AI to resize it.' },
+    // "Held still" until studio-words-plan (2026-10-23): the glossary's word is Locked / Unlock (hold.free).
+    ground: { move: 'Locked so it isn’t nudged by mistake. You can unlock it.', lift: 'Locked so it isn’t nudged by mistake. You can unlock it.', rotate: 'Locked so it isn’t nudged by mistake. You can unlock it.', scale: 'Locked so it isn’t nudged by mistake. You can unlock it.' },
+    locked: { move: 'The game’s rules keep this in place. Ask your AI to change the rule.', lift: 'The game’s rules keep this in place. Ask your AI to change the rule.', rotate: 'The game’s rules keep this in place. Ask your AI to change the rule.', scale: 'The game’s rules keep this in place. Ask your AI to change the rule.' },
+    none: { move: 'This one can’t be moved here. Ask your AI to move it.', lift: 'This one’s height can’t be changed here. Ask your AI to change it.', rotate: 'This one can’t be turned here. Ask your AI to turn it.', scale: 'This one can’t be resized here. Ask your AI to resize it.' },
   },
   ja: {
     game: {

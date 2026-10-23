@@ -40,7 +40,7 @@ The tool stays chosen until you press <kbd>Esc</kbd> or choose another. A readou
 
 - **Your game moves it** (a runner’s obstacles, a spinning coin): **Move** works as always. Where you put it is where it starts; when the game plays, it moves it on from there.
 - If your game turns or resizes it, **Turn** or **Size** is dimmed and pressing it does nothing. To change that, ask AI in the box below.
-- **A ground, road or sky** is held still so a stray drag can’t move it: **Make movable** on the card unlocks it.
+- **A ground, road or sky** is locked so a stray drag can’t move it: **Unlock** on the card frees it.
 - **Your game’s rules lock it**: the tools are dimmed, and the same line says why.
 
 ![The Turn tool chosen on the lighthouse](media/turn.webp)
@@ -93,15 +93,15 @@ Want a grid, or only 90° turns? Ask your AI: “snap to a 1 m grid.” It sets 
 
 Right-click anything (long-press on a phone) to see what you can do with it right there.
 
-- **On an object:** Rename, Duplicate, Delete, Drop to floor, Show in Library. In 2D: Bring to front and Send to back. Then **✦ Ask AI to change the lighthouse…**.
-- **On an empty spot:** Paste, Select all, Deselect, Show all. Then **✦ Ask AI to change the game…**.
+- **On an object:** Rename, Duplicate, Delete, Put on the ground, Show in Library. In 2D: Bring to front and Send to back. Then **✦ Ask Claude to change the lighthouse…** (your AI’s name).
+- **On an empty spot:** Paste, Select all, Deselect, Show all. Then **✦ Ask Claude to change the game…**.
 
 The menus have two kinds of rows, and you can tell them apart before you press:
 
 - **Plain rows** happen right away in the editor. <kbd>⌘</kbd><kbd>Z</kbd> undoes them. They never type anything in the box at the bottom.
-- **✦ rows** (violet, “Ask AI to …”) only put a request in the box at the bottom, with the cursor there, for you to change or finish. Nothing is sent until you press <kbd>Enter</kbd>.
+- **✦ rows** (violet, “Ask Claude to …”) only put a request in the box at the bottom, with the cursor there, for you to change or finish. Nothing is sent until you press <kbd>Enter</kbd>.
 
-**Rename** (or <kbd>F2</kbd>) turns the name on the object’s card into a text field. <kbd>Enter</kbd> keeps the new name, <kbd>Esc</kbd> cancels. The new name shows everywhere at once, and when you save, your AI renames the object in the code too. An object without a name in the code has **✦ Ask AI to name it…** instead.
+**Rename** (or <kbd>F2</kbd>) turns the name on the object’s card into a text field. <kbd>Enter</kbd> keeps the new name, <kbd>Esc</kbd> cancels. The new name shows everywhere at once, and when you save, your AI renames the object in the code too. An object without a name in the code has **✦ Ask Claude to name it…** instead.
 
 ![The right-click menu on the lighthouse](media/right-click.webp)
 
@@ -128,9 +128,9 @@ Switch from **Scene** to **Library** on the left to see everything your game is 
 
 Click a tile to see its detail: which objects use a file, which files are unused or missing.
 
-- **Add to scene** on an object puts a duplicate where you’re looking. A file needs new code to become an object, so its button is **✦ Ask AI to add it to the scene…**: the request goes in the box at the bottom, and nothing is sent until you press <kbd>Enter</kbd>.
-- **Replace…** swaps a file for another. **Add files** brings new ones in.
-- **Show in game** goes back to the Scene with it selected.
+- **Put in the scene** on an object puts a duplicate where you’re looking. A file needs new code to become an object, so its button is **✦ Ask Claude to put it in the scene…**: the request goes in the box at the bottom, and nothing is sent until you press <kbd>Enter</kbd>.
+- **Replace…** swaps a file for another. **Add assets** brings new ones in.
+- **Show in the scene** goes back to the Scene with it selected.
 - Select a tile and type in the box at the bottom to ask your AI about it.
 
 ![An object’s detail in the Library](media/library-object.webp)

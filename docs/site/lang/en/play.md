@@ -49,8 +49,8 @@ While paused, press **Move** (or <kbd>M</kbd>). Now you can select and drag thin
 
 A thing you move this way is **Only in this play**: it’s gone the next time the game opens. To keep it:
 
-- **Put in layout** makes it part of your layout, just like a move in Edit. It counts on **Save · N**.
-- **Put back** returns it to where it was at the pause.
+- **Save new position** makes it the object’s place, just like a move in Edit. It counts on **Save · N**.
+- **Revert** returns it to where it was at the pause.
 
 Some things can’t stay: if the game moves something itself, the move is **Just for this moment**.
 

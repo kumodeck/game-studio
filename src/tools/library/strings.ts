@@ -4,7 +4,8 @@
 import type { Lang } from '../../contract.ts';
 
 const en = {
-  title: 'Assets',
+  // The Library (studio-words-plan, 2026-10-23: one name for the shelf — it said Assets here, Library in the top bar).
+  title: 'Library',
   search: 'Search by name',
   badgeAll: 'Any status',
   badge_used: 'Used',
@@ -19,8 +20,8 @@ const en = {
   empty: 'No files match.',
   loading: 'Reading the folder…',
   // The folder was read and has no assets at all (was stuck on "Reading the folder…", 2026-10-17).
-  noFilesYet: 'No assets yet. Drop files here or click Add files.',
-  noFilesYetAi: 'No assets yet. Drop files here, click Add files, or Make with AI.',
+  noFilesYet: 'No assets yet. Drop files here or click Add assets.',
+  noFilesYetAi: 'No assets yet. Drop files here, click Add assets, or Make with AI.',
   // Reading the folder failed or got no answer: say so and offer to read again, instead of
   // "Reading the folder…" forever (play test 2026-10-17: "the assets don't show up").
   readFailed: 'Couldn’t read the folder ({e}).',
@@ -29,7 +30,7 @@ const en = {
   thumbWait: 'Drawing preview…',
   makingTile: 'Making · {time}',
   heavyModel: '{size} is heavy for a web game: it loads slowly, most of all on phones.',
-  askLighter: 'Ask my AI to make it lighter',
+  askLighter: 'Ask your AI to make it lighter',
   askLighterText: 'Make {path} lighter for the game (it’s {size} now), and keep how it looks.',
   askLighterSent: 'Sent to your AI',
   askLighterFailed: 'Couldn’t send it to your AI. Try again.',
@@ -48,7 +49,7 @@ const en = {
   // "Delete" on unused files: the editor never deletes; it asks the AI, which checks with the creator.
   del: 'Delete',
   delIntro: 'Your AI deletes this file for you after checking with you. The editor itself never deletes anything.',
-  delAsk: 'Ask my AI to delete it',
+  delAsk: 'Ask your AI to delete it',
   delCancel: 'Not now',
   delSent: 'Sent to your AI ({n:1 file|# files} so far). Go back to your AI; it checks with you before deleting.',
   delAsked: 'delete requested',
@@ -56,7 +57,7 @@ const en = {
   pickFile: 'Choose a file from the folder',
   dropHere: 'Drop a new file here, or choose one',
   chooseFile: 'Choose file',
-  addFiles: 'Add files',
+  addFiles: 'Add assets',
   added: 'New',
   addedHint: 'Added to the folder. Your AI will hook it up in the game.',
   addFailed: 'Couldn’t add the file: {e}',
@@ -189,7 +190,7 @@ const en = {
   usersHead: '{n:1 object uses this file|# objects use this file}',
   showInShelf: 'Show in Objects →',
   showInShelfTip: 'The objects that use this file, on the Objects shelf',
-  showInGame: 'Show in game →',
+  showInGame: 'Show in the scene →',
   // One Library (a try of the editor, 2026-10-18): objects and assets in one grid. The filters' name (for screen readers).
   filterShow: 'Show',
   // The one row of filters (a review of the editor, 2026-10-18): what kind of thing, not where it came from. 3D = the objects of a 3D
@@ -203,7 +204,7 @@ const en = {
   shelf_motion: 'Motion',
   countMotions: '{n:1 motion|# motions} · drag one onto an object to attach it',
   noMotionsYet: 'No motions yet. Open the timeline on an object (◆ Timeline on its card) and make one: it shows here.',
-  noMotionsMake: 'No motions yet. + New motion makes one on the timeline →',
+  noMotionsMake: 'No motions yet. + Make a motion makes one on the timeline →',
   // The phone's one "+" next to the search (the second design review's ⑦, 2026-10-19): Multi-select, Add files and
   // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
   more: 'More',
@@ -216,11 +217,11 @@ const en = {
   showUsersTip: 'The Library narrowed to the objects that use this file',
   // Using a file ("use the Library", 2026-10-18): a new object from a file is code, so it is a request to the AI,
   // drafted in the ask box and sent with Enter.
-  addToScene: 'Add to scene',
-  addToSceneN: 'Add {n} to scene',
-  askAiFile: 'Ask AI about it…',
-  askAddFile: 'Ask AI to add it to the scene…',
-  askAddFileN: 'Ask AI to add these {n} to the scene…',
+  addToScene: 'Put in the scene',
+  addToSceneN: 'Put {n} in the scene',
+  askAiFile: 'Ask your AI about it…',
+  askAddFile: 'Ask your AI to put it in the scene…',
+  askAddFileN: 'Ask your AI to put these {n} in the scene…',
   addNeedsAi: 'Your AI adds files to the scene. It isn’t connected here.',
   addMissing: 'This file isn’t in the folder.',
   bytes: '{n} B',
@@ -231,12 +232,12 @@ const en = {
 export type StringKey = keyof typeof en;
 
 const ja: Partial<Record<StringKey, string>> = {
-  title: '素材',
+  title: 'ライブラリ',
   usedByN: '物 {n} で使う',
   usersHead: 'この素材を使っている物 {n}',
   showInShelf: '物の棚で見る →',
   showInShelfTip: 'この素材を使っている物を、物の棚で見る',
-  showInGame: 'ゲームで見る →',
+  showInGame: 'シーンで見る →',
   filterShow: '表示',
   shelf_all: 'すべて',
   shelf_3d: '3D',
@@ -246,7 +247,7 @@ const ja: Partial<Record<StringKey, string>> = {
   shelf_motion: '動き',
   countMotions: '動き {n} · 物にドラッグすると付きます',
   noMotionsYet: 'まだ動きはありません。物のカードの「◆ タイムライン」で作ると、ここに並びます。',
-  noMotionsMake: 'まだ動きはありません。「＋ 新しい動き」でタイムラインで作れます →',
+  noMotionsMake: 'まだ動きはありません。「＋ 動きを作る」でタイムラインで作れます →',
   more: 'ほか',
   countObjects: '物 {n}',
   countBoth: '物 {o} ・ 素材 {f}',
@@ -255,12 +256,12 @@ const ja: Partial<Record<StringKey, string>> = {
   emptyBoth: '当てはまる物も素材もありません。',
   showUsers: '使っている物だけ見る',
   showUsersTip: 'この素材を使っている物だけに絞る',
-  addToScene: 'シーンに足す',
-  addToSceneN: '{n} 個をシーンに足す',
+  addToScene: 'シーンに置く',
+  addToSceneN: '{n} 個をシーンに置く',
   askAiFile: 'これについて AI に頼む…',
-  askAddFile: 'シーンに入れるよう AI に頼む…',
-  askAddFileN: '{n} 個をシーンに入れるよう AI に頼む…',
-  addNeedsAi: '素材をシーンに足すのは AI の仕事です。ここでは AI につながっていません。',
+  askAddFile: 'シーンに置くよう AI に頼む…',
+  askAddFileN: '{n} 個をシーンに置くよう AI に頼む…',
+  addNeedsAi: '素材をシーンに置くのは AI の仕事です。ここでは AI につながっていません。',
   addMissing: 'この素材はフォルダにありません。',
   search: '名前で探す',
   badgeAll: 'すべての印',
@@ -342,7 +343,7 @@ const ja: Partial<Record<StringKey, string>> = {
   aiProject: 'プロジェクト: {name}',
   aiPicture: '画像',
   aiModel: '3D モデル',
-  aiPromptLabel: '作るもの',
+  aiPromptLabel: '作る物',
   aiPicturePh: 'どんな画像か書いてください…',
   aiModelPh: 'どんな 3D モデルか書いてください…',
   aiQuality: '質',
@@ -360,7 +361,7 @@ const ja: Partial<Record<StringKey, string>> = {
   aiStartingModel: '3D モデルを作り始めています…',
   aiModelStarted: '3D モデルを作っています。作業を続けて大丈夫です。できたら assets/ に入ります。',
   aiStepQueued: 'AI サービスの順番を待っています',
-  aiStepCopying: 'assets/ に写しています',
+  aiStepCopying: 'assets/ にコピーしています',
   aiUsualPicture: 'ふつうは 20 秒ほど',
   aiUsualModel: 'ふつうは 3 分ほど',
   aiLate: 'いつもより時間がかかっています。できたら入ります。',

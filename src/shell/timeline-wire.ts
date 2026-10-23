@@ -130,6 +130,12 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     startPose.set(key, was ?? shownPose(key)!);
   };
   const gestureNames = new Map<string, string>();
+  /**
+   * A new motion's first name (studio-words-plan, 2026-10-23): "gate’s motion" (motion.firstName, both languages), free in the Library
+   * ("gate’s motion 2"…). It was "Motion" in both languages — a hands-on look: the Japanese screen showed English, and
+   * five objects' motions read the same. Only new ones: a name already saved is the person's (or the AI's) and stays.
+   */
+  const firstName = (key: string) => lib().free(d.t('motion.firstName', { name: d.label(key) }));
   const finish = () => {
     gestureNames.clear();
     const from = before;
@@ -352,7 +358,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (!c) {
       // One name for the whole gesture: a live drag remakes this first clip at every pose (from the motion before it),
       // and the Library already holds the name it took on the first pose.
-      const name = gestureNames.get(key) ?? lib().free('Motion');
+      const name = gestureNames.get(key) ?? firstName(key);
       gestureNames.set(key, name);
       // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
       const starts = clipsOf(key).some((x) => whenOf(x).on === 'start');
@@ -536,7 +542,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (members(c.use).includes(other)) return false;
     } else {
       if (!c && clipsOf(key).length >= MAX_CLIPS) return false;
-      const base: MotionClip = c ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
+      const base: MotionClip = c ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
       const was = base.use ?? base.name;
       const name = c && usage(was).length > 1 ? lib().free(was) : was;
       const before = lib().get(name) ?? null;
@@ -665,7 +671,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
     const pose = shownPose(key)!;
-    let c = clipOf(key) ?? { name: lib().free('Motion'), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
+    let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
     const name = c.name;
     const chs = CHANNELS.filter((ch) => c.keys[ch]?.length);
     for (const ch of chs.length ? chs : (['p'] as MotionChannel[])) {
@@ -1183,7 +1189,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (mod && k === 'v' && clipboard) {
       const key = focus() ?? sel[0]?.key;
       if (!key) return false;
-      const c = clipOf(key) ?? { name: lib().free('Motion'), len: 1, repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
+      const c = clipOf(key) ?? { name: firstName(key), len: 1, repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
       const r = pasteKeys(c, clipboard, time, dim());
       sel = r.pasted.map((p) => ({ key, ch: p.ch, t: p.t }));
       chosen.set(key, c.name);

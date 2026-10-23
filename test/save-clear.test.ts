@@ -49,8 +49,9 @@ test('① which AI: the wake hook says Claude; else the environment the editor w
 test('② Save says where the change goes, in one sentence', () => {
   assert.equal(translate('en', 'btn.save'), 'Save');
   assert.equal(translate('ja', 'btn.save'), '保存');
-  assert.equal(translate('ja', 'save.unsavedTip'), '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）');
-  assert.equal(translate('en', 'save.unsavedTip'), 'Save, and your AI puts it in the game’s code (the game outside the editor changes too)');
+  // studio-words-plan (2026-10-23; glossary rule 7): no anxious parenthesis — "(the game outside the editor changes too)" went.
+  assert.equal(translate('ja', 'save.unsavedTip'), '保存すると、あなたの AI がゲームのコードに入れます');
+  assert.equal(translate('en', 'save.unsavedTip'), 'Save, and your AI puts it in the game’s code');
   // One sentence: one full stop at most (ja: none inside the parentheses either).
   assert.ok((translate('ja', 'save.unsavedTip').match(/。/g) || []).length <= 1);
   assert.ok(!/\. /.test(translate('en', 'save.unsavedTip')));

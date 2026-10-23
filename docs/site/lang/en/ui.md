@@ -12,9 +12,9 @@ Many games have a layer of text and buttons over the world: a title, a score, a 
 
 It works on UI made with HTML. Read [what it can’t do yet](#what-it-cant-do-yet).
 
-## World and UI
+## Scene and UI
 
-If your game has UI the editor can edit, the top bar shows **World | UI**. Press **UI** (or <kbd>U</kbd>) to edit the UI. The world dims, and the list shows what’s **On screen**.
+If your game has UI the editor can edit, the top bar shows **Scene | UI**. Press **UI** (or <kbd>U</kbd>) to edit the UI. The scene dims, and the list shows the **UI**.
 
 ![The UI layer: the title card selected and moved, the world dimmed behind it](media/ui-layer.webp)
 
@@ -22,7 +22,7 @@ If your game has UI the editor can edit, the top bar shows **World | UI**. Press
 - The strip under it has **Move** and **Size**. <kbd>+</kbd> and <kbd>−</kbd> resize too, or type a number in **Size** on the card. Its middle stays where it is.
 - Undo and Redo work across both layers.
 
-Press **World** (or <kbd>U</kbd>) to go back. While you edit the world, the game’s UI is hidden so it isn’t in your way. The eye next to the switch (or <kbd>Shift</kbd><kbd>U</kbd>) shows it faded. Clicks still go through to the world.
+Press **Scene** (or <kbd>U</kbd>) to go back. While you edit the scene, the game’s UI is hidden so it isn’t in your way. The eye next to the switch (or <kbd>Shift</kbd><kbd>U</kbd>) shows it faded. Clicks still go through to the scene.
 
 On a phone, the switch is two icons at the top of the game.
 
@@ -62,7 +62,7 @@ If your game keeps its colors and fonts in CSS variables, **Theme** under the li
 
 ![Theme open under the list, the glow color changed: the Start button follows](media/ui-theme.webp)
 
-## No World | UI switch?
+## No Scene | UI switch?
 
 The editor only shows UI your game has marked. Ask your AI: “let me edit the UI in Game Studio.” It marks each piece (the title, the score) in your game’s HTML, and each screen. Ask it to put your colors in a theme, too, if you want the **Theme** rows.
 

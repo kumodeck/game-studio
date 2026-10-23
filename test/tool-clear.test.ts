@@ -77,7 +77,7 @@ test('OFF_LINES: every case says why AND what can be done, in both languages, in
         assert.ok(line && !line.includes('\n'), `${lang} ${why} ${k}`);
         assert.ok(line.length <= (lang === 'en' ? 90 : 48), `${lang} ${why} ${k}: one line (${line.length})`);
         // The second sentence is the way out: start spot, unlock, or the AI.
-        assert.match(line, lang === 'en' ? /(You can|You choose|Ask AI)/ : /(決められ|解除できます|AI に)/, `${lang} ${why} ${k}: "${line}"`);
+        assert.match(line, lang === 'en' ? /(You can|You choose|Ask your AI)/ : /(決められ|解除できます|AI に)/, `${lang} ${why} ${k}: "${line}"`);
       }
     }
   }
@@ -97,10 +97,11 @@ test('the words of the card, the Motion menu and "When" exist in both languages 
     const words = [...WHEN_TRIGGERS, 'say', 'touchNow', 'cueNow', 'sayNow', 'selfHead', 'aiHead'].map((on) => translate(lang, `tl.when.${on}`)).join(' | ');
     assert.doesNotMatch(words, /cue|connects|つなぐ|ひとりでに|範囲|✦/i, `${lang}: ${words}`);
   }
-  assert.equal(translate('en', 'tl.when.start'), 'On Game Start');
+  // studio-words-plan (2026-10-23; Gemini 1023c): short sentences, not Title Case labels.
+  assert.equal(translate('en', 'tl.when.start'), 'When game starts');
   assert.equal(translate('ja', 'tl.when.enter'), '近くに近づいたら');
   assert.equal(translate('ja', 'tl.when.selfHead'), 'きっかけを選ぶ');
-  assert.equal(translate('ja', 'tl.when.aiHead'), 'AI に仕掛けを作ってもらう');
+  assert.equal(translate('ja', 'tl.when.aiHead'), 'あなたの AI に仕掛けを作ってもらう');
   assert.equal(translate('ja', 'motion.tool.make'), '動きを作る');
 });
 

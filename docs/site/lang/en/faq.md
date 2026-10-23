@@ -54,7 +54,7 @@ three.js works right away. For Phaser, PixiJS, plain canvas, HTML games or a God
 
 **My change didn’t show up in the game.** Did you press **Save**? Moves before Save are only a draft. After Save, your AI puts them in the game; check its window for what it did.
 
-**I don’t see my levels, or the UI switch.** Your game has to tell the editor about them. See [Levels](levels.md#no-levels-showing) and [UI editing](ui.md#no-world--ui-switch).
+**I don’t see my levels, or the UI switch.** Your game has to tell the editor about them. See [Levels](levels.md#no-levels-showing) and [UI editing](ui.md#no-scene--ui-switch).
 
 ## The demo
 

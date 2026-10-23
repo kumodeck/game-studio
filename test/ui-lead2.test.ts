@@ -170,9 +170,10 @@ test('the words are Gemini\'s (wording-gemini-1023b), in both languages', () => 
     ['tl.point.smooth', '丸くなめらかに', 'Smooth curve'],
     ['tl.point.corner', 'カクッとまっすぐ', 'Sharp corner'],
     ['tl.point.custom', 'じぶんで調整', 'Custom'],
-    ['tl.sel.delete', '消す', 'Delete'],
-    ['tl.when.also', '動かすきっかけ', 'Trigger'],
-    ['tl.all.k', '表示する行', 'Tracks'],
+    // studio-words-plan (2026-10-23): one word for Delete everywhere, the plain noun for a trigger, and Gemini's "Moving objects".
+    ['tl.sel.delete', '削除', 'Delete'],
+    ['tl.when.also', 'きっかけ', 'Trigger'],
+    ['tl.all.k', '動く物一覧', 'Moving objects'],
     ['tl.loopEnd', '終わり方とくり返し', 'Loop & End'],
   ];
   for (const [k, ja, en] of table) {

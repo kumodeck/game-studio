@@ -7,7 +7,8 @@
 //   3. the drag's end (as the bridge reports it: the drag itself is test/studio-tool-clear.browser.mjs): two keys, 0 s and
 //      1 s; it plays at once; the line "✓ … keep moving it to add a second" with "Done";
 //   4. a second move: a key at 2 s;
-//   5. the clip menu: "+ Make a motion" and the scene, no kind; the "When" menu: "Trigger" (six) and "Ask AI to Set Up";
+//   5. the clip menu: "+ Make a motion" and the scene, no kind; the "When" menu: "Trigger" (six) and "Ask your AI to set up"
+//      (studio-words-plan, 2026-10-23: the AI by its name — no AI known in this test — and no Title Case);
 //   6. Esc right after "Make a motion" (the crate): nothing made, the line gone;
 //   7. no page errors.
 // Pictures (`--shots <dir>`): after-<lang>-<theme>-<1-menu|2-drag|3-made|4-more|5-when>.png. `--before --ui <dir>` (the
@@ -48,9 +49,9 @@ const DBG = `document.querySelector('iframe.game, iframe').contentWindow.__gameS
 const TL = `window.__studioTimeline`;
 const WORDS = LANG === 'ja'
   ? { rows: ['> まだ動きはありません。', '動きを作る', '保存した動きを使う'], drag: /を、動いてほしい所までドラッグしてください（Esc でやめる）/, made: /^✓ 0〜1 秒の動きができました。続けて動かすと 1 秒ずつ足されます$/,
-    done: '終わる', make: '＋ 動きを作る', self: 'きっかけを選ぶ', ai: 'AI に仕掛けを作ってもらう', kinds: /行ったり来たり|ぐるっと回る|1 回だけ|その場で回る|空/ }
+    done: '終わる', make: '＋ 動きを作る', self: 'きっかけを選ぶ', ai: BEFORE ? 'AI に仕掛けを作ってもらう' : 'あなたの AI に仕掛けを作ってもらう', kinds: /行ったり来たり|ぐるっと回る|1 回だけ|その場で回る|空/ }
   : { rows: ['> No motion yet.', 'Make a motion', 'Use a saved motion'], drag: /^Drag .+ to where it should move \(Esc to cancel\)$/, made: /^✓ Moves 0–1 s\. Keep moving to add a second\.$/,
-    done: 'Done', make: '+ Make a motion', self: 'Trigger', ai: 'Ask AI to Set Up', kinds: /Back and forth|Round|Once|Spin|Empty/ };
+    done: 'Done', make: '+ Make a motion', self: 'Trigger', ai: BEFORE ? 'Ask AI to Set Up' : 'Ask your AI to set up', kinds: /Back and forth|Round|Once|Spin|Empty/ };
 
 // The Library has a motion (so "Use a saved motion" shows); the lighthouse and the crate have none.
 const FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},

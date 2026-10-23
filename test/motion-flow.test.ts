@@ -67,8 +67,9 @@ test('make: an object that moves already gets a new motion from its next move (a
   assert.equal(r.tl.state().clip, null, 'waiting for the move');
   r.tl.moved('barrel', { p: [6, 0, 0], r: 0, s: 1 }, true, { p: [5, 0, 0], r: 0, s: 1 });
   const cs = r.tl.motionOf('barrel')!.clips!;
-  assert.deepEqual(cs.map((c) => c.name), ['Hop', 'Motion']);
-  assert.equal(r.tl.state().clip, 'Motion', 'the plate shows the new one');
+  // The first name is the object's (studio-words-plan: motion.firstName; this rig's t() shows the key and the vars).
+  assert.deepEqual(cs.map((c) => c.name), ['Hop', 'motion.firstName:barrel']);
+  assert.equal(r.tl.state().clip, 'motion.firstName:barrel', 'the plate shows the new one');
   assert.deepEqual(cs[1]!.when, { on: 'say' }, 'the second motion waits (the first one starts with the game)');
   assert.deepEqual(r.lib.get('Hop')!.keys.p!.map((k) => k.v), [[0, 0, 0], [0, 2, 0]], 'Hop is as it was');
 });

@@ -34,13 +34,15 @@ import type { BridgeToShell, Lang, MotionArea, MotionKey, Pose, ShellToBridge, S
 import { handlesOf, trackAt } from '../loader/studio-placement.js';
 
 const YOU = '#ff6b1a';
+// "Key" → "Point" in both languages (studio-words-plan, 2026-10-23; the word list, checked with Gemini): the same mark as
+// the timeline's ◇, and "key" already meant a keyboard key ("When key pressed").
 const WORDS: Record<Lang, { point: (t: string) => string; area: string; handle: string; corner: string; line: (t: string) => string }> = {
-  en: { point: (t) => `Key at ${t} s: drag to move it, Shift+drag for up and down · double-click: corner`, area: 'The area: drag to move it, Shift+drag for up and down',
+  en: { point: (t) => `Point at ${t} s: drag to move it, Shift+drag for up and down · double-click: corner`, area: 'The area: drag to move it, Shift+drag for up and down',
     handle: 'Handle: drag to bend the path · Alt: this side only · Shift: up / down', corner: 'Corner: drag to resize (the opposite corner stays) · Shift: height',
-    line: (t) => `Click to add a key at ${t} s` },
-  ja: { point: (t) => `${t} 秒のキー：引いて動かす・Shift で上下・ダブルクリックで角`, area: '範囲：引いて動かす・Shift で上下',
+    line: (t) => `Click to add a point at ${t} s` },
+  ja: { point: (t) => `${t} 秒のポイント：引いて動かす・Shift で上下・ダブルクリックで角`, area: '範囲：引いて動かす・Shift で上下',
     handle: '取っ手：引いて道を曲げる・Alt で片側だけ・Shift で上下', corner: '隅：引いて大きさを変える（反対の隅はそのまま）・Shift で高さ',
-    line: (t) => `押すと ${t} 秒にキー` },
+    line: (t) => `押すと ${t} 秒にポイント` },
 };
 
 const CSS = `

@@ -157,8 +157,8 @@ test('End drops (3D only); the sheet lists End and the snap-free keys', () => {
   assert.deepEqual(keysOf('free', true), ['⌃', '⌥']);
   assert.deepEqual(keysOf('free', false), ['Ctrl', 'Alt']);
   for (const id of ['drop', 'free']) assert.equal(KEYMAP.find((x) => x.id === id)?.dim, '3d');
-  assert.equal(translate('en', 'keys.drop'), 'Drop to floor');
-  assert.equal(translate('ja', 'keys.drop'), '床に落とす');
+  assert.equal(translate('en', 'keys.drop'), 'Put on the ground');
+  assert.equal(translate('ja', 'keys.drop'), '地面に置く');
   assert.notEqual(translate('ja', 'keys.free.note'), 'keys.free.note');
 });
 

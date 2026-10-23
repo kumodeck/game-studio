@@ -132,7 +132,7 @@ test('the card\'s words: the tester\'s own sentence when the game moves it, then
   const pillar = { driven: ['move' as const], movable: false, rotatable: true, scalable: true };
   assert.equal(heldGameText(pillar, '3d', ja), 'この物は遊ぶとゲームが動かします。決められるのはスタート位置だけです。高さ・向き・大きさは変えられます。');
   assert.equal(heldGameText(pillar, '3d', en), 'Your game moves this while playing. You choose only where it starts. You can still change its height, angle, and size.');
-  assert.equal(heldGameText({ driven: ['lift'], movable: true, rotatable: true, scalable: true }, '3d', ja), 'この物の高さはゲームが変えます（ここで変えても残りません）。場所・向き・大きさは変えられます。');
+  assert.equal(heldGameText({ driven: ['lift'], movable: true, rotatable: true, scalable: true }, '3d', ja), 'この物の高さはゲームが変えます（ここで変えても残りません）。位置・向き・大きさは変えられます。');
   assert.equal(heldGameText({ driven: ['move', 'turn', 'size'], movable: false, rotatable: false, scalable: false }, '2d', en), 'Your game moves this while playing. You choose only where it starts.');
 });
 
