@@ -1407,7 +1407,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .stage > .timeline { position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 5; }
 .shell[data-timeline="open"]:not([data-layout="phone"]) .dock { bottom: calc(16px + var(--tl-h, 0px)); }
 .shell[data-timeline="open"]:not([data-layout="phone"]) .card { max-height: calc(100dvh - var(--bar) - 112px - var(--tl-h, 0px)); }
-.tl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 8px; min-height: 40px; }
+/* The line wraps (studio-ui-lead, 2026-10-23) and nothing on it shrinks: one line when it fits, the narrow order when it does not. */
+.tl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 6px 8px; min-height: 40px; }
 .tl-head .icon-btn .icon { width: 16px; height: 16px; }
 .tl-play { background: var(--solid); color: var(--solid-fg); width: var(--h); padding: 0; }
 .tl-play:hover:not(:disabled) { background: var(--solid); opacity: .88; }
@@ -1421,8 +1422,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-auto.on { color: var(--rec); }
 .tl-auto.on .tl-dot { background: var(--rec); box-shadow: 0 0 0 3px var(--rec-soft); }
 .tl-pick { position: relative; display: inline-flex; align-items: center; min-width: 0; }
-.tl-pick select { appearance: none; -webkit-appearance: none; height: var(--h); max-width: 220px; field-sizing: content; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text);
-  font: inherit; padding: 0 24px 0 10px; cursor: pointer; text-overflow: ellipsis; }
+.tl-pick select { appearance: none; -webkit-appearance: none; height: var(--h); field-sizing: content; border: 0; border-radius: var(--r); background: var(--raise); color: var(--text);
+  font: inherit; padding: 0 24px 0 10px; cursor: pointer; }
 .tl-pick select:hover:not(:disabled) { background: var(--raise-2); }
 .tl-pick select:focus-visible { box-shadow: inset 0 0 0 1px var(--you); }
 .tl-pick .icon { position: absolute; right: 7px; width: 12px; height: 12px; color: var(--text-3); pointer-events: none; }
@@ -1436,7 +1437,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    game's code / asks your AI (shell.css rule 2: purple is the AI's); orange = playing. */
 .tl-head .tl-field, .tl-head .tl-keycap { height: 28px; }
 .tl-lbl { font-size: var(--fs-s); color: var(--text-2); margin: 0 2px 0 8px; white-space: nowrap; }
-.tl-first { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* The line's sentences (what to do next, what was made) wrap; they never end in "…" (studio-ui-lead). */
+.tl-first { white-space: normal; min-width: 0; flex: 0 1 auto; line-height: 1.35; }
+.tl-made { color: var(--text); }
 .tl-try-this { width: 28px; min-height: 28px; height: 28px; border-radius: var(--r); background: var(--raise); }
 .tl-try-this .icon { width: 11px; height: 11px; }
 .tl-try-this.ai { color: var(--ai-text); }
@@ -1463,7 +1466,6 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-more .tl-or { margin-left: 0; }
 .tl-starts.ai select { color: var(--ai-text); }
 /* The "When" sentences (studio-tool-clear): never cut to "Moves f…" on PC — the sentence is the point of the menu. */
-.timeline:not(.narrow) .tl-head .tl-starts select { min-width: 13em; }
 .tl-field { border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 8px; font-variant-numeric: tabular-nums; }
 .tl-field:focus { box-shadow: inset 0 0 0 1px var(--you); outline: none; }
 .tl-keycap { min-width: 30px; padding: 0 8px; border-radius: var(--r); background: var(--you-soft); color: var(--you-text, var(--you)); font-weight: 600; }
@@ -1534,22 +1536,16 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* The second row is the motion and its "when" — kept to one row: the menus a little narrower, "Starts" said by the menu
    itself (its words are a moment: "The player enters…"), the field as wide as a size or a key. */
 .timeline.narrow .tl-head > .tl-lbl:not(.tl-first):not(.tl-ease-lbl) { display: none; }
-.timeline.narrow .tl-head .tl-starts select { max-width: 140px; }
-.timeline.narrow .tl-head .tl-clip-pick select { max-width: 100px; }
-.timeline.narrow .tl-head > .tl-field { max-width: 6.5em; }
-/* PC: always one line (a try of 2026-10-22: a scene with a point and keys picked pushed ✦ Ask AI and ⌄ to a second one).
-   The menus give way first — each shrinks to its words' start ("Ease in…"), the buttons never do. */
-.timeline:not(.narrow) .tl-head { flex-wrap: nowrap; }
-.timeline:not(.narrow) .tl-head > .tl-pick { flex: 0 1 auto; min-width: 64px; }
-.timeline:not(.narrow) .tl-head > .tl-pick select { max-width: 100%; text-overflow: ellipsis; }
-.timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-time, .timeline:not(.narrow) .tl-head > .tl-auto { flex: none; }
+/* PC: one line when it fits, and nothing on it shrinks (studio-ui-lead, 2026-10-23: before, the menus gave way first,
+   to "Mo…" / "Ea…", and a hands-on try of 10/23 read nothing on it, even at 1800 px). When the line would wrap, timeline-panel.ts
+   render() measures that and draws it in the narrow order instead (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them). */
+.timeline:not(.narrow) .tl-head > .tl-pick, .timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-time, .timeline:not(.narrow) .tl-head > .tl-auto { flex: none; }
 .tl-break { display: none; }
 .timeline.narrow .tl-head > .tl-break { display: block; order: 1; flex-basis: 100%; height: 0; }
 .timeline.narrow .tl-head > .tl-gap { display: none; }
 .timeline.narrow .tl-clipname { display: none; }
 .timeline.narrow .tl-auto-w { display: none; }
 .timeline.narrow .tl-auto { padding: 0; width: var(--h); }
-.timeline.narrow .tl-pick select { max-width: 150px; }
 .timeline.narrow .tl-body { max-height: calc(var(--tl-ruler) + 4 * var(--tl-row)); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-ruler: 32px; --tl-row: 36px; border-radius: 22px; }
 /* studio-timeline-2 (2026-10-22): several ways to start ("E or a click"), the path's Point menu, scene motions.
@@ -1633,9 +1629,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .motion-held-line .muted { color: rgba(255, 255, 255, .65); }
 
-/* Just attached: "✓ “Hop” attached · When does it move?" where Starts was, the Starts menu ringed in your colour. */
-.tl-attached { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--you-soft); color: var(--you-text);
-  font-size: var(--fs-s); font-weight: 600; white-space: nowrap; animation: studio-rise var(--dur-in, .18s) var(--ease, ease); }
+/* Just attached, or just made (Done pressed): "When does it move?" with its menu ringed in your colour — the next step.
+   (The "✓ “Hop” attached" chip before it is gone, studio-ui-lead: the row and the card say the name.) */
 .tl-starts.ask select { box-shadow: 0 0 0 2px var(--you), 0 0 0 5px var(--you-soft); }
 /* Making (studio-no-presets): "Done" at the end of the line — Esc's button, outlined only (● Auto key already says it
    is recording; the line is the step, this only ends it). A finger's height on a phone. */
@@ -1643,10 +1638,24 @@ button.shelf-file.to:hover { background: var(--raise-2); }
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 24%, transparent); white-space: nowrap; }
 .tl-done:hover { background: var(--raise); }
 @media (pointer: coarse) { .tl-done { height: 36px; border-radius: 18px; } }
-/* The made line gives way first (its whole words in its tooltip), so "When" ▾ and "Done" are never squeezed under it —
-   the first pictures had the menu cut off at the plate's end and "Done" drawn over it. */
-.tl-attached[data-part=tl-made] { display: inline-block; line-height: 26px; min-width: 6em; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
-.tl-head > .tl-done, .timeline:not(.narrow) .tl-head > .tl-starts.tl-pick { flex-shrink: 0; }
+/* studio-ui-lead (2026-10-23): the picked keys' row under the line, only while keys are picked — what the pick is (your
+   colour, as the keys are), then each menu with a label that says what it does ("To the next key", "Path turns"), and
+   Delete as a button (a phone has no Delete key). A label and its menu wrap together. Before, "Point ▾" and "Keys ▾" sat
+   on the line itself, where there was no room for them and their labels said nothing. */
+.tl-sel { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; padding: 0 10px 7px; font-size: var(--fs-s); color: var(--text-2); }
+.tl-sel-n { font-weight: 600; color: var(--you-text, var(--you)); background: var(--you-soft); border-radius: 6px; padding: 2px 7px; white-space: nowrap; }
+.tl-sel-group { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tl-sel .tl-pick select { height: 28px; }
+.tl-sel-del { height: 26px; padding: 0 10px 0 7px; border-radius: 13px; gap: 5px; background: var(--raise); color: var(--text); font-size: var(--fs-s); white-space: nowrap; }
+.tl-sel-del:hover { background: var(--raise-2); }
+.tl-sel-del .icon { width: 13px; height: 13px; }
+.timeline.narrow .tl-sel { padding: 0 8px 6px; }
+.shell[data-layout="phone"]:not([data-fit="side"]) .tl-sel-del { height: 40px; border-radius: 20px; padding: 0 14px 0 10px; }
+/* "Linked · 3" sits in the names column's head, over the rows it names (it was on the line). */
+.tl-ruler-pad { display: flex; align-items: center; padding-left: 8px; }
+/* The motion's menu lives in ⋯ (studio-ui-lead): as wide as its name, up to the panel; only a very long name ends in "…" there. */
+.tl-more .tl-pick { max-width: 100%; }
+.tl-more .tl-pick select { max-width: 100%; text-overflow: ellipsis; }
 
 /* The first-time steps, over the plate's right end (the rows stay readable on the left). */
 .timeline { position: relative; }

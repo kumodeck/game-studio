@@ -207,14 +207,23 @@ async function run(size, theme) {
       // 7. The buoy: "+ Make a motion" from the clip menu (studio-no-presets: no "New: Spin" any more), then a turn.
       await page.eval(`studioShell.actions.select('buoy')`);
       await sleep(600);
-      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-clip]'); s.value = 'new:make'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      // The motion's menu is in ⋯ since studio-ui-lead (2026-10-23).
+      const inMore = async () => (await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`), await sleep(300));
+      await inMore();
+      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-more] [data-part=tl-clip]'); s.value = 'new:make'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await sleep(400);
       await page.eval(`(() => { const p = ${TL}.shownPose('buoy'); ${TL}.moved('buoy', { ...p, r: (p.r ?? 0) + Math.PI / 2 }, true, p); })()`);
       await sleep(400);
       const st = await state();
-      const clips = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-clip] option')].map((o) => o.value).filter((v) => v && !v.startsWith('new:') && v !== '-' && v !== 'rename' && v !== 'delete'))`);
+      await inMore();
+      const clips = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => o.value).filter((v) => v && !v.startsWith('new:') && v !== '-' && v !== 'rename' && v !== 'delete'))`);
+      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+      await sleep(200);
       check(clips.length === 2 && st.clip !== 'Motion', `a second motion on the buoy (${clips.join(', ')}; showing ${st.clip})`);
       // Since studio-motion-triggers: "waits" = Starts "In my words…" (the AI connects it), on the head's second row.
+      // studio-ui-lead (2026-10-23): while making, the line is the step and "Done" only — "When" ▾ shows after Done.
+      await page.eval(`document.querySelector('[data-part=tl-done]')?.click()`);
+      await sleep(400);
       const cue = await page.eval(`document.querySelector('[data-part=tl-starts]').value`);
       check(cue === 'say', `the second one waits for a cue (${cue})`);
       // 8. Save and the file.

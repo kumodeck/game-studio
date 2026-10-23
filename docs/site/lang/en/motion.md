@@ -34,12 +34,12 @@ Select something, then press **◆ Timeline** on its card (or find **Timeline** 
 
 ![The timeline under the game, with the boat’s keys and its path](media/timeline.webp)
 
-Its top is one line, with what you use every time: **▶** (or <kbd>Space</kbd>), the time and the motion’s **length**, **● Auto key**, the **motion** menu, **Starts**, then **⋯**, **✦ Ask AI** and **⌄** to fold it.
+Its top is one line, with what you use every time: **▶** (or <kbd>Space</kbd>), the time and the motion’s **length**, **● Auto key**, **When does it move?**, then **⋯**, **✦ Ask AI** and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows). The motion’s name is at the left of its row, next to the object’s.
 
 - The **ruler** is time. Drag on it to see that moment. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
 - Click the length after the time to type a new one, in seconds.
 - The rows are the **selected object** (with several selected, each of them), and the objects you [link](#linking-several-things-in-one-motion) to it. Open a row to see **Position**, **Angle** and **Size** on their own rows.
-- **⋯** has the rest: **Repeat**, **Stops**, other ways to start, **Try**, and **Show every motion in the scene** (every moving object’s row; **Show only the selected one** goes back).
+- **⋯** has the rest: **Motion** (which of this object’s motions, **+ Make a motion**, **New: Scene**, **Rename…**, **Take it off this object**), **Repeat**, **Stops**, other ways to start, **Try**, and **Show every motion in the scene** (every moving object’s row; **Show only the selected one** goes back).
 
 ## Keys
 
@@ -53,7 +53,7 @@ With **Auto key** on (it is, to start), that sets a key at the time line. The fi
 To change keys, click them (<kbd>Shift</kbd> or <kbd>⌘</kbd> adds more, or drag a box):
 
 - Drag them along the ruler to change their time.
-- <kbd>Delete</kbd> removes them. <kbd>⌘</kbd><kbd>C</kbd> and <kbd>⌘</kbd><kbd>V</kbd> copy them to the time line.
+- <kbd>Delete</kbd> (or **Delete** on the picked keys’ row) removes them. <kbd>⌘</kbd><kbd>C</kbd> and <kbd>⌘</kbd><kbd>V</kbd> copy them to the time line.
 - Every change is one undo step.
 
 **Auto key off**, or the timeline folded: moving the object moves its whole motion with it.
@@ -65,22 +65,24 @@ In 3D, the object’s way through its position keys is drawn in the scene, with 
 ![A picked point of the boat’s path with its two handles, and the + on the line](media/motion-path.webp)
 
 - **Bend the path.** Select a key (on the timeline or its dot) and two **handles** show. Drag one to bend the path there; the other one follows. <kbd>Alt</kbd>-drag moves only one, for a sharp turn.
-- **Make a corner.** Double-click a dot (or choose **Point → Corner** at the top of the timeline). The path comes straight in and goes straight out. Double-click again for a smooth point.
+- **Make a corner.** Double-click a dot (or choose **Path turns → At a corner** on the picked keys’ row). The path comes straight in and goes straight out. Double-click again for a smooth point.
 - **Add a key on the path.** Point at the line: a **+** follows it with the time. Click to set a key at that moment, without changing the path’s shape.
 
 ## How keys flow into each other
 
-Select keys and a **Keys** menu shows on the timeline’s top line. Choose how they go on to the next one:
+Select keys and a **Keys picked · 1** row shows under the top line. **To the next key** chooses how they go on to the next one:
 
-- **Ease in-out**: starts slow, ends slow. The default.
-- **Steady**: the same speed all the way.
-- **Jump**: stays put, then jumps to the next key.
+- **Eases in and out**: starts slow, ends slow. The default.
+- **Same speed**: the same speed all the way.
+- **Holds, then jumps**: stays put, then jumps to the next key.
+
+The same row has **Path turns** (with position keys picked: **Smoothly** or **At a corner**) and **Delete**.
 
 **Repeat** (in **⋯**) sets what happens at the end: **Once**, **Repeats**, or **Back and forth**.
 
 ## When it starts
 
-**When**, on the timeline’s top line, chooses when a motion begins. The **▶** next to it tries that moment.
+**When does it move?**, on the timeline’s top line, chooses when a motion begins. The **▶** next to it tries that moment. Right after a motion is attached or made, this menu has an orange ring: it is the next thing to decide.
 
 ![The When menu: Trigger, then Ask AI to Set Up](media/motion-when.webp)
 
@@ -105,7 +107,7 @@ In **⋯**, **+ or** adds another way to start, like “a key is pressed **or** 
 
 ## Try it
 
-The **▶** next to **Starts** runs the scene as if this motion’s start just happened. Press it again to stop.
+The **▶** next to **When does it move?** runs the scene as if this motion’s start just happened. Press it again to stop.
 
 **Try** in **⋯** shows one ▶ for each way a motion can start in this scene, like “Game starts” or “Click boat.” Press one to run the scene as if that just happened. **Stop** ends it.
 
@@ -117,13 +119,13 @@ The timeline shows the selected object only. When a motion should move other thi
 
 1. Under the rows, press **+ Link an object**.
 2. Choose one from the list (type to find it by name), or click it in the game while the list is open. The selected object stays selected.
-3. It gets a row of its own on the same time line. Move it with **Auto key** on to set its keys. The top says **Linked · 2**.
+3. It gets a row of its own on the same time line. Move it with **Auto key** on to set its keys. The rows’ top-left corner says **Linked · 2**.
 
 ![The crate with the buoy and the barrel linked: one motion, one time line](media/motion-scene.webp)
 
-**Starts** and **Stops** are shared: all of them start together. Selecting a linked object shows the same rows, with it on top. **×** on a linked row unlinks it (its own motions stay). Unlink the last one and the motion is the selected object’s alone again.
+**When does it move?** and **Stops** are shared: all of them start together. Selecting a linked object shows the same rows, with it on top. **×** on a linked row unlinks it (its own motions stay). Unlink the last one and the motion is the selected object’s alone again.
 
-You can also start from **New: Scene — several objects** in the motion menu, or drop a linked motion from the Library onto an object to link it.
+You can also start from **New: Scene — several objects** under **Motion** in **⋯**, or drop a linked motion from the Library onto an object to link it.
 
 ## The motion Library
 

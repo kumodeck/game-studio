@@ -109,8 +109,9 @@ function helpers(page, size, theme) {
   const row = (action) => j(`(() => { const b = document.querySelector('[data-part=context-menu] [data-action=${JSON.stringify(action)}]'); if (!b) return null; const r = b.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
   const state = () => j(`JSON.stringify(${TL}.state())`);
-  const after = () => j(`(() => { const a = document.querySelector('[data-part=tl-attached]'); const s = document.querySelector('[data-part=tl-starts]');
-    return JSON.stringify({ text: a ? a.textContent : null, focused: !!s && document.activeElement === s }); })()`);
+  // studio-ui-lead (2026-10-23): no "✓ attached" chip; just attached = "When does it move?" with its menu ringed (.ask) and focused.
+  const after = () => j(`(() => { const s = document.querySelector('[data-part=tl-starts]');
+    return JSON.stringify({ ringed: !!s?.closest('.tl-starts.ask'), focused: !!s && document.activeElement === s }); })()`);
   const key = async (where, k, code) => {
     if (where === 'game') await page.eval(`document.querySelector('iframe.game, iframe').contentWindow.focus()`);
     else await page.eval(`(document.activeElement?.blur?.(), document.querySelector('iframe.game, iframe').blur(), window.focus(), document.body.focus())`);
@@ -165,7 +166,7 @@ async function run3d(size, theme) {
     let st = await h.state();
     const a = await h.after();
     check(!!st?.open && st.clip === WORDS.made, `${tag}: Row is on the crate, the timeline open on it (${st?.clip})`);
-    check(!!a.text && a.focused, `${tag}: "attached · When does it move?" with Starts focused (${JSON.stringify(a)})`);
+    check(a.ringed && a.focused, `${tag}: "When does it move?" ringed, with its menu focused (${JSON.stringify(a)})`);
     // Read off the element (PC: the timeline at the foot of the game covers the crate, so the strip under it is hidden
     // until the plate folds — the editor's rule for anything under a panel; the 4-dot picture shows it folded).
     const dot = await h.j(`(() => { const b = ${ROOT}.querySelector('[data-studio-motion]'); return JSON.stringify({ cls: b.className, title: b.title }); })()`);

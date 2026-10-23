@@ -192,7 +192,7 @@ test('the Motion keys: A and 5 with something picked, in the table, the game pag
   const main = readFileSync(new URL('../src/shell/main.ts', import.meta.url), 'utf8');
   assert.ok(main.includes("const MOTION_KEYS = new Set(['a', '5']);"), 'main.ts reads the same keys');
   for (const lang of ['en', 'ja'] as const) {
-    for (const k of ['pal.tool.motion', 'pal.tool.motionHas', 'motion.tool.none', 'motion.tool.make', 'motion.tool.saved', 'motion.tool.savedHead', 'motion.tool.menu', 'keys.motion', 'tl.when.firstAt', 'tl.made']) {
+    for (const k of ['pal.tool.motion', 'pal.tool.motionHas', 'motion.tool.none', 'motion.tool.make', 'motion.tool.saved', 'motion.tool.savedHead', 'motion.tool.menu', 'keys.motion', 'tl.when.firstAt', 'tl.made.more']) {
       assert.notEqual(translate(lang, k), k, `${lang}: ${k}`);
     }
   }

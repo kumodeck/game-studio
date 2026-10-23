@@ -146,7 +146,9 @@ async function run(size, theme) {
       const cap = await page.eval(`document.querySelector('[data-part=tl-key-pick]')?.textContent`);
       check(cap === 'E', `the key is E (${cap})`);
       check(w?.cues.some((c) => c.id === 'key:KeyE'), `Try gains ▶ E (${w?.cues.map((c) => c.id).join(', ')})`);
-      check(w?.chips.some((c) => /E · 2×/.test(c)), `the boat's row says so (${w?.chips.join(' | ')})`);
+      // studio-ui-lead (2026-10-23): the picked row has no "when" chip (the line and ⋯ say it); ⋯'s rounds field says 2.
+      const times = await page.eval(`document.querySelector('[data-part=tl-more] [data-part=tl-times]')?.value || ''`);
+      check(times === '2', `⋯ says 2 rounds (${times})`);
       check(/[1-9]/.test(await page.eval(SAVE)), `Save counts it ("${(await page.eval(SAVE)).trim()}")`);
       // 3. Try.
       const home = await pose('rowboat');

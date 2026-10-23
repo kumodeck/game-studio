@@ -186,8 +186,9 @@ async function run(size, theme) {
       let w = (await motion('rowboat'))?.clips?.[0]?.when;
       check(Array.isArray(w) && w.length === 2 && w[1].on === 'click', `"+ or": ${JSON.stringify(w)}`);
       check((await state()).cues.includes('click:rowboat'), 'Try gains ▶ Click');
-      const chip = await page.eval(`[...document.querySelectorAll('[data-part=tl-whenchip]')].map((c) => c.textContent).join(' | ')`);
-      check(/ or /.test(chip), `the row says both ("${chip}")`);
+      // studio-ui-lead (2026-10-23): the line says "+1 more" (the row's chip shows only with every motion shown).
+      const chip = await page.eval(`document.querySelector('[data-part=tl-or-more]')?.textContent || ''`);
+      check(/1/.test(chip), `the line says there is another way ("${chip}")`);
       await page.eval(choose('tl-starts-or', 'enter', 1));
       await sleep(800);
       check(!!(await page.eval(`(document.querySelector('[data-part=tl-or-more]') || {}).textContent || ''`)), 'the line says there is another way (+1)');
@@ -217,6 +218,8 @@ async function run(size, theme) {
       check(!!before && !!after && JSON.stringify(before.size) !== JSON.stringify(after.size), `a corner dragged: the size ${JSON.stringify(before?.size)} → ${JSON.stringify(after?.size)}`);
       check(/motion|動き/i.test(await page.eval(UNDO)), 'one undo step');
       // 6. A scene: New → Scene; the crate joins; K keys it.
+      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+      await sleep(300);
       await page.eval(choose('tl-clip', 'new:scene'));
       await sleep(700);
       const sceneChip = await page.eval(`(document.querySelector('[data-part=tl-scene]') || {}).textContent || ''`);
@@ -273,6 +276,8 @@ async function run(size, theme) {
       await sleep(900);
       await shot(page, '2-when');
       // 3: the scene "Arrival" (three objects: the boat picked, the buoy and the barrel linked).
+      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+      await sleep(300);
       await page.eval(choose('tl-clip', 'Arrival'));
       await sleep(500);
       await page.eval(`${TL}.setTime(1.5)`);

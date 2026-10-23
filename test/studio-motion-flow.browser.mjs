@@ -103,8 +103,9 @@ async function run(size, theme) {
       const clip = c.querySelector('[data-part=motion-clip]');
       return JSON.stringify({ make: !!c.querySelector('[data-part=motion-make]'), fromLib: !!c.querySelector('[data-part=motion-from-lib]'), timeline: !!c.querySelector('[data-part=motion-timeline]'),
         clip: clip ? clip.selectedOptions[0]?.textContent : null }); })()`);
-    const after = () => j(`(() => { const a = document.querySelector('[data-part=tl-attached]'); const s = document.querySelector('[data-part=tl-starts]');
-      return JSON.stringify({ text: a ? a.textContent : null, focused: !!s && document.activeElement === s, lib: !document.querySelector('[data-part=assets-page]')?.hidden }); })()`);
+    // studio-ui-lead (2026-10-23): no "✓ attached" chip; just attached = "When does it move?" with its menu ringed (.ask) and focused.
+    const after = () => j(`(() => { const s = document.querySelector('[data-part=tl-starts]');
+      return JSON.stringify({ ringed: !!s?.closest('.tl-starts.ask'), focused: !!s && document.activeElement === s, lib: !document.querySelector('[data-part=assets-page]')?.hidden }); })()`);
     /** Where an object is in the editor page (its middle in the game, through the frame's box). */
     const objectAt = (k) => j(`(() => { const d = ${DBG}; const m = d.middle(${JSON.stringify(k)}); const s = m && d.toScreen(m); if (!s) return null;
       const o = document.querySelector('iframe.game').getBoundingClientRect(); return JSON.stringify({ x: o.left + s[0], y: o.top + s[1] }); })()`);
@@ -221,8 +222,9 @@ async function run(size, theme) {
       await page.eval(`document.querySelector('[data-part=motion-new]').click()`);
       await sleep(900);
       const onScene = await page.eval(`document.querySelector('[data-part=assets-page]').hidden`);
-      const line = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return (a && a.textContent) + ' ' + ((document.querySelector('.toast') || {}).textContent || ''); })()`);
-      check(onScene && /Pick an object to make its motion/.test(line), `the Scene, and one line: "${(line.match(/Pick an object[^.]*/) || [''])[0]}"`);
+      // (`askLine`: a second `const line` in this block was a syntax error since studio-no-presets — the test never ran; studio-ui-lead 2026-10-23.)
+      const askLine = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return (a && a.textContent) + ' ' + ((document.querySelector('.toast') || {}).textContent || ''); })()`);
+      check(onScene && /Pick an object to make its motion/.test(askLine), `the Scene, and one line: "${(askLine.match(/Pick an object[^.]*/) || [''])[0]}"`);
       const lh = await objectAt('lighthouse');
       await page.click(lh.x, lh.y);
       await sleep(1000);
@@ -246,7 +248,7 @@ async function run(size, theme) {
       const a = await after();
       st = await state();
       check(!a.lib && st.open && st.clip === 'Hop', `the Scene, the timeline on Hop (${st.clip})`);
-      check(/“Hop” attached/.test(a.text || '') && a.focused, `"✓ “Hop” attached · When does it move?" with Starts focused (${JSON.stringify(a)})`);
+      check(a.ringed && a.focused, `"When does it move?" ringed, with its menu focused (${JSON.stringify(a)})`);
       const undo1 = await page.eval(`(document.querySelector('[data-action=undo]') || {}).title || ''`);
       check(undo1 !== undo0 && /motion|動き/.test(undo1), `one undo step ("${undo1.split('\n')[0]}")`);
       // ---- 5. the card's From Library ----
@@ -256,7 +258,7 @@ async function run(size, theme) {
       await page.eval(choose('[data-part=card] [data-part=motion-from-lib]', 'attach:Bob'));
       await sleep(800);
       const a2 = await after();
-      check(/“Bob” attached/.test(a2.text || ''), `the card's From Library: "${a2.text}"`);
+      check(a2.ringed && st.clip !== (await state()).clip, `the card's From Library: Bob on the plate, "When" ringed (${JSON.stringify(a2)}, ${(await state()).clip})`);
     } else {
       // ---- pictures ----
       await select('crate');

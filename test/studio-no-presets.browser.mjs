@@ -132,8 +132,15 @@ async function run(theme) {
     const k2 = await keysOf('lighthouse');
     check(JSON.stringify(k2) === '[[0,1,2]]', `${tag}: the next move adds a second (${JSON.stringify(k2)})`);
     await shot('4-more');
-    // ---- 5. the menus ----
-    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
+    // ---- 5. the menus ---- (studio-ui-lead, 2026-10-23: while making, the line is the step and "Done" only; "When" ▾
+    // comes after Done, and the motion's menu lives in ⋯)
+    await page.eval(`document.querySelector('[data-part=tl-done]')?.click()`);
+    await sleep(400);
+    await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+    await sleep(300);
+    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
+    await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+    await sleep(200);
     check(clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && clipOpts.some(([v]) => v === 'new:scene')
       && !clipOpts.some(([v, t]) => /^new:(?!make$|scene$)/.test(v) || WORDS.kinds.test(t)), `${tag}: the clip menu — make one, a scene, no kind (${clipOpts.map((o) => o[1]).join(' | ')})`);
     const when = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-starts] optgroup')].map((g) => [g.label, [...g.children].map((o) => o.textContent)]))`);

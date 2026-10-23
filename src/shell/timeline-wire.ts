@@ -1040,6 +1040,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     tryCue: (id) => tryCue(id),
     tryStop: () => stopTry(),
+    // studio-ui-lead: the picked keys' row has a Delete button (a phone has no Delete key); the same as the key.
+    deleteKeys: () => void deletePicked(),
     ease(e) {
       if (!sel.length) return;
       const next = new Map<string, Motion | null>();

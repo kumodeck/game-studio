@@ -87,7 +87,7 @@ test('OFF_LINES: every case says why AND what can be done, in both languages, in
 
 test('the words of the card, the Motion menu and "When" exist in both languages and use no maker\'s words', () => {
   const keys = ['hold.gameStart',
-    'motion.tool.none', 'motion.tool.make', 'motion.tool.saved', 'motion.tool.savedHead', 'tl.when.firstAt', 'tl.made', 'tl.when.selfHead', 'tl.when.aiHead',
+    'motion.tool.none', 'motion.tool.make', 'motion.tool.saved', 'motion.tool.savedHead', 'tl.when.firstAt', 'tl.made.more', 'tl.when.selfHead', 'tl.when.aiHead',
     'tl.when.touchNow', 'tl.when.cueNow', 'tl.when.sayNow'];
   for (const lang of ['en', 'ja'] as const) for (const k of keys) assert.notEqual(translate(lang, k), k, `${lang}: ${k}`);
   // The "When" menu (studio-no-presets: Gemini's words, wording-gemini-1023.md B): "Trigger" with six, then "Ask AI to

@@ -2,10 +2,18 @@
 // what a press on it means. No state of its own beyond a drag in progress: timeline-wire.ts owns the state and gives
 // a fresh `view()` each render; every press goes back as one call on `act`.
 //
-//   ▶  0:01.6 / [4.0] s   ● Auto key   [Row ▾]   ↔ [Back and forth ▾]   Plays [At start ▾]   Keys [Ease in-out ▾]   ⌄
+//   ▶  0:01.6 / [4.0] s   ● Auto key   When does it move? [When the game starts ▾] ▷        ⋯  ✦ Ask AI  ⌄
+//   Keys picked · 2   To the next key [Eases in and out ▾]   Path turns [Smoothly ▾]   🗑 Delete   ← only while keys are picked
 //        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
-//   ▾ rowboat   ◇─────────◇──────◇                      ← one row per object (its keys at any property)
+//   ▾ rowboat · Row   ◇─────────◇──────◇               ← one row per object (its keys at any property)
 //       Position ◆─────────◆──────◆                     ← ▾ opens position / angle / size
+//
+// The line (studio-ui-lead, 2026-10-23; a hands-on try of v0.1.26 at 1800 px: "not one thing on it is readable"): what a
+// hand needs every time — ▶, the time, ● Auto key, when it moves, ⋯, ✦, ⌄ — and nothing that is sometimes. The motion's
+// name is in the row at the left and its menu (switch, rename, make, take off) is in ⋯; "✓ attached" is gone (the row
+// and the card say the name; the ringed "When" is the next step); the picked keys' menus are a row of their own under
+// the line, named for what they are ("Keys picked · 2 — To the next key …"; "Point" / "Keys" read as nothing). Nothing
+// on the line shrinks or ends in "…": the line wraps to the narrow order instead (render() measures it).
 //
 // WHY the plate redraws whole on render(): a few rows of a few keys (a game object's motion is tens of keys, not
 // thousands), and one code path is easier to keep right than patching. A drag keeps its pointer capture on the track
@@ -88,7 +96,7 @@ export interface TimelineView {
   rowWhen(key: string): { when: MotionWhen; whens?: MotionWhen[]; until: MotionUntil | null; repeat: MotionRepeat } | null;
   defaultArea(): MotionArea;
   player: string | null;
-  /** studio-motion-flow: the focused clip's motion was just attached ("✓ “Hop” attached · When does it move?"), else null. */
+  /** studio-motion-flow: the focused clip's motion was just attached (the "When does it move?" menu is ringed: the next step), else null. */
   attached: string | null;
   /** studio-tool-clear: the focused object's first motion was just made by moving it — its last key's time (s), else null. */
   made?: number | null;
@@ -136,6 +144,8 @@ export interface TimelineActs {
   tryCue(id: string): void;
   tryStop(): void;
   ease(e: MotionEase): void;
+  /** studio-ui-lead: the picked keys' "Delete" button (a phone has no Delete key). Absent = no button. */
+  deleteKeys?(): void;
   pickRow(key: string): void;
   openRow(key: string): void;
   /** Keys picked on the plate (add: Shift / ⌘ held, the others stay picked). */
@@ -180,16 +190,22 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   });
   // studio-motion-focus: "+ Link an object"'s list, the same popover as ⋯ with its left edge on the button.
   const linkPop = createMorePop(() => el.closest<HTMLElement>('.shell') ?? document.body, t('tl.link'), () => act.linking?.(false), { left: true, width: 300, part: 'tl-link-pop' });
+  // studio-ui-lead: the picked keys' row (under the line, only while keys are picked: what the pick is, where it is made).
+  const selRow = h('div', { class: 'tl-sel', hidden: true, dataset: { part: 'tl-sel' } });
   const ruler = h('div', { class: 'tl-ruler', role: 'slider', 'aria-valuemin': '0', dataset: { part: 'tl-ruler' } });
   const names = h('div', { class: 'tl-names' });
+  // The names column's head (over the rows, beside the ruler): "Linked · 3" when a scene is open — above the rows it names.
+  const rulerPad = h('div', { class: 'tl-ruler-pad' });
   const lanes = h('div', { class: 'tl-lanes', dataset: { part: 'tl-lanes' } });
   const playhead = h('div', { class: 'tl-playhead', dataset: { part: 'tl-playhead' } }, h('span', { class: 'tl-cap' }));
   const boxEl = h('div', { class: 'tl-box', hidden: true });
   const track = h('div', { class: 'tl-track' }, ruler, lanes, playhead, boxEl);
-  const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, h('div', { class: 'tl-ruler-pad' }), names), track);
+  const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, rulerPad, names), track);
   // studio-motion-flow: the three steps, the first time the plate opens (over its right end; shell.css .tl-coach).
   const coach = h('div', { class: 'tl-coach', role: 'note', hidden: true, dataset: { part: 'tl-coach' } });
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, body, coach);
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, selRow, body, coach);
+  // The narrow order is on (a phone, the side window, or a plate too narrow for the line: render() measures).
+  let tightNow = false;
 
   // Seconds ↔ px on the track (its own box: the names column is outside it).
   const pad = 12;
@@ -232,42 +248,11 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const time = h('span', { class: 'tl-time' }, now, h('span', { class: 'tl-of', text: '/' }), len, h('span', { class: 'tl-of', text: 's' }));
     const auto = h('button', { type: 'button', class: `tl-auto${v.auto ? ' on' : ''}`, dataset: { action: 'tl-auto', part: 'tl-auto' }, 'aria-pressed': String(v.auto),
       title: t(v.auto ? 'tl.autoOn' : 'tl.autoOff'), onclick: () => act.auto(!v.auto) }, h('span', { class: 'tl-dot' }), h('span', { class: 'tl-auto-w', text: t('tl.auto') }));
-    // The clip menu: this object's motions, then "+ Make a motion" and a new scene, then rename / delete.
-    const opts: Array<[string, string, boolean?]> = [];
-    if (!v.clips.length) opts.push(['', t('tl.noClip'), true]);
-    for (const n of v.clips) opts.push([n, n]);
-    opts.push(['-', '──────', true]);
-    // studio-no-presets (2026-10-23): no kinds here any more (Back and forth, Round, Once, Spin — studio-tool-clear had
-    // kept them on a thing that moves already). The review: "we don't need them". "+ Make a motion" is the strip's and
-    // the card's way (show it: the next move is its key); a scene is not a kind (it starts empty, for several objects).
-    opts.push(['new:make', t('tl.make'), !v.focus], ['new:scene', t('tl.new', { name: t('tl.tpl.scene') }), !v.focus]);
-    if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
-    const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
-      if (val === 'rename') return void renaming(c!.name);
-      act.clip(val);
-    });
-    clipSel.classList.add('tl-clip-pick');
-    const items: Node[] = [play, time, auto, clipSel];
-    // A scene (studio-timeline-2): says what it is — one motion, this many objects (its rows below).
-    // Linked (studio-motion-focus): said once there are two (a scene of one is the object's own motion, nothing to say).
-    if (c && v.scene && v.scene.n > 1) items.push(h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) }));
+    // studio-ui-lead: the motion's menu (this object's motions, + Make a motion, a scene, rename, take off) is in ⋯ —
+    // clipMenu(); the name is in the row at the left (and on the card). "Linked · 3" is over the rows (render()).
+    const items: Node[] = [play, time, auto];
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
-    // Point ▾ (studio-timeline-2) and Keys ▾: only while a point / keys are picked — what the pick is, where the pick is
-    // made. Keys ▾ was on the line always, greyed with no key picked ("Ease in-out" read as the motion's speed, 10/22).
-    if (v.point && act.point) {
-      const opts: Array<[string, string, boolean?]> = [...(v.point === 'mixed' ? [['', '—', true] as [string, string, boolean]] : []),
-        ['smooth', t('tl.point.smooth')], ['corner', t('tl.point.corner')], ['custom', t('tl.point.custom'), true]];
-      const pt = select('tl-point', t('tl.pointTip'), opts, v.point === 'mixed' ? '' : v.point, (k) => act.point!(k as PointKind));
-      pt.classList.add('tl-point-pick');
-      items.push(h('span', { class: 'tl-lbl', text: t('tl.point') }), pt);
-    }
-    if (v.ease) {
-      const ease = select('tl-ease', t('tl.easeTip'), [...(v.ease === 'mixed' ? [['', '—', true] as [string, string, boolean]] : []),
-        ...(['linear', 'ease', 'step'] as MotionEase[]).map((e) => [e, t(`tl.ease.${e}`)] as [string, string])], v.ease !== 'mixed' ? v.ease : '', (e) => act.ease(e as MotionEase));
-      ease.classList.add('tl-ease-pick');
-      items.push(h('span', { class: 'tl-lbl tl-ease-lbl', text: t('tl.ease') }), ease);
-    }
     // ⋯ also with no motion here when others move: its "Show every motion in the scene" (studio-motion-focus).
     if (c || v.moving) {
       const open = more.open;
@@ -363,7 +348,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       // second field here (the strip had "Starts [In my words…] [When? (for your AI)]": two ways in for one thing).
       if (on === 'say') act.ask?.();
     });
-    return h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}${!i && v.attached ? ' ask' : ''}` }, s, icon('chevronDown'));
+    return h('span', { class: `tl-pick tl-starts${AI_TRIGGERS.includes(w.on) ? ' ai' : ''}${!i && (v.attached || (v.made && !v.making)) ? ' ask' : ''}` }, s, icon('chevronDown'));
   };
 
   /** The line's "when": Starts ▾ [its field] (+1) ▷ — or, with no motion, what makes one. */
@@ -372,17 +357,19 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const w = v.when;
     if (c && w) {
       const items: Node[] = [];
-      // Just attached (studio-motion-flow): say so where the "when" is chosen, and ask the question the menu answers.
-      if (v.attached) items.push(h('span', { class: 'tl-attached', dataset: { part: 'tl-attached' }, text: `✓ ${t('tl.attached', { name: v.attached })}` }),
-        h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
-      // Just made by moving it (studio-tool-clear): what it does now and how to see it, then the next question.
-      // Making (studio-no-presets): the same line says the next move adds a second — without the name (the row and
-      // the card say it; a design look of the first pictures: the long line pushed "When" ▾ off the plate).
-      else if (v.made) {
-        const said = `✓ ${t(v.making === 'more' ? 'tl.made.more' : 'tl.made', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '', t: Math.round(v.made * 10) / 10 })}`;
-        items.push(h('span', { class: 'tl-attached', title: said, dataset: { part: 'tl-made' }, text: said }),
-        h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
-      } else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Making (studio-no-presets): the line is the step — "✓ Moves 0–1 s. Keep moving to add a second." and "Done" —
+      // and nothing else: the "when" comes after Done (studio-ui-lead: one thing at a time on one line; before, the
+      // sentence, "When does it move?", the menu and Done shared it, and every one of them was cut).
+      if (v.making === 'more') {
+        const said = `✓ ${t('tl.made.more', { t: Math.round((v.made ?? 0) * 10) / 10 })}`;
+        items.push(h('span', { class: 'tl-lbl tl-first tl-made', dataset: { part: 'tl-made' }, text: said }));
+        if (act.done) items.push(h('button', { type: 'button', class: 'tl-done', dataset: { part: 'tl-done', action: 'tl-done' }, title: t('tl.make.doneTip'), onclick: () => act.done!() }, t('tl.make.done')));
+        return items;
+      }
+      // "When does it move?" always (the brief: the one label on the line that reads as is); just attached or just
+      // made (Done pressed), the menu is ringed — the next step — with no "✓ attached" chip before it (studio-ui-lead:
+      // the row and the card say the name; "attached" was a maker's word, the ux review of 10/23).
+      items.push(h('span', { class: 'tl-lbl tl-when-lbl', text: t('tl.whenAsk') }));
       items.push(startsMenu('tl-starts', t('tl.starts'), w, v, 0, true), ...whenField(w, v, (x) => sendWhen(v, 0, x)));
       // The other ways it starts (studio-timeline-2's "or") live in ⋯; the line says there are some ("+1").
       const others = (v.whens?.length ?? 1) - 1;
@@ -393,8 +380,6 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       if (v.trying) items.push(h('button', { type: 'button', class: 'icon-btn tl-try-this on', title: t('tl.try.stop'), 'aria-label': t('tl.try.stop'), dataset: { part: 'tl-try-this' }, onclick: () => act.tryStop() }, icon('pause')));
       else if (mine) items.push(h('button', { type: 'button', class: `icon-btn tl-try-this${mine.ai ? ' ai' : ''}`, title: t(mine.ai ? 'tl.try.aiTip' : 'tl.try.tip', { name: mine.label }),
         'aria-label': t('tl.try.tip', { name: mine.label }), dataset: { part: 'tl-try-this', cue: mine.id }, onclick: () => act.tryCue(mine.id) }, icon('play')));
-      // "Done" (Esc's button) last, after "When" ▾: between the line and the menu it read as "done with When" (the design look).
-      if (v.making === 'more' && act.done) items.push(h('button', { type: 'button', class: 'tl-done', dataset: { part: 'tl-done', action: 'tl-done' }, title: t('tl.make.doneTip'), onclick: () => act.done!() }, t('tl.make.done')));
       return items;
     }
     if (v.focus) {
@@ -421,12 +406,15 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const allRow = row('tl-more-all', t('tl.all.k'), act.showAll ? h('button', { type: 'button', class: `tl-all${v.all ? ' on' : ''}`, 'aria-pressed': String(!!v.all), dataset: { part: 'tl-all' },
       onclick: () => (more.hide(), act.showAll!(!v.all)) }, icon('list'), h('span', { text: t(v.all ? 'tl.all.off' : 'tl.all') })) : null);
     const btn0 = head.querySelector<HTMLElement>('[data-part=tl-more-btn]');
+    // studio-ui-lead: the motion's menu (which motion, + Make a motion, a scene, rename, take off) — first: it says
+    // what the rows below are about. It was on the line, where it shrank to "Mo…".
+    const clipRow = row('tl-more-clip', t('tl.clip'), clipMenu(v));
     if (!c || !w) {
       if (!v.moving || !btn0) return more.hide();
-      more.el.replaceChildren(allRow);
+      more.el.replaceChildren(clipRow, allRow);
       return more.place(btn0);
     }
-    const rows: HTMLElement[] = [];
+    const rows: HTMLElement[] = [clipRow];
     rows.push(row('tl-more-repeat', t('tl.repeat'), select('tl-repeat', t('tl.repeat'), (['once', 'loop', 'pingpong'] as MotionRepeat[]).map((r) => [r, t(`tl.repeat.${r}`)]), c.repeat ?? 'once', (r) => act.repeat(r as MotionRepeat))));
     // Stops ▾: never / after N rounds / a cue; then: stay or go back.
     const u = v.until;
@@ -539,7 +527,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
 
   /** The clip menu's "Rename…": the menu becomes a field with the name, Enter / leaving keeps it, Esc goes back. */
   function renaming(name: string) {
-    const pick = head.querySelector('.tl-clip-pick');
+    const pick = more.el.querySelector('.tl-clip-pick');
     if (!pick) return;
     const f = h('input', { type: 'text', class: 'tl-rename', 'aria-label': t('tl.renameTip'), title: t('tl.renameTip'), maxlength: '40', dataset: { part: 'tl-rename' } });
     f.value = name;
@@ -585,8 +573,9 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
         r.clip && !v.scene ? h('span', { class: 'tl-clipname', text: r.clip.name }) : null,
         (() => {
           const rw = v.rowWhen(r.key);
-          // In a scene every row starts as one: the head says when, not each row.
-          if (!rw || v.narrow || v.scene) return null;
+          // In a scene every row starts as one: the head says when, not each row. Only with every motion shown
+          // (studio-ui-lead): the plate is the picked object's, whose "when" the line says — the chip cut the name ("gate Back an… ∞ Al…").
+          if (!rw || tightNow || v.scene || !v.all) return null;
           const ai = AI_TRIGGERS.includes(rw.when.on);
           return h('span', { class: `tl-whenchip${ai ? ' ai' : ''}`, dataset: { part: 'tl-whenchip' }, text: whensShort(t, rw.whens ?? [rw.when], rw.until, rw.repeat) });
         })(),
@@ -634,7 +623,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const btn = h('button', { type: 'button', class: `tl-link${on ? ' on' : ''}`, 'aria-expanded': String(on), 'aria-haspopup': 'dialog',
       title: t('tl.linkTip', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '' }), dataset: { part: 'tl-link' }, onclick: () => toggleLink(btn) }, icon('plus'), h('span', { text: t('tl.link') }));
     names.append(h('div', { class: 'tl-name tl-link-name', style: `height:${ROW}px` }, btn));
-    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, on && !v.narrow ? h('span', { class: 'tl-lane-hint', text: t('tl.link.hint') }) : null));
+    lanes.append(h('div', { class: 'tl-lane tl-link-lane', style: `top:${y}px;height:${ROW}px` }, on && !tightNow ? h('span', { class: 'tl-lane-hint', text: t('tl.link.hint') }) : null));
     return y + ROW;
   }
   /** "+ Link an object" pressed: its list over it (the scene's objects), or closed. */
@@ -645,7 +634,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     more.hide();
     linkPop.show(btn);
     const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '';
-    fillLinkList(linkPop.el, { title: t('tl.link.title', { name }), find: t('tl.link.find'), none: t('tl.link.none'), items: v.link.items(), focus: !v.narrow, pick: (k) => act.link!(k) });
+    fillLinkList(linkPop.el, { title: t('tl.link.title', { name }), find: t('tl.link.find'), none: t('tl.link.none'), items: v.link.items(), focus: !tightNow, pick: (k) => act.link!(k) });
     act.linking?.(true);
   }
 
@@ -787,7 +776,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     ruler.title = t('tl.ruler');
     const s = span();
     // A tick every second (every half on a wide plate with a short span), labelled on whole seconds.
-    const step = s <= 4 && !v.narrow ? 0.5 : s <= 12 ? 1 : s <= 40 ? 5 : 10;
+    const step = s <= 4 && !tightNow ? 0.5 : s <= 12 ? 1 : s <= 40 ? 5 : 10;
     for (let x = 0; x <= s + 1e-6; x += step) {
       const whole = Math.abs(x - Math.round(x)) < 1e-6;
       ruler.append(h('span', { class: `tl-tick${whole ? '' : ' half'}`, style: `left:${xOf(x)}px`, text: whole ? `${Math.round(x)}s` : '' }));
@@ -805,9 +794,22 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const inMore = more.el.contains(document.activeElement);
     const had = document.activeElement instanceof HTMLSelectElement && (el.contains(document.activeElement) || inMore) ? document.activeElement.dataset.part : null;
     el.classList.toggle('rec', v.auto);
-    el.classList.toggle('narrow', v.narrow);
+    tightNow = v.narrow;
+    el.classList.toggle('narrow', tightNow);
     renderHead(v);
+    // One line when it fits, else the narrow order (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them): measured, not a
+    // width in px — what is on the line differs (a key's name, an area's size, "+1 more"), and nothing on it may shrink
+    // to "…" (studio-ui-lead). ⌄ below ▶ = it wrapped.
+    if (!tightNow && !el.hidden && el.isConnected && fold().offsetTop > play().offsetTop) {
+      tightNow = true;
+      el.classList.add('narrow');
+      renderHead(v);
+    }
     if (had) (inMore ? more.el : el).querySelector<HTMLSelectElement>(`select[data-part="${had}"]`)?.focus({ preventScroll: true });
+    renderSel(v);
+    // A scene (studio-timeline-2) says what it is — one motion, this many objects — over the rows it names. Said once
+    // there are two (studio-motion-focus: a scene of one is the object's own motion, nothing to say).
+    rulerPad.replaceChildren(...(v.clip && v.scene && v.scene.n > 1 ? [h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) })] : []));
     renderRows(v);
     // The link list follows its button (drawn anew with the rows), and closes once it is done (linked, or Esc in the game).
     if (linkPop.open) {
@@ -818,6 +820,59 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     renderRuler(v);
     renderCoach(v);
     place(v);
+  }
+
+  const play = () => head.querySelector<HTMLElement>('.tl-play') ?? head;
+  const fold = () => head.querySelector<HTMLElement>('.tl-fold') ?? head;
+
+  /**
+   * The picked keys' row (studio-ui-lead): "Keys picked · 2 — To the next key [Eases in and out ▾] — Path turns
+   * [Smoothly ▾] — 🗑 Delete". Only while keys are picked. Before, "Point ▾" and "Keys ▾" sat on the line with no room
+   * (every menu became "…") and with labels that said nothing ("Keys ▾ Ease in-out" read as the motion's speed, 10/22).
+   * Delete is a button too: a phone has no Delete key.
+   */
+  function renderSel(v: TimelineView) {
+    const n = v.ease ? allPicked(v).length : 0;
+    selRow.hidden = !n;
+    if (!n) return void selRow.replaceChildren();
+    const group = (label: string, pick: Node) => h('span', { class: 'tl-sel-group' }, h('span', { class: 'tl-sel-lbl', text: label }), pick);
+    const items: Node[] = [h('span', { class: 'tl-sel-n', dataset: { part: 'tl-sel-n' }, text: t('tl.sel', { n }) })];
+    const ease = select('tl-ease', t('tl.easeTip'), [...(v.ease === 'mixed' ? [['', '—', true] as [string, string, boolean]] : []),
+      ...(['ease', 'linear', 'step'] as MotionEase[]).map((e) => [e, t(`tl.ease.${e}`)] as [string, string])], v.ease !== 'mixed' ? v.ease! : '', (e) => act.ease(e as MotionEase));
+    ease.classList.add('tl-ease-pick');
+    items.push(group(t('tl.ease'), ease));
+    // The path's points (studio-timeline-2): only while position keys are picked.
+    if (v.point && act.point) {
+      const opts: Array<[string, string, boolean?]> = [...(v.point === 'mixed' ? [['', '—', true] as [string, string, boolean]] : []),
+        ['smooth', t('tl.point.smooth')], ['corner', t('tl.point.corner')], ['custom', t('tl.point.custom'), true]];
+      const pt = select('tl-point', t('tl.pointTip'), opts, v.point === 'mixed' ? '' : v.point, (k) => act.point!(k as PointKind));
+      pt.classList.add('tl-point-pick');
+      items.push(group(t('tl.point'), pt));
+    }
+    if (act.deleteKeys) items.push(h('button', { type: 'button', class: 'tl-sel-del', title: t('tl.sel.deleteTip'), dataset: { part: 'tl-sel-del', action: 'tl-delete' }, onclick: () => act.deleteKeys!() },
+      icon('trash'), h('span', { text: t('tl.sel.delete') })));
+    selRow.replaceChildren(...items);
+  }
+
+  /** The motion's menu (in ⋯): this object's motions, then "+ Make a motion" and a new scene, then rename / take off. */
+  function clipMenu(v: TimelineView): Node {
+    const c = v.clip;
+    const opts: Array<[string, string, boolean?]> = [];
+    if (!v.clips.length) opts.push(['', t('tl.noClip'), true]);
+    for (const n of v.clips) opts.push([n, n]);
+    opts.push(['-', '──────', true]);
+    // studio-no-presets (2026-10-23): no kinds here any more (Back and forth, Round, Once, Spin — studio-tool-clear had
+    // kept them on a thing that moves already). The review: "we don't need them". "+ Make a motion" is the strip's and
+    // the card's way (show it: the next move is its key); a scene is not a kind (it starts empty, for several objects).
+    opts.push(['new:make', t('tl.make'), !v.focus], ['new:scene', t('tl.new', { name: t('tl.tpl.scene') }), !v.focus]);
+    if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
+    const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
+      if (val === 'rename') return void renaming(c!.name);
+      more.hide();
+      act.clip(val);
+    });
+    clipSel.classList.add('tl-clip-pick');
+    return clipSel;
   }
 
   /**
