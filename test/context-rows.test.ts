@@ -17,13 +17,13 @@ const base: CtxFacts = {
 const ids = (rows: CtxRow[]) => rows.map((r) => ('sep' in r ? '—' : r.id));
 const row = (rows: CtxRow[], id: string) => rows.find((r) => !('sep' in r) && r.id === id) as Exclude<CtxRow, { sep: true }> | undefined;
 
-test('an object in the scene (PC): rename, duplicate / copy / delete, show in Library, then ✦ ask — 7 rows at most, no undo / redo', () => {
+test('an object in the scene (PC): rename, duplicate / delete (no Copy: studio-card-doors), show in Library, then ✦ ask — 7 rows at most, no undo / redo', () => {
   const rows = contextRows('object', base);
-  assert.deepEqual(ids(rows), ['rename', '—', 'duplicate', 'copy', 'remove', '—', 'showInLibrary', '—', 'ask']);
+  assert.deepEqual(ids(rows), ['rename', '—', 'duplicate', 'remove', '—', 'showInLibrary', '—', 'ask']);
   assert.ok(!row(rows, 'paste'), 'nothing copied: no Paste row (not a dimmed one)');
   assert.equal(row(rows, 'duplicate')!.disabled, false);
   const withClip = contextRows('object', { ...base, clip: 1 });
-  assert.deepEqual(ids(withClip), ['rename', '—', 'duplicate', 'copy', 'paste', 'remove', '—', 'showInLibrary', '—', 'ask']);
+  assert.deepEqual(ids(withClip), ['rename', '—', 'duplicate', 'paste', 'remove', '—', 'showInLibrary', '—', 'ask']);
   assert.ok(withClip.filter((r) => !('sep' in r)).length <= 7, 'review 2 ②: 7 rows at most');
   // studio-uniforms (two uniforms): Rename acts in place with its key; ✦ rows are marked and last.
   assert.equal(row(rows, 'rename')!.key, 'rename');
@@ -33,7 +33,7 @@ test('an object in the scene (PC): rename, duplicate / copy / delete, show in Li
 });
 
 test('several picked: the same rows (they act on all), no Rename; unnamed ones get "name them"', () => {
-  assert.deepEqual(ids(contextRows('object', { ...base, picked: 3, movable: 3 })), ['duplicate', 'copy', 'remove', '—', 'showInLibrary', '—', 'ask']);
+  assert.deepEqual(ids(contextRows('object', { ...base, picked: 3, movable: 3 })), ['duplicate', 'remove', '—', 'showInLibrary', '—', 'ask']);
   const named = contextRows('object', { ...base, picked: 3, movable: 3, unnamed: 2 });
   assert.equal(row(named, 'name')!.label, 'ctx.nameAskMany');
   assert.equal(row(named, 'name')!.ai, true, 'naming is a ✦ draft, like every ask');
@@ -41,9 +41,9 @@ test('several picked: the same rows (they act on all), no Rename; unnamed ones g
   assert.ok(!ids(contextRows('object', { ...base, unnamed: 1 })).includes('rename'), 'an unnamed object is named by the AI first');
 });
 
-test('locked objects (the game\'s rules): duplicate, copy and delete are dimmed on a PC', () => {
+test('locked objects (the game\'s rules): duplicate and delete are dimmed on a PC', () => {
   const rows = contextRows('object', { ...base, movable: 0 });
-  for (const id of ['duplicate', 'copy', 'remove']) assert.equal(row(rows, id)!.disabled, true, id);
+  for (const id of ['duplicate', 'remove']) assert.equal(row(rows, id)!.disabled, true, id);
 });
 
 test('a phone: 5 rows at most, none dimmed — ask, rename, show in Library, (2D) to front / to back', () => {
@@ -64,7 +64,7 @@ test('a phone: 5 rows at most, none dimmed — ask, rename, show in Library, (2D
 
 test('the web demo (no AI behind it) has no "Ask your AI" and no naming, and no empty group left behind', () => {
   const obj = contextRows('object', { ...base, offline: true, unnamed: 1 });
-  assert.deepEqual(ids(obj), ['duplicate', 'copy', 'remove', '—', 'showInLibrary']);
+  assert.deepEqual(ids(obj), ['duplicate', 'remove', '—', 'showInLibrary']);
   const scene = contextRows('scene', { ...base, offline: true });
   assert.equal(ids(scene)[0], 'selectAll');
   assert.ok(!ids(scene).includes('ask'));
@@ -72,7 +72,7 @@ test('the web demo (no AI behind it) has no "Ask your AI" and no naming, and no 
 
 test('2D with draw order: to front / to back only (one step is ⌘] ⌘[ and the card), dimmed on a PC when it cannot go', () => {
   const rows = contextRows('object', { ...base, dim: '2d', layers: { forward: true, backward: false, toFront: true, toBack: false } });
-  assert.deepEqual(ids(rows), ['rename', '—', 'duplicate', 'copy', 'remove', '—', 'showInLibrary', '—', 'layer-toFront', 'layer-toBack', '—', 'ask']);
+  assert.deepEqual(ids(rows), ['rename', '—', 'duplicate', 'remove', '—', 'showInLibrary', '—', 'layer-toFront', 'layer-toBack', '—', 'ask']);
   assert.equal(row(rows, 'layer-toBack')!.disabled, true);
   assert.equal(row(rows, 'layer-toFront')!.key, 'toFront');
   // 3D never lists them.

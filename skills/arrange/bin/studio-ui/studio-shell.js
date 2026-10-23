@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.32 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.33 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -15076,8 +15076,9 @@ __defs[36] = function (__exports) {
 // things your AI can do, not as a shop shelf in an OSS tool.
 //
 // Rules this page keeps:
-// - Nothing happens until a button is pressed. The page never contacts any
-//   service; "Ask my AI" only calls host.request(), which keeps the request
+// - Nothing happens until a button is pressed, and the ✦ button only writes the idea in the ask box (studio-card-doors,
+//   2026-10-23): the person sends it from there. The page never contacts any
+//   service; a sent ask only calls host.request(), which keeps the request
 //   for the agent (locally .studio/requests/<id>.json, plus
 //   .studio/next-step.md for KUMODeck steps).
 // - The agent checks with the user before signing in, uploading or changing code.
@@ -15098,8 +15099,13 @@ const NEXT_STEPS               = ['publish', 'multiplayer', 'save-data', 'ai-ass
                    
                          
                
-                                                                                               
+                                                                                                                     
                                                      
+     
+                                                                                                                      
+                                                                                                          
+     
+                             
  
 
 function renderNextSteps(el             , d               , open               , onOpen                             )       {
@@ -15145,7 +15151,8 @@ function renderNextSteps(el             , d               , open               ,
     h('label', { class: 'set-label', text: d.t('next.edit') }),
     promptBox,
     h('div', { class: 'step-actions' },
-      h('button', { type: 'button', class: 'primary', dataset: { action: 'ask' }, text: d.t('next.ask'), onclick: async () => {
+      h('button', { type: 'button', class: d.draft ? 'primary ai' : 'primary', dataset: { action: 'ask' }, text: d.draft ? `✦ ${d.t('next.ask')}…` : d.t('next.ask'), onclick: async () => {
+        if (d.draft) return d.draft(promptBox.value.trim() || d.t(`next.prompt.${open}`));
         const ok = await d.send(open, promptBox.value.trim() || d.t(`next.prompt.${open}`)).catch(() => false);
         note.textContent = ok ? d.t('next.sent') : d.t('ask.fail');
       } }),
@@ -16631,8 +16638,17 @@ const { toneThumb } = __require(17);
                                                     
      
                                                                   
-                                                                                           
+     
+                                                                                                          
+                                                                                                                        
+                                                 
+     
                                 
+     
+                                                                                                                    
+                                                             
+     
+                                                                                            
      
                                                                                                                     
                                                                                                                        
@@ -16730,6 +16746,17 @@ function createPlacementPanel(d                    )                 {
   const FOLD_MIN = 3;
   let foldOpen = false;
   const folding = () => d.phone() && !d.items().some(hasLayer) && d.items().filter((i) => i.unstable).length >= FOLD_MIN;
+  /**
+   * The list's "Ask AI to name them" (studio-card-doors, 2026-10-23; the ✦ rule of studio-uniforms): a draft in the AI
+   * box with those objects picked — nothing sent until the person sends. It sent a request at once before (the plan's
+   * inventory, item 4: "a button that sends at once" next to ✦ rows that only draft). No draft here (the web demo):
+   * the old send.
+   */
+  const askNames = async (keys          ) => {
+    if (d.nameDraft) return d.nameDraft(keys);
+    noNameSent = await d.askName(keys);
+    renderNoName();
+  };
   const renderNoName = () => {
     const keys = d.items().filter((i) => i.unstable).map((i) => i.key);
     noName.replaceChildren();
@@ -16747,19 +16774,13 @@ function createPlacementPanel(d                    )                 {
         h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.fold') }),
       );
       if (!noNameSent) noName.append(h('span', { class: 'count n mono', text: String(keys.length) }));
-      if (!noNameSent) noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: async () => {
-        noNameSent = await d.askName(keys);
-        renderNoName();
-      } }, h('span', { text: d.t('noname.askAi') })));
+      if (!noNameSent) noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: () => askNames(keys) }, h('span', { text: d.t('noname.askAi') })));
       return;
     }
     // Grey words, then one text button. After the press the row says it was asked (and stays until the names land).
     noName.append(h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.row', { n: keys.length }) }));
     if (noNameSent) return;
-    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, title: d.t('noname.whyPlain'), onclick: async () => {
-      noNameSent = await d.askName(keys);
-      renderNoName();
-    } }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
+    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, title: d.t('noname.whyPlain'), onclick: () => askNames(keys) }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
   };
   // The folded row opens and closes from anywhere on it (its ▸ and "Ask AI to name them" are buttons of their own).
   noName.addEventListener('click', (e) => {
@@ -17015,10 +17036,35 @@ function createPlacementPanel(d                    )                 {
    */
   // The minimize button ends every head (one object, several, a UI element), always at its right end.
   // The "UI" tag sits beside the name, not inside it: inside, a long name's "…" cut the tag off with it (Ive review 3 ⑤).
-  const head = (pics             , name        , sub               , cls = '', ui = false) =>
+  const head = (pics             , name        , sub               , cls = '', ui = false, more                     = null) =>
     h('div', { class: `card-head ${cls}`.trim() }, pics,
       h('div', { class: 'head-text' }, h('div', { class: 'head-name' }, h('strong', { text: name }), ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
-      ui ? null : actionRow(), minBtn);
+      ui ? null : actionRow(), more, minBtn);
+  /**
+   * The card's ⋯ (studio-card-doors, 2026-10-23; the plan's "a card holds the name and the numbers"): "Show in Library"
+   * and "Select all N like this" were two link lines under the numbers on every card — the card read as a page of
+   * links. They are one press further now, in the menu this button opens. Outside .card-actions so a locked road (whose
+   * copy / delete are hidden) keeps it. null = nothing to list (no Library in this build, no others of its kind).
+   */
+  const moreRows = (it      , key        ) => {
+    const rows                                                    = [];
+    if (d.showInLibrary && !it.kinds.includes('ui')) rows.push({ id: 'show-in-library', label: d.t('card.showInLibrary').replace(/\s*→$/, ''), run: () => d.showInLibrary () });
+    const kind = sameKind(d.items(), key);
+    if (kind.length > 1) rows.push({ id: 'select-kind', label: d.t('ops.selectKind', { n: kind.length }), run: () => d.selectMany(kind, key) });
+    return rows;
+  };
+  // A phone has a ⋯ on its card already (the numbers' fold, `fine`): the rows go in there as links (moreLinks), not
+  // behind a second ⋯ beside it.
+  const moreBtn = (it      , key        ) => {
+    if (!d.cardMenu || d.phone()) return null;
+    const rows = moreRows(it, key);
+    if (!rows.length) return null;
+    const b = h('button', { type: 'button', class: 'icon-btn card-more', dataset: { action: 'card-more' }, 'aria-haspopup': 'menu', onclick: () => d.cardMenu (b, rows) });
+    // Its name is what it holds ("Show in Library · Select all 4 like this"): no new word for a "More" (the glossary keeps
+    // ⋯ from being an entrance whose contents cannot be told).
+    setButton(b, 'more', rows.map((r) => r.label).join(' · '), false);
+    return b;
+  };
 
   const renderGroupCard = (keys          ) => {
     const items = d.items();
@@ -17090,7 +17136,7 @@ function createPlacementPanel(d                    )                 {
     // Garden Tap the lanterns…"), when that is not just the name again (a "Score" that reads "Score").
     const ui = it.kinds.includes('ui');
     const uiText = ui && it.label.trim().toLowerCase() !== shown.toLowerCase() ? it.label : null;
-    const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui);
+    const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui, moreBtn(it, key));
     h0.title = parts.where ? shown : '';
     let refocus                          = null;
     if (renameKey === key && !ui) {
@@ -17135,20 +17181,19 @@ function createPlacementPanel(d                    )                 {
           renderCard();
         } })));
     };
+    // studio-card-doors (2026-10-23; the plan's rule "the why, once, in one line"): the card said why in a paragraph
+    // ("Ground, road, or sky…" + "Unlock"; "Your game moves this while playing…") while the line under the strip said the
+    // same — two places, and the road had three ways to unlock (the card, right-click, the line). Now the line under
+    // the strip is the one place (bridge/handles.ts), and its "Unlock" the one way; the card is the name (and numbers).
     if (it.held === 'ground') {
       (h0.querySelector('.card-actions')               ).hidden = true;
-      card.append(body);
-      body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: d.t('hold.ground') }));
-      if (d.unhold) body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'unfix' }, text: d.t('hold.free'), onclick: () => d.unhold?.([key]) }));
       return;
     }
     if (it.held === 'game') {
-      card.append(body);
-      body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
       // No "Set where it starts" link any more (studio-move-plain, 2026-10-23): Move already sets it (hold.ts).
       // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
       if (it.movable === false) {
-        if (it.unstable) nameNote();
+        if (it.unstable) (card.append(body), nameNote());
         return;
       }
     }
@@ -17275,6 +17320,9 @@ function createPlacementPanel(d                    )                 {
         if (cur) d.setPose(key, { ...structuredClone(cur), s: target });
       } }));
     }
+    if (d.cardMenu && d.phone()) {
+      for (const r of moreRows(it, key)) fine.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: r.id }, text: r.label, onclick: () => r.run() }));
+    }
     body.append(fine);
     // 3. Layer (2D). On a phone (and any window up to UI.phoneMaxWidth: the side window at 400) it goes INSIDE "…"
     // (design review wave 1 merge, 2026-10-17; the review's "what to cut" 6 and D13): the phone card is name, copy,
@@ -17332,9 +17380,12 @@ function createPlacementPanel(d                    )                 {
     // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
     // want to go straight to its page in the Library"); its file is the Assets row above.
     // (Not for a UI element: HTML is not a Library object.)
-    if (d.showInLibrary && !it.kinds.includes('ui')) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary () }));
-    const kl = kindLink(key);
-    if (kl) body.append(kl);
+    // (In the card's ⋯ since studio-card-doors: moreBtn. A build without cardMenu keeps the old link lines.)
+    if (!d.cardMenu) {
+      if (d.showInLibrary && !it.kinds.includes('ui')) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary () }));
+      const kl = kindLink(key);
+      if (kl) body.append(kl);
+    }
     card.append(body);
     updateNumbers();
   };
@@ -17533,7 +17584,10 @@ function createPlacementPanel(d                    )                 {
     // (2026-10-22); for a few hours it was this head ("Meadow ⌄ 1 of 3"), which nobody found.
     // A game with screens (UI stage 2): the UI list's head names the screen shown, and opens the screens' menu.
     const head = uiList ? d.uiHead?.() ?? null : null;
-    listTools.append(head || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
+    // "Multi-select" on a phone only (studio-card-doors, 2026-10-23): a PC has Shift+click and the box drag, and the
+    // button was one more word at the top of the list. A PC that turned it on another way (⌘K) still sees "Done".
+    listTools.append(head || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }));
+    if (d.phone() || on) listTools.append(b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };
@@ -17946,9 +18000,10 @@ __defs[51] = function (__exports) {
 'use strict';
 // motion-card.ts
 
-// The card's Motion row (motion-gui → studio-timeline → studio-motion-triggers → studio-motion-flow, 2026-10-22).
+// The card's Motion row (motion-gui → studio-timeline → studio-motion-triggers → studio-motion-flow, 2026-10-22 →
+// studio-card-doors, 2026-10-23: one line, only when the object has a motion — see motionCardRow).
 //
-// studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and then put it on objects"): the row
+// History — studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and then put it on objects"): the row
 // had one menu ("None ▾") and ◆ Timeline whatever the object had, so an object with no motion showed no way in. Now:
 //   no motion yet  →  [+ New motion]  [From Library ▾]        the two ways in, side by side (the second only when the
 //                                                             Library has motions: no button that leads nowhere)
@@ -17989,55 +18044,28 @@ const { whenShort } = __require(25);
  
 
 function motionCardRow(d                )                {
+  // studio-card-doors (2026-10-23, a hands-on try: "I couldn't tell how to make a motion and then put it on objects";
+  // "it's all over the place"): the card was a second way in — "+ Make a motion", "Use a saved motion ▾" and
+  // "◆ Timeline", cut to "Use a sa…" / "Motion ▶ S…" on a 272 px card — beside the strip's Motion button. One way in
+  // now (the plan's rule, docs 02-map): the strip's Motion. The card only SAYS what the object has, in one row —
+  // "Motion  ship’s motion · When game starts ›" — and a press on it opens the motion's timeline below the game.
+  // No motion = no row at all (an empty "Motion: none" row would be one more thing to read and nothing to do there).
+  // Its other motions, attach / take off and "Ask AI about it" are the timeline's (its ⋯ Fine-tune and the strip's
+  // menu): the MotionCardDeps keep those for the timeline-wire caller, the card no longer uses them.
   const cs = d.clips();
-  const c = d.shown();
-  const others = d.library().filter((m) => !cs.some((x) => (x.use ?? x.name) === m.name));
+  const c = d.shown() ?? cs[0];
+  if (!c) return [];
   const label = h('span', { class: 'f-l', text: d.t('motion.label') });
-  /** The Library's other motions as a menu (`first`: the menu's own first line, shown on the button). */
-  const attachMenu = (sel                   ) => {
-    const g = h('optgroup', { label: d.t('motion.attach') });
-    for (const m of others) g.append(h('option', { value: `attach:${m.name}`, text: `${m.name} · ${Math.round(m.len * 10) / 10} s` }));
-    sel.append(g);
-  };
-  if (!cs.length) {
-    const make = h('button', { type: 'button', class: 'motion-make', dataset: { action: 'motion-make', part: 'motion-make' }, title: d.t('motion.makeTip'), onclick: () => d.make() },
-      h('span', { 'aria-hidden': 'true', text: '+' }), h('span', { text: d.t('motion.make') }));
-    const cells = h('div', { class: 'f-cells motion-cells motion-cells-new' }, make);
-    if (others.length && d.room()) {
-      const sel = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.attach'), title: d.t('motion.attach'), dataset: { part: 'motion-from-lib' } });
-      sel.append(h('option', { value: '', text: d.t('motion.fromLib') }));
-      attachMenu(sel);
-      sel.addEventListener('change', () => sel.value.startsWith('attach:') && d.attach(sel.value.slice(7)));
-      cells.append(h('span', { class: 'motion-pick motion-from-lib' }, sel, icon('chevronDown')));
-    }
-    return [label, cells];
-  }
-  // A motion: its name and when it plays, on the menu's button (a <select> shows its picked option's text).
-  const pick = h('select', { class: 'motion-kind', 'aria-label': d.t('motion.label'), dataset: { part: 'motion-clip' } });
-  const mine = h('optgroup', { label: d.t('motion.on') });
-  for (const x of cs) {
-    const o = h('option', { value: x.name, text: `${x.name}  ${whenShort(d.t, whenOf(x)              , (x.until ?? null)                      , (x.repeat ?? 'once')                )}` });
-    if (x.name === c?.name) o.selected = true;
-    mine.append(o);
-  }
-  pick.append(mine);
-  if (others.length && d.room()) attachMenu(pick);
-  if (c && d.ask) pick.append(h('option', { value: 'ask', text: `✦ ${d.t('motion.ask', { name: c.name })}` }));
-  if (c) pick.append(h('option', { value: 'detach', text: d.t('motion.detach', { name: c.name }) }));
-  pick.addEventListener('change', () => {
-    const v = pick.value;
-    if (v === 'ask') {
-      // A menu line that does something, not a value: the menu shows the motion again (the chat box takes the cursor).
-      pick.value = c?.name ?? '';
-      d.ask?.();
-    } else if (v.startsWith('attach:')) d.attach(v.slice(7));
-    else if (v === 'detach' && c) d.detach(c.name);
-    else d.choose(v);
-  });
+  const w = whenOf(c)              ;
+  // "When game starts" in full (the glossary's words): the timeline's short "▶ Start" with its signs is for its rows.
+  const when = w.on === 'start' && !c.until && (c.repeat ?? 'once') === 'once' ? d.t('tl.when.start')
+    : whenShort(d.t, w, (c.until ?? null)                      , (c.repeat ?? 'once')                );
+  const more = cs.length > 1 ? ` +${cs.length - 1}` : '';
   const open = d.open();
-  const btn = h('button', { type: 'button', class: `motion-tl${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline' },
-    onclick: () => d.toggle() }, h('span', { class: 'tl-diamond' }), h('span', { text: d.t('tl.open') }));
-  return [label, h('div', { class: 'f-cells motion-cells' }, h('span', { class: 'motion-pick' }, pick, icon('chevronDown')), btn)];
+  const btn = h('button', { type: 'button', class: `motion-line${open ? ' on' : ''}`, 'aria-pressed': String(open), title: d.t('tl.openTip'), dataset: { action: 'timeline', part: 'motion-timeline-line' },
+    onclick: () => (open ? undefined : d.toggle()) },
+  h('span', { class: 'motion-line-text', text: `${c.name} · ${when}${more}` }), icon('chevronRight'));
+  return [label, h('div', { class: 'f-cells motion-cells', dataset: { part: 'motion-row' } }, btn)];
 }
 
 __def(__exports, "motionCardRow", () => motionCardRow);
@@ -21176,8 +21204,7 @@ __defs[63] = function (__exports) {
 // hiding it (the detail says why); its "Ask your AI…" goes, like every AI row there.
 //
 // Rules, and why:
-// - The names are the ones the rest of the editor uses for the same action (ops.copy "Duplicate", keys.copy "Copy",
-//   btn.undo…), and the key is the keymap.ts id, so the menu prints the key the sheet (?) and the tooltips print.
+// - The names are the ones the rest of the editor uses for the same action (ops.copy "Duplicate", btn.undo…), and the key is the keymap.ts id, so the menu prints the key the sheet (?) and the tooltips print.
 // - SHORT, one way in per action (design review 2, 2026-10-19, item ②: the 3D menu was 9 rows, 2D 13, a phone's 9–11
 //   covered the card and the ask box). What has a place that is always on screen is not repeated here: Undo / Redo
 //   (the top bar), and on a phone Duplicate / Copy / Paste / Delete (the card's buttons). 2D draw order keeps the two
@@ -21211,7 +21238,8 @@ __defs[63] = function (__exports) {
                   
      
                                                                                                           
-                                                                                                                   
+                                                                                                                    
+                                                                                                              
      
                 
                                                        
@@ -21293,17 +21321,16 @@ function contextRows(place          , f          )           {
     if (!f.offline && f.picked === 1 && f.unnamed === 0 && !f.ui) rows.push({ id: 'rename', label: 'ctx.rename', key: 'rename' }, sep);
     // A phone: the card has Duplicate and Delete (and Copy / Paste are the same as Duplicate there) — not here.
     if (!f.compact && !f.ui) {
-      rows.push(
-        { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
-        { id: 'copy', label: 'keys.copy', key: 'copy', disabled: locked },
-      );
+      // No "Copy" row (studio-card-doors, 2026-10-23; the glossary's "one thing, one word"): "Duplicate" and "Copy" side
+      // by side read as the same action twice. ⌘C / ⌘V stay as keys; Paste stays while something is copied.
+      rows.push({ id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked });
       if (!off && f.clip > 0) rows.push({ id: 'paste', label: 'keys.paste', key: 'paste' });
       rows.push({ id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked }, sep);
     }
     // Drop to floor (snap to surfaces, 2026-10-19): with the moves, before the way to the Library. A phone shows it only
     // when it can act (no dimmed rows there).
     if (f.droppable !== undefined && (!f.compact || (!off && f.droppable > 0))) rows.push({ id: 'drop', label: 'keys.drop', key: 'drop', disabled: off || f.droppable === 0 });
-    if (!off && f.held) rows.push({ id: 'unhold', label: 'hold.free' });
+    // (No "Unlock" for a locked road since studio-card-doors: its one way is the word in the line under the strip.)
     if (!f.ui) rows.push({ id: 'showInLibrary', label: 'ctx.showInLibrary' });
     if (f.dim === '2d' && f.layers && Object.keys(f.layers).length) {
       const layers           = [
@@ -23375,6 +23402,13 @@ function start(host            ) {
     },
   });
   stage.append(keysScrim, keySheet.el);
+  // The window ⌘K's Editor view / Ideas for your AI open in on PC (studio-card-doors; renderAll fills it).
+  const pagePlate = h('div', { class: 'page-window-plate' });
+  const pageWin = h('div', { class: 'page-window', hidden: true, role: 'dialog', dataset: { part: 'page-window' } }, pagePlate);
+  pageWin.addEventListener('pointerdown', (e) => {
+    if (e.target === pageWin) switchTool(tool);
+  });
+  stage.append(pageWin);
   // The place's menu (right-click / long press; context-menu.ts): over everything, the game frame included.
   const ctxMenu = createContextMenu({
     phone: () => phone(),
@@ -23646,6 +23680,14 @@ function start(host            ) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now() .name] : []),
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
+    // The card's ⋯ (studio-card-doors): the same menu plate as right-click, opened under the button, its right edge on
+    // the button's (the card sits at the game's right edge).
+    cardMenu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows.map((x) => ({ id: x.id, label: x.label, run: () => x.run() })), r.right, r.bottom + 4, { place: 'card', label: rows.map((x) => x.label).join(' · ') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+    },
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
     motion: (k) => timeline.cardRow(k),
@@ -24062,7 +24104,9 @@ function start(host            ) {
     const unnamed = items.filter((i) => i.unstable).map((i) => i.key);
     if (unnamed.length) {
       rows.push({ id: 'name', section: 'ask', label: t('pal.ex.name'), icon: 'spark', hint: String(unnamed.length), data: { action: 'pal-name' },
-        run: () => void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) });
+        // A draft in the box (studio-card-doors, 2026-10-23; the ✦ rule): it sent a request at once before. The web demo
+        // has no AI and no box: the old send stays its only way (askAi says why it cannot).
+        run: () => (host.offline ? void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) : nameDraft(unnamed)) });
     }
     // A phone's "All actions" prints no keys (no keyboard there; review 2 ④). Counts stay.
     if (phone()) for (const r of rows) if (r.section === 'actions') r.hint = undefined;
@@ -24201,7 +24245,6 @@ function start(host            ) {
       name: () => nameDraft(its.filter((i) => i.unstable).map((i) => i.key)),
       rename: () => void startRename(),
       duplicate: () => copySelection(),
-      copy: () => clipCopy(),
       paste: () => clipPaste(),
       remove: () => removeSelection(),
       selectAll: () => items.length && selectMany(items.map((i) => i.key), selected ?? items[0] .key),
@@ -24215,7 +24258,6 @@ function start(host            ) {
       askFile: () => fileUse.ask?.(files()),
       showInLibrary: () => showInLibrary(),
       drop: () => dropToFloor(),
-      unhold: () => send({ type: 'studio:placement/unhold', keys: its.filter((i) => i.held === 'ground').map((i) => i.key) }),
     };
     for (const op of ['forward', 'backward', 'toFront', 'toBack']             ) {
       run[`layer-${op}`] = () => (group.length > 1 ? reorderGroup(op) : selected && reorder(selected, op));
@@ -26985,15 +27027,16 @@ function start(host            ) {
     }
     (header.querySelector('.adapter')               ).textContent = adapterInfo;
     langBtn.textContent = t('btn.lang');
-    // Scene / Library: two rows, a 16 px icon, the name, a grey word for what is in it (PC: "the game" / "objects &
-    // assets"; the phone's switch has no room for it). Only the Library has a count — everything in it; the Scene's
+    // Scene / Library: two rows, a 16 px icon and the name. The grey word for what is in it ("objects in this level" /
+    // "objects & assets", tool.*.sub) is gone (studio-card-doors, 2026-10-23: two small lines more to read on the first
+    // screen, saying what the names already say). Only the Library has a count — everything in it; the Scene's
     // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library']            ) {
       // The Library holds the world's objects (the UI's HTML elements are not Library objects).
       const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
-        icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }), h('span', { class: 'sub', text: id === 'placement' && editLayer === 'ui' ? t('uiLayer.sub') : t(`tool.${id}.sub`) }),
+        icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }),
         n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label')               ).textContent = t('foot.palette');
@@ -27047,18 +27090,34 @@ function start(host            ) {
     if (tabsHome) {
       if (tabs.parentElement !== tabsHome) tabsHome.prepend(tabs);
     } else if (tabs.parentElement !== sideHead) sideHead.prepend(tabs);
-    // The left column: the Look page, the Ideas page, or the scene list.
+    // The Look page and the Ideas page: a window over the game on PC (studio-card-doors, 2026-10-23; the plan's rule
+    // "one way in": they are ⌘K's, and opening them took the left column away from the scene list — the list, the pick
+    // and the game went out of sight for a setting). Esc / ‹ Close / a press beside the plate close it (switchTool).
+    // A phone keeps them in its sheet (the sheet already is a plate over the game).
+    const winPage = page !== 'tool' && !phone();
+    pageWin.hidden = !winPage;
+    if (!winPage) pagePlate.replaceChildren();
+    const pageEl = winPage ? pagePlate : toolEl;
     if (page === 'settings') {
-      renderSettings(toolEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
+      renderSettings(pageEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
         aiLookOff: aiLook && !safeUi ? (() => { const u = new URL(location.href); u.searchParams.set('ui', 'off'); return u.href; })() : null });
     } else if (page === 'next') {
-      renderNextSteps(toolEl, {
+      renderNextSteps(pageEl, {
         host, lang: () => lang, t, back: () => switchTool(tool),
+        // ✦ (studio-card-doors, 2026-10-23; the ✦ rule): "Ask Claude…" puts the idea in the ask box and closes the
+        // page — the person sends it. It sent a next-step request at once before. The web demo has no box: the old send.
         send: (step, text) => askAi({ kind: 'next-step', step, text }),
+        draft: host.offline ? undefined : (text) => {
+          switchTool(tool);
+          focusAsk(text);
+        },
       }, nextOpen, (id) => {
         nextOpen = id;
         renderAll();
       });
+    }
+    if (page !== 'tool' && !winPage) {
+      // (a phone's page fills the sheet: no list under it)
     } else if (!phone() && lib) {
       // The Library is open: the left column holds its filters and nothing else. The object list is not here next to
       // the grid, so a click in the column never leaves the Library for the game (the bug found in a try on 10/18).

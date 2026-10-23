@@ -429,6 +429,10 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .head-text .key { color: var(--text-3); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.2em; }
 .card-actions { display: flex; gap: 2px; flex: none; }
 .card-actions .icon-btn .icon { width: 16px; height: 16px; }
+/* The card's ⋯ (studio-card-doors): beside copy / delete, the same quiet icon button; hidden with them when minimized. */
+.card-more { flex: none; }
+.card-more .icon { width: 16px; height: 16px; }
+.card[data-min="on"] .card-more { display: none; }
 /* Minimize (a try of the editor, 2026-10-20): the card folds to one line — its picture and name — and the same button, which
    never moves, opens it again (placement-panel.ts; remembered in this browser). The second grey line, copy / delete
    and every field go; the card keeps its width, so the button stays under the pointer. !important: the phone's own
@@ -482,6 +486,13 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .motion-pick select:disabled { color: var(--text-3); cursor: default; }
 .motion-pick select:focus-visible { box-shadow: inset 0 0 0 1px var(--you); }
 .motion-pick .icon { position: absolute; right: 6px; width: 14px; height: 14px; color: var(--text-3); pointer-events: none; }
+/* studio-card-doors (2026-10-23): the card's one Motion line — "ship’s motion · When game starts ›" — quiet like the
+   numbers above it (no fill until hovered), the › saying it opens something (the timeline below the game). */
+.motion-line { flex: 1 1 auto; min-width: 0; justify-content: space-between; gap: 6px; padding: 0 6px 0 8px; background: none; color: var(--text); font-size: var(--fs-s); }
+.motion-line:hover { background: var(--raise); }
+.motion-line.on { color: var(--you-text); }
+.motion-line-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.motion-line .icon { width: 14px; height: 14px; color: var(--text-3); flex: none; }
 .motion-tl { background: var(--raise); padding: 0 10px; gap: 6px; font-size: var(--fs-s); }
 .motion-tl.on { background: var(--you-soft); color: var(--you-text); }
 .tl-diamond { width: 7px; height: 7px; transform: rotate(45deg); background: currentColor; border-radius: 1px; flex: none; }
@@ -1269,6 +1280,15 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tip kbd { flex: none; white-space: nowrap; }
 /* The sheet: one glass plate in the middle of the game, over a dimmed game (the ⌘K scrim). PC: three columns
    (four in 2D, wrapping), names left and keys right in each. Phone: one column, scrolls inside the plate. */
+/* ⌘K's Editor view / Ideas for your AI on PC (studio-card-doors, 2026-10-23): a plate over the game, not the left
+   column — the scene list stays where it is. The same glass as the keys sheet; the game shows through the clear sides
+   (no scrim: nothing is blocked, a press beside the plate closes it). */
+.page-window { position: absolute; inset: 0; z-index: 7; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px 16px; }
+.page-window[hidden] { display: none; }
+.page-window-plate { width: min(420px, 100%); max-height: 100%; overflow: auto; padding: 8px 16px 16px; border-radius: var(--R);
+  background: var(--glass-thick); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  animation: studio-fade var(--dur-in) var(--ease); }
+.page-window-plate .page-head { background: transparent; }
 .keys-scrim { z-index: 6; }
 .keys-sheet { position: absolute; z-index: 7; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(880px, calc(100% - 32px)); max-height: calc(100% - 32px);
   display: flex; flex-direction: column; overflow: hidden; padding: 16px 20px 14px; border-radius: var(--R);

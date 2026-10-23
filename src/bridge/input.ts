@@ -90,7 +90,7 @@ import { nativeClearTimeout, nativeNow, nativeSetTimeout } from '../core/native.
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
-import { HANDLE_LABELS, MANY_LABEL, OFF_LINES, gameNote, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
+import { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
 import type { EditsAdapter } from '../core/edits.ts';
 import { createRiseButtons, type RiseDir } from './rise.ts';
 import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type DetentState } from './snap.ts';
@@ -116,6 +116,11 @@ export interface InputDeps {
   ignore?: (e: Event) => boolean;
   /** Pause-move: key releases reach the game (not blocked), so no key stays down in it after Resume. */
   passKeyUp?: boolean;
+  /**
+   * "Unlock" in the line under the strip on a locked ground (studio-card-doors, 2026-10-23): free these keys (as the
+   * shell's placement/unhold does). Absent = the line has no pressable word (pause-move).
+   */
+  unhold?: (keys: string[]) => void;
 }
 
 export interface InputHandle {
@@ -457,8 +462,17 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
   const stripCaps = () => {
     const off = offLines();
+    // A locked ground / road / sky (studio-card-doors, 2026-10-23): "Locked so it isn't nudged by mistake · Unlock" —
+    // the line is the one place that says it and the one way to free it (the card and right-click no longer do).
+    const locked = groundPicked();
+    if (locked.length && deps.unhold) {
+      const w = LOCK_NOTE[lang] || LOCK_NOTE.en;
+      return { off, note: w.text, unlock: w.unlock };
+    }
     return { off, note: noteOf(off) };
   };
+  /** The picked objects that are a locked ground / road / sky (Item.held 'ground'). */
+  const groundPicked = () => state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected) && i.held === 'ground').map((i) => i.key);
   /**
    * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D (the axes, canTurn), or several picked
    * (together / each in place, 2D too: multi rotate, play test 2026-10-18 — before, several turned "together" upright
@@ -939,6 +953,14 @@ export function attachInput(deps: InputDeps): InputHandle {
       riseUi!.setActive(rd);
       riseBy((rd === 'up' ? 1 : -1) * RISE_STEP * win.innerHeight);
       if (!riseFrame) riseFrame = core.time.raf(riseHold);
+      return;
+    }
+    // "Unlock" in the line under the strip (studio-card-doors): frees the picked locked ground, nothing else happens.
+    if (unholdFromEvent(e)) {
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      const keys = groundPicked();
+      if (keys.length) deps.unhold?.(keys);
       return;
     }
     // The ▾ in the turn / size button's corner: open (or close) its choices; the tool stays as it was.

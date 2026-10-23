@@ -123,8 +123,17 @@ export interface PlacementPanelDeps {
    * drag is over, record one undo step from `from`.
    */
   scrub?(key: string, pose: Pose, end: boolean, from: Pose): void;
-  /** "Make movable" on a held ground / road / sky (Item.held 'ground', bridge/hold.ts). */
+  /**
+   * "Unlock" on a held ground / road / sky (Item.held 'ground', bridge/hold.ts). Not on the card any more
+   * (studio-card-doors, 2026-10-23): the one way is the pressable word in the line under the strip (bridge/handles.ts).
+   * Kept for a .studio/ui/ script that calls it.
+   */
   unhold?(keys: string[]): void;
+  /**
+   * The card's ⋯ (studio-card-doors, 2026-10-23): opens the rows at the button (main.ts draws them with the context
+   * menu). Absent = no ⋯, and the rows are not shown at all.
+   */
+  cardMenu?(at: HTMLElement, rows: Array<{ id: string; label: string; run(): void }>): void;
   /**
    * The Motion row under Size (motion-gui, 2026-10-22; since studio-timeline the same day: the object's motions and
    * the button that opens the timeline, timeline-wire.ts cardRow). Absent = no row (the UI layer, a build without it).
@@ -222,6 +231,17 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const FOLD_MIN = 3;
   let foldOpen = false;
   const folding = () => d.phone() && !d.items().some(hasLayer) && d.items().filter((i) => i.unstable).length >= FOLD_MIN;
+  /**
+   * The list's "Ask AI to name them" (studio-card-doors, 2026-10-23; the ✦ rule of studio-uniforms): a draft in the AI
+   * box with those objects picked — nothing sent until the person sends. It sent a request at once before (the plan's
+   * inventory, item 4: "a button that sends at once" next to ✦ rows that only draft). No draft here (the web demo):
+   * the old send.
+   */
+  const askNames = async (keys: string[]) => {
+    if (d.nameDraft) return d.nameDraft(keys);
+    noNameSent = await d.askName(keys);
+    renderNoName();
+  };
   const renderNoName = () => {
     const keys = d.items().filter((i) => i.unstable).map((i) => i.key);
     noName.replaceChildren();
@@ -239,19 +259,13 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.fold') }),
       );
       if (!noNameSent) noName.append(h('span', { class: 'count n mono', text: String(keys.length) }));
-      if (!noNameSent) noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: async () => {
-        noNameSent = await d.askName(keys);
-        renderNoName();
-      } }, h('span', { text: d.t('noname.askAi') })));
+      if (!noNameSent) noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, onclick: () => askNames(keys) }, h('span', { text: d.t('noname.askAi') })));
       return;
     }
     // Grey words, then one text button. After the press the row says it was asked (and stays until the names land).
     noName.append(h('span', { class: 'noname-text', text: noNameSent ? d.t('ask.nameSent') : d.t('noname.row', { n: keys.length }) }));
     if (noNameSent) return;
-    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, title: d.t('noname.whyPlain'), onclick: async () => {
-      noNameSent = await d.askName(keys);
-      renderNoName();
-    } }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
+    noName.append(h('button', { type: 'button', class: 'link noname-act', dataset: { action: 'ask-name-all' }, title: d.t('noname.whyPlain'), onclick: () => askNames(keys) }, h('span', { text: d.t(keys.length === 1 ? 'noname.act1' : 'noname.act') })));
   };
   // The folded row opens and closes from anywhere on it (its ▸ and "Ask AI to name them" are buttons of their own).
   noName.addEventListener('click', (e) => {
@@ -507,10 +521,35 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
    */
   // The minimize button ends every head (one object, several, a UI element), always at its right end.
   // The "UI" tag sits beside the name, not inside it: inside, a long name's "…" cut the tag off with it (Ive review 3 ⑤).
-  const head = (pics: HTMLElement, name: string, sub: string | null, cls = '', ui = false) =>
+  const head = (pics: HTMLElement, name: string, sub: string | null, cls = '', ui = false, more: HTMLElement | null = null) =>
     h('div', { class: `card-head ${cls}`.trim() }, pics,
       h('div', { class: 'head-text' }, h('div', { class: 'head-name' }, h('strong', { text: name }), ui ? h('span', { class: 'tag ui-tag', dataset: { part: 'ui-tag' }, text: d.t('uiLayer.tag') }) : null), h('div', { class: 'key', text: sub || '' })),
-      ui ? null : actionRow(), minBtn);
+      ui ? null : actionRow(), more, minBtn);
+  /**
+   * The card's ⋯ (studio-card-doors, 2026-10-23; the plan's "a card holds the name and the numbers"): "Show in Library"
+   * and "Select all N like this" were two link lines under the numbers on every card — the card read as a page of
+   * links. They are one press further now, in the menu this button opens. Outside .card-actions so a locked road (whose
+   * copy / delete are hidden) keeps it. null = nothing to list (no Library in this build, no others of its kind).
+   */
+  const moreRows = (it: Item, key: string) => {
+    const rows: Array<{ id: string; label: string; run(): void }> = [];
+    if (d.showInLibrary && !it.kinds.includes('ui')) rows.push({ id: 'show-in-library', label: d.t('card.showInLibrary').replace(/\s*→$/, ''), run: () => d.showInLibrary!() });
+    const kind = sameKind(d.items(), key);
+    if (kind.length > 1) rows.push({ id: 'select-kind', label: d.t('ops.selectKind', { n: kind.length }), run: () => d.selectMany(kind, key) });
+    return rows;
+  };
+  // A phone has a ⋯ on its card already (the numbers' fold, `fine`): the rows go in there as links (moreLinks), not
+  // behind a second ⋯ beside it.
+  const moreBtn = (it: Item, key: string) => {
+    if (!d.cardMenu || d.phone()) return null;
+    const rows = moreRows(it, key);
+    if (!rows.length) return null;
+    const b = h('button', { type: 'button', class: 'icon-btn card-more', dataset: { action: 'card-more' }, 'aria-haspopup': 'menu', onclick: () => d.cardMenu!(b, rows) });
+    // Its name is what it holds ("Show in Library · Select all 4 like this"): no new word for a "More" (the glossary keeps
+    // ⋯ from being an entrance whose contents cannot be told).
+    setButton(b, 'more', rows.map((r) => r.label).join(' · '), false);
+    return b;
+  };
 
   const renderGroupCard = (keys: string[]) => {
     const items = d.items();
@@ -582,7 +621,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // Garden Tap the lanterns…"), when that is not just the name again (a "Score" that reads "Score").
     const ui = it.kinds.includes('ui');
     const uiText = ui && it.label.trim().toLowerCase() !== shown.toLowerCase() ? it.label : null;
-    const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui);
+    const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui, moreBtn(it, key));
     h0.title = parts.where ? shown : '';
     let refocus: HTMLInputElement | null = null;
     if (renameKey === key && !ui) {
@@ -627,20 +666,19 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
           renderCard();
         } })));
     };
+    // studio-card-doors (2026-10-23; the plan's rule "the why, once, in one line"): the card said why in a paragraph
+    // ("Ground, road, or sky…" + "Unlock"; "Your game moves this while playing…") while the line under the strip said the
+    // same — two places, and the road had three ways to unlock (the card, right-click, the line). Now the line under
+    // the strip is the one place (bridge/handles.ts), and its "Unlock" the one way; the card is the name (and numbers).
     if (it.held === 'ground') {
       (h0.querySelector('.card-actions') as HTMLElement).hidden = true;
-      card.append(body);
-      body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: d.t('hold.ground') }));
-      if (d.unhold) body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'unfix' }, text: d.t('hold.free'), onclick: () => d.unhold?.([key]) }));
       return;
     }
     if (it.held === 'game') {
-      card.append(body);
-      body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
       // No "Set where it starts" link any more (studio-move-plain, 2026-10-23): Move already sets it (hold.ts).
       // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
       if (it.movable === false) {
-        if (it.unstable) nameNote();
+        if (it.unstable) (card.append(body), nameNote());
         return;
       }
     }
@@ -767,6 +805,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         if (cur) d.setPose(key, { ...structuredClone(cur), s: target });
       } }));
     }
+    if (d.cardMenu && d.phone()) {
+      for (const r of moreRows(it, key)) fine.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: r.id }, text: r.label, onclick: () => r.run() }));
+    }
     body.append(fine);
     // 3. Layer (2D). On a phone (and any window up to UI.phoneMaxWidth: the side window at 400) it goes INSIDE "…"
     // (design review wave 1 merge, 2026-10-17; the review's "what to cut" 6 and D13): the phone card is name, copy,
@@ -824,9 +865,12 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // 7. The way to this object in the Library ("use the Library", 2026-10-18: "when I pick something in the game, I
     // want to go straight to its page in the Library"); its file is the Assets row above.
     // (Not for a UI element: HTML is not a Library object.)
-    if (d.showInLibrary && !it.kinds.includes('ui')) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary!() }));
-    const kl = kindLink(key);
-    if (kl) body.append(kl);
+    // (In the card's ⋯ since studio-card-doors: moreBtn. A build without cardMenu keeps the old link lines.)
+    if (!d.cardMenu) {
+      if (d.showInLibrary && !it.kinds.includes('ui')) body.append(h('button', { type: 'button', class: 'link-btn lib-link', dataset: { action: 'show-in-library' }, text: d.t('card.showInLibrary'), onclick: () => d.showInLibrary!() }));
+      const kl = kindLink(key);
+      if (kl) body.append(kl);
+    }
     card.append(body);
     updateNumbers();
   };
@@ -1025,7 +1069,10 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // (2026-10-22); for a few hours it was this head ("Meadow ⌄ 1 of 3"), which nobody found.
     // A game with screens (UI stage 2): the UI list's head names the screen shown, and opens the screens' menu.
     const head = uiList ? d.uiHead?.() ?? null : null;
-    listTools.append(head || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }), b);
+    // "Multi-select" on a phone only (studio-card-doors, 2026-10-23): a PC has Shift+click and the box drag, and the
+    // button was one more word at the top of the list. A PC that turned it on another way (⌘K) still sees "Done".
+    listTools.append(head || h('span', { class: 'list-title', text: d.t(uiList ? 'list.titleUi' : 'list.title') }));
+    if (d.phone() || on) listTools.append(b);
     if (on && d.phone()) listTools.append(h('span', { class: 'muted list-hint', text: d.t('ops.multiOnPhone') }));
     el.classList.toggle('picking', on);
   };

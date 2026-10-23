@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.32 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.33 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -10097,6 +10097,17 @@ function gameNote(lang      , parts                                             
   const list = what.length < 3 ? what.map((k) => v[k]).join(' and ') : `${v.move}, ${v.turn} and ${v.size}`;
   return `Your game ${list} this while playing.${moves ? ' Moving it here sets where it starts.' : ''}`;
 }
+/**
+ * A locked ground / road / sky (Item.held 'ground'): the line under the strip and its one pressable word
+ * (studio-card-doors, 2026-10-23; the glossary's "Locked so it isn't nudged · Unlock"). The line was the only place
+ * that did NOT let you act: the card had "Unlock", right-click had it, and the line said "You can unlock it." — three
+ * ways, and the one under the eyes was not one of them. Now the line is the one way (the card and the menu dropped
+ * theirs). The dimmed tools' tooltips keep OFF_LINES.ground.
+ */
+const LOCK_NOTE                                                 = {
+  en: { text: 'Locked so it isn’t nudged by mistake', unlock: 'Unlock' },
+  ja: { text: 'うっかり動かさないよう固定しています', unlock: '動かせるようにする' },
+};
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 const MORE_LABELS                                                 = {
   en: { axis: 'Ways to turn', scale: 'Ways to resize' },
@@ -10196,9 +10207,10 @@ const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dash
      
                                                                                                                        
                                                                                                                         
-                                                                
+                                                                                                          
+                                                                                              
      
-                                                                                                                                    
+                                                                                                                                                            
                                                                                    
                             
                                                                                            
@@ -10402,7 +10414,14 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
   backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
 .root.light .note { color: #3a3a3c; background: rgba(251,251,253,.82); backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25);
   box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.1); }
-@media (pointer: coarse) { .note { height: 26px; font-size: 12px; } }
+/* "· Unlock" in the line (studio-card-doors): the line's one pressable word, in the editor's orange like a link, the
+   only thing in the line that takes a press. */
+.note button { all: unset; pointer-events: auto; cursor: pointer; margin-left: 4px; font-weight: 600; color: ${YOU}; white-space: nowrap; }
+.note button:hover { text-decoration: underline; }
+/* (.root.light button / button:hover set every strip button's ink and ground: the link keeps its orange.) */
+.root.light .note button, .root.light .note button:hover { color: ${YOU}; background: none; }
+.note button:focus-visible { outline: 1.5px solid ${YOU}; outline-offset: 2px; border-radius: 3px; }
+@media (pointer: coarse) { .note { height: 26px; font-size: 12px; } .note button { padding: 6px 2px; margin: -6px 0 -6px 4px; } }
 /* A finger: clear of the camera's ↑ ↓ at the bottom right (44 wide + 12 margin on each side, review 2 item ③). */
 @media (pointer: coarse) { .hint { height: 36px; font-size: 13px; max-width: calc(100vw - 128px); } }
 @media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
@@ -10772,7 +10791,22 @@ function createHandles(doc          , hasLift         )          {
       const show = !!a && a.visible && !!caps;
       row.style.display = show ? 'flex' : 'none';
       const note = (show && caps?.note) || '';
-      if (noteEl.textContent !== note) noteEl.textContent = note; // our own words only
+      const unlock = (note && caps?.unlock) || '';
+      if (noteEl.dataset.text !== note || noteEl.dataset.unlock !== unlock) {
+        // Our own words only (textContent). The pressable word is a real button (the line itself stays see-through to
+        // presses: .note button has pointer-events of its own).
+        noteEl.dataset.text = note;
+        noteEl.dataset.unlock = unlock;
+        noteEl.textContent = note;
+        if (unlock) {
+          noteEl.append(doc.createTextNode(' · '));
+          const b = doc.createElement('button');
+          b.type = 'button';
+          b.dataset.studioUnhold = '';
+          b.textContent = unlock;
+          noteEl.append(b);
+        }
+      }
       noteEl.style.display = note ? 'flex' : 'none';
       if (!show || !a || !caps) {
         positionMenu();
@@ -11058,6 +11092,11 @@ function motionFromEvent(e       )                 {
   return null;
 }
 
+/** A press on the line's "Unlock" (studio-card-doors), looking through the shadow root. */
+function unholdFromEvent(e       )          {
+  return e.composedPath().some((el) => (el               ).dataset?.studioUnhold !== undefined && (el               ).tagName === 'BUTTON');
+}
+
 /** The choice under a pointer event (the strip's menu), or null. */
 function choiceFromEvent(e       )                {
   for (const el of e.composedPath()) {
@@ -11089,6 +11128,7 @@ __def(__exports, "READOUT_WORDS", () => READOUT_WORDS);
 __def(__exports, "TOOL_HINT", () => TOOL_HINT);
 __def(__exports, "OFF_LINES", () => OFF_LINES);
 __def(__exports, "gameNote", () => gameNote);
+__def(__exports, "LOCK_NOTE", () => LOCK_NOTE);
 __def(__exports, "MORE_LABELS", () => MORE_LABELS);
 __def(__exports, "AXIS_WORDS", () => AXIS_WORDS);
 __def(__exports, "SCALE_WORDS", () => SCALE_WORDS);
@@ -11097,6 +11137,7 @@ __def(__exports, "MANY_LABEL", () => MANY_LABEL);
 __def(__exports, "createHandles", () => createHandles);
 __def(__exports, "moreFromEvent", () => moreFromEvent);
 __def(__exports, "motionFromEvent", () => motionFromEvent);
+__def(__exports, "unholdFromEvent", () => unholdFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
@@ -11455,7 +11496,7 @@ const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
 const { keyStep } = __require(29);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, OFF_LINES, gameNote, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(30);
+const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(30);
                                                      
 const { createRiseButtons } = __require(31);
 const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(32);
@@ -11481,6 +11522,11 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                  
                                                                                                         
                       
+     
+                                                                                                                     
+                                                                                          
+     
+                                    
  
 
                               
@@ -11822,8 +11868,17 @@ function attachInput(deps           )              {
   };
   const stripCaps = () => {
     const off = offLines();
+    // A locked ground / road / sky (studio-card-doors, 2026-10-23): "Locked so it isn't nudged by mistake · Unlock" —
+    // the line is the one place that says it and the one way to free it (the card and right-click no longer do).
+    const locked = groundPicked();
+    if (locked.length && deps.unhold) {
+      const w = LOCK_NOTE[lang] || LOCK_NOTE.en;
+      return { off, note: w.text, unlock: w.unlock };
+    }
     return { off, note: noteOf(off) };
   };
+  /** The picked objects that are a locked ground / road / sky (Item.held 'ground'). */
+  const groundPicked = () => state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected) && i.held === 'ground').map((i) => i.key);
   /**
    * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D (the axes, canTurn), or several picked
    * (together / each in place, 2D too: multi rotate, play test 2026-10-18 — before, several turned "together" upright
@@ -12304,6 +12359,14 @@ function attachInput(deps           )              {
       riseUi .setActive(rd);
       riseBy((rd === 'up' ? 1 : -1) * RISE_STEP * win.innerHeight);
       if (!riseFrame) riseFrame = core.time.raf(riseHold);
+      return;
+    }
+    // "Unlock" in the line under the strip (studio-card-doors): frees the picked locked ground, nothing else happens.
+    if (unholdFromEvent(e)) {
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      const keys = groundPicked();
+      if (keys.length) deps.unhold?.(keys);
       return;
     }
     // The ▾ in the turn / size button's corner: open (or close) its choices; the tool stays as it was.
@@ -16234,6 +16297,16 @@ function createEditor(deps            )         {
   };
   /** The layers other than the current one (UI stage 1; none for a game without a UI). */
   const others = () => [world, uiStack].filter((x)             => !!x && x.driven !== adapter);
+  /**
+   * "Unlock" on a held ground (hold.ts): the tools work on it again, for this session. From the shell
+   * (placement/unhold, a .studio/ui/ script) or the line under the strip (input.ts; studio-card-doors).
+   */
+  const unhold = (keys          ) => {
+    for (const k of keys) hold.freed.add(k);
+    refreshItems();
+    postSelected();
+    input?.selectionChanged();
+  };
   /** Input on the current layer's adapter, with the shell's settings. */
   const attach = () => {
     // The input posts view-state itself (wheel, look-around): on the UI layer that is the 2D base's unused view, which
@@ -16242,7 +16315,7 @@ function createEditor(deps            )         {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
-      ...(deps.paused ? { passKeyUp: true } : {}), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
+      ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -16508,11 +16581,7 @@ function createEditor(deps            )         {
           if (state.editing) step(msg);
           break;
         case 'studio:placement/unhold':
-          // "Make movable" on a held ground (hold.ts): the tools work on it again, for this session.
-          for (const k of msg.keys) hold.freed.add(k);
-          refreshItems();
-          postSelected();
-          input?.selectionChanged();
+          unhold(msg.keys);
           break;
         case 'studio:placement/thumbs': {
           // One queue, drawn one at a time; the newest request goes FIRST (tool-modes pass, 10/16). The shell

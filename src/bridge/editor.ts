@@ -957,6 +957,16 @@ export function createEditor(deps: EditorDeps): Editor {
   };
   /** The layers other than the current one (UI stage 1; none for a game without a UI). */
   const others = () => [world, uiStack].filter((x): x is Stack => !!x && x.driven !== adapter);
+  /**
+   * "Unlock" on a held ground (hold.ts): the tools work on it again, for this session. From the shell
+   * (placement/unhold, a .studio/ui/ script) or the line under the strip (input.ts; studio-card-doors).
+   */
+  const unhold = (keys: string[]) => {
+    for (const k of keys) hold.freed.add(k);
+    refreshItems();
+    postSelected();
+    input?.selectionChanged();
+  };
   /** Input on the current layer's adapter, with the shell's settings. */
   const attach = () => {
     // The input posts view-state itself (wheel, look-around): on the UI layer that is the 2D base's unused view, which
@@ -965,7 +975,7 @@ export function createEditor(deps: EditorDeps): Editor {
       if (m.type !== 'studio:core/view-state' || layer === 'world') post(m);
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
-      ...(deps.paused ? { passKeyUp: true } : {}), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
+      ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -1231,11 +1241,7 @@ export function createEditor(deps: EditorDeps): Editor {
           if (state.editing) step(msg);
           break;
         case 'studio:placement/unhold':
-          // "Make movable" on a held ground (hold.ts): the tools work on it again, for this session.
-          for (const k of msg.keys) hold.freed.add(k);
-          refreshItems();
-          postSelected();
-          input?.selectionChanged();
+          unhold(msg.keys);
           break;
         case 'studio:placement/thumbs': {
           // One queue, drawn one at a time; the newest request goes FIRST (tool-modes pass, 10/16). The shell

@@ -124,6 +124,17 @@ export function gameNote(lang: Lang, parts: readonly ('move' | 'lift' | 'turn' |
   const list = what.length < 3 ? what.map((k) => v[k]).join(' and ') : `${v.move}, ${v.turn} and ${v.size}`;
   return `Your game ${list} this while playing.${moves ? ' Moving it here sets where it starts.' : ''}`;
 }
+/**
+ * A locked ground / road / sky (Item.held 'ground'): the line under the strip and its one pressable word
+ * (studio-card-doors, 2026-10-23; the glossary's "Locked so it isn't nudged · Unlock"). The line was the only place
+ * that did NOT let you act: the card had "Unlock", right-click had it, and the line said "You can unlock it." — three
+ * ways, and the one under the eyes was not one of them. Now the line is the one way (the card and the menu dropped
+ * theirs). The dimmed tools' tooltips keep OFF_LINES.ground.
+ */
+export const LOCK_NOTE: Record<Lang, { text: string; unlock: string }> = {
+  en: { text: 'Locked so it isn’t nudged by mistake', unlock: 'Unlock' },
+  ja: { text: 'うっかり動かさないよう固定しています', unlock: '動かせるようにする' },
+};
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 export const MORE_LABELS: Record<Lang, Record<'axis' | 'scale', string>> = {
   en: { axis: 'Ways to turn', scale: 'Ways to resize' },
@@ -223,9 +234,10 @@ export interface Handles {
   /**
    * Under the object. `caps.off` = the tools that do not work on it, each with its one line of why (the tooltip): they
    * stay in their place, dimmed (studio-tool-clear, 2026-10-23). A tool not in `off` works. `caps.note` = the one small
-   * line by the strip (studio-move-plain, 2026-10-23), or none.
+   * line by the strip (studio-move-plain, 2026-10-23), or none. `caps.unlock` = a pressable word after it
+   * (studio-card-doors: "· Unlock" on a locked road; a press is reported by unholdFromEvent).
    */
-  place(a: Anchor | null, caps: { off?: Partial<Record<HandleKind, string>>; note?: string | null } | null, dim: '2d' | '3d'): void;
+  place(a: Anchor | null, caps: { off?: Partial<Record<HandleKind, string>>; note?: string | null; unlock?: string | null } | null, dim: '2d' | '3d'): void;
   /** Strip button size in px (the person's UI preference; default UI.handlePx). */
   setSize(px: number): void;
   /** Viewport px covered by the shell's floating panels: the strip stays clear of them. */
@@ -429,7 +441,14 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
   backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
 .root.light .note { color: #3a3a3c; background: rgba(251,251,253,.82); backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25);
   box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.1); }
-@media (pointer: coarse) { .note { height: 26px; font-size: 12px; } }
+/* "· Unlock" in the line (studio-card-doors): the line's one pressable word, in the editor's orange like a link, the
+   only thing in the line that takes a press. */
+.note button { all: unset; pointer-events: auto; cursor: pointer; margin-left: 4px; font-weight: 600; color: ${YOU}; white-space: nowrap; }
+.note button:hover { text-decoration: underline; }
+/* (.root.light button / button:hover set every strip button's ink and ground: the link keeps its orange.) */
+.root.light .note button, .root.light .note button:hover { color: ${YOU}; background: none; }
+.note button:focus-visible { outline: 1.5px solid ${YOU}; outline-offset: 2px; border-radius: 3px; }
+@media (pointer: coarse) { .note { height: 26px; font-size: 12px; } .note button { padding: 6px 2px; margin: -6px 0 -6px 4px; } }
 /* A finger: clear of the camera's ↑ ↓ at the bottom right (44 wide + 12 margin on each side, review 2 item ③). */
 @media (pointer: coarse) { .hint { height: 36px; font-size: 13px; max-width: calc(100vw - 128px); } }
 @media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
@@ -799,7 +818,22 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       const show = !!a && a.visible && !!caps;
       row.style.display = show ? 'flex' : 'none';
       const note = (show && caps?.note) || '';
-      if (noteEl.textContent !== note) noteEl.textContent = note; // our own words only
+      const unlock = (note && caps?.unlock) || '';
+      if (noteEl.dataset.text !== note || noteEl.dataset.unlock !== unlock) {
+        // Our own words only (textContent). The pressable word is a real button (the line itself stays see-through to
+        // presses: .note button has pointer-events of its own).
+        noteEl.dataset.text = note;
+        noteEl.dataset.unlock = unlock;
+        noteEl.textContent = note;
+        if (unlock) {
+          noteEl.append(doc.createTextNode(' · '));
+          const b = doc.createElement('button');
+          b.type = 'button';
+          b.dataset.studioUnhold = '';
+          b.textContent = unlock;
+          noteEl.append(b);
+        }
+      }
       noteEl.style.display = note ? 'flex' : 'none';
       if (!show || !a || !caps) {
         positionMenu();
@@ -1083,6 +1117,11 @@ export function motionFromEvent(e: Event): DOMRect | null {
     if ((el as HTMLElement).dataset?.studioMotion !== undefined && (el as HTMLElement).tagName === 'BUTTON') return (el as HTMLElement).getBoundingClientRect();
   }
   return null;
+}
+
+/** A press on the line's "Unlock" (studio-card-doors), looking through the shadow root. */
+export function unholdFromEvent(e: Event): boolean {
+  return e.composedPath().some((el) => (el as HTMLElement).dataset?.studioUnhold !== undefined && (el as HTMLElement).tagName === 'BUTTON');
 }
 
 /** The choice under a pointer event (the strip's menu), or null. */

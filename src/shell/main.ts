@@ -813,6 +813,13 @@ export function start(host: StudioHost) {
     },
   });
   stage.append(keysScrim, keySheet.el);
+  // The window ⌘K's Editor view / Ideas for your AI open in on PC (studio-card-doors; renderAll fills it).
+  const pagePlate = h('div', { class: 'page-window-plate' });
+  const pageWin = h('div', { class: 'page-window', hidden: true, role: 'dialog', dataset: { part: 'page-window' } }, pagePlate);
+  pageWin.addEventListener('pointerdown', (e) => {
+    if (e.target === pageWin) switchTool(tool);
+  });
+  stage.append(pageWin);
   // The place's menu (right-click / long press; context-menu.ts): over everything, the game frame included.
   const ctxMenu = createContextMenu({
     phone: () => phone(),
@@ -1084,6 +1091,14 @@ export function start(host: StudioHost) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now()!.name] : []),
     showInLibrary: libraryTool ? () => showInLibrary() : undefined,
     unhold: (keys) => send({ type: 'studio:placement/unhold', keys }),
+    // The card's ⋯ (studio-card-doors): the same menu plate as right-click, opened under the button, its right edge on
+    // the button's (the card sits at the game's right edge).
+    cardMenu: (at, rows) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(rows.map((x) => ({ id: x.id, label: x.label, run: () => x.run() })), r.right, r.bottom + 4, { place: 'card', label: rows.map((x) => x.label).join(' · ') });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+    },
     // ⌘] / ⇧⌘[ … (Ctrl elsewhere), from the one table (keymap.ts).
     shortcut: (op) => keyOf(op, isMac()),
     motion: (k) => timeline.cardRow(k),
@@ -1500,7 +1515,9 @@ export function start(host: StudioHost) {
     const unnamed = items.filter((i) => i.unstable).map((i) => i.key);
     if (unnamed.length) {
       rows.push({ id: 'name', section: 'ask', label: t('pal.ex.name'), icon: 'spark', hint: String(unnamed.length), data: { action: 'pal-name' },
-        run: () => void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) });
+        // A draft in the box (studio-card-doors, 2026-10-23; the ✦ rule): it sent a request at once before. The web demo
+        // has no AI and no box: the old send stays its only way (askAi says why it cannot).
+        run: () => (host.offline ? void askAi({ kind: 'name', text: '', objects: requestObjects(unnamed) }) : nameDraft(unnamed)) });
     }
     // A phone's "All actions" prints no keys (no keyboard there; review 2 ④). Counts stay.
     if (phone()) for (const r of rows) if (r.section === 'actions') r.hint = undefined;
@@ -1639,7 +1656,6 @@ export function start(host: StudioHost) {
       name: () => nameDraft(its.filter((i) => i.unstable).map((i) => i.key)),
       rename: () => void startRename(),
       duplicate: () => copySelection(),
-      copy: () => clipCopy(),
       paste: () => clipPaste(),
       remove: () => removeSelection(),
       selectAll: () => items.length && selectMany(items.map((i) => i.key), selected ?? items[0]!.key),
@@ -1653,7 +1669,6 @@ export function start(host: StudioHost) {
       askFile: () => fileUse.ask?.(files()),
       showInLibrary: () => showInLibrary(),
       drop: () => dropToFloor(),
-      unhold: () => send({ type: 'studio:placement/unhold', keys: its.filter((i) => i.held === 'ground').map((i) => i.key) }),
     };
     for (const op of ['forward', 'backward', 'toFront', 'toBack'] as LayerOp[]) {
       run[`layer-${op}`] = () => (group.length > 1 ? reorderGroup(op) : selected && reorder(selected, op));
@@ -4423,15 +4438,16 @@ export function start(host: StudioHost) {
     }
     (header.querySelector('.adapter') as HTMLElement).textContent = adapterInfo;
     langBtn.textContent = t('btn.lang');
-    // Scene / Library: two rows, a 16 px icon, the name, a grey word for what is in it (PC: "the game" / "objects &
-    // assets"; the phone's switch has no room for it). Only the Library has a count — everything in it; the Scene's
+    // Scene / Library: two rows, a 16 px icon and the name. The grey word for what is in it ("objects in this level" /
+    // "objects & assets", tool.*.sub) is gone (studio-card-doors, 2026-10-23: two small lines more to read on the first
+    // screen, saying what the names already say). Only the Library has a count — everything in it; the Scene's
     // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library'] as ToolId[]) {
       // The Library holds the world's objects (the UI's HTML elements are not Library objects).
       const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
-        icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }), h('span', { class: 'sub', text: id === 'placement' && editLayer === 'ui' ? t('uiLayer.sub') : t(`tool.${id}.sub`) }),
+        icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }),
         n ? h('span', { class: 'n', text: String(n) }) : null));
     }
     (paletteFoot.querySelector('.label') as HTMLElement).textContent = t('foot.palette');
@@ -4485,18 +4501,34 @@ export function start(host: StudioHost) {
     if (tabsHome) {
       if (tabs.parentElement !== tabsHome) tabsHome.prepend(tabs);
     } else if (tabs.parentElement !== sideHead) sideHead.prepend(tabs);
-    // The left column: the Look page, the Ideas page, or the scene list.
+    // The Look page and the Ideas page: a window over the game on PC (studio-card-doors, 2026-10-23; the plan's rule
+    // "one way in": they are ⌘K's, and opening them took the left column away from the scene list — the list, the pick
+    // and the game went out of sight for a setting). Esc / ‹ Close / a press beside the plate close it (switchTool).
+    // A phone keeps them in its sheet (the sheet already is a plate over the game).
+    const winPage = page !== 'tool' && !phone();
+    pageWin.hidden = !winPage;
+    if (!winPage) pagePlate.replaceChildren();
+    const pageEl = winPage ? pagePlate : toolEl;
     if (page === 'settings') {
-      renderSettings(toolEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
+      renderSettings(pageEl, { t, prefs: () => uiPrefs, change: changeUi, back: () => switchTool(tool), phone, lang: () => lang, setLang,
         aiLookOff: aiLook && !safeUi ? (() => { const u = new URL(location.href); u.searchParams.set('ui', 'off'); return u.href; })() : null });
     } else if (page === 'next') {
-      renderNextSteps(toolEl, {
+      renderNextSteps(pageEl, {
         host, lang: () => lang, t, back: () => switchTool(tool),
+        // ✦ (studio-card-doors, 2026-10-23; the ✦ rule): "Ask Claude…" puts the idea in the ask box and closes the
+        // page — the person sends it. It sent a next-step request at once before. The web demo has no box: the old send.
         send: (step, text) => askAi({ kind: 'next-step', step, text }),
+        draft: host.offline ? undefined : (text) => {
+          switchTool(tool);
+          focusAsk(text);
+        },
       }, nextOpen, (id) => {
         nextOpen = id;
         renderAll();
       });
+    }
+    if (page !== 'tool' && !winPage) {
+      // (a phone's page fills the sheet: no list under it)
     } else if (!phone() && lib) {
       // The Library is open: the left column holds its filters and nothing else. The object list is not here next to
       // the grid, so a click in the column never leaves the Library for the game (the bug found in a try on 10/18).

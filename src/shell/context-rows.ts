@@ -16,8 +16,7 @@
 // hiding it (the detail says why); its "Ask your AI…" goes, like every AI row there.
 //
 // Rules, and why:
-// - The names are the ones the rest of the editor uses for the same action (ops.copy "Duplicate", keys.copy "Copy",
-//   btn.undo…), and the key is the keymap.ts id, so the menu prints the key the sheet (?) and the tooltips print.
+// - The names are the ones the rest of the editor uses for the same action (ops.copy "Duplicate", btn.undo…), and the key is the keymap.ts id, so the menu prints the key the sheet (?) and the tooltips print.
 // - SHORT, one way in per action (design review 2, 2026-10-19, item ②: the 3D menu was 9 rows, 2D 13, a phone's 9–11
 //   covered the card and the ask box). What has a place that is always on screen is not repeated here: Undo / Redo
 //   (the top bar), and on a phone Duplicate / Copy / Paste / Delete (the card's buttons). 2D draw order keeps the two
@@ -51,7 +50,8 @@ export interface CtxFacts {
   unnamed: number;
   /**
    * object: how many of the picked are a held ground / road / sky (Item.held 'ground'). A hands-on try of
-   * 2026-10-19 asked that freeing one take a step on purpose — "right-click › Make movable", or its card's button.
+   * 2026-10-19 asked that freeing one take a step on purpose; since studio-card-doors (2026-10-23) that step is the
+   * "Unlock" in the line under the strip only, so the menu lists nothing for it (the fact stays for scripts).
    */
   held?: number;
   /** Anything picked at all (the scene's Deselect). */
@@ -133,17 +133,16 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
     if (!f.offline && f.picked === 1 && f.unnamed === 0 && !f.ui) rows.push({ id: 'rename', label: 'ctx.rename', key: 'rename' }, sep);
     // A phone: the card has Duplicate and Delete (and Copy / Paste are the same as Duplicate there) — not here.
     if (!f.compact && !f.ui) {
-      rows.push(
-        { id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked },
-        { id: 'copy', label: 'keys.copy', key: 'copy', disabled: locked },
-      );
+      // No "Copy" row (studio-card-doors, 2026-10-23; the glossary's "one thing, one word"): "Duplicate" and "Copy" side
+      // by side read as the same action twice. ⌘C / ⌘V stay as keys; Paste stays while something is copied.
+      rows.push({ id: 'duplicate', label: 'ops.copy', key: 'duplicate', disabled: locked });
       if (!off && f.clip > 0) rows.push({ id: 'paste', label: 'keys.paste', key: 'paste' });
       rows.push({ id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked }, sep);
     }
     // Drop to floor (snap to surfaces, 2026-10-19): with the moves, before the way to the Library. A phone shows it only
     // when it can act (no dimmed rows there).
     if (f.droppable !== undefined && (!f.compact || (!off && f.droppable > 0))) rows.push({ id: 'drop', label: 'keys.drop', key: 'drop', disabled: off || f.droppable === 0 });
-    if (!off && f.held) rows.push({ id: 'unhold', label: 'hold.free' });
+    // (No "Unlock" for a locked road since studio-card-doors: its one way is the word in the line under the strip.)
     if (!f.ui) rows.push({ id: 'showInLibrary', label: 'ctx.showInLibrary' });
     if (f.dim === '2d' && f.layers && Object.keys(f.layers).length) {
       const layers: CtxRow[] = [

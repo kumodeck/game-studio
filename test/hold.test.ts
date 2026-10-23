@@ -10,6 +10,7 @@ import type { Item, Pose, StudioAdapter } from '../src/contract.ts';
 import { groundKeys } from '../src/adapters/three/ground.js';
 import { canLift, createHoldState, holdItem, withHold } from '../src/bridge/hold.ts';
 import { drivenBetween } from '../src/bridge/observe.ts';
+import { LOCK_NOTE } from '../src/bridge/handles.ts';
 import { heldGameText } from '../src/shell/placement-panel.ts';
 import { contextRows } from '../src/shell/context-rows.ts';
 import { translate } from '../src/shell/i18n.ts';
@@ -136,13 +137,15 @@ test('the card\'s words: the tester\'s own sentence when the game moves it, then
   assert.equal(heldGameText({ driven: ['move', 'turn', 'size'], movable: false, rotatable: false, scalable: false }, '2d', en), 'Your game moves this while playing. You choose only where it starts.');
 });
 
-test('the menu: "Make movable" for a held ground, only while editing', () => {
+// studio-card-doors (2026-10-23): the one way to free a locked road is the "Unlock" in the line under the strip
+// (bridge/handles.ts LOCK_NOTE); the menu (and the card) no longer list it.
+test('the menu has no "Unlock" for a held ground; the line under the strip has it', () => {
   const base = { dim: '3d' as const, offline: false, editing: true, picked: 1, movable: 0, unnamed: 1, anyPicked: true, items: 15, clip: 0, canUndo: false, canRedo: false };
   const ids = (held?: number, editing = true) => contextRows('object', { ...base, held, editing }).map((r) => ('sep' in r ? '—' : r.id));
-  assert.ok(ids(1).includes('unhold'));
-  assert.ok(!ids(0).includes('unhold') && !ids(undefined).includes('unhold'));
-  assert.ok(!ids(1, false).includes('unhold'), 'not while playing / loading');
+  assert.ok(!ids(1).includes('unhold') && !ids(0).includes('unhold'));
   assert.equal(translate('ja', 'hold.free'), '動かせるようにする');
+  assert.equal(LOCK_NOTE.ja.unlock, translate('ja', 'hold.free'));
+  assert.equal(LOCK_NOTE.en.unlock, translate('en', 'hold.free'));
 });
 
 // merge of 2026-10-19: Drop to floor (End, snap to surfaces) arrived next to the hold layer. It changes the height, so

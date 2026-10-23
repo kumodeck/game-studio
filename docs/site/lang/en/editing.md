@@ -40,7 +40,7 @@ The tool stays chosen until you press <kbd>Esc</kbd> or choose another. A readou
 
 - **Your game moves it** (a runner’s obstacles, a spinning coin): **Move** works as always. Where you put it is where it starts; when the game plays, it moves it on from there.
 - If your game turns or resizes it, **Turn** or **Size** is dimmed and pressing it does nothing. To change that, ask AI in the box below.
-- **A ground, road or sky** is locked so a stray drag can’t move it: **Unlock** on the card frees it.
+- **A ground, road or sky** is locked so a stray drag can’t move it. The line under the tool strip says so, and its **Unlock** frees it.
 - **Your game’s rules lock it**: the tools are dimmed, and the same line says why.
 
 ![The Turn tool chosen on the lighthouse](media/turn.webp)
@@ -110,7 +110,7 @@ The menus have two kinds of rows, and you can tell them apart before you press:
 - <kbd>Shift</kbd>-click to add or take away one.
 - <kbd>Shift</kbd>-drag from an empty spot to draw a box.
 - On a phone, use **Multi-select** in the list, then **Done**.
-- The right-click menu has **Select all like this**: every object of the same kind.
+- The card’s **⋯** has **Select all like this**: every object of the same kind (and **Show in Library**).
 
 Several selected move, turn and resize together.
 

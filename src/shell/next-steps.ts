@@ -7,8 +7,9 @@
 // things your AI can do, not as a shop shelf in an OSS tool.
 //
 // Rules this page keeps:
-// - Nothing happens until a button is pressed. The page never contacts any
-//   service; "Ask my AI" only calls host.request(), which keeps the request
+// - Nothing happens until a button is pressed, and the ✦ button only writes the idea in the ask box (studio-card-doors,
+//   2026-10-23): the person sends it from there. The page never contacts any
+//   service; a sent ask only calls host.request(), which keeps the request
 //   for the agent (locally .studio/requests/<id>.json, plus
 //   .studio/next-step.md for KUMODeck steps).
 // - The agent checks with the user before signing in, uploading or changing code.
@@ -29,8 +30,13 @@ export interface NextStepsDeps {
   lang: () => Lang;
   t(key: string): string;
   back(): void;
-  /** Hand the step to the AI (host.request with kind "next-step"); resolves true when kept. */
+  /** Hand the step to the AI (host.request with kind "next-step"); resolves true when kept. Only without `draft`. */
   send(step: StepId, text: string): Promise<boolean>;
+  /**
+   * ✦ (studio-card-doors, 2026-10-23; the ✦ rule of studio-uniforms): put the words in the ask box, cursor there, and
+   * close this page — nothing is sent until the person sends. Absent (the web demo: no ask box) = `send`.
+   */
+  draft?(text: string): void;
 }
 
 export function renderNextSteps(el: HTMLElement, d: NextStepsDeps, open: StepId | null, onOpen: (id: StepId | null) => void): void {
@@ -76,7 +82,8 @@ export function renderNextSteps(el: HTMLElement, d: NextStepsDeps, open: StepId 
     h('label', { class: 'set-label', text: d.t('next.edit') }),
     promptBox,
     h('div', { class: 'step-actions' },
-      h('button', { type: 'button', class: 'primary', dataset: { action: 'ask' }, text: d.t('next.ask'), onclick: async () => {
+      h('button', { type: 'button', class: d.draft ? 'primary ai' : 'primary', dataset: { action: 'ask' }, text: d.draft ? `✦ ${d.t('next.ask')}…` : d.t('next.ask'), onclick: async () => {
+        if (d.draft) return d.draft(promptBox.value.trim() || d.t(`next.prompt.${open}`));
         const ok = await d.send(open, promptBox.value.trim() || d.t(`next.prompt.${open}`)).catch(() => false);
         note.textContent = ok ? d.t('next.sent') : d.t('ask.fail');
       } }),

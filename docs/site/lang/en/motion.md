@@ -24,13 +24,13 @@ There are two ways in, and no list of ready-made kinds: you make a motion by sho
 
 ![Made by showing it: two points on the timeline, and the line “Moves 0–1 s. Keep moving to add a second.”](media/motion-make.webp)
 
-The card’s **+ Make a motion** and the Library’s do the same. To change the timing, drag the points along the ruler. To make it go back and forth or repeat, use **Repeat** in **⋯ Fine-tune**.
+The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line, like **Motion  ship’s motion · When game starts ›**; press it to open the motion on the timeline. A thing with no motion has no such line: the strip’s Motion button is the way in. To change the timing, drag the points along the ruler. To make it go back and forth or repeat, use **Repeat** in **⋯ Fine-tune**.
 
 Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
 
 ## The timeline
 
-Select something, then press **◆ Timeline** on its card (or find **Timeline** in <kbd>⌘</kbd><kbd>K</kbd>). The timeline opens at the bottom of the game (above the card on a phone).
+Select something with a motion, then press its **Motion** line on the card or the Motion button on the strip (or find **Timeline** in <kbd>⌘</kbd><kbd>K</kbd>). The timeline opens at the bottom of the game (above the card on a phone).
 
 ![The timeline under the game, with the boat’s points and its path](media/timeline.webp)
 
@@ -141,7 +141,7 @@ Every motion is in the Library, under **Motion**. Each tile draws the path and p
 
 You don’t have to add points yourself. Two ways to use your AI:
 
-- **Use a motion you made.** Press **✦ Ask Claude** on the timeline (or **Ask Claude about…** in the card’s motion menu, a right-click on the object, or the motion in the Library). The chat box at the bottom gets a chip with both names, like **crate · Hop**, and the cursor. Say what you want: “start it when the player walks up,” then “a bit slower.” Your AI connects that moment in the game’s code.
+- **Use a motion you made.** Press **✦ Ask Claude** on the timeline (or a right-click on the object, or the motion in the Library). The chat box at the bottom gets a chip with both names, like **crate · Hop**, and the cursor. Say what you want: “start it when the player walks up,” then “a bit slower.” Your AI connects that moment in the game’s code.
 
 ![The chat box with the chip “crate · Hop” and the words “Start it when the player walks up”](media/motion-ask.webp)
 - **Describe it.** Select something and ask in the box at the bottom: “make the boat rock gently.” Your AI writes the movement into the game’s code. It plays in **▶ Play** and in the game, but it isn’t on the timeline.

@@ -119,7 +119,8 @@ async function run(size, theme) {
       await sleep(900);
       await fine(true);
       await sleep(300);
-      if (!(await state()).open) await page.eval(`document.querySelector('[data-part=card] [data-part=motion-timeline]').click()`);
+      // studio-card-doors: the card's ◆ Timeline is gone — its one Motion line (when there is a motion), else the timeline itself.
+      if (!(await state()).open) await page.eval(`(() => { const b = document.querySelector('[data-part=card] [data-part=motion-row] button'); if (b) b.click(); else window.__studioTimeline.setOpen(true); })()`);
       await sleep(600);
       await fine(false);
       await sleep(400);
