@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.37 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.38 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -13923,6 +13923,10 @@ const en = {
   'sheet.grip': 'Click to minimize · drag to resize the list',
   'sheet.fold': 'Minimize',
   'sheet.unfold': 'Show the list and card',
+  // Plan step 7 (2026-10-23): the sheet's tabs (Scene | the picked object | Motion), named for a screen reader.
+  'sheet.tabs': 'What the sheet shows',
+  // The one line under the game until the first pick (the words picked for plan "decide 1", kept after a wording check).
+  'intro.line': 'Shape your game by hand. Your AI writes the code.',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to {ai}. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -14745,6 +14749,8 @@ const ja                               = {
   'sheet.grip': 'クリックでたたむ・ドラッグで一覧の高さを変える',
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
+  'sheet.tabs': 'シートに出す物',
+  'intro.line': 'ゲームを手で直す場所。コードは、いつもの AI が書く。',
   'ai.waiting': '{what}を {ai}に送りました。返事を待っています…',
   'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
   'ai.onIt': '{ai}が取りかかっています',
@@ -23040,7 +23046,7 @@ const { createUnsavedGuard, lostBy, playAsks } = __require(66);
 const { createLayerSwitch } = __require(67);
 const { uiAsPlacement, uiEntries, withUi } = __require(68);
 const { createUiWire } = __require(73);
-const { barPress, gripEnd, readFold, writeFold } = __require(74);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(74);
 
                                                                         
 
@@ -23251,6 +23257,10 @@ function start(host            ) {
    * ui prefs (.studio/ui/prefs.json `seen`): the studio opens on a free port, so the browser's storage alone would
    * forget it on the next run; the prefs alone would show it again in every new game on this machine.
    */
+  // The one line when it opens (renderSheet): seen in this game once something was picked. `prefsLoaded`: the game's
+  // prefs have been read (until then nobody knows whether this game has seen it).
+  const INTRO_SEEN = 'open-line';
+  let prefsLoaded = false;
   function hintSeen(id        )          {
     if (uiPrefs.seen?.includes(id)) return true;
     try {
@@ -23620,16 +23630,19 @@ function start(host            ) {
       if (!from.moved && Math.abs(dy) < 4) return;
       from.moved = true;
       // (CSS clamps it: never under the low sheet, never over the top bar.) The phone's sheet keeps its own height.
-      if (sideWin()) setH(from.h + dy);
+      // Over the card or the motion (the grip sits on the dock then, renderSheet) there is no list to resize: a pull
+      // down still folds (gripEnd), a pull up does nothing.
+      if (sideWin() && side.contains(sheetGrip)) setH(from.h + dy);
     });
     const end = (e              ) => {
       if (!from || e.pointerId !== from.id) return;
       const f = from;
       from = null;
-      const to = gripEnd({ moved: f.moved, fromH: f.h, dy: f.y - e.clientY, nowH: side.offsetHeight });
+      const onDock = !side.contains(sheetGrip);
+      const to = onDock ? (!f.moved || f.y - e.clientY <= -FOLD_DRAG ? 'fold' : 'tall') : gripEnd({ moved: f.moved, fromH: f.h, dy: f.y - e.clientY, nowH: side.offsetHeight });
       if (to === 'fold') {
         // Pulled down: the sheet unfolds at the height it was pulled from, not at the drag's last pixel.
-        if (f.moved) setH(f.h > lowH() + 2 && sideWin() ? f.h : null);
+        if (f.moved && !onDock) setH(f.h > lowH() + 2 && sideWin() ? f.h : null);
         foldBottom(false);
         return;
       }
@@ -23679,7 +23692,16 @@ function start(host            ) {
       foldBottom(false);
       return;
     }
-    if (act === 'unfold') setFold(false);
+    if (act === 'unfold') {
+      setFold(false);
+      // Something picked: ▴ brings the sheet back on its card (the sheet shows one thing at a time since plan step 7;
+      // its Scene tab is one press away). Nothing picked: the list, as before.
+      if (group.length > 1 || selected) {
+        sheetOpen = false;
+        renderAll(true);
+        return;
+      }
+    }
     sheetOpen = true;
     page = 'tool';
     // From the Library the list button brings the Scene's list (the game and its list).
@@ -23714,6 +23736,67 @@ function start(host            ) {
     }
     sheetBtn.setAttribute('aria-expanded', String(open));
   }
+  /**
+   * The one line and the sheet's tabs (plan step 7; introLine and sheetTabs say why). Called wherever the pick, the
+   * sheet or the timeline may have changed: renderAll, placeTimeline, the two selection paths and the game's own pick.
+   * Idempotent: it moves elements only when they are not where they should be (a ResizeObserver on the dock calls back).
+   */
+  function renderSheet() {
+    const picked = group.length > 1 || !!selected;
+    // ---- the one line ----
+    // "This game": the game folder's ui prefs (.studio/ui/prefs.json `seen`), not this browser's storage — the studio
+    // opens on a free port, so the browser alone would show it again each run, and another game on this machine is a
+    // new first time (hintSeen keeps both; this one wants the game's only). Waits for the prefs (prefsLoaded) so a
+    // game that has seen it does not flash it while they load. No AI behind the web demo (host.offline): the line
+    // would promise one, so it is not shown there.
+    if (picked && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN)) changeUi({ ...uiPrefs, seen: [...(uiPrefs.seen ?? []), INTRO_SEEN] });
+    const intro = !host.offline && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN) && !picked && editing && !playing && tool === 'placement' && page === 'tool';
+    if (introLine.hidden === intro) introLine.hidden = !intro;
+    if (intro && introLine.textContent !== t('intro.line')) introLine.textContent = t('intro.line');
+    // ---- the sheet's tabs (phone / side window, something picked, the bottom not folded) ----
+    const shown = phone() && picked && editing && !playing && tool === 'placement' && page === 'tool' && !fold;
+    const motionOn = shown && timeline.isOpen() && !timeline.el.hidden;
+    // The Motion tab only for an object that has a motion: making one is the strip's Motion (the plan's "one way in",
+    // motion-card.ts), so an empty Motion tab would be a second door with nothing behind it.
+    // (Or the timeline already open on it: "Make a motion" opens it before the first point exists.)
+    const hasMotion = motionOn || (shown && editLayer === 'world' && group.length <= 1 && !!selected && !!timeline.shownName(selected));
+    // The timeline opened from elsewhere (the strip's Motion, the card's Motion row) while the list was up: the motion
+    // takes the sheet, the list steps back (one thing at a time).
+    if (motionOn && sheetOpen) {
+      sheetOpen = false;
+      app.dataset.sheet = 'closed';
+    }
+    const on                                   = !shown ? '' : motionOn ? 'motion' : sheetOpen ? 'scene' : 'pick';
+    if (on) app.dataset.sheetTab = on;
+    else delete app.dataset.sheetTab;
+    sheetTabs.hidden = !on;
+    // The tabs (and the grip) head whichever plate is up: the list sheet for the Scene, the dock for the card / motion.
+    const home = on === 'scene' ? side : dock;
+    const before = on === 'scene' ? sideHead : dock.querySelector(':scope > .timeline') ?? cardSlot;
+    if (on && (sheetTabs.parentElement !== home || sheetTabs.nextSibling !== before)) home.insertBefore(sheetTabs, before);
+    const gripHome = on && on !== 'scene' ? dock : side;
+    if (sheetGrip.parentElement !== gripHome) gripHome.insertBefore(sheetGrip, on && on !== 'scene' ? sheetTabs : gripHome.firstChild);
+    if (!on) return;
+    const pickName = group.length > 1 ? t('undo.n', { n: group.length }) : (() => {
+      const it = items.find((i) => i.key === selected);
+      return it ? displayName(it, t) : selected || '';
+    })();
+    const want                                               = [['scene', t('tool.placement')], ['pick', pickName]];
+    if (hasMotion) want.push(['motion', t('motion.label')]);
+    const sig = `${on}|${want.map((w) => w.join(':')).join('|')}|${lang}`;
+    if (sheetTabs.dataset.sig === sig) return;
+    sheetTabs.dataset.sig = sig;
+    sheetTabs.setAttribute('aria-label', t('sheet.tabs'));
+    sheetTabs.replaceChildren(...want.map(([id, label]) => h('button', { type: 'button', role: 'tab', class: 'sheet-tab', 'aria-selected': String(on === id), dataset: { tab: id }, title: label,
+      onclick: () => pickSheetTab(id) }, h('span', { class: 'label', text: label }))));
+  }
+  /** A tab pressed: the list (Scene), the card, or the motion's timeline — one at a time. */
+  function pickSheetTab(id                             ) {
+    sheetOpen = id === 'scene';
+    if (id === 'motion') timeline.setOpen(true);
+    else if (timeline.isOpen()) timeline.setOpen(false);
+    renderAll(true);
+  }
   /** A page the person asked for in the sheet (Look, Ideas, the Library, the Scene): it unfolds. */
   const unfoldFor = () => {
     if (fold && phone()) setFold(false);
@@ -23738,7 +23821,20 @@ function start(host            ) {
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), presenceRow, bar);
+  // What this tool is, in ONE line under the game, over the ask field (plan step 7, 2026-10-23; a try of the editor that day: "the
+  // experience makes no sense at all" — the screen never said what the tool is for, plan 01-journey #1). Shown only
+  // until the first pick, then never again in this game (renderSheet). Not a tour: the step-by-step tips were taken out
+  // on 2026-10-17 ("I don't need this", see the caption's comment) and this is not them coming back — one line, no
+  // steps, nothing to press. The words were picked for the plan's "decide 1" and kept after a wording check.
+  const introLine = h('p', { class: 'intro-line', dataset: { part: 'intro-line' }, hidden: true });
+  // Phone / side window: the one sheet's tabs — Scene | <the picked object> | Motion (plan step 7; a try in the side window, 10/21: "it's
+  // too hard to use from the Claude sidebar — the bottom menu has to be able to be minimised"). Before, the foot was
+  // four blocks stacked over the game: the AI's reply, "● Claude is watching", the card and the field (shots
+  // now-ja-35-side-pick). Now the sheet shows ONE of the list, the card or the motion, the field at its foot; the
+  // reply floats over the game's top and the presence is a dot in the field. renderSheet says which tab is on.
+  const sheetTabs = h('div', { class: 'sheet-tabs', role: 'tablist', dataset: { part: 'sheet-tabs' }, hidden: true });
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, presenceRow, bar);
+  // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
@@ -23912,7 +24008,11 @@ function start(host            ) {
     const inset        = { top: 0, right: 0, bottom: 0, left: 0 };
     // The bar and, on a phone, the card above it (the news card comes and goes: not counted).
     // (Folded, the card is hidden by CSS but not [hidden]: it does not count.)
-    const top = phone() && !(fold && phone()) && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
+    // (cardSlot.offsetHeight: the Scene / Motion tab hides the card slot by CSS — plan step 7 — and a slot not drawn
+    // measures top 0, which made the list sheet's foot padding the whole window.)
+    let top = phone() && !(fold && phone()) && !placementPanel.cardEl.hidden && cardSlot.contains(placementPanel.cardEl) && cardSlot.offsetHeight > 0 ? cardSlot.getBoundingClientRect().top : bar.getBoundingClientRect().top;
+    // Plan step 7: the sheet's grip and tabs head the dock's plate over the card / the motion — they cover the game too.
+    if (phone() && dock.contains(sheetGrip) && sheetGrip.offsetParent) top = Math.min(top, sheetGrip.getBoundingClientRect().top);
     if (!dock.hidden && dock.offsetParent) inset.bottom = Math.max(0, Math.round(sr.bottom - top + 8));
     // The phone's list sheet pads its foot by what the bar and the card cover (shell.css --studio-cover):
     // the card's height differs (2D Layer row, the open numbers), so it is measured, not guessed.
@@ -23961,6 +24061,7 @@ function start(host            ) {
       if (el.parentElement !== dock || el.nextSibling !== cardSlot) dock.insertBefore(el, cardSlot);
     } else if (el.parentElement !== stage) stage.append(el);
     timeline.render();
+    renderSheet();
     const on = !el.hidden;
     app.dataset.timeline = on ? 'open' : 'closed';
     const hgt = on && !phone() ? `${el.offsetHeight}px` : '0px';
@@ -24804,6 +24905,7 @@ function start(host            ) {
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
     renderShelf();
+    renderSheet();
     sendInset();
     emit('selected', selected);
   }
@@ -25194,14 +25296,22 @@ function start(host            ) {
     presence.title = t('ai.p.tip');
     // Where: inside the field on a wide bar, on its own line above on a narrow one. offsetWidth 0 = not laid out yet
     // (a hidden bar): leave it where it is.
+    // A phone / the side window (plan step 7, 2026-10-23): back inside the field, as ONLY its dot (shell.css; green =
+    // watching, grey = not sure / away) — its own line above the field was one of the four blocks stacked at the foot
+    // (a try in the side window, 10/21: "too hard to use from the Claude sidebar"). A press on the dot opens the same one line of what is
+    // true and what to do (openHelp), so the words are one press away; the button's name carries them for a reader.
     const box = placementPanel.askEl;
     const w = box.offsetWidth;
-    const narrow = phone() || (w > 0 && w < presence.offsetWidth + PRESENCE_ROOM);
+    const dotOnly = phone();
+    const narrow = !dotOnly && w > 0 && w < presence.offsetWidth + PRESENCE_ROOM;
     const want = narrow ? presenceRow : box;
     if (presence.parentElement !== want) {
       if (want === box) box.insertBefore(presence, box.querySelector('.ask-kbd'));
       else presenceRow.append(presence);
     }
+    presence.classList.toggle('dot-only', dotOnly);
+    if (dotOnly) presence.setAttribute('aria-label', how ? `${t(`ai.p.${p}`, v)} · ${t('ai.p.how')}` : t(`ai.p.${p}`, v));
+    else presence.removeAttribute('aria-label');
     presenceRow.hidden = !narrow || askSlot.hidden;
     renderOpenHelp(p, v);
     // The placeholder says the other half ("kept as a note for Claude"): drawn again when the state changes by time.
@@ -25695,6 +25805,7 @@ function start(host            ) {
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
     renderShelf();
+    renderSheet();
     sendInset();
     send({ type: 'studio:placement/select', key, focus });
   }
@@ -26099,6 +26210,8 @@ function start(host            ) {
         else placementPanel.renderAsk();
         timeline.untouch();
         timeline.render();
+        renderSheet();
+        sendInset();
         // "+ New motion" was pressed with nothing picked (studio-motion-flow): this pick is the object it was for.
         if (makeOnPick && m.key && group.length <= 1 && editLayer === 'world' && !libraryShown()) {
           const ok = Date.now() < makeOnPick;
@@ -27474,6 +27587,14 @@ function start(host            ) {
     // on 2026-10-18 ("what is this for? I'm already using Game Studio — get what?"). The demo's top line alone says it
     // isn't connected to an AI (src/hosts/browser/text.ts). Don't put a pitch or a link back down here without asking.
     if (!host.offline && placementPanel.askEl.parentElement !== askSlot) askSlot.append(placementPanel.askEl);
+    // The AI's reply (and the news card's other lines): over the game's top on a phone / the side window (plan step 7:
+    // it was the top block of the stack at the foot, over the card), in the dock over the field on PC. It still fades
+    // by itself (line-fade.ts) and focusing the field brings it back.
+    const capHome = phone() ? stage : dock;
+    if (caption.parentElement !== capHome) {
+      if (capHome === dock) dock.prepend(caption);
+      else stage.insertBefore(caption, dock.nextSibling);
+    }
     placeCard();
     placementPanel.renderAsk();
     renderAiLine();
@@ -27682,6 +27803,7 @@ function start(host            ) {
         host.loadConfig().catch(() => null),
       ]);
       uiPrefs = normalizeUi(safeUi ? null : ui);
+      prefsLoaded = true;
       if (uiPrefs.lang && !new URLSearchParams(location.search).get('lang')) lang = uiPrefs.lang;
       gameConfig = config;
       applyUi();

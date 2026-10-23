@@ -13,7 +13,7 @@
 // 4. Claude starts watching (the stand-in's watch): "● Claude is watching" with a green dot; the kept note is picked
 //    up: "Claude is on it" (or its own words) → "Done"-line with its note.
 // 5. Claude goes away (the watch ends) and stays away a minute: "Claude isn't watching · How to open", no dot.
-// 6. A narrow window (the side window, 420 wide): the words move to their own line above the field, whole.
+// 6. A narrow window (the side window, 420 wide): only the dot, inside the field (plan step 7); a press opens the words.
 // --before: the same steps on an older build, only the photos (for the before / after picture).
 import assert from 'node:assert/strict';
 import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -192,18 +192,29 @@ try {
     ok('gone a minute: "Claude isn\'t watching · How to open", no dot');
   });
 
-  // ---- 6. a narrow window: the words on their own line above the field ----
+  // ---- 6. a narrow window: only the dot, in the field; a press says the words (plan step 7, 2026-10-23 — the line of
+  // its own above the field was one of the four blocks stacked at the foot of the side window) ----
   await page.send('Emulation.setDeviceMetricsOverride', { width: 420, height: 800, deviceScaleFactor: 1, mobile: false });
   await sleep(1500);
   s = await j(page, STATE);
   await shot('narrow');
+  const label = await page.eval(`document.querySelector('.presence')?.getAttribute('aria-label') || ''`);
   check(() => {
-    assert.equal(s.p.row, true, 'above the field');
-    ok('narrow: the words above the field');
+    assert.equal(s.p.inField, true, 'in the field');
+    assert.equal(s.p.row, false, 'no line of its own');
+    assert.equal(s.p.dot, true, 'the dot shows (grey when not watching)');
+    assert.match(label, ja ? /Claude が見ていません/ : /Claude isn’t watching/, 'the button is named by its words');
+    ok('narrow: the dot in the field, named by its words');
   });
   if (!BEFORE) {
-    const clipped = await page.eval(`(() => { const p = document.querySelector('.presence'); return p.scrollWidth > p.clientWidth + 1; })()`);
-    assert.equal(clipped, false, 'the words are never cut');
+    await press(page, '.presence');
+    await sleep(400);
+    s = await j(page, STATE);
+    await shot('narrow-help');
+    check(() => {
+      assert.ok(s.help.length > 0, 'a press on the dot opens its one line');
+      ok('narrow: a press on the dot opens what to do');
+    });
     const phCut = await page.eval(`(() => { const i = document.querySelector('.ask-input'); const c = document.createElement('canvas').getContext('2d'); c.font = getComputedStyle(i).font; return c.measureText(i.placeholder).width > i.clientWidth + 1; })()`);
     assert.equal(phCut, false, 'the placeholder fits on a narrow bar too');
   }

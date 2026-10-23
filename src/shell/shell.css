@@ -1744,3 +1744,38 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* Narrow (a phone, the side window): the sheet above the rows, its own scroll — the rows stay under it. */
 .timeline.narrow .tl-main:has(> .tl-fine:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
 .timeline.narrow .tl-fine { border-right: 0; border-bottom: 1px solid var(--line); max-height: min(34dvh, calc(var(--tl-ruler) + 6 * var(--tl-row))); }
+
+/* ----- Plan step 7 (2026-10-23): the one line when it opens, and ONE sheet at the foot of a phone / the side window
+   (main.ts introLine / sheetTabs / renderSheet; tries of the editor: 10/23 "the experience makes no sense", 10/21 "too hard to use
+   from the Claude sidebar — the bottom menu has to be able to be minimised") ----- */
+/* The one line: a quiet caption on the game, centred over the ask field. Not a button and not a plate of its own (a
+   thin glass so it reads over a bright game). Gone with the first pick, and behind ⌘K / the list sheet. */
+.intro-line { margin: 0; justify-self: center; max-width: 100%; padding: 4px 12px; border-radius: 999px; font-size: var(--fs-s); line-height: 1.4; color: var(--text-2); text-align: center;
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); animation: studio-rise var(--dur-in) var(--ease); }
+.intro-line[hidden] { display: none; }
+.shell:is([data-palette="open"], [data-palette="suggest"]) .intro-line, .shell[data-layout="phone"][data-sheet="open"] .intro-line { display: none; }
+/* The AI's reply over the game's top (it was the top block of the stack at the foot). Its fade and its way back (the
+   field's focus) are unchanged (line-fade.ts). */
+.shell[data-layout="phone"] .stage > .ai-caption { position: absolute; z-index: 7; top: 8px; left: 8px; right: 8px; }
+/* The presence: only its dot, inside the field (green = watching; grey = not sure / away). A press opens its words. */
+.presence.dot-only { justify-content: center; width: 44px; min-height: 44px; padding: 0; background: none; box-shadow: none; }
+.shell[data-fit="side"] .presence.dot-only { width: 32px; min-height: 32px; }
+.presence.dot-only :is(.p-text, .p-how) { display: none; }
+.presence.dot-only .dot { display: block; background: var(--text-3); }
+.presence.dot-only.sure .dot { background: var(--live); }
+/* The sheet's tabs: Scene | <the picked object> | Motion. A finger's 44 on a phone, the side window's mouse 32 (its
+   rows are 32: shell.css [data-fit="side"]). The picked object's name is cut, never the other two. */
+.sheet-tabs { display: flex; gap: 4px; padding: 2px 8px 6px; min-width: 0; }
+.sheet-tabs[hidden] { display: none; }
+.sheet-tab { flex: none; min-width: 0; min-height: 44px; padding: 0 14px; border: 0; border-radius: 999px; background: var(--raise); color: var(--text-2); font: inherit; font-size: var(--fs-s); cursor: pointer; }
+.sheet-tab[data-tab="pick"] { flex: 0 1 auto; }
+.sheet-tab .label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px; }
+.sheet-tab:hover { color: var(--text); }
+.sheet-tab[aria-selected="true"] { background: var(--raise-3); color: var(--text); font-weight: 600; }
+.shell[data-fit="side"] .sheet-tab { min-height: 32px; padding: 0 12px; }
+.side > .sheet-tabs { padding: 0 2px 6px; }
+/* One of the three at a time: the list (Scene) or the motion's timeline takes the card's place. */
+.shell[data-layout="phone"]:is([data-sheet-tab="scene"], [data-sheet-tab="motion"]) .card-slot { display: none; }
+/* The grip on the dock's plate (over the card / the motion): the same bar, the plate's own margins. */
+.shell[data-layout="phone"] .dock > .sheet-grip { margin: 0; height: 16px; }
+.shell[data-layout="phone"] .dock > .sheet-grip::before { top: 6px; }

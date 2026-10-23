@@ -2,7 +2,7 @@
 title: Getting started
 nav: Getting started
 order: 1
-written-for: 0.1.18
+written-for: 0.1.34
 description: Install Game Studio with one line, open the editor with /arrange, and turn on updates.
 ---
 
@@ -60,6 +60,8 @@ You can also say what you want in your own words, like “I want to fix where th
 
 ![The editor right after it opens](media/open.webp)
 
+Until you pick something, one line under the game says what the editor is for: **Shape your game by hand. Your AI writes the code.** It goes away with your first pick, and doesn’t come back for that game.
+
 ### No game yet?
 
 Open your AI in an **empty folder** and type `/arrange`. It asks one thing: “Want to start from a sample? Pick 3D or 2D.” It copies a small sample game into the folder and opens it. Then try three things:
@@ -75,7 +77,7 @@ The samples already read your layout when they start, so what you saved is in th
 The editor runs on your computer, at an address like `http://127.0.0.1:…`. Your AI puts the link on the first line of its reply, every time.
 
 - It opens in your usual browser (Chrome or another) by itself: in a terminal, in Codex and in the Claude app alike.
-- In the Claude app, want it in the pane next to the chat? Tell your AI “open it in the app.” It remembers that for this game. Can’t see it? Press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>B</kbd> (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd> on Windows). The pane is narrow: **Open large** (↗, top right) opens the same editor in a big window.
+- In the Claude app, want it in the pane next to the chat? Tell your AI “open it in the app.” It remembers that for this game. Can’t see it? Press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>B</kbd> (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd> on Windows). The pane is narrow: everything at the bottom is one sheet that shows one thing at a time (see [the side window and phones](editing.md#the-side-window-and-phones)), and **Open large** (↗, top right) opens the same editor in a big window.
 - Where no browser can open (over SSH, for one), open the link from the first line of the reply in your browser.
 
 The link has a pass in it (the part after `?t=`), so it only works on your computer. Don’t share it. Lost it? Ask your AI for the link again. More in the [FAQ](faq.md#the-editors-link).

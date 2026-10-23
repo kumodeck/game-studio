@@ -11,7 +11,7 @@
 //   2. folded, a pick (one, then 11) and the AI's answer do not open it again (the AI's news is a dot on ▴)
 //   3. one press on ▴ opens it as it was; the fold is kept across a reload
 //   4. with 11 picked, in the low sheet and with a group opened: no two list rows overlap, and none lies under the card
-//   5. "Deselect" is not a row of its own: it sits in the card's head
+//   5. "Deselect" is not a row of its own: it sits in the card's head (read on the sheet's card tab since plan step 7)
 //
 //   node test/studio-side-sheet.browser.mjs [--shots <dir>] [--tag before|after] [--only side,phone] [--theme dark,light]
 //     [--no-assert] [--ui <dir>] (pictures only, and another built shell: the "before" set, from the commit before the fold)
@@ -175,8 +175,13 @@ for (const dev of DEVICES) {
       check(() => {
         assert.equal(many.over.length, 0, `${tag}: list rows overlap: ${many.over.join(', ')}`);
         assert.equal(many.underCard.length, 0, `${tag}: rows under the card: ${many.underCard.join(', ')}`);
-        assert.ok(many.deselectInHead, `${tag}: "Deselect" is not in the card's head`);
       });
+      // Plan step 7 (2026-10-23): the sheet shows the list OR the card (its Scene | ×11 tabs), so "Deselect" is read on
+      // the card's tab, then the list comes back for the rest of the run.
+      await press('[data-part=sheet-tabs] [data-tab=pick]');
+      const card = await m();
+      check(() => assert.ok(card.deselectInHead, `${tag}: "Deselect" is not in the card's head`));
+      await press('[data-part=sheet-tabs] [data-tab=scene]');
       // Pulled up (side window: the grip dragged up), the rows still do not overlap.
       if (!dev.mobile) {
         const g = JSON.parse(await page.eval(center('.sheet-grip')));

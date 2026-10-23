@@ -2,7 +2,7 @@
 title: Editing
 nav: Editing
 order: 2
-written-for: 0.1.32
+written-for: 0.1.34
 description: Select, move, turn and resize things in your game, look around, use the Library, and save.
 ---
 
@@ -145,7 +145,7 @@ The box at the bottom is for your AI. Type what you want and press <kbd>Enter</k
 - About what’s selected: “add 3 more in a row,” “make it glow.”
 - About the whole game: “add three lighthouses around the island.”
 
-Before you type, the right end of the box says whether your AI is there (above the box on a narrow window):
+Before you type, the right end of the box says whether your AI is there (in the side window and on a phone, only its dot: press it for the words):
 
 - **● Claude is watching**: what you send reaches it within seconds. **● Claude is working**: it’s on a request.
 - **Not sure Claude is open** or **Claude isn’t watching**: you can still write. It’s kept as a note, and nothing in the game changes until Claude reads it. **How to open** says what to do.
@@ -161,6 +161,17 @@ When it isn’t, the line says what happened: **Kept as a note for Claude. Nothi
 ![Sent while Claude wasn’t open: kept as a note, with “How to open” beside the box](media/ask-kept.webp)
 
  A violet light runs round the box while it works, and its one-line reply shows above. When it’s done, the game updates by itself, with your camera and selection kept, and only what changed glows violet. Don’t like it? **Undo AI change** puts it back in one press.
+
+## The side window and phones
+
+In the pane next to the chat in the Claude app, and on a phone, everything at the bottom is **one sheet** under the game:
+
+- The tabs at its top show one thing at a time: **Scene** (the list), **the object you picked** (its card), and **Motion** when that object has one.
+- The box for your AI is always the sheet’s last row. Whether your AI is there is the dot inside it (green: watching). Press the dot for the words.
+- Your AI’s reply shows over the top of the game and goes after a few seconds. Click the box to see it again.
+- Click the bar at the sheet’s top (or ▾ at the box’s left) to fold the sheet to the box alone. ▴ opens it again.
+
+![The side window with the gate picked: the Scene and gate tabs, the gate’s card, and the box with its dot](media/side-sheet.webp)
 
 ## Save
 

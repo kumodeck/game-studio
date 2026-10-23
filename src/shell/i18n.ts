@@ -303,6 +303,10 @@ const en = {
   'sheet.grip': 'Click to minimize · drag to resize the list',
   'sheet.fold': 'Minimize',
   'sheet.unfold': 'Show the list and card',
+  // Plan step 7 (2026-10-23): the sheet's tabs (Scene | the picked object | Motion), named for a screen reader.
+  'sheet.tabs': 'What the sheet shows',
+  // The one line under the game until the first pick (the words picked for plan "decide 1", kept after a wording check).
+  'intro.line': 'Shape your game by hand. Your AI writes the code.',
   // One line about the hand-off to the AI (requests and the AI's status).
   'ai.waiting': 'Sent your {what} to {ai}. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
@@ -1125,6 +1129,8 @@ const ja: Partial<Record<Key, string>> = {
   'sheet.grip': 'クリックでたたむ・ドラッグで一覧の高さを変える',
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
+  'sheet.tabs': 'シートに出す物',
+  'intro.line': 'ゲームを手で直す場所。コードは、いつもの AI が書く。',
   'ai.waiting': '{what}を {ai}に送りました。返事を待っています…',
   'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
   'ai.onIt': '{ai}が取りかかっています',
