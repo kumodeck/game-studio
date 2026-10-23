@@ -698,6 +698,10 @@ const en = {
   'shelf.source': 'Asset',
   'shelf.noSource': 'No asset',
   'shelf.showInGame': 'Show in the scene →',
+  // A locked object's line in the Library's detail (studio-library-shelf, 2026-10-23): the glossary's "Locked" words, the
+  // same as the line under the tool strip. Was placement.locked ("Locked by this game’s settings"), which read as a rule
+  // the person could not change.
+  'shelf.locked': 'Locked so it isn’t nudged',
   // Keyboard shortcuts (keymap.ts, the ? sheet, tooltips; basics pass 2026-10-18).
   'keys.title': 'Keyboard shortcuts',
   'keys.group.edit': 'Edit',
@@ -1451,6 +1455,7 @@ const ja: Partial<Record<Key, string>> = {
   'shelf.source': '元の素材',
   'shelf.noSource': '素材なし',
   'shelf.showInGame': 'シーンで見る →',
+  'shelf.locked': '固定しています',
   'ask.game': '{ai}に頼む…',
   'keys.title': 'キーボードショートカット',
   'keys.group.edit': '編集',

@@ -2,7 +2,7 @@
 title: Editing
 nav: Editing
 order: 2
-written-for: 0.1.24
+written-for: 0.1.32
 description: Select, move, turn and resize things in your game, look around, use the Library, and save.
 ---
 
@@ -109,7 +109,7 @@ The menus have two kinds of rows, and you can tell them apart before you press:
 
 - <kbd>Shift</kbd>-click to add or take away one.
 - <kbd>Shift</kbd>-drag from an empty spot to draw a box.
-- On a phone, use **Multi-select** in the list, then **Done**.
+- On a phone, use **Multi-select** in the list (in the Library, under **+**), then **Done**. A computer has no such button: <kbd>Shift</kbd> does it.
 - The card’s **⋯** has **Select all like this**: every object of the same kind (and **Show in Library**).
 
 Several selected move, turn and resize together.
@@ -122,16 +122,19 @@ Several selected move, turn and resize together.
 
 ## The Library
 
-Switch from **Scene** to **Library** on the left to see everything your game is made of: its objects, and every image, model and sound it uses. The filters on the left narrow it: **All**, **3D**, **2D**, **Sound**, **Motion**, **Other**.
+Switch from **Scene** to **Library** on the left to see everything your game is made of: its objects, its motions, and every image, model and sound it uses. Each kind has its own heading with its count: **Objects · 15**, **Motions · 2**, **Assets · 7**. An object counts once per copy (pine ×3 is 3), and the number next to **Library**, **All** and the headings always add up the same way. The filters on the left narrow it: **All**, **3D**, **2D**, **Sound**, **Motion**, **Other** (only the ones your game has).
 
-![The Library: one grid of the game’s objects, then its files](media/library.webp)
+![The Library: the game’s objects, then its motions and assets, each under its heading](media/library.webp)
+
+A game with no assets yet shows **Assets · 0** and one place to drop files on.
 
 Click a tile to see its detail: which objects use a file, which files are unused or missing.
 
 - **Put in the scene** on an object puts a duplicate where you’re looking. A file needs new code to become an object, so its button is **✦ Ask Claude to put it in the scene…**: the request goes in the box at the bottom, and nothing is sent until you press <kbd>Enter</kbd>.
 - **Replace…** swaps a file for another. **Add assets** brings new ones in.
 - **Show in the scene** goes back to the Scene with it selected.
-- Select a tile and type in the box at the bottom to ask your AI about it.
+- **✦ Ask Claude…** (your AI’s name) puts the cursor in the box at the bottom, with the tile named in it.
+- A locked object (a ground, road or sky) says **Locked so it isn’t nudged** under its name.
 
 ![An object’s detail in the Library](media/library-object.webp)
 

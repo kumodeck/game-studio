@@ -31,7 +31,9 @@ const starter = (await readStarters(join(PKG, 'starters'))).find((s) => s.id ===
 const root = mkdtempSync(join(tmpdir(), 'studio-library-save-'));
 await copyStarter(starter, root);
 const lines = [];
-const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: (l) => lines.push(l) });
+// No KUMODeck sign-in (studio-library-shelf, 2026-10-23): the Library reads it at once now for its "✦ Make with AI" words,
+// and the real ~/.kumo of the machine running this must not be read (nor its balance land in a picture).
+const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: (l) => lines.push(l) });
 const browser = await launch();
 const page = await newPage(browser, { width: 1280, height: 800 });
 const ok = (s) => console.log(`  ✓ ${s}`);

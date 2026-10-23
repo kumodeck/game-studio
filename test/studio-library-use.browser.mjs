@@ -88,7 +88,9 @@ const fresh = async (g, theme) => {
   cpSync(join(PKG, 'starters', g.id), root, { recursive: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
-  srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
+  // No KUMODeck sign-in (studio-library-shelf, 2026-10-23): the Library reads it at once now for its "✦ Make with AI" words,
+  // and the real ~/.kumo of the machine running this must not be read (nor its balance land in a picture).
+  srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
   // An AI's watch (what `studio.mjs --watch` runs), as when a person works next to their AI: the editor then says
   // "your AI has it" instead of a big "your AI isn't watching" card, which covered a phone list's last rows.
   watch = new AbortController();
@@ -240,18 +242,23 @@ async function runLocal(g, sz, theme) {
   assert.deepEqual([add.kind, add.text, add.assets, add.objects?.length ?? 0], ['ask', W.addFile, [g.file], 0], `${tag}: ${JSON.stringify(add)}`);
   if (g.dim === '3d') assert.ok(add.view?.eye && add.view?.target, `${tag}: 3D: where the camera looks, for placing it`);
   step(`file ${g.file}: draft “${W.addFile}” → Enter → ${add.id} (assets ${JSON.stringify(add.assets)})`);
-  // Two files with Multi-select: the chip counts them.
-  // (Phone: Multi-select is in the "+" next to the search, the second design review's ⑦; its "Done" comes back next to it.)
+  // Two files: the chip counts them. Phone: Multi-select, in the "+" next to the search (the second design review's ⑦; its
+  // "Done" comes back next to it). PC: Shift + click — the bar has no Multi-select there (studio-library-shelf, 2026-10-23).
+  const second = `.assets-page .gsl-tile[data-kind=file][data-path="${g.second}"]`;
   if (sz.touch) {
     await press('.assets-page [data-action=library-more]');
     await press('.assets-page [data-action=more-shelf-multi]');
-  } else await press('.assets-page [data-action=shelf-multi]');
-  await press(`.assets-page .gsl-tile[data-kind=file][data-path="${g.second}"]`);
+    await press(second);
+  } else {
+    assert.equal(await page.eval(`[...document.querySelectorAll('.assets-page .shelf-multi')].some((b) => b.offsetParent)`), false, `${tag}: no Multi-select on PC`);
+    await page.eval(`(() => { const t = document.querySelector(${JSON.stringify(second)}); t.scrollIntoView({ block: 'center' }); t.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true })); return true; })()`);
+    await sleep(400);
+  }
   assert.equal(await chip(), W.files2, `${tag}: two files picked → "${W.files2}"`);
   assert.equal(await page.eval(`document.querySelectorAll('.assets-page .gsl-tile.gsl-open[data-kind=file]').length`), 2, `${tag}: both tiles marked as picked`);
   await shot('5-files-2');
-  await press('.assets-page [data-action=shelf-multi]');
-  step(`Multi-select: two files → chip “${W.files2}”`);
+  if (sz.touch) await press('.assets-page [data-action=shelf-multi]');
+  step(`${sz.touch ? 'Multi-select' : 'Shift + click'}: two files → chip “${W.files2}”`);
 
   // 5. (PC) A tile dropped on the Scene row = Add to scene. (Built from DataTransfer in the page: the headless
   // browser has no drag of its own to send; the events and their data are the browser's.)

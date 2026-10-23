@@ -80,7 +80,9 @@ async function run(size, theme) {
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: LANG, theme }));
   writeFileSync(join(root, 'placement.json'), JSON.stringify(FILE, null, 2));
   const full = CHECKS && !BEFORE && size.id === 'pc' && theme === THEMES[0];
-  const srv = await startStudioServer({ root, uiDir: UI, log: () => {}, env: {} });
+  // No KUMODeck sign-in (studio-library-shelf, 2026-10-23): the Library reads it at once now for its "✦ Make with AI" words,
+  // and the real ~/.kumo of the machine running this must not be read (nor its balance land in a picture).
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const shot = async (page, what) => SHOTS && writeFileSync(join(SHOTS, `${BEFORE ? 'before' : 'after'}-${size.id}-${theme}-${what}.png`), await page.screenshot());
   console.log(`${size.id} ${theme}${full ? ' (checks)' : ''}${BEFORE ? ' (before)' : ''}`);

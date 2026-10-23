@@ -124,6 +124,10 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 @keyframes gsl-wait{50%{opacity:.35}}
 @keyframes gsl-sweep{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){.gsl-thumb-wait .gsl-icon,.gsl-thumb-wait::after{animation:none}}
+.gsl-group{grid-column:1/-1;margin:10px 0 -2px;font-size:12px;font-weight:600;color:var(--gsl-muted);letter-spacing:.01em}
+.gsl-group:first-child{margin-top:0}
+.gsl-drop-assets{grid-column:1/-1;align-items:center;justify-content:center;min-height:64px;margin-top:0;text-align:center}
+.gsl-drop-assets:hover,.gsl-drop-assets:focus-visible{border-color:var(--gsl-accent);color:var(--gsl-fg)}
 .gsl-foot{display:flex;gap:8px;align-items:center;min-height:32px}
 .gsl-status{flex:1;color:var(--gsl-muted);overflow:hidden;text-overflow:ellipsis}
 .gsl-pending{color:var(--gsl-code);font-weight:600}

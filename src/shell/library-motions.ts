@@ -209,7 +209,9 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
       const on = pick.has(m.name);
       const pic = motionPicture(m, 96);
       const users = d.usage(m.name);
-      const meta = h('span', { class: 'gsl-meta' }, h('span', { class: 'lib-motion-on', text: users.length ? d.t('lib.motion.on', { names: users.slice(0, 2).map((u) => name(u.key)).join(', ') + (users.length > 2 ? ` +${users.length - 2}` : '') }) : d.t('lib.motion.free') }));
+      // "on ship" only when it is on something (studio-library-shelf, 2026-10-23; the UI plan 5 #3): "Not attached yet" under
+      // a fresh motion read as a fault to fix, and the tile has no way to fix it (the detail and the drag do).
+      const meta = h('span', { class: 'gsl-meta' }, users.length ? h('span', { class: 'lib-motion-on', text: d.t('lib.motion.on', { names: users.slice(0, 2).map((u) => name(u.key)).join(', ') + (users.length > 2 ? ` +${users.length - 2}` : '') }) }) : null);
       const tile = h('div', { class: `gsl-tile lib-motion${on ? ' gsl-open' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': String(on), title: m.name,
         dataset: { kind: 'motion', motion: m.name } },
       h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
@@ -275,10 +277,12 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
     // What it is on, and when each one starts.
     const rows = h('dl', { class: 'shelf-rows' });
     const users = d.usage(m.name);
-    const on = h('dd', { class: 'lib-motion-users' });
-    if (!users.length) on.append(h('span', { class: 'muted', text: d.t('lib.motion.free') }));
-    for (const u of users) on.append(h('span', { class: 'lib-motion-user', dataset: { key: u.key } }, h('b', { text: name(u.key) }), ' ', h('span', { class: 'muted', text: whenShort(d.t, u.when, u.until ?? null, m.repeat ?? 'once') })));
-    rows.append(h('dt', { text: d.t('lib.motion.onLabel') }), on);
+    // The "On" row only when it is on something (the UI plan 5 #3, as the tile): "Attach to" below is the way on.
+    if (users.length) {
+      const on = h('dd', { class: 'lib-motion-users' });
+      for (const u of users) on.append(h('span', { class: 'lib-motion-user', dataset: { key: u.key } }, h('b', { text: name(u.key) }), ' ', h('span', { class: 'muted', text: whenShort(d.t, u.when, u.until ?? null, m.repeat ?? 'once') })));
+      rows.append(h('dt', { text: d.t('lib.motion.onLabel') }), on);
+    }
     // Attach to any object: a menu of the scene's objects (the picked one first).
     const free = d.items().filter((i) => !users.some((u) => u.key === i.key));
     if (free.length) {
@@ -295,9 +299,10 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
       acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'motion-attach' }, text: d.t('lib.motion.attach', { name: name(target) }),
         onclick: () => (d.attach(target, m.name), d.changed()) }));
     }
-    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet. Words: the ask box's "Ask Claude…" (the UI plan 5 #3,
+    // as an object's detail).
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi!() },
-      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAi')));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-rename' }, text: d.t('tl.rename'), onclick: rename }));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-duplicate' }, text: d.t('lib.motion.duplicate'), onclick: () => {
       const n = d.duplicate(m.name);

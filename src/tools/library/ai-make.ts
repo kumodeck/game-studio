@@ -51,6 +51,18 @@ export const usd = (n: number) => `$${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`;
 const dollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 /**
+ * The words on the Library's "✦ Make with AI" button (studio-library-shelf, 2026-10-23; the UI plan 5 #4). The first-run
+ * walk (#12) pressed it to find out it needs a KUMODeck sign-in and money ("Checking your sign-in…" first): now the button
+ * says it before the press — signed out "Make with AI · sign-in · paid", signed in "Make with AI · $4.20 left" (the balance
+ * the status already has; nothing is worked out here). null = not known yet (the plain words, until the status comes).
+ */
+export function aiOpenLabel(lang: Lang, st: Pick<KumoStatus, 'signedIn' | 'balanceCents'> | null): string {
+  if (!st) return t(lang, 'aiOpen');
+  if (!st.signedIn) return t(lang, 'aiOpenSignIn');
+  return typeof st.balanceCents === 'number' ? t(lang, 'aiOpenLeft', { balance: dollars(st.balanceCents) }) : t(lang, 'aiOpen');
+}
+
+/**
  * A 3D file heavier than this gets the "heavy for a web game" line and the "make it lighter"
  * button. 10 MB: most web game models are a few MB; the real AI model was 45.7 MB and took
  * 10–30 s just to draw its thumbnail.
@@ -90,6 +102,8 @@ export interface AiMakeDeps {
   assetUrl?(path: string): string;
   /** "Add to scene" / "Ask your AI…" on what was just made (the Library's own; absent = no buttons). */
   files?: LibraryFileUse;
+  /** The sign-in / balance changed (the Library's button says it: aiOpenLabel). */
+  onStatus?(st: KumoStatus): void;
 }
 
 /** The line under Make: what happened, plus what is being waited for or what to do next. */
@@ -125,7 +139,7 @@ const REFUSAL: Record<string, StringKey> = {
   unreachable: 'aiUnreachable',
 };
 
-export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void; close(): void; isOpen(): boolean } {
+export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void; close(): void; isOpen(): boolean; peek(): Promise<void> } {
   const L = (k: StringKey, v?: Record<string, string | number>) => t(deps.lang, k, v);
   const box = h('div', 'gsl-ai');
   box.hidden = true;
@@ -380,6 +394,7 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
 
   // ---------- render ----------
   function render() {
+    if (st) deps.onStatus?.(st);
     // Keep the person typing: a job finishing while the prompt box has the focus re-renders.
     const typing = document.activeElement instanceof HTMLTextAreaElement && box.contains(document.activeElement)
       ? { a: document.activeElement.selectionStart, b: document.activeElement.selectionEnd } : null;
@@ -652,6 +667,19 @@ export function mountAiMake(root: HTMLElement, deps: AiMakeDeps): { open(): void
       box.hidden = true;
     },
     isOpen: () => !box.hidden,
+    /**
+     * Read the sign-in once without opening (the button's words, the UI plan 5 #4). Signed out it is a local file check;
+     * signed in, the one balance read the open form would make anyway. Was: nothing asked until the press — which is
+     * exactly why the press was needed to learn the price.
+     */
+    async peek() {
+      if (st) return;
+      const s = await deps.kumo.status().catch(() => null);
+      if (s && !st && box.hidden) {
+        st = s;
+        deps.onStatus?.(s);
+      }
+    },
   };
   return api;
 }

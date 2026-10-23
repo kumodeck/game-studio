@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.34 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.35 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4435,6 +4435,10 @@ const en = {
   close: 'Close',
   // "Make with AI" (ai-make.ts): optional KUMODeck sign-in, paid from the KUMODeck balance (2026-10-16)
   aiOpen: 'Make with AI',
+  // The button says what it needs before it is pressed (studio-library-shelf, 2026-10-23; the UI plan 5 #4): signed out
+  // = a sign-in and money, signed in = what is left. Before, both showed only after the press ("Checking your sign-in…").
+  aiOpenSignIn: 'Make with AI · sign-in · paid',
+  aiOpenLeft: 'Make with AI · {balance} left',
   aiTitle: 'Make with AI',
   aiChecking: 'Checking your KUMODeck sign-in…',
   aiSignInWhy: 'Sign in with KUMODeck to make images, 3D models and sounds with AI. They’re paid for with your KUMODeck credits.',
@@ -4569,6 +4573,13 @@ const en = {
   // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
   more: 'More',
   countObjects: '{n:1 object|# objects}',
+  // The grid's headings on All (studio-library-shelf, 2026-10-23; the UI plan 5 #1): objects, motions and assets each under
+  // their own head with its count (an object counts once per copy: hex ×4 = 4), the same count as All and the left column.
+  headObjects: 'Objects · {n}',
+  headMotions: 'Motions · {n}',
+  headAssets: 'Assets · {n}',
+  // The one drop place under "Assets · 0" (nothing to show yet).
+  dropAssets: 'Drop image, 3D or sound files here',
   countBoth: '{o:1 object|# objects} · {f:1 asset|# assets}',
   emptyObjects: 'No objects match.',
   noObjectsYet: 'No objects in the game yet.',
@@ -4610,6 +4621,10 @@ const ja                                     = {
   noMotionsMake: 'まだ動きはありません。「＋ 動きを作る」でタイムラインで作れます →',
   more: 'ほか',
   countObjects: '物 {n}',
+  headObjects: '物 · {n}',
+  headMotions: '動き · {n}',
+  headAssets: '素材 · {n}',
+  dropAssets: '画像・3D・音のファイルをここに落とす',
   countBoth: '物 {o} ・ 素材 {f}',
   emptyObjects: '当てはまる物はありません。',
   noObjectsYet: 'ゲームに置いた物はまだありません。',
@@ -4687,6 +4702,8 @@ const ja                                     = {
   saveFailed: '保存できませんでした: {e}',
   close: '閉じる',
   aiOpen: 'AI で作る',
+  aiOpenSignIn: 'AI で作る · サインイン · 有料',
+  aiOpenLeft: 'AI で作る · 残り {balance}',
   aiTitle: 'AI で作る',
   aiChecking: 'KUMODeck のログインを確かめています…',
   aiSignInWhy: 'KUMODeck でログインすると、画像・3D モデル・音を AI で作れます。料金は KUMODeck のクレジットから払います。',
@@ -5082,6 +5099,10 @@ background:repeating-conic-gradient(#8881 0 25%,#0000 0 50%) 0 0/16px 16px;color
 @keyframes gsl-wait{50%{opacity:.35}}
 @keyframes gsl-sweep{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){.gsl-thumb-wait .gsl-icon,.gsl-thumb-wait::after{animation:none}}
+.gsl-group{grid-column:1/-1;margin:10px 0 -2px;font-size:12px;font-weight:600;color:var(--gsl-muted);letter-spacing:.01em}
+.gsl-group:first-child{margin-top:0}
+.gsl-drop-assets{grid-column:1/-1;align-items:center;justify-content:center;min-height:64px;margin-top:0;text-align:center}
+.gsl-drop-assets:hover,.gsl-drop-assets:focus-visible{border-color:var(--gsl-accent);color:var(--gsl-fg)}
 .gsl-foot{display:flex;gap:8px;align-items:center;min-height:32px}
 .gsl-status{flex:1;color:var(--gsl-muted);overflow:hidden;text-overflow:ellipsis}
 .gsl-pending{color:var(--gsl-code);font-weight:600}
@@ -5487,6 +5508,18 @@ const usd = (n        ) => `$${n < 0.1 ? n.toFixed(3) : n.toFixed(2)}`;
 const dollars = (cents        ) => `$${(cents / 100).toFixed(2)}`;
 
 /**
+ * The words on the Library's "✦ Make with AI" button (studio-library-shelf, 2026-10-23; the UI plan 5 #4). The first-run
+ * walk (#12) pressed it to find out it needs a KUMODeck sign-in and money ("Checking your sign-in…" first): now the button
+ * says it before the press — signed out "Make with AI · sign-in · paid", signed in "Make with AI · $4.20 left" (the balance
+ * the status already has; nothing is worked out here). null = not known yet (the plain words, until the status comes).
+ */
+function aiOpenLabel(lang      , st                                                      )         {
+  if (!st) return t(lang, 'aiOpen');
+  if (!st.signedIn) return t(lang, 'aiOpenSignIn');
+  return typeof st.balanceCents === 'number' ? t(lang, 'aiOpenLeft', { balance: dollars(st.balanceCents) }) : t(lang, 'aiOpen');
+}
+
+/**
  * A 3D file heavier than this gets the "heavy for a web game" line and the "make it lighter"
  * button. 10 MB: most web game models are a few MB; the real AI model was 45.7 MB and took
  * 10–30 s just to draw its thumbnail.
@@ -5526,6 +5559,8 @@ const elapsed = (since        , now = Date.now()) => {
                                   
                                                                                                         
                          
+                                                                                   
+                                  
  
 
 /** The line under Make: what happened, plus what is being waited for or what to do next. */
@@ -5561,7 +5596,7 @@ const REFUSAL                            = {
   unreachable: 'aiUnreachable',
 };
 
-function mountAiMake(root             , deps            )                                                     {
+function mountAiMake(root             , deps            )                                                                            {
   const L = (k           , v                                  ) => t(deps.lang, k, v);
   const box = h('div', 'gsl-ai');
   box.hidden = true;
@@ -5816,6 +5851,7 @@ function mountAiMake(root             , deps            )                       
 
   // ---------- render ----------
   function render() {
+    if (st) deps.onStatus?.(st);
     // Keep the person typing: a job finishing while the prompt box has the focus re-renders.
     const typing = document.activeElement instanceof HTMLTextAreaElement && box.contains(document.activeElement)
       ? { a: document.activeElement.selectionStart, b: document.activeElement.selectionEnd } : null;
@@ -6088,6 +6124,19 @@ function mountAiMake(root             , deps            )                       
       box.hidden = true;
     },
     isOpen: () => !box.hidden,
+    /**
+     * Read the sign-in once without opening (the button's words, the UI plan 5 #4). Signed out it is a local file check;
+     * signed in, the one balance read the open form would make anyway. Was: nothing asked until the press — which is
+     * exactly why the press was needed to learn the price.
+     */
+    async peek() {
+      if (st) return;
+      const s = await deps.kumo.status().catch(() => null);
+      if (s && !st && box.hidden) {
+        st = s;
+        deps.onStatus?.(s);
+      }
+    },
   };
   return api;
 }
@@ -6095,6 +6144,7 @@ function mountAiMake(root             , deps            )                       
 __def(__exports, "USUAL_SEC", () => USUAL_SEC);
 __def(__exports, "centsOf", () => centsOf);
 __def(__exports, "usd", () => usd);
+__def(__exports, "aiOpenLabel", () => aiOpenLabel);
 __def(__exports, "HEAVY_MODEL_BYTES", () => HEAVY_MODEL_BYTES);
 __def(__exports, "elapsed", () => elapsed);
 __def(__exports, "mountAiMake", () => mountAiMake);
@@ -6117,7 +6167,7 @@ __defs[13] = function (__exports) {
 // - Pictures are shown with <img> only (SVG included), so an SVG file cannot
 //   run a script in the shell.
 
-                                                                                                                               
+                                                                                                                                           
 const { ASSET_EXT } = __require(0);
 const { assetsOfKey, buildRows, filterRows, normalizeList, SHELVES, shelfOfType } = __require(5);
                                                            
@@ -6127,7 +6177,7 @@ const { formatSize, t } = __require(7);
                                               
 const { atlasImageUrl, fontFamily, modelThumb } = __require(8);
 const { injectStyles } = __require(9);
-const { HEAVY_MODEL_BYTES, elapsed, mountAiMake } = __require(12);
+const { HEAVY_MODEL_BYTES, aiOpenLabel, elapsed, mountAiMake } = __require(12);
                                            
 
                               
@@ -6270,6 +6320,22 @@ const DRAG_FILE = 'application/x-studio-file';
 
                       
 
+/**
+ * The Library's one way of counting (studio-library-shelf, 2026-10-23; the UI plan 5 #2). The first-run walk (#12) found
+ * three numbers for one shelf: the left column's "Library 9" (objects only), "All 11" (objects + motions) and "9 objects"
+ * over the grid. Now every place counts the same things the same way: an object once per copy (hex ×4 is 4, as the
+ * game has 4), a motion once, a file once. All = the sum. The left column (shell main.ts) adds the same three parts;
+ * the grid's headings ("Objects · 9", "Motions · 2", "Assets · 0") show the parts.
+ * `objects` = the game's objects and the shelf they sit on (3D or 2D), null without objects (the dev harness).
+ */
+function shelfCounts(files                                     , objects                                          , motions        )                        {
+  const n                        = { all: 0, '3d': 0, '2d': 0, sound: 0, other: 0, motion: motions };
+  for (const r of files) n[shelfOfType(r.type)]++;
+  if (objects) n[objects.shelf] += objects.n;
+  n.all = files.length + motions + (objects?.n ?? 0);
+  return n;
+}
+
 function h                                       (tag   , cls         , text         )                           {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -6372,9 +6438,17 @@ function mountLibrary(root    , deps             )              {
   addInput.hidden = true;
   bar.append(search, addBtn, addInput);
   // "Make with AI" (ai-make.ts): only when the host has the optional KUMODeck sign-in (the local
-  // server). One quiet button; nothing is asked of KUMODeck until it is pressed.
-  const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open', L('aiOpen')) : null;
+  // server). One quiet ✦ button that says what it needs before the press (the UI plan 5 #4): "· sign-in · paid" or
+  // "· $4.20 left" (setAiLabel, from the sign-in read once at mount: ai.peek()).
+  const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open ai') : null;
+  const aiLabel = h('span', 'gsl-ai-label', L('aiOpen'));
+  const setAiLabel = (st                   ) => {
+    aiLabel.textContent = aiOpenLabel(deps.lang, st);
+  };
   if (aiBtn) {
+    const spark = h('span', 'gsl-spark', '✦');
+    spark.setAttribute('aria-hidden', 'true');
+    aiBtn.append(spark, aiLabel);
     aiBtn.type = 'button';
     aiBtn.dataset.action = 'ai-open';
     aiBtn.setAttribute('aria-expanded', 'false');
@@ -6404,7 +6478,8 @@ function mountLibrary(root    , deps             )              {
     moreMenu.replaceChildren();
     const entries = [...bar.querySelectorAll                   (':scope > .shelf-multi, :scope > .gsl-add, :scope > .gsl-ai-open')];
     for (const b of entries) {
-      const item = h('button', 'gsl-more-item', b.textContent || '');
+      // The ✦ button's words without the spark (it is a sign on the button, not part of the words).
+      const item = h('button', 'gsl-more-item', b.querySelector('.gsl-ai-label')?.textContent || b.textContent || '');
       item.type = 'button';
       item.setAttribute('role', 'menuitem');
       if (b.dataset.action) item.dataset.action = `more-${b.dataset.action}`;
@@ -6489,8 +6564,10 @@ function mountLibrary(root    , deps             )              {
         // as a file's detail (one way to hand a file to the AI).
         assetUrl: (p) => deps.host.assetUrl(p),
         files: deps.files,
+        onStatus: setAiLabel,
       })
     : null;
+  void ai?.peek();
   wrap.append(chips, count, readFail, grid, detail, foot);
   root.append(wrap);
   if (aiBtn && ai) {
@@ -6613,14 +6690,8 @@ function mountLibrary(root    , deps             )              {
     chips.replaceChildren();
     chips.dataset.shelf = filter.shelf;
     chips.setAttribute('aria-label', L('filterShow'));
-    const n                        = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0, motion: motions?.count() ?? 0 };
-    n.all += n.motion;
-    for (const r of rows) n[shelfOfType(r.type)]++;
     const os = objShelf();
-    if (os) {
-      n.all += objects .count();
-      n[os] += objects .count();
-    }
+    const n = shelfCounts(rows, os === '3d' || os === '2d' ? { n: objects .count(), shelf: os } : null, motions?.count() ?? 0);
     for (const sh of SHELVES) {
       // A shelf with nothing on it is noise (Lantern Cove has no 2D, Firefly Ruins no 3D); kept while it is the one on,
       // so it can still be turned off. All is always there.
@@ -6646,6 +6717,7 @@ function mountLibrary(root    , deps             )              {
     const fileCount = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
     const band = objs ? objects .band() : null;
     count.replaceChildren();
+    count.hidden = false;
     if (band) count.append(band);
     else if (!objs) count.textContent = fileCount;
     else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
@@ -6672,7 +6744,42 @@ function mountLibrary(root    , deps             )              {
       }
       return;
     }
-    if (objs) {
+    // Headings on the shell's grid (studio-library-shelf, 2026-10-23; the UI plan 5 #1, as its mock-up):
+    // "Objects · 9", "Motions · 2", "Assets · 0", each over its own tiles. Before, Hop and a motion sat next to the ship in one
+    // grid (walk #13: "are these objects too?") under a "9 objects" line that counted neither. A kind with nothing (or
+    // nothing for this search) has no heading; Assets keeps its "· 0" and one drop place while the folder has none, so the
+    // way to add the first one is where assets go. Not while a file narrows the objects (the band says what is shown).
+    if (objs && showFiles && !band) {
+      // The headings carry the counts: no "9 objects" line (and no empty row where it was) above them.
+      count.textContent = '';
+      count.hidden = true;
+      const head = (text        , group        ) => {
+        const e = h('h3', 'gsl-group', text);
+        e.dataset.group = group;
+        return e;
+      };
+      if (objs.n) grid.append(head(L('headObjects', { n: objs.n }), 'objects'), ...objs.tiles);
+      if (mots?.n) grid.append(head(L('headMotions', { n: mots.n }), 'motions'), ...mots.tiles);
+      const q = filter.q.trim();
+      if (!objs.n && !mots?.n && !list.length && !aiWork.length && q && loaded) {
+        grid.append(h('div', 'gsl-empty', L('emptyBoth')));
+        return;
+      }
+      if (list.length || aiWork.length) grid.append(head(L('headAssets', { n: list.length }), 'assets'));
+      else if (!q && loaded && !readError && !rows.length) {
+        const drop = h('div', 'gsl-drop gsl-drop-assets', L('dropAssets'));
+        drop.setAttribute('role', 'button');
+        drop.tabIndex = 0;
+        drop.dataset.part = 'assets-drop';
+        drop.addEventListener('click', () => addInput.click());
+        drop.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), addInput.click()));
+        grid.append(head(L('headAssets', { n: 0 }), 'assets'), drop);
+        return;
+      } else if (!loaded && !readError) {
+        grid.append(head(L('headAssets', { n: 0 }), 'assets'), h('div', 'gsl-empty', L('loading')));
+        return;
+      }
+    } else if (objs) {
       grid.append(...objs.tiles);
       if (mots) grid.append(...mots.tiles);
       if (!showFiles) {
@@ -7118,10 +7225,13 @@ function mountLibrary(root    , deps             )              {
   }
 
   function render() {
-    // Multi-select acts on the objects: in the bar while objects are shown.
+    // Multi-select acts on the objects: in the bar while objects are shown — on a phone only (studio-library-shelf,
+    // 2026-10-23; the UI plan 5 #5, as the Scene's list in plan step 3): on PC, Shift + click and the drag box pick
+    // several, and the button was one more thing in the bar that read as a mode to turn on first. The phone has no Shift.
     if (objects) {
       const mb = objects.multiButton();
-      if (!showsObjects() && !showsMotions()) mb.remove();
+      const phone = !!root.closest('[data-layout="phone"]');
+      if (!phone || (!showsObjects() && !showsMotions())) mb.remove();
       else if (mb.parentElement !== bar) bar.insertBefore(mb, addBtn);
     }
     renderChips();
@@ -7326,6 +7436,7 @@ function mountLibrary(root    , deps             )              {
 }
 
 __def(__exports, "DRAG_FILE", () => DRAG_FILE);
+__def(__exports, "shelfCounts", () => shelfCounts);
 __def(__exports, "mountLibrary", () => mountLibrary);
 };
 __defs[14] = function (__exports) {
@@ -8384,16 +8495,24 @@ function createLibraryObjects(d                    )                     {
     const close = h('button', { type: 'button', class: 'gsl-btn gsl-close', 'aria-label': d.t('btn.close'), text: '×', onclick: () => d.clear() });
     const pic = h('div', { class: 'gsl-thumb' }, thumbImg(members[0] .key));
     const names = members.slice(0, 6).map((m) => displayName(m, d.t)).join(', ') + (members.length > 6 ? ' …' : '');
+    // Locked, said once under the name in the glossary's words, the same as the line under the tool strip
+    // (studio-library-shelf, 2026-10-23; the UI plan 5 #3). Was a separate grey line "Locked by this game's settings" at the
+    // bottom of the rows: a rule nobody could find, and a second wording of the strip's "Locked so it isn't nudged".
+    const locked = members.every((m) => m.movable === false);
+    const sub = (one ? d.t('shelf.placed') : names) + (locked ? ` · ${d.t('shelf.locked')}` : '');
     el.append(h('div', { class: 'gsl-dhead' }, pic,
-      h('div', { class: 'gsl-dtitle' }, h('b', { text: one ? displayName(one, d.t) : d.t('ops.many', { n: members.length }) }), h('span', { class: 'gsl-path', text: one ? d.t('shelf.placed') : names })),
+      h('div', { class: 'gsl-dtitle' }, h('b', { text: one ? displayName(one, d.t) : d.t('ops.many', { n: members.length }) }), h('span', { class: 'gsl-path', dataset: { part: 'object-sub' }, text: sub })),
       close));
     if (one) {
       const rows = h('dl', { class: 'shelf-rows' });
       const files = filesOf(one.key);
-      const src = h('dd', {});
-      if (files.length) for (const f of files) src.append(h('button', { type: 'button', class: 'shelf-file to', dataset: { action: 'open-asset', path: f }, title: f, text: `${base(f)} →`, onclick: () => d.openFile(f) }));
-      else if (uses) src.append(h('span', { class: 'muted', text: d.t('shelf.noSource') }));
-      rows.append(h('dt', { text: d.t('shelf.source') }), src);
+      // The asset row only when there is one (studio-library-shelf, 2026-10-23; the UI plan 5 #3): "Asset: No asset" (before
+      // studio-words-plan "Drawn in code (no file)") told a first-time person about the game's code, not about the object.
+      if (files.length) {
+        const src = h('dd', {});
+        for (const f of files) src.append(h('button', { type: 'button', class: 'shelf-file to', dataset: { action: 'open-asset', path: f }, title: f, text: `${base(f)} →`, onclick: () => d.openFile(f) }));
+        rows.append(h('dt', { text: d.t('shelf.source') }), src);
+      }
       const p = d.pose(one.key);
       if (p) {
         rows.append(h('dt', { text: d.t('placement.pos') }), h('dd', { class: 'mono' }, ...where(p)));
@@ -8412,17 +8531,17 @@ function createLibraryObjects(d                    )                     {
             } })));
       }
     }
-    const locked = members.every((m) => m.movable === false);
-    if (locked) el.append(h('p', { class: 'shelf-note muted', text: d.t('placement.locked') }));
     // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game, then
     // Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
     // the Library it did exactly what "Add to scene" does, and nobody could tell the two apart; the scene's Duplicate is
     // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
     const acts = h('div', { class: 'shelf-acts' });
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
-    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet — so it is not read as a plain action. Its words are
+    // the ask box's own "Ask Claude…" (studio-library-shelf, the UI plan 5 #3; was "Ask Claude about it…"): the box's chip
+    // already names the pick, so "about it" said nothing more.
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi () },
-      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAi')));
     acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);
@@ -11483,7 +11602,9 @@ function createLibraryMotions(d                    )                     {
       const on = pick.has(m.name);
       const pic = motionPicture(m, 96);
       const users = d.usage(m.name);
-      const meta = h('span', { class: 'gsl-meta' }, h('span', { class: 'lib-motion-on', text: users.length ? d.t('lib.motion.on', { names: users.slice(0, 2).map((u) => name(u.key)).join(', ') + (users.length > 2 ? ` +${users.length - 2}` : '') }) : d.t('lib.motion.free') }));
+      // "on ship" only when it is on something (studio-library-shelf, 2026-10-23; the UI plan 5 #3): "Not attached yet" under
+      // a fresh motion read as a fault to fix, and the tile has no way to fix it (the detail and the drag do).
+      const meta = h('span', { class: 'gsl-meta' }, users.length ? h('span', { class: 'lib-motion-on', text: d.t('lib.motion.on', { names: users.slice(0, 2).map((u) => name(u.key)).join(', ') + (users.length > 2 ? ` +${users.length - 2}` : '') }) }) : null);
       const tile = h('div', { class: `gsl-tile lib-motion${on ? ' gsl-open' : ''}`, role: 'button', tabindex: 0, 'aria-pressed': String(on), title: m.name,
         dataset: { kind: 'motion', motion: m.name } },
       h('div', { class: 'gsl-thumb lib-motion-thumb' }, pic.el),
@@ -11549,10 +11670,12 @@ function createLibraryMotions(d                    )                     {
     // What it is on, and when each one starts.
     const rows = h('dl', { class: 'shelf-rows' });
     const users = d.usage(m.name);
-    const on = h('dd', { class: 'lib-motion-users' });
-    if (!users.length) on.append(h('span', { class: 'muted', text: d.t('lib.motion.free') }));
-    for (const u of users) on.append(h('span', { class: 'lib-motion-user', dataset: { key: u.key } }, h('b', { text: name(u.key) }), ' ', h('span', { class: 'muted', text: whenShort(d.t, u.when, u.until ?? null, m.repeat ?? 'once') })));
-    rows.append(h('dt', { text: d.t('lib.motion.onLabel') }), on);
+    // The "On" row only when it is on something (the UI plan 5 #3, as the tile): "Attach to" below is the way on.
+    if (users.length) {
+      const on = h('dd', { class: 'lib-motion-users' });
+      for (const u of users) on.append(h('span', { class: 'lib-motion-user', dataset: { key: u.key } }, h('b', { text: name(u.key) }), ' ', h('span', { class: 'muted', text: whenShort(d.t, u.when, u.until ?? null, m.repeat ?? 'once') })));
+      rows.append(h('dt', { text: d.t('lib.motion.onLabel') }), on);
+    }
     // Attach to any object: a menu of the scene's objects (the picked one first).
     const free = d.items().filter((i) => !users.some((u) => u.key === i.key));
     if (free.length) {
@@ -11569,9 +11692,10 @@ function createLibraryMotions(d                    )                     {
       acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'motion-attach' }, text: d.t('lib.motion.attach', { name: name(target) }),
         onclick: () => (d.attach(target, m.name), d.changed()) }));
     }
-    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet. Words: the ask box's "Ask Claude…" (the UI plan 5 #3,
+    // as an object's detail).
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi () },
-      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAi')));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-rename' }, text: d.t('tl.rename'), onclick: rename }));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-duplicate' }, text: d.t('lib.motion.duplicate'), onclick: () => {
       const n = d.duplicate(m.name);
@@ -14149,6 +14273,10 @@ const en = {
   'shelf.source': 'Asset',
   'shelf.noSource': 'No asset',
   'shelf.showInGame': 'Show in the scene →',
+  // A locked object's line in the Library's detail (studio-library-shelf, 2026-10-23): the glossary's "Locked" words, the
+  // same as the line under the tool strip. Was placement.locked ("Locked by this game’s settings"), which read as a rule
+  // the person could not change.
+  'shelf.locked': 'Locked so it isn’t nudged',
   // Keyboard shortcuts (keymap.ts, the ? sheet, tooltips; basics pass 2026-10-18).
   'keys.title': 'Keyboard shortcuts',
   'keys.group.edit': 'Edit',
@@ -14902,6 +15030,7 @@ const ja                               = {
   'shelf.source': '元の素材',
   'shelf.noSource': '素材なし',
   'shelf.showInGame': 'シーンで見る →',
+  'shelf.locked': '固定しています',
   'ask.game': '{ai}に頼む…',
   'keys.title': 'キーボードショートカット',
   'keys.group.edit': '編集',
@@ -27202,8 +27331,10 @@ function start(host            ) {
     // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library']            ) {
-      // The Library holds the world's objects (the UI's HTML elements are not Library objects).
-      const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryCount;
+      // The Library holds the world's objects (the UI's HTML elements are not Library objects), its motions and its files:
+      // counted as All and the grid's headings count them (studio-library-shelf, 2026-10-23; the UI plan 5 #2 — the
+      // motions were missing here, so the row said 9 and All said 11).
+      const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryMotions.count() + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
         icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }),
         n ? h('span', { class: 'n', text: String(n) }) : null));

@@ -12,7 +12,7 @@
 // - Pictures are shown with <img> only (SVG included), so an SVG file cannot
 //   run a script in the shell.
 
-import type { AssetRef, Lang, LibraryFileUse, LibraryMotions, LibraryObjects, LoadEntry, StudioHost } from '../../contract.ts';
+import type { AssetRef, KumoStatus, Lang, LibraryFileUse, LibraryMotions, LibraryObjects, LoadEntry, StudioHost } from '../../contract.ts';
 import { ASSET_EXT } from '../../contract.ts';
 import { assetsOfKey, buildRows, filterRows, normalizeList, SHELVES, shelfOfType } from './marks.ts';
 import type { Badge, LibraryRow, Shelf } from './marks.ts';
@@ -22,7 +22,7 @@ import { formatSize, t } from './strings.ts';
 import type { StringKey } from './strings.ts';
 import { atlasImageUrl, fontFamily, modelThumb } from './thumbs.ts';
 import { injectStyles } from './styles.ts';
-import { HEAVY_MODEL_BYTES, elapsed, mountAiMake } from './ai-make.ts';
+import { HEAVY_MODEL_BYTES, aiOpenLabel, elapsed, mountAiMake } from './ai-make.ts';
 import type { AiWork } from './ai-make.ts';
 
 export interface LibraryDeps {
@@ -165,6 +165,22 @@ export interface LibraryTool {
 
 type El = HTMLElement;
 
+/**
+ * The Library's one way of counting (studio-library-shelf, 2026-10-23; the UI plan 5 #2). The first-run walk (#12) found
+ * three numbers for one shelf: the left column's "Library 9" (objects only), "All 11" (objects + motions) and "9 objects"
+ * over the grid. Now every place counts the same things the same way: an object once per copy (hex ×4 is 4, as the
+ * game has 4), a motion once, a file once. All = the sum. The left column (shell main.ts) adds the same three parts;
+ * the grid's headings ("Objects · 9", "Motions · 2", "Assets · 0") show the parts.
+ * `objects` = the game's objects and the shelf they sit on (3D or 2D), null without objects (the dev harness).
+ */
+export function shelfCounts(files: readonly Pick<LibraryRow, 'type'>[], objects: { n: number; shelf: '3d' | '2d' } | null, motions: number): Record<Shelf, number> {
+  const n: Record<Shelf, number> = { all: 0, '3d': 0, '2d': 0, sound: 0, other: 0, motion: motions };
+  for (const r of files) n[shelfOfType(r.type)]++;
+  if (objects) n[objects.shelf] += objects.n;
+  n.all = files.length + motions + (objects?.n ?? 0);
+  return n;
+}
+
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -267,9 +283,17 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   addInput.hidden = true;
   bar.append(search, addBtn, addInput);
   // "Make with AI" (ai-make.ts): only when the host has the optional KUMODeck sign-in (the local
-  // server). One quiet button; nothing is asked of KUMODeck until it is pressed.
-  const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open', L('aiOpen')) : null;
+  // server). One quiet ✦ button that says what it needs before the press (the UI plan 5 #4): "· sign-in · paid" or
+  // "· $4.20 left" (setAiLabel, from the sign-in read once at mount: ai.peek()).
+  const aiBtn = deps.host.kumo ? h('button', 'gsl-btn gsl-ai-open ai') : null;
+  const aiLabel = h('span', 'gsl-ai-label', L('aiOpen'));
+  const setAiLabel = (st: KumoStatus | null) => {
+    aiLabel.textContent = aiOpenLabel(deps.lang, st);
+  };
   if (aiBtn) {
+    const spark = h('span', 'gsl-spark', '✦');
+    spark.setAttribute('aria-hidden', 'true');
+    aiBtn.append(spark, aiLabel);
     aiBtn.type = 'button';
     aiBtn.dataset.action = 'ai-open';
     aiBtn.setAttribute('aria-expanded', 'false');
@@ -299,7 +323,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     moreMenu.replaceChildren();
     const entries = [...bar.querySelectorAll<HTMLButtonElement>(':scope > .shelf-multi, :scope > .gsl-add, :scope > .gsl-ai-open')];
     for (const b of entries) {
-      const item = h('button', 'gsl-more-item', b.textContent || '');
+      // The ✦ button's words without the spark (it is a sign on the button, not part of the words).
+      const item = h('button', 'gsl-more-item', b.querySelector('.gsl-ai-label')?.textContent || b.textContent || '');
       item.type = 'button';
       item.setAttribute('role', 'menuitem');
       if (b.dataset.action) item.dataset.action = `more-${b.dataset.action}`;
@@ -384,8 +409,10 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
         // as a file's detail (one way to hand a file to the AI).
         assetUrl: (p) => deps.host.assetUrl(p),
         files: deps.files,
+        onStatus: setAiLabel,
       })
     : null;
+  void ai?.peek();
   wrap.append(chips, count, readFail, grid, detail, foot);
   root.append(wrap);
   if (aiBtn && ai) {
@@ -508,14 +535,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     chips.replaceChildren();
     chips.dataset.shelf = filter.shelf;
     chips.setAttribute('aria-label', L('filterShow'));
-    const n: Record<Shelf, number> = { all: rows.length, '3d': 0, '2d': 0, sound: 0, other: 0, motion: motions?.count() ?? 0 };
-    n.all += n.motion;
-    for (const r of rows) n[shelfOfType(r.type)]++;
     const os = objShelf();
-    if (os) {
-      n.all += objects!.count();
-      n[os] += objects!.count();
-    }
+    const n = shelfCounts(rows, os === '3d' || os === '2d' ? { n: objects!.count(), shelf: os } : null, motions?.count() ?? 0);
     for (const sh of SHELVES) {
       // A shelf with nothing on it is noise (Lantern Cove has no 2D, Firefly Ruins no 3D); kept while it is the one on,
       // so it can still be turned off. All is always there.
@@ -541,6 +562,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     const fileCount = loaded && rows.length && !readError ? L('count', { n: list.length }) : '';
     const band = objs ? objects!.band() : null;
     count.replaceChildren();
+    count.hidden = false;
     if (band) count.append(band);
     else if (!objs) count.textContent = fileCount;
     else if (!showFiles) count.textContent = L('countObjects', { n: objs.n });
@@ -567,7 +589,42 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       }
       return;
     }
-    if (objs) {
+    // Headings on the shell's grid (studio-library-shelf, 2026-10-23; the UI plan 5 #1, as its mock-up):
+    // "Objects · 9", "Motions · 2", "Assets · 0", each over its own tiles. Before, Hop and a motion sat next to the ship in one
+    // grid (walk #13: "are these objects too?") under a "9 objects" line that counted neither. A kind with nothing (or
+    // nothing for this search) has no heading; Assets keeps its "· 0" and one drop place while the folder has none, so the
+    // way to add the first one is where assets go. Not while a file narrows the objects (the band says what is shown).
+    if (objs && showFiles && !band) {
+      // The headings carry the counts: no "9 objects" line (and no empty row where it was) above them.
+      count.textContent = '';
+      count.hidden = true;
+      const head = (text: string, group: string) => {
+        const e = h('h3', 'gsl-group', text);
+        e.dataset.group = group;
+        return e;
+      };
+      if (objs.n) grid.append(head(L('headObjects', { n: objs.n }), 'objects'), ...objs.tiles);
+      if (mots?.n) grid.append(head(L('headMotions', { n: mots.n }), 'motions'), ...mots.tiles);
+      const q = filter.q.trim();
+      if (!objs.n && !mots?.n && !list.length && !aiWork.length && q && loaded) {
+        grid.append(h('div', 'gsl-empty', L('emptyBoth')));
+        return;
+      }
+      if (list.length || aiWork.length) grid.append(head(L('headAssets', { n: list.length }), 'assets'));
+      else if (!q && loaded && !readError && !rows.length) {
+        const drop = h('div', 'gsl-drop gsl-drop-assets', L('dropAssets'));
+        drop.setAttribute('role', 'button');
+        drop.tabIndex = 0;
+        drop.dataset.part = 'assets-drop';
+        drop.addEventListener('click', () => addInput.click());
+        drop.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), addInput.click()));
+        grid.append(head(L('headAssets', { n: 0 }), 'assets'), drop);
+        return;
+      } else if (!loaded && !readError) {
+        grid.append(head(L('headAssets', { n: 0 }), 'assets'), h('div', 'gsl-empty', L('loading')));
+        return;
+      }
+    } else if (objs) {
       grid.append(...objs.tiles);
       if (mots) grid.append(...mots.tiles);
       if (!showFiles) {
@@ -1013,10 +1070,13 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
   }
 
   function render() {
-    // Multi-select acts on the objects: in the bar while objects are shown.
+    // Multi-select acts on the objects: in the bar while objects are shown — on a phone only (studio-library-shelf,
+    // 2026-10-23; the UI plan 5 #5, as the Scene's list in plan step 3): on PC, Shift + click and the drag box pick
+    // several, and the button was one more thing in the bar that read as a mode to turn on first. The phone has no Shift.
     if (objects) {
       const mb = objects.multiButton();
-      if (!showsObjects() && !showsMotions()) mb.remove();
+      const phone = !!root.closest('[data-layout="phone"]');
+      if (!phone || (!showsObjects() && !showsMotions())) mb.remove();
       else if (mb.parentElement !== bar) bar.insertBefore(mb, addBtn);
     }
     renderChips();

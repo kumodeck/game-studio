@@ -75,6 +75,10 @@ const en = {
   close: 'Close',
   // "Make with AI" (ai-make.ts): optional KUMODeck sign-in, paid from the KUMODeck balance (2026-10-16)
   aiOpen: 'Make with AI',
+  // The button says what it needs before it is pressed (studio-library-shelf, 2026-10-23; the UI plan 5 #4): signed out
+  // = a sign-in and money, signed in = what is left. Before, both showed only after the press ("Checking your sign-in…").
+  aiOpenSignIn: 'Make with AI · sign-in · paid',
+  aiOpenLeft: 'Make with AI · {balance} left',
   aiTitle: 'Make with AI',
   aiChecking: 'Checking your KUMODeck sign-in…',
   aiSignInWhy: 'Sign in with KUMODeck to make images, 3D models and sounds with AI. They’re paid for with your KUMODeck credits.',
@@ -209,6 +213,13 @@ const en = {
   // Make with AI are in it, so the Library's head is two rows and the first tile is in the top half of the screen.
   more: 'More',
   countObjects: '{n:1 object|# objects}',
+  // The grid's headings on All (studio-library-shelf, 2026-10-23; the UI plan 5 #1): objects, motions and assets each under
+  // their own head with its count (an object counts once per copy: hex ×4 = 4), the same count as All and the left column.
+  headObjects: 'Objects · {n}',
+  headMotions: 'Motions · {n}',
+  headAssets: 'Assets · {n}',
+  // The one drop place under "Assets · 0" (nothing to show yet).
+  dropAssets: 'Drop image, 3D or sound files here',
   countBoth: '{o:1 object|# objects} · {f:1 asset|# assets}',
   emptyObjects: 'No objects match.',
   noObjectsYet: 'No objects in the game yet.',
@@ -250,6 +261,10 @@ const ja: Partial<Record<StringKey, string>> = {
   noMotionsMake: 'まだ動きはありません。「＋ 動きを作る」でタイムラインで作れます →',
   more: 'ほか',
   countObjects: '物 {n}',
+  headObjects: '物 · {n}',
+  headMotions: '動き · {n}',
+  headAssets: '素材 · {n}',
+  dropAssets: '画像・3D・音のファイルをここに落とす',
   countBoth: '物 {o} ・ 素材 {f}',
   emptyObjects: '当てはまる物はありません。',
   noObjectsYet: 'ゲームに置いた物はまだありません。',
@@ -327,6 +342,8 @@ const ja: Partial<Record<StringKey, string>> = {
   saveFailed: '保存できませんでした: {e}',
   close: '閉じる',
   aiOpen: 'AI で作る',
+  aiOpenSignIn: 'AI で作る · サインイン · 有料',
+  aiOpenLeft: 'AI で作る · 残り {balance}',
   aiTitle: 'AI で作る',
   aiChecking: 'KUMODeck のログインを確かめています…',
   aiSignInWhy: 'KUMODeck でログインすると、画像・3D モデル・音を AI で作れます。料金は KUMODeck のクレジットから払います。',

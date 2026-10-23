@@ -77,7 +77,9 @@ async function run(game, layout, theme) {
   cpSync(join(PKG, 'starters', game), root, { recursive: true });
   mkdirSync(join(root, '.studio/ui'), { recursive: true });
   writeFileSync(join(root, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'en', theme }));
-  const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
+  // No KUMODeck sign-in (studio-library-shelf, 2026-10-23): the Library reads it at once now for its "✦ Make with AI" words,
+  // and the real ~/.kumo of the machine running this must not be read (nor its balance land in a picture).
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
   const browser = await launch();
   const page = await newPage(browser, { ...(touch ? { width: 390, height: 844, mobile: true } : { width: 1280, height: 800 }), cdnCache: process.env.STUDIO_CDN_CACHE });
   const j = async (expr) => JSON.parse((await page.eval(expr)) || 'null');

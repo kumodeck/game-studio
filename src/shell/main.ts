@@ -4491,8 +4491,10 @@ export function start(host: StudioHost) {
     // objects are counted in its list (a "15" on both rows read as two different 15s).
     tabs.replaceChildren();
     for (const id of ['placement', 'library'] as ToolId[]) {
-      // The Library holds the world's objects (the UI's HTML elements are not Library objects).
-      const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryCount;
+      // The Library holds the world's objects (the UI's HTML elements are not Library objects), its motions and its files:
+      // counted as All and the grid's headings count them (studio-library-shelf, 2026-10-23; the UI plan 5 #2 — the
+      // motions were missing here, so the row said 9 and All said 11).
+      const n = id === 'placement' ? 0 : (editLayer === 'ui' ? worldItems : items).length + libraryMotions.count() + libraryCount;
       tabs.append(h('button', { type: 'button', role: 'tab', class: 'nav-row', 'aria-selected': String(tool === id && page === 'tool'), dataset: { tool: id }, onclick: () => switchTool(id) },
         icon(id === 'placement' ? (editLayer === 'ui' ? 'uiLayer' : 'cube') : 'grid'), h('span', { class: 'label', text: sceneWord(id) }),
         n ? h('span', { class: 'n', text: String(n) }) : null));

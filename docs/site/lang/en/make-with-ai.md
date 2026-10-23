@@ -2,7 +2,7 @@
 title: Make with AI
 nav: Make with AI
 order: 7
-written-for: 0.1.18
+written-for: 0.1.32
 description: Make images, 3D models and sounds for your game with AI, paid with KUMODeck credits.
 ---
 
@@ -22,7 +22,7 @@ Need a picture, a 3D model or a sound? Make it right in the Library. This is opt
 
 ## Sign in with KUMODeck
 
-1. Open the **Library** and press **Make with AI** (on a phone, it’s under **+**).
+1. Open the **Library**. The button says what it needs before you press it: **✦ Make with AI · sign-in · paid** when you aren’t signed in, **✦ Make with AI · $4.20 left** (your credits) when you are. Press it (on a phone, it’s under **+**).
 2. The first time, it asks you to sign in. Run this in a terminal, click **Allow** in the browser, then come back:
 
 ```

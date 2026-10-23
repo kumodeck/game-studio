@@ -22,7 +22,9 @@ const ROWS = `JSON.stringify((() => { const rows = [...document.querySelectorAll
 
 const root = mkdtempSync(join(tmpdir(), 'studio-thumbs-keep-'));
 cpSync(join(PKG, 'starters/lantern-cove'), root, { recursive: true, filter: (p) => !p.includes('/.studio/') && !p.endsWith('/.studio') && !p.endsWith('placement.json') });
-const srv = await startStudioServer({ root, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
+// No KUMODeck sign-in (studio-library-shelf, 2026-10-23): the Library reads it at once now for its "✦ Make with AI" words,
+// and the real ~/.kumo of the machine running this must not be read (nor its balance land in a picture).
+const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: join(PKG, 'skills/arrange/bin/studio-ui'), log: () => {} });
 const browser = await launch();
 try {
   const page = await newPage(browser, { width: 1280, height: 800, cdnCache: process.env.STUDIO_CDN_CACHE });

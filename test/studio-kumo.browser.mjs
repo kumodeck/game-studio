@@ -7,7 +7,7 @@
 // At 1280×800 (mouse) and 390×844 (touch):
 //   1. not signed in: one quiet "Make with AI" button; opened = one sentence + `npx kumodeck login`
 //   2. the CLI signs in (credentials.json appears) → "I signed in" → the form with balance and price
-//   0. (1280 only) a game with no assets: "No assets yet…", not "Reading the folder…" forever
+//   0. (1280 only) a game with no assets: "Assets · 0" and its drop place, not "Reading the folder…" forever
 //   3. a picture: KUMODeck asks for the AI terms once → tick "I agree" → Make → assets/<name>.jpg,
 //      New in the grid, balance went down, and NO "Save · 1" (the file is already in assets/)
 //   4. a 3D model (11 MB, slow): Make → a "Making · 0:01" tile in the grid and a waiting line with
@@ -187,8 +187,10 @@ async function emptyFolder() {
   const page = await newPage(browser, { width: 1280, height: 800 });
   try {
     await page.goto(srv.url + '&tool=library');
-    await page.waitFor(`${IN.text('.gsl-empty')}.includes('No assets yet')`, 15000);
-    assert.match(await page.eval(IN.text('.gsl-empty')), /Make with AI/);
+    // "Assets · 0" over one drop place (studio-library-shelf, 2026-10-23: the grid's headings; was the line "No assets
+    // yet. Drop files here, click Add assets, or Make with AI."), and the ✦ Make with AI button says it needs a sign-in.
+    await page.waitFor(`/^(Assets|素材) · 0$/.test(${IN.text('.gsl-group[data-group=assets]')}) && ${IN.visible('[data-part=assets-drop]')}`, 15000);
+    await page.waitFor(`/sign-in · paid|サインイン · 有料/.test(${IN.text('.gsl-ai-open')})`, 15000);
     if (SHOTS) writeFileSync(join(SHOTS, `kumo-1280${LANG ? `-${LANG}` : ''}-0-empty.png`), await page.screenshot());
     console.log('ok empty folder');
   } finally {

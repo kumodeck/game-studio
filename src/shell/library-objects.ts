@@ -238,16 +238,24 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
     const close = h('button', { type: 'button', class: 'gsl-btn gsl-close', 'aria-label': d.t('btn.close'), text: '×', onclick: () => d.clear() });
     const pic = h('div', { class: 'gsl-thumb' }, thumbImg(members[0]!.key));
     const names = members.slice(0, 6).map((m) => displayName(m, d.t)).join(', ') + (members.length > 6 ? ' …' : '');
+    // Locked, said once under the name in the glossary's words, the same as the line under the tool strip
+    // (studio-library-shelf, 2026-10-23; the UI plan 5 #3). Was a separate grey line "Locked by this game's settings" at the
+    // bottom of the rows: a rule nobody could find, and a second wording of the strip's "Locked so it isn't nudged".
+    const locked = members.every((m) => m.movable === false);
+    const sub = (one ? d.t('shelf.placed') : names) + (locked ? ` · ${d.t('shelf.locked')}` : '');
     el.append(h('div', { class: 'gsl-dhead' }, pic,
-      h('div', { class: 'gsl-dtitle' }, h('b', { text: one ? displayName(one, d.t) : d.t('ops.many', { n: members.length }) }), h('span', { class: 'gsl-path', text: one ? d.t('shelf.placed') : names })),
+      h('div', { class: 'gsl-dtitle' }, h('b', { text: one ? displayName(one, d.t) : d.t('ops.many', { n: members.length }) }), h('span', { class: 'gsl-path', dataset: { part: 'object-sub' }, text: sub })),
       close));
     if (one) {
       const rows = h('dl', { class: 'shelf-rows' });
       const files = filesOf(one.key);
-      const src = h('dd', {});
-      if (files.length) for (const f of files) src.append(h('button', { type: 'button', class: 'shelf-file to', dataset: { action: 'open-asset', path: f }, title: f, text: `${base(f)} →`, onclick: () => d.openFile(f) }));
-      else if (uses) src.append(h('span', { class: 'muted', text: d.t('shelf.noSource') }));
-      rows.append(h('dt', { text: d.t('shelf.source') }), src);
+      // The asset row only when there is one (studio-library-shelf, 2026-10-23; the UI plan 5 #3): "Asset: No asset" (before
+      // studio-words-plan "Drawn in code (no file)") told a first-time person about the game's code, not about the object.
+      if (files.length) {
+        const src = h('dd', {});
+        for (const f of files) src.append(h('button', { type: 'button', class: 'shelf-file to', dataset: { action: 'open-asset', path: f }, title: f, text: `${base(f)} →`, onclick: () => d.openFile(f) }));
+        rows.append(h('dt', { text: d.t('shelf.source') }), src);
+      }
       const p = d.pose(one.key);
       if (p) {
         rows.append(h('dt', { text: d.t('placement.pos') }), h('dd', { class: 'mono' }, ...where(p)));
@@ -266,17 +274,17 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
             } })));
       }
     }
-    const locked = members.every((m) => m.movable === false);
-    if (locked) el.append(h('p', { class: 'shelf-note muted', text: d.t('placement.locked') }));
     // "Add to scene" first (the Library's main use, 2026-10-18), then "Ask your AI…", then the way to the game, then
     // Delete — four, the same four as the tile's menu (context-rows.ts). No "Duplicate" (design review 2, item ①): in
     // the Library it did exactly what "Add to scene" does, and nobody could tell the two apart; the scene's Duplicate is
     // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
     const acts = h('div', { class: 'shelf-acts' });
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
-    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet — so it is not read as a plain action. Its words are
+    // the ask box's own "Ask Claude…" (studio-library-shelf, the UI plan 5 #3; was "Ask Claude about it…"): the box's chip
+    // already names the pick, so "about it" said nothing more.
     if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi!() },
-      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAi')));
     acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);
