@@ -845,9 +845,10 @@ Don't add it to a game with one level: nothing would change.
   that level's objects only (the top has no `motion` then).
 - `from`: a level the user made in the editor. Add it to the code as a copy of level `from`, with this `id` and
   `label`, then apply its entries. Until you do, the editor and the loader build `from` and lay this level's entries
-  over it. A level made with **New level** (a blank one) is written the same way: `from` plus a `removed` list of
-  every object the user did not keep (the ground, sky and lights stay). Build it as a level of its own with only what
-  is left, not as a copy that hides things.
+  over it. A level made with **New level** (a blank one) is written the same way, with `"blank": true`: `from` plus a
+  `removed` list of every object the user saw go (the ground, sky and lights stay). Build it as a level of its own
+  with only what is left — and none of what the game's code spawns or moves in `from` (obstacles, pickups, road
+  pieces) — not as a copy that hides things. Remove `blank` with `from` when applied.
 - `labelWas`: the user renamed the level. Change the name in the code from `labelWas` to `label`; keep the `id`.
 - `levelsWas` (only when something differs): the code's order. Reorder the code's levels to the order of `levels`. An
   id in `levelsWas` that is not in `levels` was **deleted**: ask once before you delete a level's code ("Delete the

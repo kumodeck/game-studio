@@ -1246,7 +1246,12 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   `order` / `motion` (a motion's keys are that level's objects; integrate3,
   2026-10-22).
   `from` = made in the editor, built from that code level (must be one of
-  the code's). `labelWas` = the code's name after a rename. `levelsWas` =
+  the code's). `blank: true` (only with `from`; studio-blank-level,
+  2026-10-23) = made with New level: an empty level, only the ground, sky
+  and lights stay; while the code does not build it the editor hides every
+  other object the game lists on its page, wherever the game moves it and
+  whatever it makes later (`removed` lists what was seen go).
+  `labelWas` = the code's name after a rename. `levelsWas` =
   the code's ids in its order, written only when the list differs from it
   (an id missing from `levels` = deleted). `ui` stays at the top (shared by
   every level). ≤ 100 levels. The loader applies a level only when given

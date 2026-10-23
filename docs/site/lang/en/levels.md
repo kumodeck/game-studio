@@ -24,7 +24,7 @@ Each level keeps its own layout, its own motions and its own undo. A move you ma
 
 The menu has:
 
-- **New level**: a blank level, named “Level 4” (the next number). The ground, the sky and the lights stay; everything placed on them is gone. It opens right away.
+- **New level**: a blank level, named “Level 4” (the next number). The ground, the sky and the lights stay; everything placed on them is gone. It opens right away. Things your game moves by itself, or brings in later, are hidden too while you look at this level. When you save, your AI builds the empty level in the code.
 - **Duplicate**: a copy of the level you’re on, named “Meadow 2.” It opens right away.
 - **Rename…**: type the new name in place. <kbd>Enter</kbd> keeps it, <kbd>Esc</kbd> cancels.
 - **Move up** and **Move down**: change the order.

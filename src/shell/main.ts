@@ -83,6 +83,7 @@ import { installTooltips } from './tooltip.ts';
 import { createShortcutSheet } from './shortcuts.ts';
 import { createContextMenu, type MenuEntry } from './context-menu.ts';
 import { Levels, worldOf, type WorldPart } from './levels.ts';
+import { checkNoteId } from './check-note.ts';
 import { createLevelSwitch, makeRows } from './level-switch.ts';
 import { contextRows, type CtxPlace } from './context-rows.ts';
 import { bigChanges, createSafeSave } from './safe-save.ts';
@@ -2941,6 +2942,8 @@ export function start(host: StudioHost) {
         if (levels.fromGame(m.levels, m.current, startWorld)) {
           startWorld = undefined;
           if (was && was !== levels.current) useLevelModel(levels.current);
+          // The AI built the New level in the code (it is the code's now): nothing more to hide on its page.
+          else if (worldModel.blankKeep && !levels.isBlank()) worldModel.blankKeep = null;
           renderAll();
         }
         break;
@@ -3691,6 +3694,9 @@ export function start(host: StudioHost) {
   function useLevelModel(id: string) {
     worldModel = new PlacementModel();
     worldModel.restore(levels.viewOf(id));
+    // A New level the code does not build yet: only the ground / sky show, whatever the game moves or makes
+    // (studio-blank-level, 2026-10-23: on NEON DASH "New level" left all 61 things on screen and in the list).
+    if (levels.isBlank(id)) worldModel.blankKeep = keptInBlank;
     if (editLayer !== 'ui') model = worldModel;
   }
   /**
@@ -3778,7 +3784,11 @@ export function start(host: StudioHost) {
    */
   function keepInBlank(k: string): boolean {
     const it = worldItems.find((i) => i.key === k);
-    return !!it && (!!it.backdrop || it.held === 'ground');
+    return !!it && keptInBlank(it);
+  }
+  /** The same test on a listed object (a blank level's page, PlacementModel.blankKeep). */
+  function keptInBlank(it: Item): boolean {
+    return !!it.backdrop || it.held === 'ground';
   }
   /**
    * New level ('blank') or Duplicate ('copy'): made right after the one on screen and opened, one change on "Save · n";
@@ -4257,8 +4267,9 @@ export function start(host: StudioHost) {
       // works; only one promise of the adapter is off, so it is a note, not an alarm. The check's own details
       // (`render()`, `setPose`, `set()`…) are words for the AI: they go to it through host.reportCheck (local:
       // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
-      const first = check.checks.find((c) => !c.ok && !c.skipped);
-      if (first) line('note', `${t('check.' + first.id)} ${t('status.checkFail')}`);
+      // Not when the move test hit something the game moves itself, the ground / sky, or a hidden object (check-note.ts).
+      const first = checkNoteId(check, worldItems);
+      if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
@@ -4631,7 +4642,10 @@ export function start(host: StudioHost) {
       motionLibrary.restore(saved);
       levels.load(saved);
       for (const e of levels.list) if (e.world.motion) e.world.motion = attachWorld(e.world.motion, motionLibrary, saved?.dim ?? dim);
-      if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
+      if (levels.active) {
+        worldModel.restore(levels.viewOf(levels.current, saved));
+        if (levels.isBlank()) worldModel.blankKeep = keptInBlank;
+      }
       else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
       uiWire.restore(saved);

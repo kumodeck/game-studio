@@ -590,7 +590,9 @@ const en = {
   'check.has-objects': 'Nothing in this game can be selected yet.',
   'check.keys-valid': 'Some objects may not keep their place when you save.',
   'check.pose-roundtrip': 'Moves may not stick in this game yet.',
-  'check.screen-changes': 'Moving things may not show in this game yet.',
+  // studio-blank-level (2026-10-23): it said "Moving things may not show in this game yet." — a hands-on try: "I don't know
+  // what that means". It shows only for a real fault now (check-note.ts), so it says what happens, where.
+  'check.screen-changes': 'Things you move here may not move on the game screen.',
   'check.anchor-follows': 'The handles may not follow things in this game yet.',
   'check.restored': 'An object may have shifted slightly while the editor checked this game.',
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
@@ -1347,7 +1349,7 @@ const ja: Partial<Record<Key, string>> = {
   'check.has-objects': 'このゲームには、まだ選べるオブジェクトがありません。',
   'check.keys-valid': '保存しても位置が残らないオブジェクトがあるかもしれません。',
   'check.pose-roundtrip': 'このゲームでは、まだ動かした位置が残らないことがあります。',
-  'check.screen-changes': 'このゲームでは、まだ動かしても画面に出ないことがあります。',
+  'check.screen-changes': 'エディタで物を動かしても、ゲームの画面では動かないことがあります。',
   'check.anchor-follows': 'このゲームでは、まだつまみがオブジェクトに付いてこないことがあります。',
   'check.restored': 'エディタの確認で、オブジェクトが少しずれたかもしれません。',
   'app.brand': 'Studio',

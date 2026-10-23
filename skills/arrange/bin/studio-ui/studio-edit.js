@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.29 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.30 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -2341,8 +2341,11 @@ function createThreeAdapter({ scene, renderer, camera }) {
     if (view) view.apply(aspect());
     scene.updateMatrixWorld(true);
   }
+  // Every candidate, deleted ones too: what ground.js compares sizes and counts with (see list()).
+  let allCands = [];
   function refresh() {
-    cands = collectCandidates(scene).filter((c) => !removed.has(c.key));
+    allCands = collectCandidates(scene);
+    cands = allCands.filter((c) => !removed.has(c.key));
     byKey = new Map(cands.map((c) => [c.key, c]));
     return cands;
   }
@@ -2692,7 +2695,11 @@ function createThreeAdapter({ scene, renderer, camera }) {
       scene.updateMatrixWorld(true);
       const cs = refresh();
       // Ground / road / sea / sky (ground.js): the editor holds these still until "Make movable" (bridge/hold.ts).
-      const grounds = groundKeys(cs.map((c) => ({ key: c.key, label: c.label, named: c.source !== 'path', box: worldBox(c.object) })));
+      // Measured against everything the game has, deleted objects too (studio-blank-level, 2026-10-23): a New level
+      // deletes all but the ground, and with "ground" alone in the list ground.js's "never every object" rule took
+      // its backdrop away (the tools worked on the ground again, Three Isles' blank Level 4). The game still has
+      // those objects (hidden, CONTRACT.md §1.8), so they still say what a typical object's size is.
+      const grounds = groundKeys(allCands.map((c) => ({ key: c.key, label: c.label, named: c.source !== 'path', box: worldBox(c.object) })));
       return cs.map((c) => (grounds.has(c.key) ? { ...item(c), backdrop: true } : item(c)));
     },
 
@@ -2746,11 +2753,16 @@ function createThreeAdapter({ scene, renderer, camera }) {
         if (whole && st) giveBack(st);
       } else if (watchSnap) {
         if (whole) playStash = holdOut(watchSnap);
+        // Deleted while the game ran (remove() below): stays hidden. studio-blank-level, 2026-10-23: a page opened on
+        // a level's deletions — the saved file's, or a New level hiding everything but the ground — gets them during
+        // these 0.6 s, and putting `visible` back as the snapshot had it showed every one again: the list was empty
+        // and the picture full ("I made a new level but it wasn't blank").
+        const gone = new Set([...removed.values()].map((r) => r.o));
         for (const [o, p, e, s, v] of watchSnap) {
           o.position.copy(p);
           o.rotation.copy(e); // also updates the quaternion (three keeps them in sync)
           o.scale.copy(s);
-          o.visible = v;
+          o.visible = gone.has(o) ? false : v;
         }
         watchSnap = null;
         scene.updateMatrixWorld(true);
@@ -5424,6 +5436,11 @@ const RESULT_FILES                         = {
                     
                                                                                                                         
                 
+     
+                                                                                                                      
+                                                                                                                      
+     
+               
                                            
                            
                                
@@ -8460,7 +8477,9 @@ async function runSelfCheck(adapter                      , core      , win      
     const a = adapter.anchor(it.key);
     return !!a && a.visible && a.size > 4 && a.center[0] >= 0 && a.center[1] >= 0 && a.center[0] <= win.innerWidth && a.center[1] <= win.innerHeight;
   };
-  const sample = items.find(inView) || items.find((it) => {
+  // Not the ground / road / sky when anything else is on screen (studio-blank-level, 2026-10-23): a 0.5 m move of a
+  // sky dome or a 120 m road draws the same picture, and the check then blamed the game on NEON DASH-like runners.
+  const sample = items.find((it) => !it.backdrop && inView(it)) || items.find(inView) || items.find((it) => {
     const a = adapter.anchor(it.key);
     return a && a.visible && a.size > 4;
   }) || items[0];

@@ -28,6 +28,12 @@ export interface LevelEntry {
   codeLabel?: string;
   /** Made in the editor: the code's level it is built from. */
   from?: string;
+  /**
+   * Made with New level (studio-blank-level, 2026-10-23): while the code does not build it yet, the editor shows only
+   * what it keeps (the ground / sky) and hides every other game object, even ones the game moves or makes later
+   * (main.ts useLevelModel → PlacementModel.blankKeep). Written as `blank: true` so the AI builds an empty level.
+   */
+  blank?: true;
   world: WorldPart;
   /** Changes made in this level and not saved, while it is not the one being edited (see stash()). */
   dirty: number;
@@ -104,6 +110,7 @@ export class Levels {
       if (l.from) {
         e.from = l.from;
         if (l.label) e.label = l.label;
+        if (l.blank) e.blank = true;
       } else {
         const code = l.labelWas ?? l.label;
         if (code) e.codeLabel = code;
@@ -161,6 +168,8 @@ export class Levels {
         const e = this.entry(l.id);
         if (e) {
           if (l.label) e.codeLabel = l.label;
+          // The AI built the new level in the code: the game makes it empty now, nothing to hide.
+          delete e.blank;
           // A rename the AI has made in the code: the names agree now.
           if (e.label && e.label === l.label) delete e.label;
         } else if (!this.deleted.has(l.id)) this.list.push({ id: l.id, ...(l.label ? { codeLabel: l.label } : {}), world: emptyWorld(), dirty: 0 });
@@ -221,7 +230,10 @@ export class Levels {
       if (label !== e.id) l.label = label;
       // Renamed in the editor: the code's name, for the AI to find (the id when the code gave no name).
       if (!e.from && e.label && e.label !== (e.codeLabel ?? e.id)) l.labelWas = e.codeLabel ?? e.id;
-      if (e.from && !(this.code && this.code.includes(e.id))) l.from = e.from;
+      if (e.from && !(this.code && this.code.includes(e.id))) {
+        l.from = e.from;
+        if (e.blank) l.blank = true;
+      }
       if (w.objects && Object.keys(w.objects).length) l.objects = structuredClone(w.objects);
       if (w.added?.length) l.added = structuredClone(w.added);
       if (w.removed?.length) l.removed = structuredClone(w.removed);
@@ -337,10 +349,16 @@ export class Levels {
     let n = this.list.length + 1;
     while (names.has(name(n)) || taken.has(levelIdOf(name(n)))) n++;
     const label = name(n);
-    const e: LevelEntry = { id: levelIdOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    const e: LevelEntry = { id: levelIdOf(label), label, from: this.build(src.id), blank: true, world: worldOf(world), dirty: 0 };
     this.list.splice(this.index() + 1, 0, e);
     this.structDirty++;
     return e.id;
+  }
+
+  /** A level made with New level that the code does not build yet: the editor hides what it does not keep. */
+  isBlank(id = this.current): boolean {
+    const e = this.entry(id);
+    return !!e?.blank && !!e.from && !(this.code && this.code.includes(e.id));
   }
 
   /**

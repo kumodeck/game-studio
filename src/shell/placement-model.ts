@@ -96,6 +96,18 @@ export class PlacementModel {
   /** File copies that could not be made (their original is gone): kept on save, like orphans. */
   private orphanAdded: PlacementAdded[] = [];
   /**
+   * A level made with New level, while it is the one on screen (studio-blank-level, 2026-10-23; main.ts useLevelModel):
+   * what it keeps (the ground / sky: main.ts keepInBlank). Every other game object the page lists is deleted the
+   * first time it is seen — whatever pose it has — and the shell hides it (takeFileEdits). null = an ordinary level.
+   * WHY not only the file's `removed` (applyFileEdits): those are deleted again only where they still stand at `was`,
+   * and a game that moves its things every frame (NEON DASH: 61 unnamed road pieces, pillars, orbs) has none there
+   * when the page comes back, so "New level" showed the whole level ("I made a new level but it wasn't blank").
+   * Things the game makes later (a new pillar, a respawned coin) are new keys: deleted too, as they appear.
+   */
+  blankKeep: ((it: Item) => boolean) | null = null;
+  /** Keys already looked at for blankKeep (a ⌘Z of one deletion is not undone again by the next list). */
+  private blankSeen = new Set<string>();
+  /**
    * How objects move by themselves (motion-gui, 2026-10-22): its own store (motion-model.ts), read and written with the
    * rest of the file. Each object whose motion changed is one Save count and a dot on its row.
    */
@@ -165,12 +177,28 @@ export class PlacementModel {
       // game draws it: delete it again. (A different object that now has
       // this key — a tree path that shifted — does not match `was`: kept.)
       if (!it || it.copyOf) continue;
+      // A blank level never deletes what it keeps (a path key that now names the road).
+      if (this.blankKeep?.(it)) continue;
       if (r.label && r.label !== it.label) continue;
       if (r.was && !samePose(r.was, { ...it.pose, z: undefined }, this.dim)) continue;
       this.remove(r.key);
       this.removedMeta.set(r.key, structuredClone(r));
       this.savedRemoved.add(r.key);
       this.fileEdits.removes.push(r.key);
+    }
+  }
+
+  /** A blank level (blankKeep): every game object not kept, deleted as saved (no Save count) and hidden by the shell. */
+  private hideForBlank(items: Item[]): void {
+    const keep = this.blankKeep;
+    if (!keep) return;
+    for (const it of items) {
+      if (this.blankSeen.has(it.key)) continue;
+      this.blankSeen.add(it.key);
+      if (keep(it) || it.copyOf || this.copyFrom.has(it.key) || this.removed.has(it.key)) continue;
+      this.remove(it.key);
+      this.savedRemoved.add(it.key);
+      this.fileEdits.removes.push(it.key);
     }
   }
 
@@ -296,6 +324,7 @@ export class PlacementModel {
       if (cur && typeof it.pose.z === 'number') this.current.set(it.key, { ...cur, z: it.pose.z });
     }
     this.applyFileEdits(items);
+    this.hideForBlank(items);
     this.orphans.clear();
     for (const [k, e] of this.fileEntries) if (!seen.has(k) && !this.removed.has(k)) this.orphans.set(k, e);
     this.items = items.map((it) => ({ ...it, pose: this.current.get(it.key) || it.pose }));

@@ -27,7 +27,7 @@ test('every self-check line a person can see is in plain words (no render, setPo
 });
 
 test('the moved-but-not-drawn line is Ive’s sentence, one line', () => {
-  assert.equal(shown('en', 'screen-changes'), 'Moving things may not show in this game yet. Your AI has the details.');
+  assert.equal(shown('en', 'screen-changes'), 'Things you move here may not move on the game screen. Your AI has the details.');
   for (const lang of LANGS) for (const id of IDS) assert.ok(!shown(lang, id).includes('\n'), `${lang} ${id}: more than one line`);
 });
 

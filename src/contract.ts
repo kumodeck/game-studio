@@ -1866,6 +1866,11 @@ export interface PlacementLevel {
   labelWas?: string;
   /** Made in the editor (the code does not have it yet): the code's level it was copied from, which the game builds. */
   from?: string;
+  /**
+   * Made with New level (studio-blank-level, 2026-10-23; only with `from`): an empty level — only the ground, sky and
+   * lights stay. Its `removed` lists what the person saw go; build it in the code as a level of its own without them.
+   */
+  blank?: true;
   objects?: Record<string, PlacementEntry>;
   added?: PlacementAdded[];
   removed?: PlacementRemoved[];

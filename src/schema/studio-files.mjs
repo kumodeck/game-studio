@@ -351,7 +351,8 @@ function readWorld(data, dim, fail, objectsOptional = false) {
 // Where each read level stood in the file (a level listed twice is left out, so the list's own index would be off).
 const LEVEL_AT = new WeakMap();
 
-// Levels (2026-10-22): [{ id, label?, labelWas?, from?, objects?, added?, removed?, order?, motion? }]. The order is
+// Levels (2026-10-22): [{ id, label?, labelWas?, from?, blank?, objects?, added?, removed?, order?, motion? }]. `blank`
+// (studio-blank-level, 2026-10-23): true on a level made with New level, only with `from` (an empty level for the AI). The order is
 // kept: it is the person's order of the levels (the content), like a draw order's keys. Errors inside a level say which
 // one. `motion` is part of a level's world (integrate3, 2026-10-22): its keys are that level's objects ("boat" in Meadow
 // and in Cave are different boats), so it lives with the level's objects, never at the top next to `levels`.
@@ -363,7 +364,7 @@ function readLevels(v, dim, fail) {
     const where = `levels[${i}]`;
     const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
     if (!isObject(item)) return fail(where, 'must be an object');
-    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'blank', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
     if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
     if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
     seen.add(item.id);
@@ -377,6 +378,10 @@ function readLevels(v, dim, fail) {
       if (typeof item.from !== 'string' || !KEY_RE.test(item.from)) fail(`${where}.from`, 'must match ' + KEY_RE);
       else if (item.from === item.id) fail(`${where}.from`, 'is the level itself');
       else o.from = item.from;
+    }
+    if (item.blank !== undefined) {
+      if (item.blank !== true) fail(`${where}.blank`, 'must be true when present');
+      else if (o.from) o.blank = true;
     }
     Object.assign(o, readWorld(item, dim, lfail, true));
     LEVEL_AT.set(o, i);

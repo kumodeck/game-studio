@@ -293,13 +293,63 @@ test('New level: the ground and sky stay, every other object is deleted; built f
   assert.equal(lv.build(id), 'cave', 'built from the level on screen, its objects deleted');
   assert.equal(lv.dirtyElsewhere(), 1);
   const out = lv.compose(file());
-  assert.deepEqual(out.levels!.find((l) => l.id === id), { id, label: 'Level 4', from: 'cave', removed: blank.removed });
+  assert.deepEqual(out.levels!.find((l) => l.id === id), { id, label: 'Level 4', from: 'cave', blank: true, removed: blank.removed });
   assert.ok(validatePlacement(out).ok);
   assert.equal(lv.blank({ objects: {} }, (n) => `Level ${n}`), 'level-5', 'the next number');
   assert.equal(lv.unadd('level-5'), true);
   assert.equal(lv.unadd('cave'), false, 'only a level made in the editor');
   assert.deepEqual(lv.list.map((e) => e.id), ['meadow', 'cave', 'level-4', 'summit']);
   assert.equal(lv.dirtyElsewhere(), 1, 'its change on Save went with it');
+});
+
+// studio-blank-level (2026-10-23; a hands-on try on NEON DASH: "I made a new level but it wasn't blank — makes no
+// sense"). The game moves its things every frame, so when the page came back on the new level none of them stood at
+// `was` and the file's deletions were not made again: all 61 stayed on screen and in the list.
+test('a blank level hides every object the game lists but the ground / sky — moved by the game, or made later', () => {
+  const it = (key: string, p: number[], extra: Partial<Item> = {}): Item => ({ key, label: key, kinds: ['mesh'], rotatable: true, scalable: true, pose: { p }, ...extra });
+  const level: PlacementFile = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {}, removed: [{ key: 'hex-1', was: { p: [-2.5, 0.95, -6] } }, { key: 'path:7', label: 'Mesh', was: { p: [0, 0, -30] } }] };
+  // Before: the file's deletions alone. The hexagon has slid on (z -6 → -2) and the road piece scrolled: both stay.
+  const old = new PlacementModel();
+  old.restore(level);
+  old.setItems([it('road', [0, 0, -50], { backdrop: true }), it('hex-1', [-2.5, 0.95, -2]), it('path:7', [0, 0, -22], { label: 'Mesh', unstable: true })], '3d');
+  assert.deepEqual(old.takeFileEdits().removes, [], 'the old way: nothing hidden on a game that moves its things');
+
+  const m = new PlacementModel();
+  m.restore(level);
+  m.blankKeep = (i) => !!i.backdrop || i.held === 'ground';
+  m.setItems([it('road', [0, 0, -50], { backdrop: true }), it('hex-1', [-2.5, 0.95, -2]), it('path:7', [0, 0, -22], { label: 'Mesh', unstable: true }), it('ring', [-3.2, 2.2, -14])], '3d');
+  assert.deepEqual(m.takeFileEdits().removes.sort(), ['hex-1', 'path:7', 'ring'], 'all but the road go, wherever the game has them');
+  assert.ok(m.isRemoved('hex-1') && !m.isRemoved('road'));
+  assert.equal(m.dirty(), 0, 'not a change of its own: New level was the one change');
+  // A pillar the game makes later (a new key in the next list) goes too; one already looked at does not come back.
+  m.setItems([it('road', [0, 0, -50], { backdrop: true }), it('pillar-9', [1, 0, -40])], '3d');
+  assert.deepEqual(m.takeFileEdits().removes, ['pillar-9']);
+  m.unremove('pillar-9');
+  m.setItems([it('road', [0, 0, -50], { backdrop: true }), it('pillar-9', [1, 0, -38])], '3d');
+  assert.deepEqual(m.takeFileEdits().removes, [], '⌘Z of one deletion is not undone by the next list');
+  const out = m.result();
+  assert.deepEqual(out.removed!.map((r) => r.key), ['hex-1', 'path:7', 'ring'], 'Save lists what was seen go');
+});
+
+test('a blank level is written `blank: true` until the code builds it; read back, it stays blank', () => {
+  const lv = new Levels();
+  lv.load(file());
+  lv.fromGame(CODE, 'cave');
+  const id = lv.blank({ objects: {} }, (n) => `Level ${n}`);
+  assert.ok(lv.isBlank(id) && !lv.isBlank('cave'));
+  const out = lv.compose(file());
+  const v = validatePlacement(out);
+  assert.ok(v.ok);
+  assert.equal(v.value!.levels!.find((l) => l.id === id)!.blank, true, 'the schema keeps it');
+  const back = new Levels();
+  back.load(v.value!);
+  assert.ok(back.isBlank(id), 'read back from the file');
+  assert.equal(lv.isBlank(lv.copy({ objects: {} })), false, 'a Duplicate is not blank');
+  // The AI built it: the code lists it, nothing is hidden and `blank` is not written any more.
+  back.fromGame([...CODE, { id, label: 'Level 4' }], 'meadow');
+  assert.equal(back.isBlank(id), false);
+  assert.equal(back.compose(file()).levels!.find((l) => l.id === id)!.blank, undefined);
+  assert.equal(validatePlacement({ ...out, levels: [{ id: 'x', blank: 'yes' }] } as unknown as PlacementFile).ok, false, 'blank is true or absent');
 });
 
 test('a game without levels: New level makes Level 1 from what is on screen and a blank Level 2', () => {

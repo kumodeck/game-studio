@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.29 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.30 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1882,6 +1882,11 @@ const RESULT_FILES                         = {
                     
                                                                                                                         
                 
+     
+                                                                                                                      
+                                                                                                                      
+     
+               
                                            
                            
                                
@@ -2796,7 +2801,8 @@ function readWorld(data, dim, fail, objectsOptional = false) {
 // Where each read level stood in the file (a level listed twice is left out, so the list's own index would be off).
 const LEVEL_AT = new WeakMap();
 
-// Levels (2026-10-22): [{ id, label?, labelWas?, from?, objects?, added?, removed?, order?, motion? }]. The order is
+// Levels (2026-10-22): [{ id, label?, labelWas?, from?, blank?, objects?, added?, removed?, order?, motion? }]. `blank`
+// (studio-blank-level, 2026-10-23): true on a level made with New level, only with `from` (an empty level for the AI). The order is
 // kept: it is the person's order of the levels (the content), like a draw order's keys. Errors inside a level say which
 // one. `motion` is part of a level's world (integrate3, 2026-10-22): its keys are that level's objects ("boat" in Meadow
 // and in Cave are different boats), so it lives with the level's objects, never at the top next to `levels`.
@@ -2808,7 +2814,7 @@ function readLevels(v, dim, fail) {
     const where = `levels[${i}]`;
     const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
     if (!isObject(item)) return fail(where, 'must be an object');
-    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'blank', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
     if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
     if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
     seen.add(item.id);
@@ -2822,6 +2828,10 @@ function readLevels(v, dim, fail) {
       if (typeof item.from !== 'string' || !KEY_RE.test(item.from)) fail(`${where}.from`, 'must match ' + KEY_RE);
       else if (item.from === item.id) fail(`${where}.from`, 'is the level itself');
       else o.from = item.from;
+    }
+    if (item.blank !== undefined) {
+      if (item.blank !== true) fail(`${where}.blank`, 'must be true when present');
+      else if (o.from) o.blank = true;
     }
     Object.assign(o, readWorld(item, dim, lfail, true));
     LEVEL_AT.set(o, i);
@@ -12878,6 +12888,18 @@ class PlacementModel {
   /** File copies that could not be made (their original is gone): kept on save, like orphans. */
           orphanAdded                   = [];
   /**
+   * A level made with New level, while it is the one on screen (studio-blank-level, 2026-10-23; main.ts useLevelModel):
+   * what it keeps (the ground / sky: main.ts keepInBlank). Every other game object the page lists is deleted the
+   * first time it is seen — whatever pose it has — and the shell hides it (takeFileEdits). null = an ordinary level.
+   * WHY not only the file's `removed` (applyFileEdits): those are deleted again only where they still stand at `was`,
+   * and a game that moves its things every frame (NEON DASH: 61 unnamed road pieces, pillars, orbs) has none there
+   * when the page comes back, so "New level" showed the whole level ("I made a new level but it wasn't blank").
+   * Things the game makes later (a new pillar, a respawned coin) are new keys: deleted too, as they appear.
+   */
+  blankKeep                                 = null;
+  /** Keys already looked at for blankKeep (a ⌘Z of one deletion is not undone again by the next list). */
+          blankSeen = new Set        ();
+  /**
    * How objects move by themselves (motion-gui, 2026-10-22): its own store (motion-model.ts), read and written with the
    * rest of the file. Each object whose motion changed is one Save count and a dot on its row.
    */
@@ -12947,12 +12969,28 @@ class PlacementModel {
       // game draws it: delete it again. (A different object that now has
       // this key — a tree path that shifted — does not match `was`: kept.)
       if (!it || it.copyOf) continue;
+      // A blank level never deletes what it keeps (a path key that now names the road).
+      if (this.blankKeep?.(it)) continue;
       if (r.label && r.label !== it.label) continue;
       if (r.was && !samePose(r.was, { ...it.pose, z: undefined }, this.dim)) continue;
       this.remove(r.key);
       this.removedMeta.set(r.key, structuredClone(r));
       this.savedRemoved.add(r.key);
       this.fileEdits.removes.push(r.key);
+    }
+  }
+
+  /** A blank level (blankKeep): every game object not kept, deleted as saved (no Save count) and hidden by the shell. */
+          hideForBlank(items        )       {
+    const keep = this.blankKeep;
+    if (!keep) return;
+    for (const it of items) {
+      if (this.blankSeen.has(it.key)) continue;
+      this.blankSeen.add(it.key);
+      if (keep(it) || it.copyOf || this.copyFrom.has(it.key) || this.removed.has(it.key)) continue;
+      this.remove(it.key);
+      this.savedRemoved.add(it.key);
+      this.fileEdits.removes.push(it.key);
     }
   }
 
@@ -13078,6 +13116,7 @@ class PlacementModel {
       if (cur && typeof it.pose.z === 'number') this.current.set(it.key, { ...cur, z: it.pose.z });
     }
     this.applyFileEdits(items);
+    this.hideForBlank(items);
     this.orphans.clear();
     for (const [k, e] of this.fileEntries) if (!seen.has(k) && !this.removed.has(k)) this.orphans.set(k, e);
     this.items = items.map((it) => ({ ...it, pose: this.current.get(it.key) || it.pose }));
@@ -14001,7 +14040,9 @@ const en = {
   'check.has-objects': 'Nothing in this game can be selected yet.',
   'check.keys-valid': 'Some objects may not keep their place when you save.',
   'check.pose-roundtrip': 'Moves may not stick in this game yet.',
-  'check.screen-changes': 'Moving things may not show in this game yet.',
+  // studio-blank-level (2026-10-23): it said "Moving things may not show in this game yet." — a hands-on try: "I don't know
+  // what that means". It shows only for a real fault now (check-note.ts), so it says what happens, where.
+  'check.screen-changes': 'Things you move here may not move on the game screen.',
   'check.anchor-follows': 'The handles may not follow things in this game yet.',
   'check.restored': 'An object may have shifted slightly while the editor checked this game.',
   // Rebrand 2026-10-16: top bar, left column, ⌘K list, hand-off.
@@ -14758,7 +14799,7 @@ const ja                               = {
   'check.has-objects': 'このゲームには、まだ選べるオブジェクトがありません。',
   'check.keys-valid': '保存しても位置が残らないオブジェクトがあるかもしれません。',
   'check.pose-roundtrip': 'このゲームでは、まだ動かした位置が残らないことがあります。',
-  'check.screen-changes': 'このゲームでは、まだ動かしても画面に出ないことがあります。',
+  'check.screen-changes': 'エディタで物を動かしても、ゲームの画面では動かないことがあります。',
   'check.anchor-follows': 'このゲームでは、まだつまみがオブジェクトに付いてこないことがあります。',
   'check.restored': 'エディタの確認で、オブジェクトが少しずれたかもしれません。',
   'app.brand': 'Studio',
@@ -20490,6 +20531,12 @@ __defs[60] = function (__exports) {
                      
                                                                
                 
+     
+                                                                                                                      
+                                                                                                                
+                                                                                                                  
+     
+               
                    
                                                                                                       
                 
@@ -20566,6 +20613,7 @@ class Levels {
       if (l.from) {
         e.from = l.from;
         if (l.label) e.label = l.label;
+        if (l.blank) e.blank = true;
       } else {
         const code = l.labelWas ?? l.label;
         if (code) e.codeLabel = code;
@@ -20623,6 +20671,8 @@ class Levels {
         const e = this.entry(l.id);
         if (e) {
           if (l.label) e.codeLabel = l.label;
+          // The AI built the new level in the code: the game makes it empty now, nothing to hide.
+          delete e.blank;
           // A rename the AI has made in the code: the names agree now.
           if (e.label && e.label === l.label) delete e.label;
         } else if (!this.deleted.has(l.id)) this.list.push({ id: l.id, ...(l.label ? { codeLabel: l.label } : {}), world: emptyWorld(), dirty: 0 });
@@ -20683,7 +20733,10 @@ class Levels {
       if (label !== e.id) l.label = label;
       // Renamed in the editor: the code's name, for the AI to find (the id when the code gave no name).
       if (!e.from && e.label && e.label !== (e.codeLabel ?? e.id)) l.labelWas = e.codeLabel ?? e.id;
-      if (e.from && !(this.code && this.code.includes(e.id))) l.from = e.from;
+      if (e.from && !(this.code && this.code.includes(e.id))) {
+        l.from = e.from;
+        if (e.blank) l.blank = true;
+      }
       if (w.objects && Object.keys(w.objects).length) l.objects = structuredClone(w.objects);
       if (w.added?.length) l.added = structuredClone(w.added);
       if (w.removed?.length) l.removed = structuredClone(w.removed);
@@ -20799,10 +20852,16 @@ class Levels {
     let n = this.list.length + 1;
     while (names.has(name(n)) || taken.has(levelIdOf(name(n)))) n++;
     const label = name(n);
-    const e             = { id: levelIdOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    const e             = { id: levelIdOf(label), label, from: this.build(src.id), blank: true, world: worldOf(world), dirty: 0 };
     this.list.splice(this.index() + 1, 0, e);
     this.structDirty++;
     return e.id;
+  }
+
+  /** A level made with New level that the code does not build yet: the editor hides what it does not keep. */
+  isBlank(id = this.current)          {
+    const e = this.entry(id);
+    return !!e?.blank && !!e.from && !(this.code && this.code.includes(e.id));
   }
 
   /**
@@ -20855,6 +20914,40 @@ __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
 __defs[61] = function (__exports) {
+'use strict';
+// check-note.ts
+
+// Which self-check line the top of the list shows (studio-blank-level, 2026-10-23). Pure, so it is unit-tested
+// (test/check-note.test.ts); main.ts renderStatus draws it.
+//
+// WHY: on NEON DASH (a runner whose code moves its road pieces, pillars and orbs every frame) a hands-on try showed
+// "Moving things may not show in this game yet. Your AI has the details." over the levels' "New level" — "I don't
+// know what that means". The self-check (bridge/selfcheck.ts) moves ONE object a little and looks at the picture. When
+// that object is one the game itself puts back every frame (held 'game', found a moment later by bridge/observe.ts),
+// or the sky / road (a 0.5 m move of a sky dome draws the same picture), the "failure" is the game's, not the editor's
+// connection, and the editor already says it where it matters: the tool strip's note on that object ("the game moves
+// this"). A sample that is no longer listed (deleted, hidden by a blank level) says nothing either. So those moving
+// checks are not shown to the person; the AI still gets every check (host.reportCheck → .studio/check.md).
+// A real fault (an AI-written 2D adapter whose set() writes a copy) still shows the line, on an object the game leaves alone.
+                                                                         
+
+/** The checks that move the sample and read it back (bridge/selfcheck.ts MOVING_CHECKS). */
+const MOVING = new Set             (['pose-roundtrip', 'screen-changes', 'anchor-follows', 'restored']);
+
+/** The failed check to show (its `check.<id>` line), or null = no line. `items` = the world's list now. */
+function checkNoteId(check                        , items                                                    )                     {
+  if (!check || check.ok) return null;
+  const failed = check.checks.filter((c) => !c.ok && !c.skipped);
+  const it = check.sample ? items.find((i) => i.key === check.sample) : undefined;
+  // The game moves it, it is the ground / sky, or it is gone from the list: the move test says nothing about the editor.
+  const gameOwn = !!check.sample && items.length > 0 && (!it || it.held === 'game' || it.held === 'ground' || !!it.backdrop);
+  const shown = gameOwn ? failed.filter((c) => !MOVING.has(c.id)) : failed;
+  return shown[0]?.id ?? null;
+}
+
+__def(__exports, "checkNoteId", () => checkNoteId);
+};
+__defs[62] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -21028,7 +21121,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -21227,7 +21320,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -21338,7 +21431,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -21495,7 +21588,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -21565,7 +21658,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -21654,7 +21747,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -21803,7 +21896,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -21866,7 +21959,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -22079,7 +22172,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -22169,7 +22262,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -22185,11 +22278,11 @@ __defs[71] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(67);
-const { withLooks } = __require(66);
-const { createUiScreens } = __require(68);
-const { UiStyleModel, validLook, validTheme } = __require(69);
-const { createUiTheme } = __require(70);
+const { createUiCard } = __require(68);
+const { withLooks } = __require(67);
+const { createUiScreens } = __require(69);
+const { UiStyleModel, validLook, validTheme } = __require(70);
+const { createUiTheme } = __require(71);
                                                    
 
                              
@@ -22384,7 +22477,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -22461,7 +22554,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -22519,14 +22612,15 @@ const { installTooltips } = __require(57);
 const { createShortcutSheet } = __require(58);
 const { createContextMenu } = __require(59);
 const { Levels, worldOf } = __require(60);
-const { createLevelSwitch, makeRows } = __require(61);
-const { contextRows } = __require(62);
-const { bigChanges, createSafeSave } = __require(63);
-const { createUnsavedGuard, lostBy, playAsks } = __require(64);
-const { createLayerSwitch } = __require(65);
-const { uiAsPlacement, uiEntries, withUi } = __require(66);
-const { createUiWire } = __require(71);
-const { barPress, gripEnd, readFold, writeFold } = __require(72);
+const { checkNoteId } = __require(61);
+const { createLevelSwitch, makeRows } = __require(62);
+const { contextRows } = __require(63);
+const { bigChanges, createSafeSave } = __require(64);
+const { createUnsavedGuard, lostBy, playAsks } = __require(65);
+const { createLayerSwitch } = __require(66);
+const { uiAsPlacement, uiEntries, withUi } = __require(67);
+const { createUiWire } = __require(72);
+const { barPress, gripEnd, readFold, writeFold } = __require(73);
 
                                                                         
 
@@ -25377,6 +25471,8 @@ function start(host            ) {
         if (levels.fromGame(m.levels, m.current, startWorld)) {
           startWorld = undefined;
           if (was && was !== levels.current) useLevelModel(levels.current);
+          // The AI built the New level in the code (it is the code's now): nothing more to hide on its page.
+          else if (worldModel.blankKeep && !levels.isBlank()) worldModel.blankKeep = null;
           renderAll();
         }
         break;
@@ -26127,6 +26223,9 @@ function start(host            ) {
   function useLevelModel(id        ) {
     worldModel = new PlacementModel();
     worldModel.restore(levels.viewOf(id));
+    // A New level the code does not build yet: only the ground / sky show, whatever the game moves or makes
+    // (studio-blank-level, 2026-10-23: on NEON DASH "New level" left all 61 things on screen and in the list).
+    if (levels.isBlank(id)) worldModel.blankKeep = keptInBlank;
     if (editLayer !== 'ui') model = worldModel;
   }
   /**
@@ -26214,7 +26313,11 @@ function start(host            ) {
    */
   function keepInBlank(k        )          {
     const it = worldItems.find((i) => i.key === k);
-    return !!it && (!!it.backdrop || it.held === 'ground');
+    return !!it && keptInBlank(it);
+  }
+  /** The same test on a listed object (a blank level's page, PlacementModel.blankKeep). */
+  function keptInBlank(it      )          {
+    return !!it.backdrop || it.held === 'ground';
   }
   /**
    * New level ('blank') or Duplicate ('copy'): made right after the one on screen and opened, one change on "Save · n";
@@ -26693,8 +26796,9 @@ function start(host            ) {
       // works; only one promise of the adapter is off, so it is a note, not an alarm. The check's own details
       // (`render()`, `setPose`, `set()`…) are words for the AI: they go to it through host.reportCheck (local:
       // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
-      const first = check.checks.find((c) => !c.ok && !c.skipped);
-      if (first) line('note', `${t('check.' + first.id)} ${t('status.checkFail')}`);
+      // Not when the move test hit something the game moves itself, the ground / sky, or a hidden object (check-note.ts).
+      const first = checkNoteId(check, worldItems);
+      if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
@@ -27067,7 +27171,10 @@ function start(host            ) {
       motionLibrary.restore(saved);
       levels.load(saved);
       for (const e of levels.list) if (e.world.motion) e.world.motion = attachWorld(e.world.motion, motionLibrary, saved?.dim ?? dim);
-      if (levels.active) worldModel.restore(levels.viewOf(levels.current, saved));
+      if (levels.active) {
+        worldModel.restore(levels.viewOf(levels.current, saved));
+        if (levels.isBlank()) worldModel.blankKeep = keptInBlank;
+      }
       else (worldModel.restore(saved), (startWorld = saved ? worldOf(saved) : undefined));
       uiModel.restore(uiAsPlacement(saved));
       uiWire.restore(saved);
@@ -27089,7 +27196,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -27268,19 +27375,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(73);
-const { createLocalHost } = __require(74);
+const { start } = __require(74);
+const { createLocalHost } = __require(75);
 
 start(createLocalHost());
 
 
 };
-__require(75);
+__require(76);
 })();

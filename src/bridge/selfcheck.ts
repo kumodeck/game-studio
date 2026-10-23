@@ -164,7 +164,9 @@ export async function runSelfCheck(adapter: StudioAdapter | null, core: Core, wi
     const a = adapter.anchor(it.key);
     return !!a && a.visible && a.size > 4 && a.center[0] >= 0 && a.center[1] >= 0 && a.center[0] <= win.innerWidth && a.center[1] <= win.innerHeight;
   };
-  const sample = items.find(inView) || items.find((it) => {
+  // Not the ground / road / sky when anything else is on screen (studio-blank-level, 2026-10-23): a 0.5 m move of a
+  // sky dome or a 120 m road draws the same picture, and the check then blamed the game on NEON DASH-like runners.
+  const sample = items.find((it) => !it.backdrop && inView(it)) || items.find(inView) || items.find((it) => {
     const a = adapter.anchor(it.key);
     return a && a.visible && a.size > 4;
   }) || items[0];
