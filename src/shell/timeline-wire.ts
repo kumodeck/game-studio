@@ -188,6 +188,12 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * server after the shell starts, so a read at start would miss "opened before" on a fresh port.
    */
   let fine: boolean | null = null;
+  /**
+   * Folded to its one line (studio-fix-0143, ⑨ B of the first-run check, a review of 2026-10-24): an object picked from the
+   * list was under the plate, and the camera may not pull back to show it. The line (▶, the sentence, Fine-tune, ⌄)
+   * stays; the rows and the Fine-tune sheet come back with Fine-tune pressed (its ⌃), and closing the plate ends it.
+   */
+  let slim = false;
   const fineNow = (): boolean => {
     if (fine !== null) return fine;
     try {
@@ -710,6 +716,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       made: madeKey && madeKey === key && c ? Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t))) : null,
       // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
       fine: fineNow(),
+      slim,
     };
   }
 
@@ -1187,6 +1194,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     touched: () => (touched = true),
     fine(on) {
+      // Folded to the line (⑨ B): Fine-tune brings the rows back first — it is the line's "show me more".
+      if (slim) return unslim();
       if (fineNow() === on) return;
       fine = on;
       try {
@@ -1211,11 +1220,31 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (key && c) d.ask?.(key, { name: c.name, use: c.use ?? c.name });
   }
 
+  /** ⑨ B (studio-fix-0143): the plate to its one line for `key` (the bridge asked: plate-fold), then show it if still covered. */
+  function slimFor(key: string) {
+    if (!open || slim) return;
+    slim = true;
+    panel.render();
+    // layout() sends the smaller inset first; the 'reveal' after it is measured against it (messages keep their order).
+    d.layout();
+    d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
+  }
+  /** The rows again (Fine-tune on the folded line): the picked object stays seen above them (a slide, no size change). */
+  function unslim() {
+    if (!slim) return;
+    slim = false;
+    panel.render();
+    d.layout();
+    const key = d.picked();
+    if (open && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
+  }
+
   // Fold / open: the plate itself (PC: at the foot of the game; phone / side window: in the dock, above the card).
   panel.el.hidden = true;
   function setOpen(on: boolean) {
     if (open === on) return;
     open = on;
+    slim = false;
     if (!on) {
       stop();
       stopTry();
@@ -1306,6 +1335,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   return {
     el: panel.el,
     isOpen: () => open,
+    /** Folded to its one line (⑨ B): the inset's `plate` says 'slim', and a pick under it is not asked to fold again. */
+    isSlim: () => open && slim,
+    slimFor,
     /** The motion `key` shows (on the plate and the card), by its name on screen — the chat box's chip follows it (studio-motion-panel). */
     shownName: (key: string) => clipOf(key)?.name ?? null,
     /** Right-click's "Ask your AI about “Hop”…" (studio-motion-panel): the same as the plate's ✦. */

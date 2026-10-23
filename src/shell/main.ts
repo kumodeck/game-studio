@@ -1105,6 +1105,9 @@ export function start(host: StudioHost) {
       inset.right = Math.max(0, Math.round(sr.right - cr.left + 8));
       inset.rightTo = Math.round(cr.bottom - sr.top + 8);
     }
+    // studio-fix-0143 (⑨ B, a review of 2026-10-24): the timeline plate is up — the bridge then keeps every size when it
+    // shows a pick (a slide, no pull back), and asks an open plate to fold to its line first (core/plate-fold).
+    if (!timeline.el.hidden && timeline.isOpen()) inset.plate = timeline.isSlim() ? 'slim' : 'open';
     const theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
     const k = JSON.stringify([inset, theme, handlePx()]);
     if (k === insetSent) return;
@@ -3107,6 +3110,10 @@ export function start(host: StudioHost) {
         break;
       case 'studio:core/view-state':
         store.set(VIEW_KEY, JSON.stringify(m.state));
+        break;
+      // ⑨ B (studio-fix-0143): a list pick under the open plate — fold it to its line; the wire then asks to reveal.
+      case 'studio:core/plate-fold':
+        if (m.key === selected) timeline.slimFor(m.key);
         break;
       case 'studio:core/key':
         shortcut({ key: m.key, ctrl: m.ctrl, meta: m.meta, shift: m.shift, fromGame: true });

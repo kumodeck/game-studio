@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.42 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.43 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -523,6 +523,14 @@ const CONTRACT_VERSION = 1;
      
                           
      
+                                                                                                                         
+                                                                                                                    
+                                                                                                                  
+                                                                                                                   
+                                                                                                       
+     
+                                       
+     
                                                                                                                   
                                                                                                                      
                                                                                                                 
@@ -982,7 +990,14 @@ const MSG_PREFIX = 'studio:';
  * camera up / down buttons for now (a phone with the card, a sheet or a menu
  * up — the second design review's ⑧, 2026-10-19); absent = shown.
  */
-                                                                                                                       
+                                                                                                                      
+     
+                                                                                                                   
+                                                                                                                         
+                                                                                                                     
+                       
+     
+                           
 
 /** shell -> bridge */
                            
@@ -1230,6 +1245,12 @@ const MSG_PREFIX = 'studio:';
          
                                                
                                                       
+     
+                                                                                                                        
+                                                                                                                
+                                                                        
+     
+                                                   
                                                           
                                                                                       
                                                                                                                       
@@ -10540,6 +10561,8 @@ function whensShort(t                                                           
                                   
                                                                                                           
                  
+                                                                                                                   
+                 
                        
                                                                              
                        
@@ -10677,8 +10700,9 @@ function createTimelinePanel(view                    , act              ) {
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
     // Fine-tune: also with no motion here when others move (its "Moving objects", studio-motion-focus).
-    if (c || v.moving) {
-      const on = !!v.fine;
+    // Folded to the line (studio-fix-0143 ⑨ B): it is also the way back to the rows, so it is there, pointing up.
+    if (c || v.moving || v.slim) {
+      const on = !!v.fine && !v.slim;
       items.push(h('button', { type: 'button', class: `tl-fine-btn${on ? ' on' : ''}`, title: t('tl.moreTip'), 'aria-expanded': String(on),
         dataset: { action: 'tl-fine', part: 'tl-fine-btn' }, onclick: () => act.fine?.(!on) }, h('span', { class: 'tl-fine-w', text: t('tl.more') }), icon(on ? 'chevronDown' : 'chevronUp')));
     }
@@ -11347,6 +11371,8 @@ function createTimelinePanel(view                    , act              ) {
     // …and a row's grip (studio-ui-lead2): ↑ / ↓ on it redraws the rows; the keyboard stays on the same row's grip.
     const gripHad = document.activeElement instanceof HTMLElement && names.contains(document.activeElement) ? document.activeElement.dataset.grip : undefined;
     el.classList.toggle('rec', v.auto);
+    // ⑨ B (studio-fix-0143): only the line — the rows and Fine-tune's sheet are not drawn (shell.css .timeline.slim).
+    el.classList.toggle('slim', !!v.slim);
     tightNow = v.narrow;
     el.classList.toggle('narrow', tightNow);
     el.classList.remove('snug');
@@ -18553,6 +18579,12 @@ function createTimeline(d              , makePanel                             =
    * server after the shell starts, so a read at start would miss "opened before" on a fresh port.
    */
   let fine                 = null;
+  /**
+   * Folded to its one line (studio-fix-0143, ⑨ B of the first-run check, a review of 2026-10-24): an object picked from the
+   * list was under the plate, and the camera may not pull back to show it. The line (▶, the sentence, Fine-tune, ⌄)
+   * stays; the rows and the Fine-tune sheet come back with Fine-tune pressed (its ⌃), and closing the plate ends it.
+   */
+  let slim = false;
   const fineNow = ()          => {
     if (fine !== null) return fine;
     try {
@@ -19075,6 +19107,7 @@ function createTimeline(d              , makePanel                             =
       made: madeKey && madeKey === key && c ? Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t))) : null,
       // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
       fine: fineNow(),
+      slim,
     };
   }
 
@@ -19552,6 +19585,8 @@ function createTimeline(d              , makePanel                             =
     },
     touched: () => (touched = true),
     fine(on) {
+      // Folded to the line (⑨ B): Fine-tune brings the rows back first — it is the line's "show me more".
+      if (slim) return unslim();
       if (fineNow() === on) return;
       fine = on;
       try {
@@ -19576,11 +19611,31 @@ function createTimeline(d              , makePanel                             =
     if (key && c) d.ask?.(key, { name: c.name, use: c.use ?? c.name });
   }
 
+  /** ⑨ B (studio-fix-0143): the plate to its one line for `key` (the bridge asked: plate-fold), then show it if still covered. */
+  function slimFor(key        ) {
+    if (!open || slim) return;
+    slim = true;
+    panel.render();
+    // layout() sends the smaller inset first; the 'reveal' after it is measured against it (messages keep their order).
+    d.layout();
+    d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
+  }
+  /** The rows again (Fine-tune on the folded line): the picked object stays seen above them (a slide, no size change). */
+  function unslim() {
+    if (!slim) return;
+    slim = false;
+    panel.render();
+    d.layout();
+    const key = d.picked();
+    if (open && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
+  }
+
   // Fold / open: the plate itself (PC: at the foot of the game; phone / side window: in the dock, above the card).
   panel.el.hidden = true;
   function setOpen(on         ) {
     if (open === on) return;
     open = on;
+    slim = false;
     if (!on) {
       stop();
       stopTry();
@@ -19671,6 +19726,9 @@ function createTimeline(d              , makePanel                             =
   return {
     el: panel.el,
     isOpen: () => open,
+    /** Folded to its one line (⑨ B): the inset's `plate` says 'slim', and a pick under it is not asked to fold again. */
+    isSlim: () => open && slim,
+    slimFor,
     /** The motion `key` shows (on the plate and the card), by its name on screen — the chat box's chip follows it (studio-motion-panel). */
     shownName: (key        ) => clipOf(key)?.name ?? null,
     /** Right-click's "Ask your AI about “Hop”…" (studio-motion-panel): the same as the plate's ✦. */
@@ -24192,6 +24250,9 @@ function start(host            ) {
       inset.right = Math.max(0, Math.round(sr.right - cr.left + 8));
       inset.rightTo = Math.round(cr.bottom - sr.top + 8);
     }
+    // studio-fix-0143 (⑨ B, a review of 2026-10-24): the timeline plate is up — the bridge then keeps every size when it
+    // shows a pick (a slide, no pull back), and asks an open plate to fold to its line first (core/plate-fold).
+    if (!timeline.el.hidden && timeline.isOpen()) inset.plate = timeline.isSlim() ? 'slim' : 'open';
     const theme = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
     const k = JSON.stringify([inset, theme, handlePx()]);
     if (k === insetSent) return;
@@ -26194,6 +26255,10 @@ function start(host            ) {
         break;
       case 'studio:core/view-state':
         store.set(VIEW_KEY, JSON.stringify(m.state));
+        break;
+      // ⑨ B (studio-fix-0143): a list pick under the open plate — fold it to its line; the wire then asks to reveal.
+      case 'studio:core/plate-fold':
+        if (m.key === selected) timeline.slimFor(m.key);
         break;
       case 'studio:core/key':
         shortcut({ key: m.key, ctrl: m.ctrl, meta: m.meta, shift: m.shift, fromGame: true });

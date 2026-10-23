@@ -13,6 +13,8 @@
  * Gestures use fractions of the canvas, not pixels, so they feel the same on a phone and a 4K screen:
  *   orbit(dx, dy): full width = half a turn, full height = 90°; dragging down looks more from above
  *   pan(dx, dy):   the ground under the finger follows the finger (horizontally; the target height never changes)
+ *   slide(dx, dy): the camera across its own picture (along its right and up): nothing gets nearer or farther, so
+ *                  everything keeps its size on screen; dy > 0 = the scene goes down the screen (studio-fix-0143)
  *   rise(dy):      camera up (dy > 0) or down, straight up: the target and the camera move together, so the direction
  *                  never changes; dy = 1 is one view height at the target (the scene slides down the screen by its
  *                  full height). The one way to change height — pan keeps it, orbit turns round it, zoom slides along
@@ -108,6 +110,27 @@ export function createEditView(gameCamera) {
       const fwd = [-Math.sin(st.yaw), 0, -Math.cos(st.yaw)]; // horizontal, from the camera toward the target
       const k = 1 / Math.max(0.15, Math.sin(st.pitch)); // a screen-height of drag covers more ground when looking flat
       st.target = v.add(st.target, v.add(v.scale(right, -dx * w), v.scale(fwd, dy * h * k)));
+    },
+    /**
+     * Slide the camera and its turning point together across the picture (studio-fix-0143, ⑨ B of the first-run
+     * check, a review of 2026-10-24: "the camera does not pull back — the scene keeps its size; at most it slides up or
+     * down"). `right` is pan's level right; `up` is the camera's own up (straight up tilted toward the view by the
+     * pitch), so the depth of every point stays the same and a perspective picture only shifts. WHY not pan / rise:
+     * pan(0, dy) carries the camera along the ground, which from a near-level view (neon, pitch ≈ 11°) is mostly
+     * toward / away from the things in front — the ship at the foot of the frame went 144 → 47 px; rise goes straight
+     * up, which changes depth by sin(pitch). Fractions of the view at the turning point, like pan: dx = 1 is a view
+     * width, dy = 1 a view height (things nearer than the turning point move more, farther ones less).
+     */
+    slide(dx, dy, aspect) {
+      const h = viewHeight();
+      const w = h * (aspect || 1);
+      const sp = Math.sin(st.pitch), cp = Math.cos(st.pitch);
+      const right = [Math.cos(st.yaw), 0, -Math.sin(st.yaw)];
+      const up = [-sp * Math.sin(st.yaw), cp, -sp * Math.cos(st.yaw)]; // right × the line of sight, unit length
+      st.target = v.add(st.target, v.add(v.scale(right, -dx * w), v.scale(up, dy * h)));
+      // Bound like rise (a camera never lost kilometres up or down).
+      const lim = Math.max(60, st.radius * 8);
+      st.target[1] = Math.min(lim, Math.max(-lim, st.target[1]));
     },
     rise(dy) {
       // Bound like the distance: far enough to look down on the whole scene, never a camera lost kilometres away.

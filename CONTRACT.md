@@ -570,6 +570,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `core/check` | Self-check result |
 | | `core/ready` | Adapter `kind`, `dim`, `version`, `editing`; UI stage 1: `layers?: ['world', 'ui']` (only for a game with a UI seat — absent, no switch is shown) and `layer` (the one edited now; `kind` / `dim` / `rise` / `fly` are that layer's adapter's: the UI is `dom-ui`, `2d`); `motionHere: true` when the game's loader can run the draft's motions in this page (§3.5.3, studio-no-reload) |
 | | `core/view-state` | Opaque edit-camera state (the shell keeps it across reloads) |
+| | `core/plate-fold` | `{ key }`: a pick from the list is under the open timeline plate (`inset.plate: 'open'`) — the shell folds the plate to its one line and answers with view `reveal` for `key`; while the plate is up the view only slides (adapter `view.slide`), never pulls back (studio-fix-0143) |
 | | `core/key` | Key pressed while the game frame has focus |
 | | `core/error` | Adapter threw |
 | | `core/game-error` | `{ message, where? }`: the game's own page threw (edit and Play, first 3 per load); the shell says what to do |
@@ -605,7 +606,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/motion` | `{ show, has, label, open?, press? }`: the strip's Motion button after the four tools (studio-motion-tool, 2026-10-22). `show` = the pick can have a motion (one world object in 3D); `has` = it has one (a dot on the button); `label` = its tooltip, in the editor's words; `open` = its menu is open in the editor page (pressed look); `press` = A / 5 or ⌘K in the editor page — answered by `placement/motion-press` with the button's place |
 | | `placement/look` | `{ on }`: Space is held in the editor page — a drag in the game looks around even with a tool chosen |
 | | `placement/menu` | `{ open: false }`: close the strip's choices (a press or Escape in the editor page while they are open) |
-| | `core/ui` | `{ handlePx, inset?, theme? }`: strip button size; `inset` = px the shell's floating plates cover on each side (`rightTo`: how far down the right one reaches); the strip and "bring into view" keep clear of them. When an inset grows (a phone's list sheet opens) the bridge slides the view — pan only, the least move — so the picked object and its strip sit in the part still seen |
+| | `core/ui` | `{ handlePx, inset?, theme? }`: strip button size; `inset` = px the shell's floating plates cover on each side (`rightTo`: how far down the right one reaches; `plate`: the timeline plate is up, `'open'` or `'slim'` = folded to its one line); the strip and "bring into view" keep clear of them. When an inset grows (a phone's list sheet opens) the bridge slides the view — pan only, the least move — so the picked object and its strip sit in the part still seen |
 | | `library/assets` · `library/preview` | see types |
 
 **One move = one undo step.** A gesture (press → release on a handle, or a

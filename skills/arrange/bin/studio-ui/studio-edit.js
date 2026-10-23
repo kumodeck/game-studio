@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.42 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.43 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1195,6 +1195,8 @@ __defs[5] = function (__exports) {
  * Gestures use fractions of the canvas, not pixels, so they feel the same on a phone and a 4K screen:
  *   orbit(dx, dy): full width = half a turn, full height = 90°; dragging down looks more from above
  *   pan(dx, dy):   the ground under the finger follows the finger (horizontally; the target height never changes)
+ *   slide(dx, dy): the camera across its own picture (along its right and up): nothing gets nearer or farther, so
+ *                  everything keeps its size on screen; dy > 0 = the scene goes down the screen (studio-fix-0143)
  *   rise(dy):      camera up (dy > 0) or down, straight up: the target and the camera move together, so the direction
  *                  never changes; dy = 1 is one view height at the target (the scene slides down the screen by its
  *                  full height). The one way to change height — pan keeps it, orbit turns round it, zoom slides along
@@ -1290,6 +1292,27 @@ function createEditView(gameCamera) {
       const fwd = [-Math.sin(st.yaw), 0, -Math.cos(st.yaw)]; // horizontal, from the camera toward the target
       const k = 1 / Math.max(0.15, Math.sin(st.pitch)); // a screen-height of drag covers more ground when looking flat
       st.target = v.add(st.target, v.add(v.scale(right, -dx * w), v.scale(fwd, dy * h * k)));
+    },
+    /**
+     * Slide the camera and its turning point together across the picture (studio-fix-0143, ⑨ B of the first-run
+     * check, a review of 2026-10-24: "the camera does not pull back — the scene keeps its size; at most it slides up or
+     * down"). `right` is pan's level right; `up` is the camera's own up (straight up tilted toward the view by the
+     * pitch), so the depth of every point stays the same and a perspective picture only shifts. WHY not pan / rise:
+     * pan(0, dy) carries the camera along the ground, which from a near-level view (neon, pitch ≈ 11°) is mostly
+     * toward / away from the things in front — the ship at the foot of the frame went 144 → 47 px; rise goes straight
+     * up, which changes depth by sin(pitch). Fractions of the view at the turning point, like pan: dx = 1 is a view
+     * width, dy = 1 a view height (things nearer than the turning point move more, farther ones less).
+     */
+    slide(dx, dy, aspect) {
+      const h = viewHeight();
+      const w = h * (aspect || 1);
+      const sp = Math.sin(st.pitch), cp = Math.cos(st.pitch);
+      const right = [Math.cos(st.yaw), 0, -Math.sin(st.yaw)];
+      const up = [-sp * Math.sin(st.yaw), cp, -sp * Math.cos(st.yaw)]; // right × the line of sight, unit length
+      st.target = v.add(st.target, v.add(v.scale(right, -dx * w), v.scale(up, dy * h)));
+      // Bound like rise (a camera never lost kilometres up or down).
+      const lim = Math.max(60, st.radius * 8);
+      st.target[1] = Math.min(lim, Math.max(-lim, st.target[1]));
     },
     rise(dy) {
       // Bound like the distance: far enough to look down on the whole scene, never a camera lost kilometres away.
@@ -3285,6 +3308,8 @@ function createThreeAdapter({ scene, renderer, camera }) {
       zoom(factor, ndcX = 0, ndcY = 0) { if (!view) return null; leaveHome(); syncView(); view.zoom(factor, ndcX, ndcY); touch(); return view.state(); },
       /** Camera up (dy > 0) / down by dy view heights, looking the same way (camera.js rise; ⌘K, E / Q, the ↑↓ buttons). */
       rise(dy) { if (!view) return null; leaveHome(); view.rise(dy); touch(); return view.state(); },
+      /** Across the picture, keeping every size (camera.js slide; the editor's slide while the timeline is open). */
+      slide(dx, dy) { if (!view) return null; leaveHome(); syncView(); view.slide(dx, dy, aspect()); touch(); return view.state(); },
       /** Fly (WASD / E Q): right / up / forward in seconds of travel at the scene's speed (camera.js fly). */
       fly(right, up, fwd) { if (!view) return null; leaveHome(); view.fly(right, up, fwd); touch(); return view.state(); },
       /** Turn where the camera stands (right-drag while flying; camera.js look), by fractions of the canvas. */
@@ -3516,6 +3541,7 @@ function fitThreeAdapter(raw     , canvas                   )                {
       orbit: (dx, dy) => void raw.view.orbit(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       pan: (dx, dy) => void raw.view.pan(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       rise: (dy) => void raw.view.rise(dy / Math.max(1, rect().height)),
+      slide: (dx, dy) => void raw.view.slide(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       fly: (right, up, fwd) => void raw.view.fly(right, up, fwd),
       look: (dx, dy) => void raw.view.look(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       zoom: (f, x, y) => void (x === undefined || y === undefined ? raw.view.zoom(f) : raw.view.zoom(f, ...ndc(x, y))),
@@ -4082,6 +4108,14 @@ const CONTRACT_VERSION = 1;
      
                           
      
+                                                                                                                         
+                                                                                                                    
+                                                                                                                  
+                                                                                                                   
+                                                                                                       
+     
+                                       
+     
                                                                                                                   
                                                                                                                      
                                                                                                                 
@@ -4541,7 +4575,14 @@ const MSG_PREFIX = 'studio:';
  * camera up / down buttons for now (a phone with the card, a sheet or a menu
  * up — the second design review's ⑧, 2026-10-19); absent = shown.
  */
-                                                                                                                       
+                                                                                                                      
+     
+                                                                                                                   
+                                                                                                                         
+                                                                                                                     
+                       
+     
+                           
 
 /** shell -> bridge */
                            
@@ -4789,6 +4830,12 @@ const MSG_PREFIX = 'studio:';
          
                                                
                                                       
+     
+                                                                                                                        
+                                                                                                                
+                                                                        
+     
+                                                   
                                                           
                                                                                       
                                                                                                                       
@@ -15904,7 +15951,135 @@ function createEditor(deps            )         {
     const f = freeArea(a.center[1]);
     return a.center[0] >= f.x0 + FOCUS_MARGIN && a.center[0] <= f.x1 - FOCUS_MARGIN && a.center[1] >= f.y0 + FOCUS_MARGIN && a.center[1] <= f.y1 - FOCUS_MARGIN;
   };
-  const focusIfHidden = (key        , middle = false) => {
+  /**
+   * ⑨ B of the first-run check (studio-fix-0143, a review of 2026-10-24): while the timeline plate is up the view never
+   * changes the size of anything. The one move: the least slide across the picture (adapter view.slide — sideways and
+   * up / down, nothing nearer or farther) that brings the box (and its strip) into the free part, or, when that does
+   * not fit, its middle to the free part's middle. Measured step by step like panIntoMiddle (things nearer than the
+   * turning point move more per px). 2D: pan keeps sizes. A 3D adapter without slide: sideways only (pan's right is
+   * level and across the picture, so it keeps sizes too; its up / down is the pan that pulled back).
+   * Returns the total move in px for the glide (sideways, up / down), or null when the object is not drawn.
+   */
+  const slideKeep = (key        )                          => {
+    const move = (ax       , d        ) => {
+      const dx = ax ? 0 : d, dy = ax ? d : 0;
+      if (adapter.view.slide) adapter.view.slide(dx, dy);
+      else if (adapter.dim !== '3d' || ax === 0) adapter.view.pan(dx, dy);
+      else return false;
+      return true;
+    };
+    const need = () => {
+      const a = adapter.anchor(key);
+      if (!a || !a.visible) return null;
+      const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+      const f = freeArea(r.y);
+      const strip = Math.min(HANDLE_ROW, (f.y1 - f.y0) / 4);
+      const fit = (lo        , hi        , a0        , a1        ) => {
+        // Too big for the room: its middle to the room's middle (the middle is what the motion drag grabs).
+        if (a1 - a0 > hi - lo) return (lo + hi) / 2 - (a0 + a1) / 2;
+        if (a0 < lo) return lo - a0;
+        if (a1 > hi) return hi - a1;
+        return 0;
+      };
+      return [fit(f.x0 + FOCUS_MARGIN, f.x1 - FOCUS_MARGIN, r.x, r.x + r.w), fit(f.y0 + FOCUS_MARGIN, f.y1 - FOCUS_MARGIN, r.y, r.y + r.h + strip)]                    ;
+    };
+    if (!need()) return null;
+    const total                   = [0, 0];
+    for (const ax of [0, 1]         ) {
+      let gain = 1; // screen px the object moved per px of slide, measured
+      let scale = 0.5; // the share of the need a step asks for: half at first (gain unknown), then all
+      for (let i = 0; i < 10; i++) {
+        const d = need();
+        if (!d || Math.abs(d[ax]) < 1) break;
+        const step = (d[ax] / gain) * scale;
+        const before = adapter.anchor(key)?.center;
+        if (!move(ax, step)) break;
+        const after = need();
+        const now = adapter.anchor(key)?.center;
+        const g = before && now ? (now[ax] - before[ax]) / step : NaN;
+        const usable = Math.abs(g) > 0.05 && Math.abs(g) < 20;
+        // Past the place: the least move is the point. neon's ship (far nearer than the point the camera turns round)
+        // moved 4.2 px per px — half the need sent it 528 px up for 254 needed, to the top of the frame, a sky of
+        // empty road under it (PC, 2026-10-24). Back, and the same step again with the gain just measured.
+        if (usable && before && now && Math.abs(now[ax] - before[ax]) > Math.abs(d[ax]) * 1.1) {
+          move(ax, -step); // linear: exactly back
+          gain = g;
+          scale = 1;
+          continue;
+        }
+        // Worse, or out of sight (found on the side window, 2026-10-24: the ship near the camera, its box cut by the
+        // frame's edge, measured a gain that sent it 900 px past the top): take the step back, half steps.
+        if (!after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95) {
+          move(ax, -step); // linear: exactly back
+          if (usable && g * gain < 0) gain = g;
+          scale /= 2;
+          if (scale < 0.05) break;
+          continue;
+        }
+        total[ax] += step;
+        if (usable) gain = g;
+        scale = Math.min(1, scale * 2);
+      }
+    }
+    return total;
+  };
+  /** The glide of a slide from `from` by `total` px over 0.35 s (ease out), then the view is posted. */
+  const glide = (gen        , from         , total                  , step                                  ) => {
+    adapter.view.restore (from);
+    const t0 = nativeNow();
+    let done = 0;
+    const tick = () => {
+      if (gen !== panGlide || !state.editing) return;
+      const t = Math.min(1, (nativeNow() - t0) / GLIDE_MS);
+      const e = 1 - (1 - t) ** 3;
+      step(total[0] * (e - done), total[1] * (e - done));
+      done = e;
+      dirtyFrame = true;
+      if (t < 1) core.time.raf(tick);
+      else {
+        panGlide = 0;
+        slid();
+        postView();
+      }
+    };
+    core.time.raf(tick);
+  };
+  /**
+   * `fold`: a pick from the list (not the plate's own 'reveal'): an open plate over it is asked to fold to its one line
+   * first (studio:core/plate-fold); the shell then sends 'reveal' with the new inset, and this runs again.
+   */
+  const focusIfHidden = (key        , middle = false, fold = !middle) => {
+    // ⑨ B (studio-fix-0143): the plate up — "seen" is also "its middle is clear" (the drag that makes a motion grabs
+    // the middle), and the move keeps every size (slideKeep), never panIntoMiddle's pull back.
+    if (inset.plate) {
+      if (state.multi || (seenNow(key) && middleFree(key))) return;
+      if (fold && inset.plate === 'open') {
+        panGlide = 0;
+        post({ type: 'studio:core/plate-fold', key });
+        return;
+      }
+      const gen = ++panGlide;
+      const from = adapter.view.state();
+      if (plateSlides && (plateSlides.to === null || plateSlides.to !== viewSig())) plateSlides = { from, to: null };
+      const total = slideKeep(key);
+      // Not drawn from here (behind the camera): nothing moves — framing it would change the size (the review.s line).
+      if (!total || (Math.abs(total[0]) < 1 && Math.abs(total[1]) < 1)) {
+        if (total) adapter.view.restore?.(from);
+        panGlide = 0;
+        return;
+      }
+      if (!adapter.view.restore) {
+        plateSlides = null;
+        postView();
+        return;
+      }
+      const sl = adapter.view.slide;
+      glide(gen, from, total, (dx, dy) => {
+        if (sl) sl(dx, dy);
+        else adapter.view.pan(dx, adapter.dim === '3d' ? 0 : dy);
+      });
+      return;
+    }
     if (state.multi || (seenNow(key) && (!middle || middleFree(key)))) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
@@ -15927,24 +16102,7 @@ function createEditor(deps            )         {
       return; // no way back to the start: the slide happens at once
     }
     // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
-    adapter.view.restore(from);
-    const t0 = nativeNow();
-    let done = 0;
-    const tick = () => {
-      if (gen !== panGlide || !state.editing) return;
-      const t = Math.min(1, (nativeNow() - t0) / GLIDE_MS);
-      const e = 1 - (1 - t) ** 3;
-      adapter.view.pan(total[0] * (e - done), total[1] * (e - done));
-      done = e;
-      dirtyFrame = true;
-      if (t < 1) core.time.raf(tick);
-      else {
-        panGlide = 0;
-        slid();
-        postView();
-      }
-    };
-    core.time.raf(tick);
+    glide(gen, from, total, (dx, dy) => adapter.view.pan(dx, dy));
   };
   // List thumbnails waiting to be drawn (placement/thumbs), newest request first.
   let thumbQueue                                       = [];
@@ -16667,7 +16825,9 @@ function createEditor(deps            )         {
           } else if (v.action === 'focus') adapter.view.focus(v.key);
           // Only when covered (contract.ts 'reveal'): the glide posts the view itself when it ends.
           else if (v.action === 'reveal') {
-            plateSlides = { from: adapter.view.state(), to: viewSig() };
+            // studio-fix-0143: the 'reveal' that follows a fold (plate-fold) keeps the view the plate opened on, so
+            // closing still goes back there; only the first one (the plate opening) starts the record.
+            if (!plateSlides) plateSlides = { from: adapter.view.state(), to: viewSig() };
             focusIfHidden(v.key, true);
           } else if (v.action === 'unreveal') {
             // The plate closed (fix-0141 ⑨): back to the view before its slides, unless the camera was moved since.

@@ -1787,6 +1787,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-fine-btn.on { background: var(--raise-2); }
 .tl-main { display: grid; grid-template-columns: minmax(0, 1fr); }
 .tl-main:has(> .tl-fine:not([hidden])) { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }
+/* studio-fix-0143 (⑨ B, a review of 2026-10-24): an object picked from the list was under the plate — the plate folds to its
+   one line instead of the camera pulling back. Fine-tune (its ⌃) brings the rows back; closing the plate ends it. */
+.timeline.slim .tl-main { display: none; }
 .tl-right { min-width: 0; }
 .tl-fine { border-top: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0 10px 4px; font-size: var(--fs);
   max-height: calc(var(--tl-ruler) + 8 * var(--tl-row)); overflow: hidden auto; overscroll-behavior: contain; }

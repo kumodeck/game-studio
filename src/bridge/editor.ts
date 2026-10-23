@@ -450,7 +450,135 @@ export function createEditor(deps: EditorDeps): Editor {
     const f = freeArea(a.center[1]);
     return a.center[0] >= f.x0 + FOCUS_MARGIN && a.center[0] <= f.x1 - FOCUS_MARGIN && a.center[1] >= f.y0 + FOCUS_MARGIN && a.center[1] <= f.y1 - FOCUS_MARGIN;
   };
-  const focusIfHidden = (key: string, middle = false) => {
+  /**
+   * ⑨ B of the first-run check (studio-fix-0143, a review of 2026-10-24): while the timeline plate is up the view never
+   * changes the size of anything. The one move: the least slide across the picture (adapter view.slide — sideways and
+   * up / down, nothing nearer or farther) that brings the box (and its strip) into the free part, or, when that does
+   * not fit, its middle to the free part's middle. Measured step by step like panIntoMiddle (things nearer than the
+   * turning point move more per px). 2D: pan keeps sizes. A 3D adapter without slide: sideways only (pan's right is
+   * level and across the picture, so it keeps sizes too; its up / down is the pan that pulled back).
+   * Returns the total move in px for the glide (sideways, up / down), or null when the object is not drawn.
+   */
+  const slideKeep = (key: string): [number, number] | null => {
+    const move = (ax: 0 | 1, d: number) => {
+      const dx = ax ? 0 : d, dy = ax ? d : 0;
+      if (adapter.view.slide) adapter.view.slide(dx, dy);
+      else if (adapter.dim !== '3d' || ax === 0) adapter.view.pan(dx, dy);
+      else return false;
+      return true;
+    };
+    const need = () => {
+      const a = adapter.anchor(key);
+      if (!a || !a.visible) return null;
+      const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+      const f = freeArea(r.y);
+      const strip = Math.min(HANDLE_ROW, (f.y1 - f.y0) / 4);
+      const fit = (lo: number, hi: number, a0: number, a1: number) => {
+        // Too big for the room: its middle to the room's middle (the middle is what the motion drag grabs).
+        if (a1 - a0 > hi - lo) return (lo + hi) / 2 - (a0 + a1) / 2;
+        if (a0 < lo) return lo - a0;
+        if (a1 > hi) return hi - a1;
+        return 0;
+      };
+      return [fit(f.x0 + FOCUS_MARGIN, f.x1 - FOCUS_MARGIN, r.x, r.x + r.w), fit(f.y0 + FOCUS_MARGIN, f.y1 - FOCUS_MARGIN, r.y, r.y + r.h + strip)] as [number, number];
+    };
+    if (!need()) return null;
+    const total: [number, number] = [0, 0];
+    for (const ax of [0, 1] as const) {
+      let gain = 1; // screen px the object moved per px of slide, measured
+      let scale = 0.5; // the share of the need a step asks for: half at first (gain unknown), then all
+      for (let i = 0; i < 10; i++) {
+        const d = need();
+        if (!d || Math.abs(d[ax]) < 1) break;
+        const step = (d[ax] / gain) * scale;
+        const before = adapter.anchor(key)?.center;
+        if (!move(ax, step)) break;
+        const after = need();
+        const now = adapter.anchor(key)?.center;
+        const g = before && now ? (now[ax] - before[ax]) / step : NaN;
+        const usable = Math.abs(g) > 0.05 && Math.abs(g) < 20;
+        // Past the place: the least move is the point. neon's ship (far nearer than the point the camera turns round)
+        // moved 4.2 px per px — half the need sent it 528 px up for 254 needed, to the top of the frame, a sky of
+        // empty road under it (PC, 2026-10-24). Back, and the same step again with the gain just measured.
+        if (usable && before && now && Math.abs(now[ax] - before[ax]) > Math.abs(d[ax]) * 1.1) {
+          move(ax, -step); // linear: exactly back
+          gain = g;
+          scale = 1;
+          continue;
+        }
+        // Worse, or out of sight (found on the side window, 2026-10-24: the ship near the camera, its box cut by the
+        // frame's edge, measured a gain that sent it 900 px past the top): take the step back, half steps.
+        if (!after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95) {
+          move(ax, -step); // linear: exactly back
+          if (usable && g * gain < 0) gain = g;
+          scale /= 2;
+          if (scale < 0.05) break;
+          continue;
+        }
+        total[ax] += step;
+        if (usable) gain = g;
+        scale = Math.min(1, scale * 2);
+      }
+    }
+    return total;
+  };
+  /** The glide of a slide from `from` by `total` px over 0.35 s (ease out), then the view is posted. */
+  const glide = (gen: number, from: unknown, total: [number, number], step: (dx: number, dy: number) => void) => {
+    adapter.view.restore!(from);
+    const t0 = nativeNow();
+    let done = 0;
+    const tick = () => {
+      if (gen !== panGlide || !state.editing) return;
+      const t = Math.min(1, (nativeNow() - t0) / GLIDE_MS);
+      const e = 1 - (1 - t) ** 3;
+      step(total[0] * (e - done), total[1] * (e - done));
+      done = e;
+      dirtyFrame = true;
+      if (t < 1) core.time.raf(tick);
+      else {
+        panGlide = 0;
+        slid();
+        postView();
+      }
+    };
+    core.time.raf(tick);
+  };
+  /**
+   * `fold`: a pick from the list (not the plate's own 'reveal'): an open plate over it is asked to fold to its one line
+   * first (studio:core/plate-fold); the shell then sends 'reveal' with the new inset, and this runs again.
+   */
+  const focusIfHidden = (key: string, middle = false, fold = !middle) => {
+    // ⑨ B (studio-fix-0143): the plate up — "seen" is also "its middle is clear" (the drag that makes a motion grabs
+    // the middle), and the move keeps every size (slideKeep), never panIntoMiddle's pull back.
+    if (inset.plate) {
+      if (state.multi || (seenNow(key) && middleFree(key))) return;
+      if (fold && inset.plate === 'open') {
+        panGlide = 0;
+        post({ type: 'studio:core/plate-fold', key });
+        return;
+      }
+      const gen = ++panGlide;
+      const from = adapter.view.state();
+      if (plateSlides && (plateSlides.to === null || plateSlides.to !== viewSig())) plateSlides = { from, to: null };
+      const total = slideKeep(key);
+      // Not drawn from here (behind the camera): nothing moves — framing it would change the size (the review.s line).
+      if (!total || (Math.abs(total[0]) < 1 && Math.abs(total[1]) < 1)) {
+        if (total) adapter.view.restore?.(from);
+        panGlide = 0;
+        return;
+      }
+      if (!adapter.view.restore) {
+        plateSlides = null;
+        postView();
+        return;
+      }
+      const sl = adapter.view.slide;
+      glide(gen, from, total, (dx, dy) => {
+        if (sl) sl(dx, dy);
+        else adapter.view.pan(dx, adapter.dim === '3d' ? 0 : dy);
+      });
+      return;
+    }
     if (state.multi || (seenNow(key) && (!middle || middleFree(key)))) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
@@ -473,24 +601,7 @@ export function createEditor(deps: EditorDeps): Editor {
       return; // no way back to the start: the slide happens at once
     }
     // Back to where it was, then the same slide over 0.35 s (ease out), as pan() steps that add up to `total`.
-    adapter.view.restore(from);
-    const t0 = nativeNow();
-    let done = 0;
-    const tick = () => {
-      if (gen !== panGlide || !state.editing) return;
-      const t = Math.min(1, (nativeNow() - t0) / GLIDE_MS);
-      const e = 1 - (1 - t) ** 3;
-      adapter.view.pan(total[0] * (e - done), total[1] * (e - done));
-      done = e;
-      dirtyFrame = true;
-      if (t < 1) core.time.raf(tick);
-      else {
-        panGlide = 0;
-        slid();
-        postView();
-      }
-    };
-    core.time.raf(tick);
+    glide(gen, from, total, (dx, dy) => adapter.view.pan(dx, dy));
   };
   // List thumbnails waiting to be drawn (placement/thumbs), newest request first.
   let thumbQueue: Array<{ key: string; size: number }> = [];
@@ -1213,7 +1324,9 @@ export function createEditor(deps: EditorDeps): Editor {
           } else if (v.action === 'focus') adapter.view.focus(v.key);
           // Only when covered (contract.ts 'reveal'): the glide posts the view itself when it ends.
           else if (v.action === 'reveal') {
-            plateSlides = { from: adapter.view.state(), to: viewSig() };
+            // studio-fix-0143: the 'reveal' that follows a fold (plate-fold) keeps the view the plate opened on, so
+            // closing still goes back there; only the first one (the plate opening) starts the record.
+            if (!plateSlides) plateSlides = { from: adapter.view.state(), to: viewSig() };
             focusIfHidden(v.key, true);
           } else if (v.action === 'unreveal') {
             // The plate closed (fix-0141 ⑨): back to the view before its slides, unless the camera was moved since.

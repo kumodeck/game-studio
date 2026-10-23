@@ -507,6 +507,14 @@ export interface AdapterView {
    */
   rise?(dy: number): void;
   /**
+   * 3D only, optional (studio-fix-0143, ⑨ B, a review of 2026-10-24): move the camera across its own picture by a screen
+   * delta in px at the point it turns round — along its right and its own up, so nothing gets nearer or farther and
+   * every object keeps its size on screen. The editor's one way to move the view while the timeline plate is open
+   * ("the camera does not pull back"); pan there carried a near-level camera down the road (the ship 144 → 47 px).
+   * Adapters without it (2D: pan already keeps sizes): the editor pans in 2D, and in 3D only sideways.
+   */
+  slide?(dx: number, dy: number): void;
+  /**
    * 3D only, optional: fly (WASD, camera-wasd pass 2026-10-18 — the habit of every 3D engine). Move the camera by
    * `right` / `up` / `fwd`, each in seconds of travel at the adapter's normal speed, which it picks from the scene's
    * size so a small room and a big harbour feel the same (the bridge passes the frame's dt, ×3 with Shift). fwd
@@ -966,7 +974,14 @@ export type ViewAction =
  * camera up / down buttons for now (a phone with the card, a sheet or a menu
  * up — the second design review's ⑧, 2026-10-19); absent = shown.
  */
-export interface Inset { top: number; right: number; bottom: number; left: number; rightTo?: number; camera?: boolean }
+export interface Inset { top: number; right: number; bottom: number; left: number; rightTo?: number; camera?: boolean;
+  /**
+   * The timeline plate is up over the game (studio-fix-0143, ⑨ B, a review of 2026-10-24): 'open' = with its rows,
+   * 'slim' = folded to its one line. While it is, a pick the plate hides never pulls the camera back: an 'open' plate is
+   * asked to fold first (studio:core/plate-fold), then the view only slides (AdapterView.slide), keeping every size.
+   * Absent = no plate.
+   */
+  plate?: 'open' | 'slim' }
 
 /** shell -> bridge */
 export type ShellToBridge =
@@ -1214,6 +1229,12 @@ export type BridgeToShell =
        */
       layers?: EditLayer[]; layer?: EditLayer }
   | { type: 'studio:core/view-state'; state: unknown }
+  /**
+   * A pick from the list (or the like) is under the open timeline plate (studio-fix-0143, ⑨ B, a review of 2026-10-24):
+   * the shell folds the plate to its one line, then sends view 'reveal' for `key` — the view slides only if the
+   * object's middle is still covered, keeping every size (Inset.plate).
+   */
+  | { type: 'studio:core/plate-fold'; key: string }
   | { type: 'studio:core/check'; result: SelfCheckResult }
   /** A key pressed while the game iframe has focus (so shortcuts work everywhere). */
   | { type: 'studio:core/key'; key: string; code: string; ctrl: boolean; meta: boolean; shift: boolean; alt: boolean }

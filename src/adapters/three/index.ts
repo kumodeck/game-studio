@@ -108,6 +108,7 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
       orbit: (dx, dy) => void raw.view.orbit(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       pan: (dx, dy) => void raw.view.pan(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       rise: (dy) => void raw.view.rise(dy / Math.max(1, rect().height)),
+      slide: (dx, dy) => void raw.view.slide(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       fly: (right, up, fwd) => void raw.view.fly(right, up, fwd),
       look: (dx, dy) => void raw.view.look(dx / Math.max(1, rect().width), dy / Math.max(1, rect().height)),
       zoom: (f, x, y) => void (x === undefined || y === undefined ? raw.view.zoom(f) : raw.view.zoom(f, ...ndc(x, y))),

@@ -118,6 +118,8 @@ export interface TimelineView {
   making?: 'drag' | 'more' | null;
   /** studio-motion-line: "Fine-tune" is open (its sheet beside the rows; remembered). Absent = closed. */
   fine?: boolean;
+  /** studio-fix-0143 (⑨ B): folded to the line only — no rows, no Fine-tune sheet (Fine-tune brings them back). */
+  slim?: boolean;
   // studio-timeline-2:
   /** Every way the focused clip starts (2–4 = any of them; one = `when`). */
   whens?: MotionWhen[];
@@ -255,8 +257,9 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
     // Fine-tune: also with no motion here when others move (its "Moving objects", studio-motion-focus).
-    if (c || v.moving) {
-      const on = !!v.fine;
+    // Folded to the line (studio-fix-0143 ⑨ B): it is also the way back to the rows, so it is there, pointing up.
+    if (c || v.moving || v.slim) {
+      const on = !!v.fine && !v.slim;
       items.push(h('button', { type: 'button', class: `tl-fine-btn${on ? ' on' : ''}`, title: t('tl.moreTip'), 'aria-expanded': String(on),
         dataset: { action: 'tl-fine', part: 'tl-fine-btn' }, onclick: () => act.fine?.(!on) }, h('span', { class: 'tl-fine-w', text: t('tl.more') }), icon(on ? 'chevronDown' : 'chevronUp')));
     }
@@ -925,6 +928,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // …and a row's grip (studio-ui-lead2): ↑ / ↓ on it redraws the rows; the keyboard stays on the same row's grip.
     const gripHad = document.activeElement instanceof HTMLElement && names.contains(document.activeElement) ? document.activeElement.dataset.grip : undefined;
     el.classList.toggle('rec', v.auto);
+    // ⑨ B (studio-fix-0143): only the line — the rows and Fine-tune's sheet are not drawn (shell.css .timeline.slim).
+    el.classList.toggle('slim', !!v.slim);
     tightNow = v.narrow;
     el.classList.toggle('narrow', tightNow);
     el.classList.remove('snug');

@@ -1162,6 +1162,8 @@ export function createThreeAdapter({ scene, renderer, camera }) {
       zoom(factor, ndcX = 0, ndcY = 0) { if (!view) return null; leaveHome(); syncView(); view.zoom(factor, ndcX, ndcY); touch(); return view.state(); },
       /** Camera up (dy > 0) / down by dy view heights, looking the same way (camera.js rise; ⌘K, E / Q, the ↑↓ buttons). */
       rise(dy) { if (!view) return null; leaveHome(); view.rise(dy); touch(); return view.state(); },
+      /** Across the picture, keeping every size (camera.js slide; the editor's slide while the timeline is open). */
+      slide(dx, dy) { if (!view) return null; leaveHome(); syncView(); view.slide(dx, dy, aspect()); touch(); return view.state(); },
       /** Fly (WASD / E Q): right / up / forward in seconds of travel at the scene's speed (camera.js fly). */
       fly(right, up, fwd) { if (!view) return null; leaveHome(); view.fly(right, up, fwd); touch(); return view.state(); },
       /** Turn where the camera stands (right-drag while flying; camera.js look), by fractions of the canvas. */
