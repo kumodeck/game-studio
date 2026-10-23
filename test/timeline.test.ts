@@ -206,14 +206,33 @@ test('wire: folded, a move is a move (nothing keyed)', () => {
   assert.equal(r.tl.motionOf('boat'), null);
 });
 
-test('wire: open at 0 s with no motion yet, a move is still a move; after 0 s it makes the first clip', () => {
+test('wire: open with no motion yet, a move is still a move; after "Make a motion" it makes the first clip', () => {
   const r = rig();
   r.tl.setOpen(true);
   assert.equal(r.tl.moved('boat', at([1, 0, 0]), true, at([0, 0, 0])), false, '0 s and nothing to animate: the place moves');
+  // studio-fix-0142 ⑫: the time line past 0 s is not enough (the plate left open after another object's motion, a
+  // nudge to fix where it starts made a motion). Only "Make a motion" (or a motion it has) records.
   r.tl.setTime(2);
-  // A drag: live poses, then the end (the bridge's `from` only on the end).
-  assert.equal(r.tl.moved('boat', at([1, 0, 0]), false), true);
-  assert.equal(r.tl.moved('boat', at([3, 0, -1]), true, at([0, 0, 0])), true);
+  assert.equal(r.tl.records('boat'), false, 'no motion, no making: a move sets where it starts');
+  assert.equal(r.tl.moved('boat', at([1, 0, 0]), true, at([0, 0, 0])), false);
+  assert.equal(r.tl.motionOf('boat'), null, 'nothing keyed');
+  r.tl.make('boat');
+  assert.equal(r.tl.records('boat'), true, 'making: the next move is the motion');
+  assert.equal(r.tl.records('buoy'), false, 'another object with no motion still moves its place');
+  r.tl.setTime(2);
+  // A drag: live poses, then the end (the bridge's `from` only on the end). The end plays what was made (▶ runs on
+  // frames: not run here), so the time line is put back at 2 s after it.
+  const keep = { raf: globalThis.requestAnimationFrame, caf: globalThis.cancelAnimationFrame };
+  globalThis.requestAnimationFrame = (() => 1) as never;
+  globalThis.cancelAnimationFrame = (() => {}) as never;
+  try {
+    assert.equal(r.tl.moved('boat', at([1, 0, 0]), false), true);
+    assert.equal(r.tl.moved('boat', at([3, 0, -1]), true, at([0, 0, 0])), true);
+    r.tl.setTime(2);
+  } finally {
+    globalThis.requestAnimationFrame = keep.raf;
+    globalThis.cancelAnimationFrame = keep.caf;
+  }
   const c = r.tl.motionOf('boat')!.clips![0]!;
   assert.equal(c.name, 'motion.firstName', 'named after the object (studio-words-plan; this rig’s t() returns the key)');
   assert.deepEqual(whenOf(c), { on: 'start' }, 'the first motion plays at the start');
@@ -287,13 +306,16 @@ test('wire: keys — K sets one, Delete removes the picked ones once the plate w
   r.tl.untouch();
 });
 
-test('wire: several objects moved together at 1 s — each keyed, one undo step with the rest', () => {
+test('wire: several objects moved together at 1 s — those with a motion keyed, the rest moved, one undo step', () => {
   const r = rig();
+  // studio-fix-0142 ⑫: only an object with a motion (or the one being made) records; the boat has none, so its move
+  // is where it starts (returned in `rest` for the shell's usual handling).
+  r.store.set('buoy', { clips: [{ name: 'Bob', len: 2, repeat: 'once', start: true, keys: { r: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 1, 0] }] } }] });
   r.tl.setOpen(true);
   r.tl.setTime(1);
   const out = r.tl.movedGroup([{ key: 'boat', pose: at([1, 0, 0]), from: at([0, 0, 0]) }, { key: 'buoy', pose: at([6, 0, 0]), from: at([5, 0, 0]) }], true);
-  assert.equal(out.rest.length, 0);
-  // Each object's motion and the Library motion each one made (studio-motion-line: undone together, nothing left behind).
-  assert.deepEqual(out.changes.map((x) => x.kind).sort(), ['motion', 'motion', 'motion-lib', 'motion-lib']);
+  assert.deepEqual(out.rest.map((x) => x.key), ['boat']);
+  assert.equal(r.tl.motionOf('boat'), null, 'nothing made on the boat');
+  assert.deepEqual(out.changes.map((x) => x.kind), ['motion']);
   assert.ok(near(offsetsAt(r.tl.motionOf('buoy')!.clips![0]!, 1).p, [1, 0, 0]));
 });

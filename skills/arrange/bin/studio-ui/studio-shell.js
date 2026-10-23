@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.41 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.42 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -11374,6 +11374,13 @@ function createTimelinePanel(view                    , act              ) {
     // A scene (studio-timeline-2) says what it is — one motion, this many objects — over the rows it names. Said once
     // there are two (studio-motion-focus: a scene of one is the object's own motion, nothing to say).
     rulerPad.replaceChildren(...(v.clip && v.scene && v.scene.n > 1 ? [h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) })] : []));
+    // A phone (studio-fix-0142, ⑬ of the fourth first-run check, 2026-10-24): ⌄ goes to the names column's head, over
+    // the rows (the right of "Linked · 2"). In the head it had a row of its own — the sentence fills the first row and
+    // "when", Fine-tune and ✦ AI the second, at 44 px a finger each — which made a plate already 3/4 of the screen
+    // taller. The side window keeps it in the head (there it fits on the first row). Moved after the measure above.
+    const shell = el.closest             ('.shell');
+    const foldEl = tightNow && shell?.dataset.layout === 'phone' && shell.dataset.fit !== 'side' ? head.querySelector             ('.tl-fold') : null;
+    if (foldEl) rulerPad.append(foldEl);
     renderRows(v);
     if (gripHad) names.querySelector             (`[data-grip="${CSS.escape(gripHad)}"]`)?.focus({ preventScroll: true });
     // The link list follows its button (drawn anew with the rows), and closes once it is done (linked, or Esc in the game).
@@ -13704,6 +13711,10 @@ const en = {
   'undo.remove': 'delete {name}',
   'undo.edit': 'change {name}',
   'undo.motion': 'change {name}’s motion',
+  // Several objects' motion, not one linked motion (studio-fix-0142 ⑭: was "change 2 objects’s motion").
+  'undo.motionN': 'change the motion of {n} objects',
+  // One linked motion, by the motion's own name ("gate’s motion", "Hop"): "change gate’s motion".
+  'undo.motionNamed': 'change {name}',
   // The card's Motion row (motion-gui, 2026-10-22; since studio-timeline: timeline-wire.ts cardRow): how an object moves by itself.
   'motion.label': 'Motion',
   // A new motion's first name (studio-words-plan, 2026-10-23): it was "Motion" in both languages — the object's name
@@ -14561,6 +14572,9 @@ const ja                               = {
   'undo.remove': '{name} を削除',
   'undo.edit': '{name} を変更',
   'undo.motion': '{name} の動きを変更',
+  'undo.motionN': '{n} 個の動きを変更',
+  // Right after the motion's name, no space (the Japanese reads as one phrase).
+  'undo.motionNamed': '{name}を変更',
   'motion.label': '動き',
   'motion.firstName': '{name} の動き',
   'motion.none': 'なし',
@@ -14887,11 +14901,13 @@ const ja                               = {
   'play.paused': '止めています',
   'play.resume': '続ける',
   'play.resumeTip': '止めたところから続ける（P）',
-  'play.sees': '{ai}はこの瞬間を見ています',
+  // \u200b (zero-width space) = where it may wrap: the pause panel is word-break: keep-all, so Japanese wraps only there
+  // (studio-fix-0142 ⑮: it broke mid-word before).
+  'play.sees': '{ai}は\u200bこの瞬間を\u200b見ています',
   'play.seesError': 'エラー 1 件',
   'play.seesErrors': 'エラー # 件',
   'play.chatPlaceholder': 'この瞬間について {ai}に頼む…',
-  'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
+  'play.chatEmpty': '見えていることを\u200b何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
   'play.send': '送る',
   'play.move': '動かす',
   'play.moveTip': '止めた所で物を動かす（M）',
@@ -18677,11 +18693,14 @@ function createTimeline(d              , makePanel                             =
   }
   /**
    * Tell the game page whether a move is a motion's point now (studio-motion-move, 2026-10-23): there, a thing the game
-   * moves takes every tool as a point, not as its start spot (bridge/hold.ts). The same test as records() without the
-   * object: the timeline on screen, ● on, no Try running.
+   * moves takes every tool as a point, not as its start spot (bridge/hold.ts). The same test as records() for the picked
+   * object (none picked: the timeline on screen, ● on, no Try running).
    */
   function sendRec(force = false) {
-    const on = shown() && auto && !trying;
+    // For the picked object (studio-fix-0142 ⑫): one with no motion and no making moves its start spot as when folded,
+    // and the line under the strip says so ("Moving it here sets where it starts"), not "the game's motion adds up".
+    const key = d.picked();
+    const on = shown() && auto && !trying && (!key || records(key));
     if (!force && on === sentRec) return;
     sentRec = on;
     d.send({ type: 'studio:timeline/recording', on });
@@ -18782,7 +18801,17 @@ function createTimeline(d              , makePanel                             =
   }
   /** Is a gesture on `key` a key now (● on, the timeline open), or a move of its place? */
   // While Try runs the scene, a move is never a key (the time line is the game's clock then, not a moment of the clip).
-  const records = (key        ) => !trying && shown() && auto && (!!clipOf(key) || time > 0) && !!d.place(key);
+  // Only an object that has a motion already (its own, or a scene it is linked into — link() gives it a clip) or the
+  // one "Make a motion" is on records (studio-fix-0142, 2026-10-24, first-run check ⑫). WHY: before, `time > 0` was
+  // enough, so with the plate still open after a motion (the time line left at 1 s, ● on) a newcomer picked the orb,
+  // nudged it with → twice to fix where it starts, and got a new "orb's motion" (0 s → 1 s, plays at the start) saved
+  // as a change to the game. Moving something by hand is setting where it starts unless they asked for a motion; the
+  // one way into a first motion is "Make a motion" (studio-no-presets). `making` is checked apart from clipOf() since
+  // clipOf() hides the object's clips until the first move of a making (line ~263).
+  // (A function, not a const: sendRec() above reads it, and may run before this line is reached.)
+  function records(key        )          {
+    return !trying && shown() && auto && (!!clipOf(key) || making?.key === key) && !!d.place(key);
+  }
   /** What `key` shows now (its place + its clip at the time line). */
   const shownPose = (key        )                   => {
     const place = d.place(key);
@@ -19534,6 +19563,10 @@ function createTimeline(d              , makePanel                             =
       panel.render();
       // The plate is taller / shorter now: the shell lays the bottom out again (the game's inset, the chat box).
       d.layout();
+      // Narrow (studio-fix-0142 ⑬): Fine-tune grows the plate up over the game — keep the picked object above it.
+      // Not on PC: there the sheet is beside the rows, and a slide when it opens is ⑨'s question (not decided yet).
+      const key = d.picked();
+      if (on && open && d.narrow() && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
     },
     ...(d.ask ? { ask: () => askAbout(head()) } : {}),
   });
@@ -19564,11 +19597,15 @@ function createTimeline(d              , makePanel                             =
     // PC (studio-fix-0139, 2026-10-23): the plate rises over the foot of the game too, and a ship low in the frame was
     // under it — "Make a motion" asked for a drag the ruler then took. v0.1.31's "the camera stays put" still holds:
     // 'reveal' moves nothing unless the plate (or the card) covers the object's middle, then the short pan-only slide.
+    // studio-fix-0142 (⑬ of the fourth first-run check, 2026-10-24): a phone / the side window too — 'reveal', not
+    // 'focus'. focus centres the object in the WHOLE frame (bridge/editor.ts slideIntoFree says why), which on a phone
+    // is under the plate: the gate being moved was not on screen at all (neon-ja-57). reveal slides it into the part
+    // left above the plate (the inset layout() just sent), and falls back to focus when it is not drawn from here.
     const key = d.picked();
-    if (on && key) d.send({ type: 'studio:core/view', view: d.narrow() ? { action: 'focus', key } : { action: 'reveal', key } });
-    // fix-0141 ⑨: closed on PC, the camera goes back from the slides the plate made it take (the bridge keeps it where
-    // it is if the person moved it meanwhile).
-    else if (!on && !d.narrow()) d.send({ type: 'studio:core/view', view: { action: 'unreveal' } });
+    if (on && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
+    // fix-0141 ⑨: closed, the camera goes back from the slides the plate made it take (the bridge keeps it where it is
+    // if the person moved it meanwhile). Narrow too since studio-fix-0142, as it reveals there now.
+    else if (!on) d.send({ type: 'studio:core/view', view: { action: 'unreveal' } });
   }
   // Shown or not at the last render: when that flips (the Library, the UI layer, Play), the game gets its poses again.
   let wasShown = false;
@@ -20545,8 +20582,27 @@ class UndoStack {
   }
 }
 
+/**
+ * The one motion several objects' motion changes share (a linked motion — a scene — changed: its length, its "when",
+ * a second trigger), by its name; null when they do not share one. studio-fix-0142 (2026-10-24, first-run check ⑭):
+ * adding a second trigger to gate's motion (the ship linked into it) read "Undo: change 2 objects’s motion" (and the
+ * Japanese had a stray space) — wrong English, and "2 objects" for what the person saw as one motion. With this, the
+ * tooltip names the motion: "Undo: change gate’s motion" (i18n undo.motionNamed).
+ */
+function sharedMotion(changes          )                {
+  const uses = (m               ) => new Set((m?.clips ?? []).filter((c) => c.scene && c.use).map((c) => c.use ));
+  let common                     = null;
+  for (const c of changes) {
+    if (c.kind !== 'motion') continue;
+    const here = new Set([...uses(c.from), ...uses(c.to)]);
+    common = common ? new Set([...common].filter((u) => here.has(u))) : here;
+  }
+  return common && common.size === 1 ? [...common][0]  : null;
+}
+
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
+__def(__exports, "sharedMotion", () => sharedMotion);
 };
 __defs[58] = function (__exports) {
 'use strict';
@@ -23108,7 +23164,7 @@ const { receipt } = __require(54);
 const { createPalette } = __require(55);
 const { fitPicture } = __require(56);
 const { PlacementModel } = __require(34);
-const { UndoStack, poseChange } = __require(57);
+const { UndoStack, poseChange, sharedMotion } = __require(57);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(46);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(47);
@@ -23421,6 +23477,17 @@ function start(host            ) {
   // bar's "● AI" or ⌘K). `lineLeft`: when the pointer / keyboard last left it (LINE_GRACE_MS more after that).
   let lineShown = '';
   let lineGone = '';
+  /**
+   * PC with the motion timeline open (studio-fix-0142, ④ of the fourth first-run check, 2026-10-24): a finished AI line
+   * ("✓ In the game (1)", "Made the change") is a chip just left of the ask field (shell.css .ai-tuck), not a row above it. That row floated over the
+   * middle of the game, right where the picked object's strip and the object itself are (neon-ja-34: over the gate's
+   * strip; 45: over the picked ship). A press on the chip shows the whole line again (`aiTuckOpen` = that line's key)
+   * until the next line. What is still going on (working, asking, failed, kept as a note) is never tucked: it may need
+   * the person, and fix-0140 ④ already made the field one row there.
+   */
+  let aiTuckOpen = '';
+  const aiTuck = h('button', { type: 'button', class: 'ai-tuck', hidden: true, dataset: { part: 'ai-tuck', action: 'ai-tuck' },
+    onclick: () => ((aiTuckOpen = lineShown), renderAiLine()) });
   let lineFading = false;
   let lineTimer = 0;
   let lineLeft = 0;
@@ -24155,7 +24222,7 @@ function start(host            ) {
     const was = app.dataset.timeline;
     app.dataset.timeline = on ? 'open' : 'closed';
     // fix-0140 ④: the AI field is one row or two depending on the timeline (renderPresence) — redrawn when it opens / closes.
-    if (was !== undefined && was !== app.dataset.timeline) renderPresence();
+    if (was !== undefined && was !== app.dataset.timeline) (renderPresence(), renderAiLine());
     const hgt = on && !phone() ? `${el.offsetHeight}px` : '0px';
     if (app.style.getPropertyValue('--tl-h') !== hgt) app.style.setProperty('--tl-h', hgt);
     sendInset();
@@ -24967,6 +25034,13 @@ function start(host            ) {
       : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : kinds.has('name') ? 'rename' : 'move';
     const onObjects = e.changes.filter((c) => !libOnly(c.kind));
     const keys = [...new Set((onObjects.length ? onObjects : e.changes).map((c) => c.key))];
+    // Several objects' motion at once (studio-fix-0142 ⑭): a linked motion is one motion to the person — named by its
+    // name ("change gate’s motion", the motion's name being "gate’s motion"); else "change the motion of 2 objects",
+    // not "change 2 objects’s motion" (undo.n inside undo.motion's possessive).
+    if (what === 'motion' && keys.length > 1) {
+      const shared = sharedMotion(e.changes);
+      return shared ? t('undo.motionNamed', { name: shared }) : t('undo.motionN', { n: keys.length });
+    }
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0] ) : t('undo.n', { n: keys.length }) });
   }
 
@@ -25622,6 +25696,7 @@ function start(host            ) {
     }
     aiLine.hidden = !aiLine.childNodes.length;
     fadeLine(ph);
+    tuckAiLine(ph);
     if (focused && !aiLine.hidden) (aiLine.querySelector(`[data-action="${focused}"]`)                      )?.focus({ preventScroll: true });
     sendMarks();
     // The ask field becomes the answer field while the AI asks (and goes back after).
@@ -25662,6 +25737,21 @@ function start(host            ) {
     // A poll during the fade draws the line again: keep it fading.
     aiLine.classList.toggle('fading', lineFading);
     caption.classList.toggle('fading', lineFading && onlyLine());
+  }
+  /** ④ (studio-fix-0142): a finished line as a chip beside the ask field while the timeline is open on PC (`aiTuck` above). */
+  function tuckAiLine(ph         ) {
+    const tuck = !phone() && app.dataset.timeline === 'open' && !aiLine.hidden && lineFades(ph) && !!lineShown && aiTuckOpen !== lineShown;
+    aiLine.classList.toggle('tucked', tuck);
+    aiTuck.hidden = !tuck;
+    if (!tuck) return;
+    const box = placementPanel.askEl;
+    if (aiTuck.parentElement !== box) box.insertBefore(aiTuck, box.querySelector('.ask-input'));
+    const head = aiLine.querySelector('.ai-head')?.textContent?.trim() || aiLine.textContent?.trim() || '';
+    if (aiTuck.dataset.text !== head) {
+      aiTuck.dataset.text = head;
+      aiTuck.replaceChildren(h('span', { class: 'ai-tuck-dot', 'aria-hidden': 'true' }), ...(ph === 'done' ? [icon('check')] : []), h('span', { class: 'ai-tuck-w', text: head }));
+    }
+    aiTuck.title = aiLine.textContent?.trim() || head;
   }
   /** The caption shows nothing but the AI line (then the whole frosted card fades with it, not just its text). */
   function onlyLine()          {

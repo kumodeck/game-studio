@@ -108,3 +108,21 @@ export class UndoStack {
     return this.done.length;
   }
 }
+
+/**
+ * The one motion several objects' motion changes share (a linked motion — a scene — changed: its length, its "when",
+ * a second trigger), by its name; null when they do not share one. studio-fix-0142 (2026-10-24, first-run check ⑭):
+ * adding a second trigger to gate's motion (the ship linked into it) read "Undo: change 2 objects’s motion" (and the
+ * Japanese had a stray space) — wrong English, and "2 objects" for what the person saw as one motion. With this, the
+ * tooltip names the motion: "Undo: change gate’s motion" (i18n undo.motionNamed).
+ */
+export function sharedMotion(changes: Change[]): string | null {
+  const uses = (m: Motion | null) => new Set((m?.clips ?? []).filter((c) => c.scene && c.use).map((c) => c.use!));
+  let common: Set<string> | null = null;
+  for (const c of changes) {
+    if (c.kind !== 'motion') continue;
+    const here = new Set([...uses(c.from), ...uses(c.to)]);
+    common = common ? new Set([...common].filter((u) => here.has(u))) : here;
+  }
+  return common && common.size === 1 ? [...common][0]! : null;
+}

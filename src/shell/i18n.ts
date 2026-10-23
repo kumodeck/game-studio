@@ -33,6 +33,10 @@ const en = {
   'undo.remove': 'delete {name}',
   'undo.edit': 'change {name}',
   'undo.motion': 'change {name}’s motion',
+  // Several objects' motion, not one linked motion (studio-fix-0142 ⑭: was "change 2 objects’s motion").
+  'undo.motionN': 'change the motion of {n} objects',
+  // One linked motion, by the motion's own name ("gate’s motion", "Hop"): "change gate’s motion".
+  'undo.motionNamed': 'change {name}',
   // The card's Motion row (motion-gui, 2026-10-22; since studio-timeline: timeline-wire.ts cardRow): how an object moves by itself.
   'motion.label': 'Motion',
   // A new motion's first name (studio-words-plan, 2026-10-23): it was "Motion" in both languages — the object's name
@@ -890,6 +894,9 @@ const ja: Partial<Record<Key, string>> = {
   'undo.remove': '{name} を削除',
   'undo.edit': '{name} を変更',
   'undo.motion': '{name} の動きを変更',
+  'undo.motionN': '{n} 個の動きを変更',
+  // Right after the motion's name, no space (the Japanese reads as one phrase).
+  'undo.motionNamed': '{name}を変更',
   'motion.label': '動き',
   'motion.firstName': '{name} の動き',
   'motion.none': 'なし',
@@ -1216,11 +1223,13 @@ const ja: Partial<Record<Key, string>> = {
   'play.paused': '止めています',
   'play.resume': '続ける',
   'play.resumeTip': '止めたところから続ける（P）',
-  'play.sees': '{ai}はこの瞬間を見ています',
+  // \u200b (zero-width space) = where it may wrap: the pause panel is word-break: keep-all, so Japanese wraps only there
+  // (studio-fix-0142 ⑮: it broke mid-word before).
+  'play.sees': '{ai}は\u200bこの瞬間を\u200b見ています',
   'play.seesError': 'エラー 1 件',
   'play.seesErrors': 'エラー # 件',
   'play.chatPlaceholder': 'この瞬間について {ai}に頼む…',
-  'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
+  'play.chatEmpty': '見えていることを\u200b何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
   'play.send': '送る',
   'play.move': '動かす',
   'play.moveTip': '止めた所で物を動かす（M）',

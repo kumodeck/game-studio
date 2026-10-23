@@ -77,7 +77,7 @@ import { receipt, type SavedThing } from './save-receipt.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
-import { UndoStack, poseChange, type Change, type UndoEntry } from './undo.ts';
+import { UndoStack, poseChange, sharedMotion, type Change, type UndoEntry } from './undo.ts';
 import { copyKey, groupLayerMoves, groupLayerPossible, sameKind } from './edit-ops.ts';
 import { displayName, forgetNames, noteItems, useGivenNames, useNameLang } from './names.ts';
 import { keyOf, tipText } from './keymap.ts';
@@ -390,6 +390,17 @@ export function start(host: StudioHost) {
   // bar's "● AI" or ⌘K). `lineLeft`: when the pointer / keyboard last left it (LINE_GRACE_MS more after that).
   let lineShown = '';
   let lineGone = '';
+  /**
+   * PC with the motion timeline open (studio-fix-0142, ④ of the fourth first-run check, 2026-10-24): a finished AI line
+   * ("✓ In the game (1)", "Made the change") is a chip just left of the ask field (shell.css .ai-tuck), not a row above it. That row floated over the
+   * middle of the game, right where the picked object's strip and the object itself are (neon-ja-34: over the gate's
+   * strip; 45: over the picked ship). A press on the chip shows the whole line again (`aiTuckOpen` = that line's key)
+   * until the next line. What is still going on (working, asking, failed, kept as a note) is never tucked: it may need
+   * the person, and fix-0140 ④ already made the field one row there.
+   */
+  let aiTuckOpen = '';
+  const aiTuck = h('button', { type: 'button', class: 'ai-tuck', hidden: true, dataset: { part: 'ai-tuck', action: 'ai-tuck' },
+    onclick: () => ((aiTuckOpen = lineShown), renderAiLine()) });
   let lineFading = false;
   let lineTimer = 0;
   let lineLeft = 0;
@@ -1124,7 +1135,7 @@ export function start(host: StudioHost) {
     const was = app.dataset.timeline;
     app.dataset.timeline = on ? 'open' : 'closed';
     // fix-0140 ④: the AI field is one row or two depending on the timeline (renderPresence) — redrawn when it opens / closes.
-    if (was !== undefined && was !== app.dataset.timeline) renderPresence();
+    if (was !== undefined && was !== app.dataset.timeline) (renderPresence(), renderAiLine());
     const hgt = on && !phone() ? `${el.offsetHeight}px` : '0px';
     if (app.style.getPropertyValue('--tl-h') !== hgt) app.style.setProperty('--tl-h', hgt);
     sendInset();
@@ -1936,6 +1947,13 @@ export function start(host: StudioHost) {
       : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : kinds.has('name') ? 'rename' : 'move';
     const onObjects = e.changes.filter((c) => !libOnly(c.kind));
     const keys = [...new Set((onObjects.length ? onObjects : e.changes).map((c) => c.key))];
+    // Several objects' motion at once (studio-fix-0142 ⑭): a linked motion is one motion to the person — named by its
+    // name ("change gate’s motion", the motion's name being "gate’s motion"); else "change the motion of 2 objects",
+    // not "change 2 objects’s motion" (undo.n inside undo.motion's possessive).
+    if (what === 'motion' && keys.length > 1) {
+      const shared = sharedMotion(e.changes);
+      return shared ? t('undo.motionNamed', { name: shared }) : t('undo.motionN', { n: keys.length });
+    }
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0]!) : t('undo.n', { n: keys.length }) });
   }
 
@@ -2591,6 +2609,7 @@ export function start(host: StudioHost) {
     }
     aiLine.hidden = !aiLine.childNodes.length;
     fadeLine(ph);
+    tuckAiLine(ph);
     if (focused && !aiLine.hidden) (aiLine.querySelector(`[data-action="${focused}"]`) as HTMLElement | null)?.focus({ preventScroll: true });
     sendMarks();
     // The ask field becomes the answer field while the AI asks (and goes back after).
@@ -2631,6 +2650,21 @@ export function start(host: StudioHost) {
     // A poll during the fade draws the line again: keep it fading.
     aiLine.classList.toggle('fading', lineFading);
     caption.classList.toggle('fading', lineFading && onlyLine());
+  }
+  /** ④ (studio-fix-0142): a finished line as a chip beside the ask field while the timeline is open on PC (`aiTuck` above). */
+  function tuckAiLine(ph: AiPhase) {
+    const tuck = !phone() && app.dataset.timeline === 'open' && !aiLine.hidden && lineFades(ph) && !!lineShown && aiTuckOpen !== lineShown;
+    aiLine.classList.toggle('tucked', tuck);
+    aiTuck.hidden = !tuck;
+    if (!tuck) return;
+    const box = placementPanel.askEl;
+    if (aiTuck.parentElement !== box) box.insertBefore(aiTuck, box.querySelector('.ask-input'));
+    const head = aiLine.querySelector('.ai-head')?.textContent?.trim() || aiLine.textContent?.trim() || '';
+    if (aiTuck.dataset.text !== head) {
+      aiTuck.dataset.text = head;
+      aiTuck.replaceChildren(h('span', { class: 'ai-tuck-dot', 'aria-hidden': 'true' }), ...(ph === 'done' ? [icon('check')] : []), h('span', { class: 'ai-tuck-w', text: head }));
+    }
+    aiTuck.title = aiLine.textContent?.trim() || head;
   }
   /** The caption shows nothing but the AI line (then the whole frosted card fades with it, not just its text). */
   function onlyLine(): boolean {

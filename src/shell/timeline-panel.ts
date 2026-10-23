@@ -952,6 +952,13 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // A scene (studio-timeline-2) says what it is — one motion, this many objects — over the rows it names. Said once
     // there are two (studio-motion-focus: a scene of one is the object's own motion, nothing to say).
     rulerPad.replaceChildren(...(v.clip && v.scene && v.scene.n > 1 ? [h('span', { class: 'tl-scene', title: t('tl.sceneTip'), dataset: { part: 'tl-scene' }, text: t('tl.scene', { n: v.scene.n }) })] : []));
+    // A phone (studio-fix-0142, ⑬ of the fourth first-run check, 2026-10-24): ⌄ goes to the names column's head, over
+    // the rows (the right of "Linked · 2"). In the head it had a row of its own — the sentence fills the first row and
+    // "when", Fine-tune and ✦ AI the second, at 44 px a finger each — which made a plate already 3/4 of the screen
+    // taller. The side window keeps it in the head (there it fits on the first row). Moved after the measure above.
+    const shell = el.closest<HTMLElement>('.shell');
+    const foldEl = tightNow && shell?.dataset.layout === 'phone' && shell.dataset.fit !== 'side' ? head.querySelector<HTMLElement>('.tl-fold') : null;
+    if (foldEl) rulerPad.append(foldEl);
     renderRows(v);
     if (gripHad) names.querySelector<HTMLElement>(`[data-grip="${CSS.escape(gripHad)}"]`)?.focus({ preventScroll: true });
     // The link list follows its button (drawn anew with the rows), and closes once it is done (linked, or Esc in the game).

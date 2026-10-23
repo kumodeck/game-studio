@@ -328,11 +328,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
   /**
    * Tell the game page whether a move is a motion's point now (studio-motion-move, 2026-10-23): there, a thing the game
-   * moves takes every tool as a point, not as its start spot (bridge/hold.ts). The same test as records() without the
-   * object: the timeline on screen, ● on, no Try running.
+   * moves takes every tool as a point, not as its start spot (bridge/hold.ts). The same test as records() for the picked
+   * object (none picked: the timeline on screen, ● on, no Try running).
    */
   function sendRec(force = false) {
-    const on = shown() && auto && !trying;
+    // For the picked object (studio-fix-0142 ⑫): one with no motion and no making moves its start spot as when folded,
+    // and the line under the strip says so ("Moving it here sets where it starts"), not "the game's motion adds up".
+    const key = d.picked();
+    const on = shown() && auto && !trying && (!key || records(key));
     if (!force && on === sentRec) return;
     sentRec = on;
     d.send({ type: 'studio:timeline/recording', on });
@@ -433,7 +436,17 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
   /** Is a gesture on `key` a key now (● on, the timeline open), or a move of its place? */
   // While Try runs the scene, a move is never a key (the time line is the game's clock then, not a moment of the clip).
-  const records = (key: string) => !trying && shown() && auto && (!!clipOf(key) || time > 0) && !!d.place(key);
+  // Only an object that has a motion already (its own, or a scene it is linked into — link() gives it a clip) or the
+  // one "Make a motion" is on records (studio-fix-0142, 2026-10-24, first-run check ⑫). WHY: before, `time > 0` was
+  // enough, so with the plate still open after a motion (the time line left at 1 s, ● on) a newcomer picked the orb,
+  // nudged it with → twice to fix where it starts, and got a new "orb's motion" (0 s → 1 s, plays at the start) saved
+  // as a change to the game. Moving something by hand is setting where it starts unless they asked for a motion; the
+  // one way into a first motion is "Make a motion" (studio-no-presets). `making` is checked apart from clipOf() since
+  // clipOf() hides the object's clips until the first move of a making (line ~263).
+  // (A function, not a const: sendRec() above reads it, and may run before this line is reached.)
+  function records(key: string): boolean {
+    return !trying && shown() && auto && (!!clipOf(key) || making?.key === key) && !!d.place(key);
+  }
   /** What `key` shows now (its place + its clip at the time line). */
   const shownPose = (key: string): Pose | undefined => {
     const place = d.place(key);
@@ -1185,6 +1198,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       panel.render();
       // The plate is taller / shorter now: the shell lays the bottom out again (the game's inset, the chat box).
       d.layout();
+      // Narrow (studio-fix-0142 ⑬): Fine-tune grows the plate up over the game — keep the picked object above it.
+      // Not on PC: there the sheet is beside the rows, and a slide when it opens is ⑨'s question (not decided yet).
+      const key = d.picked();
+      if (on && open && d.narrow() && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
     },
     ...(d.ask ? { ask: () => askAbout(head()) } : {}),
   });
@@ -1215,11 +1232,15 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     // PC (studio-fix-0139, 2026-10-23): the plate rises over the foot of the game too, and a ship low in the frame was
     // under it — "Make a motion" asked for a drag the ruler then took. v0.1.31's "the camera stays put" still holds:
     // 'reveal' moves nothing unless the plate (or the card) covers the object's middle, then the short pan-only slide.
+    // studio-fix-0142 (⑬ of the fourth first-run check, 2026-10-24): a phone / the side window too — 'reveal', not
+    // 'focus'. focus centres the object in the WHOLE frame (bridge/editor.ts slideIntoFree says why), which on a phone
+    // is under the plate: the gate being moved was not on screen at all (neon-ja-57). reveal slides it into the part
+    // left above the plate (the inset layout() just sent), and falls back to focus when it is not drawn from here.
     const key = d.picked();
-    if (on && key) d.send({ type: 'studio:core/view', view: d.narrow() ? { action: 'focus', key } : { action: 'reveal', key } });
-    // fix-0141 ⑨: closed on PC, the camera goes back from the slides the plate made it take (the bridge keeps it where
-    // it is if the person moved it meanwhile).
-    else if (!on && !d.narrow()) d.send({ type: 'studio:core/view', view: { action: 'unreveal' } });
+    if (on && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
+    // fix-0141 ⑨: closed, the camera goes back from the slides the plate made it take (the bridge keeps it where it is
+    // if the person moved it meanwhile). Narrow too since studio-fix-0142, as it reveals there now.
+    else if (!on) d.send({ type: 'studio:core/view', view: { action: 'unreveal' } });
   }
   // Shown or not at the last render: when that flips (the Library, the UI layer, Play), the game gets its poses again.
   let wasShown = false;

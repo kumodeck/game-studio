@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.41 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.42 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -17464,10 +17464,13 @@ const CHAT_CSS = `
 .chat .top { display: flex; align-items: center; gap: 10px; padding: 12px 10px 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .chat .title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat .title b { font-weight: 600; font-size: 14px; }
-/* Wraps instead of "Claude sees this mo…" (plan step 6: with ✥ Move and ▶ Resume P beside it the line was cut). */
-.chat .title .sees { color: rgba(255,255,255,.55); font-size: 12px; overflow-wrap: anywhere; }
+/* Wraps instead of "Claude sees this mo…" (plan step 6: with ✥ Move and ▶ Resume P beside it the line was cut).
+   keep-all (studio-fix-0142 ⑮, 2026-10-24): Japanese wraps only at a space or at the zero-width spaces its strings put
+   between phrases (i18n.ts play.sees / play.chatEmpty) — before, it broke mid-word ("…sees this mome / nt" in Japanese).
+   English is unchanged (it breaks at spaces anyway); overflow-wrap: anywhere stays as the last resort for a long word. */
+.chat .title .sees { color: rgba(255,255,255,.55); font-size: 12px; word-break: keep-all; overflow-wrap: anywhere; }
 .chat .talk { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
-.chat .empty { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; }
+.chat .empty { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; word-break: keep-all; overflow-wrap: anywhere; }
 .chat .you { align-self: flex-end; max-width: 85%; background: rgba(255,255,255,.12); padding: 7px 11px; border-radius: 12px 12px 4px 12px;
   white-space: pre-wrap; overflow-wrap: anywhere; }
 .chat .ai { align-self: stretch; display: flex; gap: 9px; }

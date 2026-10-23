@@ -113,12 +113,14 @@ function rig() {
     place: (k) => places[k], order: () => Object.keys(places), label: (k) => k, select: (k) => (picked = k), changed: () => {},
     layout: () => {}, numbers: () => {}, narrow: () => false, t: (k) => k,
   }, (v, a) => ((view = v), (acts = a), stand as never));
-  return { tl, undo, acts: () => acts, view: () => view() };
+  return { tl, undo, store, acts: () => acts, view: () => view() };
 }
 const at = (x: number): Pose => ({ p: [x, 0, 0], r: 0, s: 1 });
 
 test('the picked keys\' Delete button removes them as the Delete key does, in one undo step', () => {
   const r = rig();
+  // A motion it has already (studio-fix-0142 ⑫: an object with none and no "Make a motion" moves its place instead).
+  r.store.set('crate', { clips: [{ name: 'Slide', len: 2, repeat: 'once', start: true, keys: { p: [{ t: 0, v: [0, 0, 0] }] } }] });
   r.tl.setOpen(true);
   r.tl.setTime(2);
   r.tl.moved('crate', at(3), true, at(0));

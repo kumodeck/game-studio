@@ -340,7 +340,11 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
    same words and chevron, no frame. v0.1.25 had a framed "Levels ⌄" pill here (studio-uniforms), which read as a
    button among the path's words; a hands-on try: "game name, scene, level name". .level-add shares .level-switch's
    rules above (a class of its own, so "the crumb of a game with levels" stays one selector). */
-.level-add-slot { display: inline-flex; min-width: 0; }
+/* display: contents, as .level-crumb (studio-fix-0142, ① of the fourth first-run check, 2026-10-24): as an inline-flex
+   box of its own, its "/" sat on the box's line, not the path's — 5 px above the path's other "/" (y 13–23 against
+   18–28) in a game without levels. Now the "/" and the button are items of .brand's own row (align-items: center,
+   gap 8px), like every other part of the path. */
+.level-add-slot { display: contents; }
 /* The line after New level / Duplicate (main.ts renderLevelMade): under the top bar's left end, where the level's name just
    appeared; the glass of every floating thing, the text size, no colour (it is the editor speaking, not the AI). */
 .level-made { position: absolute; top: 10px; left: 12px; z-index: 6; max-width: min(520px, calc(100% - 24px)); display: flex; align-items: center; gap: 10px;
@@ -663,6 +667,19 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .toast { display: none; }
 .toast.on { display: block; }
 .ai-line { display: flex; align-items: center; gap: 12px; min-height: var(--h); }
+/* ④ (studio-fix-0142, main.ts tuckAiLine): with the timeline open on PC a finished line is a chip just left of the ask
+   field instead — this row is not drawn (the caption card then hides too: captionShows reads the computed display).
+   Outside the field, not in it: in it, the chip took the room of the field's example ("e.g. start when the player is
+   near" was cut, the first walk after the change). The field is centred on the game, so its left has room. */
+.ai-line.tucked { display: none; }
+.ai-tuck { position: absolute; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); max-width: 220px; display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 12px 0 10px; border-radius: 999px; background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow); color: var(--text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; }
+.ai-tuck[hidden] { display: none; }
+.ai-tuck:hover { background: var(--raise-3); }
+.ai-tuck .icon { flex: none; width: 12px; height: 12px; }
+.ai-tuck-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ai); }
+.ai-tuck-w { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ai-line::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--ai); }
 .ai-line.nudge::before { background: var(--text-3); }
 .ai-line.working::before, .ai-line.received::before { animation: studio-pulse 1.2s var(--ease) infinite; }
@@ -1740,6 +1757,15 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .tl-sel-del { height: 40px; border-radius: 20px; padding: 0 14px 0 10px; }
 /* "Linked · 3" sits in the names column's head, over the rows it names (it was on the line). */
 .tl-ruler-pad { display: flex; align-items: center; padding-left: 8px; }
+/* A phone's ⌄ (studio-fix-0142 ⑬, timeline-panel.ts render()): at the right of the names column's head, the ruler's
+   height; on a finger the ruler is 44 px (below) so it is a full touch target. */
+.tl-ruler-pad > .tl-fold { flex: none; margin-left: auto; width: 36px; height: var(--tl-ruler); min-height: 0; }
+/* A phone (studio-fix-0142, ⑬ of the fourth first-run check, 2026-10-24): with Fine-tune open, the plate and the ask bar
+   covered about 610 of 844 px and the gate being moved was not on screen. Fine-tune's sheet is a fifth of the screen
+   (it scrolls; it was a third) and the rows show the ruler and three rows (more scroll), so the plate stays under about
+   half the screen and the camera has room above it for the picked object (timeline-wire.ts reveal). */
+.shell[data-layout="phone"]:not([data-fit="side"]) .timeline.narrow .tl-fine { max-height: min(20dvh, calc(var(--tl-ruler) + 6 * var(--tl-row))); }
+.shell[data-layout="phone"]:not([data-fit="side"]) .timeline.narrow .tl-body { max-height: calc(var(--tl-ruler) + 3 * var(--tl-row)); }
 /* The motion's menu lives in ⋯ (studio-ui-lead): as wide as its name, up to the panel; only a very long name ends in "…" there. */
 .tl-more .tl-pick { max-width: 100%; }
 .tl-more .tl-pick select { max-width: 100%; text-overflow: ellipsis; }
@@ -1820,7 +1846,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    the pressable box grows (no fill until hover / pressed, as before). The side window (data-fit="side") keeps its
    mouse sizes: it is a pointer there. */
 @media (pointer: coarse) {
-  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-row: 44px; }
+  /* --tl-ruler 44 (studio-fix-0142 ⑬): ⌄ lives in the ruler's row on a phone now, and is pressed with a finger. */
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-row: 44px; --tl-ruler: 44px; }
+  .shell[data-layout="phone"]:not([data-fit="side"]) .tl-ruler-pad > .tl-fold { width: 44px; height: 44px; }
   .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-grip,
   .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-twist,
   .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-leave,
@@ -1838,6 +1866,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 }
 /* A linked object with no points yet says where they will come from (tl.link.empty, "● Rec motion on: move it, its
    points go here"): on a phone the lane is too narrow for one line and it ended in "…" (fix-0141, J1 ③ / I3). Two lines
-   in the lane, centred on it. */
-.shell[data-layout="phone"]:not([data-fit="side"]) .tl-lane-hint { white-space: normal; line-height: 1.25; top: 50%; transform: translateY(-50%);
+   in the lane, centred on it. The side window too (studio-fix-0142, J1 of the fourth first-run check): at 400×600 the
+   Japanese words (264 px) ended in "…" in a 253 px lane. Its rows are 28 px, and two lines of --fs-s (11 px there)
+   at 1.2 are 26.4 px, so they fit; a hint that fits on one line stays one line, centred as before. */
+.shell[data-layout="phone"] .tl-lane-hint { white-space: normal; line-height: 1.2; top: 50%; transform: translateY(-50%);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
