@@ -1100,7 +1100,14 @@ export function start(host: StudioHost) {
     insetSent = k;
     send({ type: 'studio:core/ui', handlePx: handlePx(), inset, theme });
   };
-  new ResizeObserver(() => sendInset()).observe(dock);
+  new ResizeObserver(() => {
+    sendInset();
+    // fix-0141 (⑪ of the first-run check, 2026-10-24): the Library's grid leaves room for the dock as tall as it is now
+    // (shell.css .gsl-grid). It left a fixed 96 px, and the dock with the AI's line and presence over the field is three
+    // rows: the last row of tiles (neon's second motion, Lantern Cove's three lighthouses) sat under it, names covered.
+    const dh = `${Math.round(dock.offsetHeight)}px`;
+    if (app.style.getPropertyValue('--dock-h') !== dh) app.style.setProperty('--dock-h', dh);
+  }).observe(dock);
   /**
    * Where the timeline plate goes (studio-timeline): PC, at the foot of the game across its width, the ask bar lifted
    * over it (--tl-h); a phone / the side window, in the dock right above the picked object's card (one stack at the
@@ -1333,6 +1340,7 @@ export function start(host: StudioHost) {
       if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
       return motionable(selected) ? selected : null;
     },
+    several: () => editing && !playing && dim === '3d' && editLayer === 'world' && group.length > 1 && !libraryShown() && group.some((k) => motionable(k)),
     motions: (k) => {
       const names = (timeline.motionOf(k)?.clips ?? []).map((c) => c.name);
       const first = timeline.clipName(k);
@@ -2544,8 +2552,14 @@ export function start(host: StudioHost) {
       const s = aiStatus!;
       const n = typeof s.changed === 'number' ? s.changed : 0;
       const count = ph === 'failed' ? t('ai.failed') : n === 1 ? t('ai.done1') : n > 1 ? t('ai.doneN', { n }) : t('ai.done');
-      // The AI's one-line reply first (its note), then what you asked and the count.
-      two(s.note || count, [covered ? asked : '', s.note ? count : ''].filter(Boolean).join(' · '));
+      // The AI's one-line reply first (its note), then the count, then "More in Claude".
+      // fix-0141 (J1 ⑤ and ⑩ of the first-run check, 2026-10-24): the second row was "“what you asked” · 3 objects ch…",
+      // cut by Undo AI change and 👁 (English, 1280) — and what was asked says the same as the AI's own words above it, so
+      // it is gone here (it stays while the AI works). And with the AI's words and nothing counted, the product's "Done"
+      // after them read as "Done" twice ("Made the change · Done"): the AI's words are the done, the row is only
+      // "More in Claude". A change in code that Undo AI change cannot take back (no count) leaves what changed to
+      // "More in Claude" — the AI's chat says it in full.
+      two(s.note || count, s.note && (ph === 'failed' || n > 0) ? count : '');
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
         const keys = [...aiMarks.keys()].filter((k) => items.some((i) => i.key === k));
@@ -4052,17 +4066,24 @@ export function start(host: StudioHost) {
   /**
    * The line after New level / Duplicate (level-menu2, 2026-10-23: one short line — "Level 2 made. ⌘Z to undo."; v0.1.25
    * said what it was a copy of and what Save does, three sentences): the new level can look just like the last one,
-   * so the line says where you are. A phone has no ⌘Z: its line has an Undo button instead. It stays until the first
-   * change on the new level, a level change, Save or ×; not a toast that times out.
+   * so the line says where you are. It stays until the first change on the new level, a level change, Save or ×; not a
+   * toast that times out.
+   * fix-0141 (C4 of the first-run check, 2026-10-24): "Level 2 made · Undo" everywhere — the Undo is a button on PC too.
+   * It was "Level 2 made. ⌘Z to undo." with no button (only the phone had one), and a first-time maker reads the line
+   * as the way back, not the top ↶ or a key. The key is the button's tooltip and the line's (level.made, the old words).
    */
   function renderLevelMade() {
     const on = !!levelMade && !playing && levels.active && !undo.canUndo;
     levelNote.hidden = !on;
-    if (!on) return levelNote.replaceChildren();
+    if (!on) {
+      levelNote.title = '';
+      return levelNote.replaceChildren();
+    }
     const key = phone() ? '' : keyOf('undo', isMac());
+    levelNote.title = key ? t('level.made', { name: levelMade!.name, key }) : '';
     levelNote.replaceChildren(
-      h('span', { class: 'level-made-text', text: key ? t('level.made', { name: levelMade!.name, key }) : t('level.madeTouch', { name: levelMade!.name }) }),
-      ...(key ? [] : [h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() })]),
+      h('span', { class: 'level-made-text', text: t('level.madeTouch', { name: levelMade!.name }) }),
+      h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), title: key ? `${t('btn.undo')} (${key})` : t('btn.undo'), onclick: () => unmakeLevel() }),
       h('button', { type: 'button', class: 'level-made-close', dataset: { action: 'level-made-close' }, 'aria-label': t('level.madeClose'), title: t('level.madeClose'), onclick: () => {
         levelNote.hidden = true;
       } }, icon('close')),

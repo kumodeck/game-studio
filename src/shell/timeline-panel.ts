@@ -59,6 +59,9 @@ export function whenShort(t: (k: string, v?: Record<string, string | number>) =>
   if (w.on === 'key') return `⌨ ${keyName(w.key)}${stop}`;
   if (w.on === 'after') return `↳ ${w.use}${stop}`;
   if (w.on === 'cue') return `✦ ${w.cue}${stop}`;
+  // fix-0141 (H4, 2026-10-24): "Custom" with no words yet is not something the AI was asked — "✦ Ask Claude" (short.say)
+  // read as a request nobody made. The same word as the Starts menu (tl.when.sayNow); with words it stays the AI's.
+  if (w.on === 'say' && !w.say) return `${t('tl.when.sayNow')}${stop}`;
   return `${AI_TRIGGERS.includes(w.on) ? '✦ ' : ''}${t(`tl.when.short.${w.on}`)}${stop}`;
 }
 
@@ -460,7 +463,12 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // to a first-time maker. A motion that plays once already ends by itself, so the Stops menu is only for one that
     // goes on (Repeats / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
     // what it has stays visible and can be set back to Never.
-    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+    // fix-0141 (D10 of the first-run check, 2026-10-24): "When signaled" (the Japanese says "a signal") is the game's code speaking —
+    // a cue only the AI can wire up — and a first-time maker could pick it and get a motion that never stops for a reason
+    // they cannot see. It is in the menu only when the motion already stops on a cue (the AI made it so), so what it has
+    // stays visible and can be set back to Never / some rounds; otherwise the menu is Never / After some rounds.
+    const stops: [string, string][] = [['never', t('tl.until.never')], ['times', t('tl.until.times')], ...(u?.cue ? [['cue', t('tl.until.cue')] as [string, string]] : [])];
+    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), stops, kind, (k) =>
       act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
     if (u?.times) loop.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
       const n = Math.round(parseFloat(x));

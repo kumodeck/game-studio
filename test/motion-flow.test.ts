@@ -93,6 +93,17 @@ test('attach + show: the plate opens on the attached motion, "attached" with Sta
   assert.equal(r.tl.attach('crate', 'Nope'), false, 'not a Library motion');
 });
 
+// fix-0141 (H4 of the first-run check, 2026-10-24): a second Library motion plays after the one before it, not "Custom
+// (ask your AI)" — the card said "✦ Ask Claude" when nobody had asked.
+test('attach a second Library motion: it plays after the last one (no AI words)', () => {
+  const r = rig();
+  r.lib.set('Spin', { name: 'Spin', len: 2, repeat: 'once', keys: { r: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [0, 6.2832, 0] }] } });
+  r.pick('crate');
+  assert.equal(r.tl.attach('crate', 'Hop'), true);
+  assert.equal(r.tl.attach('crate', 'Spin'), true);
+  assert.deepEqual(r.tl.motionOf('crate')!.clips!.map((c) => [c.use, c.when]), [['Hop', { on: 'start' }], ['Spin', { on: 'after', use: 'Hop' }]]);
+});
+
 // studio-motion-line (2026-10-23): the first-time three steps are gone (the line says the next step), and "Fine-tune"
 // is remembered — opened once, the plate opens with it open (the game's ui prefs `seen`, test/motion-line.test.ts has more).
 test('no first-time steps any more; Fine-tune, once opened, stays open (seen: timeline-fine)', () => {

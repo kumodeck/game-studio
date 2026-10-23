@@ -158,7 +158,7 @@ async function flow() {
     if (args.includes('--verbose')) console.log(`  Canyon: ${canyonKeys.join(' ')}\n  Level 4 keeps: ${kept.join(' ')}`);
     assert.ok(kept.length < canyonKeys.length && !kept.includes('crystal-1'), 'the placed objects are gone');
     assert.ok(ground.length > 0 && ground.every((k) => kept.includes(k)), `the ground stays (${ground.join(', ')})`);
-    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent : ''; })()`), /^Level 4 made\. (⌘|Ctrl\+)Z to undo\.$/, 'one short line');
+    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent + ' | ' + l.title + ' | ' + (l.querySelector('[data-action=level-made-undo]')?.title ?? '') : ''; })()`), /^Level 4 made\.Undo \| Level 4 made\. (⌘|Ctrl\+)Z to undo\. \| Undo \((⌘|Ctrl\+)Z\)$/, 'one short line');
     assert.match(await p.saveCount(), /2/, 'Meadow\'s move and the new level');
     const mod0 = process.platform === 'darwin' ? 4 : 2;
     await p.page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: mod0 });

@@ -346,6 +346,20 @@ export function createEditor(deps: EditorDeps): Editor {
   const CENTRE = 0.6; // 0.6 = the middle 60 % of the seen part (the review's number); 1.0 = just inside the edges
   const GLIDE_MS = 350;
   let panGlide = 0;
+  /**
+   * The slides made while PC's timeline plate is open (fix-0141, ⑨ of the first-run check, 2026-10-24): `from` = the
+   * view before the first one, `to` = the view after the last one. The plate closing ('unreveal') puts `from` back when
+   * the camera is still at `to` — nobody moved it since. WHY: with Fine-tune open the plate is tall, and picking the
+   * ship under it slid the camera so far that the gate went from ~215 px to ~150 px wide and stayed so after the plate
+   * closed — a hands-on try's "the camera pulls back (the game turns into a speck)". Open from 'reveal' (the plate opened)
+   * to 'unreveal'; null = not tracking.
+   */
+  let plateSlides: { from: unknown; to: string | null } | null = null;
+  const viewSig = () => JSON.stringify(adapter.view.state(), (_k, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v));
+  /** A slide has ended: the view it left the camera in (only while the plate is open). */
+  const slid = () => {
+    if (plateSlides) plateSlides.to = viewSig();
+  };
   // The last pick from the list and when (see core/ui below): the card that the pick brings can make a phone's sheet
   // taller a moment later and cover the object the person just asked to see.
   let listPick: { key: string; at: number } | null = null; // the running slide's generation (0 = none); a new pick stops the old one where it is
@@ -440,16 +454,21 @@ export function createEditor(deps: EditorDeps): Editor {
     if (state.multi || (seenNow(key) && (!middle || middleFree(key)))) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
+    // The first slide since the plate opened keeps where the camera was; a later one after the person moved the
+    // camera starts from their view (theirs is what closing goes back to).
+    if (plateSlides && (plateSlides.to === null || plateSlides.to !== viewSig())) plateSlides = { from, to: null };
     const total = panIntoMiddle(key);
     if (!total) {
       // Not drawn at all from here (behind the camera, hidden): the adapter's focus is the only way to show it.
       // Rare (a list pick of something behind you); it frames the object like before.
       adapter.view.focus(key);
       slideIntoFree(key);
+      slid();
       postView();
       return;
     }
     if (!adapter.view.restore) {
+      plateSlides = null; // no way back: closing the plate leaves it
       postView();
       return; // no way back to the start: the slide happens at once
     }
@@ -467,6 +486,7 @@ export function createEditor(deps: EditorDeps): Editor {
       if (t < 1) core.time.raf(tick);
       else {
         panGlide = 0;
+        slid();
         postView();
       }
     };
@@ -1097,7 +1117,7 @@ export function createEditor(deps: EditorDeps): Editor {
           break;
         case 'studio:placement/motion':
           // studio-motion-tool: the Motion button after the strip's tools. `label` is shown as text only (title, aria).
-          motionBtn = { show: !!msg.show, has: !!msg.has, label: typeof msg.label === 'string' ? msg.label.slice(0, 160) : '', open: !!(msg as { open?: boolean }).open };
+          motionBtn = { show: !!msg.show, has: !!msg.has, label: typeof msg.label === 'string' ? msg.label.slice(0, 160) : '', open: !!(msg as { open?: boolean }).open, off: !!(msg as { off?: boolean }).off };
           input?.setMotion(motionBtn);
           // Its key or ⌘K in the editor page: answered as a press on the button (motion-press with its place).
           if ((msg as { press?: boolean }).press) input?.pressMotion();
@@ -1192,7 +1212,19 @@ export function createEditor(deps: EditorDeps): Editor {
             else adapter.view.frameAll();
           } else if (v.action === 'focus') adapter.view.focus(v.key);
           // Only when covered (contract.ts 'reveal'): the glide posts the view itself when it ends.
-          else if (v.action === 'reveal') focusIfHidden(v.key, true);
+          else if (v.action === 'reveal') {
+            plateSlides = { from: adapter.view.state(), to: viewSig() };
+            focusIfHidden(v.key, true);
+          } else if (v.action === 'unreveal') {
+            // The plate closed (fix-0141 ⑨): back to the view before its slides, unless the camera was moved since.
+            const ps = plateSlides;
+            plateSlides = null;
+            if (ps && ps.to !== null && ps.to === viewSig() && adapter.view.restore && !panGlide) {
+              adapter.view.restore(ps.from);
+              dirtyFrame = true;
+              postView();
+            }
+          }
           else if (v.action === 'zoom') adapter.view.zoom(v.factor);
           else if (v.action === 'orbit') adapter.view.orbit?.(v.dx, v.dy);
           else if (v.action === 'pan') adapter.view.pan(v.dx, v.dy);

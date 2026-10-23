@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.40 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.41 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4522,6 +4522,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                            
      
                                      
+     
+                                                                                                                       
+                                                                                                             
+     
+                          
                                       
                                                
                                              
@@ -4643,7 +4648,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                                                                           
      
-                                                                                                                    
+                                                                                                                                   
                                                                                              
                                                   
      
@@ -10276,7 +10281,7 @@ const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dash
                                                                                                                          
                                                                                                                          
      
-                                                                                    
+                                                                                                   
                                                                                                                       
                                
                                                                        
@@ -11054,6 +11059,10 @@ function createHandles(doc          , hasLift         )          {
       motionShow = !!m.show;
       motionBtn.classList.toggle('has', !!m.has);
       motionBtn.classList.toggle('on', !!m.open);
+      // Dimmed in its place (fix-0141 ⑧): several picked — the same look as a tool that does not work here (button.off).
+      motionBtn.classList.toggle('off', !!m.off);
+      if (m.off) motionBtn.setAttribute('aria-disabled', 'true');
+      else motionBtn.removeAttribute('aria-disabled');
       motionBtn.setAttribute('aria-expanded', String(!!m.open));
       if (motionBtn.title !== m.label) {
         motionBtn.title = m.label;
@@ -11589,7 +11598,7 @@ const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, 
                                                                           
                     
                                                                                    
-                                                                                    
+                                                                                                   
                                                                                                           
                       
                                                                               
@@ -11906,12 +11915,15 @@ function attachInput(deps           )              {
   /**
    * The one small line by the strip (studio-move-plain, 2026-10-23), or null: one thing the game moves — what the game
    * does to it and, when it moves it, that a move here sets where it starts (handles.ts gameNote); else the why of the
-   * first dimmed tool. Several picked: the why only (a group has no one game motion to tell).
+   * first dimmed tool. Several picked: the first one the game moves says it (fix-0141 ⑧ of the first-run check,
+   * 2026-10-24: a group — neon's "hex", four the game turns — had no line at all, and a first-time maker presses the
+   * group's row in the list before its members; it was "the why only: a group has no one game motion to tell").
    */
   const noteOf = (off                                     )                => {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
-    if (picked.length === 1 && picked[0] .held === 'game' && picked[0] .driven?.length) {
-      const g = gameNote(lang, picked[0] .driven.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!picked[0] .meets);
+    const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
+    if (moved) {
+      const g = gameNote(lang, moved.driven .filter((k) => k !== 'lift' || adapter.dim === '3d'), !!moved.meets);
       if (g) return g;
     }
     for (const k of ['move', 'lift', 'rotate', 'scale']                ) if (off[k]) return off[k] ;
@@ -12368,7 +12380,8 @@ function attachInput(deps           )              {
   };
 
   // The Motion button as the editor page last described it (placement/motion): shown, has a motion, its words.
-  let motion = { show: false, has: false, label: '', open: false };
+  // `off` (fix-0141 ⑧): shown in its place but dimmed — several picked; a press or its key does nothing (as a dimmed tool).
+  let motion = { show: false, has: false, label: '', open: false, off: false };
   /** Tell the editor page the Motion button was pressed (`r` = the button's box; null = off screen: a key). */
   const pressMotion = (r                , touch         , keyboard         ) => {
     if (!state.selected) return;
@@ -12435,7 +12448,7 @@ function attachInput(deps           )              {
       if (handles.menuOpen()) menu(null);
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
-      if (state.selected && !p.menu && motion.show) pressMotion(mot, p.type !== 'mouse', false);
+      if (state.selected && !p.menu && motion.show && !motion.off) pressMotion(mot, p.type !== 'mouse', false);
       return;
     }
     // A choice in the strip's menu (turn axis / resize mode): it is used at once — its tool is chosen and the
@@ -12785,7 +12798,7 @@ function attachInput(deps           )              {
       return;
     }
     // A / 5: the Motion button (studio-motion-tool), as a press on it. After fly: A with the right button held flies.
-    if (!e.shiftKey && key && motion.show && isMotionKey(e.key) && !e.repeat && !typingIn(e.target)) {
+    if (!e.shiftKey && key && motion.show && !motion.off && isMotionKey(e.key) && !e.repeat && !typingIn(e.target)) {
       pressMotion(handles.motionRect(), false, true);
       return;
     }
@@ -13053,12 +13066,12 @@ function attachInput(deps           )              {
       if (handles.menuOpen()) menu(null);
     },
     setMotion(m) {
-      motion = { show: !!m.show, has: !!m.has, label: String(m.label || ''), open: !!m.open };
+      motion = { show: !!m.show, has: !!m.has, label: String(m.label || ''), open: !!m.open, off: !!m.off };
       handles.setMotion(motion);
       place();
     },
     pressMotion() {
-      if (motion.show) pressMotion(handles.motionRect(), false, true);
+      if (motion.show && !motion.off) pressMotion(handles.motionRect(), false, true);
     },
     setLook(on) {
       spaceHeld = !!on;
@@ -15787,6 +15800,20 @@ function createEditor(deps            )         {
   const CENTRE = 0.6; // 0.6 = the middle 60 % of the seen part (the review's number); 1.0 = just inside the edges
   const GLIDE_MS = 350;
   let panGlide = 0;
+  /**
+   * The slides made while PC's timeline plate is open (fix-0141, ⑨ of the first-run check, 2026-10-24): `from` = the
+   * view before the first one, `to` = the view after the last one. The plate closing ('unreveal') puts `from` back when
+   * the camera is still at `to` — nobody moved it since. WHY: with Fine-tune open the plate is tall, and picking the
+   * ship under it slid the camera so far that the gate went from ~215 px to ~150 px wide and stayed so after the plate
+   * closed — a hands-on try's "the camera pulls back (the game turns into a speck)". Open from 'reveal' (the plate opened)
+   * to 'unreveal'; null = not tracking.
+   */
+  let plateSlides                                              = null;
+  const viewSig = () => JSON.stringify(adapter.view.state(), (_k, v) => (typeof v === 'number' ? Math.round(v * 1000) / 1000 : v));
+  /** A slide has ended: the view it left the camera in (only while the plate is open). */
+  const slid = () => {
+    if (plateSlides) plateSlides.to = viewSig();
+  };
   // The last pick from the list and when (see core/ui below): the card that the pick brings can make a phone's sheet
   // taller a moment later and cover the object the person just asked to see.
   let listPick                                     = null; // the running slide's generation (0 = none); a new pick stops the old one where it is
@@ -15881,16 +15908,21 @@ function createEditor(deps            )         {
     if (state.multi || (seenNow(key) && (!middle || middleFree(key)))) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
+    // The first slide since the plate opened keeps where the camera was; a later one after the person moved the
+    // camera starts from their view (theirs is what closing goes back to).
+    if (plateSlides && (plateSlides.to === null || plateSlides.to !== viewSig())) plateSlides = { from, to: null };
     const total = panIntoMiddle(key);
     if (!total) {
       // Not drawn at all from here (behind the camera, hidden): the adapter's focus is the only way to show it.
       // Rare (a list pick of something behind you); it frames the object like before.
       adapter.view.focus(key);
       slideIntoFree(key);
+      slid();
       postView();
       return;
     }
     if (!adapter.view.restore) {
+      plateSlides = null; // no way back: closing the plate leaves it
       postView();
       return; // no way back to the start: the slide happens at once
     }
@@ -15908,6 +15940,7 @@ function createEditor(deps            )         {
       if (t < 1) core.time.raf(tick);
       else {
         panGlide = 0;
+        slid();
         postView();
       }
     };
@@ -16538,7 +16571,7 @@ function createEditor(deps            )         {
           break;
         case 'studio:placement/motion':
           // studio-motion-tool: the Motion button after the strip's tools. `label` is shown as text only (title, aria).
-          motionBtn = { show: !!msg.show, has: !!msg.has, label: typeof msg.label === 'string' ? msg.label.slice(0, 160) : '', open: !!(msg                      ).open };
+          motionBtn = { show: !!msg.show, has: !!msg.has, label: typeof msg.label === 'string' ? msg.label.slice(0, 160) : '', open: !!(msg                      ).open, off: !!(msg                     ).off };
           input?.setMotion(motionBtn);
           // Its key or ⌘K in the editor page: answered as a press on the button (motion-press with its place).
           if ((msg                       ).press) input?.pressMotion();
@@ -16633,7 +16666,19 @@ function createEditor(deps            )         {
             else adapter.view.frameAll();
           } else if (v.action === 'focus') adapter.view.focus(v.key);
           // Only when covered (contract.ts 'reveal'): the glide posts the view itself when it ends.
-          else if (v.action === 'reveal') focusIfHidden(v.key, true);
+          else if (v.action === 'reveal') {
+            plateSlides = { from: adapter.view.state(), to: viewSig() };
+            focusIfHidden(v.key, true);
+          } else if (v.action === 'unreveal') {
+            // The plate closed (fix-0141 ⑨): back to the view before its slides, unless the camera was moved since.
+            const ps = plateSlides;
+            plateSlides = null;
+            if (ps && ps.to !== null && ps.to === viewSig() && adapter.view.restore && !panGlide) {
+              adapter.view.restore(ps.from);
+              dirtyFrame = true;
+              postView();
+            }
+          }
           else if (v.action === 'zoom') adapter.view.zoom(v.factor);
           else if (v.action === 'orbit') adapter.view.orbit?.(v.dx, v.dy);
           else if (v.action === 'pan') adapter.view.pan(v.dx, v.dy);

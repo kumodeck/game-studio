@@ -269,7 +269,7 @@ export interface Handles {
    * The Motion button after the tools (studio-motion-tool): `show` = the pick can have a motion, `has` = it has one (the
    * dot), `label` = the tooltip (the editor's words), `open` = its menu is open in the editor page (the button pressed).
    */
-  setMotion(m: { show: boolean; has: boolean; label: string; open: boolean }): void;
+  setMotion(m: { show: boolean; has: boolean; label: string; open: boolean; off?: boolean }): void;
   /** The Motion button's box on screen (null = not shown): the editor's menu opens at it, also for the A / 5 keys. */
   motionRect(): DOMRect | null;
   /** A tool button's box on screen (null = the strip is not shown). */
@@ -1047,6 +1047,10 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       motionShow = !!m.show;
       motionBtn.classList.toggle('has', !!m.has);
       motionBtn.classList.toggle('on', !!m.open);
+      // Dimmed in its place (fix-0141 ⑧): several picked — the same look as a tool that does not work here (button.off).
+      motionBtn.classList.toggle('off', !!m.off);
+      if (m.off) motionBtn.setAttribute('aria-disabled', 'true');
+      else motionBtn.removeAttribute('aria-disabled');
       motionBtn.setAttribute('aria-expanded', String(!!m.open));
       if (motionBtn.title !== m.label) {
         motionBtn.title = m.label;

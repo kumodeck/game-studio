@@ -431,6 +431,10 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
   background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); font: inherit; font-weight: 600; box-shadow: inset 0 0 0 1px var(--line-2); }
 .head-text .name-edit:focus { outline: none; box-shadow: inset 0 0 0 2px var(--text-2); }
 .head-text .key { color: var(--text-3); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.2em; }
+/* A group's names (placement-panel.ts renderGroupCard: "hex-1, hex-2, hex-3, hex-4") fold to two lines before the "…"
+   (fix-0141 J1 ④ / ⑧ of the first-run check, 2026-10-24): on one line the card said "hex-1, hex-2, …" and which four
+   were picked could not be read. */
+.group-head .head-text .key { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
 .card-actions { display: flex; gap: 2px; flex: none; }
 .card-actions .icon-btn .icon { width: 16px; height: 16px; }
 /* The card's ⋯ (studio-card-doors): beside copy / delete, the same quiet icon button; hidden with them when minimized. */
@@ -769,7 +773,10 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .assets-page .gsl-count { grid-area: count; color: var(--text-3); font-size: var(--fs-s); }
 /* "Couldn't read the folder (…)." + Try again shares the count's cell: the count is empty while it shows. */
 .assets-page .gsl-readfail { grid-area: count; justify-self: start; max-width: 560px; border: 0; border-radius: var(--R); background: var(--raise); box-shadow: inset 3px 0 0 var(--gsl-missing); padding: 10px 10px 10px 14px; }
-.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin-bottom: -108px; padding-bottom: 108px; }
+.assets-page .gsl-grid { grid-area: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; margin-bottom: -108px;
+  /* fix-0141 ⑪: at least the dock's height now (main.ts --dock-h) + its 16 px from the edge + 12 px of air, so the last
+     row scrolls up clear of the AI's line and presence too (a fixed 108 px left it under a three-row dock). */
+  padding-bottom: max(108px, calc(var(--dock-h, 0px) + 28px)); }
 /* With no detail open, the detail's column folds away and the grid takes the whole page: 6 columns at 1280 (the second
    design review's ⑦, 2026-10-19). The 288 px column stayed reserved before, so the grid stopped at 4 columns and the
    right third of the page was empty. 140 = the smallest tile that still reads (6 × 140 + 5 × 16 fits the 976 px page). */
@@ -1806,3 +1813,31 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    were up — "Scene" read twice, and at 400×600 the two rows left the list three rows (studio-narrow). The step-7 tabs
    are the one row; the Library is a press away in "…" (⌘K) and in the switch whenever nothing is picked. */
 .shell[data-layout="phone"][data-sheet-tab="scene"] .side-head > .tabs { display: none; }
+/* A finger on a phone (fix-0141, I3 of the first-run check, 2026-10-24): every press in the timeline's rows and Play is
+   44 × 44 (Apple's smallest touch target). The walk measured ⠿ 20×28, "Show position, angle and size" 22×22, the
+   object's name 35×22, the linked row's × 20×20, + 28×28, Play 70×36 and the plate's menus 40 high. The rows are 44
+   high (ROW in timeline-panel.ts reads --tl-row), so two rows' targets never overlap; the icons keep their size, only
+   the pressable box grows (no fill until hover / pressed, as before). The side window (data-fit="side") keeps its
+   mouse sizes: it is a pointer there. */
+@media (pointer: coarse) {
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-row: 44px; }
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-grip,
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-twist,
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-leave,
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-link-add { width: 44px; min-height: 44px; height: 44px; margin: 0; }
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-obj { min-height: 44px; min-width: 44px; }
+  /* Four 44 px boxes fill the narrow names column (176 px) exactly: no gap or side padding, or the cell ran 16 px over. */
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline .tl-name:not(.sub) { gap: 0; padding: 0; }
+  .shell[data-layout="phone"]:not([data-fit="side"]) .timeline.narrow .tl-head > .tl-fold { width: 44px; }
+  .shell[data-layout="phone"]:not([data-fit="side"]) .tl-head button,
+  .shell[data-layout="phone"]:not([data-fit="side"]) .tl-pick select,
+  .shell[data-layout="phone"]:not([data-fit="side"]) .tl-fine select,
+  .shell[data-layout="phone"]:not([data-fit="side"]) .tl-fine button { min-height: 44px; height: 44px; }
+  .shell[data-layout="phone"] .top-actions .play,
+  .shell[data-layout="phone"] .top-actions .play-more { min-height: 44px; }
+}
+/* A linked object with no points yet says where they will come from (tl.link.empty, "● Rec motion on: move it, its
+   points go here"): on a phone the lane is too narrow for one line and it ended in "…" (fix-0141, J1 ③ / I3). Two lines
+   in the lane, centred on it. */
+.shell[data-layout="phone"]:not([data-fit="side"]) .tl-lane-hint { white-space: normal; line-height: 1.25; top: 50%; transform: translateY(-50%);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

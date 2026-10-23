@@ -129,7 +129,7 @@ async function flow() {
     };
     await make();
     assert.match(await p.ev(`document.querySelector('iframe').src`), /studioBuild=level-1(&|$)/, 'built from the game as it is');
-    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent : ''; })()`), /^Level 2 made\. (⌘|Ctrl\+)Z to undo\.$/);
+    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent + ' | ' + l.title + ' | ' + (l.querySelector('[data-action=level-made-undo]')?.title ?? '') : ''; })()`), /^Level 2 made\.Undo \| Level 2 made\. (⌘|Ctrl\+)Z to undo\. \| Undo \((⌘|Ctrl\+)Z\)$/);
     assert.deepEqual(await p.box(), EMPTY, 'still nothing in the AI box');
     assert.match(await p.saveCount(), /1/, 'one change on Save');
     assert.equal(asked(), sent, 'nothing sent to the AI');

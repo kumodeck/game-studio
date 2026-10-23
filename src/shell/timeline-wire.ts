@@ -758,7 +758,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     return out;
   }
   /**
-   * Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). true
+   * Put a Library motion on an object: it starts with the game if nothing on it does yet, else after its last motion. true
    * when it is on the object now (attached here, or it was already: a second drop of the same motion shows it again).
    */
   function attach(key: string, name: string): boolean {
@@ -774,7 +774,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       one(key, withClip(store().get(key), name, joinClip(l, ms[0] ? clipOf(ms[0]) : null)));
       return true;
     }
-    const when: MotionWhen = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
+    // fix-0141 (H4 of the first-run check, 2026-10-24): a second motion plays after the one before it ("After last
+    // motion"). It was { on: 'say' } — "Custom (ask your AI)" — so dropping Hop on a ship that already moved with the game
+    // showed "✦ Ask Claude" nobody had asked for. The runner fires 'after' with the clip's use || name when it ends
+    // (loader/studio-placement.js end()), the same name this gives; no key = this object.
+    const before = clipsOf(key);
+    const last = before[before.length - 1];
+    const when: MotionWhen = before.some((c) => whenOf(c).on === 'start') && last ? { on: 'after', use: last.use ?? last.name } : { on: 'start' };
     one(key, withClip(store().get(key), name, { ...l, use: name, when }));
     return true;
   }
@@ -1211,6 +1217,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     // 'reveal' moves nothing unless the plate (or the card) covers the object's middle, then the short pan-only slide.
     const key = d.picked();
     if (on && key) d.send({ type: 'studio:core/view', view: d.narrow() ? { action: 'focus', key } : { action: 'reveal', key } });
+    // fix-0141 ⑨: closed on PC, the camera goes back from the slides the plate made it take (the bridge keeps it where
+    // it is if the person moved it meanwhile).
+    else if (!on && !d.narrow()) d.send({ type: 'studio:core/view', view: { action: 'unreveal' } });
   }
   // Shown or not at the last render: when that flips (the Library, the UI layer, Play), the game gets its poses again.
   let wasShown = false;

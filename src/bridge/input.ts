@@ -137,7 +137,7 @@ export interface InputHandle {
   /** Close the strip's choices (a press or Escape in the editor page). */
   closeMenu(): void;
   /** The strip's Motion button (studio-motion-tool; contract placement/motion). */
-  setMotion(m: { show: boolean; has: boolean; label: string; open: boolean }): void;
+  setMotion(m: { show: boolean; has: boolean; label: string; open: boolean; off?: boolean }): void;
   /** The Motion button's key or ⌘K in the editor page: report it as a press on the button (its place). */
   pressMotion(): void;
   /** Space held in the shell: a drag looks around even with a tool chosen. */
@@ -454,12 +454,15 @@ export function attachInput(deps: InputDeps): InputHandle {
   /**
    * The one small line by the strip (studio-move-plain, 2026-10-23), or null: one thing the game moves — what the game
    * does to it and, when it moves it, that a move here sets where it starts (handles.ts gameNote); else the why of the
-   * first dimmed tool. Several picked: the why only (a group has no one game motion to tell).
+   * first dimmed tool. Several picked: the first one the game moves says it (fix-0141 ⑧ of the first-run check,
+   * 2026-10-24: a group — neon's "hex", four the game turns — had no line at all, and a first-time maker presses the
+   * group's row in the list before its members; it was "the why only: a group has no one game motion to tell").
    */
   const noteOf = (off: Partial<Record<HandleKind, string>>): string | null => {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
-    if (picked.length === 1 && picked[0]!.held === 'game' && picked[0]!.driven?.length) {
-      const g = gameNote(lang, picked[0]!.driven.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!picked[0]!.meets);
+    const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
+    if (moved) {
+      const g = gameNote(lang, moved.driven!.filter((k) => k !== 'lift' || adapter.dim === '3d'), !!moved.meets);
       if (g) return g;
     }
     for (const k of ['move', 'lift', 'rotate', 'scale'] as HandleKind[]) if (off[k]) return off[k]!;
@@ -916,7 +919,8 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
 
   // The Motion button as the editor page last described it (placement/motion): shown, has a motion, its words.
-  let motion = { show: false, has: false, label: '', open: false };
+  // `off` (fix-0141 ⑧): shown in its place but dimmed — several picked; a press or its key does nothing (as a dimmed tool).
+  let motion = { show: false, has: false, label: '', open: false, off: false };
   /** Tell the editor page the Motion button was pressed (`r` = the button's box; null = off screen: a key). */
   const pressMotion = (r: DOMRect | null, touch: boolean, keyboard: boolean) => {
     if (!state.selected) return;
@@ -983,7 +987,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (handles.menuOpen()) menu(null);
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
-      if (state.selected && !p.menu && motion.show) pressMotion(mot, p.type !== 'mouse', false);
+      if (state.selected && !p.menu && motion.show && !motion.off) pressMotion(mot, p.type !== 'mouse', false);
       return;
     }
     // A choice in the strip's menu (turn axis / resize mode): it is used at once — its tool is chosen and the
@@ -1333,7 +1337,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       return;
     }
     // A / 5: the Motion button (studio-motion-tool), as a press on it. After fly: A with the right button held flies.
-    if (!e.shiftKey && key && motion.show && isMotionKey(e.key) && !e.repeat && !typingIn(e.target)) {
+    if (!e.shiftKey && key && motion.show && !motion.off && isMotionKey(e.key) && !e.repeat && !typingIn(e.target)) {
       pressMotion(handles.motionRect(), false, true);
       return;
     }
@@ -1601,12 +1605,12 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (handles.menuOpen()) menu(null);
     },
     setMotion(m) {
-      motion = { show: !!m.show, has: !!m.has, label: String(m.label || ''), open: !!m.open };
+      motion = { show: !!m.show, has: !!m.has, label: String(m.label || ''), open: !!m.open, off: !!m.off };
       handles.setMotion(motion);
       place();
     },
     pressMotion() {
-      if (motion.show) pressMotion(handles.motionRect(), false, true);
+      if (motion.show && !motion.off) pressMotion(handles.motionRect(), false, true);
     },
     setLook(on) {
       spaceHeld = !!on;

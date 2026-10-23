@@ -947,6 +947,11 @@ export type ViewAction =
    * For PC's timeline plate, which rose over the ship so the drag that makes a motion landed on the ruler.
    */
   | { action: 'reveal'; key: string }
+  /**
+   * PC's timeline plate closed (fix-0141, 2026-10-24): the view goes back to where it was before the slides made while
+   * it was open ('reveal' and list picks), unless the camera was moved since (bridge/editor.ts plateSlides).
+   */
+  | { action: 'unreveal' }
   | { action: 'zoom'; factor: number }
   | { action: 'orbit'; dx: number; dy: number }
   | { action: 'pan'; dx: number; dy: number }
@@ -1068,7 +1073,7 @@ export type ShellToBridge =
    * `open` = its menu is open in the editor page (the button looks pressed). `press` = its key (A / 5) or ⌘K in the
    * editor page: the bridge answers placement/motion-press with the button's place, as for a press on it.
    */
-  | { type: 'studio:placement/motion'; show: boolean; has: boolean; label: string; open?: boolean; press?: boolean }
+  | { type: 'studio:placement/motion'; show: boolean; has: boolean; label: string; open?: boolean; press?: boolean; off?: boolean }
   /** Space is held in the shell: a drag in the game looks around even with a tool chosen. */
   | { type: 'studio:placement/look'; on: boolean }
   /**

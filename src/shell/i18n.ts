@@ -82,6 +82,8 @@ const en = {
   'tl.sel.delete': 'Delete',
   'tl.sel.deleteTip': 'Delete the picked points (the Delete key does the same)',
   'motion.tool.none': 'No motion yet.',
+  // fix-0141 ⑧: the strip's Motion button, dimmed while several are picked (its tooltip).
+  'motion.tool.oneAtATime': 'Motions are made one object at a time',
   'motion.tool.make': 'Make a motion',
   'motion.tool.saved': 'Use a saved motion',
   'motion.tool.savedHead': 'Saved motions',
@@ -206,7 +208,9 @@ const en = {
   'tl.usesLong': 'On {n} objects: changing its points changes all of them',
   'ctx.askMotion': 'Ask {ai} about “{name}”…',
   'motion.ask': 'Ask {ai} about “{name}”…',
-  'ask.motion': 'e.g. start when the player walks up · slower',
+  // fix-0141 (J1 ② of the first-run check, 2026-10-24): "e.g. start when the player walks up · sl" was cut at 1280
+  // (the field is narrower with the motion's chip and "Claude is watching"). One example, as short as the Japanese reads.
+  'ask.motion': 'e.g. start when the player is near',
   // studio-motion-focus: "Scene · 3" said "linked" — the plate's word for objects that move in one motion.
   'tl.scene': 'Linked · {n}',
   'tl.sceneTip': 'These objects move in one motion: one time line, one “When does it move?”',
@@ -217,7 +221,9 @@ const en = {
   'tl.link.find': 'Find an object…',
   'tl.link.none': 'Nothing here to link',
   'tl.link.hint': 'or click an object in the game',
-  'tl.link.empty': 'Move it with ● Rec motion on: its points go here',
+  // fix-0141 (J1 ③ / I3, 2026-10-24): shorter, so a phone's lane holds it in two lines (it ended in "…"). "here" went:
+  // the words are in the lane where the points come.
+  'tl.link.empty': 'Move it with ● Rec motion on to add points',
   'tl.all': 'Show all moving objects',
   'tl.all.k': 'Moving objects',
   'tl.all.on': 'All moving objects',
@@ -915,6 +921,7 @@ const ja: Partial<Record<Key, string>> = {
   'tl.sel.delete': '削除',
   'tl.sel.deleteTip': '選んだポイントを削除（Delete キーでも）',
   'motion.tool.none': 'まだ動きはありません。',
+  'motion.tool.oneAtATime': '動きは 1 つずつ作ります',
   'motion.tool.make': '動きを作る',
   'motion.tool.saved': '保存した動きを使う',
   'motion.tool.savedHead': '保存した動き',
@@ -1056,7 +1063,7 @@ const ja: Partial<Record<Key, string>> = {
   'tl.link.find': '物を探す…',
   'tl.link.none': '連携できる物はありません',
   'tl.link.hint': 'または ゲームの中で物をクリック',
-  'tl.link.empty': '● 動きを記録のまま動かすと、ここにポイントが打たれます',
+  'tl.link.empty': '● 動きを記録のまま動かすとポイントが付きます',
   'tl.all': '動く物を全部出す',
   'tl.all.k': '動く物一覧',
   'tl.all.on': '動く物を全部出しています',

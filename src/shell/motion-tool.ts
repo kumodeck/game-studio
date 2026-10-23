@@ -35,6 +35,12 @@ export interface MotionToolDeps {
   send(m: ShellToBridge): void;
   /** The one picked thing that can have a motion now (editing a 3D game's world, one world object), else null. */
   target(): string | null;
+  /**
+   * Several picked where one of them alone could have a motion (fix-0141 ⑧ of the first-run check, 2026-10-24): the
+   * button stays in its place, dimmed, with "Motions are made one object at a time" — it was gone, so picking neon's
+   * "hex" group read as "this has no motion" (and the strip lost a button it had a moment ago). Absent = never.
+   */
+  several?(): boolean;
   /** Its motions' names (the first = the one the timeline shows for it). */
   motions(key: string): string[];
   /** The Library's motions. */
@@ -74,6 +80,7 @@ export function createMotionTool(d: MotionToolDeps) {
   /** What the button shows now. */
   function state() {
     const key = d.target();
+    if (!key && d.several?.()) return { show: true, has: false, label: d.t('motion.tool.oneAtATime'), open: false, off: true };
     return { show: !!key, has: !!key && d.motions(key).length > 0, label: label(key), open: !!key && d.menuOpen() };
   }
 

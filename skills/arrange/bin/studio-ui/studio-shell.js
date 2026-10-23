@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.40 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.41 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -963,6 +963,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                            
      
                                      
+     
+                                                                                                                       
+                                                                                                             
+     
+                          
                                       
                                                
                                              
@@ -1084,7 +1089,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                                                                           
      
-                                                                                                                    
+                                                                                                                                   
                                                                                              
                                                   
      
@@ -10476,6 +10481,9 @@ function whenShort(t                                                            
   if (w.on === 'key') return `⌨ ${keyName(w.key)}${stop}`;
   if (w.on === 'after') return `↳ ${w.use}${stop}`;
   if (w.on === 'cue') return `✦ ${w.cue}${stop}`;
+  // fix-0141 (H4, 2026-10-24): "Custom" with no words yet is not something the AI was asked — "✦ Ask Claude" (short.say)
+  // read as a request nobody made. The same word as the Starts menu (tl.when.sayNow); with words it stays the AI's.
+  if (w.on === 'say' && !w.say) return `${t('tl.when.sayNow')}${stop}`;
   return `${AI_TRIGGERS.includes(w.on) ? '✦ ' : ''}${t(`tl.when.short.${w.on}`)}${stop}`;
 }
 
@@ -10877,7 +10885,12 @@ function createTimelinePanel(view                    , act              ) {
     // to a first-time maker. A motion that plays once already ends by itself, so the Stops menu is only for one that
     // goes on (Repeats / Back and forth). An old motion that is Once WITH a stop (rounds or a signal) keeps the menu, so
     // what it has stays visible and can be set back to Never.
-    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), [['never', t('tl.until.never')], ['times', t('tl.until.times')], ['cue', t('tl.until.cue')]], kind, (k) =>
+    // fix-0141 (D10 of the first-run check, 2026-10-24): "When signaled" (the Japanese says "a signal") is the game's code speaking —
+    // a cue only the AI can wire up — and a first-time maker could pick it and get a motion that never stops for a reason
+    // they cannot see. It is in the menu only when the motion already stops on a cue (the AI made it so), so what it has
+    // stays visible and can be set back to Never / some rounds; otherwise the menu is Never / After some rounds.
+    const stops                     = [['never', t('tl.until.never')], ['times', t('tl.until.times')], ...(u?.cue ? [['cue', t('tl.until.cue')]                    ] : [])];
+    if ((c.repeat ?? 'once') !== 'once' || u) loop.push(select('tl-stops', t('tl.stops'), stops, kind, (k) =>
       act.setUntil(k === 'never' ? null : k === 'times' ? { times: 3, ...(u?.then ? { then: u.then } : {}) } : { cue: v.cueNames[0] ?? cueSlug(`${c.name}-stop`), ...(u?.then ? { then: u.then } : {}) })));
     if (u?.times) loop.push(field('tl-times', t('tl.until.timesTip'), String(u.times), '3em', (x) => {
       const n = Math.round(parseFloat(x));
@@ -12080,6 +12093,12 @@ __defs[28] = function (__exports) {
                                
                                                                                                                   
                           
+     
+                                                                                                                    
+                                                                                                                     
+                                                                                                                
+     
+                      
                                                                             
                                  
                                
@@ -12119,6 +12138,7 @@ function createMotionTool(d                ) {
   /** What the button shows now. */
   function state() {
     const key = d.target();
+    if (!key && d.several?.()) return { show: true, has: false, label: d.t('motion.tool.oneAtATime'), open: false, off: true };
     return { show: !!key, has: !!key && d.motions(key).length > 0, label: label(key), open: !!key && d.menuOpen() };
   }
 
@@ -13733,6 +13753,8 @@ const en = {
   'tl.sel.delete': 'Delete',
   'tl.sel.deleteTip': 'Delete the picked points (the Delete key does the same)',
   'motion.tool.none': 'No motion yet.',
+  // fix-0141 ⑧: the strip's Motion button, dimmed while several are picked (its tooltip).
+  'motion.tool.oneAtATime': 'Motions are made one object at a time',
   'motion.tool.make': 'Make a motion',
   'motion.tool.saved': 'Use a saved motion',
   'motion.tool.savedHead': 'Saved motions',
@@ -13857,7 +13879,9 @@ const en = {
   'tl.usesLong': 'On {n} objects: changing its points changes all of them',
   'ctx.askMotion': 'Ask {ai} about “{name}”…',
   'motion.ask': 'Ask {ai} about “{name}”…',
-  'ask.motion': 'e.g. start when the player walks up · slower',
+  // fix-0141 (J1 ② of the first-run check, 2026-10-24): "e.g. start when the player walks up · sl" was cut at 1280
+  // (the field is narrower with the motion's chip and "Claude is watching"). One example, as short as the Japanese reads.
+  'ask.motion': 'e.g. start when the player is near',
   // studio-motion-focus: "Scene · 3" said "linked" — the plate's word for objects that move in one motion.
   'tl.scene': 'Linked · {n}',
   'tl.sceneTip': 'These objects move in one motion: one time line, one “When does it move?”',
@@ -13868,7 +13892,9 @@ const en = {
   'tl.link.find': 'Find an object…',
   'tl.link.none': 'Nothing here to link',
   'tl.link.hint': 'or click an object in the game',
-  'tl.link.empty': 'Move it with ● Rec motion on: its points go here',
+  // fix-0141 (J1 ③ / I3, 2026-10-24): shorter, so a phone's lane holds it in two lines (it ended in "…"). "here" went:
+  // the words are in the lane where the points come.
+  'tl.link.empty': 'Move it with ● Rec motion on to add points',
   'tl.all': 'Show all moving objects',
   'tl.all.k': 'Moving objects',
   'tl.all.on': 'All moving objects',
@@ -14566,6 +14592,7 @@ const ja                               = {
   'tl.sel.delete': '削除',
   'tl.sel.deleteTip': '選んだポイントを削除（Delete キーでも）',
   'motion.tool.none': 'まだ動きはありません。',
+  'motion.tool.oneAtATime': '動きは 1 つずつ作ります',
   'motion.tool.make': '動きを作る',
   'motion.tool.saved': '保存した動きを使う',
   'motion.tool.savedHead': '保存した動き',
@@ -14707,7 +14734,7 @@ const ja                               = {
   'tl.link.find': '物を探す…',
   'tl.link.none': '連携できる物はありません',
   'tl.link.hint': 'または ゲームの中で物をクリック',
-  'tl.link.empty': '● 動きを記録のまま動かすと、ここにポイントが打たれます',
+  'tl.link.empty': '● 動きを記録のまま動かすとポイントが付きます',
   'tl.all': '動く物を全部出す',
   'tl.all.k': '動く物一覧',
   'tl.all.on': '動く物を全部出しています',
@@ -19080,7 +19107,7 @@ function createTimeline(d              , makePanel                             =
     return out;
   }
   /**
-   * Put a Library motion on an object: it starts with the game if nothing on it does yet, else it waits (words). true
+   * Put a Library motion on an object: it starts with the game if nothing on it does yet, else after its last motion. true
    * when it is on the object now (attached here, or it was already: a second drop of the same motion shows it again).
    */
   function attach(key        , name        )          {
@@ -19096,7 +19123,13 @@ function createTimeline(d              , makePanel                             =
       one(key, withClip(store().get(key), name, joinClip(l, ms[0] ? clipOf(ms[0]) : null)));
       return true;
     }
-    const when             = clipsOf(key).some((c) => whenOf(c).on === 'start') ? { on: 'say' } : { on: 'start' };
+    // fix-0141 (H4 of the first-run check, 2026-10-24): a second motion plays after the one before it ("After last
+    // motion"). It was { on: 'say' } — "Custom (ask your AI)" — so dropping Hop on a ship that already moved with the game
+    // showed "✦ Ask Claude" nobody had asked for. The runner fires 'after' with the clip's use || name when it ends
+    // (loader/studio-placement.js end()), the same name this gives; no key = this object.
+    const before = clipsOf(key);
+    const last = before[before.length - 1];
+    const when             = before.some((c) => whenOf(c).on === 'start') && last ? { on: 'after', use: last.use ?? last.name } : { on: 'start' };
     one(key, withClip(store().get(key), name, { ...l, use: name, when }));
     return true;
   }
@@ -19533,6 +19566,9 @@ function createTimeline(d              , makePanel                             =
     // 'reveal' moves nothing unless the plate (or the card) covers the object's middle, then the short pan-only slide.
     const key = d.picked();
     if (on && key) d.send({ type: 'studio:core/view', view: d.narrow() ? { action: 'focus', key } : { action: 'reveal', key } });
+    // fix-0141 ⑨: closed on PC, the camera goes back from the slides the plate made it take (the bridge keeps it where
+    // it is if the person moved it meanwhile).
+    else if (!on && !d.narrow()) d.send({ type: 'studio:core/view', view: { action: 'unreveal' } });
   }
   // Shown or not at the last render: when that flips (the Library, the UI layer, Play), the game gets its poses again.
   let wasShown = false;
@@ -24095,7 +24131,14 @@ function start(host            ) {
     insetSent = k;
     send({ type: 'studio:core/ui', handlePx: handlePx(), inset, theme });
   };
-  new ResizeObserver(() => sendInset()).observe(dock);
+  new ResizeObserver(() => {
+    sendInset();
+    // fix-0141 (⑪ of the first-run check, 2026-10-24): the Library's grid leaves room for the dock as tall as it is now
+    // (shell.css .gsl-grid). It left a fixed 96 px, and the dock with the AI's line and presence over the field is three
+    // rows: the last row of tiles (neon's second motion, Lantern Cove's three lighthouses) sat under it, names covered.
+    const dh = `${Math.round(dock.offsetHeight)}px`;
+    if (app.style.getPropertyValue('--dock-h') !== dh) app.style.setProperty('--dock-h', dh);
+  }).observe(dock);
   /**
    * Where the timeline plate goes (studio-timeline): PC, at the foot of the game across its width, the ask bar lifted
    * over it (--tl-h); a phone / the side window, in the dock right above the picked object's card (one stack at the
@@ -24328,6 +24371,7 @@ function start(host            ) {
       if (!editing || playing || dim !== '3d' || editLayer !== 'world' || group.length > 1 || !selected || libraryShown()) return null;
       return motionable(selected) ? selected : null;
     },
+    several: () => editing && !playing && dim === '3d' && editLayer === 'world' && group.length > 1 && !libraryShown() && group.some((k) => motionable(k)),
     motions: (k) => {
       const names = (timeline.motionOf(k)?.clips ?? []).map((c) => c.name);
       const first = timeline.clipName(k);
@@ -25539,8 +25583,14 @@ function start(host            ) {
       const s = aiStatus ;
       const n = typeof s.changed === 'number' ? s.changed : 0;
       const count = ph === 'failed' ? t('ai.failed') : n === 1 ? t('ai.done1') : n > 1 ? t('ai.doneN', { n }) : t('ai.done');
-      // The AI's one-line reply first (its note), then what you asked and the count.
-      two(s.note || count, [covered ? asked : '', s.note ? count : ''].filter(Boolean).join(' · '));
+      // The AI's one-line reply first (its note), then the count, then "More in Claude".
+      // fix-0141 (J1 ⑤ and ⑩ of the first-run check, 2026-10-24): the second row was "“what you asked” · 3 objects ch…",
+      // cut by Undo AI change and 👁 (English, 1280) — and what was asked says the same as the AI's own words above it, so
+      // it is gone here (it stays while the AI works). And with the AI's words and nothing counted, the product's "Done"
+      // after them read as "Done" twice ("Made the change · Done"): the AI's words are the done, the row is only
+      // "More in Claude". A change in code that Undo AI change cannot take back (no count) leaves what changed to
+      // "More in Claude" — the AI's chat says it in full.
+      two(s.note || count, s.note && (ph === 'failed' || n > 0) ? count : '');
       const aiReloaded = aiReloadFor !== null && aiStatus?.at === aiReloadFor;
       if (ph === 'done' && !playing && aiReloaded) {
         const keys = [...aiMarks.keys()].filter((k) => items.some((i) => i.key === k));
@@ -27047,17 +27097,24 @@ function start(host            ) {
   /**
    * The line after New level / Duplicate (level-menu2, 2026-10-23: one short line — "Level 2 made. ⌘Z to undo."; v0.1.25
    * said what it was a copy of and what Save does, three sentences): the new level can look just like the last one,
-   * so the line says where you are. A phone has no ⌘Z: its line has an Undo button instead. It stays until the first
-   * change on the new level, a level change, Save or ×; not a toast that times out.
+   * so the line says where you are. It stays until the first change on the new level, a level change, Save or ×; not a
+   * toast that times out.
+   * fix-0141 (C4 of the first-run check, 2026-10-24): "Level 2 made · Undo" everywhere — the Undo is a button on PC too.
+   * It was "Level 2 made. ⌘Z to undo." with no button (only the phone had one), and a first-time maker reads the line
+   * as the way back, not the top ↶ or a key. The key is the button's tooltip and the line's (level.made, the old words).
    */
   function renderLevelMade() {
     const on = !!levelMade && !playing && levels.active && !undo.canUndo;
     levelNote.hidden = !on;
-    if (!on) return levelNote.replaceChildren();
+    if (!on) {
+      levelNote.title = '';
+      return levelNote.replaceChildren();
+    }
     const key = phone() ? '' : keyOf('undo', isMac());
+    levelNote.title = key ? t('level.made', { name: levelMade .name, key }) : '';
     levelNote.replaceChildren(
-      h('span', { class: 'level-made-text', text: key ? t('level.made', { name: levelMade .name, key }) : t('level.madeTouch', { name: levelMade .name }) }),
-      ...(key ? [] : [h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() })]),
+      h('span', { class: 'level-made-text', text: t('level.madeTouch', { name: levelMade .name }) }),
+      h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), title: key ? `${t('btn.undo')} (${key})` : t('btn.undo'), onclick: () => unmakeLevel() }),
       h('button', { type: 'button', class: 'level-made-close', dataset: { action: 'level-made-close' }, 'aria-label': t('level.madeClose'), title: t('level.madeClose'), onclick: () => {
         levelNote.hidden = true;
       } }, icon('close')),
