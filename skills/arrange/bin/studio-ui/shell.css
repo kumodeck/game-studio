@@ -1143,7 +1143,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* A phone's row: "Unnamed objects" whole (in Japanese it was cut to its first 4 letters next to empty room, 2026-10-19
    photos); the button gives way. */
 .shell[data-layout="phone"] .noname.fold .noname-text { flex: none; }
-.shell[data-layout="phone"] .noname.fold .noname-act { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* text-align: start (studio-fix-0139, 2026-10-23): a button centres its words, and words wider than the button spill
+   out on BOTH sides — the head was cut too ("laude" for "Claude", the ask-to-name button on a phone). From the start, only the end is cut. */
+.shell[data-layout="phone"] .noname.fold .noname-act { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
 .noname.fold .count { flex: none; color: var(--text-3); margin-right: auto; }
 .shell[data-layout="phone"] .noname.fold { min-height: var(--h); border-radius: 14px; font-size: var(--fs); }
 .shell[data-layout="phone"] .noname.fold .thumb { width: 28px; height: 28px; border-radius: 6px; }
@@ -1191,8 +1193,11 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-fit="side"] .sheet-more { width: 32px; min-height: 32px; }
 /* One "…" at a time (the third design review's ⑨ / 5-4, 2026-10-20): with the card up, its "…" sits right under the
    sheet's — two of them stacked. The sheet's goes while the card shows (⌘K and the card's "…" are there); with
-   nothing picked it is the only one, and stays. */
-.shell[data-fit="side"]:has(.card-slot > .card:not([hidden])) .sheet-more { display: none; }
+   nothing picked it is the only one, and stays.
+   (studio-fix-0139, 2026-10-23: only while the card is really drawn. The Scene / Motion tab of plan step 7 hides the card
+   slot — rule at the foot of this file — and the card's "…" with it; this rule still hid the sheet's, so the Scene tab
+   had no "…" (All actions) at all.) */
+.shell[data-fit="side"]:not([data-sheet-tab="scene"]):not([data-sheet-tab="motion"]):has(.card-slot > .card:not([hidden])) .sheet-more { display: none; }
 .shell[data-fit="side"] .sheet-more .icon { width: 18px; height: 18px; }
 .shell[data-fit="side"] .obj { height: var(--h); border-radius: var(--r); }
 .shell[data-fit="side"] .obj .thumb, .shell[data-fit="side"] .noname.fold .thumb { width: 22px; height: 22px; border-radius: 5px; }
@@ -1779,3 +1784,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* The grip on the dock's plate (over the card / the motion): the same bar, the plate's own margins. */
 .shell[data-layout="phone"] .dock > .sheet-grip { margin: 0; height: 16px; }
 .shell[data-layout="phone"] .dock > .sheet-grip::before { top: 6px; }
+/* The Scene tab heads the list sheet: the older Scene | Library switch under it goes (studio-fix-0139, 2026-10-23). Both
+   were up — "Scene" read twice, and at 400×600 the two rows left the list three rows (studio-narrow). The step-7 tabs
+   are the one row; the Library is a press away in "…" (⌘K) and in the switch whenever nothing is picked. */
+.shell[data-layout="phone"][data-sheet-tab="scene"] .side-head > .tabs { display: none; }

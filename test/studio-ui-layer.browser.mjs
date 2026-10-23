@@ -142,7 +142,8 @@ try {
     near(sw.cx, 640, 2, 'the switch sits in the middle of the bar');
     assert.equal(sw.on, 'world');
     // Ive review 3, "what to cut" 1: no "UI hidden" beside the eye (the eye says it; the words are its tooltip).
-    assert.equal(sw.text, LANG === 'ja' ? 'ワールド UI' : 'World UI');
+    // "World" became "Scene" (plan step 1, 2026-10-23, "one word for one thing": the list and the switch say the same).
+    assert.equal(sw.text, LANG === 'ja' ? 'シーン UI' : 'Scene UI');
     const worldKeys = await page.eval(`studioShell.items().map((i) => i.key).sort().join(' ')`);
     assert.match(worldKeys, /lantern-1.*tree-1/, `the world's list: ${worldKeys}`);
     assert.equal(await page.eval(`${DBG}.layer()`), 'world');

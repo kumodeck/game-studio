@@ -105,8 +105,11 @@ try {
     assert.match(s.p.text, ja ? /Claude が開いているか分かりません.*開き方/ : /Not sure Claude is open.*How to open/);
     assert.equal(s.p.dot, false, 'no green without proof');
     assert.equal(s.p.inField, true, 'inside the field on a wide bar');
-    assert.match(s.ph, ja ? /Claude へのメモを書く/ : /Write a note for Claude/);
-    ok('opened: "not sure", no dot, the placeholder says it is a note');
+    // The field has one placeholder since studio-words-plan (2026-10-23): "Ask Claude…" whether the AI is there or not;
+    // the presence words beside it say whether it is (it was "Write a note for Claude…" while not sure).
+    if (BEFORE) assert.match(s.ph, ja ? /Claude へのメモを書く/ : /Write a note for Claude/);
+    else assert.match(s.ph, ja ? /Claude ?に頼む/ : /^Ask Claude…$/);
+    ok('opened: "not sure", no dot, the placeholder asks Claude (the words beside it say it is not sure)');
   });
   if (!BEFORE) {
     // The placeholder is never cut by the words beside it (or the words went above).
@@ -169,7 +172,9 @@ try {
     assert.equal(s.p.state, 'watching');
     assert.match(s.p.text, ja ? /Claude が見ています/ : /Claude is watching/);
     assert.equal(s.p.dot, true);
-    assert.match(s.ph, ja ? /Claude にゲームの直しを頼む/ : /Ask Claude to change the game/);
+    // One placeholder since studio-words-plan (2026-10-23): the same "Ask Claude…" as when not sure.
+    if (BEFORE) assert.match(s.ph, ja ? /Claude にゲームの直しを頼む/ : /Ask Claude to change the game/);
+    else assert.match(s.ph, ja ? /Claude ?に頼む/ : /^Ask Claude…$/);
     ok('watching: "● Claude is watching", the placeholder names Claude');
   });
 

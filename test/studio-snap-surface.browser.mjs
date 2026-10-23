@@ -155,10 +155,31 @@ async function run(kind) {
    * is not used: the lighthouse's includes its 28 m light beams.
    */
   const land = async () => {
+    let framed = false;
     for (const [k, up] of LAND) {
+      // Back to the opening view after a "frame all" for the one before (⇧F), so each starts where the editor opened.
+      if (framed) {
+        await key('F', 'KeyF', 70, 8);
+        await sleep(1200);
+        framed = false;
+      }
       await page.eval(`studioShell.actions.select(${JSON.stringify(k)})`);
-      await sleep(1300); // the pick glides (0.6 s)
+      // Since plan step 2 (2026-10-23, "the camera stays put") a list pick moves the camera only when the object is not
+      // on screen: on the PC pine-3 stays at the frame's left edge beside the list (a fifth of it is seen), and the drag
+      // point at its foot is off the game. These measures are about the drag, not the pick, so then the whole scene is
+      // framed first (F, the editor's own "frame all"); the metres per pixel below are measured in that view.
+      await sleep(1300);
       if (!phone) await tool('m');
+      const offGame = async () => {
+        const pr = await screen([(await at(k))[0], (await at(k))[1] + up, (await at(k))[2]]);
+        return !pr || !(await page.eval(`(() => { const f = document.querySelector('iframe').getBoundingClientRect(); const x = ${pr.x}, y = ${pr.y};
+          return x > f.left + 24 && x < f.right - 24 && y > f.top + 24 && y < f.bottom - 24 && document.elementFromPoint(x, y) === document.querySelector('iframe'); })()`));
+      };
+      if (await offGame()) {
+        await page.eval('studioShell.actions.frameAll()');
+        await sleep(1300);
+        framed = true;
+      }
       const p0 = await at(k);
       const s0 = await screen(p0);
       const press = await screen([p0[0], p0[1] + up, p0[2]]);
@@ -209,6 +230,10 @@ async function run(kind) {
       const r = seen.filter((m) => m.name[0] === 'r');
       for (let i = 1; i < r.length; i++) assert.ok(r[i].along >= r[i - 1].along && r[i].world >= r[i - 1].world - 0.05, `${k}: ${r[i - 1].name} → ${r[i].name} went back`);
       ok(`${k} (${mpp.toFixed(3)} m/px): 20 px → ${r[0].along.toFixed(1)} px / ${r[0].world.toFixed(2)} m; 60 → ${r[1].world.toFixed(1)} m; 120 → ${r[2].world.toFixed(1)} m; up 30 → ${seen[3].world.toFixed(1)} m`);
+    }
+    if (framed) {
+      await key('F', 'KeyF', 70, 8);
+      await sleep(1200);
     }
     // Across the sailboat's sail: the lighthouse pulled right until the pointer is over the sail (Ive, review 3: at
     // 154 px right the ray met the sail and the lighthouse dropped to the boat's foot, z 8.8, half the view) does not

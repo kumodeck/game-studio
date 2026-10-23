@@ -110,10 +110,11 @@ try {
       console.log(`neon: ${JSON.stringify(c)}`);
       await g.shot('neon-all');
       check(c.heads.map((h) => h.group).join(',') === 'objects,motions,assets', `headings: ${c.heads.map((h) => h.text).join(' / ')}`);
-      check(c.heads[0]?.text === (ja ? '物 · 9' : 'Objects · 9') && c.heads[1]?.text === (ja ? '動き · 2' : 'Motions · 2') && c.heads[2]?.text === (ja ? '素材 · 0' : 'Assets · 0'), 'Objects · 9 (hex ×4 = 4), Motions · 2, Assets · 0');
+      // 10 objects since studio-motion-move (2026-10-23) put a blue `pillar` on test/neon-run's road (was 9).
+      check(c.heads[0]?.text === (ja ? '物 · 10' : 'Objects · 10') && c.heads[1]?.text === (ja ? '動き · 2' : 'Motions · 2') && c.heads[2]?.text === (ja ? '素材 · 0' : 'Assets · 0'), 'Objects · 10 (hex ×4 = 4), Motions · 2, Assets · 0');
       check(c.drop, 'Assets · 0 has one drop place');
-      check(c.left === 11 && c.all === 11 && c.headSum === 11, `one count: left ${c.left}, All ${c.all}, headings ${c.headSum}`);
-      check(c.objects === 9 && c.motions === 2, `tiles: objects ${c.objects} (copies counted), motions ${c.motions}`);
+      check(c.left === 12 && c.all === 12 && c.headSum === 12, `one count: left ${c.left}, All ${c.all}, headings ${c.headSum}`);
+      check(c.objects === 10 && c.motions === 2, `tiles: objects ${c.objects} (copies counted), motions ${c.motions}`);
       check(!c.count, `no second count line over the grid ("${c.count}")`);
       check(!c.multi, 'no Multi-select button on PC');
       check(c.ai.includes('✦') && (ja ? c.ai.includes('サインイン · 有料') : c.ai.includes('sign-in · paid')), `signed out: "${c.ai}"`);

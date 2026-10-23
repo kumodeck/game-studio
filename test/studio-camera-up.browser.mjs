@@ -238,7 +238,8 @@ async function run(game, layout, theme) {
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'k', code: 'KeyK', windowsVirtualKeyCode: 75, modifiers: 2 });
     await page.waitFor(`!!document.querySelector('#studio-palette:not([hidden])')`, 3000);
     const rows = await j(`JSON.stringify([...document.querySelectorAll('#studio-palette [data-action^=camera-]')].map((r) => r.textContent.trim()))`);
-    assert.deepEqual(rows, mobile ? ['Camera upE', 'Camera downQ'] : ['Camera upSpace+E', 'Camera downSpace+Q']);
+    // A phone's list prints no keys (no keyboard there; design review 2 ④, main.ts "All actions prints no keys").
+    assert.deepEqual(rows, mobile ? ['Camera up', 'Camera down'] : ['Camera upSpace+E', 'Camera downSpace+Q']);
     a = await view();
     await page.eval(`document.querySelector('#studio-palette [data-action=camera-up]').click()`);
     await sleep(400);

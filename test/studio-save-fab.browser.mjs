@@ -170,6 +170,11 @@ try {
         if (l.mobile || l.id === 'side') await page.eval(`(() => { const s = document.querySelector('[data-action=sheet]'); if (s && s.offsetParent && document.querySelector('.shell').dataset.sheet !== 'open') s.click(); })()`);
         await page.eval(`studioShell.actions.select(${JSON.stringify(k1)})`);
         await sleep(900);
+        // Plan step 7 (v0.1.38, 2026-10-23): the phone / side window's bottom is one sheet with tabs (Scene | <picked> |
+        // Motion), one thing at a time — a pick with the list up keeps the list, and the card is the picked tab. So the
+        // card is brought up by its tab (it stood over the list before).
+        await page.eval(`(() => { const t = document.querySelector('[data-part=sheet-tabs] [data-tab=pick]'); if (t && t.offsetParent && t.getAttribute('aria-selected') !== 'true') t.click(); })()`);
+        await sleep(500);
         b = await boxes();
         check(await page.eval(`document.querySelector('[data-part=card]').dataset.min === 'on'`), 'after a reload still minimized');
         await shot('2b-min-reload');

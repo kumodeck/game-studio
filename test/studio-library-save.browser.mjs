@@ -25,7 +25,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const DBG = `document.querySelector('iframe').contentWindow.__gameStudio._debug`;
 const click = (sel) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(sel)})].find(e => e.offsetParent); if (!el || el.disabled) return false; el.click(); return true; })()`;
 const saveLabel = `[...document.querySelectorAll('[data-action=save]')].find(b => b.offsetParent)?.textContent || ''`;
-const unsaved = (label) => Number((/(\d+)\s*$/.exec(label) || [])[1] || 0);
+// "Save · 2 ⌘S": the count after the "·" (the key went onto the button itself on PC, save-loud 2026-10-21, so the
+// number is no longer the label's end).
+const unsaved = (label) => Number((/·\s*(\d+)/.exec(label) || [])[1] || 0);
 
 const starter = (await readStarters(join(PKG, 'starters'))).find((s) => s.id === 'lantern-cove');
 const root = mkdtempSync(join(tmpdir(), 'studio-library-save-'));

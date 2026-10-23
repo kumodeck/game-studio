@@ -1206,8 +1206,11 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     d.changed();
     // A phone / the side window: the plate covers the lower half of the game; bring the picked object (and its path)
     // into what is left (the inset was just sent by layout()).
+    // PC (studio-fix-0139, 2026-10-23): the plate rises over the foot of the game too, and a ship low in the frame was
+    // under it — "Make a motion" asked for a drag the ruler then took. v0.1.31's "the camera stays put" still holds:
+    // 'reveal' moves nothing unless the plate (or the card) covers the object's middle, then the short pan-only slide.
     const key = d.picked();
-    if (on && key && d.narrow()) d.send({ type: 'studio:core/view', view: { action: 'focus', key } });
+    if (on && key) d.send({ type: 'studio:core/view', view: d.narrow() ? { action: 'focus', key } : { action: 'reveal', key } });
   }
   // Shown or not at the last render: when that flips (the Library, the UI layer, Play), the game gets its poses again.
   let wasShown = false;

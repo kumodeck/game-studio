@@ -179,8 +179,9 @@ async function run(size, theme) {
       }
       await sleep(500);
       // 5. "+ or": a click as well; then an area as the second, its corner dragged.
-      // "+ or" and the other ways are in the strip's ⋯ since studio-motion-panel; the line says "+1 more".
-      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+      // "+ or" and the other ways are in Fine-tune (the strip's ⋯ since studio-motion-panel; a sheet in the plate since
+      // studio-motion-line, plan step 4, 2026-10-23); the line says "+1 more".
+      await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]').click()`);
       await sleep(300);
       await page.eval(`document.querySelector('[data-part=tl-or-add]').click()`);
       await sleep(600);
@@ -193,8 +194,8 @@ async function run(size, theme) {
       await page.eval(choose('tl-starts-or', 'enter', 1));
       await sleep(800);
       check(!!(await page.eval(`(document.querySelector('[data-part=tl-or-more]') || {}).textContent || ''`)), 'the line says there is another way (+1)');
-      // ⋯ closed again: its panel sits over the game, where the area's corners are pressed below.
-      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+      // Fine-tune closed again (the plate is shorter then: more of the game, where the area's corners are pressed below).
+      await page.eval(`document.querySelector('[data-part=tl-fine-btn].on')?.click()`);
       await sleep(200);
       // A corner the mouse can reach (one under the ask bar or the plate is not in the game's frame).
       // The area starts at the boat, low on the screen (under the ask bar): put it farther out on the water first (the
@@ -222,6 +223,9 @@ async function run(size, theme) {
       // (no motion) picked, its row's "+" links the boat; the crate's new motion is a scene of the two; K keys the crate.
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
+      // The row's "+" shows with Fine-tune open (studio-motion-line, plan step 4, 2026-10-23).
+      await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]')?.click()`);
+      await sleep(400);
       await page.eval(`document.querySelector('[data-part=tl-link]').click()`);
       await sleep(500);
       const linkItem = await page.eval(`!!document.querySelector('[data-part=tl-link-item][data-key=rowboat]')`);
@@ -269,7 +273,7 @@ async function run(size, theme) {
       await sleep(900);
       await shot(page, '2-when');
       // 3: the scene "Arrival" (three objects: the boat picked, the buoy and the barrel linked).
-      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+      await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]').click()`);
       await sleep(300);
       await page.eval(choose('tl-clip', 'Arrival'));
       await sleep(500);

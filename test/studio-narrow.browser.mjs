@@ -70,7 +70,8 @@ const MEASURE = `(() => {
   const stage = document.querySelector('iframe').getBoundingClientRect();
   return JSON.stringify({ rows: rows.length, seen: seen.length, names: seen.map((e) => e.textContent.trim().slice(0, 18)),
     warn: !!document.querySelector('.side .status.warn')?.offsetParent,
-    selSeen: !!sel && seen.includes(sel), card: covers.length > 1, gameSeen: Math.round(side.top - stage.top), sheetTop: Math.round(side.top) });
+    selSeen: !!sel && seen.includes(sel), card: covers.length > 1,
+    pickTab: !!document.querySelector('[data-part=sheet-tabs] [data-tab=pick]')?.offsetParent, gameSeen: Math.round(side.top - stage.top), sheetTop: Math.round(side.top) });
 })()`;
 // Every self-check result the editor receives (the bridge posts it to the shell's window), from the first one on.
 const CATCH_CHECKS = `window.__checks = []; if (window === window.top) addEventListener('message', (e) => {
@@ -190,7 +191,10 @@ for (const g of GAMES) {
             console.log(`  ${tag}: ${m.seen}/${m.rows} rows readable (${m.names.join(', ')}); picked ${key} ${m.selSeen ? 'in view' : 'NOT in view'}; game ${m.gameSeen}px above the sheet; object at y=${Math.round(y)} (sheet top ${m.sheetTop})`);
             assert.ok(m.seen >= Math.min(want, m.rows), `${tag}: only ${m.seen} rows readable (want ≥ ${want})`);
             assert.ok(m.selSeen, `${tag}: the picked row is not in view`);
-            assert.ok(m.card, `${tag}: the picked object's card is gone`);
+            // Plan step 7 (v0.1.38, 2026-10-23): the phone / side window's bottom is one sheet showing one thing at a time
+            // (Scene | <picked> | Motion). A pick from the Scene list keeps the list up; the card is the picked object's
+            // tab, one press away — it no longer stands over the list (that was the card check before).
+            assert.ok(m.pickTab, `${tag}: no tab for the picked object's card in the sheet`);
             assert.ok(m.gameSeen >= h * 0.24, `${tag}: only ${m.gameSeen}px of the game above the sheet`);
             assert.ok(y !== null && y < m.sheetTop, `${tag}: the picked object is under the sheet (y=${y}, sheet top ${m.sheetTop})`);
           } catch (e) {

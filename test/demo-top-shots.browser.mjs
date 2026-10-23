@@ -31,7 +31,8 @@ try {
         await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
         const tag = `${layout}-${theme}-${lang}`;
         await page.goto(`${host.url}index.html?lang=${lang}`);
-        await page.waitFor(`document.querySelectorAll('a.card img').length === 2 && [...document.querySelectorAll('a.card img')].every((i) => i.complete)`);
+        // The samples are a.sample since the front page with the editor in it (2026-10-19, lp.js); a.card before.
+        await page.waitFor(`document.querySelectorAll('a.sample img').length === 2 && [...document.querySelectorAll('a.sample img')].every((i) => i.complete)`);
         await sleep(6800);
         writeFileSync(join(SHOTS, `${tag}-top.png`), await page.screenshot());
         if (layout === 'phone') {

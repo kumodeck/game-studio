@@ -1082,7 +1082,11 @@ export function start(host: StudioHost) {
       const sheetUp = (sheetOpen || page !== 'tool') && !playing;
       const libraryUp = tool === 'library' && !assetsPage.hidden;
       const menuUp = !!app.dataset.menu && app.dataset.menu !== 'closed';
-      if (cardUp || sheetUp || libraryUp || menuUp) inset.camera = false;
+      // Something picked, the bottom folded (studio-fix-0139, 2026-10-23): the card is gone but the pick's strip is
+      // still over the game, and the ↑↓ came back beside it — "the ↑↓ show even while something is picked". The rule is
+      // the pick, not the card: ↑↓ only with nothing picked (E / Q are the same: they fly only with nothing picked).
+      const pickUp = !!selected || group.length > 0;
+      if (cardUp || sheetUp || libraryUp || menuUp || pickUp) inset.camera = false;
     }
     const card = placementPanel.cardEl;
     if (!phone() && !card.hidden && card.isConnected && card.offsetParent) {
@@ -1911,10 +1915,16 @@ export function start(host: StudioHost) {
       const it = items.find((i) => i.key === k);
       return it ? displayName(it, t) : k;
     };
-    const kinds = new Set(e.changes.map((c) => c.kind));
-    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion'
+    // A drag that makes a motion pushes two changes in one step: the Library motion (`motion-lib`, key = the motion's
+    // name) and the object's clip (`motion`, key = the object). They are one edit to one object — counting them apart
+    // read "Undo: change 2 objects" for one ship (studio-fix-0139, 2026-10-23). So the three motion kinds count as one
+    // kind, and the name comes from the objects; a Library-only change (no object) names the motion itself.
+    const libOnly = (k: string) => k === 'motion-lib' || k === 'motion-rename';
+    const kinds = new Set(e.changes.map((c) => (libOnly(c.kind) ? 'motion' : c.kind)));
+    const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') ? 'motion'
       : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : kinds.has('name') ? 'rename' : 'move';
-    const keys = [...new Set(e.changes.map((c) => c.key))];
+    const onObjects = e.changes.filter((c) => !libOnly(c.kind));
+    const keys = [...new Set((onObjects.length ? onObjects : e.changes).map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0]!) : t('undo.n', { n: keys.length }) });
   }
 
@@ -4337,10 +4347,15 @@ export function start(host: StudioHost) {
     // Typing in a field (the ask box, ⌘K's search, a number on the card, a rename): the field keeps ⌘Z, ⌘A, ⌘C, ⌘V,
     // ⌘X, ⌘Y and Delete for its own text (basics pass, 2026-10-18 — ⌘A used to select every object instead of the
     // words). Only ⌘S (save) and ⌘K (all actions) still reach the editor; ⌘D only stops the browser's bookmark.
+    // The ask box once it is empty (studio-fix-0139, 2026-10-23: "after typing in the ask box, ⌘Z doesn't undo the
+    // scene"): a sent request clears the box and the focus stays in it, so ⌘Z / ⌘⇧Z / ⌘Y found no words to undo and
+    // did nothing — the scene's undo worked only after clicking out. An empty box has nothing of its own to undo:
+    // those reach the editor. With words in it, the box keeps them (the basics pass's rule above).
+    const askEmpty = typing && (e.target as HTMLElement).classList.contains('ask-input') && !(e.target as HTMLInputElement).value;
     if (typing) {
       const k = e.key.toLowerCase();
       if (k === 'd') e.preventDefault();
-      if (k !== 's' && k !== 'k') return;
+      if (k !== 's' && k !== 'k' && !(askEmpty && (k === 'z' || k === 'y'))) return;
     }
     // Space on a focused button presses it; only take Space when nothing that types or presses has focus.
     if (e.key === ' ' && editing && !e.ctrlKey && !e.metaKey && !(e.target as HTMLElement | null)?.closest?.('button, a, [role=option], [role=button]')) {

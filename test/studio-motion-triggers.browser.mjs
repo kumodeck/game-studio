@@ -3,14 +3,14 @@
 // Cove (3D, a copy of the starter). The checks (PC light):
 //   1. a file of the timeline's first shape (the boat's clip with its own keys, start: true; the buoy's older spin)
 //      opens with its motions in the Library and nothing counted as changed;
-//   2. the strip (one line since studio-motion-panel; Stops and Try in its ⋯): Starts "The game starts" for the boat; changed to "A key is pressed" (E), Stops
+//   2. the strip (one line since studio-motion-panel; Stops and Try in Fine-tune — its ⋯ until plan step 4): Starts "The game starts" for the boat; changed to "A key is pressed" (E), Stops
 //      after 2 rounds; the row's chip says so; the Try row gains an "E" ▶;
 //   3. Try: ▶ Game starts — the boat waits; ▶ E — the boat moves (the loader's own rules, motionRunner); Stop;
 //   4. Starts "The player enters an area": a box in the game, its point dragged moves the area (one undo step);
 //   4b. one line: no second row, no words field; ▷ by Starts tries E; ✦ Ask AI puts "Rowboat · Row" in the chat box
 //      with the cursor, a send carries the boat and Row (the chip stays); Starts "In the chat…" goes to the chat box too;
 //   5. the Library's Motion filter: 2 motions; the boat's "Row" picked shows its detail (on rowboat), "Attach to" puts it
-//      on the crate (the card's Motion menu then lists it, and "Take … off");
+//      on the crate (the card's one Motion line then names it — the card's menu went with plan step 3);
 //   6. the ask box names the picked motion; sending writes a request with `motions`;
 //   7. Save: placement.json has `motions` and the boat's `{ use: 'Row', when: key E, until: 2 rounds }`; the schema takes it;
 //   8. ▶ Play: the starter's loader waits, E (in the game) starts the boat.
@@ -102,15 +102,16 @@ async function run(size, theme) {
     const j = async (expr) => JSON.parse((await page.eval(expr)) || 'null');
     const state = () => j(`JSON.stringify(${TL}.state())`);
     const pose = (k) => j(`JSON.stringify(${DBG}.anchor(${JSON.stringify(k)}).pose)`);
-    // The strip is one line since studio-motion-panel: Starts on it, Stops and every cue to Try in its ⋯ (opened first).
+    // The strip is one line since studio-motion-panel: Starts on it, Stops and every cue to Try in Fine-tune (⋯ until
+    // studio-motion-line, plan step 4, 2026-10-23: a sheet in the plate; opened first).
     const openMore = async () => {
-      if (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-more]'))`)) return;
-      await page.eval(`(document.querySelector('[data-part=tl-more-btn]') || { click() {} }).click()`);
+      if (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-fine]:not([hidden])'))`)) return;
+      await page.eval(`(document.querySelector('[data-part=tl-fine-btn]') || { click() {} }).click()`);
       await sleep(300);
     };
     const whenRow = async () => {
       await openMore();
-      return j(`(() => { const r = document.querySelector('[data-part=tl-head]'); const m = document.querySelector('[data-part=tl-more]'); if (!r || !m) return null;
+      return j(`(() => { const r = document.querySelector('[data-part=tl-head]'); const m = document.querySelector('[data-part=tl-fine]:not([hidden])'); if (!r || !m) return null;
       return JSON.stringify({ starts: r.querySelector('[data-part=tl-starts]')?.value ?? null, stops: m.querySelector('[data-part=tl-stops]')?.value ?? null,
         cues: [...m.querySelectorAll('[data-part=tl-cue]')].map((b) => ({ id: b.dataset.cue, on: b.classList.contains('on'), ai: b.classList.contains('ai') })),
         chips: [...document.querySelectorAll('[data-part=tl-whenchip]')].map((c) => c.textContent) }); })()`);
@@ -149,9 +150,9 @@ async function run(size, theme) {
       const cap = await page.eval(`document.querySelector('[data-part=tl-key-pick]')?.textContent`);
       check(cap === 'E', `the key is E (${cap})`);
       check(w?.cues.some((c) => c.id === 'key:KeyE'), `Try gains ▶ E (${w?.cues.map((c) => c.id).join(', ')})`);
-      // studio-ui-lead (2026-10-23): the picked row has no "when" chip (the line and ⋯ say it); ⋯'s rounds field says 2.
-      const times = await page.eval(`document.querySelector('[data-part=tl-more] [data-part=tl-times]')?.value || ''`);
-      check(times === '2', `⋯ says 2 rounds (${times})`);
+      // studio-ui-lead (2026-10-23): the picked row has no "when" chip (the line and Fine-tune say it); its rounds field says 2.
+      const times = await page.eval(`document.querySelector('[data-part=tl-fine] [data-part=tl-times]')?.value || ''`);
+      check(times === '2', `Fine-tune says 2 rounds (${times})`);
       check(/[1-9]/.test(await page.eval(SAVE)), `Save counts it ("${(await page.eval(SAVE)).trim()}")`);
       // 3. Try.
       const home = await pose('rowboat');
@@ -190,10 +191,15 @@ async function run(size, theme) {
       await page.eval(choose('tl-starts', 'key'));
       await sleep(500);
       // 4b. One line (studio-motion-panel, a review of 2026-10-22): no second row; ▷ tries this motion; ✦ Ask AI → the chat box.
+      // The line's rows: since studio-motion-line (plan step 4, 2026-10-23) the line starts with the sentence ("rowboat moves
+      // [Back and forth ▾] in [3 s ▾]"), and a line that does not fit takes the narrow order (two rows, timeline-panel.ts
+      // render(): measured, nothing cut to "…"). With "A key is pressed [E]" at 1280 px it does not fit: two rows at most.
+      const lineRows = await j(`(() => { const boxes = [...document.querySelector('[data-part=tl-head]').children].map((c) => c.getBoundingClientRect()).filter((r) => r.width && r.height).sort((a, b) => a.top - b.top);
+        let rows = 0, bottom = -1e9; for (const r of boxes) { if (r.top > bottom - 4) { rows++; bottom = r.bottom; } else bottom = Math.max(bottom, r.bottom); } return rows; })()`);
       const line = await j(`(() => { const h = document.querySelector('[data-part=tl-head]'); return JSON.stringify({ h: h.getBoundingClientRect().height,
         second: !!document.querySelector('[data-part=tl-when-row]'), when: !!document.querySelector('[data-part=tl-when]'), tryThis: (document.querySelector('[data-part=tl-try-this]') || {}).dataset?.cue ?? null,
         ask: !!document.querySelector('[data-part=tl-ask]') }); })()`);
-      check(line && line.h <= 52 && !line.second && !line.when, `the strip is one line, no words field (${line?.h}px)`);
+      check(line && lineRows <= 2 && !line.second && !line.when, `the strip: no second "when" row, no words field, two rows at most (${lineRows} rows, ${line?.h}px)`);
       check(line?.tryThis === 'key:KeyE' && line.ask, `▷ by Starts tries E (${line?.tryThis}); ✦ Ask AI is on the line`);
       await page.eval(`document.querySelector('[data-part=tl-ask]').click()`);
       await sleep(600);
@@ -251,13 +257,17 @@ async function run(size, theme) {
       const reqs = existsSync(reqDir) ? readdirSync(reqDir).filter((f) => f.includes('-ask-')).map((f) => JSON.parse(readFileSync(join(reqDir, f), 'utf8'))) : [];
       const req = reqs.find((r) => r.motions && /^Make the crate/.test(r.text));
       check(!!req && req.motions[0].name === 'Row' && req.motions[0].on.some((o) => o.key === 'crate'), `the request has motions: ${JSON.stringify(req?.motions)?.slice(0, 160)}`);
-      // The card: the crate's Motion menu lists its motion, the Library's others, and "Take … off".
+      // The card: the crate's one Motion line names Row (studio-card-doors, plan step 3, 2026-10-23: the card's Motion
+      // menu — its motions, the Library's others, "Take … off" — is gone; the card says what it has, the timeline does the rest).
       await page.eval(`studioShell.actions.switchTool('placement')`);
       await sleep(800);
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
-      const opts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=card] [data-part=motion-clip] option')].map((o) => o.value))`);
-      check(opts.includes('Row') && opts.includes('attach:Motion') && opts.includes('detach'), `the crate's Motion menu: ${opts.join(', ')}`);
+      await fine(true);
+      await sleep(300);
+      const cline = await j(`JSON.stringify(document.querySelector('[data-part=card] [data-part=motion-timeline-line]')?.textContent ?? null)`);
+      await fine(false);
+      check(/^Row · /.test(cline || ''), `the crate's card: its Motion line "${cline}"`);
       // 7. Save.
       await page.eval(`studioShell.actions.save()`);
       await sleep(1500);
@@ -302,7 +312,7 @@ async function run(size, theme) {
       await page.eval(`document.querySelector('[data-part=tl-try-stop]')?.click()`);
       await sleep(300);
       // 4: ✦ Ask AI on the crate's Hop — the chat box's chip and the person's words (studio-motion-panel).
-      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+      await page.eval(`document.querySelector('[data-part=tl-fine-btn].on')?.click()`);
       await sleep(200);
       await page.eval(`document.querySelector('[data-part=tl-ask]')?.click()`);
       await sleep(500);

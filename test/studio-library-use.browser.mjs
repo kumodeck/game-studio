@@ -57,9 +57,10 @@ const SIZES = [
   { id: 'pc', w: 1280, h: 800, touch: false },
   { id: 'phone', w: 390, h: 844, touch: true },
 ].filter((s) => !opt('--only') || opt('--only').split(',').includes(s.id));
+// files2: the chip says only how many ("×2", ask.chipN) since the small ask chip (b3e2ea455, 2026-10-19; was "2 files").
 const W = {
-  ja: { addFile: 'これをシーンに足して', boss: 'この敵をボスとしてクライマックスに登場させて', files2: '素材 2', why: 'AI につながっていません' },
-  en: { addFile: 'Add this to the scene', boss: 'bring this enemy in as the boss at the climax', files2: '2 files', why: 'isn’t connected here' },
+  ja: { addFile: 'これをシーンに足して', boss: 'この敵をボスとしてクライマックスに登場させて', files2: '×2', why: 'AI につながっていません' },
+  en: { addFile: 'Add this to the scene', boss: 'bring this enemy in as the boss at the climax', files2: '×2', why: 'isn’t connected here' },
 }[LANG];
 
 const WIN = `document.querySelector('iframe.game:not(.leaving)').contentWindow`;
@@ -125,8 +126,13 @@ function helpers(page, sz, tag) {
     await sleep(400);
   };
   // The phone's list sheet slides up: wait for it to stand still, or the next tap lands on the game behind it.
+  // Since plan step 7 (v0.1.38) the list is the Scene tab of the one sheet: with the card up the bar's button is ▾ and
+  // folds instead, and folded its ▴ unfolds onto the card.
   const openSheet = async () => {
-    await press('.bar [data-action=sheet]');
+    if (await page.eval(`document.querySelector('.shell').dataset.fold === 'min'`)) await press('.bar [data-action=sheet]'), await sleep(700);
+    if (await page.eval(`document.querySelector('.shell').dataset.sheet === 'open'`)) return;
+    if (await page.eval(`!!document.querySelector('[data-part=sheet-tabs] [data-tab=scene]')?.offsetParent`)) await press('[data-part=sheet-tabs] [data-tab=scene]');
+    else await press('.bar [data-action=sheet]');
     await sleep(700);
   };
   const chip = () => page.eval(`(() => { const c = document.querySelector('.ask-chip'); return c && !c.hidden ? c.textContent : ''; })()`);
@@ -274,6 +280,9 @@ async function runLocal(g, sz, theme) {
     await page.waitFor(`studioShell.items().length === ${n0 + 1}`, 8000);
     assert.equal(await page.eval(`studioShell.items().find((i) => i.key === studioShell.selected())?.copyOf`), tileKey, `${tag}: the drop added a copy, picked`);
     assert.equal(await page.eval(`document.querySelector('.shell').dataset.view`), 'placement');
+    // The ask field still has the focus from the file's request above (the drop is built in the page and moves no
+    // focus), and ⌘Z in a text field is the field's own undo: out of the field first, as a click on the game would.
+    await page.eval(`document.activeElement?.blur?.()`);
     await key('z', 2);
     await page.waitFor(`studioShell.items().length === ${n0}`, 5000);
     step('a tile dropped on the Scene row adds it (and ⌘Z takes it away)');
@@ -292,14 +301,25 @@ async function runLocal(g, sz, theme) {
     await sleep(800);
   }
   assert.equal(await page.eval('studioShell.selected()'), tileKey);
+  // The way to the Library is in the card's ⋯ since studio-card-doors (plan step 3, 2026-10-23): PC — the ⋯ button's
+  // menu ("Show in Library"); a phone — the card's "…" (its `fine`) holds the same row as a link.
+  let libWay = '.card [data-action=show-in-library]';
   if (sz.touch) {
+    // Since plan step 7 (v0.1.38) the phone's bottom is one sheet with tabs (Scene | <picked> | Motion): a press on the
+    // list's row leaves the list up (the picked object's tab brings its card); folded, ▴ unfolds onto the card.
+    if (await page.eval(`document.querySelector('.shell').dataset.fold === 'min'`)) await press('.bar [data-action=sheet]');
+    if (await page.eval(`!!document.querySelector('[data-part=sheet-tabs] [data-tab=pick]')?.offsetParent && !document.querySelector('.card')?.offsetParent`)) await press('[data-part=sheet-tabs] [data-tab=pick]');
     // The phone's card folds its rows under "…".
-    if (!(await page.eval(visible('.card [data-action=show-in-library]')))) await press('.card .fine > summary');
+    if (!(await page.eval(visible(libWay)))) await press('.card .fine > summary');
+  } else {
+    await page.waitFor(visible('.card [data-action=card-more]'), 5000);
+    await press('.card [data-action=card-more]');
+    libWay = '.ctx-menu [data-action=ctx-show-in-library]';
   }
-  await page.waitFor(visible('.card [data-action=show-in-library]'), 5000);
+  await page.waitFor(visible(libWay), 5000);
   await shot('6-scene-card');
   const v1 = await view();
-  await press('.card [data-action=show-in-library]');
+  await press(libWay);
   await sleep(400);
   assert.ok(await libOn(), `${tag}: the Library is open`);
   assert.equal(await page.eval(`document.querySelector('.assets-page .lib-object-detail') ? ${visible('.assets-page .lib-object-detail')} : false`), true, `${tag}: with the object's detail`);
@@ -327,7 +347,8 @@ async function runLocal(g, sz, theme) {
   }
   if (sz.touch && (await page.eval(`document.querySelector('.shell').dataset.sheet`)) !== 'open') await openSheet();
   // The phone card's "…" (opened above) grows the card over the list: fold it first.
-  if (sz.touch && (await page.eval(`!!document.querySelector('.card .fine[open]')`))) await press('.card .fine > summary');
+  // (Only when the card is up: since plan step 7 the list and the card are tabs of one sheet, one at a time.)
+  if (sz.touch && (await page.eval(`!!document.querySelector('.card .fine[open]')?.offsetParent`))) await press('.card .fine > summary');
   const r = await J(`(() => { const el = document.querySelector('.objects .obj[data-key="${tileKey}"]'); el.scrollIntoView({ block: 'center' }); const e = el.getBoundingClientRect(); return [e.left + 40, e.top + e.height / 2]; })()`);
   await sleep(300);
   if (sz.touch) {

@@ -125,7 +125,9 @@ try {
           assert.deepEqual(rows.map((r) => r[1]), LANG === 'ja' ? ['シーン', 'ライブラリ'] : ['Scene', 'Library']);
           assert.equal(rows[0][3], '', `${tag}: the Scene row has no count (its list counts)`);
           if (!narrow) {
-            assert.ok(await page.eval(visible('.nav-row[data-tool=placement] .sub')), `${tag}: the grey word shows on PC`);
+            // No grey word under Scene / Library since studio-card-doors (plan step 3, 2026-10-23: it said what the names
+            // already say); it showed on PC before.
+            assert.equal(await page.eval(`!!document.querySelector('.nav-row .sub')`), false, `${tag}: no grey word on the rows`);
             assert.ok(await page.eval(visible('.side .list-title')), `${tag}: "In this scene" heads the Scene's list`);
           }
           assert.equal(await page.eval(`!!document.querySelector('.view-float, [data-action=objects-shelf]')`), false, `${tag}: no "Scene | Grid" / "Grid" any more`);

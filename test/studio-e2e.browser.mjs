@@ -14,7 +14,7 @@
 // Uses the zero-dependency CDP client from the 2D adapter tests. Exit code 1
 // on the first failed expectation.
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -276,11 +276,17 @@ async function run(example, layout) {
     await shot(page, `${tag}-6-next`);
     await page.eval(IN.click('[data-step=publish]'));
     await page.waitFor(`!!document.querySelector('[data-action=ask]')`);
+    // "✦ Ask …" is a draft since studio-card-doors (2026-10-23, the ✦ rule): the idea goes into the ask box and the page
+    // closes; Enter sends it as an ask (it wrote .studio/next-step.md at once before).
+    const reqs = () => (existsSync(join(root, '.studio/requests')) ? readdirSync(join(root, '.studio/requests')).filter((f) => f.endsWith('.json')) : []);
+    const r0 = reqs().length;
     await page.eval(IN.click('[data-action=ask]'));
-    await page.waitFor(`document.querySelector('.note')?.textContent.length > 0`);
-    assert.ok(existsSync(join(root, '.studio/next-step.md')), '.studio/next-step.md was not written');
-    assert.ok(lines.some((l) => l.startsWith('studio: next-step publish')));
-    step('next step "Publish to KUMODeck" handed to the AI');
+    await page.waitFor(`document.querySelector('.ask-input')?.value.length > 0 && document.activeElement === document.querySelector('.ask-input')`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    for (let i = 0; i < 50 && reqs().length === r0; i++) await new Promise((r) => setTimeout(r, 100));
+    assert.equal(reqs().length, r0 + 1, 'the drafted idea was not sent with Enter');
+    step('next step "Publish to KUMODeck": drafted in the ask box, Enter sends it to the AI');
     await shot(page, `${tag}-7-next-sent`);
 
     const errors = page.logs.filter((l) => l.startsWith('exception') || l.startsWith('error'));

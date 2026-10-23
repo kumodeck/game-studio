@@ -146,7 +146,16 @@ async function run(example, layout) {
   };
   const list = async () => JSON.parse(await page.eval(IN.list));
   const poseOf = async (key) => (await list()).find((i) => i.key === key)?.pose;
-  const press = async (sel) => assert.ok(await page.eval(IN.click(sel)), `no enabled ${sel}`);
+  // Since plan step 7 (v0.1.38) the phone's bottom is one sheet with tabs (Scene | <picked> | Motion): a row pressed in
+  // the list leaves the list up, so the card's buttons need the picked object's tab first; folded (the bar's ▾ folds the
+  // card too), ▴ unfolds onto the card.
+  const pickTab = `(() => { if (document.querySelector('.card')?.offsetParent) return false;
+    if (document.querySelector('.shell').dataset.fold === 'min') { document.querySelector('[data-action=sheet]').click(); return true; }
+    const t = document.querySelector('[data-part=sheet-tabs] [data-tab=pick]'); if (!t || !t.offsetParent) return false; t.click(); return true; })()`;
+  const press = async (sel) => {
+    if (sel.startsWith('.card ') && (await page.eval(pickTab))) await sleep(400);
+    assert.ok(await page.eval(IN.click(sel)), `no enabled ${sel}`);
+  };
   /** Press one object's row in the list (opening "name ×N" groups first: their heading selects them all). */
   const pickRow = (key) => page.eval(`(() => {
     const K = ${JSON.stringify(JSON.stringify(key))};
@@ -213,9 +222,14 @@ async function run(example, layout) {
     }
     await sleep(300);
   };
+  // Since plan step 7 (v0.1.38) the list is the Scene tab of the one sheet: with the card up the bar's button is ▾ and
+  // folds instead, and folded its ▴ unfolds onto the card.
   const openSheet = async () => {
     if (!mobile) return;
     if (await page.eval(`document.querySelector('.shell').dataset.sheet === 'open'`)) return;
+    if (await page.eval(`document.querySelector('.shell').dataset.fold === 'min'`)) await press('[data-action=sheet]'), await sleep(500);
+    if (await page.eval(`document.querySelector('.shell').dataset.sheet === 'open'`)) return;
+    if (await page.eval(IN.click('[data-part=sheet-tabs] [data-tab=scene]'))) return void (await sleep(500));
     await press('[data-action=sheet]');
     await sleep(500);
   };

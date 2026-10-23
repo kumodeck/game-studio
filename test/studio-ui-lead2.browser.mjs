@@ -6,11 +6,11 @@
 //      the boat — barrel · boat · buoy; Save writes that order with the motion (`order`); Undo puts it back;
 //   2. a key picked: the row reads "1 selected · Pace [Smooth (slow start & stop)] · Path [Smooth curve] · Delete" (Gemini's
 //      words), nothing cut;
-//   3. ⋯: the motion menu has no "New: Scene"; the rows are Motion · Loop & End · Trigger · Try · Tracks (with "+ Link an
-//      object"), each heading on one line;
-//   4. the next five of studio-ui-lead: the card's Motion menu is whole (PC); the presence line is the bar's own top (PC);
+//   3. Fine-tune (⋯ until plan step 4): the motion menu has no "New: Scene"; the rows are Rec motion · Motion · Loop & End ·
+//      Trigger · Try · Moving objects (with "+ Link an object"), each heading on one line;
+//   4. the next five of studio-ui-lead: the card's Motion line is whole (PC; a menu until plan step 3); the presence line is the bar's own top (PC);
 //      "✦ AI" reads on the phone; the names column grows for the crate's long name (not cut); no link row under the rows —
-//      the focused row's "+" opens the list;
+//      the focused row's "+" (with Fine-tune open) opens the list;
 //   5. no page errors.
 // Pictures (`--shots <dir>`): after-<lang>-<theme>-<pc|phone>-<1-rows|2-keys|3-more|4-card|5-name>.png. `--before --ui <dir>`
 // (the build before this change): before-… with the same steps and no checks.
@@ -49,9 +49,11 @@ const check = (ok, what) => {
 const TL = `window.__studioTimeline`;
 const WORDS = LANG === 'ja'
   ? { sel: '選択中: 1', pace: '進み方', ease: 'なめらかに（自然な加減速）', path: '通り道', smooth: '丸くなめらかに', del: '消す', make: '＋ 動きを作る',
-    more: ['動き', '終わり方とくり返し', '動かすきっかけ', '試す', '表示する行'], link: '連携する物', ai: 'AI' }
+    // Fine-tune's headings (⋯'s until plan step 4, 2026-10-23: ● Rec motion came off the line and leads; plan step 1's
+    // words: "Moving objects" for "Tracks", and the shorter Japanese trigger / tracks words).
+    more: ['動きを記録', '動き', '終わり方とくり返し', 'きっかけ', '試す', '動く物一覧'], link: '連携する物', ai: 'AI' }
   : { sel: '1 selected', pace: 'Pace', ease: 'Smooth (slow start & stop)', path: 'Path', smooth: 'Smooth curve', del: 'Delete', make: '+ Make a motion',
-    more: ['Motion', 'Loop & End', 'Trigger', 'Try', 'Tracks'], link: 'Link an object', ai: 'AI' };
+    more: ['Rec motion', 'Motion', 'Loop & End', 'Trigger', 'Try', 'Moving objects'], link: 'Link an object', ai: 'AI' };
 
 // A scene "Arrival" over the boat, the buoy and the barrel — in that order in the file — and a long name on the crate.
 const K = (t, v) => ({ t, v });
@@ -147,27 +149,32 @@ async function run(size, theme) {
     }
     await page.eval(`${TL}.onKey({ key: 'Escape', ctrl: false, meta: false, shift: false })`);
     await sleep(300);
-    // ---- 3. ⋯: no "New: Scene"; the rows' headings ----
-    await page.eval(`document.querySelector('[data-part=tl-more-btn]')?.click()`);
+    // ---- 3. Fine-tune (⋯ until studio-motion-line, plan step 4): no "New: Scene"; the rows' headings ----
+    const BOX = BEFORE ? 'tl-more' : 'tl-fine';
+    const BTN = BEFORE ? 'tl-more-btn' : 'tl-fine-btn';
+    await page.eval(`document.querySelector('[data-part=${BTN}]')?.click()`);
     await sleep(500);
-    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
-    const heads = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] .tl-more-k')].map((k) => [k.textContent, Math.round(k.getBoundingClientRect().height), parseFloat(getComputedStyle(k).lineHeight) || 16]))`);
-    const linkWords = await text('[data-part=tl-more] [data-part=tl-more-link]');
+    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=${BOX}] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
+    const heads = await j(`JSON.stringify([...document.querySelectorAll('[data-part=${BOX}] .tl-more-k')].map((k) => [k.textContent, Math.round(k.getBoundingClientRect().height), parseFloat(getComputedStyle(k).lineHeight) || 16]))`);
+    const linkWords = await text(`[data-part=${BOX}] [data-part=tl-more-link]`);
     await shot('3-more');
     if (!BEFORE) {
       check(!!clipOpts && clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && !clipOpts.some(([v]) => v === 'new:scene') && !clipOpts.some(([, t]) => /場面|Scene/.test(t)),
         `${tag}: the motion menu — + Make a motion, no "New: Scene" (${(clipOpts || []).map((o) => o[1]).join(' | ')})`);
-      check(JSON.stringify((heads || []).map((h) => h[0])) === JSON.stringify(WORDS.more), `${tag}: ⋯'s rows are ${WORDS.more.join(' · ')} (${(heads || []).map((h) => h[0]).join(' · ')})`);
+      check(JSON.stringify((heads || []).map((h) => h[0])) === JSON.stringify(WORDS.more), `${tag}: Fine-tune's rows are ${WORDS.more.join(' · ')} (${(heads || []).map((h) => h[0]).join(' · ')})`);
       check((heads || []).every((h) => h[1] < h[2] * 1.8), `${tag}: each heading on one line (${(heads || []).map((h) => `${h[0]} ${h[1]}px`).join(', ')})`);
-      check((linkWords || '').includes(WORDS.link), `${tag}: "+ ${WORDS.link}" in words, in the Tracks row ("${linkWords}")`);
+      check((linkWords || '').includes(WORDS.link), `${tag}: "+ ${WORDS.link}" in words, in the Moving objects row ("${linkWords}")`);
     }
-    await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+    await page.eval(`document.querySelector('[data-part=${BTN}].on')?.click()`);
     await sleep(300);
     // ---- 4. the next five: the card's Motion menu, the presence line, "✦ AI", the names column, the row's "+" ----
     await select('rowboat');
     await sleep(600);
-    const card = await j(`(() => { const s = document.querySelector('[data-part=card] [data-part=motion-clip]'); if (!s) return null; const m = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(s);
-      m.font = cs.font; const w = m.measureText(s.selectedOptions[0]?.textContent || '').width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight); return JSON.stringify({ text: s.selectedOptions[0]?.textContent, w: Math.round(w), cw: s.clientWidth }); })()`);
+    // The card's Motion row is one line since studio-card-doors (plan step 3, 2026-10-23: "Arrival · When game starts ›",
+    // no menu): whole = its words not cut.
+    const card = await j(BEFORE ? `(() => { const s = document.querySelector('[data-part=card] [data-part=motion-clip]'); if (!s) return null; const m = document.createElement('canvas').getContext('2d'); const cs = getComputedStyle(s);
+      m.font = cs.font; const w = m.measureText(s.selectedOptions[0]?.textContent || '').width + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight); return JSON.stringify({ text: s.selectedOptions[0]?.textContent, w: Math.round(w), cw: s.clientWidth }); })()`
+      : `(() => { const s = document.querySelector('[data-part=card] [data-part=motion-timeline-line] .motion-line-text'); if (!s) return null; return JSON.stringify({ text: s.textContent, w: s.scrollWidth, cw: s.clientWidth }); })()`);
     // The presence words: beside the field when they fit (English), else on the bar's own top line (Japanese at 600 px).
     const presence = await j(`(() => { const row = document.querySelector('.presence-row'); const p = document.querySelector('.presence'); const bar = document.querySelector('[data-part=bar]'); if (!row || !p || !bar) return null;
       if (!row.contains(p)) return JSON.stringify({ inBox: true, hidden: row.hidden });
@@ -178,7 +185,7 @@ async function run(size, theme) {
     await shot('4-card');
     if (!BEFORE) {
       if (!size.mobile) {
-        check(!!card && card.cw + 2 >= card.w, `${tag}: the card's Motion menu is whole ("${card?.text}", ${card?.w} px in ${card?.cw})`);
+        check(!!card && card.cw + 2 >= card.w, `${tag}: the card's Motion line is whole ("${card?.text}", ${card?.w} px in ${card?.cw})`);
         check(!!presence && (presence.inBox || presence.hidden || (presence.w >= presence.bw * 0.85 && presence.gap <= 2 && presence.gap >= -12)),
           `${tag}: the presence words beside the field, or the bar's own top line — as wide as the bar, joined to it (${JSON.stringify(presence)})`);
       } else {
@@ -188,6 +195,9 @@ async function run(size, theme) {
     }
     await select('crate');
     await sleep(600);
+    // The row's "+" shows with Fine-tune open (studio-motion-line, plan step 4): open it, as a person does to link.
+    if (!BEFORE) await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]')?.click()`);
+    await sleep(500);
     const name = await j(`(() => { const n = document.querySelector('[data-part=timeline] .tl-name.picked'); const col = document.querySelector('[data-part=timeline] .tl-names-col'); if (!n || !col) return null; const o = n.querySelector('.tl-obj');
       return JSON.stringify({ name: o?.textContent, cut: o ? o.scrollWidth > o.clientWidth + 1 || o.scrollHeight > o.clientHeight + 1 : null, col: Math.round(col.getBoundingClientRect().width), plus: !!n.querySelector('[data-part=tl-link]'), linkRow: !!document.querySelector('[data-part=timeline] .tl-name.tl-link-name') }); })()`);
     await shot('5-name');

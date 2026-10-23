@@ -7,7 +7,7 @@
 //   3. the drag's end (as the bridge reports it: the drag itself is test/studio-tool-clear.browser.mjs): two keys, 0 s and
 //      1 s; it plays at once; the line "✓ … keep moving it to add a second" with "Done";
 //   4. a second move: a key at 2 s;
-//   5. the clip menu: "+ Make a motion" and the scene, no kind; the "When" menu: "Trigger" (six) and "Ask your AI to set up"
+//   5. the clip menu (in Fine-tune since plan step 4): "+ Make a motion", no scene, no kind; the "When" menu: "Trigger" (six) and "Ask your AI to set up"
 //      (studio-words-plan, 2026-10-23: the AI by its name — no AI known in this test — and no Title Case);
 //   6. Esc right after "Make a motion" (the crate): nothing made, the line gone;
 //   7. no page errors.
@@ -134,13 +134,13 @@ async function run(theme) {
     check(JSON.stringify(k2) === '[[0,1,2]]', `${tag}: the next move adds a second (${JSON.stringify(k2)})`);
     await shot('4-more');
     // ---- 5. the menus ---- (studio-ui-lead, 2026-10-23: while making, the line is the step and "Done" only; "When" ▾
-    // comes after Done, and the motion's menu lives in ⋯)
+    // comes after Done, and the motion's menu lives in Fine-tune — ⋯ until studio-motion-line, plan step 4, 2026-10-23)
     await page.eval(`document.querySelector('[data-part=tl-done]')?.click()`);
     await sleep(400);
-    await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+    await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]').click()`);
     await sleep(300);
-    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
-    await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-fine] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
+    await page.eval(`document.querySelector('[data-part=tl-fine-btn].on')?.click()`);
     await sleep(200);
     check(clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && !clipOpts.some(([v]) => v === 'new:scene')
       && !clipOpts.some(([v, t]) => /^new:(?!make$)/.test(v) || WORDS.kinds.test(t)), `${tag}: the clip menu — make one, no scene (studio-ui-lead2), no kind (${clipOpts.map((o) => o[1]).join(' | ')})`);

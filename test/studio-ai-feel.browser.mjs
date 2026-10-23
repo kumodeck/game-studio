@@ -258,7 +258,7 @@ async function run(layout) {
     for (const k of ['crate-1', 'crate-2', 'crate-3', 'crate-4', 'lamp', 'ground']) assert.ok(!marked.includes(k), `${k} marked but unchanged: ${marked}`);
     const line = await j(page, IN.line);
     assert.match(line.text, /Added 3 crates in a row by the yard|木箱を 3 つ並べました/);
-    assert.match(line.text, /3 things changed|3 個変わりました/);
+    assert.match(line.text, /3 objects changed|3 個変わりました/); // "things" → "objects" (plan step 1, 2026-10-23)
     assert.ok(line.cls.includes('done'));
     assert.notEqual(line.ai, 'busy');
     await shot('done-marked');
@@ -373,7 +373,9 @@ async function run(layout) {
         dot: getComputedStyle(l, '::before').animationName, ai: document.querySelector('.shell').dataset.ai, hidden: l.hidden }); })()`));
     assert.equal(asking.hidden, false);
     assert.equal(asking.head, q, 'the question first');
-    assert.equal(asking.sub, LANG === 'ja' ? 'AI から質問です' : 'Your AI has a question');
+    // The AI's name since plan step 1 (2026-10-23): "Claude" / "Codex" when the studio runs in their terminal (this
+    // test inherits the environment it is run in), "your AI" otherwise.
+    assert.match(asking.sub, LANG === 'ja' ? /^(Claude |Codex |あなたの AI |AI )から質問です$/ : /^(Claude|Codex|Your AI) has a question$/);
     assert.doesNotMatch(asking.head + asking.sub, /Claude Code/, 'no "answer it in another window"');
     // Where the AI's whole question is, at the end of the grey row (2026-10-21): Claude / Codex / "your AI" by how the editor was started.
     assert.match(asking.more, LANG === 'ja' ? /^詳しくは.+で$/ : /^More in /);
@@ -384,7 +386,7 @@ async function run(layout) {
     // draws one outline per object).
     const selNow = await j(page, IN.selected);
     if (!selNow.includes('crate-1')) assert.match(asking.tag, /^flex .*(asking about this|聞いているのはこれ)/, 'the object it is about is lit in the game, with its tag');
-    assert.equal(asking.placeholder, LANG === 'ja' ? 'AI に答える…' : 'Answer your AI…');
+    assert.match(asking.placeholder, LANG === 'ja' ? /^(Claude |Codex |あなたの AI |AI )に答える…$/ : /^Answer (Claude|Codex|your AI)…$/);
     assert.equal(asking.dot, 'none', 'the violet dot does not blink');
     assert.notEqual(asking.ai, 'busy', 'no running light: the person acts now');
     await shot('asking');

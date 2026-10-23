@@ -328,19 +328,30 @@ async function run(browser, game, size, tag) {
     const away = async () => {
       const m = await j(IN.at(key));
       const f = await j(`JSON.stringify(${FRAME}.getBoundingClientRect())`);
-      const cands = [];
-      for (const fx of [0.15, 0.35, 0.5, 0.65, 0.85]) for (const fy of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]) {
+      const cands = [], bare = [];
+      // Down to 0.8 of the frame (2026-10-23): at 430 / 280 wide Lantern Cove's opening view is the sea stack in the middle,
+      // the lighthouse (its beams' box) on the left and the sailboat on the right down to 0.6 — the free water is below.
+      // Since plan step 7 the bottom is one sheet, and spots under it are still skipped (elementFromPoint).
+      for (const fx of [0.15, 0.35, 0.5, 0.65, 0.85]) for (const fy of [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]) {
         const c = { x: f.left + f.width * fx, y: f.top + f.height * fy };
         if (!(await page.eval(`document.elementFromPoint(${c.x}, ${c.y}) === ${FRAME}`))) continue;
         // Not on the editor's own buttons inside the game (the tool strip, the camera ↑↓: shadow roots marked
         // data-studio-ui): a press there is that button (merge of 2026-10-19: at 430 the farthest spot fell on the strip).
         if (await page.eval(`(() => { const f = ${FRAME}.getBoundingClientRect(); const e = ${FRAME}.contentDocument.elementFromPoint(${c.x} - f.left, ${c.y} - f.top); return !!e?.closest?.('[data-studio-ui]'); })()`)) continue;
+        // Nor on the game page's own words over the picture (the hosted test version's "This is a test version." line
+        // sits in the frame's top; at 280 wide the farthest spot fell on it): the game's canvas only.
+        if (!(await page.eval(`(() => { const f = ${FRAME}.getBoundingClientRect(); const e = ${FRAME}.contentDocument.elementFromPoint(${c.x} - f.left, ${c.y} - f.top); return e?.tagName === 'CANVAS'; })()`))) continue;
         // Not on any object either (a press on another object is about that object): on a second visit the
         // saved, bigger rock covered the spot the first visit used.
         const onSome = await page.eval(`(() => { const f = ${FRAME}.getBoundingClientRect(); return ${DBG}.list().some((i) => { const a = ${DBG}.anchor(i.key);
           return a && a.visible && ${c.x} > f.left + a.rect.x - 10 && ${c.x} < f.left + a.rect.x + a.rect.w + 10 && ${c.y} > f.top + a.rect.y - 10 && ${c.y} < f.top + a.rect.y + a.rect.h + 10; }); })()`);
         if (!onSome) cands.push(c);
+        // Boxes over everything (at 430 / 280 wide the sea stacks' boxes reach far under the water): then a spot where
+        // a press meets no object at all (the editor's own ray, _debug.under) — as a person sees it.
+        else if (!(await page.eval(`(() => { const f = ${FRAME}.getBoundingClientRect(); const u = ${DBG}.under;
+          return [[0, 0], [24, 0], [-24, 0], [0, 24], [0, -24]].some(([dx, dy]) => u(${c.x} - f.left + dx, ${c.y} - f.top + dy)); })()`))) bare.push(c);
       }
+      if (!cands.length) cands.push(...bare);
       cands.sort((p, q) => Math.hypot(q.x - m.x, q.y - m.y) - Math.hypot(p.x - m.x, p.y - m.y));
       assert.ok(cands.length, 'no free spot in the game to drag from');
       return cands[0];

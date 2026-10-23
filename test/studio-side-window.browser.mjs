@@ -12,7 +12,8 @@
 //      nothing that can be pressed in the window's bottom 48 px (the chat app's toolbar)
 //      (Half the window and 3 rows until the third design review's ⑨, 2026-10-20: "six rows with the card and the bar up".)
 //   3. the strip and the camera ↑↓ are a mouse's 28 px (not a finger's 44) and do not overlap; the ↑↓ are gone while the sheet
-//      and the card are up (a narrow window's rule, Ive review 2 ⑧) and back once the bottom is folded
+//      and the card are up (a narrow window's rule, Ive review 2 ⑧), and still gone once the bottom is folded with the
+//      object picked (studio-fix-0139, 2026-10-23: "the ↑↓ show even while something is picked" — the rule is the pick)
 //   4. the sheet's grip, dragged up, gives more rows (the game still seen above it); dragged down, it is low again; a click
 //      on it folds the bottom to the ask bar and ▴ opens it (a click took it back low until 2026-10-21: test/studio-side-sheet)
 //   5. an AI-written runner with 60 unnamed objects: the list's first row folds them all ("Unnamed objects 60 · Ask
@@ -233,11 +234,11 @@ for (const g of GAMES) {
         await page.click(gx, gy);
         await sleep(900);
         assert.equal(await page.eval(`document.querySelector('.shell').dataset.fold || ''`), 'min', `${tag}: a click on the grip did not fold the bottom`);
-        // 3 (folded). Nothing up over the game now, the object still picked: the ↑↓ are back beside the strip, both a
-        // mouse's 28 px, and the strip does not lie over them.
+        // 3 (folded). Nothing up over the game now, the object still picked: the strip a mouse's 28 px, and no ↑↓ — they
+        // show only with nothing picked (studio-fix-0139, 2026-10-23; until then they came back here beside the strip).
         const ui2 = JSON.parse(await page.eval(GAME_UI));
         const rise2 = ui2.filter((b) => b.rise), strip2 = ui2.filter((b) => !b.rise);
-        assert.ok(rise2.length === 2 || g.id !== 'lantern-cove', `${tag}: folded, the camera ↑↓ are not shown (${rise2.length})`);
+        assert.equal(rise2.length, 0, `${tag}: folded with the object picked, the camera ↑↓ show (${rise2.length})`);
         for (const b of ui2) assert.ok(b.w <= 30 && b.h <= 30, `${tag}: folded, a ${b.rise ? '↑↓' : 'strip'} button is ${Math.round(b.w)}×${Math.round(b.h)} (want the mouse's 28)`);
         for (const r of rise2) for (const s of strip2) assert.ok(!overlap(r, s), `${tag}: folded, the strip lies over the camera ↑↓`);
         await page.eval(`document.querySelector('[data-action=sheet]').click()`);

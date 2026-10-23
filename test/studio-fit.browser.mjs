@@ -124,15 +124,33 @@ async function rules(layout) {
     assert.ok(Math.abs(q - Math.round(q)) < 1e-6 && Math.round(q) !== 0, `angle not on 90° steps: ${rr}`);
     ok(`turn snapped to 90° steps → ${Math.round((rr * 180) / Math.PI)}°`);
     await page.waitFor(`!!document.querySelector('[data-action=reset-size]')`, 3000);
-    await page.eval(IN.click('[data-action=reset-size]'));
+    // A phone's card folds its rows under "…" (the card's `fine`, design review wave 1 W1-11, 2026-10-17), and since plan
+    // step 7 (v0.1.38) the card is the picked object's tab of the one sheet: bring it up and open "…" first.
+    if (mobile) {
+      // Folded (the bar's ▾ folds the card too): ▴ unfolds onto the card.
+      await page.eval(`(() => { if (document.querySelector('.shell').dataset.fold === 'min') document.querySelector('[data-action=sheet]').click(); return true; })()`);
+      await sleep(400);
+      await page.eval(`(() => { const t = document.querySelector('[data-part=sheet-tabs] [data-tab=pick]'); if (t && t.offsetParent && !document.querySelector('.card')?.offsetParent) t.click(); return true; })()`);
+      await sleep(400);
+      await page.eval(`(() => { const f = document.querySelector('.card .fine'); if (f && !f.open) f.querySelector('summary').click(); return true; })()`);
+      await sleep(300);
+    }
+    assert.ok(await page.eval(IN.click('[data-action=reset-size]')), 'no "Default size" button to press');
     await sleep(200);
     assert.equal((await j(page, IN.anchor(crate.key))).pose.s, 1.5);
     ok('"Default size" button → ×1.5 (rule for crates)');
     await shot('rules');
     await selectKey(page, 'ground');
-    assert.equal(await j(page, IN.handle('move')), null, 'locked ground still has a move handle');
-    assert.match(await page.eval(`document.querySelector('.card')?.textContent || ''`), /locked|固定/i);
-    ok('locked object: no handles, note in the panel');
+    // Since studio-tool-clear (2026-10-23) the strip keeps every tool in its place and dims the ones that do not work
+    // (aria-disabled, the why as its tooltip) instead of hiding them: a locked object's Move is there, but off.
+    const moveOff = `(() => { const b = document.querySelector('iframe').contentDocument.querySelector('[data-studio-ui]')?.shadowRoot?.querySelector('[data-studio-handle=move]'); return !b || b.hidden || b.getAttribute('aria-disabled') === 'true'; })()`;
+    assert.equal(await page.eval(moveOff), true, 'locked ground has a Move that works');
+    // The why is said once, in the line under the strip (studio-card-doors, plan step 3, 2026-10-23): the card is the
+    // name only for a locked ground / road / sky (it said "Ground, road, or sky… Unlock" before).
+    await sleep(300);
+    const note = await page.eval(`document.querySelector('iframe').contentDocument.querySelector('[data-studio-ui]')?.shadowRoot?.querySelector('[data-studio-note]')?.textContent || ''`);
+    assert.match(note, /Locked|固定|ロック/, `the line under the strip: "${note}"`);
+    ok('locked object: Move dimmed, the line under the strip says it is locked');
   });
 }
 

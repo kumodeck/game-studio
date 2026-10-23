@@ -1,12 +1,15 @@
 // The timeline's line, readable (studio-ui-lead, 2026-10-23; a hands-on try of v0.1.26 at 1800 px: "not one thing on the
 // timeline's line is readable" — the motion menu "Mo…", the "attached" chip, "Point Sm…", "Keys Ea…"). In a headless browser, PC 1280×800 and a phone
 // 390×844, light and dark (`--themes`), one language a run (`--lang en|ja`):
-//   1. a motion attached from the Library (the card's From Library, on the crate): the line is ▶ · the time · ● Auto key ·
-//      "When does it move?" [the menu, ringed] ▷ … ⋯ ✦ ⌄ — no motion menu, no "✓ attached", no Point / Keys; nothing on
-//      it is cut or ends in "…", and on PC it is one line (two on a phone);
+//   1. a motion attached from the Library (the strip's Motion → Use a saved motion → Hop, on the crate; the card's "From
+//      Library" went with studio-card-doors, plan step 3): the line is ▶ Preview · the sentence ("crate moves [Once ▾]
+//      in [0.8 s ▾]") · "When does it move?" [the menu, ringed] ▷ … Fine-tune ✦ ⌄ (studio-motion-line, plan step 4,
+//      2026-10-23: no time readout, no ● on the line, Fine-tune for ⋯) — no motion menu, no "✓ attached", no Point /
+//      Keys; nothing on it is cut or ends in "…", and on PC it is one line (two on a phone);
 //   2. a key picked on the boat's row: the picked keys' row under the line — "1 selected", "Pace ▾", "Path ▾", Delete
 //      (Gemini's words, studio-ui-lead2) — readable; Delete takes the key, ⌘Z brings it back;
-//   3. ⋯ holds the motion's menu (this motion, + Make a motion, rename, take off; no "New: Scene" since studio-ui-lead2);
+//   3. Fine-tune (⋯ until plan step 4) holds the motion's menu (this motion, + Make a motion, rename, take off; no
+//      "New: Scene" since studio-ui-lead2);
 //   4. (PC) making a motion from the strip: the line is the step ("✓ Moves 0–1 s …") and Done only, no "when" until Done;
 //      after Done, "When does it move?" ringed;
 //   5. the rows: the picked object's name is not cut, and no "when" chip on it (the line says it);
@@ -101,24 +104,48 @@ async function run(size, theme) {
     const keyAt = (k, t) => j(`(() => { const k = [...document.querySelectorAll('[data-part=tl-key]')].find((x) => x.dataset.key === ${JSON.stringify(k)} && !x.dataset.ch && Math.abs(+x.dataset.t - ${t}) < 0.06);
       if (!k) return null; const r = k.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
     const keys = (k) => j(`JSON.stringify((${TL}.motionOf(${JSON.stringify(k)})?.clips ?? []).map((c) => (c.keys.p ?? []).map((x) => x.t)))`);
+    /** The picked object's Motion button in the game's strip (the one way in since studio-card-doors, plan step 3). */
+    const pressMotion = async () => {
+      await page.waitFor(`!!${ROOT}.querySelector('[data-studio-motion]:not([hidden])')`, 15000).catch(() => {});
+      const btn = await j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector('[data-studio-motion]');
+        if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2 }); })()`);
+      if (btn) await press(btn);
+      return !!btn;
+    };
+    /** A row of the editor's menu (context-menu.ts), pressed. */
+    const pressRow = async (action) => {
+      const b = await j(`(() => { const b = document.querySelector('[data-part=context-menu] [data-action=${JSON.stringify(action)}]'); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
+      if (b) await press(b);
+      return !!b;
+    };
     await page.goto(srv.url);
     await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
     await sleep(2500);
     // ---- 1. a motion attached from the Library: the line ----
     await select('crate');
-    await fine(true);
-    await sleep(300);
-    await page.eval(`(() => { const s = document.querySelector('[data-part=card] [data-part=motion-from-lib]'); if (!s) return false; s.value = 'attach:Hop'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-    await sleep(900);
-    await fine(false);
+    if (BEFORE) {
+      await fine(true);
+      await sleep(300);
+      await page.eval(`(() => { const s = document.querySelector('[data-part=card] [data-part=motion-from-lib]'); if (!s) return false; s.value = 'attach:Hop'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(900);
+      await fine(false);
+    } else {
+      // The strip's Motion (no motion yet: a menu) → "Use a saved motion" → Hop.
+      await pressMotion();
+      await pressRow('ctx-motion-lib');
+      await pressRow('ctx-motion-lib-Hop');
+      await sleep(900);
+    }
     await sleep(500);
     const parts1 = await j(PARTS);
     const cut1 = await j(CUT);
     const rows1 = await j(ROWS);
     await shot('1-line');
     if (!BEFORE) {
-      const want = ['tl-play', 'tl-now', 'tl-auto', 'tl-lbl', 'tl-starts', 'tl-try-this', 'tl-more-btn', 'tl-ask', 'tl-fold'];
-      check(JSON.stringify(parts1.filter((p) => p !== 'tl-try-this')) === JSON.stringify(want.filter((p) => p !== 'tl-try-this')), `${tag}: the line is ▶ time ● "when" ⋯ ✦ ⌄ — no motion menu, no "attached", no Point / Keys (${parts1.join(' · ')})`);
+      // Plan step 4 (studio-motion-line, 2026-10-23): ▶ Preview · the sentence · "When does it move?" ▾ ▷ · Fine-tune ✦ ⌄ —
+      // the time readout and ● Rec motion left the line (the red line's cap, the sentence's [1 s ▾], Fine-tune).
+      const want = ['tl-play', 'tl-line', 'tl-sep', 'tl-lbl', 'tl-starts', 'tl-try-this', 'tl-fine-btn', 'tl-ask', 'tl-fold'];
+      check(JSON.stringify(parts1.filter((p) => p !== 'tl-try-this')) === JSON.stringify(want.filter((p) => p !== 'tl-try-this')), `${tag}: the line is ▶ · the sentence · "when" · Fine-tune ✦ ⌄ — no motion menu, no "attached", no Point / Keys (${parts1.join(' · ')})`);
       const lbl = await text('[data-part=tl-head] .tl-when-lbl');
       const ringed = await j(`JSON.stringify(!!document.querySelector('[data-part=tl-head] .tl-starts.ask'))`);
       check((size.mobile || lbl === WORDS.when) && ringed, `${tag}: "${WORDS.when}" and the menu ringed (label "${lbl}", ringed ${ringed})`);
@@ -151,18 +178,19 @@ async function run(size, theme) {
       await sleep(500);
       check(JSON.stringify(await keys('rowboat')) === '[[0,1.5,3]]', '⌘Z brings it back');
     }
-    // ---- 3. ⋯: the motion's menu ----
-    await page.eval(`document.querySelector('[data-part=tl-more-btn]')?.click()`);
+    // ---- 3. Fine-tune (⋯ until plan step 4): the motion's menu ----
+    const box = BEFORE ? 'tl-more' : 'tl-fine';
+    await page.eval(`document.querySelector('[data-part=${BEFORE ? 'tl-more-btn' : 'tl-fine-btn'}]')?.click()`);
     await sleep(400);
-    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
-    const clipLabel = await text('[data-part=tl-more] [data-part=tl-more-clip] .tl-more-k');
+    const clipOpts = await j(`JSON.stringify([...document.querySelectorAll('[data-part=${box}] [data-part=tl-clip] option')].map((o) => [o.value, o.textContent]))`);
+    const clipLabel = await text(`[data-part=${box}] [data-part=tl-more-clip] .tl-more-k`);
     await shot('3-more');
     if (!BEFORE) {
       check(!!clipOpts && clipLabel === WORDS.motion && clipOpts.some(([v]) => v === 'Motion') && clipOpts.some(([v, t]) => v === 'new:make' && t === WORDS.make) && !clipOpts.some(([v]) => v === 'new:scene') && clipOpts.some(([v]) => v === 'rename') && clipOpts.some(([v, t]) => v === 'delete' && t === WORDS.off),
-        `${tag}: ⋯ has "${WORDS.motion}": the motion, + Make a motion, rename, take off — no scene line (${(clipOpts || []).map((o) => o[1]).join(' | ')})`);
+        `${tag}: Fine-tune has "${WORDS.motion}": the motion, + Make a motion, rename, take off — no scene line (${(clipOpts || []).map((o) => o[1]).join(' | ')})`);
       check(!(await j(`JSON.stringify(!!document.querySelector('[data-part=tl-head] [data-part=tl-clip]'))`)), `${tag}: and the line has none`);
     }
-    await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
+    await page.eval(`document.querySelector('[data-part=${BEFORE ? 'tl-more-btn' : 'tl-fine-btn'}].on')?.click()`);
     await sleep(300);
     // ---- 5. the rows ----
     const row = await j(`(() => { const n = document.querySelector('[data-part=timeline] .tl-name.picked, [data-part=timeline] .tl-name'); if (!n) return null; const o = n.querySelector('.tl-obj');
@@ -173,12 +201,8 @@ async function run(size, theme) {
       await page.eval(`${TL}.setOpen(false)`);
       await sleep(300);
       await select('barrel');
-      await page.waitFor(`!!${ROOT}.querySelector('[data-studio-motion]:not([hidden])')`, 15000).catch(() => {});
-      const btn = await j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector('[data-studio-motion]');
-        if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2 }); })()`);
-      if (btn) await press(btn);
-      const mk = await j(`(() => { const b = document.querySelector('[data-part=context-menu] [data-action="ctx-motion-make"]'); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
-      if (mk) await press(mk);
+      await pressMotion();
+      await pressRow('ctx-motion-make');
       await sleep(300);
       await page.eval(`(() => { const p = ${TL}.shownPose('barrel'); ${TL}.moved('barrel', { ...p, p: [p.p[0] + 2.5, p.p[1], p.p[2]] }, true, p); })()`);
       await sleep(1500);

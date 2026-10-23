@@ -102,13 +102,19 @@ async function target(page, order = [], frame = null) {
     for (const k of [...named, ...list.map((i) => i.key)]) {
       const a = d.anchor(k);
       if (!a || !a.visible || !a.rect || k === 'ground' || list.find((i) => i.key === k)?.backdrop) continue;
-      const [x, y] = a.center;
-      if (x < 40 || y < 60 || x > gr.width - 80 || y > gr.height - 60) continue;
       // Not a ground or a sky (any of them, unnamed): its box is a fifth of the game or less. A named one may be bigger
       // (the lighthouse's box takes its light beam in).
       if (!named.includes(k) && a.rect.w * a.rect.h > gr.width * gr.height * 0.2) continue;
-      if (d.under(x, y) !== k) continue;
-      return JSON.stringify({ key: k, x: off.left + gr.left + x, y: off.top + gr.top + y });
+      // Where to press: just above its foot (its pose's point on screen) first, then its box's middle. The lighthouse's
+      // box middle is on its two slow beams, which turn with the game's clock (sim.js) — a point found on the beam
+      // can be sky a few seconds later in the next page; its tower stands still.
+      const it = list.find((i) => i.key === k), q = it && d.toScreen ? d.toScreen(it.pose.p) : null;
+      const tries = [...(q ? [[q[0], q[1] - 20], [q[0], q[1] - 40]] : []), a.center];
+      for (const [x, y] of tries) {
+        if (x < 40 || y < 60 || x > gr.width - 80 || y > gr.height - 60) continue;
+        if (d.under(x, y) !== k) continue;
+        return JSON.stringify({ key: k, x: off.left + gr.left + x, y: off.top + gr.top + y });
+      }
     }
     return 'null';
   })()`);
@@ -209,7 +215,11 @@ async function runPc() {
   {
     const page = await heldPage(size, url);
     try {
-      await whileGettingReady(page, t, 'click', 'pc-ready');
+      // Measured again on this page: the late-move case above dragged the lighthouse, and the web demo keeps that in
+      // this browser (same site, same sample), so this page may open with it away from the point measured there.
+      // (2026-10-23: this alone did not make pc-ready pass — still under investigation, see the tests-0138 report.)
+      const t2 = (await target(page, ['lighthouse']).catch(() => null)) || t;
+      await whileGettingReady(page, t2, 'click', 'pc-ready');
       step(`while getting ready: the click on "${t.key}" picks it once the editor begins`);
     } finally {
       await page.close();

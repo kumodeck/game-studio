@@ -2,7 +2,7 @@
 // same day (B and C) put an orange Save in the game's corner AND an orange "Save to game" beside ▶ Play; a try of it:
 // "why are there two buttons that do the same thing?" and "'Save to game' — I don't get what that means". Now:
 //   - ONE Save, beside ▶ Play, in Edit and in Play, on every width: orange, "Save · N", one bounce when a change first
-//     appears; its tooltip is one sentence ("Save, and your AI puts it in the game's code (…)")
+//     appears; its tooltip is one sentence ("Save, and Claude puts it in the game's code")
 //   - ▶ Play with changes asks first: Save and play / Try without saving (unsaved-guard.ts; the same day, "let them
 //     choose with buttons"); once playing, nothing more over the game (the strip "This change isn't in the game yet
 //     [Save] ×" went then)
@@ -132,8 +132,11 @@ async function shoot(size, theme) {
     check(s.bumps === 1, `C: it bounced once (${s.bumps})`);
     check(!!s.top && !!s.play && s.play.l - s.top.r >= 0 && s.play.l - s.top.r <= 8 && Math.abs(s.play.y - s.top.y) < 2, 'right beside ▶ Play (left of it, same line)');
     check(!!s.top && s.top.l >= 0 && (!s.play || s.play.r <= s.W), 'the top bar still fits (Save and Play whole on screen)');
-    const tip = LANG === 'ja' ? '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）' : 'Save, and your AI puts it in the game’s code (the game outside the editor changes too)';
-    check(s.tip.startsWith(tip), `its tooltip is one sentence ("${s.tip}")`);
+    // Since plan step 1 (2026-10-23, "one word for one thing") the sentence names the AI (i18n ai.name.*: Claude /
+    // Codex in their terminals, "your AI" elsewhere — this test inherits the environment it is run in) and lost its
+    // "(the game outside the editor changes too)".
+    const tip = LANG === 'ja' ? /^保存すると、(Claude |Codex |あなたの AI )がゲームのコードに入れます(\s|$)/ : /^Save, and (Claude|Codex|your AI) puts it in the game’s code(\s|$)/;
+    check(tip.test(s.tip), `its tooltip is one sentence ("${s.tip}")`);
 
     // A second change: no second bounce.
     await nudge();

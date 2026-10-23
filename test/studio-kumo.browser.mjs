@@ -114,6 +114,9 @@ async function run(mobile) {
     if (!LANG) assert.match(await page.eval(IN.text('.gsl-ai .gsl-muted')), /about 3 minutes/);
     assert.ok(await page.eval(IN.click('.gsl-ai-make')));
     await page.waitFor(`${IN.text('.gsl-ai .gsl-section')}.length > 0`);
+    // The section can already be on screen from the picture's "Just made" card, so wait for the request itself
+    // (it reached the fake a moment after the section in a full run, 2026-10-23).
+    for (let i = 0; i < 100 && !kumo.st.inputs.some((x) => x.kind === '3d'); i++) await sleep(100);
     // Light from the start: the 3D job asks for faceLimit 5000 (kumo.mjs KUMO_3D_FACE_LIMIT, 2026-10-20),
     // same $0.20 as above. (This fake still answers an 11 MB file: the "heavy" line below stays for heavy 3D.)
     assert.deepEqual(kumo.st.inputs.filter((i) => i.kind === '3d'), [{ kind: '3d', prompt: 'a small wooden chest', texture: true, faceLimit: 5000 }]);

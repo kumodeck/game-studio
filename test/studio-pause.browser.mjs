@@ -202,7 +202,8 @@ async function cove() {
     assert.equal(u.veil, true);
     assert.equal(u.mark, false, 'the corner steps aside while paused');
     assert.equal(u.focused, true, 'the chat has the keys');
-    assert.match(u.sees, ja ? /AI はこの瞬間を見ます/ : /Your AI sees this moment/);
+    // The AI's name since plan step 1 (2026-10-23): Claude / Codex in their terminal (inherited), "Your AI" elsewhere.
+    assert.match(u.sees, ja ? /(Claude |Codex |AI )はこの瞬間を見(ます|ています)/ : /(Claude|Codex|Your AI) sees this moment/);
     const h = await held(page);
     assert.ok(h.frames <= 1, `paused: no frames (${h.frames})`);
     assert.equal(h.clock, 0, 'paused: the game\'s clock stands still');

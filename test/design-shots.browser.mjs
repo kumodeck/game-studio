@@ -121,7 +121,10 @@ async function run(example, layout) {
     // 4. Several picked with "Select several".
     const two = named.filter((i) => i.key !== pick.key).slice(0, 2);
     await press(`li.obj[data-key="${pick.key}"]`);
-    await press('[data-action=multi]');
+    // The list's "Multi-select" is on a phone only since studio-card-doors (2026-10-23; a PC has Shift+click and the box
+    // drag): a PC turns it on from the ⌘K list, and its "Done" then shows in the list's head.
+    if (await tryPress('.list-tools [data-action=multi]')) await sleep(250);
+    else await palette('multi');
     for (const it of two) await press(`li.obj[data-key="${it.key}"]`);
     await sleep(400);
     await shot('many');

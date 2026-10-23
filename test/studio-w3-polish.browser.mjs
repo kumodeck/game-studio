@@ -40,6 +40,9 @@ const ONLY = opt('--only', 'pc,phone').split(',');
 // --demo <built web demo>: also the demo served like KUMODeck's test version — the top line is one line on a phone
 // (⑪), and the front page's 3D / 2D tags are grey (⑨).
 const DEMO = opt('--demo') ? resolve(opt('--demo')) : null;
+// The notice after "Put in the scene" (lib.added): "Put barrel-2 in the scene" since plan step 1 (2026-10-23, one word
+// for one thing); "Added barrel-2 to the scene" before.
+const ADDED = /Put .* in the scene|Added .* to the scene/;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WIN = `document.querySelector('iframe.game:not(.leaving)').contentWindow`;
 const DBG = `${WIN}.__gameStudio._debug`;
@@ -158,8 +161,8 @@ async function pc(theme) {
     await press('.lib-object-detail [data-action=add-to-scene]');
     await sleep(500);
     const news = await J(`(() => { const c = document.querySelector('.ai-caption'); const plate = !!c && !c.hidden && c.getBoundingClientRect().height > 0;
-      const inBar = [...document.querySelectorAll('.dock .bar *')].find((e) => /Added .* to the scene/.test(e.textContent) && e.children.length === 0 && e.getBoundingClientRect().height > 0)
-        || [...document.querySelectorAll('.dock .bar input')].find((i) => /Added .* to the scene/.test(i.placeholder));
+      const inBar = [...document.querySelectorAll('.dock .bar *')].find((e) => ${ADDED}.test(e.textContent) && e.children.length === 0 && e.getBoundingClientRect().height > 0)
+        || [...document.querySelectorAll('.dock .bar input')].find((i) => ${ADDED}.test(i.placeholder));
       return { plate, inBar: !!inBar }; })()`);
     ok(!news.plate && news.inBar, '⑧ "Added … to the scene" is one line inside the ask bar, no plate over it', news);
     await shot('4-added');
@@ -187,7 +190,9 @@ async function pc(theme) {
       return { keys: [...r.querySelectorAll('kbd')].map((x) => x.textContent).join(' '), note: n ? n.textContent : '', noteLines: n ? Math.round(n.getBoundingClientRect().height / parseFloat(getComputedStyle(n).lineHeight)) : 0 }; };
       return { camera: row('camera'), fly: row('fly') }; })()`);
     ok(keys.camera && keys.camera.keys === 'E Q' && /Space\+E/.test(keys.camera.note), '⑪ camera row: E / Q, Space+ keys in its note', keys.camera);
-    ok(keys.fly && keys.fly.noteLines <= 1, '⑪ fly note: one line', keys.fly);
+    // Two lines at most since the ? sheet says the condition first ("Nothing selected · …", Ive review 3 ⑦, 2026-10-20);
+    // the review of 2026-10-19 wanted one, before that condition was added.
+    ok(keys.fly && keys.fly.noteLines <= 2, '⑪ fly note: two lines at most', keys.fly);
     await shot('6-shortcuts');
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -195,6 +200,9 @@ async function pc(theme) {
 
     // ⑪ playing: "Playing" in the top bar; after Edit no tooltip left.
     await press('.top-actions .play');
+    // ▶ Play with changes not saved asks first since 2026-10-21 (unsaved-guard.ts: Save and play / Try without saving);
+    // the copy put in the scene above is one: try without saving.
+    if (await page.eval(`!!document.querySelector('[data-action=guard-discard]')?.offsetParent`)) await press('[data-action=guard-discard]');
     await sleep(1500);
     const here = await page.eval(`document.querySelector('.top .here')?.textContent || ''`);
     ok(here === 'Playing', '⑪ the top bar says Playing while playing', here);
@@ -263,7 +271,7 @@ async function phone(theme) {
     await press('.lib-object-detail [data-action=add-to-scene]');
     await sleep(500);
     const news = await J(`(() => { const c = document.querySelector('.ai-caption'); const plate = !!c && !c.hidden && c.getBoundingClientRect().height > 0;
-      const n = document.querySelector('.ask-news:not([hidden])'); return { plate, inBar: !!n && /Added .* to the scene/.test(n.textContent), text: n ? n.textContent : '' }; })()`);
+      const n = document.querySelector('.ask-news:not([hidden])'); return { plate, inBar: !!n && ${ADDED}.test(n.textContent), text: n ? n.textContent : '' }; })()`);
     ok(!news.plate && news.inBar, '⑧ "Added … to the scene" is one line inside the ask bar, no plate over it', news);
     ok(!(await page.eval(RISE_ON)), '⑧ no ↑↓ with the new copy\'s card up');
     await shot('6-added');

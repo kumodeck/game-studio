@@ -75,8 +75,9 @@ test('main.ts reads the keys the table lists (⌘C, ⌘V, ?, 1–4) and keeps fi
     assert.ok(main.includes(want), `shortcut() has ${want}`);
   }
   assert.match(main, /STRIP_NUMBERS: Record<string, StripTool> = \{ '1': 'move', '2': 'lift', '3': 'rotate', '4': 'scale' \}/);
-  // While typing only ⌘S and ⌘K get through.
-  assert.match(main, /if \(k !== 's' && k !== 'k'\) return;/);
+  // While typing only ⌘S and ⌘K get through — and ⌘Z / ⌘Y from the ask box once it is empty (studio-fix-0139).
+  assert.match(main, /if \(k !== 's' && k !== 'k' && !\(askEmpty && \(k === 'z' \|\| k === 'y'\)\)\) return;/);
+  assert.match(main, /const askEmpty = typing && .*classList\.contains\('ask-input'\) && !\(e\.target as HTMLInputElement\)\.value;/);
 });
 
 // Fly (camera-wasd, 2026-10-18): one row for W A S D with the rule under it (the ⌘K row uses the same words), and the

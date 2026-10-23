@@ -6,9 +6,9 @@
 //   1. the crate picked (its "Hop"), the timeline open: one row — the crate — and "+ Link an object" under it;
 //   2. "+ Link an object" pressed: the list of the scene's objects (not the crate), a search field; "barr" finds the barrel;
 //   3. the barrel chosen: two rows (crate first), the head says "Linked · 2", Hop is one motion with both objects' tracks;
-//   4. "+ Link an object" again, then the buoy clicked in the game: it is linked (three rows: the picked one first, the
-//      linked ones in the scene list's order) and the crate stays picked;
-//   5. the buoy picked: its rows are the same three, the buoy first (a link goes both ways);
+//   4. "+ Link an object" again, then the buoy clicked in the game: it is linked (three rows in the scene's order — the
+//      order is the person's since studio-ui-lead2, 2026-10-23) and the crate stays picked;
+//   5. the buoy picked: its rows are the same three in the same order, the buoy lit where it is (a link goes both ways);
 //   6. × on the barrel's row: unlinked (two rows), the barrel's own motion (Roll) is still on it;
 //   7. ⋯ → "Show every motion in the scene": every moving object's row; "Show only the selected one" goes back;
 //   8. Save: Hop has `tracks` for the crate and the buoy (the crate's keys as they were), the buoy is attached to Hop with
@@ -117,7 +117,12 @@ async function run(size, theme) {
 
     const rows = () => j(ROWS);
     if (full) check(JSON.stringify(await rows()) === '["crate"]', `${tag}: one row, the picked crate (${JSON.stringify(await rows())})`);
-    check(!!(await j(PLATE('[data-part=tl-link]'))), `${tag}: the row's "+" (Link an object; studio-ui-lead2: it was a row under the rows)`);
+    // Since studio-motion-line (plan step 4, 2026-10-23) the row's "+" shows only with Fine-tune open (⋯'s rows moved
+    // there; "+ Link an object" is one of them): open it first, as a person does to link.
+    if (full) check(!(await j(PLATE('[data-part=tl-link]'))), `${tag}: no "+" on the row while Fine-tune is closed`);
+    const openFine = async () => (await j(`JSON.stringify(!!document.querySelector('[data-part=tl-fine]:not([hidden])'))`)) || (await press('[data-part=tl-fine-btn]'));
+    await openFine();
+    check(!!(await j(PLATE('[data-part=tl-link]'))), `${tag}: Fine-tune open — the row's "+" (Link an object; studio-ui-lead2: it was a row under the rows)`);
 
     // 2. The list.
     await press('[data-part=tl-link]');
@@ -154,7 +159,9 @@ async function run(size, theme) {
       else await press('[data-part=tl-link-item][data-key=buoy]');
       await sleep(1200);
       if (full) {
-        check(JSON.stringify(await rows()) === '["crate","buoy","barrel"]', `the buoy ${free ? 'clicked in the game' : 'chosen (covered in the game)'}: linked (${JSON.stringify(await rows())})`);
+        // The rows keep the scene's order (studio-ui-lead2, 2026-10-23: "the one I pick jumps to the top and the order
+        // changes every time"): a new link goes last.
+        check(JSON.stringify(await rows()) === '["crate","barrel","buoy"]', `the buoy ${free ? 'clicked in the game' : 'chosen (covered in the game)'}: linked (${JSON.stringify(await rows())})`);
         check(!!(await j(PLATE('[data-part=timeline] .tl-name.picked[data-row=crate]'))), 'the crate is still the picked one');
       }
     } else await press('[data-part=tl-link]').then(() => press('[data-part=tl-link-item][data-key=buoy]'));
@@ -166,7 +173,9 @@ async function run(size, theme) {
       // 5. The buoy picked: the same rows, itself first.
       await page.eval(`studioShell.actions.select('buoy')`);
       await sleep(800);
-      check(JSON.stringify(await rows()) === '["buoy","barrel","crate"]', `the buoy picked: its linked rows come along, the buoy first (${JSON.stringify(await rows())})`);
+      // studio-ui-lead2: the same rows in the same order, the buoy lit where it is (not moved to the top).
+      check(JSON.stringify(await rows()) === '["crate","barrel","buoy"]' && !!(await j(PLATE('[data-part=timeline] .tl-name.picked[data-row=buoy]'))),
+        `the buoy picked: its linked rows come along, in the same order, the buoy lit (${JSON.stringify(await rows())})`);
       await page.eval(`studioShell.actions.select('crate')`);
       await sleep(800);
       // 6. × on the barrel.
@@ -175,17 +184,15 @@ async function run(size, theme) {
       check(JSON.stringify(await rows()) === '["crate","buoy"]', `× unlinked the barrel (${JSON.stringify(await rows())})`);
       const b = await motion('barrel');
       check(JSON.stringify(b?.clips?.map((c) => c.use)) === '["Roll"]', `the barrel keeps its own Roll (${JSON.stringify(b?.clips?.map((c) => c.use))})`);
-      // 7. Every motion.
-      await page.eval(`document.querySelector('[data-part=tl-more-btn]').click()`);
-      await sleep(400);
+      // 7. Every motion (Fine-tune's last row; ⋯'s until plan step 4).
+      await openFine();
       await page.eval(`document.querySelector('[data-part=tl-all]').click()`);
       await sleep(600);
       const all = await rows();
       check(['rowboat', 'buoy', 'barrel', 'sailboat', 'crate'].every((k) => all.includes(k)), `"Show every motion": every moving object (${JSON.stringify(all)})`);
     }
     if (!full) {
-      await page.eval(`document.querySelector('[data-part=tl-more-btn]').click()`);
-      await sleep(400);
+      await openFine();
       await page.eval(`document.querySelector('[data-part=tl-all]').click()`);
       await sleep(600);
     }

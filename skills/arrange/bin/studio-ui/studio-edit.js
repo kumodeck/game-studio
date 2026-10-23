@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.38 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.39 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4516,6 +4516,12 @@ const MSG_PREFIX = 'studio:';
                                                                                   
                       
                                     
+     
+                                                                                                                        
+                                                                                                                     
+                                                                                                           
+     
+                                     
                                       
                                                
                                              
@@ -15862,8 +15868,17 @@ function createEditor(deps            )         {
     const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
     return seenEnough(r, freeArea(r.y), FOCUS_MARGIN);
   };
-  const focusIfHidden = (key        ) => {
-    if (state.multi || seenNow(key)) return;
+  // `middle`: also slide when the box's middle is under a panel (view action 'reveal', studio-fix-0139). seenNow counts
+  // a ship two-thirds clear as seen, but the drag that makes a motion grabs its middle — under PC's timeline plate that
+  // drag hit the ruler and made nothing.
+  const middleFree = (key        ) => {
+    const a = adapter.anchor(key);
+    if (!a || !a.visible) return false;
+    const f = freeArea(a.center[1]);
+    return a.center[0] >= f.x0 + FOCUS_MARGIN && a.center[0] <= f.x1 - FOCUS_MARGIN && a.center[1] >= f.y0 + FOCUS_MARGIN && a.center[1] <= f.y1 - FOCUS_MARGIN;
+  };
+  const focusIfHidden = (key        , middle = false) => {
+    if (state.multi || (seenNow(key) && (!middle || middleFree(key)))) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
     const total = panIntoMiddle(key);
@@ -16617,6 +16632,8 @@ function createEditor(deps            )         {
             if (adapter.view.home) adapter.view.home({ glide: true });
             else adapter.view.frameAll();
           } else if (v.action === 'focus') adapter.view.focus(v.key);
+          // Only when covered (contract.ts 'reveal'): the glide posts the view itself when it ends.
+          else if (v.action === 'reveal') focusIfHidden(v.key, true);
           else if (v.action === 'zoom') adapter.view.zoom(v.factor);
           else if (v.action === 'orbit') adapter.view.orbit?.(v.dx, v.dy);
           else if (v.action === 'pan') adapter.view.pan(v.dx, v.dy);

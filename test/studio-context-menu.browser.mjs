@@ -166,7 +166,10 @@ async function run(game, layout, theme) {
       const floor = await j(`JSON.stringify(Math.min(...[document.querySelector('.card'), document.querySelector('.bar')].filter((e) => e && e.offsetParent).map((e) => e.getBoundingClientRect().top)))`);
       assert.ok(m.t + m.h <= floor - 8 + 0.5, `${tag}: the menu ends 8 px above the card / ask box (${m.t + m.h} vs ${floor})`);
     } else {
-      for (const id of ['duplicate', 'copy', 'remove', 'showInLibrary']) assert.ok(ids(m).includes(id), `${tag}: object menu has ${id} (${ids(m)})`);
+      for (const id of ['duplicate', 'remove', 'showInLibrary']) assert.ok(ids(m).includes(id), `${tag}: object menu has ${id} (${ids(m)})`);
+      // No "Copy" row since studio-card-doors (2026-10-23, "one thing, one word": Duplicate and Copy read as the same
+      // action twice); ⌘C / ⌘V stay as keys (context-rows.ts).
+      assert.ok(!ids(m).includes('copy'), `${tag}: no Copy row beside Duplicate (${ids(m)})`);
       assert.ok(m.rows.length - layerRows <= 7, `${tag}: 7 rows at most (${ids(m)})`);
       near(m, px, py, tag);
     }

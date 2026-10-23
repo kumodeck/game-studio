@@ -182,6 +182,14 @@ for (const sz of SIZES) {
     const why = JSON.parse(await page.eval(`(() => { const p = document.querySelector('.card [data-part=noname-why]'); const b = document.querySelector('.card [data-action=ask-name]');
       return JSON.stringify({ text: p && p.offsetParent ? p.innerText : null, btn: b && b.offsetParent ? b.innerText : null }); })()`));
     if (sz.id !== 'pc' && !why.text) {
+      // Since plan step 7 (v0.1.38) the narrow bottom is one sheet with tabs (Scene | <picked> | Motion): the list may
+      // be the one up, so the picked object's tab brings its card first.
+      await page.eval(`(() => { const t = document.querySelector('[data-part=sheet-tabs] [data-tab=pick]'); if (t && t.offsetParent && t.getAttribute('aria-selected') !== 'true') t.click(); return true; })()`);
+      await sleep(400);
+      Object.assign(why, JSON.parse(await page.eval(`(() => { const p = document.querySelector('.card [data-part=noname-why]'); const b = document.querySelector('.card [data-action=ask-name]');
+        return JSON.stringify({ text: p && p.offsetParent ? p.innerText : null, btn: b && b.offsetParent ? b.innerText : null }); })()`)));
+    }
+    if (sz.id !== 'pc' && !why.text) {
       // The narrow card (phone, side window) folds the notes under "…".
       await page.eval(`document.querySelector('.card .fine summary')?.click()`);
       await sleep(300);
@@ -189,7 +197,9 @@ for (const sz of SIZES) {
         return JSON.stringify({ text: p && p.offsetParent ? p.innerText : null, btn: b && b.offsetParent ? b.innerText : null }); })()`)));
     }
     assert.ok(why.text && why.text.length <= 80, `${tag}: the card's line about names: "${why.text}"`);
-    assert.equal(why.btn, LANG === 'ja' ? 'AI に名前を付けてもらう' : 'Ask your AI to name it');
+    // A ✦ row since two uniforms (2026-10-23: it puts a draft in the box), named after the AI since plan step 1
+    // ("Ask Claude to name it…" and its Japanese; the AI is the one the editor was started next to).
+    assert.match(why.btn || '', LANG === 'ja' ? /^名前を (Claude |Codex |あなたの AI )に頼む…$/ : /^Ask (Claude|Codex|your AI) to name it…$/);
     // 4b. Hover: a row in the list (mouse only) lights its object; off when the mouse leaves; the card lights the pick.
     if (!sz.touch) {
       // Another pillar's row (a pillar lit is the picture to look at; the sky's row lights the whole edge of the view).
@@ -212,12 +222,16 @@ for (const sz of SIZES) {
       assert.ok((await page.eval(LAYER('hover'))) > 0, `${tag}: a mouse over the card does not light the picked object`);
       await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: sz.w / 2, y: 4 });
     }
-    // 2b. "Ask AI to name it": one request about it, the guessed name along.
-    const before = requests(root).filter((r) => r.kind === 'name').length;
+    // 2b. "Ask AI to name it": one request about it, the guessed name along. A ✦ row since two uniforms (2026-10-23): the
+    // press puts a draft in the ask box (ctx.nameText) and Enter sends it — it sent a `name` request at once before.
+    const before = requests(root).length;
     await page.eval(`document.querySelector('.card [data-action=ask-name]').click()`);
-    await page.waitFor(`!!document.querySelector('.ask-note:not([hidden])')`, 5000).catch(() => {});
+    await page.waitFor(`document.querySelector('.ask-input').value.length > 0 && document.activeElement === document.querySelector('.ask-input')`, 5000);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await page.waitFor(`!document.querySelector('.ask-input').value`, 5000).catch(() => {});
     await sleep(300);
-    const named = requests(root).filter((r) => r.kind === 'name');
+    const named = requests(root);
     assert.equal(named.length, before + 1, `${tag}: ${named.length - before} name requests`);
     const obj = named.at(-1).objects.find((o) => o.key === pick);
     assert.ok(obj, `${tag}: the name request is not about the picked pillar`);

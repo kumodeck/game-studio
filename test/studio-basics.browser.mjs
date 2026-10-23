@@ -252,7 +252,12 @@ try {
           await until(`${DBG}.list().length === ${n0 + 1}`, 'Redo brings it back');
           // The sheet from "…" (the ⌘K list): one column on the phone.
           // The list sheet slides away when closed (still laid out), so open it by its button first.
-          if ((await ev(`document.querySelector('.shell').dataset.sheet`)) !== 'open') await press('[data-action=sheet]');
+          // Since plan step 7 (v0.1.38) the phone's bottom is one sheet with tabs: with something picked the card is up and
+          // the bar's button is ▾ (it folds), so the list is the Scene tab; nothing picked, the bar's list button as before.
+          if ((await ev(`document.querySelector('.shell').dataset.sheet`)) !== 'open') {
+            if (await ev(`!!document.querySelector('[data-part=sheet-tabs] [data-tab=scene]')?.offsetParent`)) await press('[data-part=sheet-tabs] [data-tab=scene]');
+            else await press('[data-action=sheet]');
+          }
           await until(`document.querySelector('.shell').dataset.sheet === 'open'`, 'the list button opens the sheet');
           await sleep(400);
           await press('.sheet-more');
@@ -265,7 +270,12 @@ try {
         // 1. (end) Undo / Redo did not move.
         const u9 = await btn('undo');
         assert.ok(u9, `${tag}: Undo still in the bar`);
-        assert.ok(Math.abs(u9.left - u0.left) <= 1, `${tag}: Undo stayed in place (${u0.left} → ${u9.left})`);
+        // The one Save sits left of ▶ Play in the top bar while something is not saved (save-loud, 2026-10-21; the
+        // right group is aligned right so Play never moves). On a phone the bar is full, so Undo / Redo step left by the
+        // Save's width then; what must hold is that they are not covered by it.
+        const saveR = JSON.parse((await ev(`(() => { const b = [...document.querySelectorAll('.top [data-part=save]')].find((e) => e.offsetParent); return b ? JSON.stringify(b.getBoundingClientRect()) : 'null'; })()`)) || 'null');
+        if (sz.touch && saveR) assert.ok((await btn('redo')).left + (await btn('redo')).w <= saveR.left + 0.5, `${tag}: Redo clear of the Save`);
+        else assert.ok(Math.abs(u9.left - u0.left) <= 1, `${tag}: Undo stayed in place (${u0.left} → ${u9.left})`);
         // 10. The view.
         assert.equal(await view(), v0, `${tag}: the view did not move`);
         const errors = page.logs.filter((l) => l.startsWith('exception'));

@@ -238,7 +238,8 @@ async function pc() {
     }
     assert.ok(fixed, 'the fixed line with Reload');
     const all = [...seen].join(' | ');
-    assert.match(all, LANG === 'ja' ? /AI が見ています/ : /Your AI is looking/);
+    // The AI's name since plan step 1 (2026-10-23): Claude / Codex in their terminal (inherited), "Your AI" elsewhere.
+    assert.match(all, LANG === 'ja' ? /(Claude |Codex |AI )が見ています/ : /(Claude|Codex|Your AI) is looking/);
     assert.match(all, /Keeping the hero on screen on the pad/);
     assert.match(fixed.line, /no longer vanishes/);
     assert.equal(await page.eval(IN.marker), true, 'not reloaded while playing, even after done');
@@ -246,7 +247,7 @@ async function pc() {
     // while it looked or fixed (shell/play-ask.ts, ai-flow.ts moreIn).
     const more = LANG === 'ja' ? '詳しくは Claude で' : 'More in Claude';
     assert.ok(fixed.line.endsWith(more + (LANG === 'ja' ? '読み込み直す×' : 'Reload×')), `the fixed line ends with "${more}": ${fixed.line}`);
-    assert.ok([...seen].filter((l) => /Your AI is looking|AI が見ています|Keeping the hero/.test(l)).every((l) => !l.includes(more)), 'no "More in" while it looks / fixes');
+    assert.ok([...seen].filter((l) => /(Claude|Codex|Your AI) is looking|が見ています|Keeping the hero/.test(l)).every((l) => !l.includes(more)), 'no "More in" while it looks / fixes');
     await shot(page, '5-fixed');
     // 4b. The fixed line goes by itself (no pointer on it: the last click was on the game); the Reload waits.
     const t0 = Date.now();

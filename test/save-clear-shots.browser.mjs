@@ -1,6 +1,6 @@
 // Pictures (and a few checks) for the two asks of a try of v0.1.8 (2026-10-21): ① "More in Claude" on the AI line,
 // ② Save that says where the change goes. One run per build of the editor, same steps:
-//   1-ai      the AI's change is in: "Added 3 crates in a row / “Add three crates in a row” · 3 things changed · More in Claude"
+//   1-ai      the AI's change is in: "Added 3 crates in a row / “Add three crates in a row” · 3 objects changed · More in Claude"
 //   2-save    one object moved without saving: the Save ("Save to game · 1" in the game's corner until v0.1.9; since the
 //             "why two Saves?" of a try of v0.1.9 (2026-10-21) the one "Save · 1" beside ▶ Play, its tooltip saying where it goes)
 //   3-tip     the pointer on it (PC and the side window: a mouse is there): its tooltip, the one-sentence why
@@ -119,7 +119,10 @@ async function shoot(size, theme) {
     if (!MOCK) {
       check(!!fab && /1/.test(fab.text), 'Save with the count');
       check(!!fab && fab.text.startsWith(LANG === 'ja' ? '保存' : 'Save') && !/ゲームへ|to game/.test(fab.text), `the word is plain "Save" ("${fab?.text}")`);
-      check(/AI/.test(await page.eval(`document.querySelector('[data-part=save]')?.title || ''`)), 'its tooltip says where the change goes');
+      // Since plan step 1 (2026-10-23, "one word for one thing") the tooltip names the AI it goes to ("Save, and Claude
+      // puts it in the game's code"), not "AI": the agent's name, or "AI" when none is known.
+      const saveTip = await page.eval(`document.querySelector('[data-part=save]')?.title || ''`);
+      check(new RegExp({ claude: 'Claude', codex: 'Codex', none: 'AI' }[AGENT]).test(saveTip), `its tooltip says where the change goes ("${saveTip}")`);
       check(!!fab && fab.l >= 0 && fab.r <= size.width, 'whole on screen');
     }
     if (!size.mobile && fab && !MOCK) {

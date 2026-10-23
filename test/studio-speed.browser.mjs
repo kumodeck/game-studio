@@ -2,7 +2,7 @@
 //
 //   node test/studio-speed.browser.mjs [--only <case>]
 //
-//   home        Lantern Cove (3D starter): after the first pick glides away from the opening view, the ⌘K row
+//   home        Lantern Cove (3D starter): a pick leaves the camera (W1-1); moved away by Camera up, the ⌘K row
 //               "Back to the opening view" glides back to the game's own camera; ⇧F does the same.
 //   home-2d     Firefly Ruins (2D starter): the same row brings back the view the editor opened on.
 //   thumbs-once each list picture is drawn once (before: the shell's second request, for the rows in view, came
@@ -83,21 +83,31 @@ const cases = {
       // because the frame that places it is no longer drawn (boot.js, this pass).
       const p0 = camPos(v0);
       assert.ok(Math.hypot(p0[0] - 8, p0[1] - 4.2, p0[2] - 35) < 0.05, `opened at ${p0.map((x) => x.toFixed(2))}, the game camera is at 8, 4.2, 35`);
-      // Away from it: the first pick glides to the editing angle.
+      // The first pick leaves the camera where it is: its glide up to a 30° editing angle went with design review wave 1
+      // (W1-1, 2026-10-17, "the view belongs to whoever made the game"; bridge/editor.ts select), and plan step 2
+      // (2026-10-23) keeps it so. This case asserted the glide until then.
       const a = await s.anchor('sailboat');
       await s.page.click(a.x, a.y);
       await sleep(1100);
       const v1 = await s.view();
-      assert.ok(!v1.home && Math.abs(v1.pitch - 30 * DEG) < 0.02, `the first pick did not glide away: ${JSON.stringify(v1)}`);
-      // ⌘K → Back to the opening view: glides (half-way it is between the two), then stands where the game camera stands.
+      assert.ok(v1.home && Math.hypot(...camPos(v1).map((x, i) => x - p0[i])) < 0.05, `the first pick moved the camera: ${JSON.stringify(v1)}`);
+      // Away from it by the person's own move (⌘K Camera up, three steps), then ⌘K → Back to the opening view: glides
+      // (half-way it is between the two), then stands where the game camera stands.
+      for (let i = 0; i < 3; i++) {
+        await s.palette('camera-up');
+        await sleep(400);
+      }
+      const va = await s.view();
+      const far = Math.hypot(...camPos(va).map((x, i) => x - p0[i]));
+      assert.ok(!va.home && far > 0.5, `Camera up did not move the camera away: ${JSON.stringify(va)}`);
       const label = await s.palette('home');
       assert.equal(label && label.includes('Back to the opening view'), true, `the ⌘K row: ${label}`);
       // Half-way views are only seen when frames come often (software GL draws this scene at about 1 fps), so
       // they are reported, not required.
       let between = 0;
       for (let i = 0; i < 12; i++) {
-        const m = await s.view();
-        if (m.pitch < v1.pitch - 0.01 && m.pitch > v0.pitch + 0.01) between++;
+        const d = Math.hypot(...camPos(await s.view()).map((x, j) => x - p0[j]));
+        if (d > 0.01 && d < far - 0.01) between++;
         await sleep(40);
       }
       await sleep(500);
@@ -108,19 +118,23 @@ const cases = {
       const p2 = camPos(v2);
       assert.equal(v2.home, true, 'the view is not marked as the opening view again');
       assert.ok(Math.hypot(p2[0] - 8, p2[1] - 4.2, p2[2] - 35) < 0.05 && Math.abs(v2.pitch - v0.pitch) < 1e-3, `back at ${p2.map((x) => x.toFixed(2))}, pitch ${(v2.pitch / DEG).toFixed(1)}°`);
-      ok(`⌘K "${label.trim()}" goes back to the game camera (pitch ${(v1.pitch / DEG).toFixed(0)}° → ${(v2.pitch / DEG).toFixed(1)}°, ${between} half-way views seen)`);
-      // Being home again, the next pick glides up again (the opening view behaves as it did when the editor opened).
+      ok(`⌘K "${label.trim()}" goes back to the game camera (${far.toFixed(1)} m away → there, ${between} half-way views seen)`);
+      // Home again, a pick still leaves the camera.
       const b = await s.anchor('buoy');
       await s.page.click(b.x, b.y);
       await sleep(1100);
-      assert.ok(Math.abs((await s.view()).pitch - 30 * DEG) < 0.02, 'the pick after going home did not glide up');
+      assert.ok(Math.hypot(...camPos(await s.view()).map((x, i) => x - p0[i])) < 0.05, 'the pick after going home moved the camera');
       // ⇧F does the same.
+      for (let i = 0; i < 3; i++) {
+        await s.palette('camera-up');
+        await sleep(400);
+      }
       await s.page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'F', code: 'KeyF', modifiers: 8, windowsVirtualKeyCode: 70 });
       await s.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'F', code: 'KeyF', modifiers: 8, windowsVirtualKeyCode: 70 });
       await sleep(900);
       const v3 = await s.view();
       assert.ok(v3.home === true && Math.hypot(...camPos(v3).map((x, i) => x - [8, 4.2, 35][i])) < 0.05, `⇧F: ${JSON.stringify(v3)}`);
-      ok('⇧F does the same; the next pick glides up again');
+      ok('⇧F does the same; a pick never moves the camera');
     } finally {
       await s.close();
     }

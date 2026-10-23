@@ -114,7 +114,9 @@ try {
         assert.equal(row.cls, sz.touch ? 'noname fold' : 'noname', `${tag}: the list's first row is the no-name row`);
         assert.equal(row.hidden, false, `${tag}: the no-name row shows`);
         assert.match(row.text, sz.touch ? new RegExp(`^Unnamed objects\\s+${keys.length}`) : new RegExp(`^${keys.length} objects have no name`), `${tag}: "${row.text}"`);
-        assert.equal(row.btn, sz.touch ? 'Ask AI to name them' : 'Name them');
+        // Named after the AI since plan step 1 (2026-10-23, noname.askAi "Ask {ai} to name them").
+        if (sz.touch) assert.match(row.btn || '', /^Ask (Claude|Codex|your AI) to name them$/, `${tag}: "${row.btn}"`);
+        else assert.equal(row.btn, 'Name them');
         assert.equal(row.border, '0px', `${tag}: no frame`);
         assert.ok(/rgba\(0, 0, 0, 0\)|transparent/.test(row.bg), `${tag}: no fill (${row.bg})`);
         if (SHOTS) writeFileSync(join(SHOTS, `unnamed-${tag}-list.png`), await page.screenshot());

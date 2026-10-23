@@ -1,5 +1,5 @@
 // Pictures of the AI's finished line for one build of the editor (2026-10-20: "this line is always there, it's in the way"):
-//   done      right after the AI's change is in ("Added 3 crates in a row · 3 things changed · Undo AI change")
+//   done      right after the AI's change is in ("Added 3 crates in a row · 3 objects changed · Undo AI change")
 //   later     LATER_MS after that, the pointer away (before: still there; after: gone by itself, src/shell/line-fade.ts)
 //   recalled  the line brought back — "● AI" in the top bar (PC), the ⌘K row on a phone / the side window
 // at PC 1280×800, the Claude app's side window 400×900 and a phone 390×844, light and dark.

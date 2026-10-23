@@ -941,6 +941,12 @@ export type ViewAction =
   /** Back to the view the editor opened on (adapter view.home, else frameAll). */
   | { action: 'home' }
   | { action: 'focus'; key: string }
+  /**
+   * Show this object only if a panel covers it (studio-fix-0139, 2026-10-23): no move when its middle is already in the
+   * free part of the frame; otherwise the same short pan-only slide as a list pick (bridge/editor.ts focusIfHidden).
+   * For PC's timeline plate, which rose over the ship so the drag that makes a motion landed on the ruler.
+   */
+  | { action: 'reveal'; key: string }
   | { action: 'zoom'; factor: number }
   | { action: 'orbit'; dx: number; dy: number }
   | { action: 'pan'; dx: number; dy: number }

@@ -207,7 +207,14 @@ async function run(example, layout) {
       assert.ok(want.length >= 2, `only ${pickable.length} pickable objects`);
       await openSheet();
       // (Phone: Multi-select is back in the list sheet's head with "one Library", 2026-10-18; plan 1 had moved it to "…".)
-      await press('[data-action=multi]');
+      // The list's "Multi-select" is on a phone only since studio-card-doors (2026-10-23; a PC has Shift+click and the box
+      // drag): a PC turns it on from the ⌘K list, and its "Done" then shows in the list's head.
+      if (!(await page.eval(IN.click('.list-tools [data-action=multi]')))) {
+        await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.focus(); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })); })()`);
+        await sleep(200);
+        await press('.palette [data-action=multi]');
+        await sleep(250);
+      }
       for (const k of want) {
         if (!(await page.eval(`document.querySelector('li.obj[data-key="${k}"]')?.getAttribute('aria-selected') === 'true'`))) {
           // Rows of a "name ×N" group are inside a folded row: open it first.
@@ -254,12 +261,18 @@ async function run(example, layout) {
     if (unnamed.length) {
       await page.waitFor(IN.visible('.noname [data-action=ask-name-all]'), 3000);
       await shot('noname');
+      // A ✦ draft since two uniforms (2026-10-23): the press picks them all and puts "name them" in the ask box; Enter
+      // sends it as an ask about them (it sent a `name` request at once before, and the row went away).
+      const n0 = requests(root).length;
       await press('.noname [data-action=ask-name-all]');
-      await page.waitFor(`!${IN.visible('.noname [data-action=ask-name-all]')}`, 3000);
+      await page.waitFor(`document.querySelector('.ask-input').value.length > 0 && document.activeElement === document.querySelector('.ask-input')`, 3000);
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+      for (let i = 0; i < 50 && requests(root).length === n0; i++) await sleep(100);
       reqs = requests(root);
-      const nameReq = reqs.find((r) => r.kind === 'name');
-      assert.ok(nameReq && nameReq.objects.length === unnamed.length, JSON.stringify(nameReq));
-      assert.ok(lines.some((l) => l.startsWith('studio: request name ')));
+      const nameReq = reqs.length > n0 ? reqs.at(-1) : null;
+      assert.ok(nameReq && nameReq.objects?.length === unnamed.length, JSON.stringify(nameReq));
+      assert.ok(lines.some((l) => l.startsWith(`studio: request ${nameReq.kind} `)));
       // The agent heard about them at the start too (skill §3.2: offer once to name them).
       assert.ok(lines.some((l) => l.startsWith(`studio: unnamed ${unnamed.length} object`)), lines.join('\n'));
       step(`asked the AI to name ${unnamed.length} object(s) · the agent got "${lines.find((l) => l.startsWith('studio: unnamed'))}" at the start`);
@@ -316,11 +329,17 @@ async function run(example, layout) {
     const fitWords = LANG === 'ja' ? '1 マス 50 cm に合わせて' : 'snap to a 50 cm grid';
     await page.eval(`(() => { const t = document.querySelector('textarea.prompt'); t.focus(); t.select(); })()`);
     await page.send('Input.insertText', { text: fitWords });
+    // "✦ Ask …" is a draft since studio-card-doors (2026-10-23, the ✦ rule): the idea (with the person's words) goes into
+    // the ask box and the page closes; Enter sends it as an ask (it sent a `next-step` request at once before).
+    const i0 = requests(root).length;
     await press('[data-action=ask]');
-    await page.waitFor(`document.querySelector('.note')?.textContent.length > 0`, 3000);
-    const fit = requests(root).find((r) => r.kind === 'next-step' && r.step === 'fit');
+    await page.waitFor(`document.querySelector('.ask-input').value === ${JSON.stringify(fitWords)} && document.activeElement === document.querySelector('.ask-input')`, 3000);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, text: '\r' });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    for (let i = 0; i < 50 && requests(root).length === i0; i++) await sleep(100);
+    const fit = requests(root).length > i0 ? requests(root).at(-1) : null;
     assert.ok(fit && fit.text === fitWords, JSON.stringify(requests(root)));
-    step(`idea "fit" with the person's words → ${fit.id}.json`);
+    step(`idea "fit" with the person's words: drafted in the ask box, Enter → ${fit.id}.json`);
     await shot('idea-sent');
 
     // --- library: no "0" marks ---

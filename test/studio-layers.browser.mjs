@@ -82,11 +82,27 @@ async function run(example, layout) {
   // On a phone the card's Layer row is inside "…" (W1 merge 2026-10-17, the review's "what to cut" 6 / D13): open it
   // first, the way a person does, and close it after (the open card covers the part of the game the pictures compare).
   const fold = (open) => page.eval(`(() => { const f = document.querySelector('.card .fine'); if (f && f.open !== ${open}) f.querySelector('summary').click(); })()`);
+  // Since plan step 7 (v0.1.38) the phone's bottom is one sheet with tabs (Scene | <picked> | Motion), and the bar's ▾
+  // folds the whole bottom (the card too): the card comes back with ▴ (it unfolds on the card) or the picked object's tab.
+  const showCard = async () => {
+    if (await page.eval(`!!document.querySelector('.card')?.offsetParent`)) return false;
+    if (await page.eval(`document.querySelector('.shell').dataset.fold === 'min'`)) {
+      assert.ok(await page.eval(IN.click('[data-action=sheet]')), 'no ▴ to unfold');
+      await sleep(500);
+      return true;
+    }
+    await page.eval(`document.querySelector('[data-part=sheet-tabs] [data-tab=pick]')?.click()`);
+    await sleep(400);
+    return false;
+  };
   const press = async (sel) => {
     const layer = mobile && sel.includes('layer-');
+    const unfolded = layer && (await showCard());
     if (layer) await fold(true);
     assert.ok(await page.eval(IN.click(sel)), `no enabled ${sel}`);
     if (layer) await fold(false);
+    // Folded again as it was (the pictures compare the game without the card over it).
+    if (unfolded) await page.eval(IN.click('[data-action=sheet]')), await sleep(500);
   };
   const MOD = process.platform === 'darwin' ? 4 : 2;
   // Undo / redo (rebrand 2026-10-16: no toolbar buttons on PC): ⌘Z / ⇧⌘Z there; on a
@@ -103,8 +119,13 @@ async function run(example, layout) {
     await sleep(100);
     await press('.palette [data-action=redo]');
   };
+  // Since plan step 7 (v0.1.38) the list is the Scene tab of the one sheet: with the card up the bar's button is ▾ and
+  // folds instead, and folded its ▴ unfolds onto the card.
   const openSheet = async () => {
     if (!mobile || (await page.eval(`document.querySelector('.shell').dataset.sheet === 'open'`))) return;
+    if (await page.eval(`document.querySelector('.shell').dataset.fold === 'min'`)) await press('[data-action=sheet]'), await sleep(500);
+    if (await page.eval(`document.querySelector('.shell').dataset.sheet === 'open'`)) return;
+    if (await page.eval(IN.click('[data-part=sheet-tabs] [data-tab=scene]'))) return void (await sleep(500));
     await press('[data-action=sheet]');
     await sleep(500);
   };

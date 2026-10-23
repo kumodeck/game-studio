@@ -290,7 +290,9 @@ async function run(game, layout, theme) {
       await sleep(400);
       const rows = await j(`JSON.stringify([...document.querySelectorAll('.p-row')].map((b) => ({ a: b.dataset.action || b.dataset.step || '', label: b.querySelector('.p-label').textContent, k: b.querySelector('.p-k')?.textContent || '' })))`);
       note('④', `first rows: ${rows.slice(0, 6).map((r) => r.label + (r.k ? ` [${r.k}]` : '')).join(' · ')}`);
-      check(rows.slice(0, 5).map((r) => r.a).join(',') === 'play,copy,remove,clip-copy,show-in-library', `the first rows are Play · Duplicate · Delete · Copy · Show in Library (${rows.slice(0, 5).map((r) => r.a)})`);
+      // "Play from the start" (play-fresh) right under Play since the fast switch (2026-10-22: Play runs in the same page;
+      // the old Play, a new page, is the row under it).
+      check(rows.slice(0, 6).map((r) => r.a).join(',') === 'play,play-fresh,copy,remove,clip-copy,show-in-library', `the first rows are Play · Play from the start · Duplicate · Delete · Copy · Show in Library (${rows.slice(0, 6).map((r) => r.a)})`);
       check(!rows.some((r) => /in a row|glow|Make it nighttime|Fit the editor|Change how the editor|Add a tool/.test(r.label)), 'no made-up sentences and no Ideas rows');
       if (touch) check(rows.filter((r) => /^(⌘|Ctrl|[A-Z?]$|⌫|Del)/.test(r.k)).length === 0, `no keys on a phone (${rows.filter((r) => r.k).map((r) => r.k)})`);
       await shot('4', 'palette');
@@ -336,7 +338,10 @@ async function run(game, layout, theme) {
         let [x, y] = reviewPoint(f, x0, y0);
         let moved = '';
         if (!(await onGame(x, y))) {
-          const c = await j(`(() => { const e = document.querySelector('.card'); if (!e || !e.offsetParent) return 'null'; const r = e.getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.right, r.bottom]); })()`);
+          // What covers the point: the card, or (since plan step 7, 2026-10-23: the phone's bottom is one sheet with tabs,
+          // the list up after a pick from it) the sheet itself — then a press there is a list row (it picked "cottage").
+          const c = await j(`(() => { let e = document.querySelector('.card'); if (!e || !e.offsetParent) e = document.elementFromPoint(${x}, ${y})?.closest('.side, .dock');
+            if (!e || !e.offsetParent) return 'null'; const r = e.getBoundingClientRect(); return JSON.stringify([r.left, r.top, r.right, r.bottom]); })()`);
           moved = ` — on the card (${c ? c.map(Math.round).join(',') : '?'})`;
           // The nearest bare game point beside the card (left of it, or above it), with nothing within a finger's
           // slack (40 px) around it either.

@@ -203,7 +203,8 @@ const cases = {
       await s.page.waitFor(`document.querySelector('[data-part=status]')?.textContent.includes('boom from the test')`, 30000);
       const text = await s.page.eval(`document.querySelector('[data-part=status]').textContent`);
       assert.match(text, /^The game stopped on an error:/);
-      assert.match(text, /Ask your AI to fix it/);
+      // The AI's name since plan step 1 (2026-10-23): Claude / Codex in their terminal (inherited), "your AI" elsewhere.
+      assert.match(text, /Ask (Claude|Codex|your AI) to fix it/);
       assert.ok(await s.page.eval(`!!document.querySelector('[data-action=reload-game]')`), 'no Reload button');
       ok(`one line: "${text}"`);
     } finally {
@@ -246,7 +247,13 @@ const cases = {
         await s.page.waitFor(READY, 90000);
         await sleep(1500);
         const v0 = await s.view();
-        const b0 = await w1.box(s.page, 'lighthouse');
+        // Where the lighthouse stands on screen (its pose's point, not its box: the box holds the two slow beams, which
+        // turn with the game's clock in Edit — sim.js `beam.rotation.y = t * 0.45` — so it changes on its own; this
+        // case measured the box until 2026-10-23 and failed by 30–40 px on a machine that draws frames often).
+        const foot = async () => JSON.parse(await s.page.eval(`(() => { const d = ${DBG}; const p = d.list().find((i) => i.key === 'lighthouse').pose.p; const q = d.toScreen(p);
+          const f = document.querySelector('iframe').getBoundingClientRect();
+          return JSON.stringify(q && { x: Math.round(f.left + q[0]), y: Math.round(f.top + q[1]), p: p.map((v) => +v.toFixed(3)), fw: Math.round(f.width), fh: Math.round(f.height) }); })()`));
+        const b0 = await foot();
         // A real press on the lighthouse's tower (its box also holds the faint light beam: aim at the lower middle).
         const at = await w1.tower(s.page);
         if (phone) await s.page.tap(at.x, at.y);
@@ -254,9 +261,10 @@ const cases = {
         await sleep(1200);
         assert.equal(await s.page.eval('window.studioShell.selected()'), 'lighthouse', `${tag}: the press did not pick the lighthouse`);
         assert.deepEqual(await s.view(), v0, `${tag}: picking moved the camera`);
-        const b1 = await w1.box(s.page, 'lighthouse');
-        for (const k of ['x', 'y', 'w', 'h']) assert.ok(Math.abs(b1[k] - b0[k]) <= 2, `${tag}: the lighthouse's box moved: ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
-        ok(`${tag}: picking leaves the camera and the lighthouse where they were (box ${JSON.stringify(b1)})`);
+        const b1 = await foot();
+        assert.deepEqual(b1?.p, b0?.p, `${tag}: the press moved the lighthouse: ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+        for (const k of ['x', 'y']) assert.ok(b0 && b1 && Math.abs(b1[k] - b0[k]) <= 2, `${tag}: the lighthouse moved on screen: ${JSON.stringify(b0)} → ${JSON.stringify(b1)}`);
+        ok(`${tag}: picking leaves the camera and the lighthouse where they were (at ${JSON.stringify(b1)})`);
         if (phone) {
           await s.page.eval(`[...document.querySelectorAll('[data-action=sheet]')].find((e) => e.offsetParent).click()`);
           await sleep(1000);

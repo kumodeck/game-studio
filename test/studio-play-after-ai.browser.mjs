@@ -18,7 +18,7 @@
 //
 //   node test/studio-play-after-ai.browser.mjs [--shots <dir>] [--only bare,loader,cleared,same,save] [--ui <a built studio-ui folder>]
 // Exit 1 on failure.
-import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -209,7 +209,13 @@ try {
       check(/\d/.test(await page.eval(FAB)), `Undo AI change: still not saved ("${await page.eval(FAB)}")`);
       // Save: the move goes to the AI with the code's pose as `was`, one request.
       await page.eval(`studioShell.actions.save()`);
-      await sleep(1500);
+      // The request is kept after the server copies the game for "Undo AI change" (server.mjs recordRequest →
+      // snapshotGame), which can take longer than 1.5 s on a busy machine; the draft has already written
+      // placement.json by then. Wait for the request itself (up to 10 s).
+      const savedReqs = () => existsSync(join(root, '.studio/requests')) ? readdirSync(join(root, '.studio/requests')).filter((f) => f.endsWith('.json'))
+        .map((f) => JSON.parse(readFileSync(join(root, '.studio/requests', f), 'utf8'))).filter((r) => r.kind === 'saved').length : 0;
+      await until(async () => savedReqs() > 0, 10000);
+      await sleep(500);
       const file = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
       const e = file.objects?.lighthouse;
       check(!!e && Math.abs(e.p[0] - moved[0]) < 0.05 && Math.abs(e.was.p[0] - (moved[0] - 6)) < 0.05, `Save: placement.json has the move and the code's pose (${JSON.stringify(e)})`);

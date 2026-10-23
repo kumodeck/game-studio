@@ -1,16 +1,17 @@
 // Making a motion and putting it on objects (studio-motion-flow; a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how
 // to make a motion and then put it on objects"), in a headless browser on Lantern Cove (3D, a copy of the starter).
 // The checks (PC light):
-//   1. the card of an object with no motion: "+ New motion" and "From Library" side by side (no ◆ Timeline alone);
-//      an object with one: its name and when it plays on the menu, and ◆ Timeline;
-//   2. "+ Make a motion": the timeline opens on it with its one line (studio-no-presets); Esc, then the three first-time steps; "Got it" closes them, and they do
-//      not come back (the plate folded and opened again; ui prefs `seen`);
+//   1. the card of an object with no motion: no Motion row (studio-card-doors, plan step 3, 2026-10-23: the strip's Motion
+//      is the one way in); an object with one: one line, its name and when it plays, and a press opens the timeline;
+//   2. the strip's Motion → "Make a motion": the timeline opens on it with its one line (studio-no-presets); Esc ends
+//      making, nothing made (the first-time three steps went with studio-motion-line, plan step 4: none show);
 //   3. the Library's Motion filter starts with "+ New motion" ("for crate" with the crate picked, "Pick an object first"
 //      with nothing); pressed with nothing picked: the Scene, one line, and the next object picked gets the timeline;
 //   4. a motion's tile dragged onto the crate in the game: the Library fades (the game shows), the crate is named
 //      ("Attach “Hop” to crate"), let go = attached — the Scene, the crate picked, the timeline on Hop with
 //      "✓ “Hop” attached · When does it move?" and Starts focused; one undo step; Esc during a drag = nothing;
-//   5. the card's "From Library" on an object with no motion: the same "attached" line;
+//   5. the strip's "Use a saved motion" on an object with no motion (the card's "From Library" until plan step 3): the
+//      same "When does it move?" ringed;
 //   6. no page errors.
 // A phone (390×844, touch) in the pictures run: a long press picks the tile up, the finger drops it on the crate.
 // And pictures (`--shots <dir> [--before] --no-checks`): PC 1280×800, the side window 400×900, a phone 390×844 × light and
@@ -101,10 +102,26 @@ async function run(size, theme) {
       await page.eval(`(document.querySelector('.shelf-filters [data-shelf=motion]') || {}).click?.()`);
       await sleep(600);
     };
+    // The card's Motion row since studio-card-doors (plan step 3): one line, only when the object has a motion.
     const card = () => j(`(() => { const c = document.querySelector('[data-part=card]'); if (!c) return null;
-      const clip = c.querySelector('[data-part=motion-clip]');
-      return JSON.stringify({ make: !!c.querySelector('[data-part=motion-make]'), fromLib: !!c.querySelector('[data-part=motion-from-lib]'), timeline: !!c.querySelector('[data-part=motion-timeline]'),
-        clip: clip ? clip.selectedOptions[0]?.textContent : null }); })()`);
+      return JSON.stringify({ row: !!c.querySelector('[data-part=motion-row]'), make: !!c.querySelector('[data-part=motion-make]'), fromLib: !!c.querySelector('[data-part=motion-from-lib]'),
+        line: c.querySelector('[data-part=motion-timeline-line]')?.textContent ?? null }); })()`);
+    const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
+    const tapAt = async (pt) => (size.mobile ? await page.tap(Math.round(pt.x), Math.round(pt.y)) : await page.click(Math.round(pt.x), Math.round(pt.y)), await sleep(500));
+    /** The picked object's Motion button in the game's strip (the one way in, motion-tool.ts), then a row of its menu. */
+    const strip = async (...rows) => {
+      await page.waitFor(`!!${ROOT}.querySelector('[data-studio-motion]:not([hidden])')`, 15000).catch(() => {});
+      const b = await j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector('[data-studio-motion]');
+        if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2 }); })()`);
+      if (!b) return false;
+      await tapAt(b);
+      for (const a of rows) {
+        const r = await j(`(() => { const b = document.querySelector('[data-part=context-menu] [data-action=${JSON.stringify(a)}]'); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
+        if (!r) return false;
+        await tapAt(r);
+      }
+      return true;
+    };
     // studio-ui-lead (2026-10-23): no "✓ attached" chip; just attached = "When does it move?" with its menu ringed (.ask) and focused.
     const after = () => j(`(() => { const s = document.querySelector('[data-part=tl-starts]');
       return JSON.stringify({ ringed: !!s?.closest('.tl-starts.ask'), focused: !!s && document.activeElement === s, lib: !document.querySelector('[data-part=assets-page]')?.hidden }); })()`);
@@ -177,37 +194,32 @@ async function run(size, theme) {
     await fine(false);
     if (full) {
       const c = await card();
-      check(c?.make && c.fromLib && !c.timeline, `no motion: "+ New motion" and "From Library" side by side (${JSON.stringify(c)})`);
+      check(!!c && !c.row && !c.make && !c.fromLib, `no motion: no Motion row on the card (${JSON.stringify(c)})`);
       await select('barrel');
       const b = await card();
-      check(b?.timeline && /Roll/.test(b.clip) && /barrel-hit/.test(b.clip), `a motion: its name and when on the menu, ◆ Timeline ("${b?.clip}")`);
-      // ---- 2. + New motion, and the steps once ----
+      check(!!b?.row && /^Roll · /.test(b.line || '') && /barrel-hit/.test(b.line || ''), `a motion: one line, its name and when ("${b?.line}")`);
+      await page.eval(`document.querySelector('[data-part=card] [data-part=motion-timeline-line]')?.click()`);
+      await sleep(700);
+      check((await state()).open && (await state()).clip === 'Roll', `the line opens the timeline on it (${(await state()).clip})`);
+      await page.eval(`${TL}.setOpen(false)`);
+      await sleep(300);
+      // ---- 2. the strip's Make a motion; Esc ----
       await select('crate');
-      await page.eval(`document.querySelector('[data-part=card] [data-part=motion-make]').click()`);
-      await sleep(800);
+      const made = await strip('ctx-motion-make');
+      await sleep(500);
       let st = await state();
-      const coach = () => page.eval(`(() => { const c = document.querySelector('[data-part=tl-coach]'); return !!c && !c.hidden && c.offsetParent !== null; })()`);
-      // studio-no-presets: "+ Make a motion" is making (its own line says the step), so the three steps stay away; Esc
-      // ends making with nothing made, and the steps show then (the object still has no keys).
+      const coach = () => page.eval(`!!document.querySelector('[data-part=tl-coach], .tl-coach')`);
+      // studio-no-presets: "Make a motion" is making (its own line says the step); the first-time three steps are gone
+      // since studio-motion-line (plan step 4, 2026-10-23: the line says the next step).
       const line = await page.eval(`document.querySelector('[data-part=tl-first]')?.textContent || ''`);
-      check(st.open && !(await coach()) && /Drag .+ \(Esc to cancel\)/.test(line), `+ Make a motion opens the timeline on the crate, its one line ("${line}")`);
+      check(made && st.open && !(await coach()) && /Drag .+ \(Esc to cancel\)/.test(line), `Make a motion opens the timeline on the crate, its one line ("${line}")`);
       check(!(await state()).clip, 'nothing made yet (the first move makes it)');
       await page.eval(`(document.activeElement?.blur?.(), window.focus(), document.body.focus())`);
       await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await sleep(500);
-      check(await coach(), 'Esc: making ends, the first-time steps show');
-      await page.eval(`document.querySelector('[data-part=tl-coach-ok]').click()`);
-      await sleep(500);
-      check(!(await coach()), '"Got it" closes them');
-      await page.eval(`${TL}.setOpen(false)`);
-      await sleep(300);
-      await page.eval(`${TL}.setOpen(true)`);
-      await sleep(500);
-      check(!(await coach()), 'not again (folded and opened)');
-      await sleep(600);
-      const prefs = JSON.parse(readFileSync(join(root, '.studio/ui/prefs.json'), 'utf8'));
-      check(prefs.seen?.includes('timeline-steps'), `kept in the game's ui prefs (seen: ${JSON.stringify(prefs.seen)})`);
+      const line2 = await page.eval(`document.querySelector('[data-part=tl-first]')?.textContent || ''`);
+      check(!/Esc to cancel/.test(line2) && !(await state()).clip && !(await coach()), `Esc: making ends, nothing made, no first-time steps ("${line2}")`);
       await page.eval(`${TL}.setOpen(false)`);
       await sleep(300);
       // ---- 3. + New motion in the Library ----
@@ -257,10 +269,10 @@ async function run(size, theme) {
       await page.eval(`${TL}.setOpen(false)`);
       await sleep(300);
       await select('lighthouse');
-      await page.eval(choose('[data-part=card] [data-part=motion-from-lib]', 'attach:Bob'));
+      await strip('ctx-motion-lib', 'ctx-motion-lib-Bob');
       await sleep(800);
       const a2 = await after();
-      check(a2.ringed && st.clip !== (await state()).clip, `the card's From Library: Bob on the plate, "When" ringed (${JSON.stringify(a2)}, ${(await state()).clip})`);
+      check(a2.ringed && (await state()).clip === 'Bob', `the strip's Use a saved motion: Bob on the plate, "When" ringed (${JSON.stringify(a2)}, ${(await state()).clip})`);
     } else {
       // ---- pictures ----
       await select('crate');
@@ -286,14 +298,14 @@ async function run(size, theme) {
         await select('lighthouse');
         await fine(true);
         await sleep(300);
-        // Every size and theme (studio-motion-flow-2, 2026-10-22): the lighthouse has no motion, so its card shows
-        // "+ New motion" and it opens the plate — the checks above see this on PC light only, and a size where the
-        // row did not show would otherwise pass here silently (`?.click()`).
+        // Every size and theme (studio-motion-flow-2, 2026-10-22): the lighthouse has no motion — no Motion row on its
+        // card since studio-card-doors (plan step 3), and the strip's Make a motion opens the plate.
         const lh = await card();
-        if (CHECKS) check(!!lh?.make && !lh.timeline, `${size.id} ${theme}: the lighthouse's card (no motion) shows + New motion (${JSON.stringify(lh)})`);
-        await page.eval(`document.querySelector('[data-part=card] [data-part=motion-make]')?.click()`);
+        if (CHECKS) check(!!lh && !lh.row && !lh.make, `${size.id} ${theme}: the lighthouse's card (no motion) has no Motion row (${JSON.stringify(lh)})`);
+        await fine(false);
+        const mk = await strip('ctx-motion-make');
         await sleep(900);
-        if (CHECKS) check(!!(await state())?.open, `${size.id} ${theme}: + New motion opens the timeline`);
+        if (CHECKS) check(mk && !!(await state())?.open, `${size.id} ${theme}: the strip's Make a motion opens the timeline`);
         await fine(false);
         await sleep(400);
         await shot(page, '5-steps');

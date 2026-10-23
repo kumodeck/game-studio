@@ -1,15 +1,15 @@
 // The timeline (studio-timeline, 2026-10-22: "make motion like Unity or Blender"), in a headless browser on Lantern
 // Cove (3D, a copy of the starter). The checks (PC light):
 //   1. an older file's motion (v0.1.13: the buoy's spin) opens as a clip, and nothing counts as changed;
-//   2. the rowboat's card has a Motion row ("+ New motion" since studio-motion-flow; the picture runs, where it has
-//      "Row" already: "Row" and ◆ Timeline); it opens the plate at the foot of
-//      the game, auto key on;
+//   2. the rowboat (no motion yet) has no Motion row on its card (studio-card-doors, plan step 3, 2026-10-23: the strip's
+//      Motion is the one way in) — its "Make a motion" opens the plate at the foot of the game, auto key on; the picture
+//      runs, where it has "Row" already: the card's one Motion line "Row · …" opens it;
 //   3. the time line moved to 2 s (the ruler pressed), the boat dragged in the game: a key — a clip "Motion" with keys at
 //      0 s and 2 s — Save counts it, the boat's place is unchanged, one undo step;
 //   4. the path in 3D: two dots in the game; Shift-dragging the 2 s dot lifts that key (its height goes up);
 //   5. scrubbing to 1 s shows the boat on its way; ▶ moves it by itself, ❚❚ stops;
 //   6. on the plate: a key pressed and Delete removes it, ⌘Z brings it back; the ease menu sets the picked key's ease;
-//   7. "New: Spin" on the buoy's menu makes a second motion that waits for a cue;
+//   7. "+ Make a motion" in Fine-tune's motion menu (⋯ until plan step 4) makes a second motion on the buoy;
 //   8. Save writes `motion.rowboat.clips` the schema takes; ▶ Play: the starter's loader moves the boat;
 //   9. folding puts the boat back at its place.
 // And pictures (`--shots <dir> --no-checks`): PC 1280×800, the side window 400×900, a phone 390×844 × light and dark —
@@ -55,6 +55,7 @@ const check = (ok, what) => {
 
 const DBG = `document.querySelector('iframe.game, iframe').contentWindow.__gameStudio._debug`;
 const TL = `window.__studioTimeline`;
+const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
 // The path's dots in the game page (bridge/timeline-path.ts), in the editor page's px.
 const POINTS = `(() => { const f = [...document.querySelectorAll('iframe')].find((x) => x.offsetParent) || document.querySelector('iframe');
   const host = f.contentDocument.querySelector('[data-studio-timeline]'); if (!host) return '[]';
@@ -62,7 +63,8 @@ const POINTS = `(() => { const f = [...document.querySelectorAll('iframe')].find
   return JSON.stringify([...host.shadowRoot.querySelectorAll('[data-point]')].map((c) => [o.left + +c.getAttribute('cx'), o.top + +c.getAttribute('cy')])); })()`;
 const PLATE = `(() => { const p = document.querySelector('[data-part=timeline]'); if (!p) return null; const r = p.getBoundingClientRect();
   return JSON.stringify({ shown: !p.hidden && r.height > 0, top: r.top, left: r.left, width: r.width, height: r.height,
-    auto: document.querySelector('[data-part=tl-auto]')?.getAttribute('aria-pressed') === 'true',
+    // ● Rec motion is in Fine-tune since plan step 4 (studio-motion-line, 2026-10-23): the timeline's own state says it.
+    auto: !!window.__studioTimeline.state().auto,
     keys: [...p.querySelectorAll('[data-part=tl-key]')].map((k) => ({ key: k.dataset.key, ch: k.dataset.ch, t: +k.dataset.t, on: k.classList.contains('on') })) }); })()`;
 const SAVE = `(() => { const b = [...document.querySelectorAll('[data-part=save], [data-part=save-fab]')].find((x) => !x.hidden && x.offsetParent); return b ? b.textContent : ''; })()`;
 
@@ -108,21 +110,29 @@ async function run(size, theme) {
     const fine = async (open) => size.id !== 'pc' && page.eval(`(() => { const d = document.querySelector('[data-part=card] details.fine'); if (d) d.open = ${open}; return true; })()`);
     await fine(true);
     await sleep(400);
-    // studio-motion-flow: an object with no motion shows "+ New motion" (and "From Library": the buoy's spin is one);
-    // one with a motion shows its name and ◆ Timeline (motion-card.ts).
+    // studio-card-doors (plan step 3, 2026-10-23; motion-card.ts): the card only SAYS what the object has — no motion, no
+    // Motion row (the strip's Motion is the one way in); a motion, one line "Row · When game starts ›" that opens it.
     const row = await j(`(() => { const q = (p) => document.querySelector('[data-part=card] [data-part=' + p + ']');
-      return JSON.stringify({ make: !!q('motion-make'), fromLib: !!q('motion-from-lib'), clip: q('motion-clip')?.value ?? null, tl: !!q('motion-timeline') }); })()`);
-    if (full) check(!!row && row.make && row.fromLib, `the card's Motion row: + New motion and From Library (${JSON.stringify(row)})`);
-    // The picture runs start from PICTURE_FILE, where the boat already has "Row": no "+ New motion" there (as designed),
-    // so ◆ Timeline opens the plate. 2026-10-22 (studio-motion-flow-2): 9e1634134 clicked motion-make in every run and the
-    // runs after PC light stopped on `null.click()` — the test, not the product (each run is a fresh copy, nothing carried over).
-    else check(!!row && !row.make && row.clip === 'Row' && row.tl, `the card's Motion row: "Row" and ◆ Timeline (${JSON.stringify(row)})`);
-    await page.eval(`document.querySelector('[data-part=card] [data-part=${full ? 'motion-make' : 'motion-timeline'}]').click()`);
+      return JSON.stringify({ row: !!q('motion-row'), make: !!q('motion-make'), fromLib: !!q('motion-from-lib'), line: q('motion-timeline-line')?.textContent ?? null }); })()`);
+    if (full) check(!!row && !row.row && !row.make && !row.fromLib, `no motion yet: no Motion row on the card (${JSON.stringify(row)})`);
+    // The picture runs start from PICTURE_FILE, where the boat already has "Row".
+    else check(!!row && !row.make && /^Row · /.test(row.line || ''), `the card's Motion line: "Row · …" (${JSON.stringify(row)})`);
+    if (full) {
+      // The strip's Motion → "Make a motion" (motion-tool.ts).
+      await page.waitFor(`!!${ROOT}.querySelector('[data-studio-motion]:not([hidden])')`, 15000).catch(() => {});
+      const mb = await j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector('[data-studio-motion]');
+        if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2 }); })()`);
+      if (mb) await page.click(Math.round(mb.x), Math.round(mb.y));
+      await sleep(500);
+      const mk = await j(`(() => { const b = document.querySelector('[data-part=context-menu] [data-action="ctx-motion-make"]'); if (!b) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
+      check(!!mb && !!mk, `the strip's Motion → "Make a motion" (${!!mb}, ${!!mk})`);
+      if (mk) await page.click(Math.round(mk.x), Math.round(mk.y));
+    } else await page.eval(`document.querySelector('[data-part=card] [data-part=motion-timeline-line]').click()`);
     await sleep(600);
     await fine(false);
     await sleep(500);
     const plate = await j(PLATE);
-    check(!!plate?.shown, `◆ Timeline opens the plate (${plate && Math.round(plate.top)}…${plate && Math.round(plate.top + plate.height)})`);
+    check(!!plate?.shown, `it opens the plate (${plate && Math.round(plate.top)}…${plate && Math.round(plate.top + plate.height)})`);
     if (full) {
       check(plate.auto, 'auto key is on');
       check(plate.top > size.height * 0.6 && plate.width > size.width * 0.6, 'PC: at the foot of the game, across it');
@@ -146,6 +156,10 @@ async function run(size, theme) {
       check(/[12]/.test(await page.eval(SAVE)), `Save counts it ("${(await page.eval(SAVE)).trim()}")`);
       const tip = await page.eval(`(document.querySelector('[data-action=undo]') || {}).title || ''`);
       check(/motion|動き/.test(tip), `Undo names it ("${tip.split('\n')[0]}")`);
+      // Making ends here ("Done" on the line): while making, a press on the point where the boat stands goes on to the boat
+      // (the next step — studio-motion-move, v0.1.36, 2026-10-23), so the 2 s dot below would not lift.
+      await page.eval(`document.querySelector('[data-part=tl-done]')?.click()`);
+      await sleep(400);
       // 4. The path: two dots; Shift-drag the 2 s one up.
       await page.eval(`studioShell.actions.select('rowboat')`);
       await sleep(600);
@@ -196,29 +210,27 @@ async function run(size, theme) {
         const back = (await j(PLATE)).keys.filter((k) => k.key === 'rowboat' && !k.ch);
         check(back.some((k) => Math.abs(k.t - 2) < 0.06), '⌘Z brings it back');
       } else check(false, 'the 2 s key is on the plate');
-      // The boat's motion goes back and forth (so ▶ Play below sees it moving whenever it looks). Repeat is in the
-      // strip's ⋯ since studio-motion-panel (the one line keeps what is used every time).
-      await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`);
+      // The boat's motion goes back and forth (so ▶ Play below sees it moving whenever it looks). Repeat is in Fine-tune's
+      // Loop & End (⋯ until plan step 4, studio-motion-line 2026-10-23; the line's sentence has it too: "[Once ▾]").
+      const inFine = async () => (await page.eval(`document.querySelector('[data-part=tl-fine]:not([hidden])') || document.querySelector('[data-part=tl-fine-btn]').click()`), await sleep(300));
+      const outFine = async () => (await page.eval(`document.querySelector('[data-part=tl-fine-btn].on')?.click()`), await sleep(200));
+      await inFine();
+      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-fine] [data-part=tl-repeat]'); s.value = 'pingpong'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await sleep(300);
-      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-repeat]'); s.value = 'pingpong'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
-      await sleep(300);
-      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
-      await sleep(200);
+      await outFine();
       // 7. The buoy: "+ Make a motion" from the clip menu (studio-no-presets: no "New: Spin" any more), then a turn.
       await page.eval(`studioShell.actions.select('buoy')`);
       await sleep(600);
-      // The motion's menu is in ⋯ since studio-ui-lead (2026-10-23).
-      const inMore = async () => (await page.eval(`document.querySelector('[data-part=tl-more]') || document.querySelector('[data-part=tl-more-btn]').click()`), await sleep(300));
-      await inMore();
-      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-more] [data-part=tl-clip]'); s.value = 'new:make'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      // The motion's menu is in Fine-tune since plan step 4 (⋯ since studio-ui-lead, 2026-10-23).
+      await inFine();
+      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-fine] [data-part=tl-clip]'); s.value = 'new:make'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
       await sleep(400);
       await page.eval(`(() => { const p = ${TL}.shownPose('buoy'); ${TL}.moved('buoy', { ...p, r: (p.r ?? 0) + Math.PI / 2 }, true, p); })()`);
       await sleep(400);
       const st = await state();
-      await inMore();
-      const clips = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-more] [data-part=tl-clip] option')].map((o) => o.value).filter((v) => v && !v.startsWith('new:') && v !== '-' && v !== 'rename' && v !== 'delete'))`);
-      await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
-      await sleep(200);
+      await inFine();
+      const clips = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-fine] [data-part=tl-clip] option')].map((o) => o.value).filter((v) => v && !v.startsWith('new:') && v !== '-' && v !== 'rename' && v !== 'delete'))`);
+      await outFine();
       check(clips.length === 2 && st.clip !== 'Motion', `a second motion on the buoy (${clips.join(', ')}; showing ${st.clip})`);
       // Since studio-motion-triggers: "waits" = Starts "In my words…" (the AI connects it), on the head's second row.
       // studio-ui-lead (2026-10-23): while making, the line is the step and "Done" only — "When" ▾ shows after Done.
