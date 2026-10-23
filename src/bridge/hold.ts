@@ -13,7 +13,7 @@
 // list and game tools. Refusing grab / drag / nudgeY / rotate / scale here covers every way in at once. setPose
 // stays open: undo, redo and loading a saved file must restore poses exactly (the same rule as core/rules.ts).
 // The AI can always move a held object in the code; this only keeps a stray drag from doing it.
-import type { Dim, Item, Pose, StudioAdapter } from '../contract.ts';
+import type { Dim, Item, Pose, StripTool, StudioAdapter } from '../contract.ts';
 
 /** What the game itself changed while the editor watched (observe.ts): place (3D x / z), height (3D y), turn, size. */
 export interface Driven {
@@ -30,8 +30,32 @@ export interface Driven {
  */
 export const canLift = (i: Pick<Item, 'liftable' | 'movable' | 'held'> | undefined): boolean => !!i && i.liftable !== false && (i.movable !== false || i.held === 'game');
 
+/**
+ * Why a tool of the strip does not work on this object (null = it works). The strip shows the four tools for every
+ * object, in the same places, and dims the ones that do not work (studio-tool-clear, 2026-10-23: "Move is gone from
+ * the strip" — a hexagon the game slides had no Move button at all, and nothing said why; it looked broken). The
+ * reason is said in one line on the dimmed button, and a press on it says what can be done instead (shell/tool-off.ts).
+ *   'game'   the game changes this part of it by itself (held 'game', `driven`)
+ *   'ground' a ground / road / sky held still until "Make movable"
+ *   'locked' the game's rules (.studio/studio.json) lock it
+ *   'none'   the object cannot take this tool at all (a 2D thing that cannot turn, a rule that turns turning off)
+ */
+export type OffWhy = 'game' | 'ground' | 'locked' | 'none';
+const PART: Record<StripTool, NonNullable<Item['driven']>[number]> = { move: 'move', lift: 'lift', rotate: 'turn', scale: 'size' };
+export function offWhy(i: Pick<Item, 'liftable' | 'movable' | 'held' | 'driven' | 'rotatable' | 'scalable'> | undefined, tool: StripTool): OffWhy | null {
+  if (!i) return null;
+  const works = tool === 'move' ? i.movable !== false : tool === 'lift' ? canLift(i) : tool === 'rotate' ? i.rotatable : i.scalable;
+  if (works) return null;
+  if (i.held === 'game' && i.driven?.includes(PART[tool])) return 'game';
+  if (i.held === 'ground') return 'ground';
+  return i.movable === false ? 'locked' : 'none';
+}
+
 export interface HoldState {
-  /** Grounds the person made movable ("Make movable"), for this session. */
+  /**
+   * Grounds the person made movable ("Make movable"), and objects the game moves whose start spot the person chose to
+   * set ("Move where it starts", studio-tool-clear), for this session.
+   */
   freed: Set<string>;
   /** Objects the game moves by itself, found when editing started. */
   driven: Map<string, Driven>;
@@ -51,12 +75,20 @@ export function holdItem(it: Item, s: HoldState, dim: Dim): Item {
   const d = s.driven.get(it.key) ?? (it.copyOf && !s.placing?.has(it.key) ? s.driven.get(it.copyOf) : undefined);
   // The game's own motion wins over "ground": a road the game scrolls is not kept where it is put either.
   if (d && (d.move || d.lift || d.turn || d.size)) {
+    // "Move where it starts" (studio-tool-clear, 2026-10-23: "if it can, let the person move where the game starts
+    // moving it"): its place and height work again. A runner moves things on from where they are (z += speed · dt), so
+    // where it stands in the editor is where it starts — the loader puts it there before the first frame — and the game
+    // takes it on from there. Its turn and size stay held: a game that spins or pulses a thing mostly sets the angle /
+    // the size outright, so a start value there would not show. A game that sets the place outright every frame wins
+    // all the same; the card says so ("the game moves it on from there").
+    const start = s.freed.has(it.key) && (d.move || d.lift);
     return {
       ...it,
       held: 'game',
       driven: (['move', 'lift', 'turn', 'size'] as const).filter((k) => d[k]),
-      movable: it.movable !== false && !d.move,
-      liftable: it.liftable !== false && it.movable !== false && !d.lift,
+      ...(start ? { startSpot: true } : {}),
+      movable: it.movable !== false && (!d.move || start),
+      liftable: it.liftable !== false && it.movable !== false && (!d.lift || start),
       rotatable: it.rotatable && !d.turn,
       scalable: it.scalable && !d.size,
     };

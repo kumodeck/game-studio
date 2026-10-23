@@ -5,6 +5,13 @@ description: Open a local visual editor next to a web game so the user can drag,
 
 # Arrange: placement editor and asset library
 
+**The editor's link goes alone on the first line of every reply about the editor: when you open it, reopen it,
+update it to a new version, restart it, or are asked where it is.** Copy it from the line the command prints right
+after `studio: ready` (`studio: reply with this link alone on the first line of your answer, exactly as printed:
+<url>`). The app's "open" card, "it's open next to the chat" or "the editor is ready" without the link is never
+enough. The editor opens in the person's default browser by itself; the window next to the chat only when they ask
+for it (§3).
+
 Typing coordinates back and forth ("a bit more to the right… no, less") is the slowest part of building a game with
 an AI. This skill opens a small local editor where the **user** moves things by hand and the **editor writes a file**.
 You (the agent) then read that file and change the code. The editor never edits the game's code by itself, with one
@@ -50,8 +57,8 @@ open it (above), never the sample. Then, for `no-game` only:
    It prints `studio: started <id> (<n> files) <title>`, then `studio: ready <url> pid <n>`, and returns: the editor
    keeps running on its own (§3). Then start the watch, if your environment has one (§3). It never overwrites a file
    and refuses a folder that already has a different game; the same line run again opens the same sample. The samples
-   are three.js (3D) and PixiJS (2D) with their adapter included, so skip §1 and §2. In the Claude app, add
-   `--no-open` and open the editor next to the chat (§3, "In the Claude app").
+   are three.js (3D) and PixiJS (2D) with their adapter included, so skip §1 and §2. It opens in their default
+   browser, in the Claude app too (§3).
 3. The link first, then where it is (§3, "When you open it, say") and one line: "Here's a sample game in your folder. Click anything and drag it to move
    it, type a change in the box at the bottom, and click Save when you like it."
    Say nothing else about the editor: not the self-check (mention it only if it printed
@@ -159,7 +166,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --detach --lan          
 node <this skill's folder>/bin/studio.mjs <game folder> --detach --entry neon-orb.html # a page other than the one it picked
 node <this skill's folder>/bin/studio.mjs <game folder> --link                  # the running editor's link: paste it as it is
 node <this skill's folder>/bin/studio.mjs <game folder> --open-in browser      # "open it in my browser / in Chrome" (remembered)
-node <this skill's folder>/bin/studio.mjs <game folder> --open-in app          # "back in the app" (the window next to the chat)
+node <this skill's folder>/bin/studio.mjs <game folder> --open-in app          # "open it next to the chat" (remembered; then nothing opens by itself)
 node <this skill's folder>/bin/studio.mjs <game folder> --stop                  # when the user is finished
 ```
 
@@ -175,58 +182,48 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
   once; the editor keeps running after the command and your turn end (its output goes to
   `<game folder>/.studio/studio.log`). Do not start it with `&`, `nohup` or a background shell instead: in Codex
   those end with your turn and the person gets a blank page. Running the same line again prints the running editor's
-  URL instead of starting a second one. It opens the user's default browser by itself. The URL carries a one-time
-  passcode: give the user the URL exactly as printed (below, "When you open it, say"). Do not open it with your own browser tools unless the user asks
-  you to check something, with one exception: the Claude app, below. When they ask where the editor is, or for the
-  link, run `--link` and paste its one line (it says `studio: not running …` when there is none: start it again).
-- **They want it in their browser** ("open it in the browser", "in Chrome", "I'd rather use my browser", in any
-  language): run `--open-in browser`. It opens the link in their default browser now and remembers it for this game
-  (`.studio/open.json`), so from then on `--detach` opens the browser by itself, also in the Claude app with
-  `--no-open`, and prints `studio: open browser …` after `ready`: then don't open the window next to the chat. It
-  prints the link first: paste it first. "Back in the app" / "next to the chat": `--open-in app`, then open it next to
-  the chat (below). Never start a browser yourself (`open -a Chrome …`): their default browser is the one they use.
-- **In the Claude app (a browser pane next to the chat).** Look at your tools once, before you start the editor. If
-  you have `mcp__Claude_Browser__preview_start` (the browser inside the Claude desktop app; it may be listed as a
-  deferred tool, so load it first), the person is in the app and may never open a terminal or another browser. Then
-  (unless the start line printed `studio: open browser …`: this person opens it in their browser, it is open there):
-  1. Add `--no-open` to the start line, so no second browser window opens:
-     `node <this skill's folder>/bin/studio.mjs <game folder> --detach --no-open` (keep `--tool library`,
-     `--starter …` or `--lan` if you use them).
-  2. Call `tabs_context` (load it together with `preview_start` and `tabs_select`). If a tab already shows this
-     editor (the same `127.0.0.1:<port>/__studio/`: the tab shows it without the pass), don't open a second one: call
-     `tabs_select` with that tab. Otherwise call
-     `preview_start` with `url` set to the URL from `studio: ready`, exactly as printed: the editor opens in a tab of
-     the pane next to the chat. Then call `tabs_context` again: its last line says whether the Browser pane is shown
-     or hidden. Hidden: call `tabs_select` with the editor's tab (it fronts it) and `tabs_context` once more. The
-     person must see the editor without doing anything; only when the pane is still hidden after that does the
-     reply say "Press ⌘⇧B to see the editor (Ctrl+Shift+B on Windows)." on its second line, after the link.
-  3. Tell the person where it is and what to do, the **link first** (below, "When you open it, say"). If they say
-     the pane is too narrow: "The ↗ button at the top right of the editor opens it in a large window." (the same
-     editor, pass included; asking you and Save work there the same way).
-  4. If `preview_start` returns any error (the site isn't approved, the pane can't be reached) or the person
-     declines the site, don't retry: the link first as usual, then "Open this link in your browser." Nothing else
-     opened it, because of `--no-open`.
+  URL instead of starting a second one. Don't add `--no-open` (only when the person asked that nothing opens).
+- **Right after `studio: ready` come two lines; do what they say.** `studio: reply with this link alone on the first
+  line of your answer, exactly as printed: <url>`: that URL is the first line of your reply (it carries a one-time
+  passcode, so copy it, never rebuild it). Then where the editor went:
+  - `studio: open browser - it opened in their default browser …`: it is open in their browser (Chrome, Safari…).
+    Don't also open it next to the chat, and never start a browser yourself (`open -a Chrome …`).
+  - `studio: open browser - already open …`: the same editor was already open there, so no second tab. If they
+    can't find it: `--link --open`.
+  - `studio: open none - …`: nothing could be opened (`--no-open`, SSH, no display). After the link: "Open this
+    link in your browser."
+  - `studio: open app - …`: this person chose the window next to the chat (below).
+  The same goes for a reopen: a new version, a restart after `--stop`, an editor that had stopped. When they ask
+  where the editor is, or for the link, run `--link`: its one line on stdout is the link, paste it first.
+  Do not open the editor with your own browser tools unless the user asks you to check something.
+- **Where it opens, when they say** (in any language): "open it in my browser / in Chrome": `--open-in browser`
+  (opens it there now and remembers it for this game in `.studio/open.json`; it is also what happens when nothing
+  is remembered). "Open it next to the chat" / "in the app": `--open-in app`; from then on nothing opens by itself
+  and `--detach` prints `studio: open app`. Only then, in the Claude app (you have `mcp__Claude_Browser__preview_start`;
+  load it with `tabs_context` and `tabs_select`): if a tab already shows this editor (`127.0.0.1:<port>/__studio/`,
+  shown without the pass), `tabs_select` it; otherwise `preview_start` with the URL exactly as printed. If the pane
+  is hidden after `tabs_context`, `tabs_select` the editor's tab; still hidden: "Press ⌘⇧B to see the editor
+  (Ctrl+Shift+B on Windows), or open the link." on the second line. If `preview_start` fails, or you have no such
+  tool: "Open this link in your browser." after the link. Narrow pane: "The ↗ button at the top right of the editor
+  opens it in a large window." Only the `mcp__Claude_Browser__` tools count: `mcp__remote-devices__Claude_Browser__*`
+  can't reach `127.0.0.1` on this computer.
 
 - **When you open it, say** (every time you start or reopen the editor, or tell them where it is; in their
   language): **the link alone on the first line**, then where it is with the game's name, then what to do. Nothing
-  before the link: not where it is, not ⌘⇧B, not that it is hidden. The link is the URL from `studio: ready` (or
-  `--link`) exactly as printed: it opens the editor on this computer only, and it is theirs, so give it every time
-  (Claude app, terminal and Codex alike; a hidden window is one click away with it), with one short "don't share it":
+  before the link: not where it is, not ⌘⇧B, not the version. The link is the one from the `studio: reply with this
+  link …` line (or `--link`) exactly as printed: it opens the editor on this computer only, and it is theirs, so give
+  it every time (Claude app, terminal and Codex alike), with one short "don't share it":
 
   > <the link, the whole URL as printed>
-  > NEON ORB is open in the editor next to this chat (this link works on this computer only; don't share it).
+  > NEON ORB is open in the editor in your browser (this link works on this computer only; don't share it).
   > Click anything and drag it to move it, type a change in the box at the bottom, and click Save when you like it.
 
-  Terminal, Codex, or `studio: open browser`: "…in the editor in your browser." App with the pane still hidden:
-  "Press ⌘⇧B to see the editor (Ctrl+Shift+B on Windows), or open the link." on the second line. The game's name is
-  its page's `<title>`, else the file name. Never write "it's next to this chat" without the link, and never explain
-  which file it opened or why.
+  `studio: open app`: "…in the editor next to this chat." `studio: open none`: "Open this link in your browser."
+  The game's name is its page's `<title>`, else the file name. Never answer with only the app's card or "it's
+  open", never write "it's next to this chat" without the link, and never explain which file it opened or why.
 
-  Everything else is the same, including the watch: the Claude app wakes you on its lines like Claude Code in a
-  terminal (§3, "The watch"). Reloads and `--stop` too. **Only the `mcp__Claude_Browser__` tools count.**
-  `mcp__remote-devices__Claude_Browser__*` is a pane on the person's computer while you run somewhere else, so it
-  can't reach this editor on `127.0.0.1`: start it the usual way, without `--no-open`. No such tool (Claude Code in
-  a terminal, Codex, an IDE): start it as before; it opens the default browser.
+  Everything else is the same in the Claude app, terminal and Codex, including the watch: the Claude app wakes you
+  on its lines like Claude Code in a terminal (§3, "The watch").
 - **Stop it only with `--stop`** (when the user says they are finished): it stops the editor and the watch started
   for this folder and nothing else (it asks this folder's editor to stop, using the secret in `.studio/server.json`,
   so it works inside a sandbox too; otherwise by pid). **Never stop it by
@@ -241,8 +238,11 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 |---|---|---|
 | `studio: entry <page> …` | No `index.html`: the editor opened this page, the game's own file, as it is (other game pages, if any, are named) | Nothing to tell the person about it. Only if it is the wrong page: `--stop`, then start again with `--entry <page>` |
 | `studio: build-first <page> …` | The only game page needs its build (exit 5) | Run the build (`npm run build`), then the same start line |
-| `studio: ready` | The editor is up; the line has the URL | The link first, then where it is and what to do (above, "When you open it, say"). In the Claude app, open it next to the chat first (above), unless `studio: open browser` follows |
-| `studio: open browser …` | This person opens the editor in their browser (`--open-in browser`, remembered); it opened there | Don't open it next to the chat. The link first, "…open in the editor in your browser" |
+| `studio: ready` | The editor is up; the line has the URL | Read the next two lines |
+| `studio: reply with this link …: <url>` | Right after every `ready` line | That URL alone on the first line of your reply, as printed (above, "When you open it, say") |
+| `studio: open browser …` | It opened in their default browser (or was already open there) | Don't open it next to the chat. "…open in the editor in your browser" |
+| `studio: open app …` | This person chose the window next to the chat (`--open-in app`); nothing opened | `preview_start` with the link (above), the link still first in the reply |
+| `studio: open none …` | Nothing could be opened (`--no-open`, SSH, no display) | The link first, then "Open this link in your browser." |
 | `studio: check ok` | The adapter works | Nothing; the user can start |
 | `studio: check failed` | The adapter (or the built-in three.js one) does not work for this game | Read `.studio/check.md`, fix `.studio/adapter.js` (§2), ask the user to reload the page |
 | `studio: unnamed` | Some objects have no name (`path:` keys; the line lists them) | §3.2: offer **once** to name them, before the user saves |
@@ -264,7 +264,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
   instant, so use it whenever your environment can wake you on a new output line:
   - **Main path (every environment):** start the server with `--detach` (above), take the URL from its
     `studio: ready` line. In Claude Code you say nothing about it (the hooks below bring their requests to you). Elsewhere
-    tell the user once: "If the editor shows **Call your AI**, paste what it copies here (*look*)."
+    tell the user once: "When the editor says your note is kept, type *look* here and I'll read it."
     When they say "look" (or "saved", "done", the same in their language), **read every waiting request** (§3.1)
     and handle them in order. *look* is the one word: never tell the person to run `/arrange` again or name another app
     to make you see a request.
@@ -283,8 +283,8 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
     `studio:` line per request (the waiting ones first, after `studio: watching <n> waiting`; nothing while none), with the same words
     as the table above, and **while it runs the editor shows the person that you are watching**: their request says
     "Your AI has it" the moment they press Enter, and the input glows while you work. When nothing can reach you, the
-    editor says calmly that the request is kept and goes in the next time you run, with a **Call your AI** button that
-    copies *look* — so never leave a stale watch claiming you are there. It prints nothing while no request comes, and ends on its own after 29 minutes
+    editor says the fact (the request is kept as a note; the game doesn't change until you read it) and, beside its field,
+    that you aren't watching, with **How to open** — so never leave a stale watch claiming you are there. It prints nothing while no request comes, and ends on its own after 29 minutes
     with `studio: watch rest …` (Monitor would stop it at 30 anyway; it can also end when the session is idle
     for long, or Monitor says it expired). **Whenever it ends, start the same watch again, silently**: no
     message, no "I started watching again", no "no requests yet" — a restart is not news, and every line you
@@ -305,7 +305,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
     has to go to your window to make you see a request.
   - **Do not run `--watch` if nothing would wake you on its lines** (for example in Codex, or any agent that only
     reads output when it runs its next command): the editor would tell the person you are watching when you are
-    not. Use the main path; the editor then shows its calm line and **Call your AI** (it copies *look*).
+    not. Use the main path; the editor then says, beside its field, "Codex reads it when you type *look*".
 - Keep the server running while the user works; they can save several times. Each save (and each draft write in
   between) rewrites the whole file.
   Stop the server when the user says they are finished: `studio.mjs <game folder> --stop`, never by name.
@@ -623,6 +623,14 @@ Delete each removed object:
   something else depends on it in a way you cannot remove safely, keep it and ask the user.
 - A key `path:…` (no name) may point at a different object once code changed; check `label` and `was` first.
 
+**Renamed objects (`names`).** The user renamed objects in the editor (Rename, F2): `"names": { "crate-2": "Hero crate" }`
+(object key → the new name; with `levels`, each level has its own). The editor already shows the new name. Rename the
+object in the code: its name / mark (three.js `object.name` or `userData.studioKey`, Pixi `label`, a `key:` field) to a
+key made from the new name (`hero-crate`: lower case, `-` for spaces, Latin letters and digits; for a name without
+Latin letters, keep the old key and add the name as a label or comment), and every reference to it. Then move its
+entries in `placement.json` (`objects`, `motion`, `added` / `removed` / `order` keys) to the new key and take the
+entry out of `names`. Say which keys you chose.
+
 **Check after applying** (also when the user only says "saved"):
 
 1. Run the game (or reload it in the editor). Every copy is there, every deleted object is gone, and the game starts
@@ -842,11 +850,23 @@ Don't add it to a game with one level: nothing would change.
 - `levelsWas` (only when something differs): the code's order. Reorder the code's levels to the order of `levels`. An
   id in `levelsWas` that is not in `levels` was **deleted**: ask once before you delete a level's code ("Delete the
   Summit level from the code?"), since it cannot be seen again in the editor.
+- `levelsWas: []`: the game had **no levels** in its code, and the user made Level 2 in the editor ("Levels ⌄ → Make
+  Level 2"). The level without `from` (usually `level-1`) is the game as it is now. Give the game levels: add the
+  `studio.levels(…)` lines above with every level of `levels` (ids and labels as written), build the game as it is for
+  the first one, add each `from` level as a copy of it, pass `{ level }` to `applyPlacement`, and copy this skill's
+  `bin/studio-placement.js` into the game again (an older copy reads such a file only with `{ level }`). Then apply
+  each level's entries and remove `levelsWas`. Until you do, the loader applies the first level when it is called
+  without `{ level }` (the shipped game keeps its layout), and the editor shows each level over the game as it is.
 - When applied, remove `from`, `labelWas` and `levelsWas`, and the applied entries (as above). A file whose levels are
   all empty may be deleted.
 
 With the loader, `applyPlacement(…, { level })` applies only that level; without `{ level }` it moves nothing in the
-world (it warns), so a level's layout never lands on another level.
+world (it warns), so a level's layout never lands on another level — except a file with `levelsWas: []` (above).
+
+**The editor's two kinds of buttons.** In the editor a plain button acts at once and never writes in the chat box;
+only a ✦ row ("Ask AI to …", violet) puts an editable request there, and nothing reaches you until the user sends it.
+So a request from the editor is always one the user chose to send. What the user did with plain buttons (moves,
+copies, renames, levels) reaches you only through `placement.json` on Save.
 
 ### Godot
 

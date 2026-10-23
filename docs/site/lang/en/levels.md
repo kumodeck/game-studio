@@ -28,6 +28,7 @@ The menu has:
 - **Rename…**: type the new name in place. <kbd>Enter</kbd> keeps it, <kbd>Esc</kbd> cancels.
 - **Move up** and **Move down**: change the order.
 - **Delete level**: you go to the level next to it. If the level is in your game’s code, your AI asks you once before it takes it out.
+- **✦ Ask AI for a different kind of level…**: puts a request in the box at the bottom for you to finish (“How it should differ from this one: …”). Nothing is sent until you press <kbd>Enter</kbd>.
 
 Each of these counts as one change on **Save · N**. When you save, your AI adds the new levels, names and order to the game.
 
@@ -37,17 +38,19 @@ Each of these counts as one change on **Save · N**. When you save, your AI adds
 
 ## Add levels to a game without them
 
-A game without levels shows **+ Level** after the path at the top (**Studio / Neon Orb / Scene  + Level**). Press it:
+A game without levels shows **Levels ⌄** in the path at the top (**Studio / Neon Orb / Levels ⌄ / Scene**). Press it to open its menu. Nothing happens until you choose:
 
-- If your game’s code already knows about levels but has only one, you get a second level right away, a copy of the one on screen, named like “Meadow 2.”
-- Otherwise the request is written in the ask box for you: make what’s on screen the first level and add a second one. Nothing is sent until you press <kbd>Enter</kbd>. Your AI adds a few lines where your game picks its level, and the level shows up in the path.
+- **Make Level 2 — a copy of this one**: what’s on screen becomes Level 1, and Level 2 opens right away as a copy of it. A line at the top says what happened: “Level 2 made — a copy of Level 1. Change things here to make it different. Save, and your AI adds Level 2 to your game’s code.” Changed your mind? Press **Undo** on that line, or <kbd>⌘</kbd><kbd>Z</kbd>.
+- **✦ Ask AI for a different kind of level…**: puts a request in the box at the bottom for you to finish. Nothing is sent until you press <kbd>Enter</kbd>.
 
-On a phone there’s no room for **+ Level** at the top: open **…** (All actions) and choose **Add a level**.
+When you save, your AI adds the few lines that let your game switch levels. Until then your game outside the editor plays Level 1, as before.
 
-![A game without levels: + Level after the path at the top](media/levels-add.webp)
+On a phone there’s no room for **Levels ⌄** at the top: open **…** (All actions) and choose **Levels…**.
+
+![A game without levels: Levels ⌄ in the path at the top, with its menu open](media/levels-add.webp)
 
 ## No levels showing?
 
-The editor needs your game to tell it which levels it has. Press **+ Level**, or ask your AI: “show my levels in Game Studio.” It adds a few lines where your game picks its level.
+The editor needs your game to tell it which levels it has. Press **Levels ⌄** and make Level 2, or ask your AI: “show my levels in Game Studio.” It adds a few lines where your game picks its level.
 
 Next: [UI editing](ui.md).

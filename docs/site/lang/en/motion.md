@@ -2,7 +2,7 @@
 title: Motion
 nav: Motion
 order: 4
-written-for: 0.1.23
+written-for: 0.1.24
 description: Make things move with the timeline, choose when a motion starts and stops, and reuse motions from the Library.
 ---
 
@@ -14,12 +14,19 @@ Make a boat sail, a door open, a coin spin. You set where a thing is at a few mo
 
 The quickest way: select something in the game, then press **Motion** at the right end of the tool strip under it (or press <kbd>A</kbd>).
 
-![The Motion button in the tool strip, with its menu: New motion and From the Library](media/motion-strip.webp)
+![The Motion button in the tool strip, with its menu: Make a motion, and Use a saved motion](media/motion-strip.webp)
 
-- **New motion**: choose **Back and forth**, **Round**, **Once** or **Spin**. It moves right away.
-- **From the Library**: choose a motion you already made.
+There are two ways in, and no list of ready-made kinds: you make a motion by showing it.
 
-The timeline opens on it and asks **When does it move?** (see [When it starts](#when-it-starts)). Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
+- **Make a motion**: where the thing stands now is the start (0 s). The timeline opens small at the bottom and one line says **Drag it to where it should move (Esc to cancel)**. Drag it there and let go: that is where it is at 1 s, and the motion plays right away to show you.
+- Keep going: each time you move, turn or resize it again, a key is added one second after the last, and that second plays. **Done** (or <kbd>Esc</kbd>) stops adding. <kbd>⌘</kbd><kbd>Z</kbd> takes one step back at a time.
+- **Use a saved motion**: choose one you already made (only when the Library has some).
+
+![Made by showing it: two keys on the timeline, and the line “Moves 0–1 s. Keep moving to add a second.”](media/motion-make.webp)
+
+The card’s **+ Make a motion** and the Library’s do the same. To change the timing, drag the keys along the ruler. To make it go back and forth or repeat, use **Repeat** in **⋯**.
+
+Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
 
 ## The timeline
 
@@ -69,30 +76,26 @@ Select keys and a **Keys** menu shows on the timeline’s top line. Choose how t
 - **Steady**: the same speed all the way.
 - **Jump**: stays put, then jumps to the next key.
 
-**Repeat** (in **⋯**) sets what happens at the end: **Once**, **Loop**, or **Back and forth**.
-
-To start quickly, a new motion can begin from a template: **Back and forth**, **Round**, **Once** or **Spin**. Its keys are plain keys you can change.
+**Repeat** (in **⋯**) sets what happens at the end: **Once**, **Repeats**, or **Back and forth**.
 
 ## When it starts
 
-**Starts**, on the timeline’s top line, chooses when a motion begins. The **▶** next to it tries that moment.
+**When**, on the timeline’s top line, chooses when a motion begins. The **▶** next to it tries that moment.
 
-![The timeline’s one line with Starts: the rowboat starts when the player enters its area](media/motion-when.webp)
+![The When menu: Trigger, then Ask AI to Set Up](media/motion-when.webp)
 
-These play by themselves:
+Under **Trigger**:
 
-- **The game starts**
-- **After some seconds**
-- **A key is pressed**
-- **This is clicked / tapped**
-- **Another motion ends**
-- **The player enters an area**: a box shows in the scene. Drag its white point to place it (<kbd>Shift</kbd>-drag for up and down). Drag a corner to resize it from the opposite corner (<kbd>Shift</kbd>-drag for its height).
+- **On Game Start**: from the moment the game starts.
+- **On Tap / Click**: when the player touches or clicks this.
+- **When Near**: when the player comes within a distance. A box shows in the scene. Drag its white point to place it (<kbd>Shift</kbd>-drag for up and down). Drag a corner to resize it from the opposite corner (<kbd>Shift</kbd>-drag for its height).
+- **On Key Press**: when a key or an on-screen button is pressed.
+- **After Delay**: a number of seconds after the game starts.
+- **After Previous Move**: when another motion ends (only when there is another one).
 
-These your AI connects in the game’s code:
+Under **Ask AI to Set Up**:
 
-- **The player touches this**
-- **A cue**: a name your game sends, like “door-open”
-- **In the chat, to your AI…**: the chat box at the bottom opens with this motion in it. Say when, like “when the player walks up,” and your AI makes it happen.
+- **Custom with AI…**: the chat box at the bottom opens with this motion in it. Say when, like “when it is hit, turn red and blow up,” and your AI writes the rule into the game’s code. The menu then says **As you asked in the chat**. A motion your AI already set up shows it, like **On Collision (AI)** or **On Signal (AI)**.
 
 In **⋯**, **+ or** adds another way to start, like “a key is pressed **or** this is clicked.” Any one of them starts it. **×** removes one. The top line then says **+1 more**.
 

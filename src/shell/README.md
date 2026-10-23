@@ -11,14 +11,19 @@ bottom of the game: news (the AI line, toasts, the first hint), the ⌘K list
 field of its own — what is typed there never touches the ask field (design review wave 1,
 W1-4) — and while typing in the ask field only for a word that names an action
 or object) and the ask field.
-`ai-flow.ts` decides what the AI line says (sent → has it → working → done,
-or "isn't watching" at once) and when the game reloads by itself after the
+`ai-flow.ts` decides what the AI line says (sent → "Claude is on it" → working → done,
+or "Kept as a note for Claude…" at once) and when the game reloads by itself after the
 AI's change (in a second frame behind the old one, view and selection kept);
 "Undo AI change" / "Redo" call `host.undoAi` (CONTRACT.md §3.4).
 `sheet-fold.ts`: the bottom (list sheet, card, AI line) folded to the ask bar on a phone / in the side window — kept in this browser, the grip and ▾ fold, ▴ opens (2026-10-21)
 `line-fade.ts`: the finished line (done / undone / redone, and "fixed" over the game)
-goes by itself after 5–10 s, never while the pointer or keyboard is in it; "● AI"
-in the top bar and ⌘K bring it back with its Undo (2026-10-20). A question, a
+goes by itself after 5–10 s, never while the pointer or keyboard is in it; going
+to the ask field and ⌘K bring it back with its Undo (2026-10-20; the top bar's
+"● AI" did until 2026-10-23).
+`ai-presence.ts`: is the AI there, said beside the ask field before typing
+("● Claude is watching" / "● Claude is working" / "Codex reads it when you type
+“look”" / "Claude isn't watching · How to open" / "Not sure Claude is open · How
+to open"); a green dot only with proof from this moment (2026-10-23). A question, a
 failure and every "on it" phase stay.
 `play-ask.ts` is the one line over the game while playing (asked with ` in
 ▶ Play: looking → fixing → fixed with Reload, never reloaded by itself;

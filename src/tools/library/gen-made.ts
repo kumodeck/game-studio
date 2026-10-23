@@ -119,13 +119,14 @@ export function madeCard(m: { kind: Kind; path: string; size?: string; costUsdMi
   if (d.files?.add || d.files?.ask) {
     const acts = h('div', 'gsl-acts');
     if (d.files.add) {
-      const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', L('addToScene'));
+      // ✦ (studio-uniforms, 2026-10-23): a new object from a file is the AI's work — the AI's uniform, a draft only.
+      const add = h('button', 'gsl-btn gsl-primary gsl-add-scene ai', `✦ ${L('askAddFile')}`);
       add.type = 'button';
       add.addEventListener('click', () => d.files!.add!([m.path]));
       acts.append(add);
     }
     if (d.files.ask) {
-      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
+      const ask = h('button', 'gsl-btn gsl-ask-file ai', `✦ ${L('askAiFile')}`);
       ask.type = 'button';
       ask.addEventListener('click', () => d.files!.ask!([m.path]));
       acts.append(ask);

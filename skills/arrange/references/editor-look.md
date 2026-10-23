@@ -71,8 +71,8 @@ outlines and name tags over the game keep their colours whatever the theme (oran
 everywhere; the strip follows light / dark). The Assets panel (the library) uses the same colours.
 
 Parts have `data-part` attributes: `app` `header` (the top bar: where you are, Saved, the AI, Play) `brand` (▣ Studio /
-game / place) `tools` (game tools) `top-actions` (Play) `footer` (Save; Undo on a phone) `save-state` ("✓ Saved" after Save) `peer`
-(the AI's dot) `side` (the list column) `tabs` (the Scene / Assets rows) `status` `panel` `noname` (at the column's
+game / place) `tools` (game tools) `top-actions` (Play) `footer` (Save; Undo on a phone) `save-state` ("✓ Saved" after Save) `presence`
+(whether your AI is there: words beside the ask field, or above it on a narrow screen) `ai-open` (the line those words open) `side` (the list column) `tabs` (the Scene / Assets rows) `status` `panel` `noname` (at the column's
 foot) `stage` (the game, edge to edge) `card` (the picked object's card; inside it `edit-ops` (copy / delete) `fine`
 (the numbers) `layer` `rules` `assets`) `inspector` (where the card floats on PC) `dock` (the bar at the bottom of the
 game: news, the phone card, the ⌘K list, the ask field) `ai` (the news line about requests and your status) `palette`

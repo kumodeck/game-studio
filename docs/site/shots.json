@@ -10,13 +10,15 @@
     { "id": "timeline", "test": "test/studio-timeline.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
     { "id": "when", "test": "test/studio-motion-triggers.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
     { "id": "timeline2", "test": "test/studio-timeline-2.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
-    { "id": "motion-tool", "test": "test/studio-motion-tool.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-2d"] },
+    { "id": "tool-clear", "test": "test/studio-tool-clear.browser.mjs", "args": ["--themes", "light"] },
+    { "id": "no-presets", "test": "test/studio-no-presets.browser.mjs", "args": ["--themes", "light"] },
     { "id": "focus", "test": "test/studio-motion-focus.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--no-checks"] },
     { "id": "levels", "test": "test/studio-levels.browser.mjs", "args": [] },
     { "id": "ui", "test": "test/studio-ui-layer.browser.mjs", "args": ["--only", "pc"] },
     { "id": "ui2", "test": "test/studio-ui-edit-2.browser.mjs", "args": ["--only", "pc", "--themes", "light"] },
     { "id": "kumo", "test": "test/studio-kumo.browser.mjs", "args": [] },
-    { "id": "gen", "test": "test/studio-generate.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] }
+    { "id": "gen", "test": "test/studio-generate.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] },
+    { "id": "presence", "test": "test/studio-ai-presence.browser.mjs", "args": ["--theme", "light"] }
   ],
   "pictures": [
     { "as": "open", "run": "w1", "file": "pc-light-*-open.png" },
@@ -29,14 +31,16 @@
     { "as": "play-unsaved", "run": "choice", "file": "choice-pc-light-1-window.png" },
     { "as": "pause-chat", "run": "pause", "file": "cove-*-replied.png" },
     { "as": "timeline", "run": "timeline", "file": "after-pc-light-1-open.png" },
-    { "as": "motion-when", "run": "when", "file": "after-pc-light-1-when.png" },
+    { "as": "motion-when", "run": "no-presets", "file": "after-{lang}-light-5-when.png" },
     { "as": "motion-library", "run": "when", "file": "after-pc-light-3-library.png" },
     { "as": "motion-ask", "run": "when", "file": "after-pc-light-4-ask.png" },
     { "as": "motion-path", "run": "timeline2", "file": "after-pc-light-1-handles.png" },
     { "as": "motion-or", "run": "timeline2", "file": "after-pc-light-2-when.png" },
     { "as": "motion-link", "run": "focus", "file": "after-pc-light-{lang}-2-list.png" },
     { "as": "motion-scene", "run": "focus", "file": "after-pc-light-{lang}-3-linked.png" },
-    { "as": "motion-strip", "run": "motion-tool", "file": "after-pc-light-2-menu.png" },
+    { "as": "tool-off", "run": "tool-clear", "file": "after-{lang}-light-2-why.png" },
+    { "as": "motion-strip", "run": "no-presets", "file": "after-{lang}-light-1-menu.png" },
+    { "as": "motion-make", "run": "no-presets", "file": "after-{lang}-light-3-made.png" },
     { "as": "levels", "run": "levels", "file": "after-pc-light-2-menu.png" },
     { "as": "levels-add", "run": "levels", "file": "after-pc-light-3-none.png" },
     { "as": "ui-layer", "run": "ui", "file": "ui-pc-moved.png" },
@@ -47,6 +51,8 @@
     { "as": "ui-theme", "run": "ui2", "file": "after-pc-light-theme.png" },
     { "as": "make-form", "run": "kumo", "file": "kumo-1280-{lang}-2-form.png" },
     { "as": "make-added", "run": "kumo", "file": "kumo-1280-{lang}-4-picture-added.png" },
-    { "as": "make-sound", "run": "gen", "file": "gen-lantern-cove-pc-light-2-sound-form.png" }
+    { "as": "make-sound", "run": "gen", "file": "gen-lantern-cove-pc-light-2-sound-form.png" },
+    { "as": "ask-watching", "run": "presence", "file": "after-{lang}-light-6-watching.png" },
+    { "as": "ask-kept", "run": "presence", "file": "after-{lang}-light-3-sent-nobody.png" }
   ]
 }

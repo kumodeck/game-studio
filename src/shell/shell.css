@@ -236,20 +236,6 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
    "✓ Saved" sits left of them, so nothing here moves when it comes and goes. (Save itself is beside ▶ Play since
    2026-10-21: .top-save.) */
 .top [data-action="undo"], .top [data-action="redo"] { flex: none; }
-.peer { display: inline-flex; align-items: center; gap: 6px; color: var(--text-3); font-size: var(--fs-s); }
-.peer .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
-.peer[data-state="live"] { color: var(--text-2); }
-.peer[data-state="live"] .dot { background: var(--live); }
-.peer[data-state="busy"] { color: var(--ai-text); }
-.peer[data-state="busy"] .dot { background: var(--ai); animation: studio-pulse 1.2s var(--ease) infinite; }
-/* "● AI" is a button since 2026-10-20 (it brings the AI's faded line back, main.ts recallLine): it still looks like the
-   quiet word it was — no plate, no hover until there is something to bring back. Violet label = a change of the AI's
-   can still be undone from there (violet = the AI's hand, as everywhere). */
-.top .peer { min-height: 0; padding: 0; border-radius: 0; background: none; cursor: default; }
-.top .peer:hover { background: none; }
-.top .peer:is([data-recall="on"], [data-recall="undo"]) { cursor: pointer; }
-.top .peer:is([data-recall="on"], [data-recall="undo"]):hover .label { color: var(--text); }
-.top .peer[data-recall="undo"] .label { color: var(--ai-text); }
 .top-actions { display: flex; align-items: center; gap: 4px; }
 .top-actions .play { background: var(--solid); color: var(--solid-fg); font-weight: 600; padding: 0 12px 0 10px; }
 .top-actions .play:hover:not(:disabled) { background: color-mix(in srgb, var(--solid) 88%, var(--bg)); }
@@ -349,10 +335,23 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 /* "+ Level" after the path, in a game without levels: the third grey and the small size (the adapter's words beside
    it are the same), no plate until hovered — a door that is there, not a button that asks to be pressed. */
 .level-add-slot { display: inline-flex; }
-.level-add { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 8px 0 5px; border: 0; background: transparent;
-  color: var(--text-3); font: inherit; font-size: var(--fs-s); }
-.level-add:hover { background: var(--raise-3); color: var(--text-2); }
+/* "Levels ⌄" (studio-uniforms, 2026-10-23): a visible button, not a dim word — a design review of the first build found
+   it read as a disabled crumb exactly when it was needed (the third grey of "+ Level" before). The path's text colour
+   and a hairline pill; it sits where the level's name will be (before "Scene"), so nothing jumps once Level 2 exists. */
+.level-add { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 5px 0 8px; border: 1px solid var(--line-2); border-radius: 999px;
+  background: transparent; color: var(--text); font: inherit; font-size: var(--fs-s); cursor: pointer; }
+.level-add:hover { background: var(--raise-3); }
 .level-add .icon { width: 12px; height: 12px; }
+/* The line after "Make Level 2" (main.ts renderLevelMade): under the top bar's left end, where the level's name just
+   appeared; the glass of every floating thing, the text size, no colour (it is the editor speaking, not the AI). */
+.level-made { position: absolute; top: 10px; left: 12px; z-index: 6; max-width: min(520px, calc(100% - 24px)); display: flex; align-items: center; gap: 10px;
+  padding: 8px 8px 8px 12px; border-radius: var(--R); background: var(--glass); box-shadow: var(--glass-shadow); color: var(--text); line-height: 1.4; }
+.level-made[hidden] { display: none; }
+.level-made-text { min-width: 0; }
+.level-made .link-btn { flex: none; }
+.level-made-close { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); cursor: pointer; }
+.level-made-close:hover { background: var(--raise-3); color: var(--text-2); }
+.level-made-close .icon { width: 12px; height: 12px; }
 .objects { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; position: relative; }
 .obj { height: var(--h); font-variant-numeric: tabular-nums; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: var(--r); cursor: pointer; white-space: nowrap; min-width: 0; color: var(--text); user-select: none; -webkit-user-select: none; }
 .obj:hover { background: var(--raise); }
@@ -427,6 +426,11 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 /* The name and its "UI" tag: the name gives way ("…"), the tag never does (Ive review 3 ⑤). */
 .head-text .head-name { display: flex; align-items: center; min-width: 0; }
 .head-text .head-name strong { min-width: 0; }
+/* Rename in place (studio-uniforms, 2026-10-23): the card's name as a field, same size and weight as the name. */
+/* A fill and a ring so it reads as a field at a glance, taller than the name it replaces (design review, round 2). */
+.head-text .name-edit { min-width: 0; width: 100%; height: 30px; margin: -6px 0 -6px -6px; padding: 0 6px; border: 0; border-radius: 7px;
+  background: color-mix(in srgb, var(--text) 9%, transparent); color: var(--text); font: inherit; font-weight: 600; box-shadow: inset 0 0 0 1px var(--line-2); }
+.head-text .name-edit:focus { outline: none; box-shadow: inset 0 0 0 2px var(--text-2); }
 .head-text .key { color: var(--text-3); font-size: var(--fs-s); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-height: 1.2em; }
 .card-actions { display: flex; gap: 2px; flex: none; }
 .card-actions .icon-btn .icon { width: 16px; height: 16px; }
@@ -557,7 +561,7 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 /* The AI is working: a thin violet light runs slowly round the input's edge — in the place you asked, no spinner,
    no words that blink. Violet because it is the AI's hand (rule 2). Stops when it is done. */
 @property --studio-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-.shell:has(.peer[data-state="busy"]) .ask-box::after, .shell:has(.peer[data-state="busy"])[data-layout="phone"] .bar::after {
+.shell[data-ai="busy"] .ask-box::after, .shell[data-ai="busy"][data-layout="phone"] .bar::after {
   content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 2px; pointer-events: none;
   background: conic-gradient(from var(--studio-a), transparent 0deg 60deg, color-mix(in srgb, var(--ai) 25%, transparent) 200deg, var(--ai) 335deg, transparent 360deg);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
@@ -565,9 +569,9 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 @keyframes studio-light { to { --studio-a: 360deg; } }
 /* Under the light, the whole edge is a faint violet while the AI works: readable in a still and with reduced motion
    (a first try showed only a short arc — on a long capsule the light runs fast past the ends, slow past the middle). */
-.shell:has(.peer[data-state="busy"]) .ask-box, .shell:has(.peer[data-state="busy"])[data-layout="phone"] .bar {
+.shell[data-ai="busy"] .ask-box, .shell[data-ai="busy"][data-layout="phone"] .bar {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 40%, transparent), var(--glass-shadow); }
-.shell:has(.peer[data-state="busy"])[data-layout="phone"] .ask-box { box-shadow: none; }
+.shell[data-ai="busy"][data-layout="phone"] .ask-box { box-shadow: none; }
 .ask-spark { display: grid; color: var(--ai); flex: none; }
 .ask-spark .icon { width: 14px; height: 14px; }
 /* The chip: what the words will be about, kept small (a hands-on try, 2026-10-19: "the object's name in the chat box is in the
@@ -585,6 +589,38 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .ask-news[hidden] { display: none; }
 .ask-box.has-news .ask-input::placeholder { color: transparent; }
 .ask-kbd { flex: none; margin-right: 4px; }
+/* Is the AI there (ai-presence.ts, a hands-on review 2026-10-23): words next to the field, before typing. Small and quiet, at
+   the field's right end on a wide bar (kept while typing: it matters most then), on its own line above on a narrow one
+   (.presence-row). A dot only when there is proof from this moment (.sure, green = --live, as the old "● AI" when
+   live): "a wrong green is worse than no dot". "How to open" underlined: the one thing to press. One button: it
+   opens the line that says what is true and what to do (.ai-open-help). */
+.presence { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 8px; border-radius: 999px; background: none;
+  color: var(--text-2); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.presence:hover { background: var(--raise-2); color: var(--text); }
+.presence .dot { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--live); flex: none; }
+.presence.sure .dot { display: block; }
+.presence[data-state="working"] .dot { animation: studio-pulse 1.2s var(--ease) infinite; }
+.presence .p-how { text-decoration: underline; text-underline-offset: 2px; color: var(--text); }
+.presence .p-how::before { content: "·"; display: inline-block; margin-right: 6px; color: var(--text-3); text-decoration: none; }
+.presence .p-how[hidden] { display: none; }
+.presence-row { display: flex; padding: 0 6px 2px; }
+.presence-row[hidden] { display: none; }
+/* Light: the grey words sit on a pale frosted field over a bright game (often grass or sky): one step darker than
+   --text-2 so 12 px still reads (design review 2026-10-23: ~3:1 before). The quoted request under the kept-note too. */
+:root[data-theme="light"] .presence, :root[data-theme="light"] .ai-line:is(.away, .nudge, .sent) .ai-sub { color: #48484d; }
+:root[data-theme="light"] .presence .dot { box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); }
+.presence-row .presence { min-height: 28px; padding: 0 10px; background: var(--glass); box-shadow: var(--shadow); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); }
+/* In the field the words take the ⌘K hint's place (two quiet things at the right end read as one: "How to open ⌘K"). */
+.ask-box:has(> .presence) .ask-kbd { display: none; }
+/* The line the presence words open (main.ts renderOpenHelp): the AI line's look, a grey dot (it's help, not news). */
+.ai-open-help { display: flex; align-items: center; gap: 12px; min-height: var(--h); }
+.ai-open-help[hidden] { display: none; }
+.ai-open-help::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); }
+.ai-open-help .ai-text { flex: 1; min-width: 0; white-space: normal; color: var(--text); }
+.ai-open-help .link { flex: none; gap: 6px; color: var(--text); background: var(--raise-2); border-radius: 999px; padding: 0 12px; min-height: var(--h); font-weight: 600; }
+.ai-open-help .link:hover { background: var(--raise-3); }
+.ai-open-help .link.icon-only { width: var(--h); padding: 0; justify-content: center; background: none; }
+.ai-open-help .link .icon { width: 14px; height: 14px; }
 .ask-box:focus-within .ask-kbd, .ask-box:has(.ask-input:not(:placeholder-shown)) .ask-kbd { display: none; }
 .ask-send { width: 32px; min-height: 32px; height: 32px; padding: 0; border-radius: 50%; flex: none; background: var(--solid); color: var(--solid-fg); }
 .ask-send:disabled { opacity: 1; background: var(--raise-2); color: var(--text-3); }
@@ -614,6 +650,8 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .ai-line.asking .ai-text.two > .ai-sub { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* On a phone the head does not fit one line; cut, it lost "in Claude Code" (where to answer): let it wrap there. */
 .ai-line.asking .ai-text.two > .ai-head { white-space: normal; }
+/* The kept-note sentence is the whole news when nobody can pick it up (ai presence, 2026-10-23): never cut with "…". */
+.ai-line:is(.away, .nudge, .sent) .ai-text.two > .ai-head { white-space: normal; }
 .ai-line .link.icon-only { width: var(--h); padding: 0; justify-content: center; }
 /* The AI's question answered here (hands-on test 2026-10-19): the question on the first row, then
    "Now → After" side by side and the answer buttons, each on a row of its own under it (the ask field answers in
@@ -884,7 +922,6 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .shell[data-layout="phone"] .level-rename { height: 36px; font-size: var(--fs-l); }
 .shell[data-layout="phone"] .level-add-slot { display: none; }
 .shell[data-layout="phone"] .top-right { gap: 2px; }
-.shell[data-layout="phone"] .peer { display: none; }
 .shell[data-layout="phone"] .save-state { padding: 0 6px; }
 .shell[data-layout="phone"] .top .icon-btn { width: 44px; }
 .shell[data-layout="phone"] .top .icon-btn .icon { width: 20px; height: 20px; }
@@ -1270,6 +1307,13 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .ctx-row:focus-visible { outline: none; }
 .ctx-row:disabled { color: var(--text-3); background: none; }
 .ctx-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ✦ rows (studio-uniforms, 2026-10-23, "two uniforms"): the AI box's spark and violet, so a row that only writes a
+   draft in the box can be told from a plain row that acts at once. Violet is kept for "goes to the box": its hover is
+   the AI's soft tint, not the grey of plain rows. */
+.ctx-row.ai { color: var(--ai-text); }
+.ctx-row.ai.on, .ctx-row.ai:hover:not(:disabled) { background: var(--ai-soft); }
+.ctx-spark { display: inline-grid; vertical-align: -2px; margin-right: 6px; color: var(--ai); }
+.ctx-spark .icon { width: 13px; height: 13px; }
 .ctx-key { margin-left: auto; flex: none; color: var(--text-3); }
 .ctx-row:disabled .ctx-key { opacity: .6; }
 /* The chosen one of a list (the level on screen): the check in the text colour, not the third grey of a key. */
@@ -1279,6 +1323,11 @@ button.shelf-file.to:hover { background: var(--raise-2); }
    sitting on the rows it names (more room above than under), as a Mac menu's section title. */
 .ctx-head { flex: none; padding: 8px 10px 4px; font-size: var(--fs-s); color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx-head:first-child { padding-top: 4px; }
+/* A sentence over the rows (studio-tool-clear, 2026-10-23): a dimmed tool's why and what can be done, or "No motion yet".
+   The second grey in the body size — it is read, unlike a head, which is only glanced at — wrapped at the menu's width,
+   with the rows' own inset. Not a row: no highlight. */
+.ctx-note { flex: none; max-width: 280px; padding: 6px 10px 8px; color: var(--text-2); line-height: 1.4; white-space: normal; }
+.shell[data-layout="phone"] .ctx-note { padding-left: 12px; padding-right: 12px; }
 .shell[data-layout="phone"] .ctx-menu { min-width: 224px; padding: 8px; border-radius: var(--R); }
 .shell[data-layout="phone"] .ctx-row { border-radius: calc(var(--R) - 8px); padding: 0 12px; }
 .shell[data-layout="phone"] .ctx-sep { margin: 4px 12px; }
@@ -1418,6 +1467,8 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-or-way { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .tl-more .tl-or { margin-left: 0; }
 .tl-starts.ai select { color: var(--ai-text); }
+/* The "When" sentences (studio-tool-clear): never cut to "Moves f…" on PC — the sentence is the point of the menu. */
+.timeline:not(.narrow) .tl-head .tl-starts select { min-width: 13em; }
 .tl-field { border: 0; border-radius: var(--r); background: var(--raise); color: var(--text); font: inherit; padding: 0 8px; font-variant-numeric: tabular-nums; }
 .tl-field:focus { box-shadow: inset 0 0 0 1px var(--you); outline: none; }
 .tl-keycap { min-width: 30px; padding: 0 8px; border-radius: var(--r); background: var(--you-soft); color: var(--you-text, var(--you)); font-weight: 600; }
@@ -1591,6 +1642,16 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-attached { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: var(--you-soft); color: var(--you-text);
   font-size: var(--fs-s); font-weight: 600; white-space: nowrap; animation: studio-rise var(--dur-in, .18s) var(--ease, ease); }
 .tl-starts.ask select { box-shadow: 0 0 0 2px var(--you), 0 0 0 5px var(--you-soft); }
+/* Making (studio-no-presets): "Done" at the end of the line — Esc's button, outlined only (● Auto key already says it
+   is recording; the line is the step, this only ends it). A finger's height on a phone. */
+.tl-done { height: 26px; padding: 0 12px; border-radius: 13px; font-size: var(--fs-s); font-weight: 600; color: var(--text); background: none;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 24%, transparent); white-space: nowrap; }
+.tl-done:hover { background: var(--raise); }
+@media (pointer: coarse) { .tl-done { height: 36px; border-radius: 18px; } }
+/* The made line gives way first (its whole words in its tooltip), so "When" ▾ and "Done" are never squeezed under it —
+   the first pictures had the menu cut off at the plate's end and "Done" drawn over it. */
+.tl-attached[data-part=tl-made] { display: inline-block; line-height: 26px; min-width: 6em; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.tl-head > .tl-done, .timeline:not(.narrow) .tl-head > .tl-starts.tl-pick { flex-shrink: 0; }
 
 /* The first-time steps, over the plate's right end (the rows stay readable on the left). */
 .timeline { position: relative; }

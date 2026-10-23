@@ -286,6 +286,17 @@ itself slides along the road every frame (the new place could never last). Since
   `size`): only what the game changes is off, the rest stays editable, and the card says so.
 - Both are refused in the editor's own adapter layer (`bridge/hold.ts`: grab / drag / nudgeY / rotate / scale), so
   keys, the ⌘K list and game tools cannot get round it. `setPose` (undo, redo, loading a save) is not held.
+- **Set where it starts** (studio-tool-clear, 2026-10-23). The same `placement/unhold` on an object the game moves
+  (`driven` has `move` or `lift`) gives back Move and Height for this session, and the item carries
+  `Item.startSpot: true`: where it is put is where the loader places it before the first frame, and the game moves it
+  on from there (a game that sets the place outright every frame still wins; the card says what a move does now).
+  Turn and size the game sets stay held — a start angle or size would not show.
+- **The strip never loses a tool** (studio-tool-clear). Every object has the same tools in the same places (move ·
+  height in 3D · turn · size); one that does not work on it is dimmed (`aria-disabled`), its tooltip one line of why
+  and what can be done (`bridge/handles.ts OFF_LINES`, `bridge/hold.ts offWhy`: `game` / `ground` / `locked` /
+  `none`). A press on it, its key or ⌘K never chooses it: the bridge sends `placement/tool-off` and the editor opens
+  its small menu at the button with that line and the rows that do it (Set where it starts · Make movable · Ask AI,
+  `shell/tool-off.ts`). Before, the button was hidden and nothing said why ("the strip lost Move").
 - **Check before saving.** A changed ground (any visible change), or any 3D object moved 5 m up / down, 25 m across or
   resized 3×, is listed in words before Save hands the file to the AI ("Raised the road 16 m"), with **Put back and
   save** and **Save anyway** (`shell/safe-save.ts`).
@@ -350,11 +361,12 @@ the editor offers all three with every adapter.
 How an object moves by itself, made with keys on a time line (3D in stage 1), as in Unity's Animation window or
 Blender's Dope Sheet with auto key. Saved as `motion` with `clips` (§4.1); the loader plays it in the game.
 (motion-gui, the same morning, had a card menu of kinds — back and forth, loop, once, spin — and a ▶ for one object;
-those kinds are now templates that set keys, and its file shape is still read.)
+they became templates that set keys, and studio-no-presets (2026-10-23) took them off every screen: see §1.9.3. Its
+file shape is still read, and a clip that repeats back and forth plays as it did.)
 
 - The plate (`shell/timeline-panel.ts`, state in `shell/timeline-wire.ts`, maths in `shell/timeline-model.ts`): at the
   foot of the game (PC), in the dock above the card (phone, side window). ▶ / ❚❚, the time, ● Auto key, the picked
-  object's motion (clip) menu with `New: <template>`, Rename, Delete, its repeat and "plays at start / on a cue" (+ the
+  object's motion (clip) menu with `+ Make a motion` and `New: Scene — several objects` (§1.9.3), Rename, Delete, its repeat and "plays at start / on a cue" (+ the
   "when" words for the AI), the picked keys' ease, ⌄ folds. One row per object with a motion (and the picked one),
   ▸ opens position / angle / size. Opened by the card's "◆ Timeline" (the Motion row) or ⌘K.
 - **Auto key** (on by default while the plate is open): moving / turning / resizing an object — the strip, ↑↓, a group,
@@ -436,6 +448,30 @@ Asked for: the second stage of the timeline — the path's shape by hand, a key 
   ("Hop 2"); the last link taken off makes it ordinary again (`keys`), so link + unlink leaves the file as it was. Each
   is one undo step (the Library change in it). ⋯'s "Show every motion in the scene" shows every moving object's row.
 
+#### 1.9.3 No presets: a motion is made by showing it (2026-10-23, studio-no-presets)
+
+Asked for (a review, on "Back and forth / Round / Once / Spin" in the menus): "what is this? presets?" — and to
+keeping only the two ways in: "we don't need them".
+
+- **No kinds anywhere**: the strip's Motion menu, the card, the timeline's clip menu, ⌘K and the Library offer two
+  ways in only — **Make a motion** and **Use a saved motion** (the second only when the Library has one). The clip
+  menu keeps `New: Scene — several objects` (it starts empty; not a kind). `timeline-model.ts` has `blankClip` /
+  `sceneClip`; `fromTemplate`, `TEMPLATES` and the `tl.tpl.*` kind words are gone. **Repeat** in ⋯ (once / repeats /
+  back and forth) stays: it is a setting of a motion the person made. Files are unchanged (`repeat: 'pingpong'`, the
+  older path / spin shape still play).
+- **Make a motion** (`timeline.make(key)`, every way in): the plate opens with the time line at 1 s, ● Auto key on;
+  where the object stands is 0 s; the line says "Drag {name} to where it should move (Esc to cancel)". Nothing is
+  made until a move (a thing that moves already shows none of its motions until then; the move starts a new one,
+  waiting `{ on: 'say' }` when another starts with the game). The end of the first move / turn / resize makes the 0 s
+  and 1 s keys and plays from 0 s; each next gesture adds keys one second after the last key (a property that had none
+  holds still until the previous last key) and plays that second. Esc (the editor or the game page) or **Done** ends
+  it — before the first move nothing was made; after, the motion stays (each gesture is one undo step). Moving the time
+  line by hand, folding the plate or showing another object ends it too.
+- **When** ▾ (Gemini's words, the wording asked of Gemini): "Trigger" — On Game Start, On Tap /
+  Click, When Near, On Key Press, After Delay, After Previous Move (only with another motion to follow) — then "Ask AI
+  to Set Up": Custom with AI… (On Collision (AI) / On Signal (AI) when a file already has one). `WHEN_TRIGGERS` in
+  `timeline-panel.ts`.
+
 ### 1.10 Levels (2026-10-22)
 
 Optional, added in contract 1 without changing anything else. A game with
@@ -461,7 +497,14 @@ await applyPlacement(scene, './placement.json', { level: pick?.id ?? 'meadow' })
   count each) written to `placement.json` (§4.1); the code changes are the
   AI's.
 - A game with one level (or that never calls it): nothing changes — no
-  switch, no `levels` in the file.
+  switch, no `levels` in the file — until the person adds a level: the bar's
+  "Levels ⌄" opens a menu (studio-uniforms, 2026-10-23; never an action at
+  once): "Make Level 2 — a copy of this one" (made and opened here, one Save
+  count; ⌘Z or the line's Undo takes it back until the next change, a level
+  change or Save) and ✦ "Ask AI for a different kind of level…" (a draft in
+  the ask box). In a game that never calls `studio.levels()` the file then
+  says `levelsWas: []` (§4.1). A game with levels gets the same ✦ row at the
+  end of its level menu.
 
 ### 1.11 The UI's screens, looks and theme (2026-10-22, UI stages 2–3)
 
@@ -529,7 +572,8 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/menu` | `{ open }`: the strip's choices (the ▾ on turn / size) opened or closed in the game |
 | | `placement/context` | `{ key, x, y, touch }`: a right-click (Mac: also Control-click) or a long press on the game: the editor page opens the menu for that place. `key` = the object under it (null = nothing / only the ground); an object not picked yet was picked first, without moving the camera |
 | | `placement/at-is` | `{ id, key }`: the answer to `placement/at` (the same test as a tap; `key` null = nothing there) |
-| | `placement/motion-press` | `{ key, x, y, w, h, touch, keyboard }`: the strip's Motion button pressed (or A / 5 with the game page focused; studio-motion-tool). The editor opens the pick's motion on the timeline, or — none yet — its small menu at the button (`x y w h`, the game page's px; 0 × 0 for a key) |
+| | `placement/motion-press` | `{ key, x, y, w, h, touch, keyboard }`: the strip's Motion button pressed (or A / 5 with the game page focused; studio-motion-tool). The editor opens the pick's motion on the timeline, or — none yet — its small menu at the button (`x y w h`, the game page's px; 0 × 0 for a key): "No motion yet", **Make a motion** (the timeline at 1 s, where it stands being 0 s; §1.9.3) and **Use a saved motion** (the Library's; studio-tool-clear, 2026-10-23 — no list of kinds) |
+| | `placement/tool-off` | `{ key, tool, why, line, x, y, w, h, touch, keyboard }`: a dimmed tool of the strip pressed, or its key / ⌘K (studio-tool-clear). `why` = `game` / `ground` / `locked` / `none` (`bridge/hold.ts offWhy`), `line` = its one line in the editor's language (the tooltip). The editor opens its small menu at the button: the line, then what can be done (Set where it starts → `placement/unhold` and `placement/tool`; Make movable; Ask AI) |
 | | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
@@ -691,7 +735,9 @@ except `.studio/adapter.js` through its own route).
 
 `src/shell/host-local.ts` maps these to `StudioHost`. `assetUrl(path)` is
 `/<path>`. Lines the server prints for the agent (one per event):
-`studio: ready …`, `studio: saved placement.json (<summary>)`,
+`studio: ready …` (then `studio: reply with this link alone on the first line of your answer, exactly as printed:
+<url>` and `studio: open browser|app|none - …`, where it opened: the default browser unless the person chose the
+pane next to the chat with `--open-in app`; `src/server/open-in.mjs`), `studio: saved placement.json (<summary>)`,
 `studio: added <path>`, `studio: next-step <id> <path>`,
 `studio: request <kind>[ <step>] .studio/requests/<id>.json "<words>" (<object names>)`,
 `studio: request play .studio/requests/<id>.json "<words>" (while playing, picture .studio/play/<id>.jpg, <n> errors)` (§3.5),
@@ -806,10 +852,25 @@ a bonus that wakes an agent that happens to be watching.
   runs) → `seen` (it printed the request) → `received` / `working` (the
   agent's note) → `updating` → `done` (the note, what was asked, "3 things
   changed", **Undo AI change**) or `failed`; `away` at once when nothing can
-  reach the AI: one calm line ("Your request is in. It goes into the game the
-  next time your AI runs.") and **Call your AI** (copies "look"), never a
-  warning or a command to run. Hosts that cannot tell (`watching` left out)
-  keep "waiting" → after 20 s the same calm line. `asking`: the AI's question
+  reach the AI: the fact in one line ("Kept as a note for Claude. Nothing in
+  the game changes until Claude reads it.", the request quoted under it),
+  never a promise, a warning or a command to run. `sent` that no watch or
+  hook has shown to the AI after 15 s says the same. While the AI has it with
+  no words of its own: "Claude is on it"; quiet for 2 minutes: "Still working
+  · N min". Hosts that cannot tell (`watching` left out) keep "waiting" →
+  after 20 s the same line.
+- **Is the AI there, before typing** (`src/shell/ai-presence.ts`, 2026-10-23;
+  it replaced the top bar's "● AI"): words beside the ask field (above it on a
+  narrow bar), named after `agent` (Claude / Codex / "your AI"):
+  `watching` ("● Claude is watching": `watching` true), `working` ("● Claude
+  is working": the AI holds a request of this page or wrote its status in the
+  last 20 s), `look` (Codex without a watch: "Codex reads it when you type
+  “look”"), `away` ("Claude isn't watching · How to open": Claude was
+  watching in this page and has not been for 60 s while the page was
+  visible), `unsure` ("Not sure Claude is open · How to open": everything
+  else). A green dot only for the first two. Pressing the words opens one line
+  of what to do. The whole-game placeholder follows: "Ask Claude to change the
+  game…" / "Write a note for Claude…". `asking`: the AI's question
   with its `choices` as buttons, its `about` objects lit in the scene and
   `before` → `after` side by side; a button or the ask field sends an
   `answer` request (`text`, `to`, `question`). A violet light
@@ -1187,6 +1248,20 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   every level). ≤ 100 levels. The loader applies a level only when given
   `{ level }`; `placementForLevel(file, id)` gives one level's view. Absent
   for a game with one level: its file keeps its bytes.
+  `levelsWas: []` (studio-uniforms, 2026-10-23) = the code has **no** levels
+  yet: the person made Level 2 in a game without them ("Levels ⌄ → Make Level
+  2"). Its levels without `from` (`level-1`) are the game as it is, and a
+  `from` may name one of them. The loader called without `{ level }` then
+  applies the URL's `studioLevel` inside the editor's frame and the first
+  level without `from` anywhere else (the shipped game keeps its layout until
+  the AI adds `studio.levels()`).
+- Optional (studio-uniforms, 2026-10-23): `"names": { "crate-2": "Hero
+  crate" }` — names the person gave objects in the editor (Rename, F2; done
+  in place, not asked of the AI), object key → name (≤ 120 characters,
+  control characters dropped). The editor shows them everywhere at once; the
+  AI renames each object in the code and takes its entry out. With `levels`,
+  each level has its own `names` and the top has none. Absent = nothing
+  renamed (the file keeps its bytes).
 
 ### 4.2 library.json
 
@@ -1212,12 +1287,21 @@ messages, items, `selectObject`, the optional `selectObjects` for several at
 once, the optional `objects` (`LibraryObjects`: the objects' tiles, filters and detail, so the Library shows
 objects and assets in one grid — "one Library", 2026-10-18), the older optional `showObjects` (plan 1's Objects
 shelf; a shell that gives `objects` leaves it out), the optional `files` (`LibraryFileUse`: the files picked in the
-Library go to the ask box's chip; a file's "Add to scene" / "Ask your AI…" draft a request there — "use the Library",
-2026-10-18), `switchTool`, `changed`, `phone`). The shell
+Library go to the ask box's chip; a file's ✦ "Ask AI to add it to the scene…" / "Ask AI about it…" draft a request
+there — "use the Library", 2026-10-18; ✦ since studio-uniforms), `switchTool`, `changed`, `phone`). The shell
 owns the game frame, selection, undo/redo for placement, keeping and handing
 over the results (the draft, Save) and the ⌘K list with the next steps. Tools render with `textContent` only for anything that
 came from the game or the folder (names, file names); SVG only through
 `<img>`; thumbnails only as `data:image/png;base64,`.
+
+**Two uniforms** (studio-uniforms, 2026-10-23). Every button and menu row wears one of two: a **plain** one acts in the
+editor at once (⌘Z undoes) and never writes in the ask box; a **✦** one
+("Ask AI to …", the AI's violet: `MenuItem.ai`, `CtxRow.ai`, `.ai` on a
+button) only puts an editable draft in the ask box and the cursor there —
+nothing is sent until the person sends. ✦ rows go last in a menu, after a
+line. A file's "Add to scene" in the Library is a ✦ ("Ask AI to add it to the
+scene…": a new object is code), and a file's tile no longer drags onto the
+Scene row. Rename (F2) is in place (`names`, §4.1).
 
 ---
 

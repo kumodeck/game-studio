@@ -103,11 +103,12 @@ export async function applyPlacement(root, source = './placement.json', opts = {
     return report;
   }
   if (Array.isArray(data.levels)) {
-    if (!(opts && opts.level)) {
+    const level = (opts && opts.level) || levelOfCodeless(data);
+    if (!level) {
       warn('this file has levels: pass { level } to applyPlacement');
       return report;
     }
-    data = placementForLevel(data, opts.level);
+    data = placementForLevel(data, level);
   }
   const n = three ? 3 : 2;
   for (const key of Object.keys(data.objects)) {
@@ -690,6 +691,26 @@ function clickedKey(e, v) {
 }
 
 /**
+ * The level a game WITHOUT levels in its code builds (studio-uniforms, 2026-10-23): `levelsWas: []` = the person made
+ * Level 2 in the editor and the AI has not added studio.levels() yet, so the game still calls applyPlacement without
+ * { level }. In the editor's frame that is the level on screen (the URL's studioLevel: a copy is built from the game
+ * as it is, its own entries over it); anywhere else Level 1 (the first level without `from`), so the shipped game
+ * keeps the layout it had. Any other file with levels: '' (the warning above — a level's layout never lands on another).
+ */
+export function levelOfCodeless(data) {
+  if (!Array.isArray(data.levelsWas) || data.levelsWas.length) return '';
+  let want = '';
+  try {
+    if (typeof window !== 'undefined' && window.parent !== window) want = new URL(window.location.href).searchParams.get('studioLevel') || '';
+  } catch {
+    want = '';
+  }
+  if (want && data.levels.some((l) => l && l.id === want)) return want;
+  const first = data.levels.find((l) => l && !l.from);
+  return first ? first.id : '';
+}
+
+/**
  * The file as one level sees it (levels, 2026-10-22): that level's objects / added / removed / order / motion at the
  * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects). A file without levels comes back as it is; a level the file does not list has nothing to apply.
  */
@@ -697,7 +718,7 @@ export function placementForLevel(data, id) {
   if (!data || !Array.isArray(data.levels)) return data;
   const l = data.levels.find((x) => x && x.id === id) || {};
   const out = { ...data, objects: l.objects || {} };
-  for (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];
+  for (const k of ['added', 'removed', 'order', 'motion', 'names']) if (l[k]) out[k] = l[k];
   else delete out[k];
   delete out.levels;
   delete out.levelsWas;

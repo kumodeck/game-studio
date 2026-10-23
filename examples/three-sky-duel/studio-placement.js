@@ -29,11 +29,12 @@ warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js'
 return report;
 }
 if (Array.isArray(data.levels)) {
-if (!(opts && opts.level)) {
+const level = (opts && opts.level) || levelOfCodeless(data);
+if (!level) {
 warn('this file has levels: pass { level } to applyPlacement');
 return report;
 }
-data = placementForLevel(data, opts.level);
+data = placementForLevel(data, level);
 }
 const n = three ? 3 : 2;
 for (const key of Object.keys(data.objects)) {
@@ -468,11 +469,23 @@ if (Math.hypot(sx - x, sy - y) <= sr && dist < bestD) (best = key), (bestD = dis
 }
 return best;
 }
+export function levelOfCodeless(data) {
+if (!Array.isArray(data.levelsWas) || data.levelsWas.length) return '';
+let want = '';
+try {
+if (typeof window !== 'undefined' && window.parent !== window) want = new URL(window.location.href).searchParams.get('studioLevel') || '';
+} catch {
+want = '';
+}
+if (want && data.levels.some((l) => l && l.id === want)) return want;
+const first = data.levels.find((l) => l && !l.from);
+return first ? first.id : '';
+}
 export function placementForLevel(data, id) {
 if (!data || !Array.isArray(data.levels)) return data;
 const l = data.levels.find((x) => x && x.id === id) || {};
 const out = { ...data, objects: l.objects || {} };
-for (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];
+for (const k of ['added', 'removed', 'order', 'motion', 'names']) if (l[k]) out[k] = l[k];
 else delete out[k];
 delete out.levels;
 delete out.levelsWas;

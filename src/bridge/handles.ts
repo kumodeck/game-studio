@@ -73,6 +73,37 @@ export const TOOL_HINT: Record<Lang, { mouse: (tool: string) => string; touch: (
   en: { mouse: (t) => `Drag to ${t.toLowerCase()} · Esc to stop`, touch: (t) => `Drag to ${t.toLowerCase()} · 2 fingers: look` },
   ja: { mouse: (t) => `引いて${t} ・ Esc でやめる`, touch: (t) => `引いて${t} ・ 2 本指で見回す` },
 };
+/**
+ * A dimmed tool's one line (studio-tool-clear, 2026-10-23): why it does not work on this object, then what can be done
+ * — never only "you can't" (the brief: "do not end on a sentence that leaves nothing to do"). The tooltip of the dimmed
+ * button, and the first line of the small menu a press on it opens (shell/tool-off.ts, whose rows do what it says).
+ * Turn and size the game sets get "Ask AI", not a start value: a game that spins or pulses a thing mostly sets the angle
+ * or the size outright every frame, so a start value would not show (hold.ts; the design review proposed both).
+ */
+export const OFF_LINES: Record<Lang, Record<'game' | 'ground' | 'locked' | 'none', Record<HandleKind, string>>> = {
+  en: {
+    game: {
+      move: 'Your game moves this while playing. You choose only where it starts.',
+      lift: 'Your game sets its height while playing. You can set the height it starts at.',
+      rotate: 'Your game turns this while playing. Ask AI to change how it turns.',
+      scale: 'Your game sets its size while playing. Ask AI to change it.',
+    },
+    ground: { move: 'Held still so it isn’t nudged by mistake. You can unlock it.', lift: 'Held still so it isn’t nudged by mistake. You can unlock it.', rotate: 'Held still so it isn’t nudged by mistake. You can unlock it.', scale: 'Held still so it isn’t nudged by mistake. You can unlock it.' },
+    locked: { move: 'The game’s rules keep this in place. Ask AI to change the rule.', lift: 'The game’s rules keep this in place. Ask AI to change the rule.', rotate: 'The game’s rules keep this in place. Ask AI to change the rule.', scale: 'The game’s rules keep this in place. Ask AI to change the rule.' },
+    none: { move: 'This one can’t be moved here. Ask AI to move it.', lift: 'This one’s height can’t be changed here. Ask AI to change it.', rotate: 'This one can’t be turned here. Ask AI to turn it.', scale: 'This one can’t be resized here. Ask AI to resize it.' },
+  },
+  ja: {
+    game: {
+      move: 'この物は遊ぶとゲームが動かします。決められるのはスタート位置だけです。',
+      lift: 'ゲームが高さを決めている物です。最初の高さなら決められます。',
+      rotate: 'ゲームが向きを変えている物です。変えるなら AI に頼めます。',
+      scale: 'ゲームが大きさを変えている物です。変えるなら AI に頼めます。',
+    },
+    ground: { move: 'うっかり動かさないよう固定しています。解除できます。', lift: 'うっかり動かさないよう固定しています。解除できます。', rotate: 'うっかり動かさないよう固定しています。解除できます。', scale: 'うっかり動かさないよう固定しています。解除できます。' },
+    locked: { move: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。', lift: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。', rotate: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。', scale: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。' },
+    none: { move: 'この物はここでは動かせません。AI に頼めます。', lift: 'この物の高さはここでは変えられません。AI に頼めます。', rotate: 'この物はここでは回せません。AI に頼めます。', scale: 'この物の大きさはここでは変えられません。AI に頼めます。' },
+  },
+};
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 export const MORE_LABELS: Record<Lang, Record<'axis' | 'scale', string>> = {
   en: { axis: 'Ways to turn', scale: 'Ways to resize' },
@@ -169,7 +200,11 @@ export interface Outline {
 type Rect = { x: number; y: number; w: number; h: number };
 
 export interface Handles {
-  place(a: Anchor | null, caps: { rotatable: boolean; scalable: boolean; movable?: boolean; liftable?: boolean } | null, dim: '2d' | '3d'): void;
+  /**
+   * Under the object. `caps.off` = the tools that do not work on it, each with its one line of why (the tooltip): they
+   * stay in their place, dimmed (studio-tool-clear, 2026-10-23). A tool not in `off` works.
+   */
+  place(a: Anchor | null, caps: { off?: Partial<Record<HandleKind, string>> } | null, dim: '2d' | '3d'): void;
   /** Strip button size in px (the person's UI preference; default UI.handlePx). */
   setSize(px: number): void;
   /** Viewport px covered by the shell's floating panels: the strip stays clear of them. */
@@ -192,6 +227,8 @@ export interface Handles {
   setMotion(m: { show: boolean; has: boolean; label: string; open: boolean }): void;
   /** The Motion button's box on screen (null = not shown): the editor's menu opens at it, also for the A / 5 keys. */
   motionRect(): DOMRect | null;
+  /** A tool button's box on screen (null = the strip is not shown): a dimmed tool's why opens at it. */
+  toolRect(kind: HandleKind): DOMRect | null;
   /**
    * The selection's outline: the shape when the adapter gave one, else one
    * rounded box per rect. `tag` = the name tag over it (null = none).
@@ -259,6 +296,20 @@ button.rest { color: #f5f5f7; background: rgba(255,255,255,.12); }
 button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cursor: grabbing; transition-duration: 0s; }
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
 button[hidden], .tsep[hidden] { display: none; }
+/* A tool that does not work on this object (studio-tool-clear, 2026-10-23: "Move is gone from the strip"). It keeps
+   its place — the strip is the same four tools for every object, so the hand finds Move where it always is — at a
+   third of the ink, and a press on it says why and what can be done instead (the editor's small menu). Before: the
+   button was hidden, the strip one button shorter, and nothing anywhere said why. */
+button.off { color: rgba(161,161,166,.42); cursor: default; }
+/* Grey alone did not tell a dimmed tool from one at rest (the second design look, 2026-10-23: every icon of the strip
+   is grey until chosen): a short slash across it, in its own ink, as a crossed-out tool. */
+button.off::before { content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 1.5px; border-radius: 1px; background: currentColor;
+  transform: translate(-50%, -50%) rotate(-45deg); pointer-events: none; }
+.row.big button.off::before { width: 24px; }
+button.off:hover { color: #a1a1a6; background: rgba(255,255,255,.05); }
+button.off.rest { color: rgba(161,161,166,.42); background: transparent; }
+.root.light button.off, .root.light button.off.rest { color: rgba(110,110,115,.42); background: transparent; }
+.root.light button.off:hover { color: #6e6e73; background: rgba(0,0,0,.035); }
 /* The Motion button (studio-motion-tool, 2026-10-22) sits after a hairline: the four tools change how the thing stands
    (a drag does it), Motion changes what it does over time (a press opens it). The same button as the tools — size,
    ink, ground — so the strip stays one object; the hairline is the menu's own (.msep). */
@@ -460,6 +511,9 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   row.className = 'row';
   row.setAttribute('role', 'toolbar');
   const buttons = {} as Record<HandleKind, HTMLButtonElement>;
+  // The tooltip each button has when it works (its name and key, or the turn's axis); a dimmed one shows its why.
+  const tips = {} as Record<HandleKind, string>;
+  const offs: Partial<Record<HandleKind, string>> = {};
   // Order of the strip: move, height, turn, size (where it is, then how it sits).
   const kinds: HandleKind[] = hasLift ? ['move', 'lift', 'rotate', 'scale'] : ['move', 'rotate', 'scale'];
   for (const k of kinds) {
@@ -468,6 +522,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     b.dataset.studioHandle = k;
     b.setAttribute('aria-label', HANDLE_LABELS.en[k]);
     b.title = HANDLE_LABELS.en[k];
+    tips[k] = b.title;
     b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`; // static markup only
     if (k === 'rotate' || k === 'scale') {
       // The ▾ (shown only while the button has choices: setOptions). A span, not a button: a button in a button is not
@@ -544,18 +599,22 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     const w = wayOnly ? (TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode] : (AXIS_WORDS[turnLang] || AXIS_WORDS.en)[turnAxis];
     // 3D, several: the way too ("Tilt forward · Each in place"), since the picture shows the axis only.
     const way = turnSeveral && turnAxes ? ` · ${(TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode][0]}` : '';
-    b.title = `${w[0]}${way} (${TOOL_KEYS.rotate}) — ${w[1]}`;
+    tip('rotate', `${w[0]}${way} (${TOOL_KEYS.rotate}) — ${w[1]}`);
     b.setAttribute('aria-label', `${w[0]}${way} (${TOOL_KEYS.rotate})`);
+  };
+  const tip = (k: HandleKind, text: string) => {
+    tips[k] = text;
+    if (!offs[k]) buttons[k].title = text;
   };
   let held: HandleKind | null = null;
   let chosen: HandleKind | null = null;
   const paintButtons = () => {
     for (const k of kinds) {
-      buttons[k].classList.toggle('on', k === held || (k === chosen && !held));
+      buttons[k].classList.toggle('on', !offs[k] && (k === held || (k === chosen && !held)));
       buttons[k].setAttribute('aria-pressed', String(k === chosen));
     }
     // While a tool is chosen or another button is held, move is not "the one at rest" any more.
-    buttons.move.classList.toggle('rest', !chosen && (!held || held === 'move'));
+    buttons.move.classList.toggle('rest', !chosen && (!held || held === 'move') && !offs.move);
   };
   /** Next to the strip (right of it; left when there is no room), on its middle line. */
   const positionChip = () => {
@@ -695,10 +754,27 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
         positionChip();
         return;
       }
-      buttons.move.hidden = caps.movable === false;
-      buttons.rotate.hidden = !caps.rotatable;
-      buttons.scale.hidden = !caps.scalable;
-      if (buttons.lift) buttons.lift.hidden = dim !== '3d' || caps.liftable === false;
+      // Every tool in its place (Height: 3D only — 2D has no height); the ones that do not work, dimmed with their why.
+      if (buttons.lift) buttons.lift.hidden = dim !== '3d';
+      let offChanged = false;
+      for (const k of kinds) {
+        const why = caps.off?.[k] || undefined;
+        if (offs[k] === why) continue;
+        offChanged = true;
+        const b = buttons[k];
+        if (why) {
+          offs[k] = why;
+          b.classList.add('off');
+          b.setAttribute('aria-disabled', 'true');
+          b.title = why;
+        } else {
+          delete offs[k];
+          b.classList.remove('off');
+          b.removeAttribute('aria-disabled');
+          b.title = tips[k] ?? '';
+        }
+      }
+      if (offChanged) paintButtons();
       const [cx, cy] = a.center;
       let top: number, bottom: number;
       if (a.rect && a.rect.w > 0 && a.rect.h > 0) {
@@ -877,12 +953,13 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
         motionBtn.setAttribute('aria-label', m.label);
       }
     },
+    toolRect: (k) => (buttons[k] && row.style.display !== 'none' && !buttons[k].hidden ? buttons[k].getBoundingClientRect() : null),
     motionRect: () => (motionShow && row.style.display !== 'none' && !motionBtn.hidden ? motionBtn.getBoundingClientRect() : null),
     setLabels(labels) {
       for (const k of kinds) {
         buttons[k].setAttribute('aria-label', labels[k]);
         // The turn button's tooltip names its axis (setAxis), with the key.
-        if (k !== 'rotate' || !buttons[k].dataset.axis) buttons[k].title = labels[k];
+        if (k !== 'rotate' || !buttons[k].dataset.axis) tip(k, labels[k]);
       }
     },
     selection(shape, rects, tag) {

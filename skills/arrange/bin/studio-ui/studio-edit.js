@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.24 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.25 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -3716,6 +3716,12 @@ const CONTRACT_VERSION = 1;
      
                                                     
      
+                                                                                                             
+                                                                                                                        
+                                                               
+     
+                      
+     
                                                                              
                                                                              
      
@@ -4470,7 +4476,11 @@ const MSG_PREFIX = 'studio:';
                                                         
                                                                                                                       
                                                                                  
-                                                                                                                        
+     
+                                                                                                                       
+                                                                                                                      
+                               
+     
                                                        
      
                                                                                                                       
@@ -4737,6 +4747,12 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                                                        
                                                     
+     
+                                                                                                                   
+                                                                                                                      
+                                                                                                               
+     
+                                                                                                                                                                                                                
      
                                                                                                                    
                                                                                                                     
@@ -5337,6 +5353,12 @@ const RESULT_FILES                         = {
                                            
      
                             
+     
+                                                                                                                        
+                                                                                                                    
+                                                                                                                     
+     
+                                 
                                                                                                                                 
                        
  
@@ -5355,6 +5377,8 @@ const RESULT_FILES                         = {
                            
                                                                                                           
                                   
+                                                                                      
+                                 
  
 
 /**
@@ -7077,11 +7101,12 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
     return report;
   }
   if (Array.isArray(data.levels)) {
-    if (!(opts && opts.level)) {
+    const level = (opts && opts.level) || levelOfCodeless(data);
+    if (!level) {
       warn('this file has levels: pass { level } to applyPlacement');
       return report;
     }
-    data = placementForLevel(data, opts.level);
+    data = placementForLevel(data, level);
   }
   const n = three ? 3 : 2;
   for (const key of Object.keys(data.objects)) {
@@ -7664,6 +7689,26 @@ function clickedKey(e, v) {
 }
 
 /**
+ * The level a game WITHOUT levels in its code builds (studio-uniforms, 2026-10-23): `levelsWas: []` = the person made
+ * Level 2 in the editor and the AI has not added studio.levels() yet, so the game still calls applyPlacement without
+ * { level }. In the editor's frame that is the level on screen (the URL's studioLevel: a copy is built from the game
+ * as it is, its own entries over it); anywhere else Level 1 (the first level without `from`), so the shipped game
+ * keeps the layout it had. Any other file with levels: '' (the warning above — a level's layout never lands on another).
+ */
+function levelOfCodeless(data) {
+  if (!Array.isArray(data.levelsWas) || data.levelsWas.length) return '';
+  let want = '';
+  try {
+    if (typeof window !== 'undefined' && window.parent !== window) want = new URL(window.location.href).searchParams.get('studioLevel') || '';
+  } catch {
+    want = '';
+  }
+  if (want && data.levels.some((l) => l && l.id === want)) return want;
+  const first = data.levels.find((l) => l && !l.from);
+  return first ? first.id : '';
+}
+
+/**
  * The file as one level sees it (levels, 2026-10-22): that level's objects / added / removed / order / motion at the
  * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects). A file without levels comes back as it is; a level the file does not list has nothing to apply.
  */
@@ -7671,7 +7716,7 @@ function placementForLevel(data, id) {
   if (!data || !Array.isArray(data.levels)) return data;
   const l = data.levels.find((x) => x && x.id === id) || {};
   const out = { ...data, objects: l.objects || {} };
-  for (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];
+  for (const k of ['added', 'removed', 'order', 'motion', 'names']) if (l[k]) out[k] = l[k];
   else delete out[k];
   delete out.levels;
   delete out.levelsWas;
@@ -8000,6 +8045,7 @@ __def(__exports, "clipAt", () => clipAt);
 __def(__exports, "trackAt", () => trackAt);
 __def(__exports, "handlesOf", () => handlesOf);
 __def(__exports, "motionAt", () => motionAt);
+__def(__exports, "levelOfCodeless", () => levelOfCodeless);
 __def(__exports, "placementForLevel", () => placementForLevel);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
@@ -9031,7 +9077,7 @@ __defs[26] = function (__exports) {
 // list and game tools. Refusing grab / drag / nudgeY / rotate / scale here covers every way in at once. setPose
 // stays open: undo, redo and loading a saved file must restore poses exactly (the same rule as core/rules.ts).
 // The AI can always move a held object in the code; this only keeps a stray drag from doing it.
-                                                                     
+                                                                                
 
 /** What the game itself changed while the editor watched (observe.ts): place (3D x / z), height (3D y), turn, size. */
                          
@@ -9048,8 +9094,32 @@ __defs[26] = function (__exports) {
  */
 const canLift = (i                                                         )          => !!i && i.liftable !== false && (i.movable !== false || i.held === 'game');
 
+/**
+ * Why a tool of the strip does not work on this object (null = it works). The strip shows the four tools for every
+ * object, in the same places, and dims the ones that do not work (studio-tool-clear, 2026-10-23: "Move is gone from
+ * the strip" — a hexagon the game slides had no Move button at all, and nothing said why; it looked broken). The
+ * reason is said in one line on the dimmed button, and a press on it says what can be done instead (shell/tool-off.ts).
+ *   'game'   the game changes this part of it by itself (held 'game', `driven`)
+ *   'ground' a ground / road / sky held still until "Make movable"
+ *   'locked' the game's rules (.studio/studio.json) lock it
+ *   'none'   the object cannot take this tool at all (a 2D thing that cannot turn, a rule that turns turning off)
+ */
+                                                           
+const PART                                                         = { move: 'move', lift: 'lift', rotate: 'turn', scale: 'size' };
+function offWhy(i                                                                                               , tool           )                {
+  if (!i) return null;
+  const works = tool === 'move' ? i.movable !== false : tool === 'lift' ? canLift(i) : tool === 'rotate' ? i.rotatable : i.scalable;
+  if (works) return null;
+  if (i.held === 'game' && i.driven?.includes(PART[tool])) return 'game';
+  if (i.held === 'ground') return 'ground';
+  return i.movable === false ? 'locked' : 'none';
+}
+
                             
-                                                                            
+     
+                                                                                                                      
+                                                                       
+     
                      
                                                                       
                               
@@ -9069,12 +9139,20 @@ function holdItem(it      , s           , dim     )       {
   const d = s.driven.get(it.key) ?? (it.copyOf && !s.placing?.has(it.key) ? s.driven.get(it.copyOf) : undefined);
   // The game's own motion wins over "ground": a road the game scrolls is not kept where it is put either.
   if (d && (d.move || d.lift || d.turn || d.size)) {
+    // "Move where it starts" (studio-tool-clear, 2026-10-23: "if it can, let the person move where the game starts
+    // moving it"): its place and height work again. A runner moves things on from where they are (z += speed · dt), so
+    // where it stands in the editor is where it starts — the loader puts it there before the first frame — and the game
+    // takes it on from there. Its turn and size stay held: a game that spins or pulses a thing mostly sets the angle /
+    // the size outright, so a start value there would not show. A game that sets the place outright every frame wins
+    // all the same; the card says so ("the game moves it on from there").
+    const start = s.freed.has(it.key) && (d.move || d.lift);
     return {
       ...it,
       held: 'game',
       driven: (['move', 'lift', 'turn', 'size']         ).filter((k) => d[k]),
-      movable: it.movable !== false && !d.move,
-      liftable: it.liftable !== false && it.movable !== false && !d.lift,
+      ...(start ? { startSpot: true } : {}),
+      movable: it.movable !== false && (!d.move || start),
+      liftable: it.liftable !== false && it.movable !== false && (!d.lift || start),
       rotatable: it.rotatable && !d.turn,
       scalable: it.scalable && !d.size,
     };
@@ -9120,6 +9198,7 @@ function withHold(inner               , s           )                {
 }
 
 __def(__exports, "canLift", () => canLift);
+__def(__exports, "offWhy", () => offWhy);
 __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
@@ -9880,6 +9959,37 @@ const TOOL_HINT                                                                 
   en: { mouse: (t) => `Drag to ${t.toLowerCase()} · Esc to stop`, touch: (t) => `Drag to ${t.toLowerCase()} · 2 fingers: look` },
   ja: { mouse: (t) => `引いて${t} ・ Esc でやめる`, touch: (t) => `引いて${t} ・ 2 本指で見回す` },
 };
+/**
+ * A dimmed tool's one line (studio-tool-clear, 2026-10-23): why it does not work on this object, then what can be done
+ * — never only "you can't" (the brief: "do not end on a sentence that leaves nothing to do"). The tooltip of the dimmed
+ * button, and the first line of the small menu a press on it opens (shell/tool-off.ts, whose rows do what it says).
+ * Turn and size the game sets get "Ask AI", not a start value: a game that spins or pulses a thing mostly sets the angle
+ * or the size outright every frame, so a start value would not show (hold.ts; the design review proposed both).
+ */
+const OFF_LINES                                                                                          = {
+  en: {
+    game: {
+      move: 'Your game moves this while playing. You choose only where it starts.',
+      lift: 'Your game sets its height while playing. You can set the height it starts at.',
+      rotate: 'Your game turns this while playing. Ask AI to change how it turns.',
+      scale: 'Your game sets its size while playing. Ask AI to change it.',
+    },
+    ground: { move: 'Held still so it isn’t nudged by mistake. You can unlock it.', lift: 'Held still so it isn’t nudged by mistake. You can unlock it.', rotate: 'Held still so it isn’t nudged by mistake. You can unlock it.', scale: 'Held still so it isn’t nudged by mistake. You can unlock it.' },
+    locked: { move: 'The game’s rules keep this in place. Ask AI to change the rule.', lift: 'The game’s rules keep this in place. Ask AI to change the rule.', rotate: 'The game’s rules keep this in place. Ask AI to change the rule.', scale: 'The game’s rules keep this in place. Ask AI to change the rule.' },
+    none: { move: 'This one can’t be moved here. Ask AI to move it.', lift: 'This one’s height can’t be changed here. Ask AI to change it.', rotate: 'This one can’t be turned here. Ask AI to turn it.', scale: 'This one can’t be resized here. Ask AI to resize it.' },
+  },
+  ja: {
+    game: {
+      move: 'この物は遊ぶとゲームが動かします。決められるのはスタート位置だけです。',
+      lift: 'ゲームが高さを決めている物です。最初の高さなら決められます。',
+      rotate: 'ゲームが向きを変えている物です。変えるなら AI に頼めます。',
+      scale: 'ゲームが大きさを変えている物です。変えるなら AI に頼めます。',
+    },
+    ground: { move: 'うっかり動かさないよう固定しています。解除できます。', lift: 'うっかり動かさないよう固定しています。解除できます。', rotate: 'うっかり動かさないよう固定しています。解除できます。', scale: 'うっかり動かさないよう固定しています。解除できます。' },
+    locked: { move: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。', lift: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。', rotate: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。', scale: 'ゲームのルールで固定されています。AI にルールの変更を頼めます。' },
+    none: { move: 'この物はここでは動かせません。AI に頼めます。', lift: 'この物の高さはここでは変えられません。AI に頼めます。', rotate: 'この物はここでは回せません。AI に頼めます。', scale: 'この物の大きさはここでは変えられません。AI に頼めます。' },
+  },
+};
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 const MORE_LABELS                                                 = {
   en: { axis: 'Ways to turn', scale: 'Ways to resize' },
@@ -9976,7 +10086,11 @@ const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dash
                                                            
 
                           
-                                                                                                                                                 
+     
+                                                                                                                       
+                                                                                            
+     
+                                                                                                              
                                                                                    
                             
                                                                                            
@@ -9999,6 +10113,8 @@ const MOTION_ICON = '<path d="M20 19c-4.5 0-5-7-8.5-9.5S7 8 5.5 6.5" stroke-dash
                                                                                     
                                                                                                                       
                                
+                                                                                                        
+                                             
      
                                                                            
                                                                       
@@ -10066,6 +10182,20 @@ button.rest { color: #f5f5f7; background: rgba(255,255,255,.12); }
 button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cursor: grabbing; transition-duration: 0s; }
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
 button[hidden], .tsep[hidden] { display: none; }
+/* A tool that does not work on this object (studio-tool-clear, 2026-10-23: "Move is gone from the strip"). It keeps
+   its place — the strip is the same four tools for every object, so the hand finds Move where it always is — at a
+   third of the ink, and a press on it says why and what can be done instead (the editor's small menu). Before: the
+   button was hidden, the strip one button shorter, and nothing anywhere said why. */
+button.off { color: rgba(161,161,166,.42); cursor: default; }
+/* Grey alone did not tell a dimmed tool from one at rest (the second design look, 2026-10-23: every icon of the strip
+   is grey until chosen): a short slash across it, in its own ink, as a crossed-out tool. */
+button.off::before { content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 1.5px; border-radius: 1px; background: currentColor;
+  transform: translate(-50%, -50%) rotate(-45deg); pointer-events: none; }
+.row.big button.off::before { width: 24px; }
+button.off:hover { color: #a1a1a6; background: rgba(255,255,255,.05); }
+button.off.rest { color: rgba(161,161,166,.42); background: transparent; }
+.root.light button.off, .root.light button.off.rest { color: rgba(110,110,115,.42); background: transparent; }
+.root.light button.off:hover { color: #6e6e73; background: rgba(0,0,0,.035); }
 /* The Motion button (studio-motion-tool, 2026-10-22) sits after a hairline: the four tools change how the thing stands
    (a drag does it), Motion changes what it does over time (a press opens it). The same button as the tools — size,
    ink, ground — so the strip stays one object; the hairline is the menu's own (.msep). */
@@ -10267,6 +10397,9 @@ function createHandles(doc          , hasLift         )          {
   row.className = 'row';
   row.setAttribute('role', 'toolbar');
   const buttons = {}                                         ;
+  // The tooltip each button has when it works (its name and key, or the turn's axis); a dimmed one shows its why.
+  const tips = {}                              ;
+  const offs                                      = {};
   // Order of the strip: move, height, turn, size (where it is, then how it sits).
   const kinds               = hasLift ? ['move', 'lift', 'rotate', 'scale'] : ['move', 'rotate', 'scale'];
   for (const k of kinds) {
@@ -10275,6 +10408,7 @@ function createHandles(doc          , hasLift         )          {
     b.dataset.studioHandle = k;
     b.setAttribute('aria-label', HANDLE_LABELS.en[k]);
     b.title = HANDLE_LABELS.en[k];
+    tips[k] = b.title;
     b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${ICONS[k]}</svg>`; // static markup only
     if (k === 'rotate' || k === 'scale') {
       // The ▾ (shown only while the button has choices: setOptions). A span, not a button: a button in a button is not
@@ -10351,18 +10485,22 @@ function createHandles(doc          , hasLift         )          {
     const w = wayOnly ? (TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode] : (AXIS_WORDS[turnLang] || AXIS_WORDS.en)[turnAxis];
     // 3D, several: the way too ("Tilt forward · Each in place"), since the picture shows the axis only.
     const way = turnSeveral && turnAxes ? ` · ${(TURN_WAY_WORDS[turnLang] || TURN_WAY_WORDS.en)[turnMode][0]}` : '';
-    b.title = `${w[0]}${way} (${TOOL_KEYS.rotate}) — ${w[1]}`;
+    tip('rotate', `${w[0]}${way} (${TOOL_KEYS.rotate}) — ${w[1]}`);
     b.setAttribute('aria-label', `${w[0]}${way} (${TOOL_KEYS.rotate})`);
+  };
+  const tip = (k            , text        ) => {
+    tips[k] = text;
+    if (!offs[k]) buttons[k].title = text;
   };
   let held                    = null;
   let chosen                    = null;
   const paintButtons = () => {
     for (const k of kinds) {
-      buttons[k].classList.toggle('on', k === held || (k === chosen && !held));
+      buttons[k].classList.toggle('on', !offs[k] && (k === held || (k === chosen && !held)));
       buttons[k].setAttribute('aria-pressed', String(k === chosen));
     }
     // While a tool is chosen or another button is held, move is not "the one at rest" any more.
-    buttons.move.classList.toggle('rest', !chosen && (!held || held === 'move'));
+    buttons.move.classList.toggle('rest', !chosen && (!held || held === 'move') && !offs.move);
   };
   /** Next to the strip (right of it; left when there is no room), on its middle line. */
   const positionChip = () => {
@@ -10502,10 +10640,27 @@ function createHandles(doc          , hasLift         )          {
         positionChip();
         return;
       }
-      buttons.move.hidden = caps.movable === false;
-      buttons.rotate.hidden = !caps.rotatable;
-      buttons.scale.hidden = !caps.scalable;
-      if (buttons.lift) buttons.lift.hidden = dim !== '3d' || caps.liftable === false;
+      // Every tool in its place (Height: 3D only — 2D has no height); the ones that do not work, dimmed with their why.
+      if (buttons.lift) buttons.lift.hidden = dim !== '3d';
+      let offChanged = false;
+      for (const k of kinds) {
+        const why = caps.off?.[k] || undefined;
+        if (offs[k] === why) continue;
+        offChanged = true;
+        const b = buttons[k];
+        if (why) {
+          offs[k] = why;
+          b.classList.add('off');
+          b.setAttribute('aria-disabled', 'true');
+          b.title = why;
+        } else {
+          delete offs[k];
+          b.classList.remove('off');
+          b.removeAttribute('aria-disabled');
+          b.title = tips[k] ?? '';
+        }
+      }
+      if (offChanged) paintButtons();
       const [cx, cy] = a.center;
       let top        , bottom        ;
       if (a.rect && a.rect.w > 0 && a.rect.h > 0) {
@@ -10684,12 +10839,13 @@ function createHandles(doc          , hasLift         )          {
         motionBtn.setAttribute('aria-label', m.label);
       }
     },
+    toolRect: (k) => (buttons[k] && row.style.display !== 'none' && !buttons[k].hidden ? buttons[k].getBoundingClientRect() : null),
     motionRect: () => (motionShow && row.style.display !== 'none' && !motionBtn.hidden ? motionBtn.getBoundingClientRect() : null),
     setLabels(labels) {
       for (const k of kinds) {
         buttons[k].setAttribute('aria-label', labels[k]);
         // The turn button's tooltip names its axis (setAxis), with the key.
-        if (k !== 'rotate' || !buttons[k].dataset.axis) buttons[k].title = labels[k];
+        if (k !== 'rotate' || !buttons[k].dataset.axis) tip(k, labels[k]);
       }
     },
     selection(shape, rects, tag) {
@@ -10790,6 +10946,7 @@ __def(__exports, "isMotionKey", () => isMotionKey);
 __def(__exports, "HANDLE_LABELS", () => HANDLE_LABELS);
 __def(__exports, "READOUT_WORDS", () => READOUT_WORDS);
 __def(__exports, "TOOL_HINT", () => TOOL_HINT);
+__def(__exports, "OFF_LINES", () => OFF_LINES);
 __def(__exports, "MORE_LABELS", () => MORE_LABELS);
 __def(__exports, "AXIS_WORDS", () => AXIS_WORDS);
 __def(__exports, "SCALE_WORDS", () => SCALE_WORDS);
@@ -11156,11 +11313,11 @@ const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
 const { keyStep } = __require(29);
                                              
                                                 
-const { HANDLE_LABELS, MANY_LABEL, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(30);
+const { HANDLE_LABELS, MANY_LABEL, OFF_LINES, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(30);
                                                      
 const { createRiseButtons } = __require(31);
 const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(32);
-const { canLift } = __require(26);
+const { canLift, offWhy } = __require(26);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(27);
 
                             
@@ -11487,6 +11644,34 @@ function attachInput(deps           )              {
     return picked.some((i) => i.scalable);
   };
   /**
+   * Why tool `k` does not work on what is picked, or null (studio-tool-clear, 2026-10-23): the strip dims it and a press
+   * on it, or its key, says why (placement/tool-off) instead of choosing it. With several picked: off only when it works
+   * on none of them (the strip's old rule, some()), and the why is the first one's.
+   */
+  const offOf = (k            )                => {
+    if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return null;
+    const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
+    if (!picked.length) return null;
+    const whys = picked.map((i) => offWhy(i, k));
+    return whys.some((w) => w === null) ? null : whys[0] ;
+  };
+  const offLines = () => {
+    const out                                      = {};
+    for (const k of ['move', 'lift', 'rotate', 'scale']                ) {
+      const w = offOf(k);
+      if (w) out[k] = (OFF_LINES[lang] || OFF_LINES.en)[w][k];
+    }
+    return out;
+  };
+  /** Tell the editor page a dimmed tool was pressed (or its key typed): it opens the why + what to do at the button. */
+  const pressOff = (k            , why        , touch         , keyboard         ) => {
+    if (!state.selected) return;
+    const r = handles.toolRect(k);
+    if (handles.menuOpen()) menu(null);
+    post({ type: 'studio:placement/tool-off', key: state.selected, tool: k, why, line: (OFF_LINES[lang] || OFF_LINES.en)[why][k],
+      x: r?.left ?? 0, y: r?.top ?? 0, w: r?.width ?? 0, h: r?.height ?? 0, touch, keyboard });
+  };
+  /**
    * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D (the axes, canTurn), or several picked
    * (together / each in place, 2D too: multi rotate, play test 2026-10-18 — before, several turned "together" upright
    * only and a 2D turn button had no ▾). Size: several picked (tool options, 2026-10-18).
@@ -11504,6 +11689,9 @@ function attachInput(deps           )              {
   };
   const chooseTool = (k                   , from                                    ) => {
     if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return;
+    // A tool that does not work on the pick is never chosen: its why is said instead (a key, ⌘K, the editor page).
+    const off = k ? offOf(k) : null;
+    if (k && off) return pressOff(k, off, false, from !== 'strip');
     const changed = k !== tool;
     tool = k;
     handles.setTool(k);
@@ -12000,6 +12188,14 @@ function attachInput(deps           )              {
       if (tool !== k) chooseTool(k, 'menu');
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
+      return;
+    }
+    // A dimmed tool (studio-tool-clear): its why and what can be done, at the button — on the press, as a menu button.
+    const off = h && state.selected ? offOf(h) : null;
+    if (h && off) {
+      ptrs.delete(e.pointerId);
+      mode = { kind: 'none' };
+      if (!p.menu) pressOff(h, off, p.type !== 'mouse', false);
       return;
     }
     if (h && state.selected) {
@@ -12547,10 +12743,7 @@ function attachInput(deps           )              {
       const keys = items.map((i) => i.key);
       const rects = rectsOf(keys);
       handles.selection(shapeOf('you', keys, rects), rects, inRects(rects) ? (MANY_LABEL[lang] || MANY_LABEL.en)(items.length) : null);
-      handles.place(stripAnchor(keys), items.length ? {
-        rotatable: items.some((i) => i.rotatable), scalable: items.some((i) => i.scalable),
-        movable: items.some((i) => i.movable !== false), liftable: items.some((i) => canLift(i)),
-      } : null, adapter.dim);
+      handles.place(stripAnchor(keys), items.length ? { off: offLines() } : null, adapter.dim);
       return;
     }
     const a = key ? adapter.anchor(key) : null;
@@ -12559,7 +12752,7 @@ function attachInput(deps           )              {
     // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
     // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
     handles.selection(item ? shapeOf('you', [key ], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
-    handles.place(a, item ? { rotatable: item.rotatable, scalable: item.scalable, movable: item.movable !== false, liftable: canLift(item) } : null, adapter.dim);
+    handles.place(a, item ? { off: offLines() } : null, adapter.dim);
   };
 
   return {
@@ -14091,7 +14284,7 @@ __defs[39] = function (__exports) {
 // ../shell/timeline-model.ts
 
 // The timeline's pure logic (studio-timeline, 2026-10-22; CONTRACT.md §1.9): clips and
-// their keys, the pose an object shows at a time, the older motion shape read as a clip, the templates, and the key
+// their keys, the pose an object shows at a time, the older motion shape read as a clip, a new motion, and the key
 // edits the panel makes (set, move, delete, copy / paste, ease). No DOM: unit-tested in test/timeline.test.ts.
 //
 // WHY offsets from the place, not absolute values (Unity's clips hold absolute ones): the object's place
@@ -14212,37 +14405,21 @@ function toClips(m                           , dim     )                {
   return { clips: [{ name: 'Motion', len, repeat, start: true, keys }] };
 }
 
-// ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
+// ----- new motions (studio-no-presets, 2026-10-23) -----
+// Until then this was "templates": the v0.1.13 kinds (Back and forth, Round, Once, Spin) kept as starting points, each
+// with two or five keys the person never placed. A review, on seeing them in the menus: "what is this? presets? why
+// are 'back and forth' and 'round' in there?" — and to "keep just 'Make a motion' and 'Use a saved motion'": "we don't
+// need them" (10/23). A motion is made by showing it (timeline-wire make: where it stands is 0 s, a drag is the next
+// key). A file whose motion goes back and forth still plays as it did: that is its `repeat` (and toClips above reads
+// the older path / spin), never a template.
 
-// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
-                                                                                 
-const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
-
-/**
- * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
- * so the person drags them where they want (in the scene, or on the timeline).
- */
-function fromTemplate(kind          , name        , dim     )             {
-  const d = dim === '3d' ? 3 : 150;
-  const v = (x        , z        ) => (dim === '3d' ? [x, 0, z] : [x, z]);
-  const k = (t        , val          , ease             = DEFAULT_EASE)            => ({ t, v: val, ease });
-  switch (kind) {
-    case 'pingpong':
-      return { name, len: 2, repeat: 'pingpong', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'once':
-      return { name, len: 2, repeat: 'once', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'loop':
-      // A round: right, away, back, home — through the points on a curve (the position's smooth way).
-      return { name, len: 4, repeat: 'loop', keys: { p: [k(0, v(0, 0), 'linear'), k(1, v(d, 0), 'linear'), k(2, v(d, -d), 'linear'), k(3, v(0, -d), 'linear'), k(4, v(0, 0), 'linear')] } };
-    case 'spin': {
-      const r = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
-      return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
-    }
-    case 'scene':
-      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
-    default:
-      return { name, len: 2, repeat: 'once', keys: {} };
-  }
+/** A motion with no keys yet: the clip menu's "+ Make a motion" on a thing that moves already (filled by the next move). */
+function blankClip(name        )             {
+  return { name, len: 2, repeat: 'once', keys: {} };
+}
+/** A scene (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts). Not a preset: no keys. */
+function sceneClip(name        )             {
+  return { name, len: 4, repeat: 'once', scene: true, keys: {} };
 }
 
 /** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
@@ -14416,8 +14593,8 @@ __def(__exports, "compose", () => compose);
 __def(__exports, "offsetOf", () => offsetOf);
 __def(__exports, "changedChannels", () => changedChannels);
 __def(__exports, "toClips", () => toClips);
-__def(__exports, "TEMPLATES", () => TEMPLATES);
-__def(__exports, "fromTemplate", () => fromTemplate);
+__def(__exports, "blankClip", () => blankClip);
+__def(__exports, "sceneClip", () => sceneClip);
 __def(__exports, "freeName", () => freeName);
 __def(__exports, "refId", () => refId);
 __def(__exports, "sameT", () => sameT);

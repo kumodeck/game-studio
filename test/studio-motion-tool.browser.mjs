@@ -3,13 +3,14 @@
 // window 400×900, a phone 390×844 with touch) × light and dark, the checks in every one:
 //   1. 3D (Lantern Cove), the crate picked (no motion): the strip has the Motion button after the four tools and a
 //      hairline — the tools' own size, no dot — and its tooltip says what it does;
-//   2. a press on it (the mouse; a finger on the phone): the editor's small menu at the button — "New motion" with
-//      Back and forth / Round / Once / Spin, then "From the Library" with its motions; the button looks pressed and the
-//      menu does not cover it;
-//   3. "Back and forth": the crate has it, the timeline opens on it with "✓ … attached · When does it move?" and
-//      Starts focused (as a drop from the Library, v0.1.19); the button wears its dot;
+//   2. a press on it (the mouse; a finger on the phone): the editor's small menu at the button — "No motion yet",
+//      then two rows: "Make a motion" and "Use a saved motion" (studio-tool-clear, 2026-10-23: the list of
+//      kinds — Back and forth / Round / Once / Spin — is gone); the button looks pressed and the menu does not cover it;
+//   3. "Use a saved motion" → "Row": the crate has it, the timeline opens on it with "✓ … attached · When does it
+//      move?" and Starts focused (as a drop from the Library, v0.1.19); the button wears its dot;
 //   4. the timeline folded, the button again: no menu — the timeline opens on the crate's motion;
-//   5. the lighthouse (no motion) → the button → "Hop" from the Library: on the lighthouse, "“Hop” attached";
+//   5. the lighthouse (no motion) → the button → "Make a motion": the timeline on it at 1 s, one line saying
+//      what to do; a drag of the lighthouse makes its motion and the line says "✓ … moves from 0 s to 1 s";
 //   6. the keys (not on the phone): A with the editor page focused, 5 with the game focused — the same menu; Esc closes;
 //   7. 2D (Firefly Ruins): the strip has its tools and no Motion button (motion is 3D only today) and no stray hairline;
 //   8. no page errors.
@@ -56,8 +57,8 @@ const DBG = `document.querySelector('iframe.game, iframe').contentWindow.__gameS
 const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
 const TL = `window.__studioTimeline`;
 const WORDS = LANG === 'ja'
-  ? { tip: /動き — 作る・付ける/, has: /動き: 行ったり来たり — タイムラインで開く/, made: '行ったり来たり', heads: ['新しい動き', 'ライブラリから'], attached: /“Hop”/ }
-  : { tip: /Motion — make one or attach one/, has: /Motion: Back and forth — open on the timeline/, made: 'Back and forth', heads: ['New motion', 'From the Library'], attached: /“Hop” attached/ };
+  ? { tip: /動き — ゲーム中にこの物を動かす/, has: /動き: Row — タイムラインで開く/, made: 'Row', rows: ['> まだ動きはありません。', '動きを作る', '保存した動きを使う'], first: /ドラッグ/, done: /0〜1 秒/ }
+  : { tip: /Motion — make this move while the game plays/, has: /Motion: Row — open on the timeline/, made: 'Row', rows: ['> No motion yet.', 'Make a motion', 'Use a saved motion'], first: /^Drag /, done: /0–1 s/ };
 
 // The Library has three motions; the crate and the lighthouse have none (the case from the review: a thing with no motion yet).
 const FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
@@ -104,7 +105,7 @@ function helpers(page, size, theme) {
   /** The editor's menu now: its place and rows ("# head", "—", label). */
   const menu = () => j(`(() => { const m = document.querySelector('[data-part=context-menu]'); if (!m || m.hidden) return null; const r = m.getBoundingClientRect();
     return JSON.stringify({ place: m.dataset.place, l: r.left, t: r.top, w: r.width, h: r.height,
-      rows: [...m.children].map((c) => c.classList.contains('ctx-head') ? '# ' + c.textContent : c.classList.contains('ctx-sep') ? '—' : c.querySelector('.ctx-label')?.textContent) }); })()`);
+      rows: [...m.children].map((c) => c.classList.contains('ctx-head') ? '# ' + c.textContent : c.classList.contains('ctx-sep') ? '—' : c.classList.contains('ctx-note') ? '> ' + c.textContent : c.querySelector('.ctx-label')?.textContent) }); })()`);
   const row = (action) => j(`(() => { const b = document.querySelector('[data-part=context-menu] [data-action=${JSON.stringify(action)}]'); if (!b) return null; const r = b.getBoundingClientRect();
     return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`);
   const state = () => j(`JSON.stringify(${TL}.state())`);
@@ -148,19 +149,22 @@ async function run3d(size, theme) {
     const pressed = await h.inStrip('[data-studio-motion]');
     check(m?.place === 'motion', `${tag}: a press opens the small menu (${m?.place})`);
     const rows = m?.rows ?? [];
-    check(rows[0] === `# ${WORDS.heads[0]}` && rows.length >= 8 && rows.includes(`# ${WORDS.heads[1]}`) && rows.includes('Hop') && rows.includes('Bob'),
-      `${tag}: New motion (four kinds), then From the Library (${rows.join(' | ')})`);
+    check(JSON.stringify(rows) === JSON.stringify(WORDS.rows), `${tag}: no motion yet — make one or use a saved one, no list of kinds (${rows.join(' | ')})`);
     check(/\bon\b/.test(pressed?.cls || '') && pressed?.expanded === 'true', `${tag}: the button looks pressed while it is open`);
     const covers = m && btn && m.l < btn.l + btn.w && m.l + m.w > btn.l && m.t < btn.t + btn.h && m.t + m.h > btn.t;
     check(!!m && !covers && m.l >= 0 && m.l + m.w <= size.width + 0.5 && m.t >= 0 && m.t + m.h <= size.height + 0.5, `${tag}: the menu is in the window, not over the button`);
     await h.shot('2-menu');
-    // ---- 3. Back and forth ----
-    const pp = await h.row('ctx-motion-new-pingpong');
+    // ---- 3. a saved motion: Row ----
+    const saved = await h.row('ctx-motion-lib');
+    if (saved) await h.tap(saved);
+    const lib = await h.menu();
+    check(lib?.place === 'motion' && (lib.rows ?? []).includes('Row') && (lib.rows ?? []).includes('Hop'), `${tag}: "Use a saved motion" lists the Library (${lib?.rows?.join(' | ')})`);
+    const pp = await h.row('ctx-motion-lib-Row');
     if (pp) await h.tap(pp);
     await sleep(500);
     let st = await h.state();
     const a = await h.after();
-    check(!!st?.open && st.clip === WORDS.made, `${tag}: Back and forth is on the crate, the timeline open on it (${st?.clip})`);
+    check(!!st?.open && st.clip === WORDS.made, `${tag}: Row is on the crate, the timeline open on it (${st?.clip})`);
     check(!!a.text && a.focused, `${tag}: "attached · When does it move?" with Starts focused (${JSON.stringify(a)})`);
     // Read off the element (PC: the timeline at the foot of the game covers the crate, so the strip under it is hidden
     // until the plate folds — the editor's rule for anything under a panel; the 4-dot picture shows it folded).
@@ -177,16 +181,23 @@ async function run3d(size, theme) {
     check(!(await h.menu()) && !!st?.open && st.clip === WORDS.made, `${tag}: with a motion, a press opens the timeline on it (open ${st?.open}, ${st?.clip})`);
     await page.eval(`${TL}.setOpen(false)`);
     await sleep(400);
-    // ---- 5. from the Library ----
+    // ---- 5. make one: the timeline at 1 s, a drag makes it ----
     await h.select('lighthouse');
     const b3 = await h.inStrip('[data-studio-motion]');
     if (b3) await h.tap(b3);
-    const hop = await h.row('ctx-motion-lib-Hop');
-    if (hop) await h.tap(hop);
+    const mk = await h.row('ctx-motion-make');
+    if (mk) await h.tap(mk);
     await sleep(500);
-    const on = await h.j(`JSON.stringify(${TL}.usage('Hop').map((u) => u.key))`);
-    const a2 = await h.after();
-    check(on.includes('lighthouse') && WORDS.attached.test(a2.text || ''), `${tag}: Hop from the Library is on the lighthouse, "${a2.text}"`);
+    const st5 = await h.state();
+    const first = await h.j(`JSON.stringify(document.querySelector('[data-part=tl-first]')?.textContent ?? null)`);
+    check(!!st5?.open && st5.time === 1 && !st5.clip && WORDS.first.test(first || ''), `${tag}: "Make a motion" opens at 1 s with what to do ("${first}")`);
+    // The move, as a drag would end (the editor's own message: the strip's drag is tested elsewhere).
+    // The move, as the end of a drag reports it to the timeline (the drag itself: studio-tool-clear.browser.mjs).
+    await page.eval(`(() => { const p = studioShell.items().find((i) => i.key === 'lighthouse').pose; ${TL}.moved('lighthouse', { ...p, p: [p.p[0] + 2, p.p[1], p.p[2]] }, true, p); })()`);
+    await sleep(600);
+    const done = await h.j(`JSON.stringify(document.querySelector('[data-part=tl-made]')?.textContent ?? null)`);
+    check(WORDS.done.test(done || ''), `${tag}: the line says what it made ("${done}")`);
+    await h.shot('5-make');
     await page.eval(`${TL}.setOpen(false)`);
     await sleep(400);
     // ---- 6. the keys (a keyboard: not the phone) ----

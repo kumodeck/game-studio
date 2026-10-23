@@ -295,7 +295,9 @@ export function createLibraryMotions(d: LibraryMotionsDeps): LibraryMotionsPart 
       acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'motion-attach' }, text: d.t('lib.motion.attach', { name: name(target) }),
         onclick: () => (d.attach(target, m.name), d.changed()) }));
     }
-    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi!() }));
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi!() },
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-rename' }, text: d.t('tl.rename'), onclick: rename }));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-duplicate' }, text: d.t('lib.motion.duplicate'), onclick: () => {
       const n = d.duplicate(m.name);

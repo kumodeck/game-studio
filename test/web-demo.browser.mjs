@@ -402,12 +402,13 @@ async function run(browser, game, size, tag) {
     // W1-6 (design review wave 1, 2026-10-17): the demo has no AI behind it, so no ask box and no "● AI". W1-6 put one grey
     // line and a "Get Game Studio →" link in the ask box's place; it was taken out on 2026-10-18 (the person is already
     // using Game Studio), so nothing stands there now: the top line alone says the demo isn't connected to an AI.
-    const demo = await j(`JSON.stringify({ ask: !!document.querySelector('.ask-input'), askShown: !!document.querySelector('.ask-input')?.offsetParent, peer: !!document.querySelector('[data-part=peer]'),
+    const demo = await j(`JSON.stringify({ ask: !!document.querySelector('.ask-input'), askShown: !!document.querySelector('.ask-input')?.offsetParent, peer: !!document.querySelector('[data-part=peer]'), presence: !!document.querySelector('[data-part=presence]'),
       slot: document.querySelector('[data-part=bar] .ask-slot')?.textContent ?? null, slotShown: !!document.querySelector('[data-part=bar] .ask-slot')?.offsetParent,
       offlineLine: !!document.querySelector('[data-part=offline-line]'), get: !!document.querySelector('[data-part=bar] a'),
       top: document.querySelector('.demo-banner')?.textContent || '' })`);
     assert.equal(demo.askShown, false, 'the ask box is on screen in the demo');
     assert.equal(demo.peer, false, 'the "● AI" is in the demo');
+    assert.equal(demo.presence, false, '"Claude is watching / not sure" is in the demo (no AI behind it)');
     assert.ok(!demo.offlineLine && !demo.get && !demo.slot && !demo.slotShown, `something in the ask box's place: ${JSON.stringify(demo)}`);
     assert.ok(!/Get Game Studio|入手/.test(await page.eval('document.body.innerText')), 'a "Get Game Studio" line is on the page');
     assert.ok(demo.top.includes(WORDS.banner), `the top line: ${demo.top}`);

@@ -8,17 +8,19 @@
 // Checks (three-crates, PC 1280 mouse and phone 390 touch):
 // 1. The input is for writing to the AI: pressing it does not open the ⌘K list; typing a word that
 //    names an action ("assets") shows only those suggestions, a sentence closes them; ⌘K opens all.
-// 2. Nothing can reach the AI: Enter → within 2 s one calm line (the request is in, it goes in the next time the AI
-//    runs) and one "Call your AI" button — no "isn't watching", no app names, no /arrange (hands-on test 2026-10-19).
+// 2. Nothing can reach the AI: Enter → within 2 s one calm line, the fact ("Kept as a note for your AI. Nothing in the
+//    game changes until your AI reads it.", ai presence 2026-10-23; it was "it goes in the next time your AI runs" and a
+//    "Call your AI" button), no green beside the field, no /arrange (hands-on test 2026-10-19).
 // 3. The agent starts (as after "look" or /arrange): the waiting request is picked up, the line
-//    goes "has it" → the AI's own words, and the violet light runs round the input meanwhile.
+//    goes "Claude is on it" → the AI's own words, and the violet light runs round the input meanwhile.
 // 4. The agent writes the code in two steps: the game does NOT reload half-way; after "done" it
 //    reloads by itself (no button), behind the old picture (never an empty list or no game), with
 //    the camera and the selection kept; only the new crates are marked violet.
 // 5. "Undo AI change": one press, the files are back and the crates are gone; Redo brings them back.
-// 6. With the agent watching, a second request shows "has it" within ~1 s of Enter.
+// 6. With the agent watching, a second request shows "is on it" within ~1 s of Enter.
 // 5b. The finished line goes by itself (2026-10-20: "this line is always there, it's in the way"): not while the pointer is on it (PC),
-//    gone within LINE_MAX_MS + grace after, not back on the next polls; "● AI" (PC) or ⌘K (phone) brings it back with
+//    gone within LINE_MAX_MS + grace after, not back on the next polls; going to the ask field (PC; it was "● AI" until
+//    2026-10-23) or ⌘K (phone) brings it back with
 //    its Undo / Redo, and ⌘K lists "Undo AI change" while it is gone.
 // 7. The agent asks something (`--status asking` with choices and the object it is about): the question with its
 //    buttons and now → after, the object lit in the scene, the ask field says "Answer your AI…", the dot still, no
@@ -72,7 +74,7 @@ const IN = {
   rect: (sel) => `JSON.stringify((() => { const e = [...document.querySelectorAll(${JSON.stringify(sel)})].find((x) => x.offsetParent || x.getClientRects().length); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })())`,
   click: (sel) => `(() => { const el = [...document.querySelectorAll(${JSON.stringify(sel)})].find(e => e.offsetParent); if (!el || el.disabled) return false; el.click(); return true; })()`,
   palette: `(document.querySelector('.shell').dataset.palette || 'closed')`,
-  line: `JSON.stringify({ cls: document.querySelector('.ai-line').className, text: document.querySelector('.ai-line').hidden ? '' : document.querySelector('.ai-line').textContent, ai: document.querySelector('.shell').dataset.ai, peer: document.querySelector('.peer').dataset.state })`,
+  line: `JSON.stringify({ cls: document.querySelector('.ai-line').className, text: document.querySelector('.ai-line').hidden ? '' : document.querySelector('.ai-line').textContent, ai: document.querySelector('.shell').dataset.ai, presence: document.querySelector('.presence')?.dataset.state })`,
   // Rows with the violet AI mark: one object's row by its key, a kind's header row (it carries data-group) as "group:<g>".
   marked: `JSON.stringify([...document.querySelectorAll('li.obj')].filter((r) => r.querySelector(':scope > .tag.ai')).map((r) => r.dataset.group ? 'group:' + r.dataset.group : r.dataset.key))`,
   // The picked objects (a kind's header row and its member rows name the same keys: a set).
@@ -204,14 +206,14 @@ async function run(layout) {
     await page.waitFor(`document.querySelector('.ai-line').classList.contains('away')`, 2000);
     times.away = Date.now() - t0;
     const away = await j(page, IN.line);
-    assert.match(away.text, /Your request is in|依頼は届いています/);
-    assert.doesNotMatch(away.text, /isn’t watching|見ていません|\/arrange|Claude Code|Codex/, 'no plumbing, no command to run');
-    assert.equal(await page.eval(`!!document.querySelector('.ai-line [data-action=ai-call]')`), true, 'one "Call your AI" button');
-    assert.equal(away.peer, 'idle');
+    assert.match(away.text, /Kept as a note for|へのメモとして残しました/);
+    assert.doesNotMatch(away.text, /next time|次に動いた|\/arrange|Claude Code/, 'a fact, not a promise; no command to run');
+    assert.equal(await page.eval(`!!document.querySelector('[data-action=ai-call]')`), false, 'no "Call your AI" (it copied a word without saying why)');
+    assert.ok(!['watching', 'working'].includes(away.presence), `no green beside the field while nobody can pick it up: ${away.presence}`);
     assert.notEqual(away.ai, 'busy', 'no light while nobody will answer');
     assert.equal(await page.eval(IN.palette), 'closed', 'Enter on a sentence must send it, not run an action');
     await shot('away');
-    ok(`nothing reaches the AI: one calm line in ${times.away} ms, with "Call your AI"`);
+    ok(`nothing reaches the AI: the fact in one line in ${times.away} ms`);
 
     // ---- 3–4. the agent starts; received → working; no reload until done; then by itself ----
     await page.eval(SAMPLER);
@@ -327,21 +329,21 @@ async function run(layout) {
     } else {
       await key(page, 'Escape');
       await page.waitFor(`${IN.palette} === 'closed'`, 3000);
-      assert.equal(await page.eval(`document.querySelector('.peer').dataset.recall`), 'undo', '"● AI" says a change can be undone');
-      await press(page, '.peer', false);
+      // Going to the field brings it back (the top bar's "● AI" did until 2026-10-23).
+      await page.eval(`(document.activeElement?.blur?.(), true)`);
+      await press(page, '.ask-input', false);
     }
     await page.waitFor(`!document.querySelector('.ai-line').hidden && !!document.querySelector('.ai-line [data-action=ai-undo]')`, 3000);
     // Drawn where it can be pressed (folded, it was in the DOM but not on screen).
     assert.ok(await j(page, IN.rect('.ai-line [data-action=ai-undo]')), 'the recalled line\'s Undo is not on screen');
     if (mobile) assert.equal(await page.eval(`document.querySelector('.shell').dataset.fold || ''`), '', '⌘K "Show your AI\'s last reply" left the bottom folded');
     await shot('recalled');
-    assert.equal(await page.eval(`document.querySelector('.peer').dataset.recall`), '', 'nothing to bring back while it shows');
     // And it goes again by itself.
     await page.waitFor(lineGone, LINE_MAX_MS + LINE_GRACE_MS + LINE_FADE_MS + 2000);
-    ok(`the finished line goes by itself (${times.faded} ms after${mobile ? '' : ' the pointer left'}; at least ${LINE_MIN_MS} ms), stays gone on polls, comes back from ${mobile ? '⌘K' : '"● AI"'} with Undo`);
+    ok(`the finished line goes by itself (${times.faded} ms after${mobile ? '' : ' the pointer left'}; at least ${LINE_MIN_MS} ms), stays gone on polls, comes back from ${mobile ? '⌘K' : 'the ask field'} with Undo`);
 
     // ---- 6. with the agent watching: "has it" within a second ----
-    await page.waitFor(`document.querySelector('.peer').dataset.state === 'live'`, 5000);
+    await page.waitFor(`document.querySelector('.presence')?.dataset.state === 'watching'`, 5000);
     await press(page, '.ask-input', mobile);
     await type(page, 'Make it night');
     t0 = Date.now();
@@ -429,7 +431,7 @@ async function film(out) {
   };
   const text = GAME === 'lantern-cove' ? (LANG === 'ja' ? '島のまわりに灯台を 3 つ足して' : 'Add three lighthouses around the island') : 'Add three crates in a row';
   try {
-    if (!AWAY) await page.waitFor(`document.querySelector('.peer').dataset.state === 'live'`, 10000);
+    if (!AWAY) await page.waitFor(`document.querySelector('.presence')?.dataset.state === 'watching'`, 10000);
     await sleep(2500); // let the water settle into its loop
     const video = await startVideo(page, { maxWidth: mobile ? 780 : 1280, maxHeight: mobile ? 1688 : 800 });
     await sleep(1500);

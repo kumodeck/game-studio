@@ -47,6 +47,11 @@ export interface PlacementPanelDeps {
   group(): string[];
   multi(): boolean;
   setMulti(on: boolean): void;
+  /**
+   * Rename `key` in place (studio-uniforms, 2026-10-23: the card's name turns into a field — F2, or the menu's Rename);
+   * '' = back to the game's own name. Absent = no rename here.
+   */
+  rename?(key: string, name: string): void;
   copy(): void;
   remove(): void;
   /** Phone layout (no Shift key, no box: the hints say so). */
@@ -80,6 +85,8 @@ export interface PlacementPanelDeps {
    * `ask` then sends an answer). Absent = never.
    */
   answering?(): boolean;
+  /** The whole-game placeholder, by whether the AI is there (main.ts, ai-presence.ts). Absent: "Ask your AI…". */
+  askGame?(): string;
   /**
    * Files picked in the Library while it is open ("use the Library", 2026-10-18): the chip names them with the
    * objects, and the words are sent about both. Absent / empty = objects only.
@@ -91,6 +98,11 @@ export interface PlacementPanelDeps {
   showInLibrary?(): void;
   /** Ask the AI to name these objects (the "no name" warning). */
   askName(keys: string[]): Promise<boolean>;
+  /**
+   * ✦ "Ask AI to name it…" on one object's card (studio-uniforms, 2026-10-23): a draft in the AI box, nothing sent —
+   * like every ✦ (the card's button sent at once before; one ✦ that sends teaches that the rule is soft). Absent = askName.
+   */
+  nameDraft?(keys: string[]): void;
   /** The mouse is over these objects' row, the card or the chip (light them in the game); [] = it left. */
   hover?(keys: string[]): void;
   /**
@@ -141,6 +153,9 @@ export interface PlacementPanel {
   /** Redraw the rows' marks (unsaved dot, "AI") without rebuilding the list. */
   markRows(): void;
   updateThumb(key: string): void;
+  /** Rename in place: the card's name of `key` becomes a field (F2, the menu's Rename). */
+  startRename(key: string): void;
+  isRenaming(): boolean;
 }
 
 const DEG = 180 / Math.PI;
@@ -306,6 +321,46 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     renderMin();
   });
   let cardKey: string | null = null;
+  /** A ✦ button (studio-uniforms): the AI's spark and violet; its press only puts a draft in the AI box. */
+  const aiButton = (label: string, cls: string, action: string, run: () => void) =>
+    h('button', { type: 'button', class: `${cls} ai`, dataset: { action }, onclick: run }, h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), label);
+  // Rename in place (startRename): the object whose card name is a field, and that field — the same element across
+  // redraws of the card (any render while typing), so what is typed and the focus stay (level-switch.ts does the same).
+  let renameKey: string | null = null;
+  let nameField: HTMLInputElement | null = null;
+  function startRename(key: string) {
+    if (!d.rename) return;
+    renameKey = key;
+    nameField = null;
+    renderCard();
+  }
+  /** The field in place of the card's name; Enter keeps, Esc puts the old name back, leaving it keeps (as Finder). */
+  function nameInput(key: string, shown: string): HTMLInputElement {
+    if (nameField && renameKey === key) return nameField;
+    const input = (nameField = h('input', { type: 'text', class: 'name-edit', value: shown, maxlength: '120', 'aria-label': d.t('ctx.renameLabel'), dataset: { part: 'name-edit' } }) as HTMLInputElement);
+    let done = false;
+    const finish = (keep: boolean) => {
+      if (done) return;
+      done = true;
+      renameKey = null;
+      nameField = null;
+      const v = input.value.trim();
+      if (keep && v !== shown) d.rename!(key, v);
+      renderCard();
+    };
+    input.addEventListener('keydown', (e) => {
+      // The editor's keys (⌘Z, Delete, arrows, F2…) must not act on the scene while typing a name.
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => setTimeout(() => input.isConnected && document.activeElement !== input && finish(true), 0));
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return input;
+  }
   let askKey: string | null = null;
   let lastCard: string | null = null;
   const askInput = h('input', { type: 'text', class: 'ask-input', enterkeyhint: 'send', autocomplete: 'off', maxlength: 500 });
@@ -363,7 +418,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const answer = !!d.answering?.();
     const whole = (noObj && !files.length) || answer;
     const n = (noObj ? 0 : keys.length) + files.length;
-    const ph = answer ? d.t('ask.answer') : whole ? d.t('ask.game') : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    const ph = answer ? d.t('ask.answer') : whole ? (d.askGame?.() ?? d.t('ask.game')) : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
     // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
@@ -528,8 +583,19 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const uiText = ui && it.label.trim().toLowerCase() !== shown.toLowerCase() ? it.label : null;
     const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui);
     h0.title = parts.where ? shown : '';
+    let refocus: HTMLInputElement | null = null;
+    if (renameKey === key && !ui) {
+      const again = !!nameField;
+      const f = nameInput(key, shown);
+      h0.querySelector('.head-name strong')?.replaceWith(f);
+      // Drawn again while typing: the card was emptied (which blurs the field); the focus goes back at once, before the
+      // blur's check runs (a blur that stays is the person leaving the field: the name is kept then).
+      if (again) refocus = f;
+    }
+    else if (renameKey && renameKey !== key) (renameKey = null), (nameField = null);
     const sub = h0.querySelector('.key') as HTMLElement;
     card.append(h0);
+    refocus?.focus({ preventScroll: true });
     const body = h('div', { class: 'card-body' });
     // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
     // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
@@ -550,7 +616,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       const guessed = isGuessed(it);
       body.append(h('p', { class: 'warn note-line noname-why', dataset: { part: 'noname-why' } },
         h('span', { class: 'why-text', text: d.t(guessed ? 'noname.why' : 'noname.whyPlain') }), ' ',
-        h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e: Event) => {
+        d.nameDraft ? aiButton(d.t('ctx.nameAsk'), 'name-ask link-btn', 'ask-name', () => d.nameDraft!(d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable)))
+        : h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e: Event) => {
           const b = e.currentTarget as HTMLButtonElement;
           b.disabled = true;
           const ok = await d.askName(d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable));
@@ -569,6 +636,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     if (it.held === 'game') {
       card.append(body);
       body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
+      // The same way out as the strip's dimmed Move (studio-tool-clear): set where it starts, here too.
+      if (d.unhold && !it.startSpot && (it.driven?.includes('move') || it.driven?.includes('lift')))
+        body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'start-spot' }, text: d.t(it.driven?.includes('move') ? 'tooloff.start.move' : 'tooloff.start.lift'), onclick: () => d.unhold?.([key]) }));
       // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
       if (it.movable === false) {
         if (it.unstable) nameNote();
@@ -1066,6 +1136,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     askEl,
     askNoteEl,
     renderAsk,
+    startRename,
+    isRenaming: () => renameKey !== null,
     render() {
       renderCard();
       renderNoName();
@@ -1092,7 +1164,9 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
  * moves it ("This object is moved by the game — its place is not kept when you save", 2026-10-19), else what the game
  * changes; then what can still be changed, so the person knows what is worth trying.
  */
-export function heldGameText(it: Pick<Item, 'driven' | 'movable' | 'rotatable' | 'scalable'>, dim: Dim, t: (k: string, v?: Record<string, string | number>) => string): string {
+export function heldGameText(it: Pick<Item, 'driven' | 'movable' | 'rotatable' | 'scalable' | 'startSpot'>, dim: Dim, t: (k: string, v?: Record<string, string | number>) => string): string {
+  // "Set where it starts" chosen (studio-tool-clear): what a move does now, not that it won't stick.
+  if (it.startSpot) return t('hold.gameStart');
   const driven = new Set(it.driven ?? []);
   const parts = (['move', 'lift', 'turn', 'size'] as const).filter((k) => k !== 'lift' || dim === '3d');
   const words = (ks: readonly string[]) => listOf(ks.map((k) => t(`hold.part.${k}`)), t);

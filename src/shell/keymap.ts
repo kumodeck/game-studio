@@ -54,6 +54,8 @@ export const KEYMAP: KeyDef[] = [
   { id: 'paste', group: 'edit', keys: ['⌘V'] },
   { id: 'duplicate', group: 'edit', keys: ['⌘D'], label: 'ops.copy' },
   { id: 'remove', group: 'edit', keys: ['⌫', 'Delete'], label: 'ops.remove' },
+  // Rename in place (studio-uniforms, 2026-10-23): F2, as Finder / Explorer / Unity / Blender's outliner. One named object.
+  { id: 'rename', group: 'edit', keys: ['F2'], label: 'ctx.rename' },
   { id: 'selectAll', group: 'edit', keys: ['⌘A'], label: 'pal.selectAll' },
   { id: 'deselect', group: 'edit', keys: ['Esc'], label: 'ops.selectNone' },
   { id: 'save', group: 'edit', keys: ['⌘S'], label: 'btn.save' },

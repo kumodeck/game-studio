@@ -42,7 +42,12 @@ test('--detach: returns with the URL and pid, the editor keeps running, a second
     // The same line again: the same editor, not a second one (and not "already has a game").
     const b = run([dir, '--starter', '3d', '--starters-dir', FAKE, '--detach', '--no-open']);
     assert.equal(b.status, 0, b.stderr);
-    assert.equal(b.stdout.trim(), `studio: ready ${m[1]} pid ${pid} (already running)`);
+    // Then, as after every ready line, the reply's first line and where it went (--no-open: nowhere; open-in.mjs).
+    assert.deepEqual(b.stdout.trim().split('\n'), [
+      `studio: ready ${m[1]} pid ${pid} (already running)`,
+      `studio: reply with this link alone on the first line of your answer, exactly as printed: ${m[1]}`,
+      'studio: open none - nothing opened (--no-open). After the link, tell them: "Open this link in your browser."',
+    ]);
     const s = run([dir, '--stop']);
     assert.equal(s.stdout.trim(), `studio: stopped pid ${pid}`);
     assert.ok(!pidAlive(pid));
@@ -114,7 +119,7 @@ test('--starter again after a start that did not come up: the same sample is ope
     run([dir, '--stop']);
     const b = run([dir, '--starter', '3d', '--starters-dir', FAKE, '--detach', '--no-open']);
     assert.equal(b.status, 0, b.stdout + b.stderr);
-    assert.match(b.stdout, /^studio: note the sample fake-3d is already in this folder, so nothing was copied; opening it\nstudio: ready \S+ pid \d+\n$/);
+    assert.match(b.stdout, /^studio: note the sample fake-3d is already in this folder, so nothing was copied; opening it\nstudio: ready \S+ pid \d+\nstudio: reply with this link .*\nstudio: open none - .*\n$/);
     // A different sample is still refused: the folder has a game, and it is not that one.
     run([dir, '--stop']);
     const c = run([dir, '--starter', '2d', '--starters-dir', FAKE, '--no-open']);

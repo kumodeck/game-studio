@@ -12,7 +12,7 @@ import { MotionStore, roundMotion, sameMotion } from '../src/shell/motion-model.
 import { MotionLibrary, motionLibrary } from '../src/shell/motion-library.ts';
 import { whenOf } from '../src/loader/studio-placement.js';
 import {
-  changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, moveKeys, offsetOf, offsetsAt, pasteKeys, setKey, toClips, withClip,
+  changedChannels, compose, copyKeys, deleteKeys, easeKeys, blankClip, sceneClip, keyTimes, moveKeys, offsetOf, offsetsAt, pasteKeys, setKey, toClips, withClip,
 } from '../src/shell/timeline-model.ts';
 import { createTimeline } from '../src/shell/timeline-wire.ts';
 import { clipAt, trackAt } from '../src/loader/studio-placement.js';
@@ -137,15 +137,12 @@ test('keys: set (replace at the same moment, the length grows), move, delete, ea
   assert.deepEqual(withClip({ clips: [c] }, 'M', { ...c, name: 'N' })!.clips!.map((x) => x.name), ['N'], 'a rename keeps its place');
 });
 
-test('templates: the v0.1.13 kinds as keys', () => {
-  const pp = fromTemplate('pingpong', 'Back and forth', '3d');
-  assert.equal(pp.repeat, 'pingpong');
-  assert.ok(near(offsetsAt(pp, 2).p, [3, 0, 0]));
-  const spin = fromTemplate('spin', 'Spin', '3d');
-  assert.ok(near(offsetsAt(spin, 2).r, [0, Math.PI, 0]), 'half a turn at half the time (steady)');
-  const loop = fromTemplate('loop', 'Round', '3d');
-  assert.ok(near(offsetsAt(loop, 4).p, [0, 0, 0]) && loop.repeat === 'loop', 'a round ends where it began');
-  assert.deepEqual(fromTemplate('empty', 'M', '2d').keys, {});
+test('a new motion has no keys; a scene starts empty (studio-no-presets: no kinds to start from)', () => {
+  assert.deepEqual(blankClip('M').keys, {});
+  assert.equal(blankClip('M').repeat, 'once');
+  const sc = sceneClip('Scene');
+  assert.equal(sc.scene, true);
+  assert.deepEqual(sc.keys, {});
 });
 
 test('the older shape (v0.1.13) is read as one clip', () => {

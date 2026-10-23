@@ -278,8 +278,22 @@ export function uiName(key: string): string {
  * - Unnamed (`unstable`): the stem of its picture or model file, else the guessed name (guessNames), else
  *   "Unnamed <kind>" (`t('noname.kind.<w>')`).
  */
+/**
+ * The names the person gave in the editor (studio-uniforms, 2026-10-23; PlacementModel.names), for displayName. WHY one
+ * hook here and not a name passed to every caller: displayName is THE name of an object on screen — the list, the card,
+ * the menus, the ask box's chip, the Library, Undo's tooltip — so a rename shows everywhere at once from one place.
+ * The shell sets it once (the world model of the level on screen); tests and the web demo leave it empty.
+ */
+let givenName: (key: string) => string | undefined = () => undefined;
+export function useGivenNames(fn: (key: string) => string | undefined): void {
+  givenName = fn;
+}
+
 export function displayName(it: Pick<Item, 'key' | 'label' | 'kinds' | 'group' | 'unstable'>, t: (k: string) => string): string {
   if (it.kinds && it.kinds.includes('ui')) return uiName(it.key);
+  // A name the person gave in the editor (Rename, F2) wins until the AI has put it in the code (useGivenNames).
+  const given = givenName(it.key);
+  if (given) return given;
   if (it.unstable) {
     const stem = fileStem(it.group);
     if (stem) return stem;

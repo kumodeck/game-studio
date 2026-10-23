@@ -20,11 +20,18 @@ import { icon } from './icons.ts';
 import type { PointKind } from './path-edit.ts';
 import { fillLinkList, type LinkItem } from './timeline-link.ts';
 import { createMorePop } from './timeline-more.ts';
-import { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES, type KeyRef, type Template } from './timeline-model.ts';
+import { CHANNELS, clock, keyName, keyTimes, sameT, type KeyRef } from './timeline-model.ts';
 
 /** Starts menu, in two groups: what the loader plays by itself, then what your AI connects in the game's code. */
 export const SELF_TRIGGERS: MotionTrigger[] = ['start', 'time', 'key', 'click', 'after', 'enter'];
 export const AI_TRIGGERS: MotionTrigger[] = ['touch', 'cue', 'say'];
+/**
+ * The "When" menu's order (startsMenu): one group, "Trigger" (studio-no-presets, 2026-10-23: the words asked of Gemini;
+ * a design look: six under one heading read at a glance, and "More" was
+ * one press more with no count behind "the three most used"), most used first; then "Ask AI to Set Up".
+ * (studio-tool-clear had three up front and three under "More".)
+ */
+export const WHEN_TRIGGERS: MotionTrigger[] = ['start', 'click', 'enter', 'key', 'time', 'after'];
 /** "Chest opened!" → "chest-opened" (a cue name the game's code can say as is; CUE_RE in the schema). */
 export const cueSlug = (s: string) => s.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'cue';
 
@@ -83,6 +90,13 @@ export interface TimelineView {
   player: string | null;
   /** studio-motion-flow: the focused clip's motion was just attached ("✓ “Hop” attached · When does it move?"), else null. */
   attached: string | null;
+  /** studio-tool-clear: the focused object's first motion was just made by moving it — its last key's time (s), else null. */
+  made?: number | null;
+  /**
+   * studio-no-presets: "Make a motion" on the focused object — 'drag' = waiting for the first move (the line: "drag it
+   * where it should move, Esc to cancel"), 'more' = made, each next move adds a second ("Done" ends it); else null.
+   */
+  making?: 'drag' | 'more' | null;
   /** studio-motion-flow: the first-time steps are shown (while making: no keys yet; until "Got it" / × / Esc, once). */
   coach: boolean;
   // studio-timeline-2:
@@ -108,6 +122,8 @@ export interface TimelineActs {
   scrub(t: number, end: boolean): void;
   auto(on: boolean): void;
   fold(): void;
+  /** studio-no-presets: making ends ("Done" on the line; Esc does the same). Absent = no button. */
+  done?(): void;
   /** The clip menu: a clip's name, `new:<template>`, `rename`, `delete`. */
   clip(value: string): void;
   rename(name: string): void;
@@ -216,12 +232,15 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const time = h('span', { class: 'tl-time' }, now, h('span', { class: 'tl-of', text: '/' }), len, h('span', { class: 'tl-of', text: 's' }));
     const auto = h('button', { type: 'button', class: `tl-auto${v.auto ? ' on' : ''}`, dataset: { action: 'tl-auto', part: 'tl-auto' }, 'aria-pressed': String(v.auto),
       title: t(v.auto ? 'tl.autoOn' : 'tl.autoOff'), onclick: () => act.auto(!v.auto) }, h('span', { class: 'tl-dot' }), h('span', { class: 'tl-auto-w', text: t('tl.auto') }));
-    // The clip menu: this object's motions, then "New: <template>", then rename / delete.
+    // The clip menu: this object's motions, then "+ Make a motion" and a new scene, then rename / delete.
     const opts: Array<[string, string, boolean?]> = [];
     if (!v.clips.length) opts.push(['', t('tl.noClip'), true]);
     for (const n of v.clips) opts.push([n, n]);
     opts.push(['-', '──────', true]);
-    for (const k of TEMPLATES) opts.push([`new:${k}`, t('tl.new', { name: t(`tl.tpl.${k}`) }), !v.focus]);
+    // studio-no-presets (2026-10-23): no kinds here any more (Back and forth, Round, Once, Spin — studio-tool-clear had
+    // kept them on a thing that moves already). The review: "we don't need them". "+ Make a motion" is the strip's and
+    // the card's way (show it: the next move is its key); a scene is not a kind (it starts empty, for several objects).
+    opts.push(['new:make', t('tl.make'), !v.focus], ['new:scene', t('tl.new', { name: t('tl.tpl.scene') }), !v.focus]);
     if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
     const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
       if (val === 'rename') return void renaming(c!.name);
@@ -312,19 +331,31 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     else list.splice(i, 1);
     act.setWhen(list.length > 1 ? list : list[0]!);
   };
-  /** A "Starts" menu: what the loader plays by itself, then what your AI connects (purple ✦, the AI's colour). */
+  /**
+   * The "When" menu: sentences — "Trigger" (six ways the editor plays by itself), then "Ask AI to Set Up" (studio-no-presets,
+   * 2026-10-23, Gemini's words; studio-tool-clear had three up front, three under "More", one "Ask AI"). Before: ten rows in two groups named "Plays by itself" and "✦ Your AI connects it", with "A cue" —
+   * a hands-on try: "none of it makes sense". What only the AI can wire (the player touching it, a moment in the game's own
+   * code) is one row, "Ask AI: make it move when…", which puts the words in the chat box; a file that already has one of
+   * those shows it as it is ("set up by your AI"), so the menu never reads blank. `groups` = false: one flat list (⋯'s
+   * other ways, where the optgroups would only be noise).
+   */
   const startsMenu = (part: string, label: string, w: MotionWhen, v: TimelineView, i: number, groups: boolean) => {
     const s = h('select', { 'aria-label': label, title: w.on === 'say' && w.say ? `${label}: ${w.say}` : label, dataset: { part, ...(i ? { i: String(i) } : {}) } });
-    for (const [glabel, list] of [[t('tl.when.self'), SELF_TRIGGERS], [`✦ ${t('tl.when.ai')}`, AI_TRIGGERS]] as Array<[string, MotionTrigger[]]>) {
-      const g = groups ? h('optgroup', { label: glabel }) : s;
-      for (const on of list) {
-        const o = h('option', { value: on, text: t(`tl.when.${on}`) });
-        if (on === 'after' && !v.afterOpts.length) o.disabled = true;
-        if (on === w.on) o.selected = true;
-        g.append(o);
-      }
-      if (g !== s) s.append(g);
-    }
+    const add = (g: HTMLElement, on: MotionTrigger, text = t(`tl.when.${on}`)) => {
+      const o = h('option', { value: on, text });
+      if (on === 'after' && !v.afterOpts.length) o.disabled = true;
+      if (on === w.on) o.selected = true;
+      g.append(o);
+    };
+    const self = groups ? h('optgroup', { label: t('tl.when.selfHead') }) : s;
+    // "After another motion ends" only when there is another motion to follow (or it is the one chosen): a row that
+    // could only be greyed out is a row to read for nothing (the design look of 10/23).
+    for (const on of WHEN_TRIGGERS) if (on !== 'after' || v.afterOpts.length || w.on === 'after') add(self, on);
+    const ai = groups ? h('optgroup', { label: t('tl.when.aiHead') }) : s;
+    if (w.on === 'touch' || w.on === 'cue') add(ai, w.on, t(`tl.when.${w.on}Now`));
+    add(ai, 'say', t(w.on === 'say' ? 'tl.when.sayNow' : 'tl.when.say'));
+    if (self !== s) s.append(self);
+    if (ai !== s) s.append(ai);
     s.addEventListener('change', () => {
       const on = s.value as MotionTrigger;
       sendWhen(v, i, fresh(on, v));
@@ -344,7 +375,14 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       // Just attached (studio-motion-flow): say so where the "when" is chosen, and ask the question the menu answers.
       if (v.attached) items.push(h('span', { class: 'tl-attached', dataset: { part: 'tl-attached' }, text: `✓ ${t('tl.attached', { name: v.attached })}` }),
         h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
-      else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Just made by moving it (studio-tool-clear): what it does now and how to see it, then the next question.
+      // Making (studio-no-presets): the same line says the next move adds a second — without the name (the row and
+      // the card say it; a design look of the first pictures: the long line pushed "When" ▾ off the plate).
+      else if (v.made) {
+        const said = `✓ ${t(v.making === 'more' ? 'tl.made.more' : 'tl.made', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '', t: Math.round(v.made * 10) / 10 })}`;
+        items.push(h('span', { class: 'tl-attached', title: said, dataset: { part: 'tl-made' }, text: said }),
+        h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
+      } else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
       items.push(startsMenu('tl-starts', t('tl.starts'), w, v, 0, true), ...whenField(w, v, (x) => sendWhen(v, 0, x)));
       // The other ways it starts (studio-timeline-2's "or") live in ⋯; the line says there are some ("+1").
       const others = (v.whens?.length ?? 1) - 1;
@@ -355,12 +393,19 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       if (v.trying) items.push(h('button', { type: 'button', class: 'icon-btn tl-try-this on', title: t('tl.try.stop'), 'aria-label': t('tl.try.stop'), dataset: { part: 'tl-try-this' }, onclick: () => act.tryStop() }, icon('pause')));
       else if (mine) items.push(h('button', { type: 'button', class: `icon-btn tl-try-this${mine.ai ? ' ai' : ''}`, title: t(mine.ai ? 'tl.try.aiTip' : 'tl.try.tip', { name: mine.label }),
         'aria-label': t('tl.try.tip', { name: mine.label }), dataset: { part: 'tl-try-this', cue: mine.id }, onclick: () => act.tryCue(mine.id) }, icon('play')));
+      // "Done" (Esc's button) last, after "When" ▾: between the line and the menu it read as "done with When" (the design look).
+      if (v.making === 'more' && act.done) items.push(h('button', { type: 'button', class: 'tl-done', dataset: { part: 'tl-done', action: 'tl-done' }, title: t('tl.make.doneTip'), onclick: () => act.done!() }, t('tl.make.done')));
       return items;
     }
     if (v.focus) {
       // An object with no motion yet (studio-motion-flow: "+ New motion" lands here): what makes one, in one line.
       const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus;
-      return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: t('tl.when.first', { name }) })];
+      // studio-tool-clear: the time line already past 0 s (the strip's "Make a motion for this" opens at 1 s): one move
+      // makes the motion — say where it is at 0 s and what to do now.
+      const at = Math.round(v.time * 10) / 10;
+      // studio-no-presets: "Make a motion" — the words of the brief (the review, 10/23): drag it there; Esc stops.
+      const words = v.making === 'drag' ? t('tl.make.drag', { name }) : at > 0 ? t('tl.when.firstAt', { name, t: at }) : t('tl.when.first', { name });
+      return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: words })];
     }
     return [h('span', { class: 'tl-lbl tl-first', text: t('tl.when.none') })];
   }

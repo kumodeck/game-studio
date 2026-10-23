@@ -637,15 +637,11 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       const pic = thumbFor(row, 128);
       tile.append(pic, name, meta);
       if (pickedFiles.has(row.path)) tile.classList.add('gsl-open');
-      // Dragged onto the Scene row = "Add to scene" (main.ts). Only where an AI can make the object (deps.files.add).
-      if (deps.files?.add && row.exists) {
-        tile.draggable = true;
-        tile.addEventListener('dragstart', (e) => {
-          if (!e.dataTransfer) return;
-          e.dataTransfer.setData(DRAG_FILE, row.path);
-          e.dataTransfer.effectAllowed = 'copy';
-        });
-      }
+      // A file's tile is not dragged onto the Scene row any more (studio-uniforms, 2026-10-23). It used to be "Add to
+      // scene", which drafted a request in the AI box: a hand gesture writing in the AI's place, the thing a hands-on try
+      // found senseless ("+ Level typed into the AI box"). A new object from a file is the AI's work, so it is the
+      // detail's ✦ "Ask AI to add it to the scene…" only. An object's tile still drags (it copies at once, in place).
+      void DRAG_FILE;
       // Shift, or Multi-select: add the file to the pick (or take it out) instead of opening it alone.
       const press = (add: boolean) => (add || objects?.multi() ? toggleFile(row.path) : open(row.path));
       tile.addEventListener('click', (e) => press(e.shiftKey));
@@ -822,6 +818,17 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     }
   }
 
+  /** A ✦ button: the AI's spark before the words, violet (styles.ts `.gsl-btn.ai`); it only drafts in the AI box. */
+  function askBtn(cls: string, label: string): HTMLButtonElement {
+    const b = h('button', `${cls} ai`) as HTMLButtonElement;
+    b.type = 'button';
+    // The sign as text: the Library is its own tool and draws no shell icons (the spark is the same ✦ the ask box shows).
+    const spark = h('span', 'gsl-spark', '✦');
+    spark.setAttribute('aria-hidden', 'true');
+    b.append(spark, label);
+    return b;
+  }
+
   /**
    * "Add to scene" and "Ask your AI…" for the picked files ("use the Library", 2026-10-18). A new object from a file
    * is code the AI writes, so "Add to scene" drafts that request in the ask box (the file's chip in it, sent with
@@ -833,16 +840,16 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     const acts = h('div', 'gsl-acts');
     const paths = pickedFiles.size > 1 && pickedFiles.has(row.path) ? [...pickedFiles] : [row.path];
     const many = paths.length > 1;
-    const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', many ? L('addToSceneN', { n: paths.length }) : L('addToScene'));
-    add.type = 'button';
+    // ✦ (studio-uniforms, 2026-10-23): a new object from a file is code, so this is a request — it wears the AI's
+    // uniform (spark, violet, "Ask AI to …"), not a plain "Add to scene" that wrote into the box behind its words.
+    const add = askBtn('gsl-btn gsl-primary gsl-add-scene', many ? L('askAddFileN', { n: paths.length }) : L('askAddFile'));
     add.dataset.action = 'file-add-to-scene';
     const can = !!deps.files!.add && row.exists;
     add.disabled = !can;
     if (can) add.addEventListener('click', () => deps.files!.add!(paths));
     acts.append(add);
     if (deps.files!.ask) {
-      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
-      ask.type = 'button';
+      const ask = askBtn('gsl-btn gsl-ask-file', L('askAiFile'));
       ask.dataset.action = 'file-ask';
       ask.addEventListener('click', () => deps.files!.ask!(paths));
       acts.append(ask);

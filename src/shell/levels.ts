@@ -18,7 +18,7 @@
 import type { Dim, LevelInfo, PlacementFile, PlacementLevel } from '../contract.ts';
 
 /** A level's world part: what placement.json has at its top for a game with one level. */
-export type WorldPart = Pick<PlacementFile, 'objects' | 'added' | 'removed' | 'order' | 'motion'>;
+export type WorldPart = Pick<PlacementFile, 'objects' | 'added' | 'removed' | 'order' | 'motion' | 'names'>;
 
 export interface LevelEntry {
   id: string;
@@ -42,6 +42,7 @@ export function worldOf(f: Partial<PlacementFile> | PlacementLevel | null | unde
   if (f?.removed?.length) w.removed = structuredClone(f.removed);
   if (f?.order?.length) w.order = structuredClone(f.order);
   if (f?.motion && Object.keys(f.motion).length) w.motion = structuredClone(f.motion);
+  if (f?.names && Object.keys(f.names).length) w.names = structuredClone(f.names);
   return w;
 }
 
@@ -49,6 +50,15 @@ export function worldOf(f: Partial<PlacementFile> | PlacementLevel | null | unde
 export function slugOf(label: string): string {
   const s = label.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   return s || 'level';
+}
+
+/**
+ * The id of a level the person made, from its name: slugOf, and "level-" before it when the name had no Latin letters
+ * (a Japanese "Level 2" → "level-2", not "2": the AI and the file read better with a word in the id).
+ */
+export function levelIdOf(label: string): string {
+  const s = slugOf(label);
+  return /[a-z]/.test(s) ? s : `level-${s}`.slice(0, 60);
 }
 
 export class Levels {
@@ -197,6 +207,7 @@ export class Levels {
     delete out.removed;
     delete out.order;
     delete out.motion;
+    delete out.names;
     out.levels = this.list.map((e) => {
       const w = e.id === this.current ? now : e.world;
       const l: PlacementLevel = { id: e.id };
@@ -210,12 +221,16 @@ export class Levels {
       if (w.removed?.length) l.removed = structuredClone(w.removed);
       if (w.order?.length) l.order = structuredClone(w.order);
       if (w.motion && Object.keys(w.motion).length) l.motion = structuredClone(w.motion);
+      if (w.names && Object.keys(w.names).length) l.names = structuredClone(w.names);
       return l;
     });
     // The code's order, only when the person's list says something else (an order, a copy, a delete, a rename).
     const code = this.code || [];
     const mine = out.levels.filter((l) => !l.from).map((l) => l.id);
     if (code.length && (mine.join('\n') !== code.join('\n') || out.levels.some((l) => l.from || l.labelWas))) out.levelsWas = code.slice();
+    // The code has no levels yet ("Make Level 2" in a game without them, startCodeless): `levelsWas: []` says so — the
+    // AI adds studio.levels() with these levels, and the loader knows which level the game builds until then.
+    else if (this.code && !this.code.length) out.levelsWas = [];
     return out;
   }
 
@@ -234,15 +249,53 @@ export class Levels {
    * "+ Level" in a game whose code has one level (`single`): that level becomes the list's first, with `world` (the
    * live model's layout), and a copy of it is made right after (copy()). Returns the copy's id ('' = no single level).
    */
-  start(world: WorldPart): string {
+  start(world: WorldPart, first?: string): string {
     const one = this.single;
-    if (this.active || !one) return '';
+    if (this.active) return '';
+    if (!one) return first ? this.startCodeless(world, first) : '';
     this.list = [{ id: one.id, ...(one.label ? { codeLabel: one.label } : {}), world: worldOf(world), dirty: 0 }];
     this.code = [one.id];
     this.current = one.id;
     this.active = true;
     this.single = null;
     return this.copy(world);
+  }
+
+  /**
+   * "Make Level 2" in a game whose code has NO levels (studio-uniforms, 2026-10-23; a hands-on try: "+ Level typed text
+   * into the AI box — makes no sense", then "it just makes it without asking?? there used to be a menu"). What is on
+   * screen becomes "Level 1" (`first`, in the person's language; id `level-1`) and a copy of it is made right after.
+   * `code` is [] — the code has no levels yet — so compose() writes `levelsWas: []` and the AI adds studio.levels() on
+   * Save (SKILL.md "Levels"). WHY not ask the AI first (the old way): a level is something the hand can show (copy the
+   * scene, move things); only the switch in the code is the AI's, and that rides on Save like a moved object. Until
+   * then the editor builds the game as it is for both levels and lays each level's entries over it (build()).
+   */
+  private startCodeless(world: WorldPart, first: string): string {
+    this.list = [{ id: 'level-1', label: first.trim().slice(0, 120) || 'Level 1', world: worldOf(world), dirty: 0 }];
+    this.code = [];
+    this.current = 'level-1';
+    this.active = true;
+    // One press, one change on "Save · n": the copy counts it (copy()), as for a game whose code has one level.
+    this.structDirty = 0;
+    return this.copy(world);
+  }
+
+  /**
+   * ⌘Z / [Undo] right after "Make Level 2" (start()): back to a game with one level, `world` = level 1's layout as it
+   * was. Returns false when the levels changed since (then it is not the same step any more).
+   */
+  unstart(single: LevelInfo | null): { world: WorldPart | null } | null {
+    if (!this.active || this.list.length !== 2 || !this.list[1]!.from || this.list[0]!.from) return null;
+    // Level 1's layout waits in the list while Level 2 is on screen; null = level 1 is the one on screen (the live model).
+    const world = this.list[0]!.id === this.current ? null : this.list[0]!.world;
+    this.list = [];
+    this.code = null;
+    this.deleted.clear();
+    this.structDirty = 0;
+    this.active = false;
+    this.current = '';
+    this.single = single;
+    return { world };
   }
 
   /**
@@ -256,9 +309,9 @@ export class Levels {
     const taken = new Set([...this.list.map((e) => e.id), ...(this.code || []), ...this.deleted]);
     const names = new Set(this.list.map((e) => this.labelOf(e.id)));
     let n = 2;
-    while (names.has(`${base} ${n}`) || taken.has(slugOf(`${base} ${n}`))) n++;
+    while (names.has(`${base} ${n}`) || taken.has(levelIdOf(`${base} ${n}`))) n++;
     const label = `${base} ${n}`;
-    const e: LevelEntry = { id: slugOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    const e: LevelEntry = { id: levelIdOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
     this.list.splice(this.index() + 1, 0, e);
     this.structDirty++;
     return e.id;

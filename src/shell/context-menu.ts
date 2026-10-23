@@ -23,6 +23,7 @@
 // - Dimmed rows stay in place and cannot be chosen (context-rows.ts says why).
 // - The camera never moves for it, and nothing it does sends what the floating panels cover (the strip stays put).
 import { h } from './dom.ts';
+import { icon } from './icons.ts';
 
 export interface MenuItem {
   id: string;
@@ -32,13 +33,20 @@ export interface MenuItem {
   disabled?: boolean;
   /** The chosen one of a list (levels, 2026-10-22: the level on screen): a ✓ at the right end, on phones too. */
   checked?: boolean;
+  /**
+   * A ✦ row (studio-uniforms, 2026-10-23, "two uniforms"): it only puts an editable draft in the AI box and the cursor
+   * there — nothing is sent until the person sends. Drawn with the box's ✦ and the AI's violet, so it can be told from
+   * a plain row (which acts in the editor at once and never writes in the box) before it is pressed.
+   */
+  ai?: boolean;
   run(): void;
 }
 /**
  * `head`: a small title over the rows that follow (studio-motion-tool, 2026-10-22: the strip's Motion menu has two
  * lists — new kinds and the Library's motions — and "Hop" alone did not say which). Not a row: no highlight, no key.
+ * `note`: a sentence over the rows, wrapped (see show()).
  */
-export type MenuEntry = MenuItem | { sep: true } | { head: string };
+export type MenuEntry = MenuItem | { sep: true } | { head: string } | { note: string };
 
 export interface ContextMenuDeps {
   /** Phone layout: 44 px rows, no keys. */
@@ -122,8 +130,14 @@ export function createContextMenu(d: ContextMenuDeps) {
         el.append(h('div', { class: 'ctx-head', role: 'presentation', text: e.head }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
-        h('span', { class: 'ctx-label', text: e.label }),
+      // `note` (studio-tool-clear, 2026-10-23): one sentence over the rows — a dimmed tool's why, or "No motion yet".
+      // It wraps (a sentence, not a title), and is read aloud with the menu.
+      if ('note' in e) {
+        el.append(h('div', { class: 'ctx-note', role: 'presentation', text: e.note }));
+        continue;
+      }
+      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
+        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
       btn.addEventListener('pointerenter', (ev) => {

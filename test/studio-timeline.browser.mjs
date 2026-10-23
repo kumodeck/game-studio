@@ -204,10 +204,12 @@ async function run(size, theme) {
       await sleep(300);
       await page.eval(`document.querySelector('[data-part=tl-more-btn].on')?.click()`);
       await sleep(200);
-      // 7. The buoy: New: Spin.
+      // 7. The buoy: "+ Make a motion" from the clip menu (studio-no-presets: no "New: Spin" any more), then a turn.
       await page.eval(`studioShell.actions.select('buoy')`);
       await sleep(600);
-      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-clip]'); s.value = 'new:spin'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await page.eval(`(() => { const s = document.querySelector('[data-part=tl-clip]'); s.value = 'new:make'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+      await sleep(400);
+      await page.eval(`(() => { const p = ${TL}.shownPose('buoy'); ${TL}.moved('buoy', { ...p, r: (p.r ?? 0) + Math.PI / 2 }, true, p); })()`);
       await sleep(400);
       const st = await state();
       const clips = await j(`JSON.stringify([...document.querySelectorAll('[data-part=tl-clip] option')].map((o) => o.value).filter((v) => v && !v.startsWith('new:') && v !== '-' && v !== 'rename' && v !== 'delete'))`);

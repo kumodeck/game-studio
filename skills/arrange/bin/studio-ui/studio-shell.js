@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.24 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.25 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -230,6 +230,12 @@ const CONTRACT_VERSION = 1;
                                           
      
                                                     
+     
+                                                                                                             
+                                                                                                                        
+                                                               
+     
+                      
      
                                                                              
                                                                              
@@ -985,7 +991,11 @@ const MSG_PREFIX = 'studio:';
                                                         
                                                                                                                       
                                                                                  
-                                                                                                                        
+     
+                                                                                                                       
+                                                                                                                      
+                               
+     
                                                        
      
                                                                                                                       
@@ -1252,6 +1262,12 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                                                        
                                                     
+     
+                                                                                                                   
+                                                                                                                      
+                                                                                                               
+     
+                                                                                                                                                                                                                
      
                                                                                                                    
                                                                                                                     
@@ -1852,6 +1868,12 @@ const RESULT_FILES                         = {
                                            
      
                             
+     
+                                                                                                                        
+                                                                                                                    
+                                                                                                                     
+     
+                                 
                                                                                                                                 
                        
  
@@ -1870,6 +1892,8 @@ const RESULT_FILES                         = {
                            
                                                                                                           
                                   
+                                                                                      
+                                 
  
 
 /**
@@ -2603,7 +2627,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas', 'names'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -2640,14 +2664,18 @@ function placement(data, fail) {
   if (data.levels !== undefined) {
     const levels = readLevels(data.levels, dim, fail);
     if (levels.length) {
-      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion || out.names) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
       out.levels = levels;
-      if (data.levelsWas !== undefined) {
+      // `levelsWas: []` (studio-uniforms, 2026-10-23): the code has no levels yet — the person made Level 2 in a game
+      // without them. Its levels without `from` are then the game as it is (Level 1), and a copy is built from those.
+      const none = Array.isArray(data.levelsWas) && data.levelsWas.length === 0;
+      if (none) out.levelsWas = [];
+      else if (data.levelsWas !== undefined) {
         const was = readOrderedKeys(data.levelsWas, 'levelsWas', fail);
         if (was) out.levelsWas = was;
       }
-      // An editor-made level is built from a level the code has.
-      const code = new Set(out.levelsWas || levels.filter((l) => !l.from).map((l) => l.id));
+      // An editor-made level is built from a level the code has (or, with none yet, from the game as it is).
+      const code = new Set(!none && out.levelsWas ? out.levelsWas : levels.filter((l) => !l.from).map((l) => l.id));
       for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
     }
   } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
@@ -2741,6 +2769,25 @@ function readWorld(data, dim, fail, objectsOptional = false) {
     for (const r of out.removed || []) if (Object.hasOwn(motion, r.key)) fail(`motion`, `"${r.key}" is also in removed`);
     if (Object.keys(motion).length) out.motion = motion;
   }
+  // `names` (studio-uniforms, 2026-10-23): names the person gave objects in the editor (Rename, F2), key → name. The AI
+  // renames each object in the code and takes its entry out. Optional: absent = the same bytes as before.
+  if (data.names !== undefined) {
+    if (!isObject(data.names)) fail('names', 'must be an object keyed by object key');
+    else {
+      const names = {};
+      const keys = Object.keys(data.names);
+      if (keys.length > LIMITS.maxObjects) fail('names', `at most ${LIMITS.maxObjects} names`);
+      for (const k of keys.slice(0, LIMITS.maxObjects).sort()) {
+        if (!KEY_RE.test(k)) {
+          fail(`names[${JSON.stringify(k)}]`, 'key must match ' + KEY_RE);
+          continue;
+        }
+        const name = readLabel(data.names[k], `names[${JSON.stringify(k)}]`, fail);
+        if (name && name.trim()) names[k] = name.trim();
+      }
+      if (Object.keys(names).length) out.names = names;
+    }
+  }
   return out;
 }
 
@@ -2759,7 +2806,7 @@ function readLevels(v, dim, fail) {
     const where = `levels[${i}]`;
     const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
     if (!isObject(item)) return fail(where, 'must be an object');
-    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion'], where, fail);
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
     if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
     if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
     seen.add(item.id);
@@ -4509,7 +4556,9 @@ const en = {
   // drafted in the ask box and sent with Enter.
   addToScene: 'Add to scene',
   addToSceneN: 'Add {n} to scene',
-  askAiFile: 'Ask your AI…',
+  askAiFile: 'Ask AI about it…',
+  askAddFile: 'Ask AI to add it to the scene…',
+  askAddFileN: 'Ask AI to add these {n} to the scene…',
   addNeedsAi: 'Your AI adds files to the scene. It isn’t connected here.',
   addMissing: 'This file isn’t in the folder.',
   bytes: '{n} B',
@@ -4546,7 +4595,9 @@ const ja                                     = {
   showUsersTip: 'この素材を使っている物だけに絞る',
   addToScene: 'シーンに足す',
   addToSceneN: '{n} 個をシーンに足す',
-  askAiFile: 'AI に頼む…',
+  askAiFile: 'これについて AI に頼む…',
+  askAddFile: 'シーンに入れるよう AI に頼む…',
+  askAddFileN: '{n} 個をシーンに入れるよう AI に頼む…',
   addNeedsAi: '素材をシーンに足すのは AI の仕事です。ここでは AI につながっていません。',
   addMissing: 'この素材はフォルダにありません。',
   search: '名前で探す',
@@ -4906,6 +4957,11 @@ padding:10px;background:var(--gsl-bg);color:var(--gsl-fg);font:13px/1.4 system-u
 .gsl-btn{padding:6px 10px;border:1px solid var(--gsl-line);border-radius:8px;background:var(--gsl-card);color:inherit;font:inherit;cursor:pointer;min-height:32px}
 .gsl-btn:disabled{opacity:.5;cursor:default}
 .gsl-primary{background:var(--gsl-accent);border-color:var(--gsl-accent);color:#fff}
+.gsl-btn.ai{background:var(--ai-soft,rgba(139,124,255,.16));border-color:transparent;color:var(--ai-text,#8b7cff)}
+.gsl-btn.ai.gsl-primary{background:var(--ai,#8b7cff);color:#fff}
+.gsl-btn.ai:disabled{background:var(--gsl-card);border-color:var(--gsl-line);color:var(--gsl-muted)}
+.gsl-spark{margin-right:5px;color:var(--ai,#8b7cff)}
+.gsl-btn.ai.gsl-primary .gsl-spark{color:inherit}
 .gsl-chips{display:flex;gap:6px;flex-wrap:wrap}
 .gsl-more,.gsl-more-menu{display:none}
 .gsl-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border:1px solid var(--gsl-line);border-radius:999px;background:var(--gsl-card);color:inherit;font:inherit;cursor:pointer}
@@ -5280,13 +5336,14 @@ function madeCard(m                                                             
   if (d.files?.add || d.files?.ask) {
     const acts = h('div', 'gsl-acts');
     if (d.files.add) {
-      const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', L('addToScene'));
+      // ✦ (studio-uniforms, 2026-10-23): a new object from a file is the AI's work — the AI's uniform, a draft only.
+      const add = h('button', 'gsl-btn gsl-primary gsl-add-scene ai', `✦ ${L('askAddFile')}`);
       add.type = 'button';
       add.addEventListener('click', () => d.files .add ([m.path]));
       acts.append(add);
     }
     if (d.files.ask) {
-      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
+      const ask = h('button', 'gsl-btn gsl-ask-file ai', `✦ ${L('askAiFile')}`);
       ask.type = 'button';
       ask.addEventListener('click', () => d.files .ask ([m.path]));
       acts.append(ask);
@@ -6662,15 +6719,11 @@ function mountLibrary(root    , deps             )              {
       const pic = thumbFor(row, 128);
       tile.append(pic, name, meta);
       if (pickedFiles.has(row.path)) tile.classList.add('gsl-open');
-      // Dragged onto the Scene row = "Add to scene" (main.ts). Only where an AI can make the object (deps.files.add).
-      if (deps.files?.add && row.exists) {
-        tile.draggable = true;
-        tile.addEventListener('dragstart', (e) => {
-          if (!e.dataTransfer) return;
-          e.dataTransfer.setData(DRAG_FILE, row.path);
-          e.dataTransfer.effectAllowed = 'copy';
-        });
-      }
+      // A file's tile is not dragged onto the Scene row any more (studio-uniforms, 2026-10-23). It used to be "Add to
+      // scene", which drafted a request in the AI box: a hand gesture writing in the AI's place, the thing a hands-on try
+      // found senseless ("+ Level typed into the AI box"). A new object from a file is the AI's work, so it is the
+      // detail's ✦ "Ask AI to add it to the scene…" only. An object's tile still drags (it copies at once, in place).
+      void DRAG_FILE;
       // Shift, or Multi-select: add the file to the pick (or take it out) instead of opening it alone.
       const press = (add         ) => (add || objects?.multi() ? toggleFile(row.path) : open(row.path));
       tile.addEventListener('click', (e) => press(e.shiftKey));
@@ -6847,6 +6900,17 @@ function mountLibrary(root    , deps             )              {
     }
   }
 
+  /** A ✦ button: the AI's spark before the words, violet (styles.ts `.gsl-btn.ai`); it only drafts in the AI box. */
+  function askBtn(cls        , label        )                    {
+    const b = h('button', `${cls} ai`)                     ;
+    b.type = 'button';
+    // The sign as text: the Library is its own tool and draws no shell icons (the spark is the same ✦ the ask box shows).
+    const spark = h('span', 'gsl-spark', '✦');
+    spark.setAttribute('aria-hidden', 'true');
+    b.append(spark, label);
+    return b;
+  }
+
   /**
    * "Add to scene" and "Ask your AI…" for the picked files ("use the Library", 2026-10-18). A new object from a file
    * is code the AI writes, so "Add to scene" drafts that request in the ask box (the file's chip in it, sent with
@@ -6858,16 +6922,16 @@ function mountLibrary(root    , deps             )              {
     const acts = h('div', 'gsl-acts');
     const paths = pickedFiles.size > 1 && pickedFiles.has(row.path) ? [...pickedFiles] : [row.path];
     const many = paths.length > 1;
-    const add = h('button', 'gsl-btn gsl-primary gsl-add-scene', many ? L('addToSceneN', { n: paths.length }) : L('addToScene'));
-    add.type = 'button';
+    // ✦ (studio-uniforms, 2026-10-23): a new object from a file is code, so this is a request — it wears the AI's
+    // uniform (spark, violet, "Ask AI to …"), not a plain "Add to scene" that wrote into the box behind its words.
+    const add = askBtn('gsl-btn gsl-primary gsl-add-scene', many ? L('askAddFileN', { n: paths.length }) : L('askAddFile'));
     add.dataset.action = 'file-add-to-scene';
     const can = !!deps.files .add && row.exists;
     add.disabled = !can;
     if (can) add.addEventListener('click', () => deps.files .add (paths));
     acts.append(add);
     if (deps.files .ask) {
-      const ask = h('button', 'gsl-btn gsl-ask-file', L('askAiFile'));
-      ask.type = 'button';
+      const ask = askBtn('gsl-btn gsl-ask-file', L('askAiFile'));
       ask.dataset.action = 'file-ask';
       ask.addEventListener('click', () => deps.files .ask (paths));
       acts.append(ask);
@@ -7525,8 +7589,22 @@ function uiName(key        )         {
  * - Unnamed (`unstable`): the stem of its picture or model file, else the guessed name (guessNames), else
  *   "Unnamed <kind>" (`t('noname.kind.<w>')`).
  */
+/**
+ * The names the person gave in the editor (studio-uniforms, 2026-10-23; PlacementModel.names), for displayName. WHY one
+ * hook here and not a name passed to every caller: displayName is THE name of an object on screen — the list, the card,
+ * the menus, the ask box's chip, the Library, Undo's tooltip — so a rename shows everywhere at once from one place.
+ * The shell sets it once (the world model of the level on screen); tests and the web demo leave it empty.
+ */
+let givenName                                      = () => undefined;
+function useGivenNames(fn                                     )       {
+  givenName = fn;
+}
+
 function displayName(it                                                              , t                       )         {
   if (it.kinds && it.kinds.includes('ui')) return uiName(it.key);
+  // A name the person gave in the editor (Rename, F2) wins until the AI has put it in the code (useGivenNames).
+  const given = givenName(it.key);
+  if (given) return given;
   if (it.unstable) {
     const stem = fileStem(it.group);
     if (stem) return stem;
@@ -7549,6 +7627,7 @@ __def(__exports, "forgetNames", () => forgetNames);
 __def(__exports, "nameParts", () => nameParts);
 __def(__exports, "isGuessed", () => isGuessed);
 __def(__exports, "uiName", () => uiName);
+__def(__exports, "useGivenNames", () => useGivenNames);
 __def(__exports, "displayName", () => displayName);
 };
 __defs[15] = function (__exports) {
@@ -8105,6 +8184,8 @@ const { toneThumb } = __require(17);
                                                                                                                   
                                          
                                             
+                                                                                                            
+                                   
                                                                                            
                   
                                                                                                                      
@@ -8299,10 +8380,13 @@ function createLibraryObjects(d                    )                     {
       el.append(rows);
       if (one.unstable) {
         el.append(h('p', { class: 'shelf-note' }, h('span', { class: 'muted', text: d.t('noname.tag') }), ' ',
-          h('button', { type: 'button', class: 'link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e       ) => {
-            (e.currentTarget                     ).disabled = true;
-            await d.askName([one.key]);
-          } })));
+          d.nameDraft
+            ? h('button', { type: 'button', class: 'link-btn ai', dataset: { action: 'ask-name' }, onclick: () => d.nameDraft ([one.key]) },
+              h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('ctx.nameAsk'))
+            : h('button', { type: 'button', class: 'link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e       ) => {
+              (e.currentTarget                     ).disabled = true;
+              await d.askName([one.key]);
+            } })));
       }
     }
     const locked = members.every((m) => m.movable === false);
@@ -8313,7 +8397,9 @@ function createLibraryObjects(d                    )                     {
     // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
     const acts = h('div', { class: 'shelf-acts' });
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
-    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi () }));
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi () },
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
     acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);
@@ -8479,11 +8565,12 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
     return report;
   }
   if (Array.isArray(data.levels)) {
-    if (!(opts && opts.level)) {
+    const level = (opts && opts.level) || levelOfCodeless(data);
+    if (!level) {
       warn('this file has levels: pass { level } to applyPlacement');
       return report;
     }
-    data = placementForLevel(data, opts.level);
+    data = placementForLevel(data, level);
   }
   const n = three ? 3 : 2;
   for (const key of Object.keys(data.objects)) {
@@ -9066,6 +9153,26 @@ function clickedKey(e, v) {
 }
 
 /**
+ * The level a game WITHOUT levels in its code builds (studio-uniforms, 2026-10-23): `levelsWas: []` = the person made
+ * Level 2 in the editor and the AI has not added studio.levels() yet, so the game still calls applyPlacement without
+ * { level }. In the editor's frame that is the level on screen (the URL's studioLevel: a copy is built from the game
+ * as it is, its own entries over it); anywhere else Level 1 (the first level without `from`), so the shipped game
+ * keeps the layout it had. Any other file with levels: '' (the warning above — a level's layout never lands on another).
+ */
+function levelOfCodeless(data) {
+  if (!Array.isArray(data.levelsWas) || data.levelsWas.length) return '';
+  let want = '';
+  try {
+    if (typeof window !== 'undefined' && window.parent !== window) want = new URL(window.location.href).searchParams.get('studioLevel') || '';
+  } catch {
+    want = '';
+  }
+  if (want && data.levels.some((l) => l && l.id === want)) return want;
+  const first = data.levels.find((l) => l && !l.from);
+  return first ? first.id : '';
+}
+
+/**
  * The file as one level sees it (levels, 2026-10-22): that level's objects / added / removed / order / motion at the
  * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects). A file without levels comes back as it is; a level the file does not list has nothing to apply.
  */
@@ -9073,7 +9180,7 @@ function placementForLevel(data, id) {
   if (!data || !Array.isArray(data.levels)) return data;
   const l = data.levels.find((x) => x && x.id === id) || {};
   const out = { ...data, objects: l.objects || {} };
-  for (const k of ['added', 'removed', 'order', 'motion']) if (l[k]) out[k] = l[k];
+  for (const k of ['added', 'removed', 'order', 'motion', 'names']) if (l[k]) out[k] = l[k];
   else delete out[k];
   delete out.levels;
   delete out.levelsWas;
@@ -9402,6 +9509,7 @@ __def(__exports, "clipAt", () => clipAt);
 __def(__exports, "trackAt", () => trackAt);
 __def(__exports, "handlesOf", () => handlesOf);
 __def(__exports, "motionAt", () => motionAt);
+__def(__exports, "levelOfCodeless", () => levelOfCodeless);
 __def(__exports, "placementForLevel", () => placementForLevel);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
@@ -9784,7 +9892,7 @@ __defs[24] = function (__exports) {
 // timeline-model.ts
 
 // The timeline's pure logic (studio-timeline, 2026-10-22; CONTRACT.md §1.9): clips and
-// their keys, the pose an object shows at a time, the older motion shape read as a clip, the templates, and the key
+// their keys, the pose an object shows at a time, the older motion shape read as a clip, a new motion, and the key
 // edits the panel makes (set, move, delete, copy / paste, ease). No DOM: unit-tested in test/timeline.test.ts.
 //
 // WHY offsets from the place, not absolute values (Unity's clips hold absolute ones): the object's place
@@ -9905,37 +10013,21 @@ function toClips(m                           , dim     )                {
   return { clips: [{ name: 'Motion', len, repeat, start: true, keys }] };
 }
 
-// ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
+// ----- new motions (studio-no-presets, 2026-10-23) -----
+// Until then this was "templates": the v0.1.13 kinds (Back and forth, Round, Once, Spin) kept as starting points, each
+// with two or five keys the person never placed. A review, on seeing them in the menus: "what is this? presets? why
+// are 'back and forth' and 'round' in there?" — and to "keep just 'Make a motion' and 'Use a saved motion'": "we don't
+// need them" (10/23). A motion is made by showing it (timeline-wire make: where it stands is 0 s, a drag is the next
+// key). A file whose motion goes back and forth still plays as it did: that is its `repeat` (and toClips above reads
+// the older path / spin), never a template.
 
-// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
-                                                                                 
-const TEMPLATES             = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
-
-/**
- * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
- * so the person drags them where they want (in the scene, or on the timeline).
- */
-function fromTemplate(kind          , name        , dim     )             {
-  const d = dim === '3d' ? 3 : 150;
-  const v = (x        , z        ) => (dim === '3d' ? [x, 0, z] : [x, z]);
-  const k = (t        , val          , ease             = DEFAULT_EASE)            => ({ t, v: val, ease });
-  switch (kind) {
-    case 'pingpong':
-      return { name, len: 2, repeat: 'pingpong', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'once':
-      return { name, len: 2, repeat: 'once', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'loop':
-      // A round: right, away, back, home — through the points on a curve (the position's smooth way).
-      return { name, len: 4, repeat: 'loop', keys: { p: [k(0, v(0, 0), 'linear'), k(1, v(d, 0), 'linear'), k(2, v(d, -d), 'linear'), k(3, v(0, -d), 'linear'), k(4, v(0, 0), 'linear')] } };
-    case 'spin': {
-      const r = (a        ) => (dim === '3d' ? [0, a, 0] : [a]);
-      return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
-    }
-    case 'scene':
-      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
-    default:
-      return { name, len: 2, repeat: 'once', keys: {} };
-  }
+/** A motion with no keys yet: the clip menu's "+ Make a motion" on a thing that moves already (filled by the next move). */
+function blankClip(name        )             {
+  return { name, len: 2, repeat: 'once', keys: {} };
+}
+/** A scene (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts). Not a preset: no keys. */
+function sceneClip(name        )             {
+  return { name, len: 4, repeat: 'once', scene: true, keys: {} };
 }
 
 /** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */
@@ -10109,8 +10201,8 @@ __def(__exports, "compose", () => compose);
 __def(__exports, "offsetOf", () => offsetOf);
 __def(__exports, "changedChannels", () => changedChannels);
 __def(__exports, "toClips", () => toClips);
-__def(__exports, "TEMPLATES", () => TEMPLATES);
-__def(__exports, "fromTemplate", () => fromTemplate);
+__def(__exports, "blankClip", () => blankClip);
+__def(__exports, "sceneClip", () => sceneClip);
 __def(__exports, "freeName", () => freeName);
 __def(__exports, "refId", () => refId);
 __def(__exports, "sameT", () => sameT);
@@ -10153,11 +10245,18 @@ const { icon } = __require(21);
                                                 
 const { fillLinkList } = __require(22);
 const { createMorePop } = __require(23);
-const { CHANNELS, clock, keyName, keyTimes, sameT, TEMPLATES } = __require(24);
+const { CHANNELS, clock, keyName, keyTimes, sameT } = __require(24);
 
 /** Starts menu, in two groups: what the loader plays by itself, then what your AI connects in the game's code. */
 const SELF_TRIGGERS                  = ['start', 'time', 'key', 'click', 'after', 'enter'];
 const AI_TRIGGERS                  = ['touch', 'cue', 'say'];
+/**
+ * The "When" menu's order (startsMenu): one group, "Trigger" (studio-no-presets, 2026-10-23: the words asked of Gemini;
+ * a design look: six under one heading read at a glance, and "More" was
+ * one press more with no count behind "the three most used"), most used first; then "Ask AI to Set Up".
+ * (studio-tool-clear had three up front and three under "More".)
+ */
+const WHEN_TRIGGERS                  = ['start', 'click', 'enter', 'key', 'time', 'after'];
 /** "Chest opened!" → "chest-opened" (a cue name the game's code can say as is; CUE_RE in the schema). */
 const cueSlug = (s        ) => s.normalize('NFKD').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'cue';
 
@@ -10216,6 +10315,13 @@ function whensShort(t                                                           
                         
                                                                                                                               
                           
+                                                                                                                              
+                       
+     
+                                                                                                                       
+                                                                                                                    
+     
+                                  
                                                                                                                         
                  
                        
@@ -10241,6 +10347,8 @@ function whensShort(t                                                           
                                        
                           
                
+                                                                                                    
+                
                                                                             
                             
                              
@@ -10349,12 +10457,15 @@ function createTimelinePanel(view                    , act              ) {
     const time = h('span', { class: 'tl-time' }, now, h('span', { class: 'tl-of', text: '/' }), len, h('span', { class: 'tl-of', text: 's' }));
     const auto = h('button', { type: 'button', class: `tl-auto${v.auto ? ' on' : ''}`, dataset: { action: 'tl-auto', part: 'tl-auto' }, 'aria-pressed': String(v.auto),
       title: t(v.auto ? 'tl.autoOn' : 'tl.autoOff'), onclick: () => act.auto(!v.auto) }, h('span', { class: 'tl-dot' }), h('span', { class: 'tl-auto-w', text: t('tl.auto') }));
-    // The clip menu: this object's motions, then "New: <template>", then rename / delete.
+    // The clip menu: this object's motions, then "+ Make a motion" and a new scene, then rename / delete.
     const opts                                    = [];
     if (!v.clips.length) opts.push(['', t('tl.noClip'), true]);
     for (const n of v.clips) opts.push([n, n]);
     opts.push(['-', '──────', true]);
-    for (const k of TEMPLATES) opts.push([`new:${k}`, t('tl.new', { name: t(`tl.tpl.${k}`) }), !v.focus]);
+    // studio-no-presets (2026-10-23): no kinds here any more (Back and forth, Round, Once, Spin — studio-tool-clear had
+    // kept them on a thing that moves already). The review: "we don't need them". "+ Make a motion" is the strip's and
+    // the card's way (show it: the next move is its key); a scene is not a kind (it starts empty, for several objects).
+    opts.push(['new:make', t('tl.make'), !v.focus], ['new:scene', t('tl.new', { name: t('tl.tpl.scene') }), !v.focus]);
     if (c) opts.push(['rename', t('tl.rename')], ['delete', t('tl.delete')]);
     const clipSel = select('tl-clip', t('tl.clip'), opts, c?.name ?? '', (val) => {
       if (val === 'rename') return void renaming(c .name);
@@ -10445,19 +10556,31 @@ function createTimelinePanel(view                    , act              ) {
     else list.splice(i, 1);
     act.setWhen(list.length > 1 ? list : list[0] );
   };
-  /** A "Starts" menu: what the loader plays by itself, then what your AI connects (purple ✦, the AI's colour). */
+  /**
+   * The "When" menu: sentences — "Trigger" (six ways the editor plays by itself), then "Ask AI to Set Up" (studio-no-presets,
+   * 2026-10-23, Gemini's words; studio-tool-clear had three up front, three under "More", one "Ask AI"). Before: ten rows in two groups named "Plays by itself" and "✦ Your AI connects it", with "A cue" —
+   * a hands-on try: "none of it makes sense". What only the AI can wire (the player touching it, a moment in the game's own
+   * code) is one row, "Ask AI: make it move when…", which puts the words in the chat box; a file that already has one of
+   * those shows it as it is ("set up by your AI"), so the menu never reads blank. `groups` = false: one flat list (⋯'s
+   * other ways, where the optgroups would only be noise).
+   */
   const startsMenu = (part        , label        , w            , v              , i        , groups         ) => {
     const s = h('select', { 'aria-label': label, title: w.on === 'say' && w.say ? `${label}: ${w.say}` : label, dataset: { part, ...(i ? { i: String(i) } : {}) } });
-    for (const [glabel, list] of [[t('tl.when.self'), SELF_TRIGGERS], [`✦ ${t('tl.when.ai')}`, AI_TRIGGERS]]                                    ) {
-      const g = groups ? h('optgroup', { label: glabel }) : s;
-      for (const on of list) {
-        const o = h('option', { value: on, text: t(`tl.when.${on}`) });
-        if (on === 'after' && !v.afterOpts.length) o.disabled = true;
-        if (on === w.on) o.selected = true;
-        g.append(o);
-      }
-      if (g !== s) s.append(g);
-    }
+    const add = (g             , on               , text = t(`tl.when.${on}`)) => {
+      const o = h('option', { value: on, text });
+      if (on === 'after' && !v.afterOpts.length) o.disabled = true;
+      if (on === w.on) o.selected = true;
+      g.append(o);
+    };
+    const self = groups ? h('optgroup', { label: t('tl.when.selfHead') }) : s;
+    // "After another motion ends" only when there is another motion to follow (or it is the one chosen): a row that
+    // could only be greyed out is a row to read for nothing (the design look of 10/23).
+    for (const on of WHEN_TRIGGERS) if (on !== 'after' || v.afterOpts.length || w.on === 'after') add(self, on);
+    const ai = groups ? h('optgroup', { label: t('tl.when.aiHead') }) : s;
+    if (w.on === 'touch' || w.on === 'cue') add(ai, w.on, t(`tl.when.${w.on}Now`));
+    add(ai, 'say', t(w.on === 'say' ? 'tl.when.sayNow' : 'tl.when.say'));
+    if (self !== s) s.append(self);
+    if (ai !== s) s.append(ai);
     s.addEventListener('change', () => {
       const on = s.value                 ;
       sendWhen(v, i, fresh(on, v));
@@ -10477,7 +10600,14 @@ function createTimelinePanel(view                    , act              ) {
       // Just attached (studio-motion-flow): say so where the "when" is chosen, and ask the question the menu answers.
       if (v.attached) items.push(h('span', { class: 'tl-attached', dataset: { part: 'tl-attached' }, text: `✓ ${t('tl.attached', { name: v.attached })}` }),
         h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
-      else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
+      // Just made by moving it (studio-tool-clear): what it does now and how to see it, then the next question.
+      // Making (studio-no-presets): the same line says the next move adds a second — without the name (the row and
+      // the card say it; a design look of the first pictures: the long line pushed "When" ▾ off the plate).
+      else if (v.made) {
+        const said = `✓ ${t(v.making === 'more' ? 'tl.made.more' : 'tl.made', { name: v.rows.find((r) => r.key === v.focus)?.label ?? v.focus ?? '', t: Math.round(v.made * 10) / 10 })}`;
+        items.push(h('span', { class: 'tl-attached', title: said, dataset: { part: 'tl-made' }, text: said }),
+        h('span', { class: 'tl-lbl', text: t('tl.whenAsk') }));
+      } else items.push(h('span', { class: 'tl-lbl', text: t('tl.starts') }));
       items.push(startsMenu('tl-starts', t('tl.starts'), w, v, 0, true), ...whenField(w, v, (x) => sendWhen(v, 0, x)));
       // The other ways it starts (studio-timeline-2's "or") live in ⋯; the line says there are some ("+1").
       const others = (v.whens?.length ?? 1) - 1;
@@ -10488,12 +10618,19 @@ function createTimelinePanel(view                    , act              ) {
       if (v.trying) items.push(h('button', { type: 'button', class: 'icon-btn tl-try-this on', title: t('tl.try.stop'), 'aria-label': t('tl.try.stop'), dataset: { part: 'tl-try-this' }, onclick: () => act.tryStop() }, icon('pause')));
       else if (mine) items.push(h('button', { type: 'button', class: `icon-btn tl-try-this${mine.ai ? ' ai' : ''}`, title: t(mine.ai ? 'tl.try.aiTip' : 'tl.try.tip', { name: mine.label }),
         'aria-label': t('tl.try.tip', { name: mine.label }), dataset: { part: 'tl-try-this', cue: mine.id }, onclick: () => act.tryCue(mine.id) }, icon('play')));
+      // "Done" (Esc's button) last, after "When" ▾: between the line and the menu it read as "done with When" (the design look).
+      if (v.making === 'more' && act.done) items.push(h('button', { type: 'button', class: 'tl-done', dataset: { part: 'tl-done', action: 'tl-done' }, title: t('tl.make.doneTip'), onclick: () => act.done () }, t('tl.make.done')));
       return items;
     }
     if (v.focus) {
       // An object with no motion yet (studio-motion-flow: "+ New motion" lands here): what makes one, in one line.
       const name = v.rows.find((r) => r.key === v.focus)?.label ?? v.focus;
-      return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: t('tl.when.first', { name }) })];
+      // studio-tool-clear: the time line already past 0 s (the strip's "Make a motion for this" opens at 1 s): one move
+      // makes the motion — say where it is at 0 s and what to do now.
+      const at = Math.round(v.time * 10) / 10;
+      // studio-no-presets: "Make a motion" — the words of the brief (the review, 10/23): drag it there; Esc stops.
+      const words = v.making === 'drag' ? t('tl.make.drag', { name }) : at > 0 ? t('tl.when.firstAt', { name, t: at }) : t('tl.when.first', { name });
+      return [h('span', { class: 'tl-lbl tl-first', dataset: { part: 'tl-first' }, text: words })];
     }
     return [h('span', { class: 'tl-lbl tl-first', text: t('tl.when.none') })];
   }
@@ -10947,6 +11084,7 @@ function createTimelinePanel(view                    , act              ) {
 
 __def(__exports, "SELF_TRIGGERS", () => SELF_TRIGGERS);
 __def(__exports, "AI_TRIGGERS", () => AI_TRIGGERS);
+__def(__exports, "WHEN_TRIGGERS", () => WHEN_TRIGGERS);
 __def(__exports, "cueSlug", () => cueSlug);
 __def(__exports, "whenShort", () => whenShort);
 __def(__exports, "whensShort", () => whensShort);
@@ -11253,7 +11391,9 @@ function createLibraryMotions(d                    )                     {
       acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'motion-attach' }, text: d.t('lib.motion.attach', { name: name(target) }),
         onclick: () => (d.attach(target, m.name), d.changed()) }));
     }
-    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi () }));
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi () },
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-rename' }, text: d.t('tl.rename'), onclick: rename }));
     acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'motion-duplicate' }, text: d.t('lib.motion.duplicate'), onclick: () => {
       const n = d.duplicate(m.name);
@@ -11523,15 +11663,84 @@ __def(__exports, "createMotionDrag", () => createMotionDrag);
 };
 __defs[28] = function (__exports) {
 'use strict';
+// tool-off.ts
+
+// A dimmed tool of the strip pressed (studio-tool-clear, 2026-10-23). The strip keeps the same four tools for every
+// object (bridge/handles.ts); one that does not work on the pick is dimmed, and a press on it (or its key, or ⌘K)
+// comes here as placement/tool-off. The editor's small menu opens at the button: the why in one sentence (the
+// button's own tooltip, bridge/handles.ts OFF_LINES), then what can be done — never a sentence that ends on "you
+// can't" (the brief, from a hands-on try: "the strip lost Move": the button was hidden and nothing said why).
+//
+//   the game moves its place / height  →  "Set where it starts" / "Set the height it starts at" (bridge/hold.ts
+//                                          startSpot: Move and Height work again and are chosen) · Ask AI
+//   the game turns it / sizes it       →  Ask AI (a start angle or size would not show: hold.ts)
+//   a ground held still                →  "Make movable" (the card's and the menu's own row) · Ask AI
+//   the game's rules lock it           →  Ask AI to change the rule
+//   it cannot take the tool            →  Ask AI
+//
+// WHY the editor's menu (context-menu.ts) and not words in the game page: the rows act in the editor (the chat box,
+// the hold), and the menu already has the glass, the keys, Esc, a finger's size — the Motion button's menu is the
+// same menu, from the same strip (motion-tool.ts).
+                                                
+                                                   
+
+                                                           
+
+                              
+                                                                 
+                                                                                                           
+                            
+                                                                                                         
+                                
+                                                                                                                   
+                                       
+ 
+
+/** The menu's rows for a dimmed `tool` on `key`, under its `line` (the why, already in the person's language). */
+function toolOffEntries(d             , key        , tool           , why        , line        )              {
+  const out              = [{ note: line }];
+  const ask = (label        , text        ) => {
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform, after a line, so it is not read as one of the editor's own rows.
+    if (d.ask) out.push(...(out.length > 1 ? [{ sep: true }         ] : []), { id: 'tool-off-ask', label: d.t(label), ai: true, run: () => d.ask (d.t(text)) });
+  };
+  if (why === 'game') {
+    if (tool === 'move' || tool === 'lift') {
+      out.push({ id: 'tool-off-start', label: d.t(tool === 'move' ? 'tooloff.start.move' : 'tooloff.start.lift'), run: () => (d.unhold(key), d.choose(tool)) });
+      ask('tooloff.ask.moves', 'tooloff.askText.moves');
+    } else ask('tooloff.ask', tool === 'rotate' ? 'tooloff.askText.turn' : 'tooloff.askText.size');
+  } else if (why === 'ground') {
+    out.push({ id: 'tool-off-unhold', label: d.t('hold.free'), run: () => (d.unhold(key), d.choose(tool)) });
+    ask('tooloff.ask', `tooloff.askText.${tool}`);
+  } else if (why === 'locked') ask('tooloff.ask.rule', 'tooloff.askText.rule');
+  else ask('tooloff.ask', `tooloff.askText.${tool}`);
+  return out;
+}
+
+__def(__exports, "toolOffEntries", () => toolOffEntries);
+};
+__defs[29] = function (__exports) {
+'use strict';
 // motion-tool.ts
 
 // The Motion button in the object's tool strip (studio-motion-tool, 2026-10-22). The strip itself is the game page's
 // (bridge/handles.ts draws it, bridge/input.ts reports the press as placement/motion-press); this file decides what
 // the button shows and what a press does, with the editor's own pieces — nothing new underneath:
-//   no motion yet  →  a small menu at the button: New motion (Back and forth / Round / Once / Spin, timeline-model
-//                     TEMPLATES) and From the Library (its motions). A choice puts it on the thing and opens the
-//                     timeline with "✓ attached · When does it move?" (timeline-wire show(), as a drop does since v0.1.19)
+//   no motion yet  →  a small menu at the button, two rows under "No motion yet":
+//                       Make a motion           → the timeline opens on it at 1 s, where it stands now being 0 s: one
+//                                                 line says "drag it where it should move (Esc to cancel)"; the drag
+//                                                 is the 1 s key, it plays, and each next move adds a second
+//                                                 (timeline-wire make(), studio-no-presets 2026-10-23)
+//                       Use a saved motion      → the same menu again with the Library's motions (only when it has
+//                                                 some); a choice puts it on the thing, "✓ attached · When?" open
 //   a motion       →  the timeline opens on it. The button wears a small dot ("this thing moves").
+//
+// studio-tool-clear (2026-10-23): until then a press listed kinds first — "New motion: Back and forth / Round / Once /
+// Spin" — and a hands-on try on a neon runner: "this makes no sense at all". The day before, motion had been
+// made a timeline with keys (Unity / Blender), and a list of kinds is the opposite: two keys the person never placed,
+// "Round" and "Once" being repeat settings, not motions. The kinds are gone from the strip (the design review: drop
+// them, the repeat lives in the timeline's ⋯); the one way in is "move it on the timeline".
+// studio-no-presets (2026-10-23): a review, on the kinds still in the timeline's own menu and the words: "what is
+// this? presets?" — and to keeping only the two ways in: "we don't need them" (no kinds anywhere now).
 //
 // WHY (a review of the strip, 2026-10-22: "wouldn't a motion button go well here?"): v0.1.19 attaches a motion by
 // dragging it from the Library onto the thing, and the card has "+ New motion" — but with the thing picked in the game,
@@ -11542,14 +11751,8 @@ __defs[28] = function (__exports) {
 // motions are names (words, any number of them), and the game page has only icon rows. The context menu already has
 // the glass, the keys, Esc, a finger's size and "a press outside only closes it".
 //
-// WHY no "Empty" row: an empty motion has no keys and nothing moves until the person moves the thing on the timeline —
-// the card's "+ New motion" is that way in. The strip's menu is the quick way: pick a kind, it moves at once.
                                                                    
                                                                 
-                                                    
-
-/** The menu's kinds, in the timeline's order (its clip menu's "New: …"), without "empty" (see the header). */
-const STRIP_TEMPLATES             = ['pingpong', 'loop', 'once', 'spin'];
 
                                  
                                                                  
@@ -11564,8 +11767,8 @@ const STRIP_TEMPLATES             = ['pingpong', 'loop', 'once', 'spin'];
                              
                                                                                  
                     
-                                                                                                              
-                                          
+                                                                                                                             
+                          
                                                                                         
                                           
                                                     
@@ -11607,16 +11810,24 @@ function createMotionTool(d                ) {
     d.send(m);
   }
 
-  /** The rows of the menu for `key` (no motion yet): the kinds, then the Library's motions when it has any. */
+  // Where the last menu opened (the second step, "Use a saved motion", opens in the same place).
+  let last                                                                       = null;
+  /** The rows of the menu for `key` (no motion yet): what it is now, then make one / use a saved one. */
   function entries(key        )              {
-    const out              = [{ head: d.t('motion.tool.new') }];
-    for (const kind of STRIP_TEMPLATES) out.push({ id: `motion-new-${kind}`, label: d.t(`tl.tpl.${kind}`), run: () => d.make(key, kind) });
-    const lib = d.library();
-    if (lib.length && d.room(key)) {
-      out.push({ sep: true }, { head: d.t('motion.tool.lib') });
-      for (const m of lib) out.push({ id: `motion-lib-${m.name}`, label: m.name, key: `${Math.round(m.len * 10) / 10} s`, run: () => d.attach(key, m.name) });
-    }
+    const out              = [{ note: d.t('motion.tool.none') }, { id: 'motion-make', label: d.t('motion.tool.make'), run: () => d.make(key) }];
+    if (d.library().length && d.room(key)) out.push({ id: 'motion-lib', label: d.t('motion.tool.saved'), run: () => savedMenu(key) });
     return out;
+  }
+  /** The second step: the Library's motions, each with its length. */
+  function libEntries(key        )              {
+    const out              = [{ head: d.t('motion.tool.savedHead') }];
+    for (const m of d.library()) out.push({ id: `motion-lib-${m.name}`, label: m.name, key: `${Math.round(m.len * 10) / 10} s`, run: () => d.attach(key, m.name) });
+    return out;
+  }
+  function savedMenu(key        ) {
+    if (!last || d.target() !== key) return;
+    d.menu(libEntries(key), last.x, last.y, last.o, last.btn);
+    sync();
   }
 
   /**
@@ -11639,7 +11850,8 @@ function createMotionTool(d                ) {
     // the strip off screen): the game's middle.
     const x = btn ? (touch ? btn.left + btn.width / 2 : btn.left) : fx + (f?.width ?? 0) / 2;
     const y = btn ? (touch ? btn.top : btn.bottom + 6) : fy + (f?.height ?? 0) / 2;
-    d.menu(entries(key), x, y, { place: 'motion', touch, keyboard, label: d.t('motion.tool.menu') }, btn);
+    last = { x, y, o: { place: 'motion', touch, keyboard, label: d.t('motion.tool.menu') }, btn };
+    d.menu(entries(key), x, y, last.o, btn);
     sync();
   }
 
@@ -11651,13 +11863,12 @@ function createMotionTool(d                ) {
     sent = '';
   }
 
-  return { sync, press, reset, entries, label, words, state, target: () => d.target() };
+  return { sync, press, reset, entries, libEntries, label, words, state, target: () => d.target() };
 }
 
-__def(__exports, "STRIP_TEMPLATES", () => STRIP_TEMPLATES);
 __def(__exports, "createMotionTool", () => createMotionTool);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -11911,7 +12122,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // pose-compare.ts
 
@@ -11964,7 +12175,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -12103,7 +12314,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // motion-library.ts
 
@@ -12232,7 +12443,7 @@ __def(__exports, "libOf", () => libOf);
 __def(__exports, "MotionLibrary", () => MotionLibrary);
 __def(__exports, "motionLibrary", () => motionLibrary);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -12253,7 +12464,7 @@ __defs[33] = function (__exports) {
 // turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
                                                                                                       
 const { whenOf } = __require(19);
-const { motionLibrary } = __require(32);
+const { motionLibrary } = __require(33);
 const { CHANNELS, toClips } = __require(24);
 
 /** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
@@ -12451,7 +12662,7 @@ __def(__exports, "attachAll", () => attachAll);
 __def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -12475,9 +12686,9 @@ __defs[34] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 __require(0);
-const { hasLayer, orderOfLayer } = __require(31);
-const { roundPose, samePose } = __require(30);
-const { MotionStore } = __require(33);
+const { hasLayer, orderOfLayer } = __require(32);
+const { roundPose, samePose } = __require(31);
+const { MotionStore } = __require(34);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -12557,6 +12768,14 @@ class PlacementModel {
    * rest of the file. Each object whose motion changed is one Save count and a dot on its row.
    */
            motion = new MotionStore();
+  /**
+   * Names the person gave in the editor (Rename, F2; studio-uniforms 2026-10-23), key → name, and the last saved ones.
+   * WHY here and not asked of the AI (as "Rename…" did before, by typing "Rename it to " into the AI box): a name is
+   * something the hand can do at once — the editor shows it everywhere, ⌘Z takes it back, and the code (the object's
+   * key / name) follows on Save like a move (placement.json `names`). Each renamed object is one Save count.
+   */
+          names = new Map                ();
+          savedNames = new Map                ();
 
   /** Load the saved file (before the game reports its items). */
   restore(file                      )       {
@@ -12568,6 +12787,8 @@ class PlacementModel {
     if (file?.dim) this.dim = file.dim;
     this.motion.dim = this.dim;
     this.motion.restore(file?.motion);
+    this.names = new Map(Object.entries(file?.names || {}));
+    this.savedNames = new Map(this.names);
     if (!file || !file.objects) return;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
     for (const o of file.order || []) this.fileOrders.set(o.in, o);
@@ -12918,8 +13139,29 @@ class PlacementModel {
   }
 
   /** Unsaved changes: moved objects, copies, deletions and reordered lists, one each. */
+  /** The person's name for `key` (Rename), if any. */
+  nameOf(key        )                     {
+    return this.names.get(key);
+  }
+  /** Every name the person gave (displayName shows them). */
+  allNames()                              {
+    return this.names;
+  }
+  /** Rename `key` (null / '' = back to the game's own name). Returns the name it had (null = none), for undo. */
+  rename(key        , name               )                {
+    const was = this.names.get(key) ?? null;
+    const v = (name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 120); // 120 = the file's label limit (schema LIMITS.maxLabel)
+    if (v) this.names.set(key, v);
+    else this.names.delete(key);
+    return was;
+  }
+          namesChanged()           {
+    const keys = new Set([...this.names.keys(), ...this.savedNames.keys()]);
+    return [...keys].filter((k) => this.names.get(k) !== this.savedNames.get(k));
+  }
+
   dirty()         {
-    let n = 0;
+    let n = this.namesChanged().length;
     for (const [k, p] of this.current) {
       if (this.copyFrom.has(k) || this.removed.has(k)) continue;
       if (!samePose(p, this.saved.get(k), this.dim)) n++;
@@ -12961,6 +13203,7 @@ class PlacementModel {
       if (now.join('\n') !== was.join('\n')) for (const k of outOfOrder(was, now)) out.add(k);
     }
     for (const k of this.motion.changedKeys()) out.add(k);
+    for (const k of this.namesChanged()) out.add(k);
     return out;
   }
 
@@ -13002,6 +13245,9 @@ class PlacementModel {
     if (removed.length) file.removed = removed;
     const motion = this.motion.result(this.dim, (k) => this.isRemoved(k));
     if (motion) file.motion = motion;
+    // A deleted object's new name goes with it (the AI takes the object out; there is nothing to rename).
+    const names = [...this.names].filter(([k]) => !this.isRemoved(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    if (names.length) file.names = Object.fromEntries(names);
     return file;
   }
 
@@ -13012,14 +13258,15 @@ class PlacementModel {
     this.savedRemoved = new Set(this.removed);
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
     this.motion.markSaved();
+    this.savedNames = new Map(this.names);
   }
 }
 
-__def(__exports, "roundPose", () => __require(30).roundPose);
-__def(__exports, "samePose", () => __require(30).samePose);
+__def(__exports, "roundPose", () => __require(31).roundPose);
+__def(__exports, "samePose", () => __require(31).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -13072,19 +13319,53 @@ const en = {
   'lib.motion.renameTip': 'The motion’s name (double-click to rename)',
   'motion.none': 'None',
   // studio-motion-flow (a hands-on try of v0.1.18, 2026-10-22: "I couldn't tell how to make a motion and put it on objects").
-  'motion.make': 'New motion',
-  'motion.makeTip': 'Open the timeline on this: pick a moment, then move it',
-  'motion.fromLib': 'From Library',
+  'motion.make': 'Make a motion',
+  'motion.makeTip': 'Show it: where it stands is the start, then drag it where it should move',
+  'motion.fromLib': 'Use a saved motion',
   'motion.pickFirst': 'Pick an object to make its motion',
   'motion.drag.line': 'Drop on an object to attach “{name}”',
   'motion.drag.cancel': 'Esc to cancel',
   'motion.drag.cancelTouch': 'let go elsewhere to cancel',
   'motion.drag.onto': 'Attach “{name}” to {target}',
-  'lib.motion.new': 'New motion',
+  'lib.motion.new': 'Make a motion',
   'lib.motion.newFor': 'for {name}',
   'lib.motion.pickFirst': 'Pick an object first',
   'lib.motion.dragTip': 'Drag it onto an object to attach',
-  'tl.when.first': 'Pick a moment on the ruler, then move {name}: that starts its motion',
+  // studio-tool-clear (2026-10-23): the strip's dimmed tools, the Motion button's two ways in, the "When" menu as sentences.
+  'tl.when.firstAt': '{name} is at 0 s where it stands. Now move it to where it should be at {t} s.',
+  'tl.made': '{name} moves from 0 s to {t} s. Press ▶ at the left to watch it.',
+  // studio-no-presets (2026-10-23): the "When" menu in the words asked of Gemini (the wording asked of Gemini).
+  'tl.when.selfHead': 'Trigger',
+  'tl.when.aiHead': 'Ask AI to Set Up',
+  'tl.when.touchNow': 'On Collision (AI)',
+  'tl.when.cueNow': 'On Signal (AI)',
+  'tl.when.sayNow': 'As you asked in the chat',
+  // "Make a motion" by showing it (studio-no-presets; the kinds — Back and forth, Round, Once, Spin — are gone).
+  'tl.make': '+ Make a motion',
+  'tl.make.drag': 'Drag {name} to where it should move (Esc to cancel)',
+  'tl.made.more': 'Moves 0–{t} s. Keep moving to add a second.',
+  'tl.make.done': 'Done',
+  'tl.make.doneTip': 'Stop adding keys (Esc)',
+  'motion.tool.none': 'No motion yet.',
+  'motion.tool.make': 'Make a motion',
+  'motion.tool.saved': 'Use a saved motion',
+  'motion.tool.savedHead': 'Saved motions',
+  'tooloff.menu': 'Why this tool is off',
+  'tooloff.start.move': 'Set where it starts',
+  'tooloff.start.lift': 'Set the height it starts at',
+  'tooloff.ask': 'Ask AI to change it…',
+  'tooloff.ask.moves': 'Ask AI to change how it moves…',
+  'tooloff.ask.rule': 'Ask AI to change the rule…',
+  'tooloff.askText.moves': 'Change how this moves: ',
+  'tooloff.askText.turn': 'Change how this turns: ',
+  'tooloff.askText.size': 'Change how its size changes: ',
+  'tooloff.askText.rule': 'Let me move this in the editor (change the game’s rule for it)',
+  'tooloff.askText.move': 'Move this: ',
+  'tooloff.askText.lift': 'Change its height: ',
+  'tooloff.askText.rotate': 'Turn this: ',
+  'tooloff.askText.scale': 'Resize this: ',
+  'hold.gameStart': 'Your game moves this while playing. Where you put it is where it starts; the game moves it on from there.',
+  'tl.when.first': 'Pick a later time on the ruler, then move {name} there: that makes its motion',
   'tl.attached': '“{name}” attached',
   'tl.whenAsk': 'When does it move?',
   'tl.coach.title': 'Make a motion in 3 steps',
@@ -13106,17 +13387,12 @@ const en = {
   'tl.clip': 'Motion',
   'tl.noClip': 'No motion yet',
   'tl.new': 'New: {name}',
-  'tl.tpl.empty': 'Empty',
-  'tl.tpl.pingpong': 'Back and forth',
-  'tl.tpl.loop': 'Round',
-  'tl.tpl.once': 'Once',
-  'tl.tpl.spin': 'Spin',
   'tl.rename': 'Rename…',
   'tl.renameTip': 'The motion’s name (Enter to keep it)',
   'tl.delete': 'Take it off this object',
   'tl.repeat': 'Repeat',
   'tl.repeat.once': 'Once',
-  'tl.repeat.loop': 'Loop',
+  'tl.repeat.loop': 'Repeats',
   'tl.repeat.pingpong': 'Back and forth',
   'tl.ease': 'Keys',
   'tl.easeTip': 'How the picked keys go on to the next one',
@@ -13137,11 +13413,11 @@ const en = {
   'tl.area.label': 'Area · {size}',
   'tl.try.say': '{name}',
   'tl.try.touch': 'Touch {name}',
-  'tl.try.enter': 'Enters {name}’s area',
+  'tl.try.enter': 'Comes near {name}',
   'tl.try.click': 'Click {name}',
   'tl.try.start': 'Game starts',
   'tl.try.stop': 'Stop',
-  'tl.try.aiTip': 'Try it: as if “{name}” just happened (in the game, your AI connects this one)',
+  'tl.try.aiTip': 'Try it: as if “{name}” just happened (in the game, your AI sets this one up)',
   'tl.try.tip': 'Try it: as if “{name}” just happened',
   'tl.try': 'Try',
   'tl.then.reset': 'Goes back',
@@ -13159,29 +13435,27 @@ const en = {
   'tl.when.afterTip': 'Seconds after the game starts',
   'tl.when.none': 'Pick an object with a motion to say when it plays.',
   'tl.when.always': 'Always',
-  'tl.when.short.say': 'Words',
-  'tl.when.short.cue': 'Cue',
+  'tl.when.short.say': 'Your words',
+  'tl.when.short.cue': 'Game event',
   'tl.when.short.touch': 'Touch',
-  'tl.when.short.enter': '▣ Area',
+  'tl.when.short.enter': '▣ Near',
   'tl.when.short.after': 'After',
   'tl.when.short.click': 'Click',
   'tl.when.short.key': 'Key',
   'tl.when.short.time': 'Timer',
   'tl.when.short.start': 'Start',
-  'tl.when.say': 'In the chat, to your AI…',
-  'tl.when.cue': 'A cue',
-  'tl.when.touch': 'The player touches this',
-  'tl.when.enter': 'The player enters an area',
-  'tl.when.after': 'Another motion ends',
-  'tl.when.click': 'This is clicked / tapped',
-  'tl.when.key': 'A key is pressed',
-  'tl.when.time': 'After some seconds',
-  'tl.when.start': 'The game starts',
-  'tl.when.ai': 'Your AI connects it',
-  'tl.when.self': 'Plays by itself',
+  'tl.when.say': 'Custom with AI…',
+  'tl.when.cue': 'Moves when something happens in the game',
+  'tl.when.touch': 'Moves when the player touches it',
+  'tl.when.enter': 'When Near',
+  'tl.when.after': 'After Previous Move',
+  'tl.when.click': 'On Tap / Click',
+  'tl.when.key': 'On Key Press',
+  'tl.when.time': 'After Delay',
+  'tl.when.start': 'On Game Start',
   'tl.stops': 'Stops',
   'tl.startsTip': 'When this motion starts',
-  'tl.starts': 'Starts',
+  'tl.starts': 'When',
   'tl.usesTip': 'This motion is in the Library and on several objects: changing its keys changes it on all of them',
   'tl.uses': 'on {n}',
   // studio-timeline-2: the path's points, several ways to start, scene motions.
@@ -13203,7 +13477,7 @@ const en = {
   'tl.when.orMoreTip': 'Other ways it starts (in ⋯)',
   'tl.when.also': 'Also starts',
   'tl.usesLong': 'On {n} objects: changing its keys changes all of them',
-  'ctx.askMotion': 'Ask your AI about “{name}”…',
+  'ctx.askMotion': 'Ask AI about “{name}”…',
   'motion.ask': 'Ask your AI about “{name}”…',
   'ask.motion': 'e.g. start when the player walks up · slower',
   'tl.tpl.scene': 'Scene — several objects',
@@ -13280,6 +13554,10 @@ const en = {
   'ask.send': 'Send',
   'ask.sent': 'Sent. You can keep editing.',
   'ask.game': 'Ask your AI to change the game…',
+  // The whole-game placeholder by presence (ai-presence.ts): the AI's own name when it is there; "a note" when not
+  // sure — a note waits to be read, which is the truth then (short: the presence words share the field's line).
+  'ask.gameAi': 'Ask {ai} to change the game…',
+  'ask.gameKept': 'Write a note for {ai}…',
   'ai.waitingSaved': 'Saved and sent to your AI. Waiting for a reply…',
   'ai.waitingAsk': '“{text}” sent to your AI. Waiting for a reply…',
   'ai.asked': '“{text}” →',
@@ -13310,13 +13588,44 @@ const en = {
   'ai.waiting': 'Sent your {what} to your AI. Waiting for a reply…',
   // The one calm line when the request could not wake the AI right now (hands-on test 2026-10-19: "Your AI
   // isn't watching… type look in Claude Code or Codex, or run /arrange" was the AI's plumbing pushed onto the person).
-  // Not a warning: the request is kept and goes in by itself. 'ai.call' is the one thing they can do, if they want.
-  'ai.nudge': 'Your request is in. It goes into the game the next time your AI runs.',
-  'ai.call': 'Call your AI',
-  'ai.callTip': 'Copies a word to paste in your AI’s chat',
+  // Not a warning. ai presence (a hands-on review 2026-10-23): "Your request is in. It goes into the game the next time your AI
+  // runs." read as "I asked and nothing happened" — a promise about someone who may not be there. Now the fact: what
+  // happened (a note was kept) and what it means (the game doesn't change until the AI reads it), with "How to open".
+  // {ai} = Claude / Codex / your AI (ai.name.*), {ai2} = the same in the second half (ja: a shorter name the second time).
+  'ai.kept': 'Kept as a note for {ai}. Nothing in the game changes until {ai2} reads it.',
+  // The AI has it (sent / seen / received, or working with no words of its own): one phrase, then "Done".
+  'ai.onIt': '{Ai} is on it',
+  // Working with nothing new for QUIET_WORK_MS (ai-presence.ts): the time, so silence looks alive.
+  'ai.still': 'Still working · {n} min',
+  // The one word the arrange skill knows (SKILL.md §3): "type look" is how Codex (and an AI without hooks) reads notes.
   'ai.callText': 'look',
   'ai.called': 'Copied “look”. Paste it in your AI’s chat.',
   'ai.callFail': 'Type “look” in your AI’s chat.',
+  // Is the AI there, said next to the ask field before typing (ai-presence.ts). A dot only on the first two (proof
+  // from this moment). "isn't watching", not "isn't open": a heartbeat gone says the first, not the second.
+  'ai.name.claude': 'Claude',
+  'ai.name.codex': 'Codex',
+  'ai.name.any': 'your AI',
+  'ai.name2.claude': 'Claude',
+  'ai.name2.codex': 'Codex',
+  'ai.name2.any': 'your AI',
+  'ai.p.watching': '{Ai} is watching',
+  'ai.p.working': '{Ai} is working',
+  'ai.p.look': 'Codex reads it when you type “{word}”',
+  'ai.p.away': '{Ai} isn’t watching',
+  'ai.p.unsure': 'Not sure {ai} is open',
+  'ai.p.how': 'How to open',
+  'ai.p.tip': 'What this means',
+  // Pressing the words: one line of what is true and what to do (it replaces "Call your AI", which copied a word
+  // without saying why). Written so it holds whether the AI is open-but-busy or closed.
+  'ai.open.watching': '{Ai} is watching this game: what you send reaches it within seconds.',
+  'ai.open.working': '{Ai} is working on a request. A new note goes in when it’s done.',
+  // "whatever you type next" read as "type in this field" (design review 2026-10-23): say where — to Claude Code.
+  'ai.open.claude': 'If Claude Code is open in this game’s folder, it sees this note the next time you say anything to it. If it isn’t, open Claude Code in that folder.',
+  'ai.open.codex': 'In Codex, in this game’s folder, type “{word}”: it reads your notes.',
+  'ai.open.any': 'Open your AI in this game’s folder and type “{word}”: it reads your notes.',
+  'ai.open.copy': 'Copy “{word}”',
+  'ai.open.close': 'Close',
   'ai.received': 'Your AI has it',
   'ai.working': 'Your AI is working on it…',
   // The AI's question is answered here (hands-on test 2026-10-19: "answer it in Claude Code" sent them to
@@ -13331,7 +13640,7 @@ const en = {
   'ai.cmp.size': 'size',
   'ask.answer': 'Answer your AI…',
   'ai.what.answer': 'answer',
-  'ai.done': 'Done.',
+  'ai.done': 'Done',
   'ai.done1': '1 thing changed',
   'ai.doneN': '{n} things changed',
   'ai.failed': 'Your AI stopped before finishing.',
@@ -13341,9 +13650,6 @@ const en = {
   'ai.more.codex': 'More in Codex',
   'ai.more.any': 'More in your AI',
   'ai.reload': 'Reload the game',
-  // AI feel (2026-10-16): the line above the input, from Enter to the change on screen.
-  'ai.sent': 'Sent to your AI',
-  'ai.seen': 'Your AI has it',
   // Ask while playing (§3.5, 2026-10-20): the small line and field over the game in ▶ Play (bridge/play-ask.ts).
   'play.ask': 'Ask your AI',
   'play.askTip': 'Ask your AI about this moment (`). The game keeps running.',
@@ -13490,7 +13796,7 @@ const en = {
   // Held by the editor (bridge/hold.ts, a hands-on try of 2026-10-19): a ground / road / sky, and what the game moves.
   'hold.ground': 'Ground, road, or sky. It stays put so a stray drag can’t move it.',
   'hold.free': 'Make movable',
-  'hold.game': 'Your game moves this by itself, so a new spot won’t stick, even after you save.',
+  'hold.game': 'Your game moves this while playing. You choose only where it starts.',
   'hold.gameParts': 'Your game changes the {what} of this by itself, so changing it here won’t stick.',
   'hold.still': 'You can still change its {what}.',
   'hold.part.move': 'place',
@@ -13577,14 +13883,21 @@ const en = {
   // The top bar's level crumb and "+ Level" (level-crumb, 2026-10-22; level-switch.ts).
   'level.prev': 'Previous level',
   'level.next': 'Next level',
-  'level.add': 'Level',
-  'level.addTip': 'Add a level: make a second level from this one',
+  'level.add': 'Levels',
+  'level.addTip': 'Levels: make a second level from this one, or ask AI for one',
   // Written into the ask field by "+ Level" in a game whose code has no levels yet; sent only when the person presses Enter.
-  'level.addAsk': 'Give this game levels: make what is on screen now the first level, and add a second level as a copy of it.',
+  'level.oneNote': 'This game has one level. Add another and this one becomes Level 1.',
+  'level.make': 'Make Level 2 — a copy of this one',
+  'level.first': 'Level 1',
+  'level.askAi': 'Ask AI for a different kind of level…',
+  'level.askText': 'Add a new level. How it should differ from this one: ',
+  'level.made': '{name} made — a copy of {from}. Change things here to make it different. Save, and your AI adds {name} to your game’s code.',
+  'level.madeClose': 'Close',
+  'level.undoMade': 'make {name}',
   'level.pal.open': 'Levels… (on {name})',
   'level.pal.prev': 'Previous level: {name}',
   'level.pal.next': 'Next level: {name}',
-  'level.pal.add': 'Add a level',
+  'level.pal.add': 'Levels… (add a level)',
   'level.pal.words': 'level levels stage map world switch go next previous add new レベル ステージ マップ 面 切り替え 次 前 足す',
   'level.menu': 'Levels',
   'level.new': 'New level from {name}',
@@ -13599,14 +13912,6 @@ const en = {
   // and that read as a different action: "'Save to game' — I don't get what that means". Where the change goes is said here.
   'save.unsavedTip': 'Save, and your AI puts it in the game’s code (the game outside the editor changes too)',
   'save.savedTip': 'Saved and sent to your AI',
-  'peer.label': 'AI',
-  'peer.idle': 'No reply from your AI yet',
-  'peer.live': 'Your AI has replied since you opened the editor',
-  'peer.busy': 'Your AI is working on your request',
-  'peer.watching': 'Your AI is watching this editor',
-  'peer.away': 'Your requests are kept. They go in the next time your AI runs.',
-  'peer.recall': 'Your AI’s last reply — press to see it again',
-  'peer.recallUndo': 'Your AI’s last reply — press to see it again (or undo its change)',
   'ask.chipOne': 'Ask your AI…',
   'ask.chipMany': 'Ask your AI about these…',
   'ops.manyShort': '{n} selected',
@@ -13642,11 +13947,9 @@ const en = {
   'pal.tool.rotate': 'Turn tool — drag sideways',
   'pal.tool.scale': 'Size tool — drag right to grow',
   // studio-motion-tool (2026-10-22): the strip's Motion button — its tooltip and its ⌘K row (with the motion's name when it has one).
-  'pal.tool.motion': 'Motion — make one or attach one',
+  'pal.tool.motion': 'Motion — make this move while the game plays',
   'pal.tool.motionHas': 'Motion: {name} — open on the timeline',
-  'pal.tool.motion.words': 'motion animate animation move timeline template library strip 動き モーション',
-  'motion.tool.new': 'New motion',
-  'motion.tool.lib': 'From the Library',
+  'pal.tool.motion.words': 'motion animate animation move timeline library strip 動き モーション',
   'motion.tool.menu': 'Motion for this object',
   'pal.tool.words': 'tool strip move height turn rotate tilt size scale 道具',
   'ai.tagAdded': 'AI added {n}',
@@ -13764,8 +14067,16 @@ const en = {
   // (ops.copy, keys.copy, btn.undo…): one action, one name everywhere. The Library's rows say what its buttons say.
   'ctx.menu': 'Menu for {name}',
   'ctx.menuScene': 'Scene menu',
-  'ctx.rename': 'Rename…',
-  'ctx.renameText': 'Rename it to ',
+  'ctx.rename': 'Rename',
+  'ctx.renameLabel': 'Name of this object',
+  'ctx.askObject': 'Ask AI to change {name}…',
+  'ctx.askMany': 'Ask AI to change these {n}…',
+  'ctx.askGame': 'Ask AI to change the game…',
+  'ctx.nameAsk': 'Ask AI to name it…',
+  'ctx.nameAskMany': 'Ask AI to name them…',
+  'ctx.nameText': 'Give this object a short name that says what it is.',
+  'ctx.nameTextMany': 'Give these objects short names that say what they are.',
+  'undo.rename': 'rename {name}',
   'ctx.nameMany': 'Ask your AI to name them',
   'ctx.details': 'Details',
   'ctx.showInGame': 'Show in game',
@@ -13774,6 +14085,8 @@ const en = {
   // Use the Library (2026-10-18): add from it, ask the AI about what is picked there, and the Scene's way back to it.
   'lib.addToScene': 'Add to scene',
   'lib.askAi': 'Ask your AI…',
+  'lib.askAboutIt': 'Ask AI about it…',
+  'lib.addFileAi': 'Ask AI to add it to the scene…',
   'lib.addFileText': 'Add this to the scene',
   'lib.addFilesText': 'Add these to the scene',
   'lib.added': 'Added {name} to the scene',
@@ -13821,19 +14134,51 @@ const ja                               = {
   'undo.motion': '{name} の動きを変更',
   'motion.label': '動き',
   'motion.none': 'なし',
-  'motion.make': '新しい動き',
-  'motion.makeTip': 'この物でタイムラインを開く: 時刻を選んで、物を動かす',
-  'motion.fromLib': 'ライブラリから',
+  'motion.make': '動きを作る',
+  'motion.makeTip': 'やって見せて作る: 今の場所が始まり。動いてほしい所までドラッグする',
+  'motion.fromLib': '保存した動きを使う',
   'motion.pickFirst': '物を選ぶと、その物の動きを作ります',
   'motion.drag.line': '物の上で離すと “{name}” を付けます',
   'motion.drag.cancel': 'Esc でやめる',
   'motion.drag.cancelTouch': 'ほかの所で離すとやめる',
   'motion.drag.onto': '“{name}” を {target} に付ける',
-  'lib.motion.new': '新しい動き',
+  'lib.motion.new': '動きを作る',
   'lib.motion.newFor': '{name} に',
   'lib.motion.pickFirst': '物を選んでから',
   'lib.motion.dragTip': '物にドラッグすると付きます',
-  'tl.when.first': '目盛りで時刻を選んでから {name} を動かすと、動きが始まります',
+  // studio-tool-clear (2026-10-23): the strip's dimmed tools, the Motion button's two ways in, the "When" menu as sentences.
+  'tl.when.firstAt': '0 秒の {name} は今の場所です。次に、{t} 秒でいてほしい場所へ動かしてください',
+  'tl.made': '{name} は 0 秒から {t} 秒で動きます。左の ▶ で見られます',
+  'tl.when.selfHead': 'きっかけを選ぶ',
+  'tl.when.aiHead': 'AI に仕掛けを作ってもらう',
+  'tl.when.touchNow': 'ぶつかったとき（AI）',
+  'tl.when.cueNow': 'ほかの合図を受けたら（AI）',
+  'tl.when.sayNow': 'チャットでお願いしたとおり',
+  'tl.make': '＋ 動きを作る',
+  'tl.make.drag': '{name} を、動いてほしい所までドラッグしてください（Esc でやめる）',
+  'tl.made.more': '0〜{t} 秒の動きができました。続けて動かすと 1 秒ずつ足されます',
+  'tl.make.done': '終わる',
+  'tl.make.doneTip': 'キーを足すのをやめる（Esc）',
+  'motion.tool.none': 'まだ動きはありません。',
+  'motion.tool.make': '動きを作る',
+  'motion.tool.saved': '保存した動きを使う',
+  'motion.tool.savedHead': '保存した動き',
+  'tooloff.menu': 'この道具が使えない理由',
+  'tooloff.start.move': 'スタート位置を決める',
+  'tooloff.start.lift': '最初の高さを決める',
+  'tooloff.ask': '変えるよう AI に頼む…',
+  'tooloff.ask.moves': '動き方を変えるよう AI に頼む…',
+  'tooloff.ask.rule': 'ルールを変えるよう AI に頼む…',
+  'tooloff.askText.moves': 'この物の動き方を変えて: ',
+  'tooloff.askText.turn': 'この物の回り方を変えて: ',
+  'tooloff.askText.size': 'この物の大きさの変わり方を変えて: ',
+  'tooloff.askText.rule': 'エディタでこの物を動かせるようにして（ゲームのルールを変えて）',
+  'tooloff.askText.move': 'この物を動かして: ',
+  'tooloff.askText.lift': 'この物の高さを変えて: ',
+  'tooloff.askText.rotate': 'この物を回して: ',
+  'tooloff.askText.scale': 'この物の大きさを変えて: ',
+  'hold.gameStart': 'ゲームが動かしている物です。置いた所がスタート位置になり、遊ぶとそこからゲームが動かします。',
+  'tl.when.first': '目盛りで先の時刻を選んで、{name} をそこへ動かすと、動きができます',
   'tl.attached': '“{name}” を付けました',
   'tl.whenAsk': 'いつ動く？',
   'tl.coach.title': '3 つの手で動きを作る',
@@ -13864,18 +14209,13 @@ const ja                               = {
   'tl.clip': '動き',
   'tl.noClip': 'まだ動きはない',
   'tl.new': '新しく: {name}',
-  'tl.tpl.empty': '空',
-  'tl.tpl.pingpong': '行ったり来たり',
-  'tl.tpl.loop': 'ぐるっと回る',
-  'tl.tpl.once': '1 回だけ',
-  'tl.tpl.spin': 'その場で回る',
   'tl.rename': '名前を変える…',
   'tl.renameTip': '動きの名前（Enter で決める）',
   'tl.delete': 'この物から外す',
   'tl.repeat': '繰り返し',
-  'tl.repeat.once': '1 回',
-  'tl.repeat.loop': 'ループ',
-  'tl.repeat.pingpong': '往復',
+  'tl.repeat.once': '1 回だけ',
+  'tl.repeat.loop': 'くり返す',
+  'tl.repeat.pingpong': '行って戻る',
   'tl.ease': 'キー',
   'tl.easeTip': '選んだキーから次のキーへのつながり方',
   'tl.ease.linear': '一定',
@@ -13895,11 +14235,11 @@ const ja                               = {
   'tl.area.label': '範囲 · {size}',
   'tl.try.say': '{name}',
   'tl.try.touch': '{name} に触れる',
-  'tl.try.enter': '{name} の範囲に入る',
+  'tl.try.enter': '{name} の近くに近づく',
   'tl.try.click': '{name} をクリック',
   'tl.try.start': 'ゲーム開始',
   'tl.try.stop': '止める',
-  'tl.try.aiTip': '試す：「{name}」が今起きたことにする（ゲームでは AI がつなぐ）',
+  'tl.try.aiTip': '試す：「{name}」が今起きたことにする（ゲームでは AI が仕掛けを作る）',
   'tl.try.tip': '試す：「{name}」が今起きたことにする',
   'tl.try': '試す',
   'tl.then.reset': '最初の姿に戻る',
@@ -13917,29 +14257,27 @@ const ja                               = {
   'tl.when.afterTip': 'ゲームが始まってからの秒',
   'tl.when.none': '動きのある物を選ぶと、いつ動くかを決められます。',
   'tl.when.always': 'ずっと',
-  'tl.when.short.say': '言葉',
-  'tl.when.short.cue': '合図',
-  'tl.when.short.touch': '触れた',
-  'tl.when.short.enter': '▣ 範囲',
+  'tl.when.short.say': 'AI に伝えた',
+  'tl.when.short.cue': 'できごと',
+  'tl.when.short.touch': '触れたら',
+  'tl.when.short.enter': '▣ 近づく',
   'tl.when.short.after': '続けて',
   'tl.when.short.click': 'クリック',
   'tl.when.short.key': 'キー',
   'tl.when.short.time': '時間',
   'tl.when.short.start': '始まり',
-  'tl.when.say': 'チャットで AI に…',
-  'tl.when.cue': '名前の付いた合図',
-  'tl.when.touch': 'プレイヤーがこれに触れたら',
-  'tl.when.enter': 'プレイヤーが範囲に入ったら',
-  'tl.when.after': '別の動きが終わったら',
-  'tl.when.click': 'これをクリック／タップしたら',
-  'tl.when.key': 'キーを押したら',
-  'tl.when.time': '何秒かたったら',
+  'tl.when.say': 'チャットで自由にお願い…',
+  'tl.when.cue': 'ゲームで何かが起きたら動く',
+  'tl.when.touch': 'プレイヤーが触れると動く',
+  'tl.when.enter': '近くに近づいたら',
+  'tl.when.after': '前の動きが終わったら',
+  'tl.when.click': 'これをタップしたら',
+  'tl.when.key': 'ボタン・キーを押したら',
+  'tl.when.time': '○秒たったら',
   'tl.when.start': 'ゲームが始まったら',
-  'tl.when.ai': 'AI がつなぐ',
-  'tl.when.self': 'ひとりでに動く',
   'tl.stops': '止まる',
   'tl.startsTip': 'この動きがいつ動き出すか',
-  'tl.starts': '動き出す',
+  'tl.starts': 'いつ',
   'tl.usesTip': 'この動きはライブラリにあり、いくつかの物で使っています。キーを直すと全部が変わります',
   'tl.uses': '{n} つの物で使用',
   'tl.point': '点',
@@ -13960,7 +14298,7 @@ const ja                               = {
   'tl.when.orMoreTip': 'ほかの動き出し方（⋯ の中）',
   'tl.when.also': 'ほかにも',
   'tl.usesLong': '{n} つの物で使っています。キーを直すと全部が変わります',
-  'ctx.askMotion': '「{name}」を AI に頼む…',
+  'ctx.askMotion': '「{name}」について AI に頼む…',
   'motion.ask': '「{name}」を AI に頼む…',
   'ask.motion': '例: プレイヤーが近づいたら動き出す・もっとゆっくり',
   'tl.tpl.scene': '場面（いくつかの物）',
@@ -14057,9 +14395,29 @@ const ja                               = {
   'sheet.fold': 'たたむ',
   'sheet.unfold': '一覧とカードを出す',
   'ai.waiting': '{what}を AI に送りました。返事を待っています…',
-  'ai.nudge': '依頼は届いています。AI が次に動いたときに反映されます。',
-  'ai.call': 'AI を呼ぶ',
-  'ai.callTip': 'AI のチャットに貼る言葉をコピーします',
+  'ai.kept': '{ai}へのメモとして残しました。{ai2}が読むまでゲームは変わりません。',
+  'ai.onIt': '{ai}が取りかかっています',
+  'ai.still': 'まだ作業中 · {n} 分',
+  'ai.name.claude': 'Claude ',
+  'ai.name.codex': 'Codex ',
+  'ai.name.any': 'あなたの AI ',
+  'ai.name2.claude': 'Claude ',
+  'ai.name2.codex': 'Codex ',
+  'ai.name2.any': 'AI ',
+  'ai.p.watching': '{ai}が見ています',
+  'ai.p.working': '{ai}が作業中です',
+  'ai.p.look': 'Codex で「{word}」と打つと読みます',
+  'ai.p.away': '{ai}が見ていません',
+  'ai.p.unsure': '{ai}が開いているか分かりません',
+  'ai.p.how': '開き方',
+  'ai.p.tip': 'これの意味',
+  'ai.open.watching': '{ai}がこのゲームを見ています。送ったものは数秒で届きます。',
+  'ai.open.working': '{ai}が頼みに取りかかっています。新しいメモは、それが終わってから読みます。',
+  'ai.open.claude': 'このゲームのフォルダで Claude Code が開いていれば、次に Claude Code に何か話しかけたときにこのメモが届きます。開いていなければ、そのフォルダで Claude Code を開いてください。',
+  'ai.open.codex': 'このゲームのフォルダの Codex で「{word}」と打つと、メモを読みます。',
+  'ai.open.any': 'このゲームのフォルダで AI を開いて「{word}」と打つと、メモを読みます。',
+  'ai.open.copy': '「{word}」をコピー',
+  'ai.open.close': '閉じる',
   'ai.callText': '見て',
   'ai.called': '「見て」をコピーしました。AI のチャットに貼ってください。',
   'ai.callFail': 'AI のチャットに「見て」と打ってください。',
@@ -14075,7 +14433,7 @@ const ja                               = {
   'ai.cmp.size': '大きさ',
   'ask.answer': 'AI に答える…',
   'ai.what.answer': '答え',
-  'ai.done': '直しました。',
+  'ai.done': 'できました',
   'ai.done1': '1 個変わりました',
   'ai.doneN': '{n} 個変わりました',
   'ai.failed': 'AI が途中で止まりました。',
@@ -14083,8 +14441,6 @@ const ja                               = {
   'ai.more.codex': '詳しくは Codex で',
   'ai.more.any': '詳しくはお使いの AI で',
   'ai.reload': 'ゲームを開き直す',
-  'ai.sent': 'AI に送りました',
-  'ai.seen': 'AI が受け取りました',
   'play.ask': 'AI に頼む',
   'play.askTip': 'この瞬間について AI に頼む（`）。ゲームは止まりません。',
   'play.placeholder': '何がおかしい？ AI はこの瞬間を見ます。',
@@ -14215,7 +14571,7 @@ const ja                               = {
   'placement.locked': 'このゲームの設定で固定されています',
   'hold.ground': '地面・道路・空です。うっかり動かさないよう固定しています。',
   'hold.free': '動かせるようにする',
-  'hold.game': 'この物はゲームが動かします（配置は保存されても残りません）。',
+  'hold.game': 'この物は遊ぶとゲームが動かします。決められるのはスタート位置だけです。',
   'hold.gameParts': 'この物の{what}はゲームが変えます（ここで変えても残りません）。',
   'hold.still': '{what}は変えられます。',
   'hold.part.move': '場所',
@@ -14292,12 +14648,19 @@ const ja                               = {
   'level.prev': '前のレベル',
   'level.next': '次のレベル',
   'level.add': 'レベル',
-  'level.addTip': 'レベルを足す: このレベルを写して 2 つ目のレベルを作る',
-  'level.addAsk': 'このゲームにレベルを付けて。今の画面を 1 つ目のレベルにして、それを写した 2 つ目のレベルを足して。',
+  'level.addTip': 'レベル: このレベルを写して 2 つ目を作る・AI に頼む',
+  'level.oneNote': 'このゲームのレベルは 1 つです。もう 1 つ作ると、今のレベルがレベル 1 になります。',
+  'level.make': 'レベル 2 を作る（今のレベルの写し）',
+  'level.first': 'レベル 1',
+  'level.askAi': '別の種類のレベルを AI に頼む…',
+  'level.askText': '新しいレベルを足して。今のレベルとの違い：',
+  'level.made': '{name} を作りました（{from} の写し）。ここで物を変えて、違うレベルにしてください。保存すると、AI がゲームのコードに {name} を足します。',
+  'level.madeClose': '閉じる',
+  'level.undoMade': '{name} を作った',
   'level.pal.open': 'レベル…（今は {name}）',
   'level.pal.prev': '前のレベル: {name}',
   'level.pal.next': '次のレベル: {name}',
-  'level.pal.add': 'レベルを足す',
+  'level.pal.add': 'レベル…（レベルを足す）',
   'level.pal.words': 'level levels stage map world switch go next previous add new レベル ステージ マップ 面 切り替え 次 前 足す',
   'level.menu': 'レベル',
   'level.new': '{name} を写して新しいレベル',
@@ -14309,14 +14672,6 @@ const ja                               = {
   'foot.palette': 'すべての操作',
   'save.unsavedTip': '保存すると、AI がゲームのコードに入れます（エディタの外のゲームも変わります）',
   'save.savedTip': '保存して AI に送りました',
-  'peer.label': 'AI',
-  'peer.idle': 'AI からの返事はまだありません',
-  'peer.live': 'このエディタを開いてから、AI が返事をしました',
-  'peer.busy': 'AI が頼みに取りかかっています',
-  'peer.watching': 'AI がこのエディタを見ています',
-  'peer.away': '依頼は残っています。AI が次に動いたときに反映されます。',
-  'peer.recall': 'AI の最後の返事 — 押すともう一度出ます',
-  'peer.recallUndo': 'AI の最後の返事 — 押すともう一度出ます（直しを戻すのもここから）',
   'ask.chipOne': 'AI に頼む…',
   'ask.chipMany': 'これらについて AI に頼む…',
   'ops.manyShort': '{n} 個を選択',
@@ -14350,11 +14705,9 @@ const ja                               = {
   'pal.tool.lift': '高さの道具 — 上下に引く',
   'pal.tool.rotate': '回す道具 — 横に引く',
   'pal.tool.scale': '大きさの道具 — 右に引くと大きく',
-  'pal.tool.motion': '動き — 作る・付ける',
+  'pal.tool.motion': '動き — ゲーム中にこの物を動かす',
   'pal.tool.motionHas': '動き: {name} — タイムラインで開く',
-  'pal.tool.motion.words': '動き モーション アニメーション タイムライン テンプレート ライブラリ 道具 motion animate',
-  'motion.tool.new': '新しい動き',
-  'motion.tool.lib': 'ライブラリから',
+  'pal.tool.motion.words': '動き モーション アニメーション タイムライン ライブラリ 道具 motion animate',
   'motion.tool.menu': 'この物の動き',
   'pal.tool.words': '道具 移動 高さ 回す 大きさ tool move height turn size',
   'ai.tagAdded': 'AI が足した {n} 個',
@@ -14367,6 +14720,8 @@ const ja                               = {
   'shelf.noSource': 'コードで描いた形（ファイル無し）',
   'shelf.showInGame': 'ゲームで見る →',
   'ask.game': 'AI にゲームの直しを頼む…',
+  'ask.gameAi': '{ai}にゲームの直しを頼む…',
+  'ask.gameKept': '{ai}へのメモを書く…',
   'keys.title': 'キーボードショートカット',
   'keys.group.edit': '編集',
   'keys.group.tools': '道具',
@@ -14461,8 +14816,16 @@ const ja                               = {
   'keys.pasteGone': 'コピーした物は、もうシーンにありません。',
   'ctx.menu': '{name} のメニュー',
   'ctx.menuScene': 'シーンのメニュー',
-  'ctx.rename': '名前を付ける…',
-  'ctx.renameText': '名前を変えて: ',
+  'ctx.rename': '名前を変える',
+  'ctx.renameLabel': 'この物の名前',
+  'ctx.askObject': '{name} を変えるよう AI に頼む…',
+  'ctx.askMany': '選んだ {n} 個を変えるよう AI に頼む…',
+  'ctx.askGame': 'ゲームを変えるよう AI に頼む…',
+  'ctx.nameAsk': '名前を AI に頼む…',
+  'ctx.nameAskMany': '名前を AI に頼む…',
+  'ctx.nameText': 'この物に、何かがわかる短い名前を付けて。',
+  'ctx.nameTextMany': 'これらの物に、何かがわかる短い名前を付けて。',
+  'undo.rename': '{name} の名前を変更',
   'ctx.nameMany': 'AI に名前を付けてもらう',
   'ctx.details': '詳細',
   'ctx.showInGame': 'ゲームで見る',
@@ -14470,6 +14833,8 @@ const ja                               = {
   'ctx.replace': '差し替え…',
   'lib.addToScene': 'シーンに足す',
   'lib.askAi': 'AI に頼む…',
+  'lib.askAboutIt': 'これについて AI に頼む…',
+  'lib.addFileAi': 'シーンに入れるよう AI に頼む…',
   'lib.addFileText': 'これをシーンに足して',
   'lib.addFilesText': 'これらをシーンに足して',
   'lib.added': '{name} をシーンに足しました',
@@ -14521,7 +14886,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -14624,7 +14989,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -14968,7 +15333,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -14996,7 +15361,7 @@ __defs[38] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(37);
+const { statusCovers } = __require(38);
 
                                                                                                                                                                          
 
@@ -15139,7 +15504,115 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
+'use strict';
+// ai-presence.ts
+
+// Is the AI there? Said next to the ask field BEFORE the person types (ai presence, a hands-on review 2026-10-23).
+//
+// WHY: the top bar had a grey "● AI" that nobody could read, and a request sent with no AI to pick it up ended on
+// "Your request is in. It goes into the game the next time your AI runs." — to someone new, "I asked and nothing
+// happened". The field now says in words, before a key is pressed, one of these:
+//   watching  "● Claude is watching"                  a heartbeat from this moment: a note reaches the AI now
+//   working   "● Claude is working"                   the AI is at work on this page's request (no heartbeat needed)
+//   look      "Codex reads it when you type “look”"   Codex has no hooks: what we KNOW is the rule, not whether it is open
+//   away      "Claude isn't watching · How to open"   Claude was watching in this page and has been gone a while
+//   unsure    "Not sure Claude is open · How to open" anything else; the field's placeholder adds "kept either way"
+// The name is the person's own AI (Claude / Codex), "your AI" when the editor cannot tell.
+//
+// The rule that shapes all of it (ux-review consult, 2026-10-23): a wrong green is worse than no dot. So the two
+// green states need proof from this moment, "away" needs proof too, and everything in between is said as not knowing.
+// Design review of this plan (2026-10-23) changed three things from the first draft:
+// - "away" says "isn't watching", not "isn't open" (the first wording): a long turn the person started in
+//   Claude itself leaves no heartbeat for minutes, and "isn't open" next to a visibly open Claude is a wrong colour
+//   the other way round. "Isn't watching" is what the editor knows.
+// - Codex never gets "not sure": its rule is known ("type look"), and a fact beats a shrug.
+// - a status-only "here" says "working", not "watching": the AI is there, but a NEW note may not wake it until its
+//   turn ends.
+//
+// What the editor can know (ai-watch.mjs, which-ai.mjs):
+// - `watching` true: the AI's watch (`studio.mjs --watch`) or Claude Code's plugin wake hook wrote its heartbeat in
+//   the last 5 s. false: no fresh heartbeat. undefined: this host cannot tell.
+// - false is NOT proof the AI is closed: Codex has no hooks (false while open), Claude Code without the plugin and
+//   without a watch is false while open, a watch restarts every 29 minutes (a few seconds of false), and in a turn the
+//   plugin's hook woke Claude into, the hook has exited (false while Claude works on the request).
+// So:
+// - watching = `watching` true (any AI; a Codex with a watch running is watching too).
+// - working  = the AI holds a request of this page right now (seen / received / working / updating / asking), or it
+//              wrote a status in the last HERE_STATUS_MS.
+// - look     = Codex, otherwise.
+// - away     = Claude (the plugin's hook is the one thing that makes "false" mean "gone"), seen watching in THIS
+//              page, not watching for AWAY_AFTER_MS since, and the page visible all that time (a hidden tab's timers
+//              starve: coming back to it must not read as a minute of silence).
+// - unsure   = everything else (never seen watching, a host that cannot tell, the grace after a heartbeat stops).
+// Pure, so test/ai-presence.test.ts reads the rules without a browser; main.ts keeps the clock and draws the words.
+                                              
+const { aiBusy } = __require(39);
+
+                                                                             
+
+/** A status the AI wrote this recently says it is at work, whatever the heartbeat says (ms). */
+const HERE_STATUS_MS = 20_000;
+/**
+ * How long Claude's heartbeat must stay gone before the field says "isn't watching" (ms). Longer than a watch's restart
+ * and the moment between the AI's "done" and its turn ending (when the plugin starts waiting again): both are seconds.
+ */
+const AWAY_AFTER_MS = 60_000;
+
+                                
+              
+                                                                                                 
+                                
+                             
+                                                  
+                 
+                                                                  
+                            
+                                                                                      
+                              
+                                                                        
+                       
+ 
+
+function aiPresence(s               )             {
+  if (s.watching === true) return 'watching';
+  if (aiBusy(s.phase) || s.phase === 'asking') return 'working';
+  if (s.statusTime != null && s.now - s.statusTime < HERE_STATUS_MS) return 'working';
+  if (s.agent === 'codex') return 'look';
+  if (s.watching === false && s.agent === 'claude' && s.lastWatching != null && s.now - s.lastWatching >= AWAY_AFTER_MS
+    && s.now - s.visibleSince >= AWAY_AFTER_MS) return 'away';
+  return 'unsure';
+}
+
+/** Green (the dot): only the two states with proof from this moment. */
+function presenceSure(p            )          {
+  return p === 'watching' || p === 'working';
+}
+
+/**
+ * Sent while a heartbeat said "watching", but no watch or hook has shown it to the AI after this long (ms): the line
+ * stops saying "on it" and says the fact instead (kept as a note), with "How to open". A heartbeat that vanished just
+ * as the person pressed Enter must not leave "Claude is on it" hanging.
+ */
+const UNSEEN_MS = 15_000;
+
+/** A request the AI has but has said nothing new about for this long shows how long it has been ("· 3 min"). */
+const QUIET_WORK_MS = 120_000;
+
+/** The AI's name in the words: i18n key suffix for "Claude" / "Codex" / "your AI". */
+function aiNameKey(agent                     )                             {
+  return agent === 'claude' ? 'claude' : agent === 'codex' ? 'codex' : 'any';
+}
+
+__def(__exports, "HERE_STATUS_MS", () => HERE_STATUS_MS);
+__def(__exports, "AWAY_AFTER_MS", () => AWAY_AFTER_MS);
+__def(__exports, "aiPresence", () => aiPresence);
+__def(__exports, "presenceSure", () => presenceSure);
+__def(__exports, "UNSEEN_MS", () => UNSEEN_MS);
+__def(__exports, "QUIET_WORK_MS", () => QUIET_WORK_MS);
+__def(__exports, "aiNameKey", () => aiNameKey);
+};
+__defs[41] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -15185,7 +15658,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[40] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -15264,7 +15737,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[41] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -15277,7 +15750,7 @@ __defs[41] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(38);
+const { moreIn } = __require(39);
 
                                 
                  
@@ -15343,7 +15816,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[42] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -15406,7 +15879,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[43] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -15494,7 +15967,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[44] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -15504,7 +15977,7 @@ __defs[44] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(43);
+const { DEFAULT_UI, UI_LIMITS } = __require(45);
 
                                
                          
@@ -15587,14 +16060,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[45] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(31);
+const { hasLayer } = __require(32);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -15691,7 +16164,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[46] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -15751,6 +16224,8 @@ const KEYMAP           = [
   { id: 'paste', group: 'edit', keys: ['⌘V'] },
   { id: 'duplicate', group: 'edit', keys: ['⌘D'], label: 'ops.copy' },
   { id: 'remove', group: 'edit', keys: ['⌫', 'Delete'], label: 'ops.remove' },
+  // Rename in place (studio-uniforms, 2026-10-23): F2, as Finder / Explorer / Unity / Blender's outliner. One named object.
+  { id: 'rename', group: 'edit', keys: ['F2'], label: 'ctx.rename' },
   { id: 'selectAll', group: 'edit', keys: ['⌘A'], label: 'pal.selectAll' },
   { id: 'deselect', group: 'edit', keys: ['Esc'], label: 'ops.selectNone' },
   { id: 'save', group: 'edit', keys: ['⌘S'], label: 'btn.save' },
@@ -15843,7 +16318,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[47] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -15875,10 +16350,10 @@ __defs[47] = function (__exports) {
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
 const { h, safeImageSrc } = __require(16);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(31);
-const { groupLayerPossible, sameKind } = __require(45);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
+const { groupLayerPossible, sameKind } = __require(47);
 const { icon, setButton } = __require(21);
-const { tipText } = __require(46);
+const { tipText } = __require(48);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -15896,6 +16371,11 @@ const { toneThumb } = __require(17);
                     
                    
                               
+     
+                                                                                                                        
+                                                               
+     
+                                           
                
                  
                                                                
@@ -15929,6 +16409,8 @@ const { toneThumb } = __require(17);
                                                  
      
                         
+                                                                                                                  
+                     
      
                                                                                                                
                                                                                
@@ -15940,6 +16422,11 @@ const { toneThumb } = __require(17);
                          
                                                                   
                                             
+     
+                                                                                                                     
+                                                                                                                            
+     
+                                   
                                                                                                            
                                
      
@@ -15990,6 +16477,9 @@ const { toneThumb } = __require(17);
                                                                                 
                    
                                  
+                                                                                           
+                                 
+                        
  
 
 const DEG = 180 / Math.PI;
@@ -16155,6 +16645,46 @@ function createPlacementPanel(d                    )                 {
     renderMin();
   });
   let cardKey                = null;
+  /** A ✦ button (studio-uniforms): the AI's spark and violet; its press only puts a draft in the AI box. */
+  const aiButton = (label        , cls        , action        , run            ) =>
+    h('button', { type: 'button', class: `${cls} ai`, dataset: { action }, onclick: run }, h('span', { class: 'ai-spark', 'aria-hidden': 'true' }, icon('spark')), label);
+  // Rename in place (startRename): the object whose card name is a field, and that field — the same element across
+  // redraws of the card (any render while typing), so what is typed and the focus stay (level-switch.ts does the same).
+  let renameKey                = null;
+  let nameField                          = null;
+  function startRename(key        ) {
+    if (!d.rename) return;
+    renameKey = key;
+    nameField = null;
+    renderCard();
+  }
+  /** The field in place of the card's name; Enter keeps, Esc puts the old name back, leaving it keeps (as Finder). */
+  function nameInput(key        , shown        )                   {
+    if (nameField && renameKey === key) return nameField;
+    const input = (nameField = h('input', { type: 'text', class: 'name-edit', value: shown, maxlength: '120', 'aria-label': d.t('ctx.renameLabel'), dataset: { part: 'name-edit' } })                    );
+    let done = false;
+    const finish = (keep         ) => {
+      if (done) return;
+      done = true;
+      renameKey = null;
+      nameField = null;
+      const v = input.value.trim();
+      if (keep && v !== shown) d.rename (key, v);
+      renderCard();
+    };
+    input.addEventListener('keydown', (e) => {
+      // The editor's keys (⌘Z, Delete, arrows, F2…) must not act on the scene while typing a name.
+      e.stopPropagation();
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => setTimeout(() => input.isConnected && document.activeElement !== input && finish(true), 0));
+    requestAnimationFrame(() => {
+      input.focus();
+      input.select();
+    });
+    return input;
+  }
   let askKey                = null;
   let lastCard                = null;
   const askInput = h('input', { type: 'text', class: 'ask-input', enterkeyhint: 'send', autocomplete: 'off', maxlength: 500 });
@@ -16212,7 +16742,7 @@ function createPlacementPanel(d                    )                 {
     const answer = !!d.answering?.();
     const whole = (noObj && !files.length) || answer;
     const n = (noObj ? 0 : keys.length) + files.length;
-    const ph = answer ? d.t('ask.answer') : whole ? d.t('ask.game') : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
+    const ph = answer ? d.t('ask.answer') : whole ? (d.askGame?.() ?? d.t('ask.game')) : n > 1 ? d.t('ask.chipMany') : d.t('ask.chipOne');
     askChip.hidden = whole;
     // The shown name, never the key: an unnamed object's key is `path:3/2`, which means nothing to a person (U4).
     // A file picked in the Library is named by its file name ("boss.glb"); objects and files together, by how many.
@@ -16377,8 +16907,19 @@ function createPlacementPanel(d                    )                 {
     const uiText = ui && it.label.trim().toLowerCase() !== shown.toLowerCase() ? it.label : null;
     const h0 = head(thumbImg(key), parts.base, ui ? uiText : parts.where || (!it.unstable && !/#\d+$/.test(key) && it.label !== key ? key : null), '', ui);
     h0.title = parts.where ? shown : '';
+    let refocus                          = null;
+    if (renameKey === key && !ui) {
+      const again = !!nameField;
+      const f = nameInput(key, shown);
+      h0.querySelector('.head-name strong')?.replaceWith(f);
+      // Drawn again while typing: the card was emptied (which blurs the field); the focus goes back at once, before the
+      // blur's check runs (a blur that stays is the person leaving the field: the name is kept then).
+      if (again) refocus = f;
+    }
+    else if (renameKey && renameKey !== key) (renameKey = null), (nameField = null);
     const sub = h0.querySelector('.key')               ;
     card.append(h0);
+    refocus?.focus({ preventScroll: true });
     const body = h('div', { class: 'card-body' });
     // Phone: no numbers on the card (design review wave 1, W1-11 / N6, 2026-10-17). The head's second line used to be
     // "-24.00, 6.63, -20.00 · 0°", raw numbers that a finger cannot edit there; the card is the name, copy, delete and
@@ -16399,7 +16940,8 @@ function createPlacementPanel(d                    )                 {
       const guessed = isGuessed(it);
       body.append(h('p', { class: 'warn note-line noname-why', dataset: { part: 'noname-why' } },
         h('span', { class: 'why-text', text: d.t(guessed ? 'noname.why' : 'noname.whyPlain') }), ' ',
-        h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e       ) => {
+        d.nameDraft ? aiButton(d.t('ctx.nameAsk'), 'name-ask link-btn', 'ask-name', () => d.nameDraft (d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable)))
+        : h('button', { type: 'button', class: 'name-ask link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e       ) => {
           const b = e.currentTarget                     ;
           b.disabled = true;
           const ok = await d.askName(d.selectedKeys().filter((k) => d.items().find((i) => i.key === k)?.unstable));
@@ -16418,6 +16960,9 @@ function createPlacementPanel(d                    )                 {
     if (it.held === 'game') {
       card.append(body);
       body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
+      // The same way out as the strip's dimmed Move (studio-tool-clear): set where it starts, here too.
+      if (d.unhold && !it.startSpot && (it.driven?.includes('move') || it.driven?.includes('lift')))
+        body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'start-spot' }, text: d.t(it.driven?.includes('move') ? 'tooloff.start.move' : 'tooloff.start.lift'), onclick: () => d.unhold?.([key]) }));
       // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
       if (it.movable === false) {
         if (it.unstable) nameNote();
@@ -16915,6 +17460,8 @@ function createPlacementPanel(d                    )                 {
     askEl,
     askNoteEl,
     renderAsk,
+    startRename,
+    isRenaming: () => renameKey !== null,
     render() {
       renderCard();
       renderNoName();
@@ -16941,7 +17488,9 @@ function createPlacementPanel(d                    )                 {
  * moves it ("This object is moved by the game — its place is not kept when you save", 2026-10-19), else what the game
  * changes; then what can still be changed, so the person knows what is worth trying.
  */
-function heldGameText(it                                                             , dim     , t                                                            )         {
+function heldGameText(it                                                                           , dim     , t                                                            )         {
+  // "Set where it starts" chosen (studio-tool-clear): what a move does now, not that it won't stick.
+  if (it.startSpot) return t('hold.gameStart');
   const driven = new Set(it.driven ?? []);
   const parts = (['move', 'lift', 'turn', 'size']         ).filter((k) => k !== 'lift' || dim === '3d');
   const words = (ks                   ) => listOf(ks.map((k) => t(`hold.part.${k}`)), t);
@@ -16962,7 +17511,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[48] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -17090,7 +17639,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[49] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -17170,7 +17719,7 @@ __def(__exports, "sceneSize", () => sceneSize);
 __def(__exports, "asScene", () => asScene);
 __def(__exports, "asOrdinary", () => asOrdinary);
 };
-__defs[50] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -17270,7 +17819,7 @@ function motionCardRow(d                )                {
 
 __def(__exports, "motionCardRow", () => motionCardRow);
 };
-__defs[51] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -17292,12 +17841,12 @@ __defs[51] = function (__exports) {
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                               
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(48);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers } = __require(49);
-const { libOf } = __require(32);
-const { motionCardRow } = __require(50);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(50);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers } = __require(51);
+const { libOf } = __require(33);
+const { motionCardRow } = __require(52);
                                                      
-const { sameMotion: sameFile } = __require(33);
+const { sameMotion: sameFile } = __require(34);
 
 /**
  * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
@@ -17309,7 +17858,7 @@ const sameMotion = (a                           , b                           ) 
   return sameFile(inline(a), inline(b));
 };
 const { createTimelinePanel } = __require(25);
-const { CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip } = __require(24);
+const { blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, sceneClip, setKey, snapT, withClip } = __require(24);
                                                    
 
                                
@@ -17414,6 +17963,25 @@ function createTimeline(d              , makePanel                             =
   // studio-motion-flow: a motion just attached (a drop, the card, the Library) — the second row says "✓ “Hop” attached ·
   // When does it move?" with Starts ▾ open, until a "when" is chosen or 6 s pass (then it reads "Starts" again).
   let fresh                                                                                 = null;
+  /**
+   * The object whose first motion was just made by moving it (studio-tool-clear, 2026-10-23): the line says what it
+   * does now ("✓ moves from 0 s to 1 s · ▶ to watch") and asks "When does it move?" — the next step, on screen. Until a
+   * "when" is chosen or another object is shown.
+   */
+  let madeKey                = null;
+  /**
+   * "Make a motion" in progress (studio-no-presets, 2026-10-23: a review, on the kinds — "we don't need them": a
+   * motion is made by showing it). `shown` false: the time line waits at 1 s, the line says "drag it where it should
+   * move (Esc to cancel)", and the object shows as it stands (a thing that moves already: its other motions hidden,
+   * the next move starts a new one). `shown` true: the first move made the motion and it played; each next move / turn
+   * / resize adds a key one second after the last (`from` = that last key's time) and plays the new second.
+   * Ends with Esc or "Done" (what was made stays: ⌘Z takes one key at a time), another object, the time line moved by
+   * hand, or the timeline folded.
+   * WHY one second each: the person shows poses, not times (Blender / Unity ask for the time first — the ruler — which
+   * the hands-on tries never found); the length of a step is then dragged on the timeline (keys move), as there.
+   * Its own one line says the next step, so the first-time three steps ("1 Pick a moment on the ruler…") stay away.
+   */
+  let making                                                       = null;
   // Starts ▾ to focus at the next render (the one that draws the "attached" line).
   let focusStarts = false;
   // What the game page shows now, so a frame that changes nothing sends nothing.
@@ -17474,6 +18042,8 @@ function createTimeline(d              , makePanel                             =
   const dim = () => d.dim();
   const clipsOf = (key        )               => store().get(key)?.clips ?? [];
   const clipOf = (key        )                    => {
+    // Making, before the first move: no motion shown (a thing that moves already gets a new one from that move).
+    if (making && !making.shown && making.key === key) return null;
     const cs = clipsOf(key);
     const want = chosen.get(key);
     // An open scene (studio-timeline-2) is what each of its objects shows.
@@ -17607,11 +18177,22 @@ function createTimeline(d              , makePanel                             =
       // and the Library already holds the name it took on the first pose.
       const name = gestureNames.get(key) ?? lib().free('Motion');
       gestureNames.set(key, name);
-      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
+      // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
+      const starts = clipsOf(key).some((x) => whenOf(x).on === 'start');
+      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: starts ? { on: 'say' } : { on: 'start' }, keys: {} };
       chosen.set(key, c.name);
+      madeKey = key;
     }
     const name = c.name;
     for (const ch of changedChannels(was, pose, dim())) {
+      // Making, a later step: a property whose last key is before the step's start holds still until then (a turn added
+      // at 2 s after a move to 1 s turns from 1 s to 2 s, not all the way from 0 s).
+      const hold = making?.shown && making.key === key ? making.from : 0;
+      const last = c.keys[ch]?.at(-1)?.t ?? null;
+      if (hold > 0 && time > hold && (last === null || last < hold - SAME_T)) {
+        c = setKey(c, ch, 0, offsetsAt(c, 0)[ch] ?? restOf(ch, dim()));
+        c = setKey(c, ch, hold, offsetsAt(c, hold)[ch] ?? restOf(ch, dim()));
+      }
       // A property that had no key yet starts from how it stood at 0 s (else the motion would begin at the new pose).
       if (!c.keys[ch]?.length && time > 0) c = setKey(c, ch, 0, restOf(ch, dim()));
       c = setKey(c, ch, time, offsetOf(place, pose, ch, dim()));
@@ -17811,6 +18392,8 @@ function createTimeline(d              , makePanel                             =
   function view()               {
     syncScene();
     const key = head();
+    // Another object shown (picked, or a scene opened): making on the one before has ended.
+    if (making && key !== making.key) making = null;
     const c = key ? clipOf(key) : null;
     const qs = cues();
     const eases = new Set            ();
@@ -17849,8 +18432,10 @@ function createTimeline(d              , makePanel                             =
       },
       player: d.order().find((k) => /player|hero/i.test(k)) ?? null,
       attached: fresh && fresh.key === key && c && (c.use ?? c.name) === fresh.name ? fresh.name : null,
+      making: making && making.key === key ? (making.shown ? 'more' : 'drag') : null,
+      made: madeKey && madeKey === key && c ? Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t))) : null,
       // Only while making (the focused object has no keys yet): the steps are about keys, not about a motion just attached.
-      coach: !!d.seen && !d.seen(COACH) && !!key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
+      coach: !!d.seen && !d.seen(COACH) && !!key && key !== making?.key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
     };
   }
 
@@ -17974,35 +18559,75 @@ function createTimeline(d              , makePanel                             =
   }
 
   // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
-  /** A new motion on `key` from a template (the clip menu's "New: …", the Library's "+ New motion" on an object that moves already). */
-  function newClip(key        , kind          ) {
+  /** A new scene on `key` (the clip menu's "New: Scene — several objects"; a scene starts empty, it is not a preset). */
+  function newScene(key        ) {
     const cs = clipsOf(key);
     if (cs.length >= MAX_CLIPS) return;
     // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
-    // A scene is named "Scene" (its menu line says what it is: "Scene — several objects").
-    const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : kind === 'scene' ? d.t('tl.scene.new') : d.t(`tl.tpl.${kind}`)), dim());
+    const c = sceneClip(lib().free(d.t('tl.scene.new')));
     // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
     c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
+    making = null;
     chosen.set(key, c.name);
     openRows.add(key);
     time = 0;
-    scene = kind === 'scene' ? c.name : null;
+    scene = c.name;
     one(key, withClip(store().get(key), c.name, c));
   }
   /**
-   * The card's and the Library's "+ New motion": the plate opens on `key`. An object with no motion yet gets none until it is
-   * moved (auto key makes its first clip then, as ◆ Timeline always did: no empty "Motion" left in the Library by a
-   * look); one that moves already gets a new, empty one to fill (else a move would change the motion it has).
+   * "Make a motion" (the strip's Motion button, the card's "+ Make a motion", the Library's, the clip menu's): the plate
+   * opens on `key` with the time line at 1 s, and where it stands now is 0 s — the next move is the second key
+   * (`making` above). Nothing is made by a look: no empty "Motion" left in the Library if the person stops there.
+   * (studio-tool-clear had this for the strip only; the card's way picked a time on the ruler first. studio-no-presets
+   * made it the one way, the kinds gone.)
    */
   function make(key        ) {
+    if (!d.place(key) || clipsOf(key).length >= MAX_CLIPS) return;
+    if (playing) stop();
+    stopTry();
     focusKey = key;
+    scene = null;
+    sel = [];
+    // Making is moving: the auto key comes on (off, the drag would move the place and nothing would be made).
+    auto = true;
+    making = { key, shown: false, from: 0 };
+    madeKey = null;
+    if (fresh) (clearTimeout(fresh.timer), (fresh = null));
+    time = 1;
     if (!open) setOpen(true);
-    if (clipsOf(key).length) newClip(key, 'empty');
     else {
-      time = 0;
       refresh();
       panel.render();
     }
+  }
+  /** Making: a gesture on `key` begins — a later step goes one second after the last key (stopping the playback). */
+  function stepBegins(key        ) {
+    if (!making?.shown || making.key !== key || before?.has(key)) return;
+    if (playing) stop();
+    const c = clipOf(key);
+    const last = c ? Math.max(0, ...keyTimes(c)) : 0;
+    making.from = last;
+    time = snapT(last + 1, MAX_LEN);
+  }
+  /** Making: a gesture on `key` ended — the motion plays the part just made (from 0 s the first time, then the new second). */
+  function stepEnds(key        ) {
+    if (!making || making.key !== key) return;
+    const first = !making.shown;
+    making.shown = true;
+    // A gesture that made no key (nothing changed): still waiting for the first move.
+    if (!clipOf(key) || !keyTimes(clipOf(key)).length) return void (making.shown = !first);
+    if (first) madeKey = key;
+    time = first ? 0 : making.from;
+    play();
+  }
+  /** Esc / "Done": making ends (before the first move: nothing was made, the time line goes back to 0 s). */
+  function endMaking()          {
+    if (!making) return false;
+    if (!making.shown) time = 0;
+    making = null;
+    refresh();
+    panel.render();
+    return true;
   }
   /** The plate open on `key`'s motion `name`; `attached`: say so, with "When does it move?" open. */
   function show(key        , name        , attached = false) {
@@ -18028,18 +18653,6 @@ function createTimeline(d              , makePanel                             =
       render();
     }
     if (focusStarts && shown()) (panel.focusStarts(), (focusStarts = false));
-  }
-  /**
-   * studio-motion-tool (2026-10-22): a new motion from a template on `key` — the strip's Motion button on a thing with
-   * none — shown at once with "✓ attached · When does it move?", the same moment as an attach. Its name, or null.
-   */
-  function makeFrom(key        , kind          )                {
-    if (!d.place(key) || clipsOf(key).length >= MAX_CLIPS) return null;
-    focusKey = key;
-    newClip(key, kind);
-    const name = chosen.get(key) ?? null;
-    if (name) show(key, name, true);
-    return name;
   }
   /** Attach from the card's menu (already in the Scene): attach, then show it with its "when" open. */
   function attachShow(key        , name        ) {
@@ -18145,6 +18758,8 @@ function createTimeline(d              , makePanel                             =
     play: (on) => (on ? play() : stop()),
     scrub(t, end) {
       if (playing) stop();
+      // The time line moved by hand: the person takes the times from here (making's "one second after the last" ends).
+      if (making?.shown) making = null;
       time = snapT(t, span(), true);
       refresh();
       panel.place();
@@ -18155,10 +18770,12 @@ function createTimeline(d              , makePanel                             =
       panel.render();
     },
     fold: () => setOpen(false),
+    done: () => void endMaking(),
     clip(value) {
       const key = head();
       if (!key) return;
-      if (value.startsWith('new:')) newClip(key, value.slice(4)            );
+      if (value === 'new:make') make(key);
+      else if (value === 'new:scene') newScene(key);
       else if (value === 'delete') {
         const c = clipOf(key);
         if (!c) return;
@@ -18200,8 +18817,9 @@ function createTimeline(d              , makePanel                             =
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
     // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
     setWhen: (w) => editClip((c) => {
-      // A "when" chosen: the "✓ attached" line has done its job.
+      // A "when" chosen: the "✓ attached" / "✓ moves from 0 s to 1 s" line has done its job.
       if (fresh) (clearTimeout(fresh.timer), (fresh = null));
+      madeKey = null;
       // A list of one is written as itself (studio-timeline-2: 2–4 = "any of these").
       const out             = { ...c, when: Array.isArray(w) ? (w.length > 1 ? w.slice(0, 4) : w[0] ) : w };
       delete out.start;
@@ -18313,6 +18931,7 @@ function createTimeline(d              , makePanel                             =
       stop();
       stopTry();
       sel = [];
+      making = null;
     }
     sentPoses = '';
     render();
@@ -18351,6 +18970,8 @@ function createTimeline(d              , makePanel                             =
       panel.render();
       return true;
     }
+    // Making (the line says "Esc to cancel"): Esc ends it — from the game page too (it drops the pick there as well).
+    if (k === 'escape' && !mod && making) return endMaking();
     if (k === 'k' && !mod) return keyNow();
     if (!mine) return false;
     if (k === ' ' && !mod) return (playing ? stop() : play()), true;
@@ -18374,6 +18995,7 @@ function createTimeline(d              , makePanel                             =
     if ((k === 'arrowleft' || k === 'arrowright') && !mod) {
       // One tenth of a second (Shift: a whole one), on the time line.
       time = snapT(time + (k === 'arrowleft' ? -1 : 1) * (e.shift ? 1 : 0.1), span(), true);
+      if (making?.shown) making = null;
       refresh();
       panel.render();
       return true;
@@ -18427,12 +19049,14 @@ function createTimeline(d              , makePanel                             =
      */
     moved(key        , pose      , end         , was       )          {
       if (!records(key)) return false;
+      stepBegins(key);
       begin(key, was);
       // From the motion before the gesture each time (a live drag sends many poses; the last one wins).
       store().set(key, before .get(key) ?? null);
       const m = keyed(key, pose, startPose.get(key) );
       const from = end ? finish() : before;
       commit(new Map([[key, m]]), from, end);
+      if (end) stepEnds(key);
       return true;
     },
     /**
@@ -18447,6 +19071,7 @@ function createTimeline(d              , makePanel                             =
           rest.push({ key: e.key, pose: placeFor(e.key, e.pose), from: e.from && placeFor(e.key, e.from) });
           continue;
         }
+        stepBegins(e.key);
         begin(e.key, e.from);
         store().set(e.key, before .get(e.key) ?? null);
         next.set(e.key, keyed(e.key, e.pose, startPose.get(e.key) ));
@@ -18460,6 +19085,7 @@ function createTimeline(d              , makePanel                             =
       }
       refresh();
       panel.render();
+      if (end && making && next.has(making.key)) stepEnds(making.key);
       return { rest, changes };
     },
     /**
@@ -18468,11 +19094,13 @@ function createTimeline(d              , makePanel                             =
      */
     card(key        , pose      , from      , live = false)          {
       if (!records(key)) return false;
+      stepBegins(key);
       begin(key, from);
       store().set(key, before .get(key) ?? null);
       const m = keyed(key, pose, startPose.get(key) );
       const was = live ? before : finish();
       commit(new Map([[key, m]]), was, !live);
+      if (!live) stepEnds(key);
       return true;
     },
     onMessage(m               )          {
@@ -18585,7 +19213,6 @@ function createTimeline(d              , makePanel                             =
     attach,
     // studio-motion-flow: the plate on an object, from outside it (the Library's "+ New motion", a drop, its "Attach").
     make,
-    makeFrom,
     show,
     detach,
     /** The motion the timeline shows for `key` first (the chosen one, else the one that plays at the start), or null. */
@@ -18625,7 +19252,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[52] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -18677,7 +19304,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[53] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -18983,7 +19610,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[54] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -19084,7 +19711,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[55] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -19118,7 +19745,9 @@ const { LIMITS } = __require(0);
      
                                                                                                            
                                                                                                   
-                                                                              
+                                                                             
+                                                                                                                             
+                                                                          
 
                             
                     
@@ -19200,7 +19829,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[56] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -19320,7 +19949,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[57] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -19334,7 +19963,7 @@ __defs[57] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
 const { icon } = __require(21);
-const { KEYMAP, keysOf } = __require(46);
+const { KEYMAP, keysOf } = __require(48);
 
                                     
                          
@@ -19401,7 +20030,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[58] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -19430,6 +20059,7 @@ __defs[58] = function (__exports) {
 // - Dimmed rows stay in place and cannot be chosen (context-rows.ts says why).
 // - The camera never moves for it, and nothing it does sends what the floating panels cover (the strip stays put).
 const { h } = __require(16);
+const { icon } = __require(21);
 
                            
              
@@ -19439,13 +20069,20 @@ const { h } = __require(16);
                      
                                                                                                                  
                     
+     
+                                                                                                                       
+                                                                                                                       
+                                                                                                     
+     
+               
               
  
 /**
  * `head`: a small title over the rows that follow (studio-motion-tool, 2026-10-22: the strip's Motion menu has two
  * lists — new kinds and the Library's motions — and "Hop" alone did not say which). Not a row: no highlight, no key.
+ * `note`: a sentence over the rows, wrapped (see show()).
  */
-                                                                    
+                                                                                       
 
                                   
                                            
@@ -19529,8 +20166,14 @@ function createContextMenu(d                 ) {
         el.append(h('div', { class: 'ctx-head', role: 'presentation', text: e.head }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
-        h('span', { class: 'ctx-label', text: e.label }),
+      // `note` (studio-tool-clear, 2026-10-23): one sentence over the rows — a dimmed tool's why, or "No motion yet".
+      // It wraps (a sentence, not a title), and is read aloud with the menu.
+      if ('note' in e) {
+        el.append(h('div', { class: 'ctx-note', role: 'presentation', text: e.note }));
+        continue;
+      }
+      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
+        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
       btn.addEventListener('pointerenter', (ev) => {
@@ -19636,7 +20279,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[59] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -19660,7 +20303,7 @@ __defs[59] = function (__exports) {
                                                                                     
 
 /** A level's world part: what placement.json has at its top for a game with one level. */
-                                                                                                  
+                                                                                                            
 
                              
              
@@ -19684,6 +20327,7 @@ function worldOf(f                                                            ) 
   if (f?.removed?.length) w.removed = structuredClone(f.removed);
   if (f?.order?.length) w.order = structuredClone(f.order);
   if (f?.motion && Object.keys(f.motion).length) w.motion = structuredClone(f.motion);
+  if (f?.names && Object.keys(f.names).length) w.names = structuredClone(f.names);
   return w;
 }
 
@@ -19691,6 +20335,15 @@ function worldOf(f                                                            ) 
 function slugOf(label        )         {
   const s = label.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
   return s || 'level';
+}
+
+/**
+ * The id of a level the person made, from its name: slugOf, and "level-" before it when the name had no Latin letters
+ * (a Japanese "Level 2" → "level-2", not "2": the AI and the file read better with a word in the id).
+ */
+function levelIdOf(label        )         {
+  const s = slugOf(label);
+  return /[a-z]/.test(s) ? s : `level-${s}`.slice(0, 60);
 }
 
 class Levels {
@@ -19839,6 +20492,7 @@ class Levels {
     delete out.removed;
     delete out.order;
     delete out.motion;
+    delete out.names;
     out.levels = this.list.map((e) => {
       const w = e.id === this.current ? now : e.world;
       const l                 = { id: e.id };
@@ -19852,12 +20506,16 @@ class Levels {
       if (w.removed?.length) l.removed = structuredClone(w.removed);
       if (w.order?.length) l.order = structuredClone(w.order);
       if (w.motion && Object.keys(w.motion).length) l.motion = structuredClone(w.motion);
+      if (w.names && Object.keys(w.names).length) l.names = structuredClone(w.names);
       return l;
     });
     // The code's order, only when the person's list says something else (an order, a copy, a delete, a rename).
     const code = this.code || [];
     const mine = out.levels.filter((l) => !l.from).map((l) => l.id);
     if (code.length && (mine.join('\n') !== code.join('\n') || out.levels.some((l) => l.from || l.labelWas))) out.levelsWas = code.slice();
+    // The code has no levels yet ("Make Level 2" in a game without them, startCodeless): `levelsWas: []` says so — the
+    // AI adds studio.levels() with these levels, and the loader knows which level the game builds until then.
+    else if (this.code && !this.code.length) out.levelsWas = [];
     return out;
   }
 
@@ -19876,15 +20534,53 @@ class Levels {
    * "+ Level" in a game whose code has one level (`single`): that level becomes the list's first, with `world` (the
    * live model's layout), and a copy of it is made right after (copy()). Returns the copy's id ('' = no single level).
    */
-  start(world           )         {
+  start(world           , first         )         {
     const one = this.single;
-    if (this.active || !one) return '';
+    if (this.active) return '';
+    if (!one) return first ? this.startCodeless(world, first) : '';
     this.list = [{ id: one.id, ...(one.label ? { codeLabel: one.label } : {}), world: worldOf(world), dirty: 0 }];
     this.code = [one.id];
     this.current = one.id;
     this.active = true;
     this.single = null;
     return this.copy(world);
+  }
+
+  /**
+   * "Make Level 2" in a game whose code has NO levels (studio-uniforms, 2026-10-23; a hands-on try: "+ Level typed text
+   * into the AI box — makes no sense", then "it just makes it without asking?? there used to be a menu"). What is on
+   * screen becomes "Level 1" (`first`, in the person's language; id `level-1`) and a copy of it is made right after.
+   * `code` is [] — the code has no levels yet — so compose() writes `levelsWas: []` and the AI adds studio.levels() on
+   * Save (SKILL.md "Levels"). WHY not ask the AI first (the old way): a level is something the hand can show (copy the
+   * scene, move things); only the switch in the code is the AI's, and that rides on Save like a moved object. Until
+   * then the editor builds the game as it is for both levels and lays each level's entries over it (build()).
+   */
+          startCodeless(world           , first        )         {
+    this.list = [{ id: 'level-1', label: first.trim().slice(0, 120) || 'Level 1', world: worldOf(world), dirty: 0 }];
+    this.code = [];
+    this.current = 'level-1';
+    this.active = true;
+    // One press, one change on "Save · n": the copy counts it (copy()), as for a game whose code has one level.
+    this.structDirty = 0;
+    return this.copy(world);
+  }
+
+  /**
+   * ⌘Z / [Undo] right after "Make Level 2" (start()): back to a game with one level, `world` = level 1's layout as it
+   * was. Returns false when the levels changed since (then it is not the same step any more).
+   */
+  unstart(single                  )                                     {
+    if (!this.active || this.list.length !== 2 || !this.list[1] .from || this.list[0] .from) return null;
+    // Level 1's layout waits in the list while Level 2 is on screen; null = level 1 is the one on screen (the live model).
+    const world = this.list[0] .id === this.current ? null : this.list[0] .world;
+    this.list = [];
+    this.code = null;
+    this.deleted.clear();
+    this.structDirty = 0;
+    this.active = false;
+    this.current = '';
+    this.single = single;
+    return { world };
   }
 
   /**
@@ -19898,9 +20594,9 @@ class Levels {
     const taken = new Set([...this.list.map((e) => e.id), ...(this.code || []), ...this.deleted]);
     const names = new Set(this.list.map((e) => this.labelOf(e.id)));
     let n = 2;
-    while (names.has(`${base} ${n}`) || taken.has(slugOf(`${base} ${n}`))) n++;
+    while (names.has(`${base} ${n}`) || taken.has(levelIdOf(`${base} ${n}`))) n++;
     const label = `${base} ${n}`;
-    const e             = { id: slugOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    const e             = { id: levelIdOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
     this.list.splice(this.index() + 1, 0, e);
     this.structDirty++;
     return e.id;
@@ -19940,9 +20636,10 @@ class Levels {
 
 __def(__exports, "worldOf", () => worldOf);
 __def(__exports, "slugOf", () => slugOf);
+__def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[60] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -19956,7 +20653,8 @@ __defs[60] = function (__exports) {
 // this scene"). A try of the editor (10/22): "where to switch levels is hard to find too" — the head read as a title,
 // and a game without levels had no way in at all. The list's head is "In this scene" again: one door, not two.
 //
-// A game WITHOUT levels gets a quiet "+ Level" after the path (addButton). Chosen over a ⌄ on the game's name with
+// A game WITHOUT levels gets "Levels ⌄" where the level's name will be (addButton; it was a quiet "+ Level" after the path
+// until studio-uniforms, 2026-10-23 — see addButton). Chosen over a ⌄ on the game's name with
 // one row "Add levels…" (the other plan drawn for it): nobody opens a menu to find one row, and the
 // "+" sits where the level will appear. It is the third grey and small, like the path's own words: the tools stay
 // quieter than the game. What it does is main.ts's (a game whose code has one level gets the second one at once;
@@ -19985,6 +20683,8 @@ const { icon } = __require(21);
                                           
                                      
                            
+                                                                                                                           
+                        
  
 
 function createLevelSwitch(d                 ) {
@@ -20007,6 +20707,7 @@ function createLevelSwitch(d                 ) {
       { sep: true },
       { id: 'level-delete', label: d.t('level.delete'), disabled: lv.list.length <= 1, run: () => d.remove(cur) },
     );
+    if (d.ask) rows.push({ sep: true }, d.ask());
     return rows;
   };
 
@@ -20073,20 +20774,29 @@ function createLevelSwitch(d                 ) {
     return (el = b);
   }
 
-  /** "+ Level" after the path, for a game without levels (main.ts decides when it shows and what it does). */
-  function addButton(run            )              {
-    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, title: d.t('level.addTip') },
-      icon('plus'), h('span', { text: d.t('level.add') }));
-    b.addEventListener('click', run);
+  /**
+   * "Levels ⌄" in the path (before "Scene"), for a game without levels (main.ts decides when it shows). It opens a menu
+   * (`run(button)` → openAt), never acts at once — studio-uniforms, 2026-10-23: it was "+ Level", which typed into the
+   * AI box, and a hands-on try asked for the menu back. The look is the crumb's own (a word and a chevron): the two
+   * states of the same place, "Level 2 ⌄" with levels and "Levels ⌄" without (a design review: "+" promised one step).
+   */
+  function addButton(run                          )              {
+    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, 'aria-haspopup': 'menu', title: d.t('level.addTip') },
+      h('span', { text: d.t('level.add') }), icon('chevronDown'));
+    b.addEventListener('click', () => run(b));
     return b;
   }
+  /** Open `entries` under `b` (the "Levels ⌄" of a game without levels): the same place and plate as the crumb's menu. */
+  function openAt(entries             , b             ) {
+    d.openMenu(entries, b.getBoundingClientRect());
+  }
 
-  return { render, entries, open, addButton, isRenaming: () => renaming };
+  return { render, entries, open, openAt, addButton, isRenaming: () => renaming };
 }
 
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[61] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -20194,6 +20904,8 @@ __defs[61] = function (__exports) {
                                                                        
                    
                          
+                                                                                                                        
+                
      
                   
 
@@ -20215,17 +20927,12 @@ function contextRows(place          , f          )           {
   if (place === 'object') {
     const locked = off || f.movable === 0;
     const rows           = [];
-    // The AI first: it is what the editor is for (the ask box is about the pick; this puts the cursor in it).
-    // Naming: a name lives in the game's code, so it is always the AI's job — one press asks for names when the pick
-    // has unnamed objects (the card's "Ask your AI to name it"); one named object gets "Rename…" (its words go into
-    // the ask box, nothing is sent until Enter). Several named objects: no rename (one name for many is not a rename).
-    if (!f.offline) {
-      rows.push({ id: 'ask', label: 'ask.chipOne' });
-      if (f.motion && f.picked === 1) rows.push({ id: 'askMotion', label: 'ctx.askMotion' });
-      if (f.unnamed > 0) rows.push({ id: 'name', label: f.picked > 1 ? 'ctx.nameMany' : 'ask.name' });
-      else if (f.picked === 1) rows.push({ id: 'rename', label: 'ctx.rename' });
-      rows.push(sep);
-    }
+    // Two uniforms (studio-uniforms, 2026-10-23): plain rows act here at once (⌘Z undoes) and never
+    // write in the AI box; ✦ rows only put a draft there, in their own group at the END, in the AI's violet. Before,
+    // "Ask your AI…" was the first row looking like the others, and "Rename…" typed "Rename it to " into the box.
+    // Rename (F2) is in place now: the card's name becomes a field (one named object; a name for many is no rename).
+    // An unnamed object's name must first exist in the code: "✦ Ask AI to name it…" (a draft, like every ✦).
+    if (!f.offline && f.picked === 1 && f.unnamed === 0 && !f.ui) rows.push({ id: 'rename', label: 'ctx.rename', key: 'rename' }, sep);
     // A phone: the card has Duplicate and Delete (and Copy / Paste are the same as Duplicate there) — not here.
     if (!f.compact && !f.ui) {
       rows.push(
@@ -20247,42 +20954,48 @@ function contextRows(place          , f          )           {
       ];
       rows.push(sep, ...layers.filter((r) => !f.compact || !('sep' in r) && !r.disabled));
     }
+    if (!f.offline) {
+      rows.push(sep, { id: 'ask', label: f.picked > 1 ? 'ctx.askMany' : 'ctx.askObject', ai: true });
+      if (f.motion && f.picked === 1) rows.push({ id: 'askMotion', label: 'ctx.askMotion', ai: true });
+      if (f.unnamed > 0) rows.push({ id: 'name', label: f.picked > 1 ? 'ctx.nameAskMany' : 'ctx.nameAsk', ai: true });
+    }
     return tidy(rows);
   }
   if (place === 'scene') {
     // Only what can act now (no dimmed rows): Paste when something is copied, Deselect when something is picked.
     const rows           = [];
-    if (!f.offline) rows.push({ id: 'ask', label: 'ask.game' }, sep);
     if (!off) {
       if (f.clip > 0 && !f.compact && !f.ui) rows.push({ id: 'paste', label: 'keys.paste', key: 'paste' });
       if (f.items > 0) rows.push({ id: 'selectAll', label: 'pal.selectAll', key: 'selectAll' });
     }
     if (f.anyPicked) rows.push({ id: 'deselect', label: 'ops.selectNone', key: 'deselect' });
     if (!off && !f.ui) rows.push(sep, { id: 'frame', label: 'btn.frame', key: 'frame' }, { id: 'home', label: 'pal.home', key: 'home' });
+    if (!f.offline) rows.push(sep, { id: 'ask', label: 'ctx.askGame', ai: true });
     return tidy(rows);
   }
   if (place === 'libObject') {
     const locked = off || f.movable === 0;
     return tidy([
       { id: 'addToScene', label: 'lib.addToScene', disabled: locked },
-      ...(f.offline ? [] : [{ id: 'ask', label: 'lib.askAi' }]),
       sep,
       { id: 'showInGame', label: 'ctx.showInGame' },
       { id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked },
+      ...(f.offline ? [] : [sep, { id: 'ask', label: 'lib.askAboutIt', ai: true          }]),
     ]);
   }
-  // libFile
+  // libFile: a new object from a file is code, so its "add" is a request — ✦, in the AI's group (the web demo keeps
+  // it dimmed, the detail says why: a missing row reads as "can't be done").
   return tidy([
-    { id: 'addFile', label: 'lib.addToScene', disabled: f.offline || f.exists === false },
-    ...(f.offline ? [] : [{ id: 'askFile', label: 'lib.askAi' }]),
-    sep,
     { id: 'replace', label: 'ctx.replace' },
+    sep,
+    { id: 'addFile', label: 'lib.addFileAi', disabled: f.offline || f.exists === false, ai: true },
+    ...(f.offline ? [] : [{ id: 'askFile', label: 'lib.askAboutIt', ai: true          }]),
   ]);
 }
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[62] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -20393,7 +21106,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[63] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -20550,7 +21263,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[64] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -20620,7 +21333,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[65] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -20709,7 +21422,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[66] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -20858,7 +21571,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[67] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -20921,7 +21634,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[68] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -21134,7 +21847,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[69] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -21224,7 +21937,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[70] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -21240,11 +21953,11 @@ __defs[70] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(66);
-const { withLooks } = __require(65);
-const { createUiScreens } = __require(67);
-const { UiStyleModel, validLook, validTheme } = __require(68);
-const { createUiTheme } = __require(69);
+const { createUiCard } = __require(68);
+const { withLooks } = __require(67);
+const { createUiScreens } = __require(69);
+const { UiStyleModel, validLook, validTheme } = __require(70);
+const { createUiTheme } = __require(71);
                                                    
 
                              
@@ -21439,7 +22152,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[71] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -21516,7 +22229,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[72] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -21541,46 +22254,48 @@ const { createLibraryObjects, DRAG_OBJECT } = __require(18);
 const { motionsPlayHere } = __require(20);
 const { createLibraryMotions } = __require(26);
 const { createMotionDrag } = __require(27);
-const { createMotionTool } = __require(28);
-const { rulesFor } = __require(29);
-const { samePose } = __require(34);
+const { toolOffEntries } = __require(28);
+const { createMotionTool } = __require(29);
+const { rulesFor } = __require(30);
+const { samePose } = __require(35);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setExtraText, translate } = __require(35);
-const { NEXT_STEPS, renderNextSteps } = __require(36);
-const { statusCovers } = __require(37);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(38);
-const { bounces, saveLoud } = __require(39);
-const { askView: questionView } = __require(40);
-const { playLine, playWords } = __require(41);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(42);
-const { renderSettings } = __require(44);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(43);
-const { dropTarget, hasLayer, layerTarget } = __require(31);
-const { createPlacementPanel } = __require(47);
-const { createTimeline } = __require(51);
-const { createMotionAsk } = __require(52);
-const { motionLibrary } = __require(32);
-const { attachWorld, roundLib } = __require(33);
+const { detectLang, setExtraText, translate } = __require(36);
+const { NEXT_STEPS, renderNextSteps } = __require(37);
+const { statusCovers } = __require(38);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(39);
+const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(40);
+const { bounces, saveLoud } = __require(41);
+const { askView: questionView } = __require(42);
+const { playLine, playWords } = __require(43);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(44);
+const { renderSettings } = __require(46);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(45);
+const { dropTarget, hasLayer, layerTarget } = __require(32);
+const { createPlacementPanel } = __require(49);
+const { createTimeline } = __require(53);
+const { createMotionAsk } = __require(54);
+const { motionLibrary } = __require(33);
+const { attachWorld, roundLib } = __require(34);
 const { icon, setButton } = __require(21);
-const { createPalette } = __require(53);
-const { fitPicture } = __require(54);
-const { PlacementModel } = __require(34);
-const { UndoStack, poseChange } = __require(55);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(45);
-const { displayName, forgetNames, noteItems, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(46);
-const { installTooltips } = __require(56);
-const { createShortcutSheet } = __require(57);
-const { createContextMenu } = __require(58);
-const { Levels, worldOf } = __require(59);
-const { createLevelSwitch } = __require(60);
-const { contextRows } = __require(61);
-const { bigChanges, createSafeSave } = __require(62);
-const { createUnsavedGuard, lostBy, playAsks } = __require(63);
-const { createLayerSwitch } = __require(64);
-const { uiAsPlacement, uiEntries, withUi } = __require(65);
-const { createUiWire } = __require(70);
-const { barPress, gripEnd, readFold, writeFold } = __require(71);
+const { createPalette } = __require(55);
+const { fitPicture } = __require(56);
+const { PlacementModel } = __require(35);
+const { UndoStack, poseChange } = __require(57);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(47);
+const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
+const { keyOf, tipText } = __require(48);
+const { installTooltips } = __require(58);
+const { createShortcutSheet } = __require(59);
+const { createContextMenu } = __require(60);
+const { Levels, worldOf } = __require(61);
+const { createLevelSwitch } = __require(62);
+const { contextRows } = __require(63);
+const { bigChanges, createSafeSave } = __require(64);
+const { createUnsavedGuard, lostBy, playAsks } = __require(65);
+const { createLayerSwitch } = __require(66);
+const { uiAsPlacement, uiEntries, withUi } = __require(67);
+const { createUiWire } = __require(72);
+const { barPress, gripEnd, readFold, writeFold } = __require(73);
 
                                                                         
 
@@ -21736,6 +22451,8 @@ function start(host            ) {
   // The opened file's top world part, for the level on screen when the game first says it has levels.
   let startWorld                       ;
   let model = worldModel;
+  // Names given in the editor (Rename, F2) show everywhere an object's name does (names.ts displayName).
+  useGivenNames((k) => worldModel.nameOf(k));
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
   // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
@@ -21837,6 +22554,12 @@ function start(host            ) {
   // screen (`swapping` = the old frame), which goes only once the new game has
   // drawn its objects: no flash of black or of an empty list.
   let aiWatching                     ;
+  // ai-presence.ts's clock: when this page last saw a heartbeat (null = never), and since when it has been visible
+  // without a break (a hidden tab's polls stop: coming back must not read as a minute of silence).
+  let lastWatching                = null;
+  let visibleSince = Date.now();
+  // The presence's line is open (toggleOpenHelp).
+  let helpOpen = false;
   // Which AI is behind the editor (host.status().agent, which-ai.mjs): the line's "More in Claude" (ai-flow.ts moreIn).
   let aiAgent                     ;
   let aiSeen                    ;
@@ -21965,9 +22688,13 @@ function start(host            ) {
   // gets "+ Level" after the path instead (level-switch.ts says why there). Both slots are filled by renderLevelCrumb().
   const levelSlot = h('span', { class: 'level-crumb', hidden: true, dataset: { part: 'level-crumb' } });
   const levelAddSlot = h('span', { class: 'level-add-slot', hidden: true });
+  // The line after "Make Level 2" (renderLevelMade), under the top bar's left end where the level's name just appeared.
+  const levelNote = h('div', { class: 'level-made', role: 'status', hidden: true, dataset: { part: 'level-made' } });
+  /** "Make Level 2" that can still be taken back: the game's one level (`single`), its model, the two names. */
+  let levelMade                                                                                         = null;
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), levelSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), levelAddSlot, h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), levelSlot, levelAddSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -22012,13 +22739,14 @@ function start(host            ) {
   // the editor: "let them choose with buttons"), so once in Play the person has already chosen. Save beside Play stays.)
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
     saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
-  // Is the AI there? Grey until it writes back in this session, green after,
-  // violet while it works. (The editor cannot see the AI's window; this is
-  // only what the AI told it, so it never claims more.)
-  // A button since 2026-10-20: once the AI's finished line has faded, pressing "● AI" brings it back (with its "Undo AI
-  // change"). The quietest place for it: the AI already lives there, nothing new is drawn, and its label turns violet
-  // (the AI's hand) only while a change of the AI's can still be taken back (renderPeer).
-  const peer = h('button', { type: 'button', class: 'peer', dataset: { part: 'peer', action: 'ai-recall' }, onclick: () => recallLine() }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // Is the AI there? Said in words next to the ask field, before typing (ai-presence.ts, a hands-on review 2026-10-23). It
+  // replaced the top bar's grey "● AI" (2026-10-16 → 10-23), which nobody could read: a dot far from the field, about
+  // someone the person may not know is involved. Its hidden second job (press it to bring back the AI's faded reply,
+  // 2026-10-20) moved to the field itself: focusing the field brings the reply back (and ⌘K still lists it).
+  // One button: pressing it opens one line of what is true and what to do (openHelp below), in every state.
+  // Inside the field on a wide bar; on a narrow one (phone, the side window, < PRESENCE_ROOM px left) on its own line above.
+  const presence = h('button', { type: 'button', class: 'presence', dataset: { part: 'presence', action: 'ai-presence' }, onclick: () => toggleOpenHelp() },
+    h('span', { class: 'dot', 'aria-hidden': 'true' }), h('span', { class: 'p-text' }), h('span', { class: 'p-how' }));
   // Ask while playing on a narrow screen (a phone, the side window; Ive review 3 ④, 2026-10-20): ✦ left of Edit opens
   // the field over the game. The game page's own corner mark sat on the game's words at its foot ("Tap or click the
   // water to sail · WASD works too" in Lantern Cove), and a game's foot is where games put words; the top bar is the
@@ -22078,7 +22806,7 @@ function start(host            ) {
   };
   const largeBtn = btn('open-large', () => void openLarge(), { class: 'icon-btn large-btn' });
   // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, host.offline ? null : peer, largeBtn, topActions));
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, largeBtn, topActions));
   // World | UI (UI stage 1, layer-switch.ts): the top bar's middle on PC, over the game on a phone (renderAll).
   const layerSwitch = createLayerSwitch((l) => setEditLayer(l), () => setUiPeek(!uiPeek));
   layerSwitch.el.hidden = true;
@@ -22248,14 +22976,20 @@ function start(host            ) {
   // need this". The editor should open on the game alone. Don't bring back a
   // step-by-step tour here without asking.
   const playNote = h('p', { class: 'play-note', hidden: true });
-  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
+  // "How to open" (and what each presence means): one line the person opened with the presence words, and closes. It
+  // replaced "Call your AI" (2026-10-19 → 10-23), which copied a word to the clipboard without saying why — the
+  // quietest "nothing happened" of all. The word ("look") is still there, as a chip that copies on a press and says so.
+  const openHelp = h('div', { class: 'ai-open-help', dataset: { part: 'ai-open' }, hidden: true });
+  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, openHelp, playNote);
+  // The narrow bar's line for the presence words (above the field; the field keeps its whole width for the words).
+  const presenceRow = h('div', { class: 'presence-row', hidden: true });
   // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
   const askSlot = h('div', { class: 'ask-slot', hidden: !!host.offline });
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), presenceRow, bar);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app') .replaceWith(app);
   panel.append(toolEl);
@@ -22304,6 +23038,7 @@ function start(host            ) {
     },
     go: (id) => void goLevel(id),
     copy: () => void goLevel(levels.copy(worldModel.result())),
+    ask: host.offline ? undefined : () => levelAskEntry(),
     rename: (id, label) => levelsChanged(levels.rename(id, label)),
     move: (id, by) => levelsChanged(levels.move(id, by)),
     remove: (id) => {
@@ -22495,6 +23230,7 @@ function start(host            ) {
     group: () => group,
     multi: () => multi,
     setMulti: (on) => setMulti(on),
+    rename: (k, name) => renameObject(k, name),
     copy: () => copySelection(),
     remove: () => removeSelection(),
     shortcutOf: (what) => shortcutText(what),
@@ -22536,7 +23272,16 @@ function start(host            ) {
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
     ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
     answering: () => answering(),
+    // The whole-game placeholder by presence (ai-presence.ts): the AI's own name when it is there, "kept as a note"
+    // when the editor isn't sure (the half of the presence words that says nothing is lost).
+    askGame: () => {
+      if (host.offline) return t('ask.game');
+      const p = currentPresence();
+      const v = aiVars();
+      return p === 'away' || p === 'unsure' ? t('ask.gameKept', v) : aiAgent ? t('ask.gameAi', v) : t('ask.game');
+    },
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
     assets: () => (libraryShown() ? filePick : []),
     // …or, in the Scene, the motion "Ask AI" was pressed on (the chip reads "crate · Hop", motion-ask.ts).
@@ -22588,6 +23333,7 @@ function start(host            ) {
     openFile: (path) => openAsset(path, ctx),
     uses: () => readUses(),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     changed: () => renderShelf(),
     addToScene: () => addToScene(),
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
@@ -22663,7 +23409,7 @@ function start(host            ) {
   });
 
   // The strip's Motion button (studio-motion-tool, motion-tool.ts): what it shows, and its press — the timeline on the
-  // pick's motion, or the small menu (new from a template / from the Library). The same target rule as a drop.
+  // pick's motion, or the small menu (make one by showing it / use a saved one). The same target rule as a drop.
   const motionTool = createMotionTool({
     t,
     send: (m) => send(m),
@@ -22679,9 +23425,7 @@ function start(host            ) {
     library: () => motionLibrary.list(),
     room: (k) => timeline.room(k),
     keyText: () => keyOf('motion', isMac()),
-    make: (k, kind) => {
-      if (timeline.makeFrom(k, kind)) renderShelf();
-    },
+    make: (k) => (timeline.make(k), renderShelf()),
     attach: (k, name) => attachAndShow(k, name),
     open: (k, name) => timeline.show(k, name),
     menu: (entries, x, y, o, avoid) => {
@@ -22696,6 +23440,31 @@ function start(host            ) {
     menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
     frame: () => iframe,
   });
+
+  /**
+   * A dimmed tool of the strip pressed (studio-tool-clear, tool-off.ts): its why and what can be done, in the editor's
+   * menu at the button — the place the Motion button's menu takes (under it with a mouse, above it with a finger).
+   */
+  function toolOffMenu(m                                                               ) {
+    if (m.key !== selected) return;
+    const entries = toolOffEntries({
+      t,
+      unhold: (k) => send({ type: 'studio:placement/unhold', keys: [k] }),
+      choose: (tool) => send({ type: 'studio:placement/tool', tool }),
+      ask: host.offline ? null : (text) => focusAsk(text),
+    }, m.key, m.tool, m.why, m.line);
+    const f = iframe?.getBoundingClientRect();
+    const fx = f?.left ?? 0, fy = f?.top ?? 0;
+    const btn = m.w > 0 ? new DOMRect(fx + m.x, fy + m.y, m.w, m.h) : null;
+    const x = btn ? (m.touch ? btn.left + btn.width / 2 : btn.left) : fx + (f?.width ?? 0) / 2;
+    const y = btn ? (m.touch ? btn.top : btn.bottom + 6) : fy + (f?.height ?? 0) / 2;
+    ctxMenu.show(entries, x, y, { place: 'tool-off', touch: m.touch, keyboard: m.keyboard, label: t('tooloff.menu'), floor: menuFloor() });
+    const r = ctxMenu.el.getBoundingClientRect();
+    if (btn && r.top < btn.bottom && r.bottom > btn.top) {
+      const above = btn.top - r.height - 6;
+      ctxMenu.el.style.top = `${Math.round(above >= 8 ? above : btn.bottom + 6)}px`;
+    }
+  }
 
   /**
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
@@ -22837,6 +23606,13 @@ function start(host            ) {
   // A short notice shown in the field's place (showToast). Typing (or a click into the field) ends it at once.
   const askNews = h('span', { class: 'ask-news', role: 'status', 'aria-live': 'polite', hidden: true });
   askInput.addEventListener('input', hideNews);
+  // The AI's faded reply comes back when the person goes to the field (it was the top bar's "● AI" until 2026-10-23,
+  // where nobody found it): the field is where the AI lives, and its Undo is right there. ⌘K lists it too.
+  askInput.addEventListener('focus', () => {
+    if (lineRecallable()) recallLine();
+  });
+  // The presence words move inside / above the field as the bar's width changes (renderPresence).
+  new ResizeObserver(() => renderPresence()).observe(askSlot);
   askInput.addEventListener('focus', hideNews);
   new ResizeObserver(() => placeNews()).observe(askInput);
   const palette = createPalette({
@@ -22892,7 +23668,7 @@ function start(host            ) {
       const prev = levels.step(-1), next = levels.step(1);
       if (prev) act('level-prev', t('level.pal.prev', { name: levels.labelOf(prev) }), 'chevronUp', () => void goLevel(prev), keyOf('levelPrev', mac), words);
       if (next) act('level-next', t('level.pal.next', { name: levels.labelOf(next) }), 'chevronDown', () => void goLevel(next), keyOf('levelNext', mac), words);
-    } else if (levelAddable()) act('level-add', t('level.pal.add'), 'plus', addLevel, undefined, t('level.pal.words'));
+    } else if (levelAddable()) act('level-add', t('level.pal.add'), 'chevronDown', () => openLevelFresh(), undefined, t('level.pal.words'));
     if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
     else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
     // World ⇄ UI (UI stage 1): only in a game with both.
@@ -22901,7 +23677,7 @@ function start(host            ) {
       act('edit-layer', t(`uiLayer.pal.${to}`), to === 'ui' ? 'uiLayer' : 'cube', () => setEditLayer(to), keyOf('layer', mac), 'ui hud title layer world UI ワールド 画面');
       if (editLayer === 'world') act('ui-peek', t(uiPeek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show'), uiPeek ? 'eyeOff' : 'eye', () => setUiPeek(!uiPeek), keyOf('uiPeek', mac), 'ui hud show hide peek eye 見る 隠す 表示');
     }
-    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    if (undo.canUndo || levelMade) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
     // The AI's change, undone from here too: its line fades by itself (line-fade.ts) and this row is always there while
     // the change can be taken back (also on a phone, where the top bar has no "● AI").
     {
@@ -23002,6 +23778,40 @@ function start(host            ) {
     motionAsk.set(key, m);
     focusAsk();
   }
+  /**
+   * Rename in place (studio-uniforms, 2026-10-23; the menu's Rename, F2): the name shows everywhere at once, one undo
+   * step, one Save count; placement.json's `names` carries it and the AI renames the object in the code on Save.
+   * History: "Rename…" typed "Rename it to " into the AI box — a plain row writing in the box, the thing a hands-on try
+   * found senseless. '' = back to the game's own name. Only a named world object (an unnamed one is "✦ Ask AI to name
+   * it…": its name must first exist in the code).
+   */
+  function renameObject(key        , name        ) {
+    const it = items.find((i) => i.key === key);
+    if (!it || it.unstable || editLayer !== 'world') return;
+    const v = name.trim() === it.label ? '' : name.trim();
+    const from = worldModel.rename(key, v || null);
+    if (!undo.push({ changes: [{ kind: 'name', key, from, to: v || null }] })) return;
+    renderAll();
+    keepSoon();
+  }
+  /** F2 / the menu's Rename: the one picked, named world object's card name becomes a field. */
+  function startRename() {
+    const it = selected && group.length <= 1 ? items.find((i) => i.key === selected) : undefined;
+    if (!it || it.unstable || !editing || playing || editLayer !== 'world' || host.offline) return false;
+    if (tool !== 'placement' || page !== 'tool') switchTool('placement');
+    placementPanel.startRename(it.key);
+    return true;
+  }
+  /**
+   * ✦ "Ask AI to name it…" (the menu, the card, the Library's detail; studio-uniforms): those objects picked (the chip
+   * names them) and a draft in the box — nothing sent. It sent a request at once before, the one ✦ that did.
+   */
+  function nameDraft(keys          ) {
+    if (host.offline) return;
+    if (keys.length === 1 && selected !== keys[0]) selectObject(keys[0] );
+    else if (keys.length > 1) selectMany(keys, keys[0] );
+    focusAsk(t(keys.length > 1 ? 'ctx.nameTextMany' : 'ctx.nameText'));
+  }
   /** The ask box with the cursor in it (the menus' "Ask your AI…"); `text` is put in first, never sent. */
   function focusAsk(text         ) {
     if (host.offline) return;
@@ -23055,8 +23865,8 @@ function start(host            ) {
     const run                             = {
       ask: () => focusAsk(),
       askMotion: () => its.length === 1 && timeline.askAbout(its[0] .key),
-      name: () => void askAi({ kind: 'name', text: '', objects: requestObjects(its.filter((i) => i.unstable).map((i) => i.key)) }),
-      rename: () => focusAsk(t('ctx.renameText')),
+      name: () => nameDraft(its.filter((i) => i.unstable).map((i) => i.key)),
+      rename: () => void startRename(),
       duplicate: () => copySelection(),
       copy: () => clipCopy(),
       paste: () => clipPaste(),
@@ -23079,10 +23889,11 @@ function start(host            ) {
     }
     const entries              = rows.map((r) => ('sep' in r ? r : {
       id: r.id,
-      // The scene's "Ask your AI" says what it is about: the game, or the pick when something is picked.
-      label: r.id === 'ask' && place === 'scene' && picked.length ? t('ask.chipOne') : r.id === 'askMotion' && its[0] ? t(r.label, { name: timeline.shownName(its[0].key) ?? '' }) : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label),
+      // A ✦ row says what it is about: the object by its name ("Ask AI to change the ship…"), the game, or the motion.
+      label: r.id === 'askMotion' && its[0] ? t(r.label, { name: timeline.shownName(its[0].key) ?? '' }) : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label, { name, n: its.length }),
       key: r.key ? keyOf(r.key, mac) : '',
       disabled: r.disabled,
+      ai: r.ai,
       run: run[r.id] ?? (() => undefined),
     }));
     if (!entries.length) return;
@@ -23218,7 +24029,7 @@ function start(host            ) {
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion'
-      : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : 'move';
+      : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : kinds.has('name') ? 'rename' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0] ) : t('undo.n', { n: keys.length }) });
   }
@@ -23337,6 +24148,7 @@ function start(host            ) {
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
+      else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -23353,6 +24165,11 @@ function start(host            ) {
       }
     }
     flush();
+    // A name back or again (Rename): every place that shows it is drawn again, and the draft follows.
+    if (list.some((c) => c.kind === 'name')) {
+      renderAll();
+      keepSoon();
+    }
     // What came back is selected; what went away is not.
     const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && (c.kind === 'add' || c.kind === 'remove')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
@@ -23598,14 +24415,83 @@ function start(host            ) {
       ...(about.length ? { objects: requestObjects(about) } : {}) });
   }
 
-  /**
-   * "Call your AI": the one thing to do when a request could not wake the AI (Codex, a closed session). Copies the
-   * one word the skill knows ("look", or its translation in ja) to paste in the AI's chat; no command, no app names.
-   */
-  async function callAi() {
+  /** The one word the skill knows ("look", or its translation), copied by the chip in "How to open". */
+  async function copyWord() {
     const word = t('ai.callText');
     const ok = await (navigator.clipboard?.writeText(word).then(() => true, () => false) ?? Promise.resolve(false));
     showToast(ok ? t('ai.called') : t('ai.callFail'));
+  }
+
+  /** Is the AI there (ai-presence.ts)? */
+  function currentPresence()             {
+    return aiPresence({ now: Date.now(), watching: aiWatching, agent: aiAgent, phase: currentPhase(), statusTime: aiTime, lastWatching, visibleSince });
+  }
+  /** The AI's name for the words: {ai} / {Ai} (a sentence's start, English) / {ai2} (its second mention). */
+  function aiVars()                         {
+    const k = aiNameKey(aiAgent);
+    const ai = t(`ai.name.${k}`);
+    return { ai, Ai: ai.charAt(0).toUpperCase() + ai.slice(1), ai2: t(`ai.name2.${k}`), word: t('ai.callText') };
+  }
+
+  // Room the field's own words keep beside the presence words (px): spark, send and ~20 characters of placeholder.
+  // Less than that and the words get their own line above (a first try inside a 600 px field cut the Japanese
+  // placeholder in half — 2026-10-23).
+  const PRESENCE_ROOM = 330;
+  let lastPresence                    = null;
+  function renderPresence() {
+    if (host.offline) {
+      presence.hidden = true;
+      presenceRow.hidden = true;
+      return;
+    }
+    const p = currentPresence();
+    const v = aiVars();
+    presence.dataset.state = p;
+    presence.classList.toggle('sure', presenceSure(p));
+    (presence.querySelector('.p-text')               ).textContent = t(`ai.p.${p}`, v);
+    // "How to open" only where opening is the thing to do; the green states read alone.
+    const how = p === 'away' || p === 'unsure';
+    const howEl = presence.querySelector('.p-how')               ;
+    howEl.textContent = how ? t('ai.p.how') : '';
+    howEl.hidden = !how;
+    presence.setAttribute('aria-expanded', helpOpen ? 'true' : 'false');
+    presence.title = t('ai.p.tip');
+    // Where: inside the field on a wide bar, on its own line above on a narrow one. offsetWidth 0 = not laid out yet
+    // (a hidden bar): leave it where it is.
+    const box = placementPanel.askEl;
+    const w = box.offsetWidth;
+    const narrow = phone() || (w > 0 && w < presence.offsetWidth + PRESENCE_ROOM);
+    const want = narrow ? presenceRow : box;
+    if (presence.parentElement !== want) {
+      if (want === box) box.insertBefore(presence, box.querySelector('.ask-kbd'));
+      else presenceRow.append(presence);
+    }
+    presenceRow.hidden = !narrow || askSlot.hidden;
+    renderOpenHelp(p, v);
+    // The placeholder says the other half ("kept as a note for Claude"): drawn again when the state changes by time.
+    if (p !== lastPresence) {
+      lastPresence = p;
+      placementPanel.renderAsk();
+    }
+  }
+
+  /** The line the presence words open: what is true now, and what to do (its chip copies the word). */
+  function toggleOpenHelp(on = !helpOpen) {
+    helpOpen = on;
+    renderPresence();
+  }
+  function renderOpenHelp(p            , v                        ) {
+    openHelp.hidden = !helpOpen;
+    if (!helpOpen) return;
+    const key = p === 'watching' || p === 'working' ? `ai.open.${p}` : `ai.open.${aiNameKey(aiAgent)}`;
+    const sig = `${key}|${lang}|${v.ai}`;
+    if (openHelp.dataset.sig === sig) return;
+    openHelp.dataset.sig = sig;
+    // The word as a chip where the step says to type it (Codex, an unknown AI): copies on a press, and says so.
+    const word = key === 'ai.open.codex' || key === 'ai.open.any';
+    openHelp.replaceChildren(h('span', { class: 'ai-text', text: t(key, v) }),
+      ...(word ? [h('button', { type: 'button', class: 'link', dataset: { action: 'ai-copy-word' }, onclick: () => void copyWord() }, h('span', { text: t('ai.open.copy', v) }))] : []),
+      h('button', { type: 'button', class: 'link icon-only', dataset: { action: 'ai-open-close' }, title: t('ai.open.close'), 'aria-label': t('ai.open.close'), onclick: () => toggleOpenHelp(false) }, icon('close')));
   }
 
   // The objects the AI's question is about glow in the scene (instead of the AI's change marks) while it asks.
@@ -23630,6 +24516,7 @@ function start(host            ) {
     lastChange = null;
     // The host's answer says at once whether an AI watches (no 20 s of not knowing).
     if (info?.watching !== undefined) aiWatching = info.watching;
+    if (aiWatching) lastWatching = Date.now();
     if (info?.seen) aiSeen = info.seen;
     if (id && info?.undo && !changeFrom) changeFrom = id;
     if (aiMarks.size) {
@@ -23682,17 +24569,23 @@ function start(host            ) {
     if (ph === 'waiting' && pending) {
       // Hosts that cannot tell whether an AI watches (and the offline demo): the old line.
       aiLine.append(h('span', { class: 'ai-text', text: pending.text ? t('ai.waitingAsk', { text: pending.text }) : pending.kind === 'saved' ? t('ai.waitingSaved') : t('ai.waiting', { what: t(`ai.what.${pending.kind}`) }) }));
-    } else if (ph === 'sent' || ph === 'seen') {
-      two(t(ph === 'seen' ? 'ai.seen' : 'ai.sent'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
-    } else if (ph === 'away' || ph === 'nudge') {
-      // The request could not wake the AI right now (hands-on test 2026-10-19). Not a warning and not the
-      // AI's plumbing ("isn't watching", "/arrange", "Claude Code or Codex"): one calm line that it is kept and goes in
-      // by itself, and one button if they want it sooner. In Claude Code the plugin's hooks wake the AI, so this is
-      // rare there (ai-wake.mjs).
-      two(t('ai.nudge'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
-      link('ai-call', 'spark', t('ai.call'), () => void callAi(), t('ai.callTip'));
+    } else if (ph === 'seen' || (ph === 'sent' && Date.now() - (pending?.sent ?? 0) < UNSEEN_MS)) {
+      // The AI has it: "Claude is on it" (ai presence, a hands-on review 2026-10-23), then "Done". `sent` (a heartbeat, not yet
+      // shown to the AI) says the same for UNSEEN_MS; after that the fact below, not a hanging "on it".
+      two(t('ai.onIt', aiVars()), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
+    } else if (ph === 'away' || ph === 'nudge' || ph === 'sent') {
+      // Nothing can wake the AI right now (hands-on test 2026-10-19; ai presence 2026-10-23). The fact, not a promise:
+      // "Kept as a note for Claude. Nothing in the game changes until Claude reads it." — it was "Your request is in.
+      // It goes into the game the next time your AI runs.", which read as "I asked and nothing happened". What was
+      // asked stays under it (proof the note exists). "How to open" is the presence words right under this line (no
+      // second button here: two "How to open" a finger apart read as two different things).
+      // In Claude Code the plugin's hooks wake the AI, so this is rare there (ai-wake.mjs).
+      two(t('ai.kept', aiVars()), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
     } else if (ph === 'received' || ph === 'working') {
-      two(note ? `${note.replace(/[.…]+$/, '')}…` : t(`ai.${ph}`), covered ? asked : '');
+      // Its own words while it works; none: "Claude is on it". Quiet for QUIET_WORK_MS: how long, so silence looks alive.
+      const quiet = aiTime != null ? Date.now() - aiTime : 0;
+      const still = quiet >= QUIET_WORK_MS ? t('ai.still', { n: Math.floor(quiet / 60_000) }) : '';
+      two(note ? `${note.replace(/[.…]+$/, '')}…` : t('ai.onIt', aiVars()), [covered ? asked : '', still].filter(Boolean).join(' · '));
     } else if (ph === 'asking') {
       // The AI's question, answered here (hands-on test 2026-10-19; ai-ask.ts): the question, what it is
       // about lit in the scene, now → after side by side, its answers as buttons; the ask field takes their own words.
@@ -23764,7 +24657,7 @@ function start(host            ) {
       wasAsking = ph === 'asking';
       placementPanel.renderAsk();
     }
-    renderPeer();
+    renderPresence();
     // The whole line on hover (it is cut to one line).
     aiLine.title = aiLine.hidden ? '' : aiLine.textContent || '';
     sendPlayLine();
@@ -23953,6 +24846,7 @@ function start(host            ) {
         aiStatus = r.status;
         aiTime = r.time;
         if (r.watching !== undefined) aiWatching = r.watching;
+        if (aiWatching) lastWatching = Date.now();
         if (r.seen) aiSeen = r.seen;
         aiAgent = r.agent;
         if (r.code !== code) {
@@ -23991,7 +24885,9 @@ function start(host            ) {
     pollTimer = window.setTimeout(() => void pollStatus(), 400);
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void pollStatus();
+    if (document.visibilityState !== 'visible') return;
+    visibleSince = Date.now();
+    void pollStatus();
   });
 
   // ----- bridge messaging -----
@@ -24145,6 +25041,7 @@ function start(host            ) {
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
     if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
+    if (m.type === 'studio:placement/tool-off') return toolOffMenu(m);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -24558,6 +25455,8 @@ function start(host            ) {
 
   // ----- actions -----
   function doUndo() {
+    // Nothing else left to undo right after "Make Level 2": ⌘Z takes the level back (makeLevel).
+    if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
     if (e) applyEntry(e, 'undo');
     renderButtons();
@@ -24764,6 +25663,11 @@ function start(host            ) {
           uiModel.markSaved();
           uiWire.model.markSaved();
           levels.markSaved();
+          // Saved with its levels: taking "Make Level 2" back now would leave the file and the editor apart.
+          if (levelMade) {
+            levelMade = null;
+            renderLevelMade();
+          }
           motionLibrary.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
@@ -25018,6 +25922,11 @@ function start(host            ) {
   async function goLevel(id        , keep = true) {
     if (!id || !levels.has(id)) return;
     if (!(await confirmLoss('reload'))) return levelsChanged(true);
+    // Another level shown: "Make Level 2" is not the last step any more (makeLevel arms it again after its own goLevel).
+    if (levelMade) {
+      levelMade = null;
+      renderLevelMade();
+    }
     if (keep) levels.stash(worldModel.result(), worldModel.dirty());
     levels.current = id;
     useLevelModel(id);
@@ -25031,6 +25940,10 @@ function start(host            ) {
   /** A rename / move / delete that keeps the level on screen: the crumb and the Save count again, the draft soon. */
   function levelsChanged(changed         ) {
     if (!changed) return;
+    if (levelMade) {
+      levelMade = null;
+      renderLevelMade();
+    }
     renderAll();
     keepSoon();
   }
@@ -25042,7 +25955,8 @@ function start(host            ) {
     else if (crumb.parentElement !== levelSlot) levelSlot.replaceChildren(h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), crumb);
     const add = levelAddable();
     levelAddSlot.hidden = !add;
-    levelAddSlot.replaceChildren(...(add ? [levelSwitch.addButton(addLevel)] : []));
+    // Where the level's name will be (Studio / Game / Levels ⌄ / Scene), so the crumb does not jump once Level 2 exists.
+    levelAddSlot.replaceChildren(...(add ? [h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), levelSwitch.addButton(() => openLevelFresh())] : []));
   }
   /**
    * "+ Level" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
@@ -25052,14 +25966,78 @@ function start(host            ) {
     return !levels.active && editing && !playing && page === 'tool' && tool === 'placement' && editLayer === 'world' && (!!levels.single || !host.offline);
   }
   /**
-   * "+ Level": a game whose code has one level gets its second one here and now (a copy of what is on screen, opened
-   * at once, as "New level from …"). Any other game: the request goes into the ask field, for the person to send
-   * (Enter) — levels need a few lines in the game's code (skills/arrange SKILL.md §4), which only the AI can write.
+   * "Levels ⌄" in a game without levels (studio-uniforms, 2026-10-23): the menu, never an action at once. History: it
+   * was "+ Level", which typed a request into the AI box (a game whose code has no levels) — a hands-on try: "pressing +
+   * Level suddenly put text in the AI chat window, it makes no sense"; and on the plan to make Level 2 at once: "it just
+   * makes it without asking?? there used to be a menu with copy and other things". So the same menu as a game with
+   * levels (level-switch.ts): one line on what happens, "Make Level 2 — a copy of this one" (made here and opened; ⌘Z or
+   * the line's Undo takes it back; the code's switch is the AI's, on Save), and ✦ "Ask AI for a different kind of
+   * level…" (a draft in the box, nothing sent). The web demo (no AI) has no ✦ row, and only a game whose code already
+   * builds a level by id gets the button there (levelAddable).
    */
-  function addLevel() {
-    const id = levels.start(worldModel.result());
-    if (id) void goLevel(id);
-    else focusAsk(t('level.addAsk'));
+  function levelFreshEntries()              {
+    const rows              = [{ note: t('level.oneNote') }, { id: 'level-make', label: t('level.make'), run: () => void makeLevel() }];
+    if (!host.offline) rows.push({ sep: true }, levelAskEntry());
+    return rows;
+  }
+  /** The menu of a game without levels: under its "Levels ⌄" (⌘K's "Levels…" too); a phone, which has no such button, at the top. */
+  function openLevelFresh() {
+    const b = levelAddSlot.querySelector('button');
+    if (b && b.offsetParent) return levelSwitch.openAt(levelFreshEntries(), b);
+    ctxMenu.show(levelFreshEntries(), window.innerWidth / 2, 56, { place: 'levels', touch: phone(), label: t('level.menu'), floor: menuFloor() });
+  }
+  /** ✦ Ask AI for a different kind of level… (the menus of both kinds of game): a draft in the box, nothing sent. */
+  function levelAskEntry()            {
+    return { id: 'level-ask', label: t('level.askAi'), ai: true, run: () => focusAsk(t('level.askText')) };
+  }
+  /**
+   * "Make Level 2": what is on screen becomes Level 1 and a copy of it opens as Level 2 (levels.ts start()). It can be
+   * taken back while Level 2 is still the copy — ⌘Z once nothing else is left to undo, or the line's [Undo] — and
+   * not after Save or another level change (levelMade = null then).
+   */
+  async function makeLevel() {
+    const single = levels.single;
+    const before = worldModel;
+    const id = levels.start(worldModel.result(), t('level.first'));
+    if (!id) return;
+    await goLevel(id);
+    if (levels.current !== id) return;
+    levelMade = { single, model: before, from: levels.labelOf(levels.list[0] .id), name: levels.labelOf(id) };
+    renderLevelMade();
+    renderButtons();
+  }
+  /** Back to a game with one level, as it was before "Make Level 2" (its own model: the unsaved moves come back too). */
+  function unmakeLevel() {
+    const made = levelMade;
+    levelMade = null;
+    renderLevelMade();
+    if (!made || !levels.unstart(made.single)) return renderButtons();
+    worldModel = made.model;
+    if (editLayer !== 'ui') model = worldModel;
+    undo.clear();
+    selected = null;
+    group = [];
+    void keepNow().then(() => {
+      loadGame();
+      renderAll();
+    });
+  }
+  /**
+   * The line after "Make Level 2" (a design review of the plan, 2026-10-23: the copy looks exactly like Level 1, so the
+   * line is the one thing that says where you are): what was made, what to do, that Save adds the switch — and
+   * [Undo]. It stays until the first change on the new level, a level change, Save or ×; not a toast that times out.
+   */
+  function renderLevelMade() {
+    const on = !!levelMade && !playing && levels.active && !undo.canUndo;
+    levelNote.hidden = !on;
+    if (!on) return levelNote.replaceChildren();
+    levelNote.replaceChildren(
+      h('span', { class: 'level-made-text', text: t('level.made', { name: levelMade .name, from: levelMade .from }) }),
+      h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() }),
+      h('button', { type: 'button', class: 'level-made-close', dataset: { action: 'level-made-close' }, 'aria-label': t('level.madeClose'), title: t('level.madeClose'), onclick: () => {
+        levelNote.hidden = true;
+      } }, icon('close')),
+    );
   }
 
   /** The game page's address: the editor's (`?studio=edit`) or Play's, on the level shown. */
@@ -25155,6 +26133,8 @@ function start(host            ) {
       return true;
     }
     // ⌘D copy (also stops the browser's "bookmark this page"), ⌘A select all.
+    // F2: rename the picked object in place (its card's name becomes a field).
+    if (!mod && e.key === 'F2') return startRename();
     if (mod && k === 'd' && !e.shift) {
       if (editing) copySelection();
       return true;
@@ -25491,7 +26471,7 @@ function start(host            ) {
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
     // apart). With nothing to undo they stay where they are, dimmed, and say so ("Nothing to undo  ⌘Z").
     const mac = isMac();
-    const nextUndo = describe(undo.peekUndo());
+    const nextUndo = describe(undo.peekUndo()) || (levelMade ? t('level.undoMade', { name: levelMade.name }) : '');
     const nextRedo = describe(undo.peekRedo());
     // The UI layer's rows also get the dot for a changed look (UI stage 3).
     unsavedKeys = editLayer === 'ui' ? new Set([...model.changedKeys(), ...uiWire.model.changedKeys()]) : model.changedKeys();
@@ -25499,8 +26479,10 @@ function start(host            ) {
     for (const b of undoBtns) {
       setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
       // While playing, undo/redo would change a game the person cannot see as edited.
-      b.disabled = playing || !undo.canUndo;
+      b.disabled = playing || !(undo.canUndo || levelMade);
     }
+    // The "Level 2 made" line goes with the first change on the new level (renderLevelMade).
+    if (levelMade && !levelNote.hidden && undo.canUndo) renderLevelMade();
     for (const b of redoBtns) {
       setButton(b, 'redo', t('btn.redo'), false, tipText(nextRedo ? `${t('btn.redo')}: ${nextRedo}` : t('keys.nothingRedo'), keyOf('redo', mac)));
       b.disabled = playing || !undo.canRedo;
@@ -25554,26 +26536,6 @@ function start(host            ) {
     playMoreBtn.title = t('pal.playFresh');
     playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));
     keepSoon();
-  }
-
-  /** The AI's dot: what it last told the editor (never more). */
-  function renderPeer() {
-    const st = aiStatus && (aiTime ?? 0) >= openedAt ? aiStatus.state : null;
-    // Busy = the AI has a request of yours (ai-flow.ts): the dot pulses and the light runs round the input.
-    const busy = aiBusy(currentPhase());
-    // With a watch (`studio.mjs --watch`) the dot says whether the AI is watching right now.
-    const live = aiWatching !== undefined ? aiWatching : !!st;
-    peer.dataset.state = busy ? 'busy' : live ? 'live' : 'idle';
-    peer.title = busy ? t('peer.busy') : aiWatching === true ? t('peer.watching') : aiWatching === false ? t('peer.away') : st ? t('peer.live') : t('peer.idle');
-    (peer.querySelector('.label')               ).textContent = t('peer.label');
-    // After the AI's finished line faded (line-fade.ts): "● AI" brings it back. Violet while it holds a change that
-    // can still be undone; otherwise it looks as before (only the pointer and the tooltip say it can be pressed).
-    const recall = lineRecallable();
-    const undoable = recall && !!lastChange && !!host.undoAi && !playing && currentPhase() !== 'undone';
-    peer.dataset.recall = recall ? (undoable ? 'undo' : 'on') : '';
-    // Not `disabled` (that greys the whole "● AI" out): out of the Tab order and a click does nothing (recallLine).
-    peer.tabIndex = recall ? 0 : -1;
-    if (recall) peer.title = t(undoable ? 'peer.recallUndo' : 'peer.recall');
   }
 
   let lastPage = '';
@@ -25643,7 +26605,7 @@ function start(host            ) {
     updateCaption();
     renderStatus();
     renderButtons();
-    renderPeer();
+    renderPresence();
     // The ask box lives in the bar at the bottom of the game whatever the tool or page.
     // The web demo (no AI behind it, host.offline) has no ask box (design review wave 1, W1-6 / N2, 2026-10-17: the most
     // visible part of the screen was a box that did nothing when used) and nothing in its place. W1-6 first put one grey
@@ -25884,7 +26846,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[73] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -26063,19 +27025,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[74] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(72);
-const { createLocalHost } = __require(73);
+const { start } = __require(74);
+const { createLocalHost } = __require(75);
 
 start(createLocalHost());
 
 
 };
-__require(74);
+__require(76);
 })();

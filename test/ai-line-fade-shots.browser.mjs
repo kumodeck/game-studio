@@ -61,7 +61,7 @@ async function shoot(size, theme) {
     await page.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] });
     await page.goto(srv.url);
     await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
-    await page.waitFor(`document.querySelector('.peer')?.dataset.state === 'live' || document.querySelector('.peer')?.dataset.state === 'idle'`, 10000);
+    await page.waitFor(`!!document.querySelector('.presence')?.dataset.state`, 10000);
     await sleep(1500);
     await page.eval(`(() => { const i = document.querySelector('.ask-input'); i.focus(); return true; })()`);
     await page.send('Input.insertText', { text: LANG === 'ja' ? '木箱を 3 つ並べて' : 'Add three crates in a row' });
@@ -86,8 +86,9 @@ async function shoot(size, theme) {
         writeFileSync(name('3-cmdk'), await page.screenshot());
         assert.equal(await page.eval(`(() => { const r = document.querySelector('.palette .p-row[data-row="ai-recall"]'); if (!r) return false; r.click(); return true; })()`), true, 'the ⌘K row');
       } else {
-        writeFileSync(name('3-peer'), await page.screenshot());
-        await page.eval(`(document.querySelector('.peer').click(), true)`);
+        // Going to the ask field brings it back (the top bar's "● AI" did until 2026-10-23).
+        writeFileSync(name('3-field'), await page.screenshot());
+        await page.eval(`(document.querySelector('.ask-input').focus(), true)`);
       }
       await page.waitFor(`!document.querySelector('.ai-line').hidden`, 3000);
       await sleep(500);

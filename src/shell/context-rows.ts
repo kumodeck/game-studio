@@ -102,6 +102,8 @@ export type CtxRow =
       /** keymap.ts id of the shortcut printed at the right, if any. */
       key?: string;
       disabled?: boolean;
+      /** A ✦ row (studio-uniforms): it only puts a draft in the AI box — drawn in the AI's violet (context-menu.ts). */
+      ai?: true;
     }
   | { sep: true };
 
@@ -123,17 +125,12 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
   if (place === 'object') {
     const locked = off || f.movable === 0;
     const rows: CtxRow[] = [];
-    // The AI first: it is what the editor is for (the ask box is about the pick; this puts the cursor in it).
-    // Naming: a name lives in the game's code, so it is always the AI's job — one press asks for names when the pick
-    // has unnamed objects (the card's "Ask your AI to name it"); one named object gets "Rename…" (its words go into
-    // the ask box, nothing is sent until Enter). Several named objects: no rename (one name for many is not a rename).
-    if (!f.offline) {
-      rows.push({ id: 'ask', label: 'ask.chipOne' });
-      if (f.motion && f.picked === 1) rows.push({ id: 'askMotion', label: 'ctx.askMotion' });
-      if (f.unnamed > 0) rows.push({ id: 'name', label: f.picked > 1 ? 'ctx.nameMany' : 'ask.name' });
-      else if (f.picked === 1) rows.push({ id: 'rename', label: 'ctx.rename' });
-      rows.push(sep);
-    }
+    // Two uniforms (studio-uniforms, 2026-10-23): plain rows act here at once (⌘Z undoes) and never
+    // write in the AI box; ✦ rows only put a draft there, in their own group at the END, in the AI's violet. Before,
+    // "Ask your AI…" was the first row looking like the others, and "Rename…" typed "Rename it to " into the box.
+    // Rename (F2) is in place now: the card's name becomes a field (one named object; a name for many is no rename).
+    // An unnamed object's name must first exist in the code: "✦ Ask AI to name it…" (a draft, like every ✦).
+    if (!f.offline && f.picked === 1 && f.unnamed === 0 && !f.ui) rows.push({ id: 'rename', label: 'ctx.rename', key: 'rename' }, sep);
     // A phone: the card has Duplicate and Delete (and Copy / Paste are the same as Duplicate there) — not here.
     if (!f.compact && !f.ui) {
       rows.push(
@@ -155,35 +152,41 @@ export function contextRows(place: CtxPlace, f: CtxFacts): CtxRow[] {
       ];
       rows.push(sep, ...layers.filter((r) => !f.compact || !('sep' in r) && !r.disabled));
     }
+    if (!f.offline) {
+      rows.push(sep, { id: 'ask', label: f.picked > 1 ? 'ctx.askMany' : 'ctx.askObject', ai: true });
+      if (f.motion && f.picked === 1) rows.push({ id: 'askMotion', label: 'ctx.askMotion', ai: true });
+      if (f.unnamed > 0) rows.push({ id: 'name', label: f.picked > 1 ? 'ctx.nameAskMany' : 'ctx.nameAsk', ai: true });
+    }
     return tidy(rows);
   }
   if (place === 'scene') {
     // Only what can act now (no dimmed rows): Paste when something is copied, Deselect when something is picked.
     const rows: CtxRow[] = [];
-    if (!f.offline) rows.push({ id: 'ask', label: 'ask.game' }, sep);
     if (!off) {
       if (f.clip > 0 && !f.compact && !f.ui) rows.push({ id: 'paste', label: 'keys.paste', key: 'paste' });
       if (f.items > 0) rows.push({ id: 'selectAll', label: 'pal.selectAll', key: 'selectAll' });
     }
     if (f.anyPicked) rows.push({ id: 'deselect', label: 'ops.selectNone', key: 'deselect' });
     if (!off && !f.ui) rows.push(sep, { id: 'frame', label: 'btn.frame', key: 'frame' }, { id: 'home', label: 'pal.home', key: 'home' });
+    if (!f.offline) rows.push(sep, { id: 'ask', label: 'ctx.askGame', ai: true });
     return tidy(rows);
   }
   if (place === 'libObject') {
     const locked = off || f.movable === 0;
     return tidy([
       { id: 'addToScene', label: 'lib.addToScene', disabled: locked },
-      ...(f.offline ? [] : [{ id: 'ask', label: 'lib.askAi' }]),
       sep,
       { id: 'showInGame', label: 'ctx.showInGame' },
       { id: 'remove', label: 'ops.remove', key: 'remove', disabled: locked },
+      ...(f.offline ? [] : [sep, { id: 'ask', label: 'lib.askAboutIt', ai: true as const }]),
     ]);
   }
-  // libFile
+  // libFile: a new object from a file is code, so its "add" is a request — ✦, in the AI's group (the web demo keeps
+  // it dimmed, the detail says why: a missing row reads as "can't be done").
   return tidy([
-    { id: 'addFile', label: 'lib.addToScene', disabled: f.offline || f.exists === false },
-    ...(f.offline ? [] : [{ id: 'askFile', label: 'lib.askAi' }]),
-    sep,
     { id: 'replace', label: 'ctx.replace' },
+    sep,
+    { id: 'addFile', label: 'lib.addFileAi', disabled: f.offline || f.exists === false, ai: true },
+    ...(f.offline ? [] : [{ id: 'askFile', label: 'lib.askAboutIt', ai: true as const }]),
   ]);
 }

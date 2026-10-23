@@ -34,8 +34,8 @@ const sameMotion = (a: Motion | null | undefined, b: Motion | null | undefined) 
 };
 import { createTimelinePanel, type TimelineView } from './timeline-panel.ts';
 import {
-  CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, fromTemplate, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
-  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, sameT, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets, type Template,
+  blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
+  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, sceneClip, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets,
 } from './timeline-model.ts';
 import type { Change, UndoStack } from './undo.ts';
 
@@ -141,6 +141,25 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   // studio-motion-flow: a motion just attached (a drop, the card, the Library) — the second row says "✓ “Hop” attached ·
   // When does it move?" with Starts ▾ open, until a "when" is chosen or 6 s pass (then it reads "Starts" again).
   let fresh: { key: string; name: string; timer: ReturnType<typeof setTimeout> | 0 } | null = null;
+  /**
+   * The object whose first motion was just made by moving it (studio-tool-clear, 2026-10-23): the line says what it
+   * does now ("✓ moves from 0 s to 1 s · ▶ to watch") and asks "When does it move?" — the next step, on screen. Until a
+   * "when" is chosen or another object is shown.
+   */
+  let madeKey: string | null = null;
+  /**
+   * "Make a motion" in progress (studio-no-presets, 2026-10-23: a review, on the kinds — "we don't need them": a
+   * motion is made by showing it). `shown` false: the time line waits at 1 s, the line says "drag it where it should
+   * move (Esc to cancel)", and the object shows as it stands (a thing that moves already: its other motions hidden,
+   * the next move starts a new one). `shown` true: the first move made the motion and it played; each next move / turn
+   * / resize adds a key one second after the last (`from` = that last key's time) and plays the new second.
+   * Ends with Esc or "Done" (what was made stays: ⌘Z takes one key at a time), another object, the time line moved by
+   * hand, or the timeline folded.
+   * WHY one second each: the person shows poses, not times (Blender / Unity ask for the time first — the ruler — which
+   * the hands-on tries never found); the length of a step is then dragged on the timeline (keys move), as there.
+   * Its own one line says the next step, so the first-time three steps ("1 Pick a moment on the ruler…") stay away.
+   */
+  let making: { key: string; shown: boolean; from: number } | null = null;
   // Starts ▾ to focus at the next render (the one that draws the "attached" line).
   let focusStarts = false;
   // What the game page shows now, so a frame that changes nothing sends nothing.
@@ -201,6 +220,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   const dim = () => d.dim();
   const clipsOf = (key: string): MotionClip[] => store().get(key)?.clips ?? [];
   const clipOf = (key: string): MotionClip | null => {
+    // Making, before the first move: no motion shown (a thing that moves already gets a new one from that move).
+    if (making && !making.shown && making.key === key) return null;
     const cs = clipsOf(key);
     const want = chosen.get(key);
     // An open scene (studio-timeline-2) is what each of its objects shows.
@@ -334,11 +355,22 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       // and the Library already holds the name it took on the first pose.
       const name = gestureNames.get(key) ?? lib().free('Motion');
       gestureNames.set(key, name);
-      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: { on: 'start' }, keys: {} };
+      // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
+      const starts = clipsOf(key).some((x) => whenOf(x).on === 'start');
+      c = { name, len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once', when: starts ? { on: 'say' } : { on: 'start' }, keys: {} };
       chosen.set(key, c.name);
+      madeKey = key;
     }
     const name = c.name;
     for (const ch of changedChannels(was, pose, dim())) {
+      // Making, a later step: a property whose last key is before the step's start holds still until then (a turn added
+      // at 2 s after a move to 1 s turns from 1 s to 2 s, not all the way from 0 s).
+      const hold = making?.shown && making.key === key ? making.from : 0;
+      const last = c.keys[ch]?.at(-1)?.t ?? null;
+      if (hold > 0 && time > hold && (last === null || last < hold - SAME_T)) {
+        c = setKey(c, ch, 0, offsetsAt(c, 0)[ch] ?? restOf(ch, dim()));
+        c = setKey(c, ch, hold, offsetsAt(c, hold)[ch] ?? restOf(ch, dim()));
+      }
       // A property that had no key yet starts from how it stood at 0 s (else the motion would begin at the new pose).
       if (!c.keys[ch]?.length && time > 0) c = setKey(c, ch, 0, restOf(ch, dim()));
       c = setKey(c, ch, time, offsetOf(place, pose, ch, dim()));
@@ -538,6 +570,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function view(): TimelineView {
     syncScene();
     const key = head();
+    // Another object shown (picked, or a scene opened): making on the one before has ended.
+    if (making && key !== making.key) making = null;
     const c = key ? clipOf(key) : null;
     const qs = cues();
     const eases = new Set<MotionEase>();
@@ -576,8 +610,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       },
       player: d.order().find((k) => /player|hero/i.test(k)) ?? null,
       attached: fresh && fresh.key === key && c && (c.use ?? c.name) === fresh.name ? fresh.name : null,
+      making: making && making.key === key ? (making.shown ? 'more' : 'drag') : null,
+      made: madeKey && madeKey === key && c ? Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t))) : null,
       // Only while making (the focused object has no keys yet): the steps are about keys, not about a motion just attached.
-      coach: !!d.seen && !d.seen(COACH) && !!key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
+      coach: !!d.seen && !d.seen(COACH) && !!key && key !== making?.key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
     };
   }
 
@@ -701,35 +737,75 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   }
 
   // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
-  /** A new motion on `key` from a template (the clip menu's "New: …", the Library's "+ New motion" on an object that moves already). */
-  function newClip(key: string, kind: Template) {
+  /** A new scene on `key` (the clip menu's "New: Scene — several objects"; a scene starts empty, it is not a preset). */
+  function newScene(key: string) {
     const cs = clipsOf(key);
     if (cs.length >= MAX_CLIPS) return;
     // A new motion is a new Library motion too (its name free in the whole Library, not only on this object).
-    // A scene is named "Scene" (its menu line says what it is: "Scene — several objects").
-    const c = fromTemplate(kind, lib().free(kind === 'empty' ? 'Motion' : kind === 'scene' ? d.t('tl.scene.new') : d.t(`tl.tpl.${kind}`)), dim());
+    const c = sceneClip(lib().free(d.t('tl.scene.new')));
     // The first motion of an object plays when the game starts; another waits (in the person's words, for now).
     c.when = cs.some((x) => whenOf(x).on === 'start') ? { on: 'say' } : { on: 'start' };
+    making = null;
     chosen.set(key, c.name);
     openRows.add(key);
     time = 0;
-    scene = kind === 'scene' ? c.name : null;
+    scene = c.name;
     one(key, withClip(store().get(key), c.name, c));
   }
   /**
-   * The card's and the Library's "+ New motion": the plate opens on `key`. An object with no motion yet gets none until it is
-   * moved (auto key makes its first clip then, as ◆ Timeline always did: no empty "Motion" left in the Library by a
-   * look); one that moves already gets a new, empty one to fill (else a move would change the motion it has).
+   * "Make a motion" (the strip's Motion button, the card's "+ Make a motion", the Library's, the clip menu's): the plate
+   * opens on `key` with the time line at 1 s, and where it stands now is 0 s — the next move is the second key
+   * (`making` above). Nothing is made by a look: no empty "Motion" left in the Library if the person stops there.
+   * (studio-tool-clear had this for the strip only; the card's way picked a time on the ruler first. studio-no-presets
+   * made it the one way, the kinds gone.)
    */
   function make(key: string) {
+    if (!d.place(key) || clipsOf(key).length >= MAX_CLIPS) return;
+    if (playing) stop();
+    stopTry();
     focusKey = key;
+    scene = null;
+    sel = [];
+    // Making is moving: the auto key comes on (off, the drag would move the place and nothing would be made).
+    auto = true;
+    making = { key, shown: false, from: 0 };
+    madeKey = null;
+    if (fresh) (clearTimeout(fresh.timer), (fresh = null));
+    time = 1;
     if (!open) setOpen(true);
-    if (clipsOf(key).length) newClip(key, 'empty');
     else {
-      time = 0;
       refresh();
       panel.render();
     }
+  }
+  /** Making: a gesture on `key` begins — a later step goes one second after the last key (stopping the playback). */
+  function stepBegins(key: string) {
+    if (!making?.shown || making.key !== key || before?.has(key)) return;
+    if (playing) stop();
+    const c = clipOf(key);
+    const last = c ? Math.max(0, ...keyTimes(c)) : 0;
+    making.from = last;
+    time = snapT(last + 1, MAX_LEN);
+  }
+  /** Making: a gesture on `key` ended — the motion plays the part just made (from 0 s the first time, then the new second). */
+  function stepEnds(key: string) {
+    if (!making || making.key !== key) return;
+    const first = !making.shown;
+    making.shown = true;
+    // A gesture that made no key (nothing changed): still waiting for the first move.
+    if (!clipOf(key) || !keyTimes(clipOf(key)).length) return void (making.shown = !first);
+    if (first) madeKey = key;
+    time = first ? 0 : making.from;
+    play();
+  }
+  /** Esc / "Done": making ends (before the first move: nothing was made, the time line goes back to 0 s). */
+  function endMaking(): boolean {
+    if (!making) return false;
+    if (!making.shown) time = 0;
+    making = null;
+    refresh();
+    panel.render();
+    return true;
   }
   /** The plate open on `key`'s motion `name`; `attached`: say so, with "When does it move?" open. */
   function show(key: string, name: string, attached = false) {
@@ -755,18 +831,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       render();
     }
     if (focusStarts && shown()) (panel.focusStarts(), (focusStarts = false));
-  }
-  /**
-   * studio-motion-tool (2026-10-22): a new motion from a template on `key` — the strip's Motion button on a thing with
-   * none — shown at once with "✓ attached · When does it move?", the same moment as an attach. Its name, or null.
-   */
-  function makeFrom(key: string, kind: Template): string | null {
-    if (!d.place(key) || clipsOf(key).length >= MAX_CLIPS) return null;
-    focusKey = key;
-    newClip(key, kind);
-    const name = chosen.get(key) ?? null;
-    if (name) show(key, name, true);
-    return name;
   }
   /** Attach from the card's menu (already in the Scene): attach, then show it with its "when" open. */
   function attachShow(key: string, name: string) {
@@ -872,6 +936,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     play: (on) => (on ? play() : stop()),
     scrub(t, end) {
       if (playing) stop();
+      // The time line moved by hand: the person takes the times from here (making's "one second after the last" ends).
+      if (making?.shown) making = null;
       time = snapT(t, span(), true);
       refresh();
       panel.place();
@@ -882,10 +948,12 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       panel.render();
     },
     fold: () => setOpen(false),
+    done: () => void endMaking(),
     clip(value) {
       const key = head();
       if (!key) return;
-      if (value.startsWith('new:')) newClip(key, value.slice(4) as Template);
+      if (value === 'new:make') make(key);
+      else if (value === 'new:scene') newScene(key);
       else if (value === 'delete') {
         const c = clipOf(key);
         if (!c) return;
@@ -927,8 +995,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
     // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
     setWhen: (w) => editClip((c) => {
-      // A "when" chosen: the "✓ attached" line has done its job.
+      // A "when" chosen: the "✓ attached" / "✓ moves from 0 s to 1 s" line has done its job.
       if (fresh) (clearTimeout(fresh.timer), (fresh = null));
+      madeKey = null;
       // A list of one is written as itself (studio-timeline-2: 2–4 = "any of these").
       const out: MotionClip = { ...c, when: Array.isArray(w) ? (w.length > 1 ? w.slice(0, 4) : w[0]!) : w };
       delete out.start;
@@ -1040,6 +1109,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       stop();
       stopTry();
       sel = [];
+      making = null;
     }
     sentPoses = '';
     render();
@@ -1078,6 +1148,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       panel.render();
       return true;
     }
+    // Making (the line says "Esc to cancel"): Esc ends it — from the game page too (it drops the pick there as well).
+    if (k === 'escape' && !mod && making) return endMaking();
     if (k === 'k' && !mod) return keyNow();
     if (!mine) return false;
     if (k === ' ' && !mod) return (playing ? stop() : play()), true;
@@ -1101,6 +1173,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if ((k === 'arrowleft' || k === 'arrowright') && !mod) {
       // One tenth of a second (Shift: a whole one), on the time line.
       time = snapT(time + (k === 'arrowleft' ? -1 : 1) * (e.shift ? 1 : 0.1), span(), true);
+      if (making?.shown) making = null;
       refresh();
       panel.render();
       return true;
@@ -1154,12 +1227,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
      */
     moved(key: string, pose: Pose, end: boolean, was?: Pose): boolean {
       if (!records(key)) return false;
+      stepBegins(key);
       begin(key, was);
       // From the motion before the gesture each time (a live drag sends many poses; the last one wins).
       store().set(key, before!.get(key) ?? null);
       const m = keyed(key, pose, startPose.get(key)!);
       const from = end ? finish() : before;
       commit(new Map([[key, m]]), from, end);
+      if (end) stepEnds(key);
       return true;
     },
     /**
@@ -1174,6 +1249,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
           rest.push({ key: e.key, pose: placeFor(e.key, e.pose), from: e.from && placeFor(e.key, e.from) });
           continue;
         }
+        stepBegins(e.key);
         begin(e.key, e.from);
         store().set(e.key, before!.get(e.key) ?? null);
         next.set(e.key, keyed(e.key, e.pose, startPose.get(e.key)!));
@@ -1187,6 +1263,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       }
       refresh();
       panel.render();
+      if (end && making && next.has(making.key)) stepEnds(making.key);
       return { rest, changes };
     },
     /**
@@ -1195,11 +1272,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
      */
     card(key: string, pose: Pose, from: Pose, live = false): boolean {
       if (!records(key)) return false;
+      stepBegins(key);
       begin(key, from);
       store().set(key, before!.get(key) ?? null);
       const m = keyed(key, pose, startPose.get(key)!);
       const was = live ? before : finish();
       commit(new Map([[key, m]]), was, !live);
+      if (!live) stepEnds(key);
       return true;
     },
     onMessage(m: BridgeToShell): boolean {
@@ -1312,7 +1391,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     attach,
     // studio-motion-flow: the plate on an object, from outside it (the Library's "+ New motion", a drop, its "Attach").
     make,
-    makeFrom,
     show,
     detach,
     /** The motion the timeline shows for `key` first (the chosen one, else the one that plays at the start), or null. */

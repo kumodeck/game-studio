@@ -8,7 +8,8 @@
 // this scene"). A try of the editor (10/22): "where to switch levels is hard to find too" — the head read as a title,
 // and a game without levels had no way in at all. The list's head is "In this scene" again: one door, not two.
 //
-// A game WITHOUT levels gets a quiet "+ Level" after the path (addButton). Chosen over a ⌄ on the game's name with
+// A game WITHOUT levels gets "Levels ⌄" where the level's name will be (addButton; it was a quiet "+ Level" after the path
+// until studio-uniforms, 2026-10-23 — see addButton). Chosen over a ⌄ on the game's name with
 // one row "Add levels…" (the other plan drawn for it): nobody opens a menu to find one row, and the
 // "+" sits where the level will appear. It is the third grey and small, like the path's own words: the tools stay
 // quieter than the game. What it does is main.ts's (a game whose code has one level gets the second one at once;
@@ -37,6 +38,8 @@ export interface LevelSwitchDeps {
   rename(id: string, label: string): void;
   move(id: string, by: -1 | 1): void;
   remove(id: string): void;
+  /** ✦ "Ask AI for a different kind of level…" at the menu's end (studio-uniforms); absent = no AI here (the web demo). */
+  ask?: () => MenuEntry;
 }
 
 export function createLevelSwitch(d: LevelSwitchDeps) {
@@ -59,6 +62,7 @@ export function createLevelSwitch(d: LevelSwitchDeps) {
       { sep: true },
       { id: 'level-delete', label: d.t('level.delete'), disabled: lv.list.length <= 1, run: () => d.remove(cur) },
     );
+    if (d.ask) rows.push({ sep: true }, d.ask());
     return rows;
   };
 
@@ -125,13 +129,22 @@ export function createLevelSwitch(d: LevelSwitchDeps) {
     return (el = b);
   }
 
-  /** "+ Level" after the path, for a game without levels (main.ts decides when it shows and what it does). */
-  function addButton(run: () => void): HTMLElement {
-    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, title: d.t('level.addTip') },
-      icon('plus'), h('span', { text: d.t('level.add') }));
-    b.addEventListener('click', run);
+  /**
+   * "Levels ⌄" in the path (before "Scene"), for a game without levels (main.ts decides when it shows). It opens a menu
+   * (`run(button)` → openAt), never acts at once — studio-uniforms, 2026-10-23: it was "+ Level", which typed into the
+   * AI box, and a hands-on try asked for the menu back. The look is the crumb's own (a word and a chevron): the two
+   * states of the same place, "Level 2 ⌄" with levels and "Levels ⌄" without (a design review: "+" promised one step).
+   */
+  function addButton(run: (b: HTMLElement) => void): HTMLElement {
+    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, 'aria-haspopup': 'menu', title: d.t('level.addTip') },
+      h('span', { text: d.t('level.add') }), icon('chevronDown'));
+    b.addEventListener('click', () => run(b));
     return b;
   }
+  /** Open `entries` under `b` (the "Levels ⌄" of a game without levels): the same place and plate as the crumb's menu. */
+  function openAt(entries: MenuEntry[], b: HTMLElement) {
+    d.openMenu(entries, b.getBoundingClientRect());
+  }
 
-  return { render, entries, open, addButton, isRenaming: () => renaming };
+  return { render, entries, open, openAt, addButton, isRenaming: () => renaming };
 }

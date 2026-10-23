@@ -26,8 +26,10 @@
 // is often a subfolder of it (.scratch/runner/). Walking the tree on every prompt would be slow in a big repository;
 // the editor writes one small file when it starts and removes it when it stops.
 //
-// Not reachable from here: Codex (no hooks) and an AI whose session was closed. There the editor says, calmly, that
-// the request is kept and goes in the next time the AI runs, with one "Call your AI" button (copies the word).
+// Not reachable from here: Codex (no hooks) and an AI whose session was closed. There the editor says the fact: the
+// request is kept as a note and the game doesn't change until the AI reads it; beside the field, before typing, it says
+// whether the AI is there (ai-presence.ts) and "How to open" (2026-10-23; it was a "Call your AI" button that copied a
+// word).
 
 import { promises as fs, readFileSync } from 'node:fs';
 import os from 'node:os';

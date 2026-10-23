@@ -72,12 +72,11 @@ The samples already read your layout when they start, so what you saved is in th
 
 ## The editor’s link
 
-The editor runs on your computer, at an address like `http://127.0.0.1:…`. Your AI gives you the link in its reply.
+The editor runs on your computer, at an address like `http://127.0.0.1:…`. Your AI puts the link on the first line of its reply, every time.
 
-- **In a terminal or Codex**, it opens in your browser by itself.
-- **In the Claude app**, it opens in the Browser pane next to the chat. Can’t see it? Press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>B</kbd> (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd> on Windows).
-- The pane is narrow. Click **Open large** (↗, top right) to open the same editor in a big window. Asking your AI and Save work the same there.
-- Prefer your browser? Tell your AI “open it in my browser.” It remembers that for this game.
+- It opens in your usual browser (Chrome or another) by itself: in a terminal, in Codex and in the Claude app alike.
+- In the Claude app, want it in the pane next to the chat? Tell your AI “open it in the app.” It remembers that for this game. Can’t see it? Press <kbd>⌘</kbd><kbd>⇧</kbd><kbd>B</kbd> (<kbd>Ctrl</kbd><kbd>Shift</kbd><kbd>B</kbd> on Windows). The pane is narrow: **Open large** (↗, top right) opens the same editor in a big window.
+- Where no browser can open (over SSH, for one), open the link from the first line of the reply in your browser.
 
 The link has a pass in it (the part after `?t=`), so it only works on your computer. Don’t share it. Lost it? Ask your AI for the link again. More in the [FAQ](faq.md#the-editors-link).
 

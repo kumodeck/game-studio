@@ -1,5 +1,5 @@
 // The timeline's pure logic (studio-timeline, 2026-10-22; CONTRACT.md §1.9): clips and
-// their keys, the pose an object shows at a time, the older motion shape read as a clip, the templates, and the key
+// their keys, the pose an object shows at a time, the older motion shape read as a clip, a new motion, and the key
 // edits the panel makes (set, move, delete, copy / paste, ease). No DOM: unit-tested in test/timeline.test.ts.
 //
 // WHY offsets from the place, not absolute values (Unity's clips hold absolute ones): the object's place
@@ -120,37 +120,21 @@ export function toClips(m: Motion | null | undefined, dim: Dim): Motion | null {
   return { clips: [{ name: 'Motion', len, repeat, start: true, keys }] };
 }
 
-// ----- templates (the v0.1.13 kinds, kept as starting points: choosing one sets its keys) -----
+// ----- new motions (studio-no-presets, 2026-10-23) -----
+// Until then this was "templates": the v0.1.13 kinds (Back and forth, Round, Once, Spin) kept as starting points, each
+// with two or five keys the person never placed. A review, on seeing them in the menus: "what is this? presets? why
+// are 'back and forth' and 'round' in there?" — and to "keep just 'Make a motion' and 'Use a saved motion'": "we don't
+// need them" (10/23). A motion is made by showing it (timeline-wire make: where it stands is 0 s, a drag is the next
+// key). A file whose motion goes back and forth still plays as it did: that is its `repeat` (and toClips above reads
+// the older path / spin), never a template.
 
-// 'scene' (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts).
-export type Template = 'empty' | 'pingpong' | 'loop' | 'once' | 'spin' | 'scene';
-export const TEMPLATES: Template[] = ['empty', 'pingpong', 'loop', 'once', 'spin', 'scene'];
-
-/**
- * A new clip from a template. Distances: 3 m (3D) / 150 px (2D) to the right — the keys are plain keys afterwards,
- * so the person drags them where they want (in the scene, or on the timeline).
- */
-export function fromTemplate(kind: Template, name: string, dim: Dim): MotionClip {
-  const d = dim === '3d' ? 3 : 150;
-  const v = (x: number, z: number) => (dim === '3d' ? [x, 0, z] : [x, z]);
-  const k = (t: number, val: number[], ease: MotionEase = DEFAULT_EASE): MotionKey => ({ t, v: val, ease });
-  switch (kind) {
-    case 'pingpong':
-      return { name, len: 2, repeat: 'pingpong', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'once':
-      return { name, len: 2, repeat: 'once', keys: { p: [k(0, v(0, 0)), k(2, v(d, 0))] } };
-    case 'loop':
-      // A round: right, away, back, home — through the points on a curve (the position's smooth way).
-      return { name, len: 4, repeat: 'loop', keys: { p: [k(0, v(0, 0), 'linear'), k(1, v(d, 0), 'linear'), k(2, v(d, -d), 'linear'), k(3, v(0, -d), 'linear'), k(4, v(0, 0), 'linear')] } };
-    case 'spin': {
-      const r = (a: number) => (dim === '3d' ? [0, a, 0] : [a]);
-      return { name, len: 4, repeat: 'loop', keys: { r: [k(0, r(0), 'linear'), k(4, r(Math.PI * 2), 'linear')] } };
-    }
-    case 'scene':
-      return { name, len: 4, repeat: 'once', scene: true, keys: {} };
-    default:
-      return { name, len: 2, repeat: 'once', keys: {} };
-  }
+/** A motion with no keys yet: the clip menu's "+ Make a motion" on a thing that moves already (filled by the next move). */
+export function blankClip(name: string): MotionClip {
+  return { name, len: 2, repeat: 'once', keys: {} };
+}
+/** A scene (studio-timeline-2): an empty motion that holds several objects' rows (a cutscene; scene-motion.ts). Not a preset: no keys. */
+export function sceneClip(name: string): MotionClip {
+  return { name, len: 4, repeat: 'once', scene: true, keys: {} };
 }
 
 /** "Motion", or "Motion 2", "Motion 3"… — a name no clip of this object has. */

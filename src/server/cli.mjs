@@ -20,7 +20,8 @@
 //   studio: watch rest (nothing wrong) - …   --watch ended on time (--for): start it again, tell the person nothing
 //   studio: ready <url> pid <n>              --detach: the editor runs on its own (log in .studio/studio.log)
 //   studio: stopped pid <n> …  /  studio: not running …   --stop
-//   studio: open browser - …                 --detach, when this person opens the editor in their browser (open-in.mjs)
+//   studio: reply with this link alone …: <url>   right after every ready line (and --open-in; --link: on stderr)
+//   studio: open browser|app|none - …        after that: where the editor went (browser by default, open-in.mjs)
 //   <url>                                    --link: the running editor's link, pass included, and nothing else
 //   studio: open-in browser|app (…) - …      --open-in (after the link, when the editor is running)
 // No line ever prints the editor's address without its pass (?t=): such a link only says "Missing pass" (open-in.mjs).
@@ -44,8 +45,8 @@ import { findStarters, pickStarter, copyStarter, noGameLine } from './starters.m
 import { pickGamePage, scorePage, entryLine } from './find-game.mjs';
 import { runWatch, AIW_FOR_MIN } from './ai-watch.mjs';
 import { runHook, registerEditor, unregisterEditor } from './ai-wake.mjs';
-import { recordServer, forgetServer, liveServers, stopFolder, detachEditor } from './lifecycle.mjs';
-import { OPEN_PLACES, readOpenPlace, writeOpenPlace, hasPass, browserLine } from './open-in.mjs';
+import { recordServer, forgetServer, liveServers, stopFolder, detachEditor, markOpened } from './lifecycle.mjs';
+import { OPEN_PLACES, readOpenPlace, writeOpenPlace, hasPass, openPlace, replyLine, openLine } from './open-in.mjs';
 
 const HELP = `Usage: node studio.mjs <game folder> [options]
 
@@ -58,16 +59,18 @@ Options:
   --tool <name>    open on "placement" (default) or "library"
   --lan            listen on this computer's Wi-Fi/LAN address so a phone on the same
                    network can open the editor (prints a QR code; the pass is still required)
-  --no-open        do not open a browser
-  --detach         start the editor on its own and return: prints "studio: ready <url> pid <n>"
+  --no-open        do not open a browser (by default the editor opens in your default browser)
+  --detach         start the editor on its own and return: prints "studio: ready <url> pid <n>",
+                   then the line for your AI's reply (the link first) and where it opened
                    (the editor keeps running after this command and your AI's turn end; its
                    output goes to <folder>/.studio/studio.log). Use this to start it.
-  --link           print the running editor's link (with its pass) as one line, nothing else; paste it as it is.
+  --link           print the running editor's link (with its pass) as one line on stdout; paste it as it is.
                    Exit 1 with "studio: not running …" when no editor runs for this folder
     --open           also open that link in the default browser
   --open-in <browser|app>  remember where this person opens the editor (.studio/open.json). browser: their
-                   default browser, now (when running) and on every --detach, even with --no-open.
-                   app: back to the window next to the chat (Claude app). Prints the link first
+                   default browser (also the choice when nothing is remembered), now (when running) and
+                   on every --detach, even with --no-open. app: the window next to the chat (Claude app);
+                   then nothing opens by itself. Prints the link first
   --stop           stop the editor (and the --watch) started for this folder, by the pids in
                    .studio/server.json and .studio/watch.json. Nothing else is stopped
   --check-view     check that the game looks the same in the editor as when it is played
@@ -133,8 +136,11 @@ export async function main(argv) {
   if (args.stop) return stopCommand(root);
   if (args.link) return linkCommand(root, args);
   if (args.openIn !== undefined) return openInCommand(root, args);
-  // The person asked for their browser once (--open-in browser): it opens there, whatever the start line says.
-  if ((await readOpenPlace(root)) === 'browser') args.open = true;
+  // Where it opens (open-in.mjs openPlace): their default browser unless they chose the pane next to the chat
+  // (--open-in app) or the line says --no-open with no choice on file. A remembered browser beats --no-open.
+  const how = openPlace({ place: await readOpenPlace(root), noOpen: args.open === false });
+  args.open = how.open;
+  args.how = how.place;
   if (args.detach) return detachCommand(root, argv, args);
   // --starter: fill a folder that has no game (it may not exist yet), then carry on as usual.
   if (args.starter !== undefined) {
@@ -205,12 +211,16 @@ export async function main(argv) {
     isLan: args.lan,
     uiDir: args.ui ? path.resolve(args.ui) : path.join(here, 'studio-ui'),
     onStop: () => stop(),
+    onOpened: () => markOpened(realpathSync(root)).catch(() => {}),
   });
 
   // --tool library: open the editor on the Library (the shell reads ?tool=).
   const link = args.tool === 'library' ? `${srv.url}&tool=library` : srv.url;
   if (args.tool && args.tool !== 'library' && args.tool !== 'placement') process.stderr.write(`studio: unknown --tool ${args.tool} (placement | library)\n`);
   process.stdout.write(`studio: ready ${link}\n`);
+  // What the AI puts first in its reply, and where the editor went (open-in.mjs). Under --detach these land in the
+  // log only: detachCommand prints its own after the ready line it passes on.
+  process.stdout.write(replyLine(link) + '\n' + openLine(args.how, { opened: args.open }) + '\n');
   // For --stop (and --detach's "already running"): this folder's editors by pid (lifecycle.mjs).
   const rootReal = realpathSync(root);
   await recordServer(rootReal, { url: link, port: srv.port, origin: srv.origin, stopToken: srv.stopToken });
@@ -221,7 +231,7 @@ export async function main(argv) {
   if (args.lan) {
     process.stderr.write('\nScan this with a phone on the same Wi-Fi:\n' + qrToTerminal(encodeQR(link)) + '\n\n');
   }
-  if (args.open !== false) openBrowser(link);
+  if (args.open) openBrowser(link);
 
   let stopping = false;
   async function stop() {
@@ -293,6 +303,8 @@ async function linkCommand(root, args) {
     return 1;
   }
   process.stdout.write(s.url + '\n');
+  // stdout stays the link alone (pasted as it is, or read by a script); the reminder goes beside it.
+  process.stderr.write(replyLine(s.url) + '\n');
   if (args.openNow) openBrowser(s.url);
   return 0;
 }
@@ -310,13 +322,13 @@ async function openInCommand(root, args) {
   }
   const p = await writeOpenPlace(root, args.openIn);
   const s = await runningEditor(root);
-  if (s) process.stdout.write(s.url + '\n');
+  if (s) process.stdout.write(s.url + '\n' + replyLine(s.url) + '\n');
   const opened = Boolean(s) && args.openIn === 'browser' && args.open !== false;
   if (opened) openBrowser(s.url);
   const what = args.openIn === 'browser'
     ? (opened ? 'opened the link in the default browser; from now on --detach opens it there too'
       : s ? 'remembered; from now on --detach opens it there' : 'remembered; the editor is not running: --detach starts it in the browser')
-    : (s ? 'remembered; open the link next to the chat (preview_start), as before' : 'remembered; start it with --detach --no-open and open it next to the chat');
+    : (s ? 'remembered; nothing opens by itself from now on: open the link next to the chat (preview_start)' : 'remembered; start it with --detach (it opens nothing by itself) and open the link next to the chat');
   process.stdout.write(`studio: open-in ${args.openIn} (${p}) - ${what}\n`);
   return 0;
 }
@@ -341,15 +353,19 @@ async function detachCommand(root, argv, args) {
     process.stderr.write(`studio: ${root} isn’t a folder. Check the path and try again.\n`);
     return 2;
   }
-  // This person opens the editor in their browser (--open-in browser): the editor opens there by itself, --no-open or
-  // not (main() above), and the AI is told so on the line after `ready`, before it reaches for the pane (open-in.mjs).
-  const inBrowser = (await readOpenPlace(root)) === 'browser';
+  // Where it opens was decided in main() (args.how, open-in.mjs openPlace); the detached editor decides the same from
+  // the same line and environment, and opens the browser itself. After `ready`: the reply line, then where it went.
+  const how = args.how;
   // Already open for this folder (the agent ran the start line twice, or a new turn): the same editor, not a second.
   // Its link comes from server.json with the pass, the same line as a fresh start (never a bare /__studio/).
+  // The browser opens only if nobody has opened the link yet (openedAt, lifecycle.mjs markOpened): no second tab
+  // for a person who has it open, and not nothing for one whose first start was --no-open.
   const s = await runningEditor(root);
   if (s) {
     process.stdout.write(`studio: ready ${s.url} pid ${s.pid} (already running)\n`);
-    if (inBrowser) process.stdout.write(browserLine(false) + '\n');
+    const openNow = how === 'browser' && !s.openedAt;
+    if (openNow) openBrowser(s.url);
+    process.stdout.write(replyLine(s.url) + '\n' + openLine(how, { opened: openNow, seen: Boolean(s.openedAt) }) + '\n');
     return 0;
   }
   await fs.mkdir(path.join(root, '.studio'), { recursive: true });
@@ -359,7 +375,7 @@ async function detachCommand(root, argv, args) {
   if (r.code === 0) {
     for (const l of r.lines) process.stdout.write(l + '\n');
     process.stdout.write(`studio: ready ${r.url} pid ${r.pid}\n`);
-    if (inBrowser) process.stdout.write(browserLine(true) + '\n');
+    process.stdout.write(replyLine(r.url) + '\n' + openLine(how, { opened: how === 'browser' }) + '\n');
     process.stderr.write(`The editor keeps running on its own (log: ${log}).\nStop it with: node ${script} ${root} --stop\n`);
     return 0;
   }

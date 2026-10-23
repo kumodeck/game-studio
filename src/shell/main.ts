@@ -35,6 +35,7 @@ import {
   type RequestMotion,
   type StudioStatus,
   type LibraryFileUse,
+  type LevelInfo,
   type ShellPart,
   type StripTool,
   type StudioShellApi,
@@ -49,6 +50,7 @@ import { createLibraryObjects, DRAG_OBJECT } from './library-objects.ts';
 import { motionsPlayHere } from './play-here.ts';
 import { createLibraryMotions } from './library-motions.ts';
 import { createMotionDrag } from './motion-drag.ts';
+import { toolOffEntries } from './tool-off.ts';
 import { createMotionTool } from './motion-tool.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
@@ -57,6 +59,7 @@ import { detectLang, setExtraText, translate } from './i18n.ts';
 import { NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
 import { statusCovers } from '../schema/handoff.mjs';
 import { aiBusy, aiPhase, moreIn, reloadDecision, type AiPhase } from './ai-flow.ts';
+import { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS, type AiPresence } from './ai-presence.ts';
 import { bounces, saveLoud } from './save-loud.ts';
 import { askView as questionView } from './ai-ask.ts';
 import { playLine, playWords } from './play-ask.ts';
@@ -75,7 +78,7 @@ import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, type Change, type UndoEntry } from './undo.ts';
 import { copyKey, groupLayerMoves, groupLayerPossible, sameKind } from './edit-ops.ts';
-import { displayName, forgetNames, noteItems, useNameLang } from './names.ts';
+import { displayName, forgetNames, noteItems, useGivenNames, useNameLang } from './names.ts';
 import { keyOf, tipText } from './keymap.ts';
 import { installTooltips } from './tooltip.ts';
 import { createShortcutSheet } from './shortcuts.ts';
@@ -244,6 +247,8 @@ export function start(host: StudioHost) {
   // The opened file's top world part, for the level on screen when the game first says it has levels.
   let startWorld: WorldPart | undefined;
   let model = worldModel;
+  // Names given in the editor (Rename, F2) show everywhere an object's name does (names.ts displayName).
+  useGivenNames((k) => worldModel.nameOf(k));
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
   // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
@@ -345,6 +350,12 @@ export function start(host: StudioHost) {
   // screen (`swapping` = the old frame), which goes only once the new game has
   // drawn its objects: no flash of black or of an empty list.
   let aiWatching: boolean | undefined;
+  // ai-presence.ts's clock: when this page last saw a heartbeat (null = never), and since when it has been visible
+  // without a break (a hidden tab's polls stop: coming back must not read as a minute of silence).
+  let lastWatching: number | null = null;
+  let visibleSince = Date.now();
+  // The presence's line is open (toggleOpenHelp).
+  let helpOpen = false;
   // Which AI is behind the editor (host.status().agent, which-ai.mjs): the line's "More in Claude" (ai-flow.ts moreIn).
   let aiAgent: AiAgent | undefined;
   let aiSeen: string | undefined;
@@ -473,9 +484,13 @@ export function start(host: StudioHost) {
   // gets "+ Level" after the path instead (level-switch.ts says why there). Both slots are filled by renderLevelCrumb().
   const levelSlot = h('span', { class: 'level-crumb', hidden: true, dataset: { part: 'level-crumb' } });
   const levelAddSlot = h('span', { class: 'level-add-slot', hidden: true });
+  // The line after "Make Level 2" (renderLevelMade), under the top bar's left end where the level's name just appeared.
+  const levelNote = h('div', { class: 'level-made', role: 'status', hidden: true, dataset: { part: 'level-made' } });
+  /** "Make Level 2" that can still be taken back: the game's one level (`single`), its model, the two names. */
+  let levelMade: { single: LevelInfo | null; model: PlacementModel; from: string; name: string } | null = null;
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), levelSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), levelAddSlot, h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), levelSlot, levelAddSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -520,13 +535,14 @@ export function start(host: StudioHost) {
   // the editor: "let them choose with buttons"), so once in Play the person has already chosen. Save beside Play stays.)
   const footer = h('div', { class: 'actions', dataset: { part: 'footer' } },
     saveState, mk(undoBtns, 'undo', doUndo, { class: 'icon-btn' }), mk(redoBtns, 'redo', doRedo, { class: 'icon-btn' }));
-  // Is the AI there? Grey until it writes back in this session, green after,
-  // violet while it works. (The editor cannot see the AI's window; this is
-  // only what the AI told it, so it never claims more.)
-  // A button since 2026-10-20: once the AI's finished line has faded, pressing "● AI" brings it back (with its "Undo AI
-  // change"). The quietest place for it: the AI already lives there, nothing new is drawn, and its label turns violet
-  // (the AI's hand) only while a change of the AI's can still be taken back (renderPeer).
-  const peer = h('button', { type: 'button', class: 'peer', dataset: { part: 'peer', action: 'ai-recall' }, onclick: () => recallLine() }, h('span', { class: 'dot' }), h('span', { class: 'label', text: 'AI' }));
+  // Is the AI there? Said in words next to the ask field, before typing (ai-presence.ts, a hands-on review 2026-10-23). It
+  // replaced the top bar's grey "● AI" (2026-10-16 → 10-23), which nobody could read: a dot far from the field, about
+  // someone the person may not know is involved. Its hidden second job (press it to bring back the AI's faded reply,
+  // 2026-10-20) moved to the field itself: focusing the field brings the reply back (and ⌘K still lists it).
+  // One button: pressing it opens one line of what is true and what to do (openHelp below), in every state.
+  // Inside the field on a wide bar; on a narrow one (phone, the side window, < PRESENCE_ROOM px left) on its own line above.
+  const presence = h('button', { type: 'button', class: 'presence', dataset: { part: 'presence', action: 'ai-presence' }, onclick: () => toggleOpenHelp() },
+    h('span', { class: 'dot', 'aria-hidden': 'true' }), h('span', { class: 'p-text' }), h('span', { class: 'p-how' }));
   // Ask while playing on a narrow screen (a phone, the side window; Ive review 3 ④, 2026-10-20): ✦ left of Edit opens
   // the field over the game. The game page's own corner mark sat on the game's words at its foot ("Tap or click the
   // water to sail · WASD works too" in Lantern Cove), and a game's foot is where games put words; the top bar is the
@@ -586,7 +602,7 @@ export function start(host: StudioHost) {
   };
   const largeBtn = btn('open-large', () => void openLarge(), { class: 'icon-btn large-btn' });
   // The web demo has no AI to show the state of (W1-6): no "● AI" at all.
-  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, host.offline ? null : peer, largeBtn, topActions));
+  const header = h('header', { class: 'top', dataset: { part: 'header' } }, brand, toolsRow, h('div', { class: 'top-right' }, footer, largeBtn, topActions));
   // World | UI (UI stage 1, layer-switch.ts): the top bar's middle on PC, over the game on a phone (renderAll).
   const layerSwitch = createLayerSwitch((l) => setEditLayer(l), () => setUiPeek(!uiPeek));
   layerSwitch.el.hidden = true;
@@ -756,14 +772,20 @@ export function start(host: StudioHost) {
   // need this". The editor should open on the game alone. Don't bring back a
   // step-by-step tour here without asking.
   const playNote = h('p', { class: 'play-note', hidden: true });
-  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, playNote);
+  // "How to open" (and what each presence means): one line the person opened with the presence words, and closes. It
+  // replaced "Call your AI" (2026-10-19 → 10-23), which copied a word to the clipboard without saying why — the
+  // quietest "nothing happened" of all. The word ("look") is still there, as a chip that copies on a press and says so.
+  const openHelp = h('div', { class: 'ai-open-help', dataset: { part: 'ai-open' }, hidden: true });
+  const caption = h('div', { class: 'ai-caption', hidden: true }, toastEl, aiLine, openHelp, playNote);
+  // The narrow bar's line for the presence words (above the field; the field keeps its whole width for the words).
+  const presenceRow = h('div', { class: 'presence-row', hidden: true });
   // The web demo (host.offline) has nothing in the ask box's place: the slot stays empty and hidden (see renderAll).
   const askSlot = h('div', { class: 'ask-slot', hidden: !!host.offline });
   const bar = h('div', { class: 'bar', dataset: { part: 'bar' } }, sheetBtn, askSlot);
   // Phone: the picked object's card sits right above the ask bar (thumb's reach).
   const cardSlot = h('div', { class: 'card-slot' });
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), bar);
-  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), presenceRow, bar);
+  const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
   document.getElementById('app')!.replaceWith(app);
   panel.append(toolEl);
@@ -812,6 +834,7 @@ export function start(host: StudioHost) {
     },
     go: (id) => void goLevel(id),
     copy: () => void goLevel(levels.copy(worldModel.result())),
+    ask: host.offline ? undefined : () => levelAskEntry(),
     rename: (id, label) => levelsChanged(levels.rename(id, label)),
     move: (id, by) => levelsChanged(levels.move(id, by)),
     remove: (id) => {
@@ -1003,6 +1026,7 @@ export function start(host: StudioHost) {
     group: () => group,
     multi: () => multi,
     setMulti: (on) => setMulti(on),
+    rename: (k, name) => renameObject(k, name),
     copy: () => copySelection(),
     remove: () => removeSelection(),
     shortcutOf: (what) => shortcutText(what),
@@ -1044,7 +1068,16 @@ export function start(host: StudioHost) {
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
     ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
     answering: () => answering(),
+    // The whole-game placeholder by presence (ai-presence.ts): the AI's own name when it is there, "kept as a note"
+    // when the editor isn't sure (the half of the presence words that says nothing is lost).
+    askGame: () => {
+      if (host.offline) return t('ask.game');
+      const p = currentPresence();
+      const v = aiVars();
+      return p === 'away' || p === 'unsure' ? t('ask.gameKept', v) : aiAgent ? t('ask.gameAi', v) : t('ask.game');
+    },
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     // Only while the Library is on screen: back in the Scene the words are about what is picked there.
     assets: () => (libraryShown() ? filePick : []),
     // …or, in the Scene, the motion "Ask AI" was pressed on (the chip reads "crate · Hop", motion-ask.ts).
@@ -1096,6 +1129,7 @@ export function start(host: StudioHost) {
     openFile: (path) => openAsset(path, ctx),
     uses: () => readUses(),
     askName: (keys) => askAi({ kind: 'name', text: '', objects: requestObjects(keys) }),
+    nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     changed: () => renderShelf(),
     addToScene: () => addToScene(),
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
@@ -1171,7 +1205,7 @@ export function start(host: StudioHost) {
   });
 
   // The strip's Motion button (studio-motion-tool, motion-tool.ts): what it shows, and its press — the timeline on the
-  // pick's motion, or the small menu (new from a template / from the Library). The same target rule as a drop.
+  // pick's motion, or the small menu (make one by showing it / use a saved one). The same target rule as a drop.
   const motionTool = createMotionTool({
     t,
     send: (m) => send(m),
@@ -1187,9 +1221,7 @@ export function start(host: StudioHost) {
     library: () => motionLibrary.list(),
     room: (k) => timeline.room(k),
     keyText: () => keyOf('motion', isMac()),
-    make: (k, kind) => {
-      if (timeline.makeFrom(k, kind)) renderShelf();
-    },
+    make: (k) => (timeline.make(k), renderShelf()),
     attach: (k, name) => attachAndShow(k, name),
     open: (k, name) => timeline.show(k, name),
     menu: (entries, x, y, o, avoid) => {
@@ -1204,6 +1236,31 @@ export function start(host: StudioHost) {
     menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
     frame: () => iframe,
   });
+
+  /**
+   * A dimmed tool of the strip pressed (studio-tool-clear, tool-off.ts): its why and what can be done, in the editor's
+   * menu at the button — the place the Motion button's menu takes (under it with a mouse, above it with a finger).
+   */
+  function toolOffMenu(m: Extract<BridgeToShell, { type: 'studio:placement/tool-off' }>) {
+    if (m.key !== selected) return;
+    const entries = toolOffEntries({
+      t,
+      unhold: (k) => send({ type: 'studio:placement/unhold', keys: [k] }),
+      choose: (tool) => send({ type: 'studio:placement/tool', tool }),
+      ask: host.offline ? null : (text) => focusAsk(text),
+    }, m.key, m.tool, m.why, m.line);
+    const f = iframe?.getBoundingClientRect();
+    const fx = f?.left ?? 0, fy = f?.top ?? 0;
+    const btn = m.w > 0 ? new DOMRect(fx + m.x, fy + m.y, m.w, m.h) : null;
+    const x = btn ? (m.touch ? btn.left + btn.width / 2 : btn.left) : fx + (f?.width ?? 0) / 2;
+    const y = btn ? (m.touch ? btn.top : btn.bottom + 6) : fy + (f?.height ?? 0) / 2;
+    ctxMenu.show(entries, x, y, { place: 'tool-off', touch: m.touch, keyboard: m.keyboard, label: t('tooloff.menu'), floor: menuFloor() });
+    const r = ctxMenu.el.getBoundingClientRect();
+    if (btn && r.top < btn.bottom && r.bottom > btn.top) {
+      const above = btn.top - r.height - 6;
+      ctxMenu.el.style.top = `${Math.round(above >= 8 ? above : btn.bottom + 6)}px`;
+    }
+  }
 
   /**
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
@@ -1345,6 +1402,13 @@ export function start(host: StudioHost) {
   // A short notice shown in the field's place (showToast). Typing (or a click into the field) ends it at once.
   const askNews = h('span', { class: 'ask-news', role: 'status', 'aria-live': 'polite', hidden: true });
   askInput.addEventListener('input', hideNews);
+  // The AI's faded reply comes back when the person goes to the field (it was the top bar's "● AI" until 2026-10-23,
+  // where nobody found it): the field is where the AI lives, and its Undo is right there. ⌘K lists it too.
+  askInput.addEventListener('focus', () => {
+    if (lineRecallable()) recallLine();
+  });
+  // The presence words move inside / above the field as the bar's width changes (renderPresence).
+  new ResizeObserver(() => renderPresence()).observe(askSlot);
   askInput.addEventListener('focus', hideNews);
   new ResizeObserver(() => placeNews()).observe(askInput);
   const palette = createPalette({
@@ -1400,7 +1464,7 @@ export function start(host: StudioHost) {
       const prev = levels.step(-1), next = levels.step(1);
       if (prev) act('level-prev', t('level.pal.prev', { name: levels.labelOf(prev) }), 'chevronUp', () => void goLevel(prev), keyOf('levelPrev', mac), words);
       if (next) act('level-next', t('level.pal.next', { name: levels.labelOf(next) }), 'chevronDown', () => void goLevel(next), keyOf('levelNext', mac), words);
-    } else if (levelAddable()) act('level-add', t('level.pal.add'), 'plus', addLevel, undefined, t('level.pal.words'));
+    } else if (levelAddable()) act('level-add', t('level.pal.add'), 'chevronDown', () => openLevelFresh(), undefined, t('level.pal.words'));
     if (tool === 'library') act('scene', t('pal.scene'), 'cube', () => switchTool('placement'), undefined, t('tool.placement'));
     else act('assets', t('pal.assets'), 'grid', () => switchTool('library'), undefined, `${t('tool.library')} ${t('pal.libraryWords')}`);
     // World ⇄ UI (UI stage 1): only in a game with both.
@@ -1409,7 +1473,7 @@ export function start(host: StudioHost) {
       act('edit-layer', t(`uiLayer.pal.${to}`), to === 'ui' ? 'uiLayer' : 'cube', () => setEditLayer(to), keyOf('layer', mac), 'ui hud title layer world UI ワールド 画面');
       if (editLayer === 'world') act('ui-peek', t(uiPeek ? 'uiPeek.pal.hide' : 'uiPeek.pal.show'), uiPeek ? 'eyeOff' : 'eye', () => setUiPeek(!uiPeek), keyOf('uiPeek', mac), 'ui hud show hide peek eye 見る 隠す 表示');
     }
-    if (undo.canUndo) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
+    if (undo.canUndo || levelMade) act('undo', t('btn.undo'), 'undo', doUndo, keyOf('undo', mac), `${describe(undo.peekUndo())} undo 元に戻す`);
     // The AI's change, undone from here too: its line fades by itself (line-fade.ts) and this row is always there while
     // the change can be taken back (also on a phone, where the top bar has no "● AI").
     {
@@ -1510,6 +1574,40 @@ export function start(host: StudioHost) {
     motionAsk.set(key, m);
     focusAsk();
   }
+  /**
+   * Rename in place (studio-uniforms, 2026-10-23; the menu's Rename, F2): the name shows everywhere at once, one undo
+   * step, one Save count; placement.json's `names` carries it and the AI renames the object in the code on Save.
+   * History: "Rename…" typed "Rename it to " into the AI box — a plain row writing in the box, the thing a hands-on try
+   * found senseless. '' = back to the game's own name. Only a named world object (an unnamed one is "✦ Ask AI to name
+   * it…": its name must first exist in the code).
+   */
+  function renameObject(key: string, name: string) {
+    const it = items.find((i) => i.key === key);
+    if (!it || it.unstable || editLayer !== 'world') return;
+    const v = name.trim() === it.label ? '' : name.trim();
+    const from = worldModel.rename(key, v || null);
+    if (!undo.push({ changes: [{ kind: 'name', key, from, to: v || null }] })) return;
+    renderAll();
+    keepSoon();
+  }
+  /** F2 / the menu's Rename: the one picked, named world object's card name becomes a field. */
+  function startRename() {
+    const it = selected && group.length <= 1 ? items.find((i) => i.key === selected) : undefined;
+    if (!it || it.unstable || !editing || playing || editLayer !== 'world' || host.offline) return false;
+    if (tool !== 'placement' || page !== 'tool') switchTool('placement');
+    placementPanel.startRename(it.key);
+    return true;
+  }
+  /**
+   * ✦ "Ask AI to name it…" (the menu, the card, the Library's detail; studio-uniforms): those objects picked (the chip
+   * names them) and a draft in the box — nothing sent. It sent a request at once before, the one ✦ that did.
+   */
+  function nameDraft(keys: string[]) {
+    if (host.offline) return;
+    if (keys.length === 1 && selected !== keys[0]) selectObject(keys[0]!);
+    else if (keys.length > 1) selectMany(keys, keys[0]!);
+    focusAsk(t(keys.length > 1 ? 'ctx.nameTextMany' : 'ctx.nameText'));
+  }
   /** The ask box with the cursor in it (the menus' "Ask your AI…"); `text` is put in first, never sent. */
   function focusAsk(text?: string) {
     if (host.offline) return;
@@ -1563,8 +1661,8 @@ export function start(host: StudioHost) {
     const run: Record<string, () => void> = {
       ask: () => focusAsk(),
       askMotion: () => its.length === 1 && timeline.askAbout(its[0]!.key),
-      name: () => void askAi({ kind: 'name', text: '', objects: requestObjects(its.filter((i) => i.unstable).map((i) => i.key)) }),
-      rename: () => focusAsk(t('ctx.renameText')),
+      name: () => nameDraft(its.filter((i) => i.unstable).map((i) => i.key)),
+      rename: () => void startRename(),
       duplicate: () => copySelection(),
       copy: () => clipCopy(),
       paste: () => clipPaste(),
@@ -1587,10 +1685,11 @@ export function start(host: StudioHost) {
     }
     const entries: MenuEntry[] = rows.map((r) => ('sep' in r ? r : {
       id: r.id,
-      // The scene's "Ask your AI" says what it is about: the game, or the pick when something is picked.
-      label: r.id === 'ask' && place === 'scene' && picked.length ? t('ask.chipOne') : r.id === 'askMotion' && its[0] ? t(r.label, { name: timeline.shownName(its[0].key) ?? '' }) : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label),
+      // A ✦ row says what it is about: the object by its name ("Ask AI to change the ship…"), the game, or the motion.
+      label: r.id === 'askMotion' && its[0] ? t(r.label, { name: timeline.shownName(its[0].key) ?? '' }) : r.id === 'addFile' && files().length > 1 ? `${t(r.label)} (${files().length})` : t(r.label, { name, n: its.length }),
       key: r.key ? keyOf(r.key, mac) : '',
       disabled: r.disabled,
+      ai: r.ai,
       run: run[r.id] ?? (() => undefined),
     }));
     if (!entries.length) return;
@@ -1726,7 +1825,7 @@ export function start(host: StudioHost) {
     };
     const kinds = new Set(e.changes.map((c) => c.kind));
     const what = kinds.size > 1 ? 'edit' : kinds.has('add') ? 'copy' : kinds.has('remove') ? 'remove' : kinds.has('motion') || kinds.has('motion-lib') || kinds.has('motion-rename') ? 'motion'
-      : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : 'move';
+      : kinds.has('ui-set') ? 'look' : kinds.has('ui-theme') ? 'theme' : kinds.has('name') ? 'rename' : 'move';
     const keys = [...new Set(e.changes.map((c) => c.key))];
     return t(`undo.${what}`, { name: keys.length === 1 ? name(keys[0]!) : t('undo.n', { n: keys.length }) });
   }
@@ -1845,6 +1944,7 @@ export function start(host: StudioHost) {
         applyPose(c.key, dir === 'undo' ? c.from : c.to);
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
+      else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
       else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
@@ -1861,6 +1961,11 @@ export function start(host: StudioHost) {
       }
     }
     flush();
+    // A name back or again (Rename): every place that shows it is drawn again, and the draft follows.
+    if (list.some((c) => c.kind === 'name')) {
+      renderAll();
+      keepSoon();
+    }
     // What came back is selected; what went away is not.
     const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && (c.kind === 'add' || c.kind === 'remove')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
@@ -2106,14 +2211,83 @@ export function start(host: StudioHost) {
       ...(about.length ? { objects: requestObjects(about) } : {}) });
   }
 
-  /**
-   * "Call your AI": the one thing to do when a request could not wake the AI (Codex, a closed session). Copies the
-   * one word the skill knows ("look", or its translation in ja) to paste in the AI's chat; no command, no app names.
-   */
-  async function callAi() {
+  /** The one word the skill knows ("look", or its translation), copied by the chip in "How to open". */
+  async function copyWord() {
     const word = t('ai.callText');
     const ok = await (navigator.clipboard?.writeText(word).then(() => true, () => false) ?? Promise.resolve(false));
     showToast(ok ? t('ai.called') : t('ai.callFail'));
+  }
+
+  /** Is the AI there (ai-presence.ts)? */
+  function currentPresence(): AiPresence {
+    return aiPresence({ now: Date.now(), watching: aiWatching, agent: aiAgent, phase: currentPhase(), statusTime: aiTime, lastWatching, visibleSince });
+  }
+  /** The AI's name for the words: {ai} / {Ai} (a sentence's start, English) / {ai2} (its second mention). */
+  function aiVars(): Record<string, string> {
+    const k = aiNameKey(aiAgent);
+    const ai = t(`ai.name.${k}`);
+    return { ai, Ai: ai.charAt(0).toUpperCase() + ai.slice(1), ai2: t(`ai.name2.${k}`), word: t('ai.callText') };
+  }
+
+  // Room the field's own words keep beside the presence words (px): spark, send and ~20 characters of placeholder.
+  // Less than that and the words get their own line above (a first try inside a 600 px field cut the Japanese
+  // placeholder in half — 2026-10-23).
+  const PRESENCE_ROOM = 330;
+  let lastPresence: AiPresence | null = null;
+  function renderPresence() {
+    if (host.offline) {
+      presence.hidden = true;
+      presenceRow.hidden = true;
+      return;
+    }
+    const p = currentPresence();
+    const v = aiVars();
+    presence.dataset.state = p;
+    presence.classList.toggle('sure', presenceSure(p));
+    (presence.querySelector('.p-text') as HTMLElement).textContent = t(`ai.p.${p}`, v);
+    // "How to open" only where opening is the thing to do; the green states read alone.
+    const how = p === 'away' || p === 'unsure';
+    const howEl = presence.querySelector('.p-how') as HTMLElement;
+    howEl.textContent = how ? t('ai.p.how') : '';
+    howEl.hidden = !how;
+    presence.setAttribute('aria-expanded', helpOpen ? 'true' : 'false');
+    presence.title = t('ai.p.tip');
+    // Where: inside the field on a wide bar, on its own line above on a narrow one. offsetWidth 0 = not laid out yet
+    // (a hidden bar): leave it where it is.
+    const box = placementPanel.askEl;
+    const w = box.offsetWidth;
+    const narrow = phone() || (w > 0 && w < presence.offsetWidth + PRESENCE_ROOM);
+    const want = narrow ? presenceRow : box;
+    if (presence.parentElement !== want) {
+      if (want === box) box.insertBefore(presence, box.querySelector('.ask-kbd'));
+      else presenceRow.append(presence);
+    }
+    presenceRow.hidden = !narrow || askSlot.hidden;
+    renderOpenHelp(p, v);
+    // The placeholder says the other half ("kept as a note for Claude"): drawn again when the state changes by time.
+    if (p !== lastPresence) {
+      lastPresence = p;
+      placementPanel.renderAsk();
+    }
+  }
+
+  /** The line the presence words open: what is true now, and what to do (its chip copies the word). */
+  function toggleOpenHelp(on = !helpOpen) {
+    helpOpen = on;
+    renderPresence();
+  }
+  function renderOpenHelp(p: AiPresence, v: Record<string, string>) {
+    openHelp.hidden = !helpOpen;
+    if (!helpOpen) return;
+    const key = p === 'watching' || p === 'working' ? `ai.open.${p}` : `ai.open.${aiNameKey(aiAgent)}`;
+    const sig = `${key}|${lang}|${v.ai}`;
+    if (openHelp.dataset.sig === sig) return;
+    openHelp.dataset.sig = sig;
+    // The word as a chip where the step says to type it (Codex, an unknown AI): copies on a press, and says so.
+    const word = key === 'ai.open.codex' || key === 'ai.open.any';
+    openHelp.replaceChildren(h('span', { class: 'ai-text', text: t(key, v) }),
+      ...(word ? [h('button', { type: 'button', class: 'link', dataset: { action: 'ai-copy-word' }, onclick: () => void copyWord() }, h('span', { text: t('ai.open.copy', v) }))] : []),
+      h('button', { type: 'button', class: 'link icon-only', dataset: { action: 'ai-open-close' }, title: t('ai.open.close'), 'aria-label': t('ai.open.close'), onclick: () => toggleOpenHelp(false) }, icon('close')));
   }
 
   // The objects the AI's question is about glow in the scene (instead of the AI's change marks) while it asks.
@@ -2138,6 +2312,7 @@ export function start(host: StudioHost) {
     lastChange = null;
     // The host's answer says at once whether an AI watches (no 20 s of not knowing).
     if (info?.watching !== undefined) aiWatching = info.watching;
+    if (aiWatching) lastWatching = Date.now();
     if (info?.seen) aiSeen = info.seen;
     if (id && info?.undo && !changeFrom) changeFrom = id;
     if (aiMarks.size) {
@@ -2190,17 +2365,23 @@ export function start(host: StudioHost) {
     if (ph === 'waiting' && pending) {
       // Hosts that cannot tell whether an AI watches (and the offline demo): the old line.
       aiLine.append(h('span', { class: 'ai-text', text: pending.text ? t('ai.waitingAsk', { text: pending.text }) : pending.kind === 'saved' ? t('ai.waitingSaved') : t('ai.waiting', { what: t(`ai.what.${pending.kind}`) }) }));
-    } else if (ph === 'sent' || ph === 'seen') {
-      two(t(ph === 'seen' ? 'ai.seen' : 'ai.sent'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
-    } else if (ph === 'away' || ph === 'nudge') {
-      // The request could not wake the AI right now (hands-on test 2026-10-19). Not a warning and not the
-      // AI's plumbing ("isn't watching", "/arrange", "Claude Code or Codex"): one calm line that it is kept and goes in
-      // by itself, and one button if they want it sooner. In Claude Code the plugin's hooks wake the AI, so this is
-      // rare there (ai-wake.mjs).
-      two(t('ai.nudge'), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
-      link('ai-call', 'spark', t('ai.call'), () => void callAi(), t('ai.callTip'));
+    } else if (ph === 'seen' || (ph === 'sent' && Date.now() - (pending?.sent ?? 0) < UNSEEN_MS)) {
+      // The AI has it: "Claude is on it" (ai presence, a hands-on review 2026-10-23), then "Done". `sent` (a heartbeat, not yet
+      // shown to the AI) says the same for UNSEEN_MS; after that the fact below, not a hanging "on it".
+      two(t('ai.onIt', aiVars()), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
+    } else if (ph === 'away' || ph === 'nudge' || ph === 'sent') {
+      // Nothing can wake the AI right now (hands-on test 2026-10-19; ai presence 2026-10-23). The fact, not a promise:
+      // "Kept as a note for Claude. Nothing in the game changes until Claude reads it." — it was "Your request is in.
+      // It goes into the game the next time your AI runs.", which read as "I asked and nothing happened". What was
+      // asked stays under it (proof the note exists). "How to open" is the presence words right under this line (no
+      // second button here: two "How to open" a finger apart read as two different things).
+      // In Claude Code the plugin's hooks wake the AI, so this is rare there (ai-wake.mjs).
+      two(t('ai.kept', aiVars()), asked || (pending?.kind === 'saved' ? t('ai.savedSub') : ''));
     } else if (ph === 'received' || ph === 'working') {
-      two(note ? `${note.replace(/[.…]+$/, '')}…` : t(`ai.${ph}`), covered ? asked : '');
+      // Its own words while it works; none: "Claude is on it". Quiet for QUIET_WORK_MS: how long, so silence looks alive.
+      const quiet = aiTime != null ? Date.now() - aiTime : 0;
+      const still = quiet >= QUIET_WORK_MS ? t('ai.still', { n: Math.floor(quiet / 60_000) }) : '';
+      two(note ? `${note.replace(/[.…]+$/, '')}…` : t('ai.onIt', aiVars()), [covered ? asked : '', still].filter(Boolean).join(' · '));
     } else if (ph === 'asking') {
       // The AI's question, answered here (hands-on test 2026-10-19; ai-ask.ts): the question, what it is
       // about lit in the scene, now → after side by side, its answers as buttons; the ask field takes their own words.
@@ -2272,7 +2453,7 @@ export function start(host: StudioHost) {
       wasAsking = ph === 'asking';
       placementPanel.renderAsk();
     }
-    renderPeer();
+    renderPresence();
     // The whole line on hover (it is cut to one line).
     aiLine.title = aiLine.hidden ? '' : aiLine.textContent || '';
     sendPlayLine();
@@ -2461,6 +2642,7 @@ export function start(host: StudioHost) {
         aiStatus = r.status;
         aiTime = r.time;
         if (r.watching !== undefined) aiWatching = r.watching;
+        if (aiWatching) lastWatching = Date.now();
         if (r.seen) aiSeen = r.seen;
         aiAgent = r.agent;
         if (r.code !== code) {
@@ -2499,7 +2681,9 @@ export function start(host: StudioHost) {
     pollTimer = window.setTimeout(() => void pollStatus(), 400);
   }
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') void pollStatus();
+    if (document.visibilityState !== 'visible') return;
+    visibleSince = Date.now();
+    void pollStatus();
   });
 
   // ----- bridge messaging -----
@@ -2653,6 +2837,7 @@ export function start(host: StudioHost) {
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
     if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
+    if (m.type === 'studio:placement/tool-off') return toolOffMenu(m);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -3066,6 +3251,8 @@ export function start(host: StudioHost) {
 
   // ----- actions -----
   function doUndo() {
+    // Nothing else left to undo right after "Make Level 2": ⌘Z takes the level back (makeLevel).
+    if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
     if (e) applyEntry(e, 'undo');
     renderButtons();
@@ -3272,6 +3459,11 @@ export function start(host: StudioHost) {
           uiModel.markSaved();
           uiWire.model.markSaved();
           levels.markSaved();
+          // Saved with its levels: taking "Make Level 2" back now would leave the file and the editor apart.
+          if (levelMade) {
+            levelMade = null;
+            renderLevelMade();
+          }
           motionLibrary.markSaved();
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
@@ -3526,6 +3718,11 @@ export function start(host: StudioHost) {
   async function goLevel(id: string, keep = true) {
     if (!id || !levels.has(id)) return;
     if (!(await confirmLoss('reload'))) return levelsChanged(true);
+    // Another level shown: "Make Level 2" is not the last step any more (makeLevel arms it again after its own goLevel).
+    if (levelMade) {
+      levelMade = null;
+      renderLevelMade();
+    }
     if (keep) levels.stash(worldModel.result(), worldModel.dirty());
     levels.current = id;
     useLevelModel(id);
@@ -3539,6 +3736,10 @@ export function start(host: StudioHost) {
   /** A rename / move / delete that keeps the level on screen: the crumb and the Save count again, the draft soon. */
   function levelsChanged(changed: boolean) {
     if (!changed) return;
+    if (levelMade) {
+      levelMade = null;
+      renderLevelMade();
+    }
     renderAll();
     keepSoon();
   }
@@ -3550,7 +3751,8 @@ export function start(host: StudioHost) {
     else if (crumb.parentElement !== levelSlot) levelSlot.replaceChildren(h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), crumb);
     const add = levelAddable();
     levelAddSlot.hidden = !add;
-    levelAddSlot.replaceChildren(...(add ? [levelSwitch.addButton(addLevel)] : []));
+    // Where the level's name will be (Studio / Game / Levels ⌄ / Scene), so the crumb does not jump once Level 2 exists.
+    levelAddSlot.replaceChildren(...(add ? [h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), levelSwitch.addButton(() => openLevelFresh())] : []));
   }
   /**
    * "+ Level" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
@@ -3560,14 +3762,78 @@ export function start(host: StudioHost) {
     return !levels.active && editing && !playing && page === 'tool' && tool === 'placement' && editLayer === 'world' && (!!levels.single || !host.offline);
   }
   /**
-   * "+ Level": a game whose code has one level gets its second one here and now (a copy of what is on screen, opened
-   * at once, as "New level from …"). Any other game: the request goes into the ask field, for the person to send
-   * (Enter) — levels need a few lines in the game's code (skills/arrange SKILL.md §4), which only the AI can write.
+   * "Levels ⌄" in a game without levels (studio-uniforms, 2026-10-23): the menu, never an action at once. History: it
+   * was "+ Level", which typed a request into the AI box (a game whose code has no levels) — a hands-on try: "pressing +
+   * Level suddenly put text in the AI chat window, it makes no sense"; and on the plan to make Level 2 at once: "it just
+   * makes it without asking?? there used to be a menu with copy and other things". So the same menu as a game with
+   * levels (level-switch.ts): one line on what happens, "Make Level 2 — a copy of this one" (made here and opened; ⌘Z or
+   * the line's Undo takes it back; the code's switch is the AI's, on Save), and ✦ "Ask AI for a different kind of
+   * level…" (a draft in the box, nothing sent). The web demo (no AI) has no ✦ row, and only a game whose code already
+   * builds a level by id gets the button there (levelAddable).
    */
-  function addLevel() {
-    const id = levels.start(worldModel.result());
-    if (id) void goLevel(id);
-    else focusAsk(t('level.addAsk'));
+  function levelFreshEntries(): MenuEntry[] {
+    const rows: MenuEntry[] = [{ note: t('level.oneNote') }, { id: 'level-make', label: t('level.make'), run: () => void makeLevel() }];
+    if (!host.offline) rows.push({ sep: true }, levelAskEntry());
+    return rows;
+  }
+  /** The menu of a game without levels: under its "Levels ⌄" (⌘K's "Levels…" too); a phone, which has no such button, at the top. */
+  function openLevelFresh() {
+    const b = levelAddSlot.querySelector('button');
+    if (b && b.offsetParent) return levelSwitch.openAt(levelFreshEntries(), b);
+    ctxMenu.show(levelFreshEntries(), window.innerWidth / 2, 56, { place: 'levels', touch: phone(), label: t('level.menu'), floor: menuFloor() });
+  }
+  /** ✦ Ask AI for a different kind of level… (the menus of both kinds of game): a draft in the box, nothing sent. */
+  function levelAskEntry(): MenuEntry {
+    return { id: 'level-ask', label: t('level.askAi'), ai: true, run: () => focusAsk(t('level.askText')) };
+  }
+  /**
+   * "Make Level 2": what is on screen becomes Level 1 and a copy of it opens as Level 2 (levels.ts start()). It can be
+   * taken back while Level 2 is still the copy — ⌘Z once nothing else is left to undo, or the line's [Undo] — and
+   * not after Save or another level change (levelMade = null then).
+   */
+  async function makeLevel() {
+    const single = levels.single;
+    const before = worldModel;
+    const id = levels.start(worldModel.result(), t('level.first'));
+    if (!id) return;
+    await goLevel(id);
+    if (levels.current !== id) return;
+    levelMade = { single, model: before, from: levels.labelOf(levels.list[0]!.id), name: levels.labelOf(id) };
+    renderLevelMade();
+    renderButtons();
+  }
+  /** Back to a game with one level, as it was before "Make Level 2" (its own model: the unsaved moves come back too). */
+  function unmakeLevel() {
+    const made = levelMade;
+    levelMade = null;
+    renderLevelMade();
+    if (!made || !levels.unstart(made.single)) return renderButtons();
+    worldModel = made.model;
+    if (editLayer !== 'ui') model = worldModel;
+    undo.clear();
+    selected = null;
+    group = [];
+    void keepNow().then(() => {
+      loadGame();
+      renderAll();
+    });
+  }
+  /**
+   * The line after "Make Level 2" (a design review of the plan, 2026-10-23: the copy looks exactly like Level 1, so the
+   * line is the one thing that says where you are): what was made, what to do, that Save adds the switch — and
+   * [Undo]. It stays until the first change on the new level, a level change, Save or ×; not a toast that times out.
+   */
+  function renderLevelMade() {
+    const on = !!levelMade && !playing && levels.active && !undo.canUndo;
+    levelNote.hidden = !on;
+    if (!on) return levelNote.replaceChildren();
+    levelNote.replaceChildren(
+      h('span', { class: 'level-made-text', text: t('level.made', { name: levelMade!.name, from: levelMade!.from }) }),
+      h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() }),
+      h('button', { type: 'button', class: 'level-made-close', dataset: { action: 'level-made-close' }, 'aria-label': t('level.madeClose'), title: t('level.madeClose'), onclick: () => {
+        levelNote.hidden = true;
+      } }, icon('close')),
+    );
   }
 
   /** The game page's address: the editor's (`?studio=edit`) or Play's, on the level shown. */
@@ -3663,6 +3929,8 @@ export function start(host: StudioHost) {
       return true;
     }
     // ⌘D copy (also stops the browser's "bookmark this page"), ⌘A select all.
+    // F2: rename the picked object in place (its card's name becomes a field).
+    if (!mod && e.key === 'F2') return startRename();
     if (mod && k === 'd' && !e.shift) {
       if (editing) copySelection();
       return true;
@@ -3999,7 +4267,7 @@ export function start(host: StudioHost) {
     // Undo / redo say what they would change and their key: "Undo: move lighthouse  ⌘Z" (tooltip.ts shows the key
     // apart). With nothing to undo they stay where they are, dimmed, and say so ("Nothing to undo  ⌘Z").
     const mac = isMac();
-    const nextUndo = describe(undo.peekUndo());
+    const nextUndo = describe(undo.peekUndo()) || (levelMade ? t('level.undoMade', { name: levelMade.name }) : '');
     const nextRedo = describe(undo.peekRedo());
     // The UI layer's rows also get the dot for a changed look (UI stage 3).
     unsavedKeys = editLayer === 'ui' ? new Set([...model.changedKeys(), ...uiWire.model.changedKeys()]) : model.changedKeys();
@@ -4007,8 +4275,10 @@ export function start(host: StudioHost) {
     for (const b of undoBtns) {
       setButton(b, 'undo', t('btn.undo'), false, tipText(nextUndo ? `${t('btn.undo')}: ${nextUndo}` : t('keys.nothingUndo'), keyOf('undo', mac)));
       // While playing, undo/redo would change a game the person cannot see as edited.
-      b.disabled = playing || !undo.canUndo;
+      b.disabled = playing || !(undo.canUndo || levelMade);
     }
+    // The "Level 2 made" line goes with the first change on the new level (renderLevelMade).
+    if (levelMade && !levelNote.hidden && undo.canUndo) renderLevelMade();
     for (const b of redoBtns) {
       setButton(b, 'redo', t('btn.redo'), false, tipText(nextRedo ? `${t('btn.redo')}: ${nextRedo}` : t('keys.nothingRedo'), keyOf('redo', mac)));
       b.disabled = playing || !undo.canRedo;
@@ -4062,26 +4332,6 @@ export function start(host: StudioHost) {
     playMoreBtn.title = t('pal.playFresh');
     playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));
     keepSoon();
-  }
-
-  /** The AI's dot: what it last told the editor (never more). */
-  function renderPeer() {
-    const st = aiStatus && (aiTime ?? 0) >= openedAt ? aiStatus.state : null;
-    // Busy = the AI has a request of yours (ai-flow.ts): the dot pulses and the light runs round the input.
-    const busy = aiBusy(currentPhase());
-    // With a watch (`studio.mjs --watch`) the dot says whether the AI is watching right now.
-    const live = aiWatching !== undefined ? aiWatching : !!st;
-    peer.dataset.state = busy ? 'busy' : live ? 'live' : 'idle';
-    peer.title = busy ? t('peer.busy') : aiWatching === true ? t('peer.watching') : aiWatching === false ? t('peer.away') : st ? t('peer.live') : t('peer.idle');
-    (peer.querySelector('.label') as HTMLElement).textContent = t('peer.label');
-    // After the AI's finished line faded (line-fade.ts): "● AI" brings it back. Violet while it holds a change that
-    // can still be undone; otherwise it looks as before (only the pointer and the tooltip say it can be pressed).
-    const recall = lineRecallable();
-    const undoable = recall && !!lastChange && !!host.undoAi && !playing && currentPhase() !== 'undone';
-    peer.dataset.recall = recall ? (undoable ? 'undo' : 'on') : '';
-    // Not `disabled` (that greys the whole "● AI" out): out of the Tab order and a click does nothing (recallLine).
-    peer.tabIndex = recall ? 0 : -1;
-    if (recall) peer.title = t(undoable ? 'peer.recallUndo' : 'peer.recall');
   }
 
   let lastPage = '';
@@ -4151,7 +4401,7 @@ export function start(host: StudioHost) {
     updateCaption();
     renderStatus();
     renderButtons();
-    renderPeer();
+    renderPresence();
     // The ask box lives in the bar at the bottom of the game whatever the tool or page.
     // The web demo (no AI behind it, host.offline) has no ask box (design review wave 1, W1-6 / N2, 2026-10-17: the most
     // visible part of the screen was a box that did nothing when used) and nothing in its place. W1-6 first put one grey

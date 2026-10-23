@@ -184,7 +184,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas', 'names'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -221,14 +221,18 @@ function placement(data, fail) {
   if (data.levels !== undefined) {
     const levels = readLevels(data.levels, dim, fail);
     if (levels.length) {
-      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion || out.names) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
       out.levels = levels;
-      if (data.levelsWas !== undefined) {
+      // `levelsWas: []` (studio-uniforms, 2026-10-23): the code has no levels yet — the person made Level 2 in a game
+      // without them. Its levels without `from` are then the game as it is (Level 1), and a copy is built from those.
+      const none = Array.isArray(data.levelsWas) && data.levelsWas.length === 0;
+      if (none) out.levelsWas = [];
+      else if (data.levelsWas !== undefined) {
         const was = readOrderedKeys(data.levelsWas, 'levelsWas', fail);
         if (was) out.levelsWas = was;
       }
-      // An editor-made level is built from a level the code has.
-      const code = new Set(out.levelsWas || levels.filter((l) => !l.from).map((l) => l.id));
+      // An editor-made level is built from a level the code has (or, with none yet, from the game as it is).
+      const code = new Set(!none && out.levelsWas ? out.levelsWas : levels.filter((l) => !l.from).map((l) => l.id));
       for (const l of levels) if (l.from && !code.has(l.from)) fail(`levels[${LEVEL_AT.get(l)}].from`, `"${l.from}" is not one of the code's levels`);
     }
   } else if (data.levelsWas !== undefined) fail('levelsWas', 'only with levels');
@@ -322,6 +326,25 @@ function readWorld(data, dim, fail, objectsOptional = false) {
     for (const r of out.removed || []) if (Object.hasOwn(motion, r.key)) fail(`motion`, `"${r.key}" is also in removed`);
     if (Object.keys(motion).length) out.motion = motion;
   }
+  // `names` (studio-uniforms, 2026-10-23): names the person gave objects in the editor (Rename, F2), key → name. The AI
+  // renames each object in the code and takes its entry out. Optional: absent = the same bytes as before.
+  if (data.names !== undefined) {
+    if (!isObject(data.names)) fail('names', 'must be an object keyed by object key');
+    else {
+      const names = {};
+      const keys = Object.keys(data.names);
+      if (keys.length > LIMITS.maxObjects) fail('names', `at most ${LIMITS.maxObjects} names`);
+      for (const k of keys.slice(0, LIMITS.maxObjects).sort()) {
+        if (!KEY_RE.test(k)) {
+          fail(`names[${JSON.stringify(k)}]`, 'key must match ' + KEY_RE);
+          continue;
+        }
+        const name = readLabel(data.names[k], `names[${JSON.stringify(k)}]`, fail);
+        if (name && name.trim()) names[k] = name.trim();
+      }
+      if (Object.keys(names).length) out.names = names;
+    }
+  }
   return out;
 }
 
@@ -340,7 +363,7 @@ function readLevels(v, dim, fail) {
     const where = `levels[${i}]`;
     const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
     if (!isObject(item)) return fail(where, 'must be an object');
-    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion'], where, fail);
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
     if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
     if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
     seen.add(item.id);

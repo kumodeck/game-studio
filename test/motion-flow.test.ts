@@ -13,6 +13,10 @@ import type { TimelineActs, TimelineView } from '../src/shell/timeline-panel.ts'
 import { normalizeUi } from '../src/shell/ui-prefs.ts';
 import type { MotionClip, Pose } from '../src/contract.ts';
 
+// make → a move plays the motion (studio-no-presets): ▶'s frames are never run here.
+globalThis.requestAnimationFrame ??= (() => 0) as never;
+globalThis.cancelAnimationFrame ??= (() => {}) as never;
+
 const hop: MotionClip = { name: 'Hop', len: 1, repeat: 'once', keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 1, v: [0, 2, 0] }] } };
 
 function rig() {
@@ -54,14 +58,19 @@ test('make: an object with no motion — the plate opens on it, nothing is made 
   assert.equal(r.tl.motionOf('crate')!.clips!.length, 1);
 });
 
-test('make: an object that moves already gets a new, empty motion to fill (a move must not change the one it has)', () => {
+test('make: an object that moves already gets a new motion from its next move (a move must not change the one it has)', () => {
   const r = rig();
   r.pick('barrel');
   r.tl.make('barrel');
+  // studio-no-presets: nothing made by a look — the plate shows no motion until the move.
+  assert.deepEqual(r.tl.motionOf('barrel')!.clips!.map((c) => c.name), ['Hop']);
+  assert.equal(r.tl.state().clip, null, 'waiting for the move');
+  r.tl.moved('barrel', { p: [6, 0, 0], r: 0, s: 1 }, true, { p: [5, 0, 0], r: 0, s: 1 });
   const cs = r.tl.motionOf('barrel')!.clips!;
   assert.deepEqual(cs.map((c) => c.name), ['Hop', 'Motion']);
   assert.equal(r.tl.state().clip, 'Motion', 'the plate shows the new one');
   assert.deepEqual(cs[1]!.when, { on: 'say' }, 'the second motion waits (the first one starts with the game)');
+  assert.deepEqual(r.lib.get('Hop')!.keys.p!.map((k) => k.v), [[0, 0, 0], [0, 2, 0]], 'Hop is as it was');
 });
 
 test('attach + show: the plate opens on the attached motion, "attached" with Starts focused, until a "when" is chosen', () => {

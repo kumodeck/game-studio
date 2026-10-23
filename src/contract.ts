@@ -215,6 +215,12 @@ export interface Item {
    */
   driven?: Array<'move' | 'lift' | 'turn' | 'size'>;
   /**
+   * With held 'game' (studio-tool-clear, 2026-10-23): the person chose "Move where it starts" (ShellToBridge
+   * placement/unhold), so Move and Height work on it again — what they set is where it starts, and the game moves it on
+   * from there. Its turn and size stay held. For this session.
+   */
+  startSpot?: boolean;
+  /**
    * Copy made in this edit session (copy / ⌘D, CONTRACT.md §1.8): the key of
    * the object it was copied from. Absent for objects the game itself makes.
    */
@@ -969,7 +975,11 @@ export type ShellToBridge =
   | { type: 'studio:placement/restore'; keys: string[] }
   /** `layer` (UI stage 1): set it on that layer even when the other one is being edited (saved UI places on open). */
   | { type: 'studio:placement/pose'; key: string; pose: Pose; layer?: EditLayer }
-  /** "Make movable" on a held ground / road / sky (Item.held 'ground'): the tools work on it again for this session. */
+  /**
+   * "Make movable" on a held ground / road / sky (Item.held 'ground'): the tools work on it again for this session. On
+   * an object the game moves (held 'game'), "Set where it starts" (studio-tool-clear): Move and Height work again and
+   * the item says `startSpot`.
+   */
   | { type: 'studio:placement/unhold'; keys: string[] }
   /**
    * The timeline (studio-timeline, 2026-10-22; CONTRACT.md §1.9): put these objects at these poses — each one's place
@@ -1236,6 +1246,12 @@ export type BridgeToShell =
   | { type: 'studio:placement/tool'; tool: StripTool | null }
   /** The strip's choices (the ▾ on turn / size) opened or closed: the editor page closes them on a press or Escape. */
   | { type: 'studio:placement/menu'; open: boolean }
+  /**
+   * A dimmed tool of the strip pressed, or its key typed (studio-tool-clear, 2026-10-23): it does not work on this
+   * object (`why`, bridge/hold.ts offWhy) — the editor opens its small menu at the button (`x y w h`, the game page's
+   * px; 0 × 0 = not on screen): `line` (why + what can be done, the button's tooltip) and the rows that do it.
+   */
+  | { type: 'studio:placement/tool-off'; key: string; tool: StripTool; why: 'game' | 'ground' | 'locked' | 'none'; line: string; x: number; y: number; w: number; h: number; touch: boolean; keyboard: boolean }
   /**
    * A right-click (Mac: also Control-click) or a long press (touch, UI.longPressMs) on the game while editing: the
    * editor page opens its menu for that place (shell/context-menu.ts). `key` = the object under the pointer (null =
@@ -1836,6 +1852,12 @@ export interface PlacementFile {
    * its file is byte for byte what it was.
    */
   levels?: PlacementLevel[];
+  /**
+   * Optional (studio-uniforms, 2026-10-23, CONTRACT.md §4.1): names the person gave objects in the editor (Rename, F2 —
+   * done in place, not asked of the AI), object key → name. The AI renames each object in the code (its key / name)
+   * and takes the entry out. With `levels`, each level has its own and this one is absent. Absent = nothing renamed.
+   */
+  names?: Record<string, string>;
   /** With `levels`, only when they differ from the code: the code's level ids in the code's order (a missing one = deleted). */
   levelsWas?: string[];
 }
@@ -1854,6 +1876,8 @@ export interface PlacementLevel {
   order?: PlacementOrder[];
   /** This level's motions (motion-gui × levels, integrate3 2026-10-22): keys are this level's objects. */
   motion?: Record<string, Motion>;
+  /** Names the person gave this level's objects (Rename; see PlacementFile.names). */
+  names?: Record<string, string>;
 }
 
 /**

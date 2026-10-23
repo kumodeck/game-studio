@@ -22,7 +22,7 @@ Quick answers, and what to do when something doesn’t work.
 
 ## Opening it in your browser
 
-In the Claude app, the editor opens in the Browser pane next to the chat. To use your own browser instead, tell your AI “open it in my browser.” It remembers that for this game. Say “back in the app” to switch back.
+The editor opens in your usual browser by itself, in the Claude app too. Prefer the pane next to the chat? Tell your AI “open it in the app.” It remembers that for this game. Say “open it in my browser” to switch back. If nothing opened, the link is on the first line of your AI’s reply.
 
 In the pane, **Open large** (↗) opens the same editor in a big window. You can close the small one.
 

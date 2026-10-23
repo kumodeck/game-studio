@@ -2,7 +2,7 @@
 title: Editing
 nav: Editing
 order: 2
-written-for: 0.1.18
+written-for: 0.1.24
 description: Select, move, turn and resize things in your game, look around, use the Library, and save.
 ---
 
@@ -32,6 +32,14 @@ Drag a selected object to move it. The strip under it has four tools. Press one,
 | Size | <kbd>S</kbd> or <kbd>4</kbd> | Right or up makes it bigger. |
 
 The tool stays chosen until you press <kbd>Esc</kbd> or choose another. A readout next to the strip shows the numbers as you drag.
+
+**When a tool is dimmed.** The four tools are always there, in the same places. A tool that doesn’t work on what you picked is dimmed. Point at it to see why, or press it for what you can do instead:
+
+![A hexagon the game moves: Move is dimmed, and pressing it says why, with Set where it starts](media/tool-off.webp)
+
+- **Your game moves it** (a runner’s obstacles, a spinning coin): **Set where it starts** lets you move it. Where you put it is where it starts; when the game plays, it moves it on from there. The game’s own turning or resizing can’t be set here: **Ask AI** changes it in the code.
+- **A ground, road or sky** is held still so a stray drag can’t move it: **Make movable**.
+- **Your game’s rules lock it**: **Ask AI to change the rule**.
 
 ![The Turn tool chosen on the lighthouse](media/turn.webp)
 
@@ -83,8 +91,15 @@ Want a grid, or only 90° turns? Ask your AI: “snap to a 1 m grid.” It sets 
 
 Right-click anything (long-press on a phone) to see what you can do with it right there.
 
-- **On an object:** Ask your AI…, Rename…, Duplicate, Delete, Drop to floor, Show in Library. In 2D: Bring to front and Send to back.
-- **On an empty spot:** ask your AI to change the game, Paste, Select all, Deselect, Show all.
+- **On an object:** Rename, Duplicate, Delete, Drop to floor, Show in Library. In 2D: Bring to front and Send to back. Then **✦ Ask AI to change the lighthouse…**.
+- **On an empty spot:** Paste, Select all, Deselect, Show all. Then **✦ Ask AI to change the game…**.
+
+The menus have two kinds of rows, and you can tell them apart before you press:
+
+- **Plain rows** happen right away in the editor. <kbd>⌘</kbd><kbd>Z</kbd> undoes them. They never type anything in the box at the bottom.
+- **✦ rows** (violet, “Ask AI to …”) only put a request in the box at the bottom, with the cursor there, for you to change or finish. Nothing is sent until you press <kbd>Enter</kbd>.
+
+**Rename** (or <kbd>F2</kbd>) turns the name on the object’s card into a text field. <kbd>Enter</kbd> keeps the new name, <kbd>Esc</kbd> cancels. The new name shows everywhere at once, and when you save, your AI renames the object in the code too. An object without a name in the code has **✦ Ask AI to name it…** instead.
 
 ![The right-click menu on the lighthouse](media/right-click.webp)
 
@@ -110,7 +125,7 @@ Switch from **Scene** to **Library** on the left to see everything your game is 
 
 Click a tile to see its detail: which objects use a file, which files are unused or missing.
 
-- **Add to scene** on an object puts a duplicate where you’re looking. On a file, it asks your AI to add it to the game.
+- **Add to scene** on an object puts a duplicate where you’re looking. A file needs new code to become an object, so its button is **✦ Ask AI to add it to the scene…**: the request goes in the box at the bottom, and nothing is sent until you press <kbd>Enter</kbd>.
 - **Replace…** swaps a file for another. **Add files** brings new ones in.
 - **Show in game** goes back to the Scene with it selected.
 - Select a tile and type in the box at the bottom to ask your AI about it.
@@ -124,7 +139,22 @@ The box at the bottom is for your AI. Type what you want and press <kbd>Enter</k
 - About what’s selected: “add 3 more in a row,” “make it glow.”
 - About the whole game: “add three lighthouses around the island.”
 
-You see at once that your AI has it. A violet light runs round the box while it works, and its one-line reply shows above. When it’s done, the game updates by itself, with your camera and selection kept, and only what changed glows violet. Don’t like it? **Undo AI change** puts it back in one press.
+Before you type, the right end of the box says whether your AI is there (above the box on a narrow window):
+
+- **● Claude is watching**: what you send reaches it within seconds. **● Claude is working**: it’s on a request.
+- **Not sure Claude is open** or **Claude isn’t watching**: you can still write. It’s kept as a note, and nothing in the game changes until Claude reads it. **How to open** says what to do.
+- With Codex: **Codex reads it when you type “look”**.
+
+The name is your own AI, or “your AI” when the editor can’t tell. Press the words for one line on what they mean.
+
+![The box at the bottom: “Claude is watching” at its right end](media/ask-watching.webp)
+
+When your AI is there, the line above the box says **Claude is on it**, then its own words, then its reply.
+When it isn’t, the line says what happened: **Kept as a note for Claude. Nothing in the game changes until Claude reads it.**
+
+![Sent while Claude wasn’t open: kept as a note, with “How to open” beside the box](media/ask-kept.webp)
+
+ A violet light runs round the box while it works, and its one-line reply shows above. When it’s done, the game updates by itself, with your camera and selection kept, and only what changed glows violet. Don’t like it? **Undo AI change** puts it back in one press.
 
 ## Save
 

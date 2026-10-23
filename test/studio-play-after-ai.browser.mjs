@@ -197,9 +197,10 @@ try {
   if (want('save')) {
     await run('save', { bare: true, plan: 'colour', extra: async ({ page, root, poseOf, until, moved }) => {
       // Undo AI change first (a Save is a new request: the AI's last change is history after it, as before this fix).
-      // The AI's line may have faded by now: "● AI" brings it back with its "Undo AI change".
+      // The AI's line may have faded by now: going to the ask field brings it back with its "Undo AI change" (it was the
+      // top bar's "● AI" until 2026-10-23).
       const undoBtn = `document.querySelector('[data-action=ai-undo]')`;
-      if (!(await page.eval(`!!${undoBtn}`))) await page.eval(`document.querySelector('[data-part=peer]')?.click()`);
+      if (!(await page.eval(`!!${undoBtn}`))) await page.eval(`(document.activeElement?.blur?.(), document.querySelector('.ask-input')?.focus(), true)`);
       check(await until(async () => page.eval(`!!${undoBtn}`), 4000), 'Undo AI change offered');
       await page.eval(`${undoBtn}?.click()`);
       check(await until(async () => readFileSync(join(root, 'js/props.js'), 'utf8').includes('0x2d4b63'), 10000), 'Undo AI change: the code is back');

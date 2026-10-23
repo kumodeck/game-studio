@@ -152,7 +152,8 @@ async function run(game, layout, theme) {
     let m = await menu();
     assert.ok(m, `${tag}: the menu opened on ${g.pick}`);
     assert.equal(m.place, 'object');
-    assert.deepEqual(ids(m).slice(0, 2), ['ask', 'rename'], `${tag}: Ask your AI and Rename first`);
+    // studio-uniforms (2026-10-23): plain rows first (Rename in place, for a named object), the ✦ rows last.
+    assert.ok(ids(m).indexOf('ask') > 0 && ids(m).slice(ids(m).indexOf('ask')).every((i) => ['ask', 'askMotion', 'name'].includes(i)), `${tag}: ✦ rows last (${ids(m)})`);
     for (const id of ['undo', 'redo', 'paste', 'layer-forward', 'layer-backward']) assert.ok(!ids(m).includes(id), `${tag}: no ${id} (${ids(m)})`);
     const layerRows = ids(m).filter((i) => i.startsWith('layer-')).length;
     if (touch) {
@@ -227,7 +228,7 @@ async function run(game, layout, theme) {
     m = await menu();
     assert.ok(m, `${tag}: a menu on the empty spot`);
     assert.equal(m.place, 'scene');
-    assert.deepEqual(ids(m), ['ask', 'selectAll', 'deselect', 'frame', 'home'], `${tag}: the scene's rows`);
+    assert.deepEqual(ids(m), ['selectAll', 'deselect', 'frame', 'home', 'ask'], `${tag}: the scene's rows`);
     assert.ok(m.rows.every((r) => !r.off), `${tag}: no dimmed row in the scene's menu`);
     assert.equal(await selected(), g.pick, `${tag}: a menu on nothing keeps the pick (Deselect is in it)`);
     near(m, spot[0], spot[1], `${tag} scene`);
@@ -287,7 +288,7 @@ async function run(game, layout, theme) {
     m = await menu();
     assert.ok(m, `${tag}: a menu on the Library's object tile`);
     assert.equal(m.place, 'libObject');
-    assert.deepEqual(ids(m), ['addToScene', 'ask', 'showInGame', 'remove']);
+    assert.deepEqual(ids(m), ['addToScene', 'showInGame', 'remove', 'ask']);
     assert.ok(await selected(), `${tag}: the tile's object was picked`);
     assert.ok(await page.eval(`!!document.querySelector('.assets-page .gsl-detail:not([hidden]) .lib-object-detail')`), `${tag}: its detail shows`);
     await page.eval(`document.activeElement?.blur?.()`);
@@ -306,7 +307,7 @@ async function run(game, layout, theme) {
     m = await menu();
     assert.ok(m, `${tag}: a menu on a file tile`);
     assert.equal(m.place, 'libFile');
-    assert.deepEqual(ids(m), ['addFile', 'askFile', 'replace']);
+    assert.deepEqual(ids(m), ['replace', 'addFile', 'askFile']);
     assert.ok(await page.eval(`!!document.querySelector('.assets-page .gsl-detail:not([hidden])[data-kind=file]')`), `${tag}: the file's detail opened`);
     await page.eval(`document.activeElement?.blur?.()`);
     await shot('5-lib-file');

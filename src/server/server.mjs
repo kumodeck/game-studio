@@ -76,6 +76,8 @@ export async function startStudioServer(o) {
   // itself is refused), so --stop asks the editor to stop itself. Separate from the pass: the pass is in the link
   // the person sees and in browser history, this one only in the folder.
   const stopToken = crypto.randomBytes(16).toString('base64url');
+  // Whether the link was opened yet (o.onOpened, once): see the pass trade in handle().
+  let opened = false;
 
   const server = http.createServer();
   const listen = (port) => new Promise((resolve, reject) => {
@@ -140,6 +142,11 @@ export async function startStudioServer(o) {
     if (t !== null) {
       if (!safeEqual(t, token)) return sendText(res, 403, 'This link is not valid (the pass changes every time studio.mjs starts).');
       u.searchParams.delete('t');
+      // The first time anyone opens the link: the same start line run again then opens no second tab (cli.mjs).
+      if (!opened) {
+        opened = true;
+        o.onOpened?.();
+      }
       res.setHeader('Set-Cookie', `${cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict`);
       res.writeHead(302, { Location: u.pathname + (u.search || '') });
       return res.end();

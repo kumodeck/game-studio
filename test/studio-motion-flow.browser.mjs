@@ -3,7 +3,7 @@
 // The checks (PC light):
 //   1. the card of an object with no motion: "+ New motion" and "From Library" side by side (no ◆ Timeline alone);
 //      an object with one: its name and when it plays on the menu, and ◆ Timeline;
-//   2. "+ New motion": the timeline opens on it, with the three first-time steps; "Got it" closes them, and they do
+//   2. "+ Make a motion": the timeline opens on it with its one line (studio-no-presets); Esc, then the three first-time steps; "Got it" closes them, and they do
 //      not come back (the plate folded and opened again; ui prefs `seen`);
 //   3. the Library's Motion filter starts with "+ New motion" ("for crate" with the crate picked, "Pick an object first"
 //      with nothing); pressed with nothing picked: the Scene, one line, and the next object picked gets the timeline;
@@ -184,8 +184,16 @@ async function run(size, theme) {
       await sleep(800);
       let st = await state();
       const coach = () => page.eval(`(() => { const c = document.querySelector('[data-part=tl-coach]'); return !!c && !c.hidden && c.offsetParent !== null; })()`);
-      check(st.open && (await coach()), `+ New motion opens the timeline on the crate with the first-time steps (open ${st.open})`);
+      // studio-no-presets: "+ Make a motion" is making (its own line says the step), so the three steps stay away; Esc
+      // ends making with nothing made, and the steps show then (the object still has no keys).
+      const line = await page.eval(`document.querySelector('[data-part=tl-first]')?.textContent || ''`);
+      check(st.open && !(await coach()) && /Drag .+ \(Esc to cancel\)/.test(line), `+ Make a motion opens the timeline on the crate, its one line ("${line}")`);
       check(!(await state()).clip, 'nothing made yet (the first move makes it)');
+      await page.eval(`(document.activeElement?.blur?.(), window.focus(), document.body.focus())`);
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await sleep(500);
+      check(await coach(), 'Esc: making ends, the first-time steps show');
       await page.eval(`document.querySelector('[data-part=tl-coach-ok]').click()`);
       await sleep(500);
       check(!(await coach()), '"Got it" closes them');

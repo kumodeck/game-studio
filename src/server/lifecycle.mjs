@@ -81,6 +81,18 @@ export async function recordServer(rootReal, info) {
   await writeServers(rootReal, list).catch(() => {});
 }
 
+/**
+ * The editor's link was opened in some browser (the pass traded for a cookie, server.mjs): kept as `openedAt` in this
+ * process's entry, so `--detach` on a running editor opens the browser only when nobody has opened it yet.
+ */
+export async function markOpened(rootReal) {
+  const list = await readServers(rootReal);
+  const me = list.find((s) => s.pid === process.pid);
+  if (!me || me.openedAt) return;
+  me.openedAt = new Date().toISOString();
+  await writeServers(rootReal, list).catch(() => {});
+}
+
 /** On a normal stop: take this process out again. */
 export async function forgetServer(rootReal, pid = process.pid) {
   const list = (await readServers(rootReal)).filter((s) => s.pid !== pid && pidAlive(s.pid));

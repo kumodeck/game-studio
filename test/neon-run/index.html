@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>Neon Run</title>
+  <!--
+    A stand-in for the kind of game the tool-strip / motion review of 2026-10-23 was made on: a dark 3D runner whose
+    game code moves most things every frame. What the editor should find while it watches the first moments
+    (bridge/observe.ts → bridge/hold.ts):
+      hex-1 … hex-4  orange hexagons the game slides toward the camera (place)   → held 'game', Move off
+      ring           a ring the game turns (angle)                                → held 'game', Turn off
+      orb            a pickup the game pulses (size)                              → held 'game', Size off
+      gate, ship     nothing moves them by themselves                             → every tool works
+      road           a long flat ground                                           → held 'ground'
+    Slides are relative (z += speed · dt), the way most AI-written runners do it: a start spot set in the editor is
+    where a hexagon starts, then the game moves it on from there.
+  -->
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #07040f; touch-action: none; }
+    canvas { display: block; }
+    .title { position: fixed; left: 20px; top: 16px; font: 700 15px/1.2 system-ui, sans-serif; letter-spacing: .2em; color: #ff8a3d;
+      text-shadow: 0 0 12px rgba(255, 120, 40, .7); pointer-events: none; }
+  </style>
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }
+  </script>
+</head>
+<body>
+  <div class="title">NEON RUN</div>
+  <script type="module">
+    import * as THREE from 'three';
+    import { applyPlacement } from './studio-placement.js';
+
+    window.studio?.waitForReady?.();
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.5));
+    document.body.prepend(renderer.domElement);
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x07040f);
+    scene.fog = new THREE.Fog(0x07040f, 20, 70);
+    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+    camera.position.set(0, 4.2, 9);
+    camera.lookAt(0, 1, -8);
+    scene.add(new THREE.HemisphereLight(0x8a7cff, 0x120820, 1.2));
+    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    key.position.set(4, 8, 6);
+    scene.add(key);
+
+    const glow = (color, e = 1.6) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: e, roughness: .4 });
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(10, 120), new THREE.MeshStandardMaterial({ color: 0x140b26, roughness: .9 }));
+    road.name = 'road';
+    road.rotation.x = -Math.PI / 2;
+    road.position.z = -50;
+    scene.add(road);
+    // The lane lines: part of the road (children), not things to pick.
+    for (const x of [-5, 5]) {
+      const line = new THREE.Mesh(new THREE.BoxGeometry(.08, .02, 120), glow(0xb04cff, 2.4));
+      line.position.set(x, .01, 0);
+      line.rotation.x = Math.PI / 2;
+      road.add(line);
+    }
+
+    const hexes = [];
+    for (let i = 0; i < 4; i++) {
+      const h = new THREE.Mesh(new THREE.CylinderGeometry(.9, .9, .5, 6), glow(0xff6a1a, 1.3));
+      h.name = `hex-${i + 1}`;
+      h.rotation.x = Math.PI / 2;
+      h.position.set([-2.5, 2, -1, 3][i], .95, -6 - i * 9);
+      scene.add(h);
+      hexes.push(h);
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1.1, .12, 12, 48), glow(0x29e6ff, 1.8));
+    ring.name = 'ring';
+    ring.position.set(-3.2, 2.2, -14);
+    scene.add(ring);
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(.5, 1), glow(0xffe14a, 1.5));
+    orb.name = 'orb';
+    orb.position.set(3.4, 1.2, -4);
+    scene.add(orb);
+    const gate = new THREE.Group();
+    gate.name = 'gate';
+    for (const x of [-4.2, 4.2]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(.4, 5, .4), glow(0xff3ec8, 1.2));
+      post.position.set(x, 2.5, 0);
+      gate.add(post);
+    }
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(8.8, .4, .4), glow(0xff3ec8, 1.2));
+    beam.position.y = 5;
+    gate.add(beam);
+    gate.position.set(0, 0, -22);
+    scene.add(gate);
+    const ship = new THREE.Mesh(new THREE.ConeGeometry(.55, 1.5, 3), glow(0x5cf2a6, 1.1));
+    ship.name = 'ship';
+    ship.rotation.x = -Math.PI / 2;
+    ship.position.set(0, .6, 4);
+    scene.add(ship);
+
+    await applyPlacement(scene, './placement.json');
+
+    const keys = new Set();
+    addEventListener('keydown', (e) => keys.add(e.code));
+    addEventListener('keyup', (e) => keys.delete(e.code));
+    const resize = () => {
+      renderer.setSize(innerWidth, innerHeight);
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+    };
+    addEventListener('resize', resize);
+    resize();
+    const timer = new THREE.Timer();
+    let t = 0;
+    renderer.setAnimationLoop(() => {
+      timer.update();
+      const dt = Math.min(timer.getDelta(), 1 / 20);
+      t += dt;
+      // The game's own motion (relative, every frame): the hexagons come at you and go round to the back.
+      for (const h of hexes) {
+        h.position.z += 9 * dt;
+        if (h.position.z > 8) h.position.z -= 40;
+      }
+      ring.rotation.y += 1.6 * dt;
+      orb.scale.setScalar(1 + .25 * Math.sin(t * 4));
+      ship.position.x = Math.max(-4, Math.min(4, ship.position.x + ((keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0)) * 8 * dt));
+      renderer.render(scene, camera);
+    });
+  </script>
+</body>
+</html>

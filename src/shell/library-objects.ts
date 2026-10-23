@@ -61,6 +61,8 @@ export interface LibraryObjectsDeps {
   /** Object key → the files it is drawn with (folder paths). Resolves to an empty map when they can't be read. */
   uses(): Promise<Map<string, string[]>>;
   askName(keys: string[]): Promise<boolean>;
+  /** ✦ "Ask AI to name it…" as a draft in the AI box (studio-uniforms); absent = askName (sent at once). */
+  nameDraft?(keys: string[]): void;
   /** The object part changed on its own (the files were read): the Library draws again. */
   changed(): void;
   /** "Add to scene": a copy of one of each picked kind, in the middle of the view, then the Scene with it picked. */
@@ -255,10 +257,13 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
       el.append(rows);
       if (one.unstable) {
         el.append(h('p', { class: 'shelf-note' }, h('span', { class: 'muted', text: d.t('noname.tag') }), ' ',
-          h('button', { type: 'button', class: 'link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e: Event) => {
-            (e.currentTarget as HTMLButtonElement).disabled = true;
-            await d.askName([one.key]);
-          } })));
+          d.nameDraft
+            ? h('button', { type: 'button', class: 'link-btn ai', dataset: { action: 'ask-name' }, onclick: () => d.nameDraft!([one.key]) },
+              h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('ctx.nameAsk'))
+            : h('button', { type: 'button', class: 'link-btn', dataset: { action: 'ask-name' }, text: d.t('ask.name'), onclick: async (e: Event) => {
+              (e.currentTarget as HTMLButtonElement).disabled = true;
+              await d.askName([one.key]);
+            } })));
       }
     }
     const locked = members.every((m) => m.movable === false);
@@ -269,7 +274,9 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
     // the card's button and ⌘D. A locked object can't be copied (the game's settings), so it has no "Add to scene".
     const acts = h('div', { class: 'shelf-acts' });
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn gsl-primary', dataset: { action: 'add-to-scene' }, text: d.t('lib.addToScene'), onclick: () => d.addToScene() }));
-    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'lib-ask' }, text: d.t('lib.askAi'), onclick: () => d.askAi!() }));
+    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform — spark, violet, "Ask AI…" — so it is not read as a plain action.
+    if (d.askAi) acts.append(h('button', { type: 'button', class: 'gsl-btn ai', dataset: { action: 'lib-ask' }, onclick: () => d.askAi!() },
+      h('span', { class: 'gsl-spark', 'aria-hidden': 'true', text: '✦' }), d.t('lib.askAboutIt')));
     acts.append(h('button', { type: 'button', class: `gsl-btn${locked ? ' gsl-primary' : ''}`, dataset: { action: 'show-in-game' }, text: d.t('shelf.showInGame'), onclick: () => d.showInGame() }));
     if (!locked) acts.append(h('button', { type: 'button', class: 'gsl-btn', dataset: { action: 'remove' }, text: d.t('ops.remove'), onclick: () => d.remove() }));
     el.append(acts);

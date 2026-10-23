@@ -28,7 +28,9 @@ export type Change =
    */
   | { kind: 'ui-set'; key: string; path: string; from: string | number | null; to: string | number | null }
   /** UI stage 3: a theme variable (`key` = its name, "--accent"). null = the game's own value. */
-  | { kind: 'ui-theme'; key: string; from: string | null; to: string | null };
+  | { kind: 'ui-theme'; key: string; from: string | null; to: string | null }
+  /** Renamed in place (studio-uniforms, 2026-10-23: Rename, F2): the person's name before / after. null = the game's own. */
+  | { kind: 'name'; key: string; from: string | null; to: string | null };
 
 export interface UndoEntry {
   changes: Change[];

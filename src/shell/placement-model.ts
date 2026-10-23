@@ -100,6 +100,14 @@ export class PlacementModel {
    * rest of the file. Each object whose motion changed is one Save count and a dot on its row.
    */
   readonly motion = new MotionStore();
+  /**
+   * Names the person gave in the editor (Rename, F2; studio-uniforms 2026-10-23), key → name, and the last saved ones.
+   * WHY here and not asked of the AI (as "Rename…" did before, by typing "Rename it to " into the AI box): a name is
+   * something the hand can do at once — the editor shows it everywhere, ⌘Z takes it back, and the code (the object's
+   * key / name) follows on Save like a move (placement.json `names`). Each renamed object is one Save count.
+   */
+  private names = new Map<string, string>();
+  private savedNames = new Map<string, string>();
 
   /** Load the saved file (before the game reports its items). */
   restore(file: PlacementFile | null): void {
@@ -111,6 +119,8 @@ export class PlacementModel {
     if (file?.dim) this.dim = file.dim;
     this.motion.dim = this.dim;
     this.motion.restore(file?.motion);
+    this.names = new Map(Object.entries(file?.names || {}));
+    this.savedNames = new Map(this.names);
     if (!file || !file.objects) return;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
     for (const o of file.order || []) this.fileOrders.set(o.in, o);
@@ -461,8 +471,29 @@ export class PlacementModel {
   }
 
   /** Unsaved changes: moved objects, copies, deletions and reordered lists, one each. */
+  /** The person's name for `key` (Rename), if any. */
+  nameOf(key: string): string | undefined {
+    return this.names.get(key);
+  }
+  /** Every name the person gave (displayName shows them). */
+  allNames(): ReadonlyMap<string, string> {
+    return this.names;
+  }
+  /** Rename `key` (null / '' = back to the game's own name). Returns the name it had (null = none), for undo. */
+  rename(key: string, name: string | null): string | null {
+    const was = this.names.get(key) ?? null;
+    const v = (name ?? '').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 120); // 120 = the file's label limit (schema LIMITS.maxLabel)
+    if (v) this.names.set(key, v);
+    else this.names.delete(key);
+    return was;
+  }
+  private namesChanged(): string[] {
+    const keys = new Set([...this.names.keys(), ...this.savedNames.keys()]);
+    return [...keys].filter((k) => this.names.get(k) !== this.savedNames.get(k));
+  }
+
   dirty(): number {
-    let n = 0;
+    let n = this.namesChanged().length;
     for (const [k, p] of this.current) {
       if (this.copyFrom.has(k) || this.removed.has(k)) continue;
       if (!samePose(p, this.saved.get(k), this.dim)) n++;
@@ -504,6 +535,7 @@ export class PlacementModel {
       if (now.join('\n') !== was.join('\n')) for (const k of outOfOrder(was, now)) out.add(k);
     }
     for (const k of this.motion.changedKeys()) out.add(k);
+    for (const k of this.namesChanged()) out.add(k);
     return out;
   }
 
@@ -545,6 +577,9 @@ export class PlacementModel {
     if (removed.length) file.removed = removed;
     const motion = this.motion.result(this.dim, (k) => this.isRemoved(k));
     if (motion) file.motion = motion;
+    // A deleted object's new name goes with it (the AI takes the object out; there is nothing to rename).
+    const names = [...this.names].filter(([k]) => !this.isRemoved(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    if (names.length) file.names = Object.fromEntries(names);
     return file;
   }
 
@@ -555,5 +590,6 @@ export class PlacementModel {
     this.savedRemoved = new Set(this.removed);
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
     this.motion.markSaved();
+    this.savedNames = new Map(this.names);
   }
 }

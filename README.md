@@ -92,7 +92,8 @@ Open your AI in the folder of your game (the one with `index.html`), or in an em
 You can also just say what you want ("I want to fix where the trees are"); the agent picks the skill by itself.
 
 1. Your AI checks how the game is built (and writes an adapter if needed), then starts the editor and opens it in your
-   browser.
+   usual browser (in the Claude app too; "open it in the app" puts it in the pane next to the chat instead). The
+   editor's link is always on the first line of its reply.
 2. The game fills the window. The editor is three things: the column on the left (**Scene** and **Library**), a small
    card over the game's top right corner while something is selected, and one input at the bottom. Two colors mean one
    thing each: **orange is your hand** (what you selected: its outline, its name tag), **violet is your AI's hand**
