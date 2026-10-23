@@ -5,7 +5,8 @@
 //   node test/studio-play-ask.browser.mjs [--only pc|others|phone] [--shots <dir>] [--lang ja]
 //
 // PC 1280×800 (mouse, keys):
-// 1. ▶ Play shows the corner mark ("Ask your AI `"); the game runs (no edit flag).
+// 1. ▶ Play shows the corner's one button, "❚❚ Pause and talk P" (plan step 6; the ✦ mark is the ` key only); the game
+//    runs (no edit flag).
 // 2. ` in the game opens the field over the game, focused; the game does not get the key (or the letters typed).
 // 3. Enter keeps ONE `play` request: the words, a picture file (.studio/play/<id>.jpg, not black), the player's
 //    camera (`view`), what was near (the hero and the pad), the console (the game's warning and an error); the game
@@ -62,7 +63,7 @@ const IN = {
   // The overlay's parts, as the person sees them (hidden or not, the line's words, the field's focus).
   ov: `JSON.stringify((() => { const h = ${OV}; if (!h) return null; const r = h.shadowRoot; const q = (s) => r.querySelector(s);
     const f = ${FR}.getBoundingClientRect(); const box = (e) => { const b = e.getBoundingClientRect(); return { x: f.left + b.left + b.width / 2, y: f.top + b.top + b.height / 2, w: b.width, h: b.height }; };
-    return { mark: !q('.mark').hidden, markReady: q('.mark').classList.contains('ready'), markBox: box(q('.mark')), markSmall: q('.mark').classList.contains('small'), bar: !q('.bar').hidden,
+    return { pause: (() => { const b = q('[data-part=pause-button]'); return b && !b.hidden ? { ...box(b), text: b.textContent } : null; })(), mark: !q('.mark').hidden, markReady: q('.mark').classList.contains('ready'), markBox: box(q('.mark')), markSmall: q('.mark').classList.contains('small'), bar: !q('.bar').hidden,
       focused: r.activeElement === q('input'), value: q('input').value, placeholder: q('input').placeholder,
       line: q('.line').hidden ? '' : q('.line').textContent, lineState: q('.line').hidden ? '' : (q('.line').classList.contains('busy') ? 'busy' : 'still'),
       reload: (() => { const b = q('[data-action=play-reload]'); return b ? box(b) : null; })(),
@@ -156,18 +157,12 @@ async function pc() {
   const ag = agent(root);
   try {
     let o = await j(page, IN.ov);
-    assert.equal(o.mark, true, 'the corner mark is shown in Play');
+    // Plan step 6: one button in the corner, with its words; the ✦ mark is not there (` still opens the field, below).
+    assert.equal(o.mark, false, 'no ✦ mark in the corner');
+    assert.match(o.pause?.text || '', LANG === 'ja' ? /止めて話す.*P/ : /Pause and talk.*P/, `"❚❚ Pause and talk P" in the corner: ${o.pause?.text}`);
     assert.equal(o.bar, false);
     assert.equal(o.open, true, 'the overlay is in the top layer');
-    assert.equal(o.spark, true, 'the mark carries ✦');
-    // Small (as after its first 5 s), then the pointer on it: the words come back.
-    await page.eval(`(${OV}.shadowRoot.querySelector('.mark').classList.add('small'), true)`);
-    assert.equal(await page.eval(`getComputedStyle(${OV}.shadowRoot.querySelector('.mark .word')).display`), 'none', 'small: only ✦ and `');
-    o = await j(page, IN.ov);
-    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: Math.round(o.markBox.x), y: Math.round(o.markBox.y) });
-    await sleep(400);
-    assert.notEqual(await page.eval(`getComputedStyle(${OV}.shadowRoot.querySelector('.mark .word')).display`), 'none', 'the pointer on the mark shows "Ask your AI"');
-    await shot(page, '1-hover');
+    assert.equal(o.spark, true, 'the field carries ✦');
     await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 640, y: 300 });
     await shot(page, '1-playing');
     // The bug: the hero on the pad, standing still → gone. An error in the console too.
@@ -298,8 +293,8 @@ async function pc() {
     o = await j(page, IN.ov);
     if (o.fs) {
       assert.equal(o.open, true, 'still in the top layer in full screen');
-      const top = await page.eval(`(() => { const d = ${FR}.contentDocument; const b = ${OV}.shadowRoot.querySelector('.mark').getBoundingClientRect(); return d.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.tagName; })()`);
-      assert.equal(top, 'GAME-STUDIO-PLAY', 'the mark is on top in full screen');
+      const top = await page.eval(`(() => { const d = ${FR}.contentDocument; const b = ${OV}.shadowRoot.querySelector('[data-part=pause-button]').getBoundingClientRect(); return d.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.tagName; })()`);
+      assert.equal(top, 'GAME-STUDIO-PLAY', 'the corner button is on top in full screen');
       await shot(page, '8-fullscreen');
       console.log('  ok: full screen keeps the mark on top');
     } else console.log('  note: headless Chrome did not enter full screen (checked only that it does not break)');

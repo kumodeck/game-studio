@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.33 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.34 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -13839,6 +13839,9 @@ const en = {
   'play.close': 'Close',
   // Pause while playing (2026-10-22; bridge/play-pause.ts, play-chat.ts): P or ❚❚, then a small chat over the stopped game.
   'play.pause': 'Pause',
+  // The one button in the corner while playing (plan step 6, decided 2026-10-23): "❚❚ Pause and talk P".
+  // Asking without pausing stays, as the ` key only (keys.askPlaying in the ? sheet).
+  'play.pauseTalk': 'Pause and talk',
   'play.pauseTip': 'Pause (P) and talk to {ai} about this moment',
   'play.paused': 'Paused',
   'play.resume': 'Resume',
@@ -13846,7 +13849,7 @@ const en = {
   'play.sees': '{Ai} sees this moment',
   'play.seesError': '1 error',
   'play.seesErrors': '# errors',
-  'play.chatPlaceholder': 'Ask about this moment…',
+  'play.chatPlaceholder': 'Ask {ai} about this moment…',
   // Not "your AI gets the picture…" again: the line above it says so ("Your AI sees this moment").
   'play.chatEmpty': 'Ask anything about what you see: why it happened, how it works, what to change.',
   'play.send': 'Send',
@@ -13995,8 +13998,8 @@ const en = {
   'guard.discard': 'Don’t save',
   'guard.cancel': 'Cancel',
   // The same window at ▶ Play with changes not saved (unsaved-guard.ts, a try of the editor, 2026-10-21: "let them choose
-  // with buttons — save, or try it without saving"). The title is guard.title; the second line says what Save does.
-  'guard.playWhy': 'Save, and the changes go into the game’s code.',
+  // with buttons — save, or try it without saving"). The title is guard.title, then the three buttons. Its second line
+  // ("Save, and the changes go into the game's code.", guard.playWhy) went in plan step 6: the line after Save says it.
   'guard.playTools': '{n:1 change in a game tool is|# changes in game tools are} lost if you don’t save.',
   'guard.playSave': 'Save and play',
   'guard.playTry': 'Try without saving',
@@ -14088,6 +14091,15 @@ const en = {
   // and that read as a different action: "'Save to game' — I don't get what that means". Where the change goes is said here.
   'save.unsavedTip': 'Save, and {ai} puts it in the game’s code',
   'save.savedTip': 'Saved and sent to {ai}',
+  // The line after Save (plan step 6, save-receipt.ts; a try of the editor, 2026-10-21: "I don't notice it saved"): what was kept, by the
+  // objects' names, then whether it reached the game. Never a promise while no AI is there: the fact (save.later).
+  'save.kept': 'Saved: {list}',
+  'save.moved': 'moved {name}',
+  'save.more': '{n} more',
+  'save.changes': '{n:1 change|# changes}',
+  'save.putting': '{Ai} is putting it in the code…',
+  'save.in': 'In the game ({n})',
+  'save.later': 'Saved. {Ai} puts it in the code when it opens',
   'ops.manyShort': '{n} selected',
   'pal.title': 'Ask {ai} or search actions',
   // The ⌘K list's own search field (W1-4): actions, objects, the AI's ideas.
@@ -14175,6 +14187,9 @@ const en = {
   'keys.fly.picked': 'Right button+WASD',
   'pal.fly.words': 'wasd fly walk move camera forward back left right navigate level',
   'keys.shortcuts': 'Keyboard shortcuts',
+  // ` while playing (plan step 6): the corner shows only "Pause and talk", so the other way in is written here.
+  'keys.askPlaying': 'Ask {ai} without pausing',
+  'keys.askPlaying.note': 'While playing',
   // UI stage 1 (2026-10-19): World | UI in the top bar, for games that mark their HTML UI with data-studio-key.
   'keys.layer': 'Switch between Scene and UI',
   'uiLayer.switch': 'What you edit',
@@ -14620,14 +14635,15 @@ const ja                               = {
   'play.keep': 'このまま遊ぶ',
   'play.close': '閉じる',
   'play.pause': '止める',
+  'play.pauseTalk': '止めて話す',
   'play.pauseTip': '止めて（P）、この瞬間について {ai}と話す',
   'play.paused': '止めています',
   'play.resume': '続ける',
   'play.resumeTip': '止めたところから続ける（P）',
-  'play.sees': '{ai}はこの瞬間を見ます',
+  'play.sees': '{ai}はこの瞬間を見ています',
   'play.seesError': 'エラー 1 件',
   'play.seesErrors': 'エラー # 件',
-  'play.chatPlaceholder': 'この瞬間について聞く…',
+  'play.chatPlaceholder': 'この瞬間について {ai}に頼む…',
   'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
   'play.send': '送る',
   'play.move': '動かす',
@@ -14758,7 +14774,6 @@ const ja                               = {
   'guard.save': '保存して続ける',
   'guard.discard': '保存せずに続ける',
   'guard.cancel': 'やめる',
-  'guard.playWhy': '保存すると、変更がゲームのコードに入ります。',
   'guard.playTools': 'ゲームの道具の変更 {n} 個は、保存しないと消えます。',
   'guard.playSave': '保存して遊ぶ',
   'guard.playTry': '保存せずに試す',
@@ -14834,6 +14849,14 @@ const ja                               = {
   'foot.palette': 'すべての操作',
   'save.unsavedTip': '保存すると、{ai}がゲームのコードに入れます',
   'save.savedTip': '保存して {ai}に送りました',
+  'save.kept': '保存しました: {list}',
+  'save.moved': '{name} を動かした',
+  'save.more': 'ほか {n}',
+  'save.changes': '変更 {n} 個',
+  'save.putting': '{ai}がコードに入れています…',
+  // The same counter as guard.title and ai.doneN (the mock said tsu; it reads badly past 9).
+  'save.in': 'ゲームに入りました（{n} 個）',
+  'save.later': '保存しました。{ai}が開いたら、コードに入れます',
   'ops.manyShort': '{n} 個を選択',
   'pal.title': '{ai}に頼むか、操作を探す',
   'pal.search': '操作や物を探す…',
@@ -14915,6 +14938,8 @@ const ja                               = {
   'keys.fly.picked': '右ボタン+WASD',
   'pal.fly.words': 'wasd 飛ぶ 歩く 移動 カメラ 前 後ろ 左 右 視点 水平',
   'keys.shortcuts': 'キーボードショートカット',
+  'keys.askPlaying': '止めずに {ai}に頼む',
+  'keys.askPlaying.note': '遊んでいる間',
   'keys.layer': 'シーンと UI を切り替える',
   'uiLayer.switch': '編集する物',
   'uiLayer.world': 'シーン',
@@ -15990,7 +16015,7 @@ function playLine(i               )                  {
 function playWords(t                         )                         {
   const keys = ['ask', 'askTip', 'placeholder', 'placeholderShort', 'answerPlaceholder', 'sending', 'sendFail', 'reload', 'reloadTip', 'enterReloads', 'keep', 'close',
     // The pause and its chat (2026-10-22).
-    'pauseTip', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send',
+    'pauseTip', 'pauseTalk', 'paused', 'resume', 'resumeTip', 'sees', 'seesError', 'seesErrors', 'chatPlaceholder', 'chatEmpty', 'send',
     // Moving things while paused (2026-10-22, bridge/play-move.ts).
     'move', 'moveTip', 'talk', 'talkTip', 'movePick', 'moveHow', 'moveOnly', 'moveMoment', 'moveMomentWhy', 'moveIn', 'toLayout', 'toLayoutTip',
     'putBack', 'putBackTip'];
@@ -16443,6 +16468,10 @@ const KEYMAP           = [
   { id: 'timelineKey', group: 'tools', keys: ['K'], dim: '3d', note: 'keys.timelineKey.note' },
   // P: Play in Edit; Pause / Resume while playing — never back to Edit (plan step 2, first-run walk #14; main.ts shortcut()).
   { id: 'play', group: 'view', keys: ['P'], label: 'btn.play', playing: ['play.pause', 'play.resume'] },
+  // ` while playing (plan step 6, decided 2026-10-23): the corner shows only "❚❚ Pause and talk P", so asking
+  // WITHOUT pausing (2026-10-20 "fix it without stopping the game") is this key only, and the sheet is where it is said.
+  // Read in the game page (bridge/play-ask.ts), not by main.ts: it does nothing in Edit, hence the note "While playing".
+  { id: 'askPlaying', group: 'view', keys: ['`'], note: 'keys.askPlaying.note' },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },
@@ -19583,6 +19612,99 @@ __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
 __defs[54] = function (__exports) {
 'use strict';
+// save-receipt.ts
+
+// The line after Save: what was kept, and whether it reached the game (plan step 6, 2026-10-23).
+//
+// WHY: a try of the editor, 2026-10-21: "I don't notice it saved" / "you'd never notice like this" / "'Save to game' — I don't get what it
+// means". The line after Save said only "Claude is on it" (and the top bar a small "✓ Saved"), so nothing on screen said
+// WHAT was kept or WHETHER it got into the game. Now the same line (right over the ask field, where the AI's replies
+// already are) says it with the objects' own names:
+//   pressed       "Saved: moved gate · gate’s motion · ship’s motion"   + "Claude is putting it in the code…"
+//   AI finished   "✓ In the game (3)" [▶ Play]                          + "Undo AI change · More in Claude"
+//   no AI there   "Saved. Claude puts it in the code when it opens"     (a fact, not a promise; "How to open" stays the
+//                                                                         presence words under it — one, not two)
+// More than 3 names: the first 3 and "2 more" (the line is one line, on a phone too).
+//
+// Pure, so test/save-receipt.test.ts reads the rules without a browser; main.ts handOff() collects the things (before
+// markSaved forgets them) and renderAiLine() draws the line.
+
+/** One thing a Save kept. `moved` = its place / turn / size; `motion` = a motion (the name is the motion's own). */
+                             
+                           
+               
+ 
+
+/** The names shown before "N more" (the plan: three, then "2 more"). */
+const RECEIPT_NAMES = 3;
+
+                                                                         
+
+/**
+ * "moved gate · gate’s motion · 2 more". `total` = everything the Save counted (Save · N), so changes with no name of
+ * their own (a UI piece's text, a level's order) are in "N more" and the count matches the button that was pressed.
+ * The same words twice (a motion attached to gate and kept in the Library under "gate’s motion") are said once.
+ */
+function savedList(things                       , total        , t   )         {
+  const words           = [];
+  for (const th of things) {
+    const w = th.kind === 'moved' ? t('save.moved', { name: th.name }) : th.name;
+    if (w && !words.includes(w)) words.push(w);
+  }
+  if (!words.length) return t('save.changes', { n: Math.max(1, total) });
+  const shown = words.slice(0, RECEIPT_NAMES);
+  // What is left: the names cut here, and the changes that had no name (never fewer than the names cut).
+  const rest = Math.max(words.length - shown.length, total - shown.length);
+  return rest > 0 ? [...shown, t('save.more', { n: rest })].join(' · ') : shown.join(' · ');
+}
+
+/** What the line says for a Save, by the AI's phase (ai-flow.ts). null = the editor's usual words for that phase. */
+                          
+               
+              
+                                                                                             
+                 
+ 
+
+                               
+                          
+                
+                                
+                
+                                                                              
+                               
+       
+ 
+
+function receipt(i              )                 {
+  const { t, vars } = i;
+  const kept = t('save.kept', { list: savedList(i.things, i.total, t) });
+  switch (i.phase) {
+    case 'seen':
+    case 'sent':
+    case 'received':
+    case 'working':
+    case 'updating':
+      // The AI has it (or the heartbeat says it will within seconds): what was kept, and what it is doing with it.
+      return { head: kept, sub: t('save.putting', vars) };
+    case 'away':
+    case 'nudge':
+      // Nobody can pick it up now: the fact. What was kept stays under it (proof the Save happened).
+      return { head: t('save.later', vars), sub: savedList(i.things, i.total, t) };
+    case 'done':
+      // The count is what the person saved (Save · N), not the AI's own count of changed objects: "the 3 I saved are in".
+      return { head: t('save.in', { n: Math.max(1, i.total) }), sub: '', play: true };
+    default:
+      return null;
+  }
+}
+
+__def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
+__def(__exports, "savedList", () => savedList);
+__def(__exports, "receipt", () => receipt);
+};
+__defs[55] = function (__exports) {
+'use strict';
 // palette.ts
 
 // The ⌘K list: ask the AI, find an action, find an object — one field.
@@ -19887,7 +20009,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -19988,7 +20110,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -20106,7 +20228,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -20226,7 +20348,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -20309,7 +20431,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -20558,7 +20680,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -20974,7 +21096,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -21008,7 +21130,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -21182,7 +21304,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -21380,7 +21502,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -21491,7 +21613,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -21515,8 +21637,8 @@ __defs[65] = function (__exports) {
 //
 // The same window, asked at ▶ Play (a try of the editor, 2026-10-21: "when 'this change isn't in the game yet', some
 // people want to save and some want to try it without saving — let them choose with buttons"). Nothing is lost at
-// Play (the draft goes along), so it is not a warning but a choice: "You have 3 unsaved changes" / "Save, and your
-// AI puts them in the game's code." and Save and play (the main one: Enter) · Try without saving · Cancel. It replaced
+// Play (the draft goes along), so it is not a warning but a choice: "You have 3 unsaved changes" and Save and play
+// (the main one: Enter) · Try without saving · Cancel (plan step 6 took out the line about the AI). It replaced
 // the strip over the game while playing ("This change isn't in the game yet [Save] ×"): the person already chose, so
 // Play says nothing more (the orange Save beside Play stays). Asked by main.ts togglePlay; the pure "when" is
 // playAsks() below, the screen in test/studio-play-choice.browser.mjs.
@@ -21622,13 +21744,13 @@ function createUnsavedGuard(deps                              ) {
       el.dataset.kind = play ? 'play' : 'loss';
       const title = h('h2', { class: 'safe-title', id: 'unsaved-guard-title', text: t('guard.title', { n }) });
       el.setAttribute('aria-labelledby', 'unsaved-guard-title');
-      // Play: the second line says what Save does (one short sentence; the web demo says "kept in this browser",
-      // hosts/browser/text.ts), and — only when a game tool's data is among them — what Try loses.
-      const lines = !play ? [] : [
-        h('p', { class: 'safe-lead', id: 'unsaved-guard-why', dataset: { part: 'unsaved-guard-why' }, text: t('guard.playWhy') }),
-        ...((how.tools ?? 0) > 0 ? [h('p', { class: 'safe-lead', dataset: { part: 'unsaved-guard-tools' }, text: t('guard.playTools', { n: how.tools ?? 0 }) })] : []),
-      ];
-      if (play) el.setAttribute('aria-describedby', 'unsaved-guard-why');
+      // Play: the title and the three buttons say it all (plan step 6, 2026-10-23). The second line "Save, and the changes
+      // go into the game's code." went: what Save does is said by the line after Save (save-receipt.ts), where it
+      // happens, and a window asking "play how?" is not the place to bring the AI in. Only when a game tool's data is
+      // among the changes is there a line — what Try loses (a fact the buttons cannot say).
+      const tools = play && (how.tools ?? 0) > 0;
+      const lines = tools ? [h('p', { class: 'safe-lead', id: 'unsaved-guard-why', dataset: { part: 'unsaved-guard-tools' }, text: t('guard.playTools', { n: how.tools ?? 0 }) })] : [];
+      if (tools) el.setAttribute('aria-describedby', 'unsaved-guard-why');
       else el.removeAttribute('aria-describedby');
       const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t(play ? 'guard.playSave' : 'guard.save'), onclick: () => close('save') });
       const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t(play ? 'guard.playTry' : 'guard.discard'), onclick: () => close('discard') });
@@ -21648,7 +21770,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -21718,7 +21840,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -21807,7 +21929,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -21956,7 +22078,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -22019,7 +22141,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -22232,7 +22354,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -22322,7 +22444,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -22338,11 +22460,11 @@ __defs[72] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(68);
-const { withLooks } = __require(67);
-const { createUiScreens } = __require(69);
-const { UiStyleModel, validLook, validTheme } = __require(70);
-const { createUiTheme } = __require(71);
+const { createUiCard } = __require(69);
+const { withLooks } = __require(68);
+const { createUiScreens } = __require(70);
+const { UiStyleModel, validLook, validTheme } = __require(71);
+const { createUiTheme } = __require(72);
                                                    
 
                              
@@ -22537,7 +22659,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -22614,7 +22736,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -22661,26 +22783,27 @@ const { createMotionAsk } = __require(53);
 const { motionLibrary } = __require(32);
 const { attachWorld, roundLib } = __require(33);
 const { icon, setButton } = __require(21);
-const { createPalette } = __require(54);
-const { fitPicture } = __require(55);
+const { receipt } = __require(54);
+const { createPalette } = __require(55);
+const { fitPicture } = __require(56);
 const { PlacementModel } = __require(34);
-const { UndoStack, poseChange } = __require(56);
+const { UndoStack, poseChange } = __require(57);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(46);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(47);
-const { installTooltips } = __require(57);
-const { createShortcutSheet } = __require(58);
-const { createContextMenu } = __require(59);
-const { Levels, worldOf } = __require(60);
-const { checkNoteId } = __require(61);
-const { createLevelSwitch, makeRows } = __require(62);
-const { contextRows } = __require(63);
-const { bigChanges, createSafeSave } = __require(64);
-const { createUnsavedGuard, lostBy, playAsks } = __require(65);
-const { createLayerSwitch } = __require(66);
-const { uiAsPlacement, uiEntries, withUi } = __require(67);
-const { createUiWire } = __require(72);
-const { barPress, gripEnd, readFold, writeFold } = __require(73);
+const { installTooltips } = __require(58);
+const { createShortcutSheet } = __require(59);
+const { createContextMenu } = __require(60);
+const { Levels, worldOf } = __require(61);
+const { checkNoteId } = __require(62);
+const { createLevelSwitch, makeRows } = __require(63);
+const { contextRows } = __require(64);
+const { bigChanges, createSafeSave } = __require(65);
+const { createUnsavedGuard, lostBy, playAsks } = __require(66);
+const { createLayerSwitch } = __require(67);
+const { uiAsPlacement, uiEntries, withUi } = __require(68);
+const { createUiWire } = __require(73);
+const { barPress, gripEnd, readFold, writeFold } = __require(74);
 
                                                                         
 
@@ -22923,7 +23046,8 @@ function start(host            ) {
   // `text`: the person's own words, shown back in the line ('"make it glow"
   // handed to your AI…', then '"make it glow" → done'): what was asked and what
   // the AI did read side by side (verganti review 2026-10-16).
-  let pending                                                                                                              = null;
+  // `saved` / `savedTotal` (plan step 6): what a Save kept, by name, for the line after it (save-receipt.ts).
+  let pending                                                                                                                                                         = null;
   let aiStatus                      = null;
   // The "done" status the person reloaded for: its line then shows what changed instead of "Reload".
   let aiReloadFor                = null;
@@ -24941,7 +25065,18 @@ function start(host            ) {
     const note = aiStatus?.note;
     const link = (action        , ic        , label        , run            , title         ) =>
       aiLine.append(h('button', { type: 'button', class: 'link', dataset: { action }, title: title || label, disabled: undoBusy, onclick: run }, icon(ic), h('span', { text: label })));
-    if (ph === 'waiting' && pending) {
+    // A Save (plan step 6, save-receipt.ts): what was kept by name → "Claude is putting it in the code…" → "✓ In the
+    // game (3) ▶ Play" + Undo AI change. A `sent` with no sign of the AI after UNSEEN_MS is the "no AI" fact, as below.
+    const rc = pending?.kind === 'saved' && pending.saved
+      ? receipt({ phase: ph === 'sent' && Date.now() - (pending.sent ?? 0) >= UNSEEN_MS ? 'away' : ph, things: pending.saved, total: pending.savedTotal ?? 0, vars: aiVars(), t })
+      : null;
+    if (rc) {
+      if (ph === 'done') aiLine.classList.add('saved-in');
+      two(rc.head, rc.sub);
+      if (ph === 'done') aiLine.querySelector('.ai-head')?.prepend(icon('check'));
+      if (rc.play && !playing) link('ai-play', 'play', t('btn.play'), () => void togglePlay());
+      if (ph === 'done' && lastChange && host.undoAi && !playing) link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
+    } else if (ph === 'waiting' && pending) {
       // Hosts that cannot tell whether an AI watches (and the offline demo): the old line.
       aiLine.append(h('span', { class: 'ai-text', text: pending.text ? t('ai.waitingAsk', { text: pending.text }) : pending.kind === 'saved' ? t('ai.waitingSaved') : t('ai.waiting', { what: t(`ai.what.${pending.kind}`) }) }));
     } else if (ph === 'seen' || (ph === 'sent' && Date.now() - (pending?.sent ?? 0) < UNSEEN_MS)) {
@@ -26042,6 +26177,9 @@ function start(host            ) {
     if (keeping) await keeping;
     const jobs                                = [];
     let placementHanded = false;
+    // What this Save keeps, by name, read now: markSaved() below forgets it (plan step 6, save-receipt.ts).
+    const keptThings = savedThings();
+    const keptTotal = placementDirty();
     if (placementDirty() > 0 || placementRestored) {
       const file = fileNow();
       const v = validatePlacement(file);
@@ -26066,6 +26204,11 @@ function start(host            ) {
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
+          if (pending) {
+            pending.saved = keptThings;
+            pending.savedTotal = keptTotal;
+            renderAiLine();
+          }
           placementHanded = true;
           return null;
         }));
@@ -26119,6 +26262,32 @@ function start(host            ) {
     if (!errors.length) emit('saved', null);
     renderButtons();
     return !errors.length;
+  }
+
+  /**
+   * The world's objects a Save keeps, by the names the list shows (plan step 6): "moved gate" for a place / turn / size,
+   * "gate’s motion" for an object's motion, and each changed Library motion by its own name. Renamed / deleted ones and
+   * the UI layer have no "moved" words: they are counted in "N more" (save-receipt.ts savedList).
+   */
+  function savedThings()               {
+    const out               = [];
+    const nameOf = (k        ) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : '';
+    };
+    const motionKeys = new Set(worldModel.motion.changedKeys());
+    for (const k of worldModel.changedKeys()) {
+      if (motionKeys.has(k)) continue;
+      const from = worldModel.savedPose(k), to = worldModel.pose(k);
+      const name = nameOf(k);
+      if (name && from && to) out.push({ kind: 'moved', name });
+    }
+    for (const k of motionKeys) {
+      const name = nameOf(k);
+      if (name) out.push({ kind: 'motion', name: t('motion.firstName', { name }) });
+    }
+    for (const n of motionLibrary.changedNames()) out.push({ kind: 'motion', name: n });
+    return out;
   }
 
   function goHome() {
@@ -27315,7 +27484,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -27494,19 +27663,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(74);
-const { createLocalHost } = __require(75);
+const { start } = __require(75);
+const { createLocalHost } = __require(76);
 
 start(createLocalHost());
 
 
 };
-__require(76);
+__require(77);
 })();

@@ -44,18 +44,17 @@ test('Play asks only going into Play, and only with something not saved', () => 
   assert.equal(playAsks(3, true), false, 'Edit from Play never asks');
 });
 
-test('Play\'s window: the same title, a second line, Save and play · Try without saving · Cancel', () => {
+test('Play\'s window: the same title, Save and play · Try without saving · Cancel, no line about the AI', () => {
   assert.equal(translate('ja', 'guard.title', { n: 2 }), '保存していない変更が 2 個あります');
   assert.equal(translate('en', 'guard.title', { n: 2 }), 'You have 2 unsaved changes');
-  // No AI in the window's words (studio-words-plan, plan step 1 ⑥): what Save does, not who does it.
-  assert.equal(translate('ja', 'guard.playWhy'), '保存すると、変更がゲームのコードに入ります。');
-  assert.equal(translate('en', 'guard.playWhy'), 'Save, and the changes go into the game’s code.');
+  // No second line (plan step 6): the line after Save says what Save did; the window only asks how to play.
+  assert.equal(translate('en', 'guard.playWhy'), 'guard.playWhy', 'the key is gone');
   assert.deepEqual(['guard.playSave', 'guard.playTry', 'guard.cancel'].map((k) => translate('ja', k)), ['保存して遊ぶ', '保存せずに試す', 'やめる']);
   assert.deepEqual(['guard.playSave', 'guard.playTry', 'guard.cancel'].map((k) => translate('en', k)), ['Save and play', 'Try without saving', 'Cancel']);
   // A game tool's data is lost by Try (it lives in the game page only): said, with the number.
   assert.equal(translate('en', 'guard.playTools', { n: 1 }), '1 change in a game tool is lost if you don’t save.');
   assert.equal(translate('ja', 'guard.playTools', { n: 2 }), 'ゲームの道具の変更 2 個は、保存しないと消えます。');
-  // The web demo has no AI: its Save keeps the changes in this browser, and the second line says that.
-  assert.match(DEMO_TEXT.en['guard.playWhy'], /this browser/);
-  assert.match(DEMO_TEXT.ja['guard.playWhy'], /このブラウザ/);
+  // The web demo has no second line either.
+  assert.equal(DEMO_TEXT.en['guard.playWhy'], undefined);
+  assert.equal(DEMO_TEXT.ja['guard.playWhy'], undefined);
 });

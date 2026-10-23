@@ -23,7 +23,7 @@ If you press Play with changes that aren’t saved, the editor asks first:
 
 ![The window at Play: You have 3 unsaved changes, with Cancel, Try without saving, and Save and play](media/play-unsaved.webp)
 
-- **Save and play** (<kbd>Enter</kbd>) saves, so your AI puts the changes in the game’s code, then plays.
+- **Save and play** (<kbd>Enter</kbd>) saves, then plays. The line over the ask box says what was saved and when it’s in the game ([Save](editing.md#save)).
 - **Try without saving** plays with your changes. They’re still there when you come back to Edit, and **Save · 3** stays.
 - **Cancel** (or <kbd>Esc</kbd>) stays in Edit.
 
@@ -33,13 +33,13 @@ A game with an older copy of the loader (`studio-placement.js`) plays in the sam
 
 ## Pause and talk to your AI
 
-Something odd happens? Press <kbd>P</kbd> or the **❚❚** button. While you play, <kbd>P</kbd> only pauses and resumes, wherever you last clicked; it never takes you back to Edit (that’s the **Edit** button). The game stops right there: its clock, its timers, its sound, everything. A chat opens beside it.
+Something odd happens? Press <kbd>P</kbd> or **❚❚ Pause and talk** in the corner, the one button there while you play. While you play, <kbd>P</kbd> only pauses and resumes, wherever you last clicked; it never takes you back to Edit (that’s the **Edit** button). The game stops right there: its clock, its timers, its sound, everything. A chat opens beside it: **Paused · Claude sees this moment**, and a box that says **Ask Claude about this moment…** (your AI’s name, if it isn’t Claude).
 
 ![The game paused, with the chat open and the AI’s reply](media/pause-chat.webp)
 
 Ask about what you see: why it happened, how it works, what to change. Your AI sees the moment you paused: a picture of the game, where your camera was, what was near you, and any errors. Send as many messages as you like.
 
-To go on, press <kbd>P</kbd>, <kbd>Esc</kbd> or **Resume**. The game goes on from the exact frame it stopped on.
+To go on, press <kbd>P</kbd>, <kbd>Esc</kbd> or **▶ Resume**. The game goes on from the exact frame it stopped on.
 
 On a phone or in a narrow window, **❚❚** is in the top bar and the chat opens at the bottom.
 
@@ -60,7 +60,7 @@ Press **Chat** (or <kbd>Esc</kbd> with nothing selected) to go back to the chat.
 
 ## Ask while you play
 
-You don’t have to stop. Press <kbd>`</kbd> (the key left of 1; <kbd>Shift</kbd><kbd>@</kbd> on a Japanese keyboard) or the small ✦ mark in the corner, type what’s wrong, and press <kbd>Enter</kbd>. The game keeps running, even full screen.
+You don’t have to stop. Press <kbd>`</kbd> (the key left of 1; <kbd>Shift</kbd><kbd>@</kbd> on a Japanese keyboard), type what’s wrong, and press <kbd>Enter</kbd>. The game keeps running, even full screen. It’s a key only, so the corner keeps one button; <kbd>?</kbd> lists it as **Ask Claude without pausing**.
 
 Your AI gets your words with that moment. A small line at the top says what it’s doing: **Your AI is looking**, **Fixing it**, then its reply. The game never reloads under you. When you want the fix, press **Reload** (or <kbd>`</kbd> then <kbd>Enter</kbd>). Or keep playing.
 

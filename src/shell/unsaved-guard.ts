@@ -18,8 +18,8 @@
 //
 // The same window, asked at ▶ Play (a try of the editor, 2026-10-21: "when 'this change isn't in the game yet', some
 // people want to save and some want to try it without saving — let them choose with buttons"). Nothing is lost at
-// Play (the draft goes along), so it is not a warning but a choice: "You have 3 unsaved changes" / "Save, and your
-// AI puts them in the game's code." and Save and play (the main one: Enter) · Try without saving · Cancel. It replaced
+// Play (the draft goes along), so it is not a warning but a choice: "You have 3 unsaved changes" and Save and play
+// (the main one: Enter) · Try without saving · Cancel (plan step 6 took out the line about the AI). It replaced
 // the strip over the game while playing ("This change isn't in the game yet [Save] ×"): the person already chose, so
 // Play says nothing more (the orange Save beside Play stays). Asked by main.ts togglePlay; the pure "when" is
 // playAsks() below, the screen in test/studio-play-choice.browser.mjs.
@@ -125,13 +125,13 @@ export function createUnsavedGuard(deps: { mount: HTMLElement; t: T }) {
       el.dataset.kind = play ? 'play' : 'loss';
       const title = h('h2', { class: 'safe-title', id: 'unsaved-guard-title', text: t('guard.title', { n }) });
       el.setAttribute('aria-labelledby', 'unsaved-guard-title');
-      // Play: the second line says what Save does (one short sentence; the web demo says "kept in this browser",
-      // hosts/browser/text.ts), and — only when a game tool's data is among them — what Try loses.
-      const lines = !play ? [] : [
-        h('p', { class: 'safe-lead', id: 'unsaved-guard-why', dataset: { part: 'unsaved-guard-why' }, text: t('guard.playWhy') }),
-        ...((how.tools ?? 0) > 0 ? [h('p', { class: 'safe-lead', dataset: { part: 'unsaved-guard-tools' }, text: t('guard.playTools', { n: how.tools ?? 0 }) })] : []),
-      ];
-      if (play) el.setAttribute('aria-describedby', 'unsaved-guard-why');
+      // Play: the title and the three buttons say it all (plan step 6, 2026-10-23). The second line "Save, and the changes
+      // go into the game's code." went: what Save does is said by the line after Save (save-receipt.ts), where it
+      // happens, and a window asking "play how?" is not the place to bring the AI in. Only when a game tool's data is
+      // among the changes is there a line — what Try loses (a fact the buttons cannot say).
+      const tools = play && (how.tools ?? 0) > 0;
+      const lines = tools ? [h('p', { class: 'safe-lead', id: 'unsaved-guard-why', dataset: { part: 'unsaved-guard-tools' }, text: t('guard.playTools', { n: how.tools ?? 0 }) })] : [];
+      if (tools) el.setAttribute('aria-describedby', 'unsaved-guard-why');
       else el.removeAttribute('aria-describedby');
       const save = h('button', { type: 'button', class: 'primary', dataset: { action: 'guard-save' }, text: t(play ? 'guard.playSave' : 'guard.save'), onclick: () => close('save') });
       const skip = h('button', { type: 'button', dataset: { action: 'guard-discard' }, text: t(play ? 'guard.playTry' : 'guard.discard'), onclick: () => close('discard') });

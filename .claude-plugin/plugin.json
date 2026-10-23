@@ -2,7 +2,7 @@
   "name": "game-studio",
   "displayName": "KUMODeck Game Studio",
   "description": "Turn your Claude or Codex into a game studio: a free, local editor where you drag, turn and resize the objects in your web game, see every asset it uses, and ask your AI for changes. three.js works out of the box; your AI writes a small adapter for Phaser, PixiJS, canvas, DOM, or Godot web games. No account needed.",
-  "version": "0.1.33",
+  "version": "0.1.34",
   "author": {
     "name": "KUMODeck",
     "email": "support@kumodeck.com"

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.33 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.34 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -17295,7 +17295,8 @@ const CHAT_CSS = `
 .chat .top { display: flex; align-items: center; gap: 10px; padding: 12px 10px 10px 14px; border-bottom: 1px solid rgba(255,255,255,.08); }
 .chat .title { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .chat .title b { font-weight: 600; font-size: 14px; }
-.chat .title .sees { color: rgba(255,255,255,.55); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wraps instead of "Claude sees this mo…" (plan step 6: with ✥ Move and ▶ Resume P beside it the line was cut). */
+.chat .title .sees { color: rgba(255,255,255,.55); font-size: 12px; overflow-wrap: anywhere; }
 .chat .talk { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }
 .chat .empty { color: rgba(255,255,255,.55); font-size: 13px; line-height: 1.45; }
 .chat .you { align-self: flex-end; max-width: 85%; background: rgba(255,255,255,.12); padding: 7px 11px; border-radius: 12px 12px 4px 12px;
@@ -17319,9 +17320,12 @@ const CHAT_CSS = `
 .chat .send svg { width: 14px; height: 14px; stroke-width: 2px; }
 .chat .send:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
 button.b .k { opacity: .55; font-weight: 500; margin-left: 6px; font-size: 11px; }
-.pause { pointer-events: auto; width: 32px; height: 32px; border-radius: 16px; display: grid;
-  place-items: center; cursor: pointer; color: inherit; transition: opacity .3s; opacity: .92; }
+/* "❚❚ Pause and talk P" (plan step 6): the corner's one button, with its words always (it was a bare 32 px ❚❚ beside the
+   ✦ mark; alone now, the words are what say it is the way to talk). The mark's glass, height and key cap. */
+.pause { pointer-events: auto; height: 32px; padding: 0 10px 0 11px; border-radius: 16px; display: flex; align-items: center; gap: 8px;
+  cursor: pointer; color: inherit; font: inherit; white-space: nowrap; transition: opacity .3s; opacity: .92; }
 .pause:hover { opacity: 1; }
+.pause .ic { display: grid; place-items: center; }
 .pause svg { width: 14px; height: 14px; }
 .pause:focus-visible { outline: 2px solid #8b7cff; outline-offset: 2px; }
 @media (max-width: 639px) {
@@ -17329,7 +17333,7 @@ button.b .k { opacity: .55; font-weight: 500; margin-left: 6px; font-size: 11px;
   .chat form { margin-bottom: max(10px, env(safe-area-inset-bottom)); }
 }
 @media (pointer: coarse) {
-  .pause { width: 44px; height: 44px; border-radius: 22px; }
+  .pause { height: 44px; border-radius: 22px; padding: 0 16px 0 14px; }
   .chat .send { width: 36px; height: 36px; }
   button.b .k { display: none; }
 }
@@ -17460,7 +17464,10 @@ function createChat(o             )       {
       // Nothing to move with (no adapter found for this game): no button that would do nothing.
       moveBtn.hidden = !moving && !o.move .can();
     }
-    resumeBtn.replaceChildren(o.doc.createTextNode(w('resume')), el('span', 'k', 'P'));
+    // "▶ Resume P" (plan step 6): the play mark says it is the game going on, beside "✥ Move".
+    const playIc = el('span', 'ic');
+    playIc.append(icon('play'));
+    resumeBtn.replaceChildren(playIc, o.doc.createTextNode(w('resume')), el('span', 'k', 'P'));
     resumeBtn.title = w('resumeTip');
     input.placeholder = sending ? w('sending') : sendFailed ? w('sendFail') : w('chatPlaceholder');
     input.disabled = sending;
@@ -18384,7 +18391,13 @@ function startPlayAsk(o                )                {
       pauseBtn = el('button', 'pause glass')                     ;
       pauseBtn.type = 'button';
       pauseBtn.dataset.part = 'pause-button';
-      pauseBtn.append(icon('pause'));
+      // "❚❚ Pause and talk P" (plan step 6, decided 2026-10-23): the corner's ONE way in while playing. It was
+      // ❚❚ alone beside "✦ Ask your AI `" — two doors to the same AI, a finger apart. Stopping to show the moment says
+      // more than a line typed over a running game (the picture goes with it), so the pause is the one kept; asking
+      // without pausing stays as the ` key (the ? sheet lists it) and the ✦ field it opens.
+      const ic = el('span', 'ic');
+      ic.append(icon('pause'));
+      pauseBtn.append(ic, el('span', 'word', w('pauseTalk')), el('kbd', '', 'P'));
       pauseBtn.addEventListener('click', () => void pauseNow());
       if (o.move) {
         const mv = o.move;
@@ -18404,6 +18417,7 @@ function startPlayAsk(o                )                {
       });
       corner.append(pauseBtn);
     }
+    // With a pause the ✦ mark is not in the corner (above); it is still built: the ` field and its line use its state.
     corner.append(mark);
     // The veil and the chat last: the ✦ field stays the overlay's first input (what reads the overlay finds it as
     // before), and they are never shown with the line or the field anyway.
@@ -18743,11 +18757,15 @@ function startPlayAsk(o                )                {
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
     const paused = !!hold?.paused;
-    mark.hidden = barOpen || paused || !(markOn || !!doc.fullscreenElement);
+    const cornerOn = !barOpen && !paused && (markOn || !!doc.fullscreenElement);
+    // One door in the corner (plan step 6): ❚❚ when this game can pause, else the ✦ mark as before.
+    mark.hidden = !cornerOn || !!pauseBtn;
     if (pauseBtn) {
-      pauseBtn.hidden = mark.hidden;
+      pauseBtn.hidden = !cornerOn;
       pauseBtn.title = w('pauseTip');
       pauseBtn.setAttribute('aria-label', w('pauseTip'));
+      const word = pauseBtn.querySelector('.word');
+      if (word) word.textContent = w('pauseTalk');
     }
     chat?.render();
     bar.hidden = !barOpen;

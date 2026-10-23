@@ -692,6 +692,8 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
 .game.gone { opacity: 0; transition: opacity .22s var(--ease); }
 .ai-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-head { font-weight: 600; }
+/* "✓ In the game (3)" after a Save (plan step 6, save-receipt.ts): the check sits on the words' line, the text's size. */
+.ai-line.saved-in .ai-head .icon { width: 14px; height: 14px; vertical-align: -2px; margin-right: 6px; }
 .ai-text.two { display: grid; white-space: normal; }
 .ai-text.two > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ai-sub { color: var(--text-2); font-size: var(--fs-s); }

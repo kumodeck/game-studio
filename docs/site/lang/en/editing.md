@@ -165,7 +165,13 @@ When you change something, **Save · 1** shows up in the top bar, beside **▶ P
 
 ![Save · 1 in the top bar after one move](media/save.webp)
 
-Click **Save** (or <kbd>⌘</kbd><kbd>S</kbd>) and go back to your AI.
+Click **Save** (or <kbd>⌘</kbd><kbd>S</kbd>). The line over the ask box says what you saved, by name, and then when it’s in the game:
+
+![After Save: Saved: moved hex-1 · moved ring · moved orb · 2 more, and Claude is putting it in the code](media/save-receipt.webp)
+
+- **Saved: moved gate · gate’s motion · …** with **Claude is putting it in the code…** under it. More than three things: the first three and **2 more**.
+- **✓ In the game (5)** when your AI is done, with **▶ Play** to try it and **Undo AI change**.
+- If your AI isn’t open: **Saved. Claude puts it in the code when it opens**. Nothing is lost; the words under the ask box say how to open it.
 
 ### What Save does
 

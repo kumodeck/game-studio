@@ -89,6 +89,10 @@ export const KEYMAP: KeyDef[] = [
   { id: 'timelineKey', group: 'tools', keys: ['K'], dim: '3d', note: 'keys.timelineKey.note' },
   // P: Play in Edit; Pause / Resume while playing — never back to Edit (plan step 2, first-run walk #14; main.ts shortcut()).
   { id: 'play', group: 'view', keys: ['P'], label: 'btn.play', playing: ['play.pause', 'play.resume'] },
+  // ` while playing (plan step 6, decided 2026-10-23): the corner shows only "❚❚ Pause and talk P", so asking
+  // WITHOUT pausing (2026-10-20 "fix it without stopping the game") is this key only, and the sheet is where it is said.
+  // Read in the game page (bridge/play-ask.ts), not by main.ts: it does nothing in Edit, hence the note "While playing".
+  { id: 'askPlaying', group: 'view', keys: ['`'], note: 'keys.askPlaying.note' },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },

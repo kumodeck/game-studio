@@ -411,7 +411,13 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       pauseBtn = el('button', 'pause glass') as HTMLButtonElement;
       pauseBtn.type = 'button';
       pauseBtn.dataset.part = 'pause-button';
-      pauseBtn.append(icon('pause'));
+      // "❚❚ Pause and talk P" (plan step 6, decided 2026-10-23): the corner's ONE way in while playing. It was
+      // ❚❚ alone beside "✦ Ask your AI `" — two doors to the same AI, a finger apart. Stopping to show the moment says
+      // more than a line typed over a running game (the picture goes with it), so the pause is the one kept; asking
+      // without pausing stays as the ` key (the ? sheet lists it) and the ✦ field it opens.
+      const ic = el('span', 'ic');
+      ic.append(icon('pause'));
+      pauseBtn.append(ic, el('span', 'word', w('pauseTalk')), el('kbd', '', 'P'));
       pauseBtn.addEventListener('click', () => void pauseNow());
       if (o.move) {
         const mv = o.move;
@@ -431,6 +437,7 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
       });
       corner.append(pauseBtn);
     }
+    // With a pause the ✦ mark is not in the corner (above); it is still built: the ` field and its line use its state.
     corner.append(mark);
     // The veil and the chat last: the ✦ field stays the overlay's first input (what reads the overlay finds it as
     // before), and they are never shown with the line or the field anyway.
@@ -770,11 +777,15 @@ export function startPlayAsk(o: PlayAskOptions): PlayAskHandle {
     const busy = !!s && (s.state === 'looking' || s.state === 'fixing');
     mark.classList.toggle('busy', busy);
     const paused = !!hold?.paused;
-    mark.hidden = barOpen || paused || !(markOn || !!doc.fullscreenElement);
+    const cornerOn = !barOpen && !paused && (markOn || !!doc.fullscreenElement);
+    // One door in the corner (plan step 6): ❚❚ when this game can pause, else the ✦ mark as before.
+    mark.hidden = !cornerOn || !!pauseBtn;
     if (pauseBtn) {
-      pauseBtn.hidden = mark.hidden;
+      pauseBtn.hidden = !cornerOn;
       pauseBtn.title = w('pauseTip');
       pauseBtn.setAttribute('aria-label', w('pauseTip'));
+      const word = pauseBtn.querySelector('.word');
+      if (word) word.textContent = w('pauseTalk');
     }
     chat?.render();
     bar.hidden = !barOpen;

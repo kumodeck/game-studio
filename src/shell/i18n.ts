@@ -388,6 +388,9 @@ const en = {
   'play.close': 'Close',
   // Pause while playing (2026-10-22; bridge/play-pause.ts, play-chat.ts): P or ❚❚, then a small chat over the stopped game.
   'play.pause': 'Pause',
+  // The one button in the corner while playing (plan step 6, decided 2026-10-23): "❚❚ Pause and talk P".
+  // Asking without pausing stays, as the ` key only (keys.askPlaying in the ? sheet).
+  'play.pauseTalk': 'Pause and talk',
   'play.pauseTip': 'Pause (P) and talk to {ai} about this moment',
   'play.paused': 'Paused',
   'play.resume': 'Resume',
@@ -395,7 +398,7 @@ const en = {
   'play.sees': '{Ai} sees this moment',
   'play.seesError': '1 error',
   'play.seesErrors': '# errors',
-  'play.chatPlaceholder': 'Ask about this moment…',
+  'play.chatPlaceholder': 'Ask {ai} about this moment…',
   // Not "your AI gets the picture…" again: the line above it says so ("Your AI sees this moment").
   'play.chatEmpty': 'Ask anything about what you see: why it happened, how it works, what to change.',
   'play.send': 'Send',
@@ -544,8 +547,8 @@ const en = {
   'guard.discard': 'Don’t save',
   'guard.cancel': 'Cancel',
   // The same window at ▶ Play with changes not saved (unsaved-guard.ts, a try of the editor, 2026-10-21: "let them choose
-  // with buttons — save, or try it without saving"). The title is guard.title; the second line says what Save does.
-  'guard.playWhy': 'Save, and the changes go into the game’s code.',
+  // with buttons — save, or try it without saving"). The title is guard.title, then the three buttons. Its second line
+  // ("Save, and the changes go into the game's code.", guard.playWhy) went in plan step 6: the line after Save says it.
   'guard.playTools': '{n:1 change in a game tool is|# changes in game tools are} lost if you don’t save.',
   'guard.playSave': 'Save and play',
   'guard.playTry': 'Try without saving',
@@ -637,6 +640,15 @@ const en = {
   // and that read as a different action: "'Save to game' — I don't get what that means". Where the change goes is said here.
   'save.unsavedTip': 'Save, and {ai} puts it in the game’s code',
   'save.savedTip': 'Saved and sent to {ai}',
+  // The line after Save (plan step 6, save-receipt.ts; a try of the editor, 2026-10-21: "I don't notice it saved"): what was kept, by the
+  // objects' names, then whether it reached the game. Never a promise while no AI is there: the fact (save.later).
+  'save.kept': 'Saved: {list}',
+  'save.moved': 'moved {name}',
+  'save.more': '{n} more',
+  'save.changes': '{n:1 change|# changes}',
+  'save.putting': '{Ai} is putting it in the code…',
+  'save.in': 'In the game ({n})',
+  'save.later': 'Saved. {Ai} puts it in the code when it opens',
   'ops.manyShort': '{n} selected',
   'pal.title': 'Ask {ai} or search actions',
   // The ⌘K list's own search field (W1-4): actions, objects, the AI's ideas.
@@ -724,6 +736,9 @@ const en = {
   'keys.fly.picked': 'Right button+WASD',
   'pal.fly.words': 'wasd fly walk move camera forward back left right navigate level',
   'keys.shortcuts': 'Keyboard shortcuts',
+  // ` while playing (plan step 6): the corner shows only "Pause and talk", so the other way in is written here.
+  'keys.askPlaying': 'Ask {ai} without pausing',
+  'keys.askPlaying.note': 'While playing',
   // UI stage 1 (2026-10-19): World | UI in the top bar, for games that mark their HTML UI with data-studio-key.
   'keys.layer': 'Switch between Scene and UI',
   'uiLayer.switch': 'What you edit',
@@ -1169,14 +1184,15 @@ const ja: Partial<Record<Key, string>> = {
   'play.keep': 'このまま遊ぶ',
   'play.close': '閉じる',
   'play.pause': '止める',
+  'play.pauseTalk': '止めて話す',
   'play.pauseTip': '止めて（P）、この瞬間について {ai}と話す',
   'play.paused': '止めています',
   'play.resume': '続ける',
   'play.resumeTip': '止めたところから続ける（P）',
-  'play.sees': '{ai}はこの瞬間を見ます',
+  'play.sees': '{ai}はこの瞬間を見ています',
   'play.seesError': 'エラー 1 件',
   'play.seesErrors': 'エラー # 件',
-  'play.chatPlaceholder': 'この瞬間について聞く…',
+  'play.chatPlaceholder': 'この瞬間について {ai}に頼む…',
   'play.chatEmpty': '見えていることを何でも聞けます。なぜこうなった？ どう動いている？ 何を変える？',
   'play.send': '送る',
   'play.move': '動かす',
@@ -1307,7 +1323,6 @@ const ja: Partial<Record<Key, string>> = {
   'guard.save': '保存して続ける',
   'guard.discard': '保存せずに続ける',
   'guard.cancel': 'やめる',
-  'guard.playWhy': '保存すると、変更がゲームのコードに入ります。',
   'guard.playTools': 'ゲームの道具の変更 {n} 個は、保存しないと消えます。',
   'guard.playSave': '保存して遊ぶ',
   'guard.playTry': '保存せずに試す',
@@ -1383,6 +1398,14 @@ const ja: Partial<Record<Key, string>> = {
   'foot.palette': 'すべての操作',
   'save.unsavedTip': '保存すると、{ai}がゲームのコードに入れます',
   'save.savedTip': '保存して {ai}に送りました',
+  'save.kept': '保存しました: {list}',
+  'save.moved': '{name} を動かした',
+  'save.more': 'ほか {n}',
+  'save.changes': '変更 {n} 個',
+  'save.putting': '{ai}がコードに入れています…',
+  // The same counter as guard.title and ai.doneN (the mock said tsu; it reads badly past 9).
+  'save.in': 'ゲームに入りました（{n} 個）',
+  'save.later': '保存しました。{ai}が開いたら、コードに入れます',
   'ops.manyShort': '{n} 個を選択',
   'pal.title': '{ai}に頼むか、操作を探す',
   'pal.search': '操作や物を探す…',
@@ -1464,6 +1487,8 @@ const ja: Partial<Record<Key, string>> = {
   'keys.fly.picked': '右ボタン+WASD',
   'pal.fly.words': 'wasd 飛ぶ 歩く 移動 カメラ 前 後ろ 左 右 視点 水平',
   'keys.shortcuts': 'キーボードショートカット',
+  'keys.askPlaying': '止めずに {ai}に頼む',
+  'keys.askPlaying.note': '遊んでいる間',
   'keys.layer': 'シーンと UI を切り替える',
   'uiLayer.switch': '編集する物',
   'uiLayer.world': 'シーン',

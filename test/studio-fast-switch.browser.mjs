@@ -466,7 +466,7 @@ async function cove() {
       console.log('    play parts:', await page.eval(PLAY_PARTS));
       throw e;
     });
-    check((await page.eval(`${OV}.shadowRoot.querySelector('.mark .word').offsetParent !== null`)) === true, 'Play again: the corner mark is back');
+    check((await page.eval(`${OV}.shadowRoot.querySelector('[data-part=pause-button] .word').offsetParent !== null`)) === true, 'Play again: the corner button is back');
     await page.eval(`${OV}.shadowRoot.querySelector('[data-part=pause-button]').click()`);
     await page.waitFor(`!!${OV}.shadowRoot.querySelector('[data-part=pause-chat]:not([hidden])')`, 5000);
     const p0 = await j(page, IN.pp);

@@ -72,6 +72,7 @@ import { createMotionAsk } from './motion-ask.ts';
 import { motionLibrary } from './motion-library.ts';
 import { attachWorld, roundLib } from './motion-model.ts';
 import { icon, setButton } from './icons.ts';
+import { receipt, type SavedThing } from './save-receipt.ts';
 import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
@@ -334,7 +335,8 @@ export function start(host: StudioHost) {
   // `text`: the person's own words, shown back in the line ('"make it glow"
   // handed to your AI…', then '"make it glow" → done'): what was asked and what
   // the AI did read side by side (verganti review 2026-10-16).
-  let pending: { kind: StudioRequestInput['kind'] | 'saved'; id?: string; at: number; sent: number; text?: string } | null = null;
+  // `saved` / `savedTotal` (plan step 6): what a Save kept, by name, for the line after it (save-receipt.ts).
+  let pending: { kind: StudioRequestInput['kind'] | 'saved'; id?: string; at: number; sent: number; text?: string; saved?: SavedThing[]; savedTotal?: number } | null = null;
   let aiStatus: StudioStatus | null = null;
   // The "done" status the person reloaded for: its line then shows what changed instead of "Reload".
   let aiReloadFor: string | null = null;
@@ -2352,7 +2354,18 @@ export function start(host: StudioHost) {
     const note = aiStatus?.note;
     const link = (action: string, ic: string, label: string, run: () => void, title?: string) =>
       aiLine.append(h('button', { type: 'button', class: 'link', dataset: { action }, title: title || label, disabled: undoBusy, onclick: run }, icon(ic), h('span', { text: label })));
-    if (ph === 'waiting' && pending) {
+    // A Save (plan step 6, save-receipt.ts): what was kept by name → "Claude is putting it in the code…" → "✓ In the
+    // game (3) ▶ Play" + Undo AI change. A `sent` with no sign of the AI after UNSEEN_MS is the "no AI" fact, as below.
+    const rc = pending?.kind === 'saved' && pending.saved
+      ? receipt({ phase: ph === 'sent' && Date.now() - (pending.sent ?? 0) >= UNSEEN_MS ? 'away' : ph, things: pending.saved, total: pending.savedTotal ?? 0, vars: aiVars(), t })
+      : null;
+    if (rc) {
+      if (ph === 'done') aiLine.classList.add('saved-in');
+      two(rc.head, rc.sub);
+      if (ph === 'done') aiLine.querySelector('.ai-head')?.prepend(icon('check'));
+      if (rc.play && !playing) link('ai-play', 'play', t('btn.play'), () => void togglePlay());
+      if (ph === 'done' && lastChange && host.undoAi && !playing) link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
+    } else if (ph === 'waiting' && pending) {
       // Hosts that cannot tell whether an AI watches (and the offline demo): the old line.
       aiLine.append(h('span', { class: 'ai-text', text: pending.text ? t('ai.waitingAsk', { text: pending.text }) : pending.kind === 'saved' ? t('ai.waitingSaved') : t('ai.waiting', { what: t(`ai.what.${pending.kind}`) }) }));
     } else if (ph === 'seen' || (ph === 'sent' && Date.now() - (pending?.sent ?? 0) < UNSEEN_MS)) {
@@ -3453,6 +3466,9 @@ export function start(host: StudioHost) {
     if (keeping) await keeping;
     const jobs: Array<Promise<string | null>> = [];
     let placementHanded = false;
+    // What this Save keeps, by name, read now: markSaved() below forgets it (plan step 6, save-receipt.ts).
+    const keptThings = savedThings();
+    const keptTotal = placementDirty();
     if (placementDirty() > 0 || placementRestored) {
       const file = fileNow();
       const v = validatePlacement(file);
@@ -3477,6 +3493,11 @@ export function start(host: StudioHost) {
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
+          if (pending) {
+            pending.saved = keptThings;
+            pending.savedTotal = keptTotal;
+            renderAiLine();
+          }
           placementHanded = true;
           return null;
         }));
@@ -3530,6 +3551,32 @@ export function start(host: StudioHost) {
     if (!errors.length) emit('saved', null);
     renderButtons();
     return !errors.length;
+  }
+
+  /**
+   * The world's objects a Save keeps, by the names the list shows (plan step 6): "moved gate" for a place / turn / size,
+   * "gate’s motion" for an object's motion, and each changed Library motion by its own name. Renamed / deleted ones and
+   * the UI layer have no "moved" words: they are counted in "N more" (save-receipt.ts savedList).
+   */
+  function savedThings(): SavedThing[] {
+    const out: SavedThing[] = [];
+    const nameOf = (k: string) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : '';
+    };
+    const motionKeys = new Set(worldModel.motion.changedKeys());
+    for (const k of worldModel.changedKeys()) {
+      if (motionKeys.has(k)) continue;
+      const from = worldModel.savedPose(k), to = worldModel.pose(k);
+      const name = nameOf(k);
+      if (name && from && to) out.push({ kind: 'moved', name });
+    }
+    for (const k of motionKeys) {
+      const name = nameOf(k);
+      if (name) out.push({ kind: 'motion', name: t('motion.firstName', { name }) });
+    }
+    for (const n of motionLibrary.changedNames()) out.push({ kind: 'motion', name: n });
+    return out;
   }
 
   function goHome() {

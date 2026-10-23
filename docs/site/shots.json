@@ -18,7 +18,8 @@
     { "id": "ui2", "test": "test/studio-ui-edit-2.browser.mjs", "args": ["--only", "pc", "--themes", "light"] },
     { "id": "kumo", "test": "test/studio-kumo.browser.mjs", "args": [] },
     { "id": "gen", "test": "test/studio-generate.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] },
-    { "id": "presence", "test": "test/studio-ai-presence.browser.mjs", "args": ["--theme", "light"] }
+    { "id": "presence", "test": "test/studio-ai-presence.browser.mjs", "args": ["--theme", "light"] },
+    { "id": "playsave", "test": "test/studio-play-save.browser.mjs", "args": ["--only", "save", "--theme", "light", "--prefix", "docs"] }
   ],
   "pictures": [
     { "as": "open", "run": "w1", "file": "pc-light-*-open.png" },
@@ -28,6 +29,7 @@
     { "as": "library", "run": "library", "file": "lantern-cove-pc-light-2-library-all.png" },
     { "as": "library-object", "run": "library", "file": "lantern-cove-pc-light-4-object-detail.png" },
     { "as": "save", "run": "save", "file": "pc-1280x800-light-after-1-changed.png" },
+    { "as": "save-receipt", "run": "playsave", "file": "06-docs-*-save-1-pressed.png" },
     { "as": "play-unsaved", "run": "choice", "file": "choice-pc-light-1-window.png" },
     { "as": "pause-chat", "run": "pause", "file": "cove-*-replied.png" },
     { "as": "timeline", "run": "timeline", "file": "after-pc-light-1-open.png" },

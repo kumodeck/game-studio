@@ -67,7 +67,5 @@ test('② the web demo: the same "Save", and a tooltip with no AI or game in it'
   assert.equal(translate('ja', 'btn.save'), '保存');
   assert.doesNotMatch(translate('en', 'save.unsavedTip'), /AI|game/);
   assert.doesNotMatch(translate('ja', 'save.unsavedTip'), /AI|ゲーム/);
-  // ▶ Play's window (unsaved-guard.ts kind 'play'): its second line says what the demo's Save does, no AI in it.
-  assert.doesNotMatch(translate('en', 'guard.playWhy'), /AI|game/);
-  assert.doesNotMatch(translate('ja', 'guard.playWhy'), /AI|ゲーム/);
+  // ▶ Play's window (unsaved-guard.ts kind 'play') has no second line since plan step 6: nothing about an AI to say.
 });

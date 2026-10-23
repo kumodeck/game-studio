@@ -28,8 +28,6 @@ export const DEMO_TEXT: Record<Lang, Record<string, string>> = {
     // Save in the demo keeps the layout in this browser; no AI puts it in a game (2026-10-21: the editor's tooltip
     // promises that, so the demo says what its Save does).
     'save.unsavedTip': 'Save, and your changes are kept in this browser',
-    // The choice at ▶ Play (unsaved-guard.ts): its second line, said for the demo.
-    'guard.playWhy': 'Save, and your changes are kept in this browser.',
   },
   ja: {
     'demo.banner': '試し版・AI にはつながっていません・保存はこのブラウザの中だけ',
@@ -44,6 +42,5 @@ export const DEMO_TEXT: Record<Lang, Record<string, string>> = {
     'ask.nameSent': '試し版では AI にはつながっていません。手元の Claude Code や Codex では、AI が名前を付けます。',
     'next.sent': '試し版では AI にはつながっていません。手元の Claude Code や Codex では、この頼みが AI に届きます。「頼む文をコピー」で写せます。',
     'save.unsavedTip': '保存すると、変更がこのブラウザの中に残ります',
-    'guard.playWhy': '保存すると、変更がこのブラウザの中に残ります。',
   },
 };

@@ -6,7 +6,7 @@
 //                                       [--before <studio-ui dir of an older build>]
 //
 // cove  Lantern Cove (three.js) PC 1280×800:
-//   1. ▶ Play shows ❚❚ left of the corner mark.
+//   1. ▶ Play shows "❚❚ Pause and talk P" alone in the corner (plan step 6: the ✦ mark is the ` key only).
 //   2. P in the game pauses: the game's frames stop (a frame loop of the page's own counts nothing for a second), its
 //      clock stops (performance.now() in the game page stays put), the game never sees the P; the chat opens with its
 //      field focused and says what the AI gets.
@@ -189,7 +189,7 @@ async function cove() {
   try {
     await page.eval(IN.probe);
     let u = await j(page, IN.ui);
-    assert.ok(u.pauseBtn && u.mark, '❚❚ and the mark in the corner');
+    assert.ok(u.pauseBtn && !u.mark, '❚❚ alone in the corner (plan step 6)');
     await shot('cove', 'playing');
     const running = await held(page, 1500);
     assert.ok(running.frames >= 2, `the game runs before the pause (${running.frames} frames)`);
@@ -273,7 +273,7 @@ async function cove() {
     assert.ok(firstAfter - last < 1200, `the first frame time after Resume follows on (+${Math.round(firstAfter - last)} ms after ${pausedMs} ms paused)`);
     assert.ok(r.a.now - pausedFor < 1500, `the game's clock went on from where it stopped (+${Math.round(r.a.now - pausedFor)} ms after ${pausedMs} ms paused)`);
     u = await j(page, IN.ui);
-    assert.ok(u.mark && u.pauseBtn, 'the corner is back');
+    assert.ok(u.pauseBtn && !u.mark, 'the corner is back');
     await shot('cove', 'resumed');
     // 8. The corner's ❚❚, then the chat's Resume.
     await page.click(u.pauseBtn.x, u.pauseBtn.y);
@@ -627,7 +627,7 @@ async function moveCove() {
     assert.ok(h.frames >= 2, `the game runs again (${h.frames})`);
     const after = await playPose(page, still.key);
     assert.ok(gap(after, moved) < 1e-3, `after Resume ${still.label} is where it was left (${gap(after, moved)})`);
-    assert.equal(await page.eval(`!!${Q('.mark')} && !${Q('.mark')}.hidden`), true, 'the corner is back');
+    assert.equal(await page.eval(`!!${Q('[data-part=pause-button]')} && !${Q('[data-part=pause-button]')}.hidden`), true, 'the corner is back');
     await shot('move', 'resumed');
     // Edit: the place put in the layout is the editor's (its draft), Save · 1 still.
     await page.eval(`document.querySelector('button.play').click()`);

@@ -179,7 +179,7 @@ try {
       let w = await win();
       check(w?.kind === 'play', `it is Play's window (${w?.kind})`);
       check(w?.title === 'You have 1 unsaved change', `title "${w?.title}"`);
-      check(w?.why === 'Save, and your AI puts the changes in the game’s code.', `second line "${w?.why}"`);
+      check(w?.why === '', `no second line (plan step 6) "${w?.why}"`);
       check(w?.save.text === 'Save and play' && w?.skip.text === 'Try without saving' && w?.no.text === 'Cancel', `buttons "${w?.no.text}" · "${w?.skip.text}" · "${w?.save.text}"`);
       check(w?.focus === 'guard-save', 'Save and play has the focus (Enter)');
       check(w?.save.bg === ORANGE, `Save and play is the orange of Save (${w?.save.bg})`);
@@ -331,7 +331,7 @@ try {
           await pressSel(PLAY);
           check(await until(async () => (await win())?.kind === 'play', 3000), 'the window');
           const w = await win();
-          check(w?.why === 'Save, and your changes are kept in this browser.', `the demo's second line "${w?.why}"`);
+          check(w?.why === '', `the demo: no second line either "${w?.why}"`);
           await pressSel('[data-action=guard-discard]');
           check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Try without saving: playing');
           check(/1/.test(await page.eval(FAB)) && !(await page.eval(STRIP)), `"${await page.eval(FAB)}" beside Play, no strip`);
@@ -365,8 +365,8 @@ try {
         const w = await win();
         // The words (src/shell/i18n.ts guard.title / playWhy / playSave / playTry / cancel) in the language shown.
         const W = LOOK_LANG === 'ja'
-          ? { title: '保存していない変更が 3 個あります', why: '保存すると AI がゲームのコードに入れます。', save: '保存して遊ぶ', skip: '保存せずに試す', no: 'やめる' }
-          : { title: 'You have 3 unsaved changes', why: 'Save, and your AI puts the changes in the game’s code.', save: 'Save and play', skip: 'Try without saving', no: 'Cancel' };
+          ? { title: '保存していない変更が 3 個あります', why: '', save: '保存して遊ぶ', skip: '保存せずに試す', no: 'やめる' }
+          : { title: 'You have 3 unsaved changes', why: '', save: 'Save and play', skip: 'Try without saving', no: 'Cancel' };
         check(w?.title === W.title, `「${w?.title}」`);
         check(w?.why === W.why, `「${w?.why}」`);
         check(w?.save.text === W.save && w?.skip.text === W.skip && w?.no.text === W.no, `「${w?.save.text}」「${w?.skip.text}」「${w?.no.text}」`);

@@ -118,6 +118,10 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
     // Paused (2026-10-22): a chat message from over a paused game: answer, change nothing.
     const paused = /^studio: request play (\.studio\/requests\/(\S+)\.json) .*\(paused, chat /.exec(line);
     const undone = /^studio: undone \.studio\/requests\/(\S+)\.json/.exec(line);
+    // A Save (plan step 6, studio-play-save): the agent puts placement.json in the code. Nothing to write for a test
+    // game that reads placement.json at load; the statuses are what the editor's line after Save follows.
+    // The watch's line names the file, not the request: --status without --request is about the newest waiting one.
+    const saved = /^studio: saved /.test(line);
     if (ask) {
       queue = queue.then(async () => {
         let lang = 'en';
@@ -160,6 +164,15 @@ export function startFakeAgent(folder, { slow = false, onEvent = () => {}, plan:
         await sleep(gap.look);
         status('done', '--request', paused[2], '--changed', '0', '--note', chatReplyFor(rec));
         note('replied');
+      }).catch((e) => note(`error ${e.message}`));
+    } else if (saved) {
+      queue = queue.then(async () => {
+        await sleep(gap.wake);
+        status('received');
+        note('received');
+        await sleep(gap.read + gap.step);
+        status('done', '--changed', '0', '--note', 'Put the saved layout in the code');
+        note('saved done');
       }).catch((e) => note(`error ${e.message}`));
     } else if (undone) {
       queue = queue.then(async () => {
