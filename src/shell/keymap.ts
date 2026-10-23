@@ -45,6 +45,12 @@ export interface KeyDef {
   when?: 'picked' | 'nothing' | 'tool';
   /** Only in games with levels (the top bar's level crumb, level-switch.ts). */
   levels?: true;
+  /**
+   * i18n keys of its name WHILE PLAYING, joined with " / " (plan step 2, 2026-10-23): P plays in Edit and only pauses /
+   * resumes in Play, so the sheet opened while playing names what P does then. Existing words only (the words step
+   * owns new ones).
+   */
+  playing?: string[];
 }
 
 export const KEYMAP: KeyDef[] = [
@@ -81,7 +87,8 @@ export const KEYMAP: KeyDef[] = [
   // The timeline (studio-timeline, 2026-10-22): K sets a key at the time line — Unity's key for it (Blender's is I;
   // one letter is enough, and K reads as "key"). Only while the timeline is open.
   { id: 'timelineKey', group: 'tools', keys: ['K'], dim: '3d', note: 'keys.timelineKey.note' },
-  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play' },
+  // P: Play in Edit; Pause / Resume while playing — never back to Edit (plan step 2, first-run walk #14; main.ts shortcut()).
+  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play', playing: ['play.pause', 'play.resume'] },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },

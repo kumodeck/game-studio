@@ -803,6 +803,7 @@ export function start(host: StudioHost) {
     dim: () => dim,
     hasUi: () => !!editLayers && editLayers.length > 1,
     hasLevels: () => levels.active,
+    playing: () => playing && !host.offline,
     changed: (on) => {
       keysScrim.hidden = !on;
       app.dataset.keys = on ? 'open' : 'closed';
@@ -1416,7 +1417,7 @@ export function start(host: StudioHost) {
     const mac = isMac();
     const act = (id: string, label: string, ic: string, run: () => void, hint?: string, words?: string) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), 'P', t('btn.play'));
+    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), !playing || host.offline ? 'P' : undefined, t('btn.play'));
     // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
     act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
     if (keys.length && editing) {
@@ -2537,6 +2538,14 @@ export function start(host: StudioHost) {
   // The game page is paused (play/paused): the phone's ❚❚ shows ▶. ✦ stays where it is (the buttons must not shift under
   // the finger that pressed ❚❚); pressed while paused it takes the person to the chat's field.
   let playPaused = false;
+  // P pressed while playing before the game page said play/hello (P right after Play, as in walk #14): the pause is
+  // sent when it does, so that P is not lost. Cleared whenever a new Play or Edit starts.
+  let pauseSoon = false;
+  /** P while playing: the game page's pause (play-ask.ts: pause, or resume when paused — the same as its ❚❚). */
+  function pressPause() {
+    if (playAskOn) postGame({ type: 'studio:play/pause' });
+    else pauseSoon = !pauseSoon;
+  }
   function renderPlayAsk() {
     const show = playing && playAskOn && phone();
     playAskBtn.hidden = !show;
@@ -2912,6 +2921,11 @@ export function start(host: StudioHost) {
           postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
           sendPlayLine(true);
           renderPlayAsk();
+          // After play/on: the pause needs the overlay that play/on builds (play-ask.ts pauseNow).
+          if (pauseSoon) {
+            pauseSoon = false;
+            postGame({ type: 'studio:play/pause' });
+          }
         }
         break;
       case 'studio:play/ask':
@@ -2925,6 +2939,9 @@ export function start(host: StudioHost) {
         break;
       case 'studio:play/paused':
         playPaused = playing && m.on;
+        // On the shell too (screen tests read it: P while playing pauses, plan step 2).
+        if (playPaused) app.dataset.paused = 'on';
+        else delete app.dataset.paused;
         renderPlayAsk();
         break;
       case 'studio:play/answer':
@@ -3572,6 +3589,7 @@ export function start(host: StudioHost) {
     // A Play page says hello again and starts unpaused — the same here.
     playAskOn = false;
     playPaused = false;
+    pauseSoon = false;
     playMark = null;
     editing = false;
     phase = 'playing';
@@ -3591,6 +3609,7 @@ export function start(host: StudioHost) {
     playFrom = null;
     playAskOn = false;
     playPaused = false;
+    pauseSoon = false;
     playMark = null;
     // 'ready' at once: the page answers with core/ready (editing) and its list within a frame or two, and a
     // "loading" in between would be the flash this change takes away.
@@ -3880,6 +3899,7 @@ export function start(host: StudioHost) {
     // A new game page asks again (play/hello), and starts unpaused.
     playAskOn = false;
     playPaused = false;
+    pauseSoon = false;
     playMark = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
@@ -4005,8 +4025,15 @@ export function start(host: StudioHost) {
       setUiPeek(!uiPeek);
       return true;
     }
+    // P has ONE meaning per moment (plan step 2, 2026-10-23, first-run walk #14): in Edit it plays; while playing it
+    // pauses and resumes, and nothing else — wherever the focus is. Before, P while playing went back to Edit when the
+    // focus was outside the game (right after "Try without saving", say) and paused when it was inside, and nothing
+    // on screen said which: the person pressed P to stop and was taken out of the game. Back to Edit = the top bar's
+    // Edit button (it no longer shows a P). The browser-only web demo has no pause (no AI to talk to, host.offline):
+    // there P is still Play ⇄ Edit, its only meaning there.
     if (!mod && k === 'p' && !e.shift) {
-      void togglePlay();
+      if (playing && !host.offline) pressPause();
+      else void togglePlay();
       return true;
     }
     if (!mod && k === 'f' && !e.shift && editing) {
@@ -4275,6 +4302,7 @@ export function start(host: StudioHost) {
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
     // While playing, the side panel steps away (shell.css): play = the game only.
     app.dataset.playing = playing ? 'on' : 'off';
+    if (!playing) delete app.dataset.paused;
   }
 
   // The Save says "✓ Saved" this long after a press that went through, then goes (see topSave).
@@ -4348,8 +4376,10 @@ export function start(host: StudioHost) {
     }
     prevUnsaved = n;
     for (const b of playBtns) {
-      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
-      if (!phone()) b.append(h('kbd', { text: 'P' }));
+      // Edit shows no P (plan step 2): while playing P pauses (see shortcut()), except in the web demo with no pause.
+      const pKeys = !playing || host.offline;
+      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), pKeys ? keyOf('play', mac) : ''));
+      if (!phone() && pKeys) b.append(h('kbd', { text: 'P' }));
     }
     playMoreBtn.title = t('pal.playFresh');
     playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));

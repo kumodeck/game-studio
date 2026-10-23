@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.30 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.31 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1733,6 +1733,7 @@ function sceneSphere(boxes) {
  *   still shows what is next to it);
  * - widened to reach its second-nearest neighbour ("a little of what is around"), but not beyond
  *   4× the object / 6× a typical object (one lone tree far away must not pull the camera out);
+ * - never so wide that the object is under 1/6 of the frame (radius ≤ 6× the object, plan step 2);
  * - never more than the scene (+10 %): a ground plane or a wall shows the play area, centred on
  *   the scene, instead of the camera flying out to the plane's far edges.
  *
@@ -1757,6 +1758,10 @@ function focusSphere(target, others, pivot) {
     const second = reach[Math.min(1, reach.length - 1)];
     radius = Math.max(radius, Math.min(second * 1.1, Math.max(t.r * 4, typical * 6)));
   }
+  // Plan step 2 (2026-10-23, first-run walk #3): never so wide that the pick is under 1/6 of the screen (the frame
+  // spans about 2 × radius, the object 2 × t.r). In a runner (test/neon-run) the neighbours stand far down the road and
+  // `typical * 6` let the ship shrink to a few pixels. 6 = the plan's 1/6 (bridge/seen.ts MIN_PART says the same).
+  radius = Math.min(radius, t.r * 6);
   let center = pivot.slice();
   if (scene && radius > scene.r * 1.1) {
     radius = scene.r * 1.1;
@@ -15181,6 +15186,90 @@ __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
 __defs[42] = function (__exports) {
 'use strict';
+// seen.ts
+
+// When does a pick from the list move the edit camera, and how far may it go? Pure maths on screen rectangles, so
+// test/seen.test.ts can check the rules without a browser. Used by editor.ts (focusIfHidden / panIntoMiddle).
+//
+// WHY (plan step 2 "the camera stays put", 2026-10-23, first-run walk #3): in a runner (test/neon-run) picking the ship
+// from the list sent the camera ~29 m back and the whole game became a dot, and it never came back. The ship was ON
+// screen — only its foot and the row of handles under it were below the ask bar — but the old rule ("the whole box AND
+// the handle row inside the free part of the frame") called it hidden, and the slide that followed was a pan "up the
+// screen" from a near-level view (pitch ≈ 11°), which carries the ground tens of metres towards the camera.
+// Two rules now:
+// 1. seenEnough: an object the person can already see does not move the camera. "Can see" = at least a fifth of its
+//    box is inside the free part of the frame (the ship: its top above the ask bar); a ground bigger than the frame:
+//    its middle is.
+// 2. tooSmall: when the camera does have to move, no step may leave the pick smaller than 1/6 of the free part's short
+//    side (or than it was, if it was smaller already) — the slide stops there instead of pulling back down the road.
+
+                       
+            
+            
+            
+            
+ 
+
+/** The part of the frame no floating panel covers (editor.ts freeArea). */
+                       
+             
+             
+             
+             
+ 
+
+/**
+ * 0.2 = a fifth of the box inside the free part is "seen". Measured: the ship in neon-run at 1280 × 800 (its box
+ * 144 × 220 px, the top ~60 px of it above the ask bar = 27 %) must count as seen (the plan: picking ship / gate /
+ * hex-1 from the list leaves the camera where it is). 0.5 would call it hidden again; 0 = any pixel (a thing poking
+ * in at the edge would never be brought in).
+ */
+const SEEN_SHARE = 0.2;
+/** 6 = the pick never shrinks below 1/6 of the free part's short side (the plan's number). */
+const MIN_PART = 6;
+
+/** Is the object (its screen box) already seen in the free part? `margin` px in from the edges. */
+function seenEnough(r      , f      , margin = 0)          {
+  const g = { x0: f.x0 + margin, y0: f.y0 + margin, x1: f.x1 - margin, y1: f.y1 - margin };
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+  const middleIn = cx >= g.x0 && cx <= g.x1 && cy >= g.y0 && cy <= g.y1;
+  const area = r.w * r.h;
+  // A point-sized box (a far coin): its middle inside is all there is to see.
+  if (!(area > 1)) return middleIn;
+  // Bigger than the free part (a ground, a sky): what is inside can be most of the frame and still a small share of
+  // the box, so its middle inside is enough.
+  if (middleIn && (r.w >= g.x1 - g.x0 || r.h >= g.y1 - g.y0)) return true;
+  const iw = Math.max(0, Math.min(r.x + r.w, g.x1) - Math.max(r.x, g.x0));
+  const ih = Math.max(0, Math.min(r.y + r.h, g.y1) - Math.max(r.y, g.y0));
+  return (iw * ih) / area >= SEEN_SHARE;
+}
+
+/** The smallest a pick may get on screen while the camera slides to it (px, its box's longer side). */
+function minPickPx(f      )         {
+  return Math.min(f.x1 - f.x0, f.y1 - f.y0) / MIN_PART;
+}
+
+/**
+ * Would this step leave the pick too small? `before` = its size when the slide started, `after` = after the step
+ * (px, longer side). Smaller than 1/6 already at the start (a far tree): it may not get smaller than that.
+ */
+function tooSmall(before        , after        , f      )          {
+  const floor = Math.min(before, minPickPx(f));
+  // 0.75 = a quarter of give. A sideways pan in 3D changes the size a little by itself: a thing at the frame's edge is
+  // drawn stretched by the perspective and shrinks as it comes to the middle (measured in neon-run: the ship turned out
+  // to the right, 71 px, refused at 0.98 and the slide stopped at the edge). What this guards against is far bigger:
+  // the walk-#3 slide shrank the ship ~3×.
+  return after < floor * 0.75;
+}
+
+__def(__exports, "SEEN_SHARE", () => SEEN_SHARE);
+__def(__exports, "MIN_PART", () => MIN_PART);
+__def(__exports, "seenEnough", () => seenEnough);
+__def(__exports, "minPickPx", () => minPickPx);
+__def(__exports, "tooSmall", () => tooSmall);
+};
+__defs[43] = function (__exports) {
+'use strict';
 // editor.ts
 
 // Edit session inside the game page: applies shell messages to the adapter,
@@ -15202,6 +15291,7 @@ const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
 const { createTimelineView } = __require(35);
 const { createUiExtras } = __require(36);
 const { loaderPlay } = __require(41);
+const { seenEnough, tooSmall } = __require(42);
 
                              
                                                                                                                      
@@ -15559,6 +15649,14 @@ function createEditor(deps            )         {
       return [fit(f.x0 + mx, f.x1 - mx, r.x, r.x + r.w), fit(f.y0 + my, f.y1 - my, r.y, r.y + r.h + strip)]                    ;
     };
     if (!need()) return null;
+    // How big the pick is on screen (its box's longer side): no step may shrink it below 1/6 of the free part (seen.ts
+    // tooSmall) — a pan "up the screen" from a near-level 3D view moves the camera far back along the ground.
+    const sizeOf = () => {
+      const a = adapter.anchor(key);
+      if (!a || !a.visible) return 0;
+      return a.rect ? Math.max(a.rect.w, a.rect.h) : a.size;
+    };
+    const size0 = sizeOf();
     const total                   = [0, 0];
     for (const ax of [0, 1, 0]         ) {
       let gain = 1; // screen px the object moved per px of pan, measured (may be negative, see below)
@@ -15575,7 +15673,8 @@ function createEditor(deps            )         {
         const usable = Math.abs(g) > 0.05 && Math.abs(g) < 5;
         // Up / down may push it a little sideways (it comes nearer off the middle): up to 15 % of the width, put right by
         // the last sideways pass below.
-        const worse = !after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95 || (ax === 1 && Math.abs(after[0]) > Math.abs(d[0]) + win.innerWidth * 0.15);
+        const worse = !after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95 || (ax === 1 && Math.abs(after[0]) > Math.abs(d[0]) + win.innerWidth * 0.15) ||
+          tooSmall(size0, sizeOf(), freeArea(adapter.anchor(key)?.rect?.y ?? 0));
         if (worse) {
           adapter.view.pan(ax ? 0 : -step, ax ? -step : 0); // linear in both adapters: exactly back
           // It went the other way (3D, up / down: an object between the camera and the point it turns round moves
@@ -15593,8 +15692,17 @@ function createEditor(deps            )         {
     }
     return total;
   };
+  // Plan step 2 (2026-10-23): "seen" for a list pick is seen.ts's looser rule, not inView above (whole box + handle row
+  // inside). A ship whose foot was under the ask bar counted as hidden, and the slide to it pulled the camera 29 m back.
+  // inView stays for slideIntoFree (the phone sheet's own slide), where "the strip must be clear" is the point.
+  const seenNow = (key        ) => {
+    const a = adapter.anchor(key);
+    if (!a || !a.visible) return false;
+    const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+    return seenEnough(r, freeArea(r.y), FOCUS_MARGIN);
+  };
   const focusIfHidden = (key        ) => {
-    if (state.multi || inView(key)) return;
+    if (state.multi || seenNow(key)) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
     const total = panIntoMiddle(key);
@@ -16442,7 +16550,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -16505,7 +16613,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -16688,7 +16796,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -16900,7 +17008,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -17039,7 +17147,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -17059,7 +17167,7 @@ __defs[47] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(44);
+const { icon } = __require(45);
 
                            
                     
@@ -17386,7 +17494,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -17421,7 +17529,7 @@ __defs[48] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(42);
+const { createEditor } = __require(43);
 const { drivenBetween } = __require(34);
 const { nativeSetTimeout } = __require(0);
 
@@ -17787,7 +17895,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -17813,12 +17921,12 @@ __defs[49] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(43);
-const { icon } = __require(44);
-const { shootPage } = __require(45);
-const { createPauseHold, isPauseKey } = __require(46);
-const { CHAT_CSS, createChat } = __require(47);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(48);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(44);
+const { icon } = __require(45);
+const { shootPage } = __require(46);
+const { createPauseHold, isPauseKey } = __require(47);
+const { CHAT_CSS, createChat } = __require(48);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(49);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -18752,7 +18860,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -18807,7 +18915,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -18889,7 +18997,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -18905,13 +19013,13 @@ const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
 const { findDomUi, uiAdapterFromPort } = __require(22);
 const { runSelfCheck } = __require(23);
-const { createEditor } = __require(42);
-const { startPlayAsk } = __require(49);
+const { createEditor } = __require(43);
+const { startPlayAsk } = __require(50);
 const { createPlaySwitch } = __require(41);
 const { arrangeInPlay, moveInPlay } = __require(40);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(50);
-const { watchEarlyTaps } = __require(51);
+const { pickLevel } = __require(51);
+const { watchEarlyTaps } = __require(52);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -19344,7 +19452,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -19363,11 +19471,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(52);
+const { startBridge } = __require(53);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(53);
+__require(54);
 })();

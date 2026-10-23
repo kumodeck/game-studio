@@ -255,7 +255,7 @@ try {
   if (want('keys')) {
     const root = gameFolder('starters/lantern-cove');
     roots.push(root);
-    await run('keys', LAYOUTS.pc, { url: await serve(root), steps: async ({ page, until, key, win, move, cardX }) => {
+    await run('keys', LAYOUTS.pc, { url: await serve(root), steps: async ({ page, until, key, win, move, cardX, pressSel }) => {
       check(await move('lighthouse', 6), 'one unsaved move');
       const x = await cardX();
       await page.eval(`document.activeElement?.blur?.(), true`);
@@ -273,8 +273,16 @@ try {
       await key('Enter', 'Enter', 13, '\r');
       check(await until(async () => !!(await page.eval(PLAYING)), 20000), 'Enter = Save and play: playing');
       check(Math.abs((savedX(root, 'lighthouse') ?? NaN) - x) < 0.05 && requests(root) === 1, `Enter: saved (${requests(root)} request)`);
+      // P in Play pauses and resumes only, wherever the focus is (plan step 2, 2026-10-23, walk #14); Edit is the button.
+      await page.eval(`document.activeElement?.blur?.(), true`);
       await key('p', 'KeyP', 80, 'p');
-      check(await until(async () => !!(await page.eval(EDIT_READY)), 40000), 'P in Play: back to Edit, no window');
+      check(await until(async () => !!(await page.eval(`document.querySelector('.shell')?.dataset.paused === 'on'`)), 5000), 'P in Play: paused');
+      check(!!(await page.eval(PLAYING)), 'P in Play: still playing (not back to Edit)');
+      await page.eval(`document.activeElement?.blur?.(), true`);
+      await key('p', 'KeyP', 80, 'p');
+      check(await until(async () => !(await page.eval(`document.querySelector('.shell')?.dataset.paused === 'on'`)), 5000) && !!(await page.eval(PLAYING)), 'P again: resumed, still playing');
+      await pressSel(PLAY);
+      check(await until(async () => !!(await page.eval(EDIT_READY)), 40000), 'Edit button: back to Edit, no window');
       // Try without saving from the keys: Tab to it, Enter.
       check(await move('lighthouse', 3), 'another move');
       await page.eval(`document.activeElement?.blur?.(), true`);

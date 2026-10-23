@@ -49,6 +49,7 @@ export function sceneSphere(boxes) {
  *   still shows what is next to it);
  * - widened to reach its second-nearest neighbour ("a little of what is around"), but not beyond
  *   4× the object / 6× a typical object (one lone tree far away must not pull the camera out);
+ * - never so wide that the object is under 1/6 of the frame (radius ≤ 6× the object, plan step 2);
  * - never more than the scene (+10 %): a ground plane or a wall shows the play area, centred on
  *   the scene, instead of the camera flying out to the plane's far edges.
  *
@@ -73,6 +74,10 @@ export function focusSphere(target, others, pivot) {
     const second = reach[Math.min(1, reach.length - 1)];
     radius = Math.max(radius, Math.min(second * 1.1, Math.max(t.r * 4, typical * 6)));
   }
+  // Plan step 2 (2026-10-23, first-run walk #3): never so wide that the pick is under 1/6 of the screen (the frame
+  // spans about 2 × radius, the object 2 × t.r). In a runner (test/neon-run) the neighbours stand far down the road and
+  // `typical * 6` let the ship shrink to a few pixels. 6 = the plan's 1/6 (bridge/seen.ts MIN_PART says the same).
+  radius = Math.min(radius, t.r * 6);
   let center = pivot.slice();
   if (scene && radius > scene.r * 1.1) {
     radius = scene.r * 1.1;

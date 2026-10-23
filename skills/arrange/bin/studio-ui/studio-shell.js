@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.30 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.31 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -16375,6 +16375,12 @@ __defs[47] = function (__exports) {
                                        
                                                                                 
                 
+     
+                                                                                                                        
+                                                                                                                   
+                    
+     
+                     
  
 
 const KEYMAP           = [
@@ -16411,7 +16417,8 @@ const KEYMAP           = [
   // The timeline (studio-timeline, 2026-10-22): K sets a key at the time line — Unity's key for it (Blender's is I;
   // one letter is enough, and K reads as "key"). Only while the timeline is open.
   { id: 'timelineKey', group: 'tools', keys: ['K'], dim: '3d', note: 'keys.timelineKey.note' },
-  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play' },
+  // P: Play in Edit; Pause / Resume while playing — never back to Edit (plan step 2, first-run walk #14; main.ts shortcut()).
+  { id: 'play', group: 'view', keys: ['P'], label: 'btn.play', playing: ['play.pause', 'play.resume'] },
   { id: 'frame', group: 'view', keys: ['F'], label: 'btn.frame' },
   { id: 'home', group: 'view', keys: ['⇧F'], label: 'pal.home' },
   { id: 'look', group: 'view', keys: ['Space'] },
@@ -20191,6 +20198,8 @@ const { KEYMAP, keysOf } = __require(47);
                     
                                                                    
                         
+                                                                                        
+                      
                                                                                       
                                
  
@@ -20212,7 +20221,7 @@ function createShortcutSheet(d                   ) {
         // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
         const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
         dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
-          h('dt', {}, d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
+          h('dt', {}, k.playing && d.playing?.() ? k.playing.map((x) => d.t(x)).join(' / ') : d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
           h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
       }
       // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
@@ -23332,6 +23341,7 @@ function start(host            ) {
     dim: () => dim,
     hasUi: () => !!editLayers && editLayers.length > 1,
     hasLevels: () => levels.active,
+    playing: () => playing && !host.offline,
     changed: (on) => {
       keysScrim.hidden = !on;
       app.dataset.keys = on ? 'open' : 'closed';
@@ -23945,7 +23955,7 @@ function start(host            ) {
     const mac = isMac();
     const act = (id        , label        , ic        , run            , hint         , words         ) =>
       rows.push({ id, section: 'actions', label, icon: ic, hint, words, data: { action: id }, run });
-    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), 'P', t('btn.play'));
+    act('play', playing ? t('btn.edit') : t('pal.play'), playing ? 'stop' : 'play', () => void togglePlay(), !playing || host.offline ? 'P' : undefined, t('btn.play'));
     // The old Play, a new page (fast switch, 2026-10-22: Play's ▾ says why).
     act('play-fresh', t('pal.playFresh'), 'play', () => void togglePlay(true), undefined, t('pal.playFresh.words'));
     if (keys.length && editing) {
@@ -25066,6 +25076,14 @@ function start(host            ) {
   // The game page is paused (play/paused): the phone's ❚❚ shows ▶. ✦ stays where it is (the buttons must not shift under
   // the finger that pressed ❚❚); pressed while paused it takes the person to the chat's field.
   let playPaused = false;
+  // P pressed while playing before the game page said play/hello (P right after Play, as in walk #14): the pause is
+  // sent when it does, so that P is not lost. Cleared whenever a new Play or Edit starts.
+  let pauseSoon = false;
+  /** P while playing: the game page's pause (play-ask.ts: pause, or resume when paused — the same as its ❚❚). */
+  function pressPause() {
+    if (playAskOn) postGame({ type: 'studio:play/pause' });
+    else pauseSoon = !pauseSoon;
+  }
   function renderPlayAsk() {
     const show = playing && playAskOn && phone();
     playAskBtn.hidden = !show;
@@ -25441,6 +25459,11 @@ function start(host            ) {
           postGame({ type: 'studio:play/on', lang, words: playWords(t), mark: playMark, config: gameConfig, handlePx: handlePx() });
           sendPlayLine(true);
           renderPlayAsk();
+          // After play/on: the pause needs the overlay that play/on builds (play-ask.ts pauseNow).
+          if (pauseSoon) {
+            pauseSoon = false;
+            postGame({ type: 'studio:play/pause' });
+          }
         }
         break;
       case 'studio:play/ask':
@@ -25454,6 +25477,9 @@ function start(host            ) {
         break;
       case 'studio:play/paused':
         playPaused = playing && m.on;
+        // On the shell too (screen tests read it: P while playing pauses, plan step 2).
+        if (playPaused) app.dataset.paused = 'on';
+        else delete app.dataset.paused;
         renderPlayAsk();
         break;
       case 'studio:play/answer':
@@ -26101,6 +26127,7 @@ function start(host            ) {
     // A Play page says hello again and starts unpaused — the same here.
     playAskOn = false;
     playPaused = false;
+    pauseSoon = false;
     playMark = null;
     editing = false;
     phase = 'playing';
@@ -26120,6 +26147,7 @@ function start(host            ) {
     playFrom = null;
     playAskOn = false;
     playPaused = false;
+    pauseSoon = false;
     playMark = null;
     // 'ready' at once: the page answers with core/ready (editing) and its list within a frame or two, and a
     // "loading" in between would be the flash this change takes away.
@@ -26409,6 +26437,7 @@ function start(host            ) {
     // A new game page asks again (play/hello), and starts unpaused.
     playAskOn = false;
     playPaused = false;
+    pauseSoon = false;
     playMark = null;
     // Unnamed objects are named again from where they stand in the new game (names.ts).
     forgetNames();
@@ -26534,8 +26563,15 @@ function start(host            ) {
       setUiPeek(!uiPeek);
       return true;
     }
+    // P has ONE meaning per moment (plan step 2, 2026-10-23, first-run walk #14): in Edit it plays; while playing it
+    // pauses and resumes, and nothing else — wherever the focus is. Before, P while playing went back to Edit when the
+    // focus was outside the game (right after "Try without saving", say) and paused when it was inside, and nothing
+    // on screen said which: the person pressed P to stop and was taken out of the game. Back to Edit = the top bar's
+    // Edit button (it no longer shows a P). The browser-only web demo has no pause (no AI to talk to, host.offline):
+    // there P is still Play ⇄ Edit, its only meaning there.
     if (!mod && k === 'p' && !e.shift) {
-      void togglePlay();
+      if (playing && !host.offline) pressPause();
+      else void togglePlay();
       return true;
     }
     if (!mod && k === 'f' && !e.shift && editing) {
@@ -26804,6 +26840,7 @@ function start(host            ) {
     app.dataset.items = itemsSeen ? 'seen' : 'waiting';
     // While playing, the side panel steps away (shell.css): play = the game only.
     app.dataset.playing = playing ? 'on' : 'off';
+    if (!playing) delete app.dataset.paused;
   }
 
   // The Save says "✓ Saved" this long after a press that went through, then goes (see topSave).
@@ -26877,8 +26914,10 @@ function start(host            ) {
     }
     prevUnsaved = n;
     for (const b of playBtns) {
-      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), keyOf('play', mac)));
-      if (!phone()) b.append(h('kbd', { text: 'P' }));
+      // Edit shows no P (plan step 2): while playing P pauses (see shortcut()), except in the web demo with no pause.
+      const pKeys = !playing || host.offline;
+      setButton(b, playing ? 'stop' : 'play', playing ? t('btn.edit') : t('btn.play'), true, tipText(playing ? t('btn.edit') : t('btn.play'), pKeys ? keyOf('play', mac) : ''));
+      if (!phone() && pKeys) b.append(h('kbd', { text: 'P' }));
     }
     playMoreBtn.title = t('pal.playFresh');
     playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));

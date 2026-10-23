@@ -17,6 +17,7 @@ import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
 import { createUiExtras } from './ui-extras.ts';
 import { loaderPlay } from './play-switch.ts';
+import { seenEnough, tooSmall } from './seen.ts';
 
 export interface EditorDeps {
   /** The world's adapter as found (self-check runs on it, before game rules); null = an HTML-only game (UI only). */
@@ -374,6 +375,14 @@ export function createEditor(deps: EditorDeps): Editor {
       return [fit(f.x0 + mx, f.x1 - mx, r.x, r.x + r.w), fit(f.y0 + my, f.y1 - my, r.y, r.y + r.h + strip)] as [number, number];
     };
     if (!need()) return null;
+    // How big the pick is on screen (its box's longer side): no step may shrink it below 1/6 of the free part (seen.ts
+    // tooSmall) — a pan "up the screen" from a near-level 3D view moves the camera far back along the ground.
+    const sizeOf = () => {
+      const a = adapter.anchor(key);
+      if (!a || !a.visible) return 0;
+      return a.rect ? Math.max(a.rect.w, a.rect.h) : a.size;
+    };
+    const size0 = sizeOf();
     const total: [number, number] = [0, 0];
     for (const ax of [0, 1, 0] as const) {
       let gain = 1; // screen px the object moved per px of pan, measured (may be negative, see below)
@@ -390,7 +399,8 @@ export function createEditor(deps: EditorDeps): Editor {
         const usable = Math.abs(g) > 0.05 && Math.abs(g) < 5;
         // Up / down may push it a little sideways (it comes nearer off the middle): up to 15 % of the width, put right by
         // the last sideways pass below.
-        const worse = !after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95 || (ax === 1 && Math.abs(after[0]) > Math.abs(d[0]) + win.innerWidth * 0.15);
+        const worse = !after || Math.abs(after[ax]) > Math.abs(d[ax]) * 0.95 || (ax === 1 && Math.abs(after[0]) > Math.abs(d[0]) + win.innerWidth * 0.15) ||
+          tooSmall(size0, sizeOf(), freeArea(adapter.anchor(key)?.rect?.y ?? 0));
         if (worse) {
           adapter.view.pan(ax ? 0 : -step, ax ? -step : 0); // linear in both adapters: exactly back
           // It went the other way (3D, up / down: an object between the camera and the point it turns round moves
@@ -408,8 +418,17 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     return total;
   };
+  // Plan step 2 (2026-10-23): "seen" for a list pick is seen.ts's looser rule, not inView above (whole box + handle row
+  // inside). A ship whose foot was under the ask bar counted as hidden, and the slide to it pulled the camera 29 m back.
+  // inView stays for slideIntoFree (the phone sheet's own slide), where "the strip must be clear" is the point.
+  const seenNow = (key: string) => {
+    const a = adapter.anchor(key);
+    if (!a || !a.visible) return false;
+    const r = a.rect ?? { x: a.center[0] - a.size / 2, y: a.center[1] - a.size / 2, w: a.size, h: a.size };
+    return seenEnough(r, freeArea(r.y), FOCUS_MARGIN);
+  };
   const focusIfHidden = (key: string) => {
-    if (state.multi || inView(key)) return;
+    if (state.multi || seenNow(key)) return;
     const gen = ++panGlide;
     const from = adapter.view.state();
     const total = panIntoMiddle(key);

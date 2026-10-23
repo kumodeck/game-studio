@@ -16,6 +16,7 @@ The editor has three parts: the column on the left (**Scene** and **Library**), 
 
 - **Click** (or tap) an object to select it. Click the same spot again to select the one behind it.
 - **Click nothing** (the sky, the sea, the ground) to deselect. Big things like the ground are selected from the Scene list instead, so you don’t grab them by accident.
+- Selecting from the **Scene** list (or ⌘K, or **Show in game** in the Library) doesn’t move your camera when the object is already on screen. Only when it’s out of sight does the view slide to it, and never so far that it ends up tiny. Deselecting never moves the camera either.
 - <kbd>Esc</kbd> steps back: it closes an open menu, then puts the tool down, then deselects.
 
 ![Lantern Cove with the lighthouse selected: an orange outline, its name, and the tool strip under it](media/selected.webp)
@@ -117,6 +118,7 @@ Several selected move, turn and resize together.
 
 - <kbd>⌘</kbd><kbd>K</kbd> (<kbd>Ctrl</kbd><kbd>K</kbd>) opens the list of every action. Type a word to find one, like “library” or “play.” A sentence goes to your AI.
 - <kbd>?</kbd> shows every keyboard shortcut.
+- <kbd>P</kbd> plays the game. While you play, <kbd>P</kbd> pauses and resumes; the **Edit** button takes you back. More in [Play](play.md).
 
 ## The Library
 

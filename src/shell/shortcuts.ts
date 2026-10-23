@@ -18,6 +18,8 @@ export interface ShortcutSheetDeps {
   hasUi?(): boolean;
   /** The game has levels (rows marked `levels` show only then). */
   hasLevels?(): boolean;
+  /** Playing with a pause (the rows' `playing` names show then: P = Pause / Resume). */
+  playing?(): boolean;
   /** Opened / closed (main.ts shows the scrim and tells the game what is covered). */
   changed(open: boolean): void;
 }
@@ -39,7 +41,7 @@ export function createShortcutSheet(d: ShortcutSheetDeps) {
         // The grey line: when the key does this ("Nothing selected"), then the row's own note (keymap.ts `when`).
         const note = [k.when ? d.t(`keys.when.${k.when}`) : '', k.note ? d.t(k.note) : ''].filter(Boolean).join(' · ');
         dl.append(h('div', { class: 'keys-row', dataset: { key: k.id } },
-          h('dt', {}, d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
+          h('dt', {}, k.playing && d.playing?.() ? k.playing.map((x) => d.t(x)).join(' / ') : d.t(k.label || `keys.${k.id}`), note ? h('span', { class: 'keys-note', text: note }) : null),
           h('dd', {}, ...keys.flatMap((s, i) => [i ? h('span', { class: 'keys-or', text: ' ' }) : null, h('kbd', { text: s })]))));
       }
       // 2D adds a fourth group (draw order); the columns wrap (shell.css .keys-cols).
