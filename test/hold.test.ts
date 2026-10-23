@@ -80,13 +80,14 @@ test('holdItem: a 3D ground is held until freed; 2D grounds are left as they wer
   const pillar = holdItem(item('pillar'), s, '3d');
   assert.equal(pillar.held, 'game');
   assert.deepEqual(pillar.driven, ['move']);
-  assert.equal(pillar.movable, false);
+  assert.equal(pillar.movable, true, 'studio-move-plain: Move sets where it starts');
+  assert.equal(pillar.startSpot, true);
   assert.equal(canLift(pillar), true, 'its height is kept: the Height tool still works');
   assert.equal(pillar.rotatable && pillar.scalable, true);
   s.driven.set('boat', { move: false, lift: true, turn: false, size: false });
   const boat = holdItem(item('boat'), s, '3d');
   assert.equal(boat.movable, true, 'a bobbing boat can still be moved across the water');
-  assert.equal(canLift(boat), false);
+  assert.equal(canLift(boat), true, 'its start height is yours too (studio-move-plain)');
   assert.equal(canLift({ movable: false }), false, 'a locked object (game rules): no height either, as before');
 });
 
@@ -118,7 +119,7 @@ test('withHold: drags, height steps, turns and resizes of what is held do nothin
   a.nudgeY!('pillar', 1);
   a.rotate('pillar', 1);
   a.setPose('road', { p: [0, 16, 0] });
-  assert.deepEqual(calls, ['nudgeY pillar', 'rotate pillar', 'setPose road']);
+  assert.deepEqual(calls, ['grab pillar', 'nudgeY pillar', 'rotate pillar', 'setPose road'], 'the pillar\'s start spot can be dragged (studio-move-plain)');
   s.freed.add('road');
   a.list();
   a.nudgeY!('road', 1);
@@ -178,7 +179,8 @@ test('a copy of what the game moves is held like its original', () => {
   const copy = holdItem(item('pillar-9', [3, 0, -40], { copyOf: 'pillar-2', movable: true, liftable: true }), s, '3d');
   assert.equal(copy.held, 'game');
   assert.deepEqual(copy.driven, ['move']);
-  assert.equal(copy.movable, false, 'its place is the game\'s');
+  assert.equal(copy.movable, true, 'its start spot is yours, as its original\'s (studio-move-plain)');
+  assert.equal(copy.startSpot, true);
   assert.equal(copy.scalable, true, 'its size is still yours');
   assert.equal(holdItem(item('barrel-2', [0, 0, 0], { copyOf: 'barrel' }), s, '3d').held, undefined, 'a copy of a still object is free');
 });

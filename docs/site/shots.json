@@ -38,7 +38,7 @@
     { "as": "motion-or", "run": "timeline2", "file": "after-pc-light-2-when.png" },
     { "as": "motion-link", "run": "focus", "file": "after-pc-light-{lang}-2-list.png" },
     { "as": "motion-scene", "run": "focus", "file": "after-pc-light-{lang}-3-linked.png" },
-    { "as": "tool-off", "run": "tool-clear", "file": "after-{lang}-light-2-why.png" },
+    { "as": "strip-game", "run": "tool-clear", "file": "after-{lang}-light-1-strip.png" },
     { "as": "motion-strip", "run": "no-presets", "file": "after-{lang}-light-1-menu.png" },
     { "as": "motion-make", "run": "no-presets", "file": "after-{lang}-light-3-made.png" },
     { "as": "levels", "run": "levels", "file": "after-pc-light-2-menu.png" },

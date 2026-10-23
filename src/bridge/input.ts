@@ -90,7 +90,7 @@ import { nativeClearTimeout, nativeNow, nativeSetTimeout } from '../core/native.
 import { keyStep } from '../core/keys.ts';
 import type { EditState } from './editor.ts';
 import type { ToolHost } from './game-tools.ts';
-import { HANDLE_LABELS, MANY_LABEL, OFF_LINES, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
+import { HANDLE_LABELS, MANY_LABEL, OFF_LINES, gameNote, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey, type HandleKind, type Handles, type Outline } from './handles.ts';
 import type { EditsAdapter } from '../core/edits.ts';
 import { createRiseButtons, type RiseDir } from './rise.ts';
 import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type DetentState } from './snap.ts';
@@ -422,8 +422,9 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
   /**
    * Why tool `k` does not work on what is picked, or null (studio-tool-clear, 2026-10-23): the strip dims it and a press
-   * on it, or its key, says why (placement/tool-off) instead of choosing it. With several picked: off only when it works
-   * on none of them (the strip's old rule, some()), and the why is the first one's.
+   * on it, or its key, does nothing (studio-move-plain, 2026-10-23: the menu it opened is gone); the why is the small
+   * line by the strip (noteOf). With several picked: off only when it works on none of them (the strip's old rule,
+   * some()), and the why is the first one's.
    */
   const offOf = (k: HandleKind): OffWhy | null => {
     if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return null;
@@ -440,13 +441,23 @@ export function attachInput(deps: InputDeps): InputHandle {
     }
     return out;
   };
-  /** Tell the editor page a dimmed tool was pressed (or its key typed): it opens the why + what to do at the button. */
-  const pressOff = (k: HandleKind, why: OffWhy, touch: boolean, keyboard: boolean) => {
-    if (!state.selected) return;
-    const r = handles.toolRect(k);
-    if (handles.menuOpen()) menu(null);
-    post({ type: 'studio:placement/tool-off', key: state.selected, tool: k, why, line: (OFF_LINES[lang] || OFF_LINES.en)[why][k],
-      x: r?.left ?? 0, y: r?.top ?? 0, w: r?.width ?? 0, h: r?.height ?? 0, touch, keyboard });
+  /**
+   * The one small line by the strip (studio-move-plain, 2026-10-23), or null: one thing the game moves — what the game
+   * does to it and, when it moves it, that a move here sets where it starts (handles.ts gameNote); else the why of the
+   * first dimmed tool. Several picked: the why only (a group has no one game motion to tell).
+   */
+  const noteOf = (off: Partial<Record<HandleKind, string>>): string | null => {
+    const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
+    if (picked.length === 1 && picked[0]!.held === 'game' && picked[0]!.driven?.length) {
+      const g = gameNote(lang, picked[0]!.driven.filter((k) => k !== 'lift' || adapter.dim === '3d'));
+      if (g) return g;
+    }
+    for (const k of ['move', 'lift', 'rotate', 'scale'] as HandleKind[]) if (off[k]) return off[k]!;
+    return null;
+  };
+  const stripCaps = () => {
+    const off = offLines();
+    return { off, note: noteOf(off) };
   };
   /**
    * Does the turn / size button have choices right now (its ▾ shows)? Turn: 3D (the axes, canTurn), or several picked
@@ -466,9 +477,9 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
   const chooseTool = (k: HandleKind | null, from: 'strip' | 'key' | 'shell' | 'menu') => {
     if (k === 'lift' && !(adapter.dim === '3d' && adapter.nudgeY)) return;
-    // A tool that does not work on the pick is never chosen: its why is said instead (a key, ⌘K, the editor page).
-    const off = k ? offOf(k) : null;
-    if (k && off) return pressOff(k, off, false, from !== 'strip');
+    // A tool that does not work on the pick is never chosen (a key, ⌘K, the editor page): nothing happens, and the
+    // why is already the small line by the strip (studio-move-plain — before, a menu opened at the button).
+    if (k && offOf(k)) return;
     const changed = k !== tool;
     tool = k;
     handles.setTool(k);
@@ -967,12 +978,11 @@ export function attachInput(deps: InputDeps): InputHandle {
       mode = { kind: 'none' };
       return;
     }
-    // A dimmed tool (studio-tool-clear): its why and what can be done, at the button — on the press, as a menu button.
-    const off = h && state.selected ? offOf(h) : null;
-    if (h && off) {
+    // A dimmed tool: a press does nothing (studio-move-plain, 2026-10-23 — it opened a menu of why and what to do,
+    // studio-tool-clear); the why is the small line by the strip. The press is still the strip's, not the game's.
+    if (h && state.selected && offOf(h)) {
       ptrs.delete(e.pointerId);
       mode = { kind: 'none' };
-      if (!p.menu) pressOff(h, off, p.type !== 'mouse', false);
       return;
     }
     if (h && state.selected) {
@@ -1520,7 +1530,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       const keys = items.map((i) => i.key);
       const rects = rectsOf(keys);
       handles.selection(shapeOf('you', keys, rects), rects, inRects(rects) ? (MANY_LABEL[lang] || MANY_LABEL.en)(items.length) : null);
-      handles.place(stripAnchor(keys), items.length ? { off: offLines() } : null, adapter.dim);
+      handles.place(stripAnchor(keys), items.length ? stripCaps() : null, adapter.dim);
       return;
     }
     const a = key ? adapter.anchor(key) : null;
@@ -1529,7 +1539,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     // No tag for an object without a name: its label is its key (`path:3/0`), an inner handle a person must never see
     // (dogfood 2026-10-17, U4). The card names it ("Unnamed shape"). inRects: the tag shows only on hover (Ive wave 1, W1-2).
     handles.selection(item ? shapeOf('you', [key!], rects) : null, item ? rects : [], item && a?.visible && inRects(rects) && !item.unstable ? item.label : null);
-    handles.place(a, item ? { off: offLines() } : null, adapter.dim);
+    handles.place(a, item ? stripCaps() : null, adapter.dim);
   };
 
   return {

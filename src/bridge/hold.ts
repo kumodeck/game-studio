@@ -34,7 +34,9 @@ export const canLift = (i: Pick<Item, 'liftable' | 'movable' | 'held'> | undefin
  * Why a tool of the strip does not work on this object (null = it works). The strip shows the four tools for every
  * object, in the same places, and dims the ones that do not work (studio-tool-clear, 2026-10-23: "Move is gone from
  * the strip" — a hexagon the game slides had no Move button at all, and nothing said why; it looked broken). The
- * reason is said in one line on the dimmed button, and a press on it says what can be done instead (shell/tool-off.ts).
+ * reason is said in one small line by the strip (handles.ts noteLine) — a press on a dimmed tool does nothing
+ * (studio-move-plain, 2026-10-23: the menu it opened, and the slash across it, are gone). Move and Height on what the
+ * game moves are never off: they set where it starts (holdItem).
  *   'game'   the game changes this part of it by itself (held 'game', `driven`)
  *   'ground' a ground / road / sky held still until "Make movable"
  *   'locked' the game's rules (.studio/studio.json) lock it
@@ -53,8 +55,8 @@ export function offWhy(i: Pick<Item, 'liftable' | 'movable' | 'held' | 'driven' 
 
 export interface HoldState {
   /**
-   * Grounds the person made movable ("Make movable"), and objects the game moves whose start spot the person chose to
-   * set ("Move where it starts", studio-tool-clear), for this session.
+   * Grounds the person made movable ("Make movable"), for this session. (Objects the game moves needed it too for
+   * "Set where it starts" until studio-move-plain, 2026-10-23: now their start spot is always open, holdItem.)
    */
   freed: Set<string>;
   /** Objects the game moves by itself, found when editing started. */
@@ -75,13 +77,15 @@ export function holdItem(it: Item, s: HoldState, dim: Dim): Item {
   const d = s.driven.get(it.key) ?? (it.copyOf && !s.placing?.has(it.key) ? s.driven.get(it.copyOf) : undefined);
   // The game's own motion wins over "ground": a road the game scrolls is not kept where it is put either.
   if (d && (d.move || d.lift || d.turn || d.size)) {
-    // "Move where it starts" (studio-tool-clear, 2026-10-23: "if it can, let the person move where the game starts
-    // moving it"): its place and height work again. A runner moves things on from where they are (z += speed · dt), so
-    // where it stands in the editor is where it starts — the loader puts it there before the first frame — and the game
-    // takes it on from there. Its turn and size stay held: a game that spins or pulses a thing mostly sets the angle /
-    // the size outright, so a start value there would not show. A game that sets the place outright every frame wins
-    // all the same; the card says so ("the game moves it on from there").
-    const start = s.freed.has(it.key) && (d.move || d.lift);
+    // Its place and height are where it starts (studio-move-plain, 2026-10-23: "the left of the strip was the plain
+    // Move — now both ends look like Motion"): Move and Height work on it like on anything else, with no step first.
+    // Before (studio-tool-clear) Move was dimmed with a slash and a press opened a menu whose "Set where it starts"
+    // freed it (`freed`); the slashed Move read as a second Motion button. A runner moves things on from where they are
+    // (z += speed · dt), so where it stands in the editor is where it starts — the loader puts it there before the
+    // first frame — and the game takes it on from there. Its turn and size stay held: a game that spins or pulses a
+    // thing mostly sets the angle / the size outright, so a start value there would not show. A game that sets the
+    // place outright every frame wins all the same; the line under the strip and the card say so.
+    const start = d.move || d.lift;
     return {
       ...it,
       held: 'game',

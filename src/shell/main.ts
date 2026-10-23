@@ -50,7 +50,6 @@ import { createLibraryObjects, DRAG_OBJECT } from './library-objects.ts';
 import { motionsPlayHere } from './play-here.ts';
 import { createLibraryMotions } from './library-motions.ts';
 import { createMotionDrag } from './motion-drag.ts';
-import { toolOffEntries } from './tool-off.ts';
 import { createMotionTool } from './motion-tool.ts';
 import { rulesFor } from '../core/rules.ts';
 import { samePose } from './placement-model.ts';
@@ -1240,31 +1239,6 @@ export function start(host: StudioHost) {
     menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
     frame: () => iframe,
   });
-
-  /**
-   * A dimmed tool of the strip pressed (studio-tool-clear, tool-off.ts): its why and what can be done, in the editor's
-   * menu at the button — the place the Motion button's menu takes (under it with a mouse, above it with a finger).
-   */
-  function toolOffMenu(m: Extract<BridgeToShell, { type: 'studio:placement/tool-off' }>) {
-    if (m.key !== selected) return;
-    const entries = toolOffEntries({
-      t,
-      unhold: (k) => send({ type: 'studio:placement/unhold', keys: [k] }),
-      choose: (tool) => send({ type: 'studio:placement/tool', tool }),
-      ask: host.offline ? null : (text) => focusAsk(text),
-    }, m.key, m.tool, m.why, m.line);
-    const f = iframe?.getBoundingClientRect();
-    const fx = f?.left ?? 0, fy = f?.top ?? 0;
-    const btn = m.w > 0 ? new DOMRect(fx + m.x, fy + m.y, m.w, m.h) : null;
-    const x = btn ? (m.touch ? btn.left + btn.width / 2 : btn.left) : fx + (f?.width ?? 0) / 2;
-    const y = btn ? (m.touch ? btn.top : btn.bottom + 6) : fy + (f?.height ?? 0) / 2;
-    ctxMenu.show(entries, x, y, { place: 'tool-off', touch: m.touch, keyboard: m.keyboard, label: t('tooloff.menu'), floor: menuFloor() });
-    const r = ctxMenu.el.getBoundingClientRect();
-    if (btn && r.top < btn.bottom && r.bottom > btn.top) {
-      const above = btn.top - r.height - 6;
-      ctxMenu.el.style.top = `${Math.round(above >= 8 ? above : btn.bottom + 6)}px`;
-    }
-  }
 
   /**
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
@@ -2841,7 +2815,6 @@ export function start(host: StudioHost) {
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
     if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
-    if (m.type === 'studio:placement/tool-off') return toolOffMenu(m);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });

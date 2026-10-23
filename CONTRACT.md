@@ -286,17 +286,20 @@ itself slides along the road every frame (the new place could never last). Since
   `size`): only what the game changes is off, the rest stays editable, and the card says so.
 - Both are refused in the editor's own adapter layer (`bridge/hold.ts`: grab / drag / nudgeY / rotate / scale), so
   keys, the ⌘K list and game tools cannot get round it. `setPose` (undo, redo, loading a save) is not held.
-- **Set where it starts** (studio-tool-clear, 2026-10-23). The same `placement/unhold` on an object the game moves
-  (`driven` has `move` or `lift`) gives back Move and Height for this session, and the item carries
-  `Item.startSpot: true`: where it is put is where the loader places it before the first frame, and the game moves it
-  on from there (a game that sets the place outright every frame still wins; the card says what a move does now).
-  Turn and size the game sets stay held — a start angle or size would not show.
+- **Where it starts** (studio-tool-clear, then studio-move-plain, 2026-10-23). On an object the game moves (`driven`
+  has `move` or `lift`) Move and Height always work, and the item carries `Item.startSpot: true`: where it is put is
+  where the loader places it before the first frame, and the game moves it on from there (a game that sets the place
+  outright every frame still wins; the card says what a move does now). Turn and size the game sets stay held — a
+  start angle or size would not show. (Until studio-move-plain the person first chose "Set where it starts" from a
+  menu on a dimmed, slashed Move, which read as a second Motion button.)
 - **The strip never loses a tool** (studio-tool-clear). Every object has the same tools in the same places (move ·
   height in 3D · turn · size); one that does not work on it is dimmed (`aria-disabled`), its tooltip one line of why
   and what can be done (`bridge/handles.ts OFF_LINES`, `bridge/hold.ts offWhy`: `game` / `ground` / `locked` /
-  `none`). A press on it, its key or ⌘K never chooses it: the bridge sends `placement/tool-off` and the editor opens
-  its small menu at the button with that line and the rows that do it (Set where it starts · Make movable · Ask AI,
-  `shell/tool-off.ts`). Before, the button was hidden and nothing said why ("the strip lost Move").
+  `none`). It keeps its own icon (no slash). A press on it, its key or ⌘K does nothing; the why is one small line
+  right by the strip (`bridge/handles.ts` `.note`, `gameNote` for what the game moves: "Your game moves this while
+  playing. Moving it here sets where it starts."), never a menu and never an "Ask AI" row — the ask box is where the
+  AI is asked (studio-move-plain, 2026-10-23; before, a menu opened at the button, `placement/tool-off`). Before
+  studio-tool-clear, the button was hidden and nothing said why ("the strip lost Move").
 - **Check before saving.** A changed ground (any visible change), or any 3D object moved 5 m up / down, 25 m across or
   resized 3×, is listed in words before Save hands the file to the AI ("Raised the road 16 m"), with **Put back and
   save** and **Save anyway** (`shell/safe-save.ts`).
@@ -573,7 +576,6 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/context` | `{ key, x, y, touch }`: a right-click (Mac: also Control-click) or a long press on the game: the editor page opens the menu for that place. `key` = the object under it (null = nothing / only the ground); an object not picked yet was picked first, without moving the camera |
 | | `placement/at-is` | `{ id, key }`: the answer to `placement/at` (the same test as a tap; `key` null = nothing there) |
 | | `placement/motion-press` | `{ key, x, y, w, h, touch, keyboard }`: the strip's Motion button pressed (or A / 5 with the game page focused; studio-motion-tool). The editor opens the pick's motion on the timeline, or — none yet — its small menu at the button (`x y w h`, the game page's px; 0 × 0 for a key): "No motion yet", **Make a motion** (the timeline at 1 s, where it stands being 0 s; §1.9.3) and **Use a saved motion** (the Library's; studio-tool-clear, 2026-10-23 — no list of kinds) |
-| | `placement/tool-off` | `{ key, tool, why, line, x, y, w, h, touch, keyboard }`: a dimmed tool of the strip pressed, or its key / ⌘K (studio-tool-clear). `why` = `game` / `ground` / `locked` / `none` (`bridge/hold.ts offWhy`), `line` = its one line in the editor's language (the tooltip). The editor opens its small menu at the button: the line, then what can be done (Set where it starts → `placement/unhold` and `placement/tool`; Make movable; Ask AI) |
 | | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |

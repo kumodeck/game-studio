@@ -33,13 +33,14 @@ Drag a selected object to move it. The strip under it has four tools. Press one,
 
 The tool stays chosen until you press <kbd>Esc</kbd> or choose another. A readout next to the strip shows the numbers as you drag.
 
-**When a tool is dimmed.** The four tools are always there, in the same places. A tool that doesn’t work on what you picked is dimmed. Point at it to see why, or press it for what you can do instead:
+**Things your game moves, and tools that don’t work.** The four tools are always there, in the same places, with the same pictures. When there is something to know about what you picked, one small line shows right under (or over) the strip.
 
-![A hexagon the game moves: Move is dimmed, and pressing it says why, with Set where it starts](media/tool-off.webp)
+![A hexagon the game moves: the strip keeps the plain Move, and the line under it says Your game moves this while playing. Moving it here sets where it starts.](media/strip-game.webp)
 
-- **Your game moves it** (a runner’s obstacles, a spinning coin): **Set where it starts** lets you move it. Where you put it is where it starts; when the game plays, it moves it on from there. The game’s own turning or resizing can’t be set here: **Ask AI** changes it in the code.
-- **A ground, road or sky** is held still so a stray drag can’t move it: **Make movable**.
-- **Your game’s rules lock it**: **Ask AI to change the rule**.
+- **Your game moves it** (a runner’s obstacles, a spinning coin): **Move** works as always. Where you put it is where it starts; when the game plays, it moves it on from there.
+- If your game turns or resizes it, **Turn** or **Size** is dimmed and pressing it does nothing. To change that, ask AI in the box below.
+- **A ground, road or sky** is held still so a stray drag can’t move it: **Make movable** on the card unlocks it.
+- **Your game’s rules lock it**: the tools are dimmed, and the same line says why.
 
 ![The Turn tool chosen on the lighthouse](media/turn.webp)
 

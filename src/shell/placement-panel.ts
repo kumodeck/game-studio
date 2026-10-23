@@ -636,9 +636,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     if (it.held === 'game') {
       card.append(body);
       body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
-      // The same way out as the strip's dimmed Move (studio-tool-clear): set where it starts, here too.
-      if (d.unhold && !it.startSpot && (it.driven?.includes('move') || it.driven?.includes('lift')))
-        body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'start-spot' }, text: d.t(it.driven?.includes('move') ? 'tooloff.start.move' : 'tooloff.start.lift'), onclick: () => d.unhold?.([key]) }));
+      // No "Set where it starts" link any more (studio-move-plain, 2026-10-23): Move already sets it (hold.ts).
       // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
       if (it.movable === false) {
         if (it.unstable) nameNote();
@@ -1165,7 +1163,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
  * changes; then what can still be changed, so the person knows what is worth trying.
  */
 export function heldGameText(it: Pick<Item, 'driven' | 'movable' | 'rotatable' | 'scalable' | 'startSpot'>, dim: Dim, t: (k: string, v?: Record<string, string | number>) => string): string {
-  // "Set where it starts" chosen (studio-tool-clear): what a move does now, not that it won't stick.
+  // Move / Height set where it starts (hold.ts startSpot): what a move does now, not that it won't stick.
   if (it.startSpot) return t('hold.gameStart');
   const driven = new Set(it.driven ?? []);
   const parts = (['move', 'lift', 'turn', 'size'] as const).filter((k) => k !== 'lift' || dim === '3d');

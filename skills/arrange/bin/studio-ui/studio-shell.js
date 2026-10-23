@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.26 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.27 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -231,9 +231,9 @@ const CONTRACT_VERSION = 1;
      
                                                     
      
-                                                                                                             
-                                                                                                                        
-                                                               
+                                                                                                                     
+                                                                                                                   
+                                                                                                                   
      
                       
      
@@ -995,9 +995,8 @@ const MSG_PREFIX = 'studio:';
                                                                                                                       
                                                                                  
      
-                                                                                                                       
-                                                                                                                      
-                               
+                                                                                                                        
+                                                                                                                     
      
                                                        
      
@@ -1265,12 +1264,6 @@ const MSG_PREFIX = 'studio:';
                                                              
                                                                                                                        
                                                     
-     
-                                                                                                                   
-                                                                                                                      
-                                                                                                               
-     
-                                                                                                                                                                                                                
      
                                                                                                                    
                                                                                                                     
@@ -11666,63 +11659,6 @@ __def(__exports, "createMotionDrag", () => createMotionDrag);
 };
 __defs[28] = function (__exports) {
 'use strict';
-// tool-off.ts
-
-// A dimmed tool of the strip pressed (studio-tool-clear, 2026-10-23). The strip keeps the same four tools for every
-// object (bridge/handles.ts); one that does not work on the pick is dimmed, and a press on it (or its key, or ⌘K)
-// comes here as placement/tool-off. The editor's small menu opens at the button: the why in one sentence (the
-// button's own tooltip, bridge/handles.ts OFF_LINES), then what can be done — never a sentence that ends on "you
-// can't" (the brief, from a hands-on try: "the strip lost Move": the button was hidden and nothing said why).
-//
-//   the game moves its place / height  →  "Set where it starts" / "Set the height it starts at" (bridge/hold.ts
-//                                          startSpot: Move and Height work again and are chosen) · Ask AI
-//   the game turns it / sizes it       →  Ask AI (a start angle or size would not show: hold.ts)
-//   a ground held still                →  "Make movable" (the card's and the menu's own row) · Ask AI
-//   the game's rules lock it           →  Ask AI to change the rule
-//   it cannot take the tool            →  Ask AI
-//
-// WHY the editor's menu (context-menu.ts) and not words in the game page: the rows act in the editor (the chat box,
-// the hold), and the menu already has the glass, the keys, Esc, a finger's size — the Motion button's menu is the
-// same menu, from the same strip (motion-tool.ts).
-                                                
-                                                   
-
-                                                           
-
-                              
-                                                                 
-                                                                                                           
-                            
-                                                                                                         
-                                
-                                                                                                                   
-                                       
- 
-
-/** The menu's rows for a dimmed `tool` on `key`, under its `line` (the why, already in the person's language). */
-function toolOffEntries(d             , key        , tool           , why        , line        )              {
-  const out              = [{ note: line }];
-  const ask = (label        , text        ) => {
-    // ✦ (studio-uniforms, 2026-10-23): the AI's uniform, after a line, so it is not read as one of the editor's own rows.
-    if (d.ask) out.push(...(out.length > 1 ? [{ sep: true }         ] : []), { id: 'tool-off-ask', label: d.t(label), ai: true, run: () => d.ask (d.t(text)) });
-  };
-  if (why === 'game') {
-    if (tool === 'move' || tool === 'lift') {
-      out.push({ id: 'tool-off-start', label: d.t(tool === 'move' ? 'tooloff.start.move' : 'tooloff.start.lift'), run: () => (d.unhold(key), d.choose(tool)) });
-      ask('tooloff.ask.moves', 'tooloff.askText.moves');
-    } else ask('tooloff.ask', tool === 'rotate' ? 'tooloff.askText.turn' : 'tooloff.askText.size');
-  } else if (why === 'ground') {
-    out.push({ id: 'tool-off-unhold', label: d.t('hold.free'), run: () => (d.unhold(key), d.choose(tool)) });
-    ask('tooloff.ask', `tooloff.askText.${tool}`);
-  } else if (why === 'locked') ask('tooloff.ask.rule', 'tooloff.askText.rule');
-  else ask('tooloff.ask', `tooloff.askText.${tool}`);
-  return out;
-}
-
-__def(__exports, "toolOffEntries", () => toolOffEntries);
-};
-__defs[29] = function (__exports) {
-'use strict';
 // motion-tool.ts
 
 // The Motion button in the object's tool strip (studio-motion-tool, 2026-10-22). The strip itself is the game page's
@@ -11871,7 +11807,7 @@ function createMotionTool(d                ) {
 
 __def(__exports, "createMotionTool", () => createMotionTool);
 };
-__defs[30] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -12125,7 +12061,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[31] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // pose-compare.ts
 
@@ -12178,7 +12114,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[32] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // layers.ts
 
@@ -12317,7 +12253,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[33] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // motion-library.ts
 
@@ -12446,7 +12382,7 @@ __def(__exports, "libOf", () => libOf);
 __def(__exports, "MotionLibrary", () => MotionLibrary);
 __def(__exports, "motionLibrary", () => motionLibrary);
 };
-__defs[34] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -12467,7 +12403,7 @@ __defs[34] = function (__exports) {
 // turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
                                                                                                       
 const { whenOf } = __require(19);
-const { motionLibrary } = __require(33);
+const { motionLibrary } = __require(32);
 const { CHANNELS, toClips } = __require(24);
 
 /** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
@@ -12665,7 +12601,7 @@ __def(__exports, "attachAll", () => attachAll);
 __def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[35] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -12689,9 +12625,9 @@ __defs[35] = function (__exports) {
 // AI has changed the code makes the same copies and deletions again; after
 // the AI has done it, the copy is simply a game object under the same key.
 __require(0);
-const { hasLayer, orderOfLayer } = __require(32);
-const { roundPose, samePose } = __require(31);
-const { MotionStore } = __require(34);
+const { hasLayer, orderOfLayer } = __require(31);
+const { roundPose, samePose } = __require(30);
+const { MotionStore } = __require(33);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -13290,11 +13226,11 @@ class PlacementModel {
   }
 }
 
-__def(__exports, "roundPose", () => __require(31).roundPose);
-__def(__exports, "samePose", () => __require(31).samePose);
+__def(__exports, "roundPose", () => __require(30).roundPose);
+__def(__exports, "samePose", () => __require(30).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[36] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -13378,20 +13314,6 @@ const en = {
   'motion.tool.make': 'Make a motion',
   'motion.tool.saved': 'Use a saved motion',
   'motion.tool.savedHead': 'Saved motions',
-  'tooloff.menu': 'Why this tool is off',
-  'tooloff.start.move': 'Set where it starts',
-  'tooloff.start.lift': 'Set the height it starts at',
-  'tooloff.ask': 'Ask AI to change it…',
-  'tooloff.ask.moves': 'Ask AI to change how it moves…',
-  'tooloff.ask.rule': 'Ask AI to change the rule…',
-  'tooloff.askText.moves': 'Change how this moves: ',
-  'tooloff.askText.turn': 'Change how this turns: ',
-  'tooloff.askText.size': 'Change how its size changes: ',
-  'tooloff.askText.rule': 'Let me move this in the editor (change the game’s rule for it)',
-  'tooloff.askText.move': 'Move this: ',
-  'tooloff.askText.lift': 'Change its height: ',
-  'tooloff.askText.rotate': 'Turn this: ',
-  'tooloff.askText.scale': 'Resize this: ',
   'hold.gameStart': 'Your game moves this while playing. Where you put it is where it starts; the game moves it on from there.',
   'tl.when.first': 'Pick a later time on the ruler, then move {name} there: that makes its motion',
   'tl.attached': '“{name}” attached',
@@ -14196,20 +14118,6 @@ const ja                               = {
   'motion.tool.make': '動きを作る',
   'motion.tool.saved': '保存した動きを使う',
   'motion.tool.savedHead': '保存した動き',
-  'tooloff.menu': 'この道具が使えない理由',
-  'tooloff.start.move': 'スタート位置を決める',
-  'tooloff.start.lift': '最初の高さを決める',
-  'tooloff.ask': '変えるよう AI に頼む…',
-  'tooloff.ask.moves': '動き方を変えるよう AI に頼む…',
-  'tooloff.ask.rule': 'ルールを変えるよう AI に頼む…',
-  'tooloff.askText.moves': 'この物の動き方を変えて: ',
-  'tooloff.askText.turn': 'この物の回り方を変えて: ',
-  'tooloff.askText.size': 'この物の大きさの変わり方を変えて: ',
-  'tooloff.askText.rule': 'エディタでこの物を動かせるようにして（ゲームのルールを変えて）',
-  'tooloff.askText.move': 'この物を動かして: ',
-  'tooloff.askText.lift': 'この物の高さを変えて: ',
-  'tooloff.askText.rotate': 'この物を回して: ',
-  'tooloff.askText.scale': 'この物の大きさを変えて: ',
   'hold.gameStart': 'ゲームが動かしている物です。置いた所がスタート位置になり、遊ぶとそこからゲームが動かします。',
   'tl.when.first': '目盛りで先の時刻を選んで、{name} をそこへ動かすと、動きができます',
   'tl.attached': '“{name}” を付けました',
@@ -14919,7 +14827,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[37] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -15022,7 +14930,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[38] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -15366,7 +15274,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[39] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -15394,7 +15302,7 @@ __defs[39] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(38);
+const { statusCovers } = __require(37);
 
                                                                                                                                                                          
 
@@ -15537,7 +15445,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[40] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ai-presence.ts
 
@@ -15580,7 +15488,7 @@ __defs[40] = function (__exports) {
 // - unsure   = everything else (never seen watching, a host that cannot tell, the grace after a heartbeat stops).
 // Pure, so test/ai-presence.test.ts reads the rules without a browser; main.ts keeps the clock and draws the words.
                                               
-const { aiBusy } = __require(39);
+const { aiBusy } = __require(38);
 
                                                                              
 
@@ -15645,7 +15553,7 @@ __def(__exports, "UNSEEN_MS", () => UNSEEN_MS);
 __def(__exports, "QUIET_WORK_MS", () => QUIET_WORK_MS);
 __def(__exports, "aiNameKey", () => aiNameKey);
 };
-__defs[41] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -15691,7 +15599,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[42] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -15770,7 +15678,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[43] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -15783,7 +15691,7 @@ __defs[43] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(39);
+const { moreIn } = __require(38);
 
                                 
                  
@@ -15849,7 +15757,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[44] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -15912,7 +15820,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[45] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -16000,7 +15908,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[46] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -16010,7 +15918,7 @@ __defs[46] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(45);
+const { DEFAULT_UI, UI_LIMITS } = __require(44);
 
                                
                          
@@ -16093,14 +16001,14 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[47] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
 // Copy, delete and several-at-once in the shell: pure helpers over the item
 // list (no DOM), so they are unit-tested (test/edit-ops.test.ts).
                                            
-const { hasLayer } = __require(32);
+const { hasLayer } = __require(31);
 
 /**
  * Key for a new copy of `from`: a readable name the AI can put in the code
@@ -16197,7 +16105,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[48] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -16351,7 +16259,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[49] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -16383,10 +16291,10 @@ __defs[49] = function (__exports) {
 // replacing; the heading of a "name ×N" group selects the whole group.
                                                       
 const { h, safeImageSrc } = __require(16);
-const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(47);
+const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(31);
+const { groupLayerPossible, sameKind } = __require(46);
 const { icon, setButton } = __require(21);
-const { tipText } = __require(48);
+const { tipText } = __require(47);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -16993,9 +16901,7 @@ function createPlacementPanel(d                    )                 {
     if (it.held === 'game') {
       card.append(body);
       body.append(h('p', { class: 'muted note-line held-note', dataset: { part: 'held' }, text: heldGameText(it, d.dim(), d.t) }));
-      // The same way out as the strip's dimmed Move (studio-tool-clear): set where it starts, here too.
-      if (d.unhold && !it.startSpot && (it.driven?.includes('move') || it.driven?.includes('lift')))
-        body.append(h('button', { type: 'button', class: 'link-btn held-free', dataset: { action: 'start-spot' }, text: d.t(it.driven?.includes('move') ? 'tooloff.start.move' : 'tooloff.start.lift'), onclick: () => d.unhold?.([key]) }));
+      // No "Set where it starts" link any more (studio-move-plain, 2026-10-23): Move already sets it (hold.ts).
       // Place held: no number fields (they would set a place the game undoes); height / turn / size stay on the strip.
       if (it.movable === false) {
         if (it.unstable) nameNote();
@@ -17522,7 +17428,7 @@ function createPlacementPanel(d                    )                 {
  * changes; then what can still be changed, so the person knows what is worth trying.
  */
 function heldGameText(it                                                                           , dim     , t                                                            )         {
-  // "Set where it starts" chosen (studio-tool-clear): what a move does now, not that it won't stick.
+  // Move / Height set where it starts (hold.ts startSpot): what a move does now, not that it won't stick.
   if (it.startSpot) return t('hold.gameStart');
   const driven = new Set(it.driven ?? []);
   const parts = (['move', 'lift', 'turn', 'size']         ).filter((k) => k !== 'lift' || dim === '3d');
@@ -17544,7 +17450,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[50] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -17672,7 +17578,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[51] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -17752,7 +17658,7 @@ __def(__exports, "sceneSize", () => sceneSize);
 __def(__exports, "asScene", () => asScene);
 __def(__exports, "asOrdinary", () => asOrdinary);
 };
-__defs[52] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -17852,7 +17758,7 @@ function motionCardRow(d                )                {
 
 __def(__exports, "motionCardRow", () => motionCardRow);
 };
-__defs[53] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -17874,12 +17780,12 @@ __defs[53] = function (__exports) {
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                               
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(50);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers } = __require(51);
-const { libOf } = __require(33);
-const { motionCardRow } = __require(52);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(49);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers } = __require(50);
+const { libOf } = __require(32);
+const { motionCardRow } = __require(51);
                                                      
-const { sameMotion: sameFile } = __require(34);
+const { sameMotion: sameFile } = __require(33);
 
 /**
  * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
@@ -19285,7 +19191,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[54] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -19337,7 +19243,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[55] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -19643,7 +19549,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[56] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -19744,7 +19650,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[57] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -19862,7 +19768,7 @@ class UndoStack {
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 };
-__defs[58] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -19982,7 +19888,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[59] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -19996,7 +19902,7 @@ __defs[59] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
 const { icon } = __require(21);
-const { KEYMAP, keysOf } = __require(48);
+const { KEYMAP, keysOf } = __require(47);
 
                                     
                          
@@ -20063,7 +19969,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[60] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -20312,7 +20218,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[61] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -20710,7 +20616,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[62] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -20884,7 +20790,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[63] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -21083,7 +20989,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[64] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -21194,7 +21100,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[65] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -21351,7 +21257,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[66] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -21421,7 +21327,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[67] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -21510,7 +21416,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[68] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -21659,7 +21565,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[69] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -21722,7 +21628,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[70] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -21935,7 +21841,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[71] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -22025,7 +21931,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[72] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -22041,11 +21947,11 @@ __defs[72] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(68);
-const { withLooks } = __require(67);
-const { createUiScreens } = __require(69);
-const { UiStyleModel, validLook, validTheme } = __require(70);
-const { createUiTheme } = __require(71);
+const { createUiCard } = __require(67);
+const { withLooks } = __require(66);
+const { createUiScreens } = __require(68);
+const { UiStyleModel, validLook, validTheme } = __require(69);
+const { createUiTheme } = __require(70);
                                                    
 
                              
@@ -22240,7 +22146,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[73] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -22317,7 +22223,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[74] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -22342,48 +22248,47 @@ const { createLibraryObjects, DRAG_OBJECT } = __require(18);
 const { motionsPlayHere } = __require(20);
 const { createLibraryMotions } = __require(26);
 const { createMotionDrag } = __require(27);
-const { toolOffEntries } = __require(28);
-const { createMotionTool } = __require(29);
-const { rulesFor } = __require(30);
-const { samePose } = __require(35);
+const { createMotionTool } = __require(28);
+const { rulesFor } = __require(29);
+const { samePose } = __require(34);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setExtraText, translate } = __require(36);
-const { NEXT_STEPS, renderNextSteps } = __require(37);
-const { statusCovers } = __require(38);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(39);
-const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(40);
-const { bounces, saveLoud } = __require(41);
-const { askView: questionView } = __require(42);
-const { playLine, playWords } = __require(43);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(44);
-const { renderSettings } = __require(46);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(45);
-const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { createPlacementPanel } = __require(49);
-const { createTimeline } = __require(53);
-const { createMotionAsk } = __require(54);
-const { motionLibrary } = __require(33);
-const { attachWorld, roundLib } = __require(34);
+const { detectLang, setExtraText, translate } = __require(35);
+const { NEXT_STEPS, renderNextSteps } = __require(36);
+const { statusCovers } = __require(37);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(38);
+const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(39);
+const { bounces, saveLoud } = __require(40);
+const { askView: questionView } = __require(41);
+const { playLine, playWords } = __require(42);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(43);
+const { renderSettings } = __require(45);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(44);
+const { dropTarget, hasLayer, layerTarget } = __require(31);
+const { createPlacementPanel } = __require(48);
+const { createTimeline } = __require(52);
+const { createMotionAsk } = __require(53);
+const { motionLibrary } = __require(32);
+const { attachWorld, roundLib } = __require(33);
 const { icon, setButton } = __require(21);
-const { createPalette } = __require(55);
-const { fitPicture } = __require(56);
-const { PlacementModel } = __require(35);
-const { UndoStack, poseChange } = __require(57);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(47);
+const { createPalette } = __require(54);
+const { fitPicture } = __require(55);
+const { PlacementModel } = __require(34);
+const { UndoStack, poseChange } = __require(56);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(46);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(48);
-const { installTooltips } = __require(58);
-const { createShortcutSheet } = __require(59);
-const { createContextMenu } = __require(60);
-const { Levels, worldOf } = __require(61);
-const { createLevelSwitch, makeRows } = __require(62);
-const { contextRows } = __require(63);
-const { bigChanges, createSafeSave } = __require(64);
-const { createUnsavedGuard, lostBy, playAsks } = __require(65);
-const { createLayerSwitch } = __require(66);
-const { uiAsPlacement, uiEntries, withUi } = __require(67);
-const { createUiWire } = __require(72);
-const { barPress, gripEnd, readFold, writeFold } = __require(73);
+const { keyOf, tipText } = __require(47);
+const { installTooltips } = __require(57);
+const { createShortcutSheet } = __require(58);
+const { createContextMenu } = __require(59);
+const { Levels, worldOf } = __require(60);
+const { createLevelSwitch, makeRows } = __require(61);
+const { contextRows } = __require(62);
+const { bigChanges, createSafeSave } = __require(63);
+const { createUnsavedGuard, lostBy, playAsks } = __require(64);
+const { createLayerSwitch } = __require(65);
+const { uiAsPlacement, uiEntries, withUi } = __require(66);
+const { createUiWire } = __require(71);
+const { barPress, gripEnd, readFold, writeFold } = __require(72);
 
                                                                         
 
@@ -23532,31 +23437,6 @@ function start(host            ) {
     menuOpen: () => ctxMenu.isOpen() && app.dataset.menu === 'motion',
     frame: () => iframe,
   });
-
-  /**
-   * A dimmed tool of the strip pressed (studio-tool-clear, tool-off.ts): its why and what can be done, in the editor's
-   * menu at the button — the place the Motion button's menu takes (under it with a mouse, above it with a finger).
-   */
-  function toolOffMenu(m                                                               ) {
-    if (m.key !== selected) return;
-    const entries = toolOffEntries({
-      t,
-      unhold: (k) => send({ type: 'studio:placement/unhold', keys: [k] }),
-      choose: (tool) => send({ type: 'studio:placement/tool', tool }),
-      ask: host.offline ? null : (text) => focusAsk(text),
-    }, m.key, m.tool, m.why, m.line);
-    const f = iframe?.getBoundingClientRect();
-    const fx = f?.left ?? 0, fy = f?.top ?? 0;
-    const btn = m.w > 0 ? new DOMRect(fx + m.x, fy + m.y, m.w, m.h) : null;
-    const x = btn ? (m.touch ? btn.left + btn.width / 2 : btn.left) : fx + (f?.width ?? 0) / 2;
-    const y = btn ? (m.touch ? btn.top : btn.bottom + 6) : fy + (f?.height ?? 0) / 2;
-    ctxMenu.show(entries, x, y, { place: 'tool-off', touch: m.touch, keyboard: m.keyboard, label: t('tooloff.menu'), floor: menuFloor() });
-    const r = ctxMenu.el.getBoundingClientRect();
-    if (btn && r.top < btn.bottom && r.bottom > btn.top) {
-      const above = btn.top - r.height - 6;
-      ctxMenu.el.style.top = `${Math.round(above >= 8 ? above : btn.bottom + 6)}px`;
-    }
-  }
 
   /**
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
@@ -25133,7 +25013,6 @@ function start(host            ) {
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
     if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
-    if (m.type === 'studio:placement/tool-off') return toolOffMenu(m);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
     else if (m.type === 'studio:placement/moved' && m.end) emit('moved', { key: m.key, pose: m.pose });
@@ -26972,7 +26851,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[75] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -27151,19 +27030,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[76] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(74);
-const { createLocalHost } = __require(75);
+const { start } = __require(73);
+const { createLocalHost } = __require(74);
 
 start(createLocalHost());
 
 
 };
-__require(76);
+__require(75);
 })();

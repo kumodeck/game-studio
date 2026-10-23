@@ -4,17 +4,19 @@
 // is the check; the photos for the review are dark). test/neon-run is the game: orange hexagons the game slides at
 // you, a ring it turns, an orb it pulses, a gate and a ship nothing moves.
 //   1. hex-1 picked (the game moves its place): the strip has the same four tools in the same order as anywhere —
-//      Move · Height · Turn · Size — Move dimmed (not gone), its tooltip the reason in one line;
-//   2. a press on the dimmed Move: one line of why + what can be done ("Set where it starts", "Ask AI"), at the
-//      strip; "Set where it starts" → Move works, the hexagon moves, the line under the strip says what that does;
+//      Move · Height · Turn · Size — none dimmed: Move is the plain Move, the same icon as on the ship (studio-move-plain,
+//      2026-10-23: "the left of the strip was the plain Move — both ends are Motion now": the slashed Move and its menu
+//      are gone); one small line by the strip says the game moves it and a move here sets where it starts;
+//   2. a press on Move: no menu, Move is chosen; a drag moves the hexagon's start spot. The ring the game turns: Turn
+//      dimmed with its own icon, a press opens nothing, the line says the game turns it;
 //   3. the ship picked (no motion): the Motion button → two choices, "Make a motion" and "Use a saved
 //      motion", no list of kinds; "Make a motion" opens the timeline on the ship at 1 s, one line saying what
 //      to do next, and one drag of the ship makes the motion ("✓ … moves from 0 s to 1 s");
 //   4. the gate: "Use a saved motion" → Hop; its "When" menu reads as sentences: three ways up front, the rest under
 //      "More", one "Ask AI";
 //   5. no page errors.
-// Pictures (`--shots <dir>`): <tag>-<lang>-<theme>-<1-strip|2-why|3-menu|4-made|5-when>.png. `--before --ui <dir>
-// --loader <file>`: the v0.1.24 build, pictures only (1-strip, 3-menu, 5-when), no checks.
+// Pictures (`--shots <dir>`): <tag>-<lang>-<theme>-<1-strip|2-why|2-ring|3-menu|4-made|5-when>.png. `--before --ui <dir>
+// --loader <file>`: an older build, pictures only (1-strip, 2-why = the press on Move, 3-menu, 5-when), no checks.
 //
 //   node test/studio-tool-clear.browser.mjs [--shots <dir>] [--before --ui <dir> --loader <file>] [--themes dark,light] [--lang en|ja]
 // Exit 1 on a failure.
@@ -52,8 +54,8 @@ const DBG = `${GAME}.__gameStudio?._debug`;
 const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.querySelector('[data-studio-ui]').shadowRoot`;
 const TL = `window.__studioTimeline`;
 const W = LANG === 'ja'
-  ? { why: /ゲームが動かします/, start: 'スタート位置を決める', ask: /AI に/, make: '動きを作る', saved: /保存した動き/, next: /ドラッグ/, made: /0〜1 秒/ }
-  : { why: /game moves this/i, start: 'Set where it starts', ask: /Ask AI/, make: 'Make a motion', saved: /saved motion/i, next: /^Drag /, made: /0–1 s/ };
+  ? { note: /^遊ぶとゲームが動かします。ここで動かすとスタート位置が変わります。$/, turns: /ゲームが回します/, make: '動きを作る', saved: /保存した動き/, next: /ドラッグ/, made: /0〜1 秒/ }
+  : { note: /^Your game moves this while playing\. Moving it here sets where it starts\.$/, turns: /game turns this/, make: 'Make a motion', saved: /saved motion/i, next: /^Drag /, made: /0–1 s/ };
 
 async function open(theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-tool-clear-'));
@@ -110,22 +112,34 @@ async function run(theme) {
     await shot('1-strip');
     const tools = await strip();
     console.log(`  strip: ${tools.join(' ')}`);
-    if (!BEFORE) {
-      check(tools.slice(0, 4).join(' ') === 'move:off lift rotate scale', `${tag}: the four tools in their order, Move dimmed (${tools.join(' ')})`);
+    const note = () => j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const n = ${ROOT}.querySelector('[data-studio-note]');
+      if (!n || n.style.display === 'none' || n.style.visibility === 'hidden') return null; const r = n.getBoundingClientRect(), s = ${ROOT}.querySelector('.row').getBoundingClientRect();
+      return JSON.stringify({ text: n.textContent, gap: Math.max(r.top - s.bottom, s.top - r.bottom) }); })()`);
+    const icon = (k) => j(`JSON.stringify(${ROOT}.querySelector('[data-studio-handle=${k}] svg')?.innerHTML ?? null)`);
+    if (BEFORE) {
+      // The old press on Move: the menu it opened (studio-tool-clear), for the before picture.
       const mv = await inStrip('[data-studio-handle=move]');
-      check(!!mv && W.why.test(mv.title), `${tag}: Move's tooltip says why ("${mv?.title}")`);
-      // ---- 2. press the dimmed Move: why + what to do ----
+      if (mv) await click(mv);
+      await shot('2-why');
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+      await sleep(300);
+    } else {
+      check(tools.slice(0, 4).join(' ') === 'move lift rotate scale', `${tag}: the four tools in their order, none dimmed (${tools.join(' ')})`);
+      const hexMove = await icon('move');
+      const n = await note();
+      console.log(`  note: ${n?.text}`);
+      check(!!n && W.note.test(n.text) && n.gap >= 0 && n.gap <= 12, `${tag}: one small line right by the strip ("${n?.text}", ${n?.gap?.toFixed?.(0)} px)`);
+      // ---- 2. press Move: no menu, Move in hand; a drag sets where it starts ----
+      const mv = await inStrip('[data-studio-handle=move]');
+      check(!!mv && !/\boff\b/.test(mv.cls) && mv.disabled !== 'true', `${tag}: Move is the plain Move (${mv?.cls})`);
+      const p0 = await pose('hex-1');
       await click(mv);
       const m = await menu();
-      console.log(`  why: ${m?.rows.join(' | ')}`);
-      check(m?.place === 'tool-off' && W.why.test(m.rows.join(' ')) && m.rows.includes(W.start) && m.rows.some((r) => W.ask.test(r || '')),
-        `${tag}: a press says why and offers "${W.start}" and Ask AI`);
-      await shot('2-why');
-      const go = await row('ctx-tool-off-start');
-      const p0 = await pose('hex-1');
-      if (go) await click(go);
+      check(!m, `${tag}: a press on Move opens no menu${m ? ` (${m.rows.join(' | ')})` : ''}`);
       const mv2 = await inStrip('[data-studio-handle=move]');
-      check(!!mv2 && mv2.disabled !== 'true', `${tag}: after "${W.start}" Move works (${mv2?.cls})`);
+      check(!!mv2 && /\bon\b/.test(mv2.cls), `${tag}: Move is chosen (${mv2?.cls})`);
+      await shot('2-why');
       // A drag on the hexagon itself: its start spot moves.
       const a = await j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const c = ${DBG}.anchor('hex-1')?.center; return c ? JSON.stringify({ x: o.left + c[0], y: o.top + c[1] }) : 'null'; })()`);
       if (a) await page.mouseDrag(a.x, a.y, a.x + 120, a.y, 12);
@@ -135,6 +149,19 @@ async function run(theme) {
       await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
       await sleep(300);
+      // The ring the game turns: Turn dimmed but its own icon, a press opens nothing, the line says why.
+      await select('ring');
+      const rt = await inStrip('[data-studio-handle=rotate]');
+      check(!!rt && rt.disabled === 'true', `${tag}: the ring's Turn is dimmed (${rt?.cls})`);
+      const rn = await note();
+      check(!!rn && W.turns.test(rn.text) && !/AI/.test(rn.text), `${tag}: the ring's line says the game turns it ("${rn?.text}")`);
+      if (rt) await click(rt);
+      check(!(await menu()), `${tag}: a press on the dimmed Turn opens nothing`);
+      await shot('2-ring');
+      // The ship (nothing moves it): the same Move icon, no line.
+      await select('ship');
+      check((await icon('move')) === hexMove, `${tag}: Move wears the same icon on the hexagon and the ship`);
+      check(!(await note()), `${tag}: no line on a thing nothing moves`);
     }
     // ---- 3. the ship: the Motion button (a solid thing: a drag on its middle moves it; the gate's middle is its hole) ----
     await select('ship');

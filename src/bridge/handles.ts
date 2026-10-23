@@ -76,7 +76,8 @@ export const TOOL_HINT: Record<Lang, { mouse: (tool: string) => string; touch: (
 /**
  * A dimmed tool's one line (studio-tool-clear, 2026-10-23): why it does not work on this object, then what can be done
  * — never only "you can't" (the brief: "do not end on a sentence that leaves nothing to do"). The tooltip of the dimmed
- * button, and the first line of the small menu a press on it opens (shell/tool-off.ts, whose rows do what it says).
+ * button, and the small line by the strip (noteLine). The menu a press opened is gone (studio-move-plain, 2026-10-23);
+ * the `game` move / lift lines stay for a group whose Move is off, but Move on what the game moves works (hold.ts).
  * Turn and size the game sets get "Ask AI", not a start value: a game that spins or pulses a thing mostly sets the angle
  * or the size outright every frame, so a start value would not show (hold.ts; the design review proposed both).
  */
@@ -104,6 +105,24 @@ export const OFF_LINES: Record<Lang, Record<'game' | 'ground' | 'locked' | 'none
     none: { move: 'この物はここでは動かせません。AI に頼めます。', lift: 'この物の高さはここでは変えられません。AI に頼めます。', rotate: 'この物はここでは回せません。AI に頼めます。', scale: 'この物の大きさはここでは変えられません。AI に頼めます。' },
   },
 };
+/**
+ * The small line by the strip (studio-move-plain, 2026-10-23, a hands-on try on a neon runner: "the left of the strip was
+ * the plain Move — both ends are Motion now"). What the game does to the picked thing while playing, and, when the game
+ * moves it, that a move here sets where it starts — Move itself is the plain Move, with no menu in between. One line,
+ * short; no "Ask AI" (the ask box below is where that happens). `parts` = what the game changes (Item.driven).
+ */
+export function gameNote(lang: Lang, parts: readonly ('move' | 'lift' | 'turn' | 'size')[]): string {
+  const moves = parts.includes('move') || parts.includes('lift');
+  const what = (['move', 'turn', 'size'] as const).filter((k) => (k === 'move' ? moves : parts.includes(k)));
+  if (!what.length) return '';
+  if (lang === 'ja') {
+    const v = { move: '動かし', turn: '回し', size: '大きさを変え' };
+    return `遊ぶとゲームが${what.map((k) => v[k]).join('、')}ます。${moves ? 'ここで動かすとスタート位置が変わります。' : ''}`;
+  }
+  const v = { move: 'moves', turn: 'turns', size: 'resizes' };
+  const list = what.length < 3 ? what.map((k) => v[k]).join(' and ') : `${v.move}, ${v.turn} and ${v.size}`;
+  return `Your game ${list} this while playing.${moves ? ' Moving it here sets where it starts.' : ''}`;
+}
 /** The ▾'s tooltip and label (PC: hovering the button lights the ▾ and this says what it opens). */
 export const MORE_LABELS: Record<Lang, Record<'axis' | 'scale', string>> = {
   en: { axis: 'Ways to turn', scale: 'Ways to resize' },
@@ -202,9 +221,10 @@ type Rect = { x: number; y: number; w: number; h: number };
 export interface Handles {
   /**
    * Under the object. `caps.off` = the tools that do not work on it, each with its one line of why (the tooltip): they
-   * stay in their place, dimmed (studio-tool-clear, 2026-10-23). A tool not in `off` works.
+   * stay in their place, dimmed (studio-tool-clear, 2026-10-23). A tool not in `off` works. `caps.note` = the one small
+   * line by the strip (studio-move-plain, 2026-10-23), or none.
    */
-  place(a: Anchor | null, caps: { off?: Partial<Record<HandleKind, string>> } | null, dim: '2d' | '3d'): void;
+  place(a: Anchor | null, caps: { off?: Partial<Record<HandleKind, string>>; note?: string | null } | null, dim: '2d' | '3d'): void;
   /** Strip button size in px (the person's UI preference; default UI.handlePx). */
   setSize(px: number): void;
   /** Viewport px covered by the shell's floating panels: the strip stays clear of them. */
@@ -227,7 +247,7 @@ export interface Handles {
   setMotion(m: { show: boolean; has: boolean; label: string; open: boolean }): void;
   /** The Motion button's box on screen (null = not shown): the editor's menu opens at it, also for the A / 5 keys. */
   motionRect(): DOMRect | null;
-  /** A tool button's box on screen (null = the strip is not shown): a dimmed tool's why opens at it. */
+  /** A tool button's box on screen (null = the strip is not shown). */
   toolRect(kind: HandleKind): DOMRect | null;
   /**
    * The selection's outline: the shape when the adapter gave one, else one
@@ -297,19 +317,15 @@ button:active, button.on { color: #f5f5f7; background: rgba(255,255,255,.16); cu
 button:focus-visible { outline: 2px solid ${YOU}; outline-offset: 1px; }
 button[hidden], .tsep[hidden] { display: none; }
 /* A tool that does not work on this object (studio-tool-clear, 2026-10-23: "Move is gone from the strip"). It keeps
-   its place — the strip is the same four tools for every object, so the hand finds Move where it always is — at a
-   third of the ink, and a press on it says why and what can be done instead (the editor's small menu). Before: the
-   button was hidden, the strip one button shorter, and nothing anywhere said why. */
+   its place and its own icon — the strip is the same four tools for every object — at a third of the ink, and a press
+   on it does nothing; why is the one small line by the strip (.note). studio-move-plain (2026-10-23): no slash across
+   it and no menu on a press any more — the slashed Move read as a second Motion button ("both ends are Motion now"),
+   and a menu between the hand and the tool was one step too many. Move and Height on what the game moves are never
+   off (hold.ts holdItem: they set where it starts). */
 button.off { color: rgba(161,161,166,.42); cursor: default; }
-/* Grey alone did not tell a dimmed tool from one at rest (the second design look, 2026-10-23: every icon of the strip
-   is grey until chosen): a short slash across it, in its own ink, as a crossed-out tool. */
-button.off::before { content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 1.5px; border-radius: 1px; background: currentColor;
-  transform: translate(-50%, -50%) rotate(-45deg); pointer-events: none; }
-.row.big button.off::before { width: 24px; }
-button.off:hover { color: #a1a1a6; background: rgba(255,255,255,.05); }
+button.off:hover, button.off:active { color: rgba(161,161,166,.42); background: transparent; }
 button.off.rest { color: rgba(161,161,166,.42); background: transparent; }
-.root.light button.off, .root.light button.off.rest { color: rgba(110,110,115,.42); background: transparent; }
-.root.light button.off:hover { color: #6e6e73; background: rgba(0,0,0,.035); }
+.root.light button.off, .root.light button.off.rest, .root.light button.off:hover, .root.light button.off:active { color: rgba(110,110,115,.42); background: transparent; }
 /* The Motion button (studio-motion-tool, 2026-10-22) sits after a hairline: the four tools change how the thing stands
    (a drag does it), Motion changes what it does over time (a press opens it). The same button as the tools — size,
    ink, ground — so the strip stays one object; the hairline is the menu's own (.msep). */
@@ -401,6 +417,18 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 .chip { transform: translateY(-50%); }
 .hint { height: 32px; padding: 0 14px; font-weight: 400; transform: translateX(-50%); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; animation: rise .24s cubic-bezier(.2,.8,.2,1); }
 .root.light .chip, .root.light .hint { color: #1d1d1f; backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25); background: rgba(251,251,253,.8); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 10px 32px rgba(0,0,0,.13); }
+/* The one small line by the strip (studio-move-plain, 2026-10-23): why a tool is off, or that the game moves this and
+   a move here sets where it starts. On the far side of the strip from the object, centred on it; plain words on the
+   same glass as the readout, lighter weight, never a button (pointer-events: none — the strip's tools stay the only
+   thing to press). */
+.note { position: absolute; display: none; align-items: center; height: 22px; padding: 0 10px; border-radius: 999px; white-space: nowrap;
+  transform: translateX(-50%); max-width: calc(100vw - 24px); overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+  font: 400 11px/1 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif; color: #d1d1d6;
+  background: rgba(28, 28, 30, .78); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.09), 0 1px 1px rgba(0,0,0,.2), 0 8px 24px rgba(0,0,0,.3);
+  backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); }
+.root.light .note { color: #3a3a3c; background: rgba(251,251,253,.82); backdrop-filter: blur(30px) saturate(1.25); -webkit-backdrop-filter: blur(30px) saturate(1.25);
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.7), 0 1px 1px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.1); }
+@media (pointer: coarse) { .note { height: 26px; font-size: 12px; } }
 /* A finger: clear of the camera's ↑ ↓ at the bottom right (44 wide + 12 margin on each side, review 2 item ③). */
 @media (pointer: coarse) { .hint { height: 36px; font-size: 13px; max-width: calc(100vw - 128px); } }
 @media (prefers-reduced-motion: reduce) { button, .more { transition: none; } .menu, .hint { animation: none; } }
@@ -575,6 +603,9 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
   const hintEl = doc.createElement('div');
   hintEl.className = 'hint';
   hintEl.setAttribute('role', 'status');
+  const noteEl = doc.createElement('div');
+  noteEl.className = 'note';
+  noteEl.dataset.studioNote = '';
   /** Swap a strip button's picture, keeping its ▾. */
   const paintIcon = (b: HTMLButtonElement, inner: string) => {
     const tmp = doc.createElement('div');
@@ -666,7 +697,24 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     menuEl.style.left = `${x}px`;
     menuEl.style.top = `${y}px`;
   };
-  root.append(ghostLayer, aiLayer, hoverLayer, selLayer, aiTag, youTag, row, menuEl, chip, hintEl, band);
+  /** The one small line: on the far side of the strip from the object (under a strip under it), centred on the strip. */
+  const positionNote = () => {
+    if (noteEl.style.display === 'none') return;
+    if (row.style.display === 'none') {
+      noteEl.style.visibility = 'hidden';
+      return;
+    }
+    noteEl.style.visibility = '';
+    const rr = row.getBoundingClientRect();
+    const w = noteEl.offsetWidth, nh = noteEl.offsetHeight;
+    const x = Math.max(8 + w / 2, Math.min(win.innerWidth - 8 - w / 2, rr.left + rr.width / 2));
+    let y = stripBelow ? rr.bottom + 4 : rr.top - 4 - nh;
+    if (y + nh > win.innerHeight - 8 - inset.bottom) y = rr.top - 4 - nh;
+    if (y < 8 + inset.top) y = rr.bottom + 4;
+    noteEl.style.left = `${x}px`;
+    noteEl.style.top = `${y}px`;
+  };
+  root.append(ghostLayer, aiLayer, hoverLayer, selLayer, aiTag, youTag, row, noteEl, menuEl, chip, hintEl, band);
   shadow.append(style, root);
   (doc.body || doc.documentElement).appendChild(host);
 
@@ -749,6 +797,9 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
     place(a, caps, dim) {
       const show = !!a && a.visible && !!caps;
       row.style.display = show ? 'flex' : 'none';
+      const note = (show && caps?.note) || '';
+      if (noteEl.textContent !== note) noteEl.textContent = note; // our own words only
+      noteEl.style.display = note ? 'flex' : 'none';
       if (!show || !a || !caps) {
         positionMenu();
         positionChip();
@@ -789,6 +840,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       // Under a panel of the editor (a phone's sheet): no strip floating somewhere else.
       if (top > vh - inset.bottom) {
         row.style.display = 'none';
+        noteEl.style.display = 'none';
         positionMenu();
         return;
       }
@@ -819,6 +871,7 @@ export function createHandles(doc: Document, hasLift: boolean): Handles {
       positionMenu();
       positionChip();
       positionHint();
+      positionNote();
     },
     setAxis(axis, lang) {
       buttons.rotate.dataset.axis = axis;

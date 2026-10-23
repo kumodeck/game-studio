@@ -88,8 +88,7 @@ test('a rename is one undo step', () => {
 
 test('the words: F2 is Rename in the one key table; ✦ rows say "Ask AI to …" with an ellipsis, in both languages', () => {
   assert.deepEqual(KEYMAP.find((k) => k.id === 'rename')?.keys, ['F2']);
-  for (const k of ['ctx.askObject', 'ctx.askMany', 'ctx.askGame', 'ctx.askMotion', 'ctx.nameAsk', 'ctx.nameAskMany', 'lib.askAboutIt', 'lib.addFileAi',
-    'tooloff.ask', 'tooloff.ask.moves', 'tooloff.ask.rule']) {
+  for (const k of ['ctx.askObject', 'ctx.askMany', 'ctx.askGame', 'ctx.askMotion', 'ctx.nameAsk', 'ctx.nameAskMany', 'lib.askAboutIt', 'lib.addFileAi']) {
     const en = translate('en', k, { name: 'ship', n: 2 }), ja = translate('ja', k, { name: 'ship', n: 2 });
     assert.match(en, /^Ask AI .*…$/, `${k}: ${en}`);
     assert.match(ja, /AI に頼む…$/, `${k}: ${ja}`);
