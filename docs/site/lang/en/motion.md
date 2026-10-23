@@ -2,7 +2,7 @@
 title: Motion
 nav: Motion
 order: 4
-written-for: 0.1.24
+written-for: 0.1.34
 description: Make things move with the timeline, choose when a motion starts and stops, and reuse motions from the Library.
 ---
 
@@ -18,13 +18,21 @@ The quickest way: select something in the game, then press **Motion** at the rig
 
 There are two ways in, and no list of ready-made kinds: you make a motion by showing it.
 
-- **Make a motion**: where the thing stands now is the start (0 s). The timeline opens small at the bottom and one line says **Drag it to where it should move (Esc to cancel)**. Drag it there and let go: that is where it is at 1 s, and the motion plays right away to show you.
+- **Make a motion**: where the thing stands now is the start (0 s). The timeline opens small at the bottom and one line says **Drag it to where it should move (Esc to cancel)**. Drag it there and let go: that is where it is at 1 s, and the motion plays right away to show you. That one drag is one change (**Save · 1**) and one <kbd>⌘</kbd><kbd>Z</kbd> takes it all back.
 - Keep going: each time you move, turn or resize it again, a point is added one second after the last, and that second plays. **Done** (or <kbd>Esc</kbd>) stops adding. <kbd>⌘</kbd><kbd>Z</kbd> takes one step back at a time.
 - **Use a saved motion**: choose one you already made (only when the Library has some).
 
-![Made by showing it: two points on the timeline, and the line “Moves 0–1 s. Keep moving to add a second.”](media/motion-make.webp)
+![Made by showing it: the line “▶ Preview  gate moves Once in 1 s · When does it move?”, and the timeline under it with two points](media/motion-make.webp)
 
-The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line, like **Motion  ship’s motion · When game starts ›**; press it to open the motion on the timeline. A thing with no motion has no such line: the strip’s Motion button is the way in. To change the timing, drag the points along the ruler. To make it go back and forth or repeat, use **Repeat** in **⋯ Fine-tune**.
+After **Done**, the timeline’s top line says what the motion does, in one sentence you can change:
+
+**▶ Preview**  gate moves **[Once ▾]** in **[1 s ▾]** · When does it move? **[When game starts ▾]**
+
+- **[1 s ▾]** is how long it takes. Choose 2 s and the whole motion takes 2 s (its points spread out with it). **Other length…** lets you type one.
+- **[Once ▾]** is **Once**, **Repeats** or **Back and forth**.
+- **When does it move?** is [when it starts](#when-it-starts).
+
+The Library’s **+ Make a motion** does the same. Once something has a motion, its card shows one line, like **Motion  ship’s motion · When game starts ›**; press it to open the motion on the timeline. A thing with no motion has no such line: the strip’s Motion button is the way in. To change the timing of one point, drag it along the ruler.
 
 Once something has a motion, the button shows a small dot, and pressing it opens that motion on the timeline.
 
@@ -34,12 +42,13 @@ Select something with a motion, then press its **Motion** line on the card or th
 
 ![The timeline under the game, with the boat’s points and its path](media/timeline.webp)
 
-Its top is one line, with what you use every time: **▶** (or <kbd>Space</kbd>), the time and the motion’s **length**, **● Rec motion**, **When does it move?**, then **⋯ Fine-tune**, **✦ Ask Claude** (your AI’s name) and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows). The motion’s name is at the left of its row, next to the object’s.
+Its top is one line: **▶ Preview** (or <kbd>Space</kbd>), the sentence (*gate moves [Once ▾] in [1 s ▾]*), **When does it move?**, then **Fine-tune**, **✦ Ask Claude** (your AI’s name) and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows: ▶ is its icon there). Under it is always the timeline itself: the ruler, the rows and their points. The motion’s name is at the left of its row, next to the object’s.
 
-- The **ruler** is time. Drag on it to see that moment. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
-- Click the length after the time to type a new one, in seconds.
+- The **ruler** is time. Drag on it to see that moment; the red line shows it in seconds. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
 - The rows are the **selected object** (with several selected, each of them), and the objects you [link](#linking-several-things-in-one-motion) to it. Open a row to see **Position**, **Angle** and **Size** on their own rows.
-- **⋯ Fine-tune** has the finer settings: **Motion** (which of this object’s motions, **+ Make a motion**, **Rename**, **Take it off this object**), **Loop & End**, **Trigger** (other ways to start), **Try**, and **Moving objects** (**+ Link an object** and **Show all moving objects**: every moving object’s row; **Show only the selected one** goes back). The timeline itself always stays out.
+- **Fine-tune** opens the finer settings beside the rows, in the timeline itself: **● Rec motion**, **Motion** (which of this object’s motions, **+ Make a motion**, **Rename**, **Take it off this object**), **Loop & End**, **Trigger** (other ways to start), **Try**, and **Moving objects** (**+ Link an object** and **Show all moving objects**: every moving object’s row; **Show only the selected one** goes back). Once you open it, the timeline opens with it open next time too; press **Fine-tune** again to close it.
+
+![Fine-tune open beside the rows: Rec motion, Motion, Loop & End, Trigger, Try, Moving objects](media/motion-fine.webp)
 
 ## Points
 
@@ -48,7 +57,7 @@ A **point** says “at this time, be here.”
 1. Move the time line to a moment, like 2 s.
 2. Move, turn or resize the object.
 
-With **● Rec motion** on (it is, to start), that adds a point at the time line. The first one also adds a point at 0 s, where the object started. Press <kbd>K</kbd> to add a point without moving anything.
+With **● Rec motion** on (it is, to start; it is in **Fine-tune**), that adds a point at the time line. The first one also adds a point at 0 s, where the object started. Press <kbd>K</kbd> to add a point without moving anything.
 
 To change points, click them (<kbd>Shift</kbd> or <kbd>⌘</kbd> adds more, or drag a box):
 
@@ -78,7 +87,7 @@ Select points and a **1 selected** row shows under the top line. **Pace** choose
 
 The same row has **Path** (with position points picked: **Smooth curve** or **Sharp corner**) and **Delete**.
 
-**Repeat** (in **⋯ Fine-tune**) sets what happens at the end: **Once**, **Repeats**, or **Back and forth**.
+**[Once ▾]** in the top line’s sentence (also under **Loop & End** in **Fine-tune**) sets what happens at the end: **Once**, **Repeats**, or **Back and forth**.
 
 ## When it starts
 
@@ -99,17 +108,17 @@ Under **Ask Claude to set up** (your AI’s name):
 
 - **Custom…**: the chat box at the bottom opens with this motion in it. Say when, like “when it is hit, turn red and blow up,” and your AI writes the rule into the game’s code. The menu then says **Custom**. A motion your AI already set up shows it, like **When it bumps into something (AI)** or **When signaled (AI)**.
 
-In **⋯ Fine-tune**, **+ or** adds another way to start, like “a key is pressed **or** this is clicked.” Any one of them starts it. **×** removes one. The top line then says **+1 more**.
+In **Fine-tune**, **Trigger**’s **+ or** adds another way to start, like “a key is pressed **or** this is clicked.” Any one of them starts it. **×** removes one. The top line then says **+1 more**.
 
 ![Starts: a key is pressed, or the player enters an area — the area with its corners](media/motion-or.webp)
 
-**Stops** (in **⋯ Fine-tune**, under **Loop & End**) chooses when it ends: **Never**, **After some rounds**, or **When signaled**. Then it **Stays there** or **Goes back**.
+**Stops** (in **Fine-tune**, under **Loop & End**) chooses when it ends: **Never**, **After some rounds**, or **When signaled**. Then it **Stays there** or **Goes back**.
 
 ## Try it
 
-The **▶** next to **When does it move?** runs the scene as if this motion’s start just happened. Press it again to stop.
+The **▶** next to **When does it move?** runs the scene as if this motion’s start just happened. Press it again to stop. (On a phone it is in **Fine-tune** only.)
 
-**Try** in **⋯ Fine-tune** shows one ▶ for each way a motion can start in this scene, like “Game starts” or “Click boat.” Press one to run the scene as if that just happened. **Stop** ends it.
+**Try** in **Fine-tune** shows one ▶ for each way a motion can start in this scene, like “Game starts” or “Click boat.” Press one to run the scene as if that just happened. **Stop** ends it.
 
 ## Linking: several things in one motion
 
@@ -117,7 +126,7 @@ The timeline shows the selected object only. When a motion should move other thi
 
 ![+ Link an object: the scene’s objects in a list, or click one in the game](media/motion-link.webp)
 
-1. Press the **+** at the right end of the selected object’s row (**Link an object**; also under **Moving objects** in **⋯ Fine-tune**).
+1. Open **Fine-tune** and press **+ Link an object** under **Moving objects** (or the **+** that shows at the right end of the selected object’s row while Fine-tune is open).
 2. Choose one from the list (type to find it by name), or click it in the game while the list is open. The selected object stays selected.
 3. It gets a row of its own on the same time line. Move it with **● Rec motion** on to add its points. The rows’ top-left corner says **Linked · 2**.
 

@@ -290,3 +290,30 @@ export function legacyOffsets(m: Motion, t: number, dim: Dim): Offsets {
   const a = motionAt(m, t) as { off: number[] | null; turn: number };
   return { p: a.off, r: m.spin ? (dim === '3d' ? [0, a.turn, 0] : [a.turn]) : null, s: null };
 }
+
+/**
+ * The Library motions that count on Save on their own (studio-motion-line, 2026-10-23: "one hand, one change" — making a
+ * motion with one drag said "Save · 2", later 3: the object's motion and the new Library motion it uses, counted apart).
+ * A Library motion used by an object whose motion changed too is that object's change: counted once, with the object.
+ * One changed alone (its keys edited on the plate, a rename, one made in the Library) still counts.
+ */
+export function libCounted(changedNames: string[], changedKeys: string[], usesOf: (key: string) => string[]): string[] {
+  const told = new Set(changedKeys.flatMap(usesOf));
+  return changedNames.filter((n) => !told.has(n));
+}
+
+/**
+ * The line's "[1 s ▾]" (studio-motion-line, 2026-10-23): "gate moves in 2 s" — the whole motion takes `s` seconds, every
+ * point's time scaled with it (a motion of 0 s → 1 s becomes 0 s → 2 s). The length field of before only moved the end
+ * (and never before the last point), which the sentence would not say. 0.1 s … 10 minutes, to the millisecond.
+ */
+export function stretchClip(c: MotionClip, s: number): MotionClip {
+  const len = Math.min(MAX_LEN, Math.max(MIN_LEN, Math.round(s * 1000) / 1000));
+  const f = c.len > 0 ? len / c.len : 1;
+  const keys: MotionClip['keys'] = {};
+  for (const ch of CHANNELS) {
+    const ks = c.keys[ch];
+    if (ks) keys[ch] = ks.map((k) => ({ ...k, t: Math.min(len, Math.round(k.t * f * 1000) / 1000) }));
+  }
+  return { ...c, len, keys };
+}

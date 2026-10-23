@@ -191,7 +191,7 @@ test('the words are Gemini\'s (wording-gemini-1023b), in both languages', () => 
 });
 
 // ----- 4. the plate's code and CSS -----
-test('the plate: a grip on a scene\'s rows, the focused row\'s "+", one "Loop & End" row in ⋯, "✦ AI" narrow; the CSS: the names column grows, the card wraps', () => {
+test('the plate: a grip on a scene\'s rows, the focused row\'s "+", one "Loop & End" row in Fine-tune, "✦ AI" narrow; the CSS: the names column grows, the card wraps', () => {
   const panel = code('timeline-panel.ts');
   const rows = between(panel, 'function renderRows(', 'function allRow(');
   assert.ok(rows.includes('grip(r)') && rows.includes("dataset: { row: r.key, ...(drag ? { drag: '1' } : {}) }"), 'a scene\'s rows carry a grip');
@@ -199,7 +199,7 @@ test('the plate: a grip on a scene\'s rows, the focused row\'s "+", one "Loop & 
   assert.match(rows, /v\.scene && v\.scene\.n > 1 && r\.member && act\.reorder/, 'grips only in a scene of two or more');
   const drag = between(panel, 'function grip(', 'function drawKeys(');
   assert.ok(drag.includes('setPointerCapture') && drag.includes('act.reorder?.(') && drag.includes("'ArrowUp'") && drag.includes("'ArrowDown'"), 'a drag with pointer capture; ↑ / ↓ on the grip');
-  const more = between(panel, 'function renderMore(', 'function fresh(');
+  const more = between(panel, 'function renderFine(', 'function fresh(');
   assert.ok(more.includes("'tl-more-loop'") && more.includes("t('tl.loopEnd')") && !more.includes("'tl-more-stops'") && !more.includes("'tl-more-repeat'"), 'Repeat and Stops are one row, "Loop & End"');
   assert.ok(more.includes("'tl-more-link'") && more.includes("t('tl.link')"), '"+ Link an object" in words, in the Tracks row');
   const head = between(panel, 'function renderHead(', 'const field = ');

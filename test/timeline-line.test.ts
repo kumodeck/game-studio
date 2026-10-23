@@ -59,7 +59,7 @@ test('the picked keys\' row and the line say what they are, in both languages; t
 // ----- 2. the CSS -----
 test('nothing on the line may shrink to "…": no ellipsis and no px cap on the head\'s menus; the line wraps', () => {
   const css = read('shell.css');
-  const headRules = css.split('\n').filter((l) => /\.tl-head|\.tl-pick select|\.tl-first|\.tl-made|\.tl-sel/.test(l) && !/^\s*\/\*|\.tl-more /.test(l));
+  const headRules = css.split('\n').filter((l) => /\.tl-head|\.tl-pick select|\.tl-first|\.tl-made|\.tl-sel/.test(l) && !/^\s*\/\*|\.tl-more |\.tl-fine /.test(l));
   assert.ok(headRules.length > 5, 'the rules are there');
   for (const l of headRules) {
     assert.doesNotMatch(l, /text-overflow:\s*ellipsis/, `no ellipsis on the line: ${l.trim().slice(0, 80)}`);
@@ -71,28 +71,30 @@ test('nothing on the line may shrink to "…": no ellipsis and no px cap on the 
   // The picked keys' row and its parts exist, and a label wraps together with its menu.
   assert.match(css, /\.tl-sel \{[^}]*flex-wrap: wrap/);
   assert.match(css, /\.tl-sel-group \{[^}]*white-space: nowrap/);
-  // Only in ⋯ may a (very long) motion name end in "…".
-  assert.match(css, /\.tl-more \.tl-pick select \{[^}]*text-overflow: ellipsis/);
+  // Only in Fine-tune (⋯ before studio-motion-line) may a (very long) motion name end in "…".
+  assert.match(css, /\.tl-fine \.tl-pick select \{[^}]*text-overflow: ellipsis/);
 });
 
 // ----- 3. the plate's code -----
-test('the line is ▶ · time · ● · when · ⋯ ✦ ⌄; the motion menu is in ⋯; Point / Keys / Delete are the picked keys\' row', () => {
+test('the line is ▶ · the sentence · when · Fine-tune ✦ ⌄; the motion menu is in Fine-tune; Point / Keys / Delete are the picked keys\' row', () => {
   const panel = code('timeline-panel.ts');
   const head = between(panel, 'function renderHead(', 'const field = ');
   for (const part of ['tl-clip', 'tl-point', 'tl-ease', 'tl-attached', 'tl-scene']) assert.ok(!head.includes(`'${part}'`), `renderHead draws no ${part}`);
-  assert.ok(head.includes('whenItems(v)') && head.includes("'tl-more'") && head.includes("'tl-ask'") && head.includes("'tl-fold'"), 'the line: when, ⋯, ✦, ⌄');
-  const when = between(panel, 'function whenItems(', 'function renderMore(');
+  assert.ok(head.includes('whenItems(v)') && head.includes("'tl-fine-btn'") && head.includes("'tl-ask'") && head.includes("'tl-fold'"), 'the line: when, Fine-tune, ✦, ⌄');
+  // studio-motion-line: no ⋯ door, no time readout, no ● on the line (● Rec motion is in Fine-tune).
+  assert.ok(!head.includes("'tl-more-btn'") && !head.includes("'tl-now'") && !head.includes("'tl-auto'"), 'no ⋯, no time, no ● on the line');
+  const when = between(panel, 'function whenItems(', 'function renderFine(');
   assert.ok(!when.includes('tl-attached') && !when.includes("'tl.attached'") && !when.includes("'tl.made'"), 'no "✓ attached" / "✓ moves from" chip');
-  assert.ok(when.includes("t('tl.whenAsk')") && when.includes("'tl-made'") && when.includes("'tl-done'"), '"When does it move?" always; the making step with Done');
-  const more = between(panel, 'function renderMore(', 'function fresh(');
-  assert.ok(more.includes('clipMenu(v)') && more.includes("'tl-more-clip'"), '⋯ has the motion menu first');
+  assert.ok(when.includes("t('tl.whenAsk')") && when.includes("'tl-made'") && when.includes("'tl-done'") && when.includes('sentence(v, c)'), '"When does it move?" after the sentence; the making step with Done');
+  const more = between(panel, 'function renderFine(', 'function fresh(');
+  assert.ok(more.includes('clipMenu(v)') && more.includes("'tl-more-clip'") && more.includes("'tl-more-rec'"), 'Fine-tune has ● Rec motion and the motion menu');
   const sel = between(panel, 'function renderSel(', 'function clipMenu(');
   for (const part of ['tl-sel-n', 'tl-ease', 'tl-point', 'tl-sel-del']) assert.ok(sel.includes(`'${part}'`), `the picked keys' row has ${part}`);
   assert.ok(sel.includes('act.deleteKeys'), 'Delete is the wire\'s deleteKeys');
   // The row's "when" chip only with every motion shown (the line says the picked one's).
   assert.match(panel, /!rw \|\| tightNow \|\| v\.scene \|\| !v\.all\) return null/);
   // The line is measured: wrapped (⌄ below ▶) = the narrow order.
-  assert.match(panel, /fold\(\)\.offsetTop > play\(\)\.offsetTop/);
+  assert.match(panel, /fold\(\)\.offsetTop > play\(\)\.offsetTop \+ play\(\)\.offsetHeight \/ 2/);
 });
 
 // ----- 4. the wire: Delete as a button -----

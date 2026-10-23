@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.36 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.37 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -14859,6 +14859,33 @@ function legacyOffsets(m        , t        , dim     )          {
   return { p: a.off, r: m.spin ? (dim === '3d' ? [0, a.turn, 0] : [a.turn]) : null, s: null };
 }
 
+/**
+ * The Library motions that count on Save on their own (studio-motion-line, 2026-10-23: "one hand, one change" — making a
+ * motion with one drag said "Save · 2", later 3: the object's motion and the new Library motion it uses, counted apart).
+ * A Library motion used by an object whose motion changed too is that object's change: counted once, with the object.
+ * One changed alone (its keys edited on the plate, a rename, one made in the Library) still counts.
+ */
+function libCounted(changedNames          , changedKeys          , usesOf                           )           {
+  const told = new Set(changedKeys.flatMap(usesOf));
+  return changedNames.filter((n) => !told.has(n));
+}
+
+/**
+ * The line's "[1 s ▾]" (studio-motion-line, 2026-10-23): "gate moves in 2 s" — the whole motion takes `s` seconds, every
+ * point's time scaled with it (a motion of 0 s → 1 s becomes 0 s → 2 s). The length field of before only moved the end
+ * (and never before the last point), which the sentence would not say. 0.1 s … 10 minutes, to the millisecond.
+ */
+function stretchClip(c            , s        )             {
+  const len = Math.min(MAX_LEN, Math.max(MIN_LEN, Math.round(s * 1000) / 1000));
+  const f = c.len > 0 ? len / c.len : 1;
+  const keys                     = {};
+  for (const ch of CHANNELS) {
+    const ks = c.keys[ch];
+    if (ks) keys[ch] = ks.map((k) => ({ ...k, t: Math.min(len, Math.round(k.t * f * 1000) / 1000) }));
+  }
+  return { ...c, len, keys };
+}
+
 __def(__exports, "CHANNELS", () => CHANNELS);
 __def(__exports, "SAME_T", () => SAME_T);
 __def(__exports, "SNAP_T", () => SNAP_T);
@@ -14890,6 +14917,8 @@ __def(__exports, "keyName", () => keyName);
 __def(__exports, "clock", () => clock);
 __def(__exports, "withClip", () => withClip);
 __def(__exports, "legacyOffsets", () => legacyOffsets);
+__def(__exports, "libCounted", () => libCounted);
+__def(__exports, "stretchClip", () => stretchClip);
 };
 __defs[40] = function (__exports) {
 'use strict';

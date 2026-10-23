@@ -19,7 +19,8 @@
     { "id": "kumo", "test": "test/studio-kumo.browser.mjs", "args": [] },
     { "id": "gen", "test": "test/studio-generate.browser.mjs", "args": ["--only", "pc", "--theme", "light", "--game", "lantern-cove"] },
     { "id": "presence", "test": "test/studio-ai-presence.browser.mjs", "args": ["--theme", "light"] },
-    { "id": "playsave", "test": "test/studio-play-save.browser.mjs", "args": ["--only", "save", "--theme", "light", "--prefix", "docs"] }
+    { "id": "playsave", "test": "test/studio-play-save.browser.mjs", "args": ["--only", "save", "--theme", "light", "--prefix", "docs"] },
+    { "id": "motion-line", "test": "test/studio-motion-line.browser.mjs", "args": ["--only", "pc", "--themes", "light", "--games", "neon"] }
   ],
   "pictures": [
     { "as": "open", "run": "w1", "file": "pc-light-*-open.png" },
@@ -42,7 +43,8 @@
     { "as": "motion-scene", "run": "focus", "file": "after-pc-light-{lang}-3-linked.png" },
     { "as": "strip-game", "run": "tool-clear", "file": "after-{lang}-light-1-strip.png" },
     { "as": "motion-strip", "run": "no-presets", "file": "after-{lang}-light-1-menu.png" },
-    { "as": "motion-make", "run": "no-presets", "file": "after-{lang}-light-3-made.png" },
+    { "as": "motion-make", "run": "motion-line", "file": "04-after-neon-{lang}-light-pc-1-made.png" },
+    { "as": "motion-fine", "run": "motion-line", "file": "04-after-neon-{lang}-light-pc-2-fine.png" },
     { "as": "levels", "run": "levels", "file": "after-pc-light-2-menu.png" },
     { "as": "levels-add", "run": "levels", "file": "after-pc-light-3-none.png" },
     { "as": "ui-layer", "run": "ui", "file": "ui-pc-moved.png" },

@@ -35,7 +35,7 @@ const sameMotion = (a: Motion | null | undefined, b: Motion | null | undefined) 
 import { createTimelinePanel, type TimelineView } from './timeline-panel.ts';
 import {
   blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
-  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, setKey, snapT, withClip, type Copied, type KeyRef, type Offsets,
+  keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, setKey, snapT, stretchClip, withClip, type Copied, type KeyRef, type Offsets,
 } from './timeline-model.ts';
 import type { Change, UndoStack } from './undo.ts';
 
@@ -82,8 +82,9 @@ export interface TimelineDeps {
   narrow(): boolean;
   t(key: string, vars?: Record<string, string | number>): string;
   /**
-   * studio-motion-flow: hints shown once ("timeline-steps": the three steps the first time the plate opens). `seen` =
-   * already closed once (this browser or this game's ui prefs); `markSeen` = closed now, never again. Absent = never shown.
+   * Things the person did once, kept (this browser or this game's ui prefs): studio-motion-line's "timeline-fine" — Fine-tune
+   * was opened, so the plate opens with it open. (studio-motion-flow's "timeline-steps", the first-time three steps, is gone.)
+   * Absent = nothing remembered.
    */
   seen?(id: string): boolean;
   markSeen?(id: string): void;
@@ -98,8 +99,14 @@ export interface TimelineDeps {
  * `makePanel`: the plate (timeline-panel.ts). The unit tests give a stand-in with no DOM, so what a move, a typed number
  * or a key press does is tested without a browser (test/timeline.test.ts).
  */
-/** The first-time steps' id (TimelineDeps.seen). */
-const COACH = 'timeline-steps';
+/**
+ * "Fine-tune" was opened once (studio-motion-line, 2026-10-23; TimelineDeps.seen): from then on the plate opens with it
+ * open. WHY two places: `seen` is the game's ui prefs (.studio/ui/prefs.json — the studio opens on a free port, so the
+ * browser's storage alone forgets it on the next run), but `seen` only ever adds; "closed again" is the browser's
+ * (FINE_KEY below), so a person who closes it is not given it open again on this machine.
+ */
+const FINE_SEEN = 'timeline-fine';
+const FINE_KEY = 'studio.tl.fine';
 /** How long "✓ “Hop” attached" stays when nothing is chosen (then the row reads "Starts" again). */
 const FRESH_MS = 6000;
 
@@ -136,6 +143,15 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * five objects' motions read the same. Only new ones: a name already saved is the person's (or the AI's) and stays.
    */
   const firstName = (key: string) => lib().free(d.t('motion.firstName', { name: d.label(key) }));
+  /**
+   * The Library motions this gesture made (a first clip: its name in gestureNames), as the first changes of its undo step
+   * (studio-motion-line, 2026-10-23: one drag = one undo step and nothing left behind). Before, ⌘Z took the object's motion
+   * off but the new "gate’s motion" stayed in the Library — and Save still said 1. Call before finish() (it clears them).
+   */
+  const madeInGesture = (): Change[] => [...gestureNames.values()].flatMap((n) => {
+    const l = lib().get(n);
+    return l ? [{ kind: 'motion-lib' as const, key: n, from: null, to: structuredClone(l) }] : [];
+  });
   const finish = () => {
     gestureNames.clear();
     const from = before;
@@ -166,6 +182,22 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * Its own one line says the next step, so the first-time three steps ("1 Pick a moment on the ruler…") stay away.
    */
   let making: { key: string; shown: boolean; from: number } | null = null;
+  /**
+   * "Fine-tune" open (the rows of the old ⋯, in the plate beside the timeline): set by hand this session, else null =
+   * as remembered (FINE_KEY, then FINE_SEEN). WHY read each time and not once here: the game's ui prefs come from the
+   * server after the shell starts, so a read at start would miss "opened before" on a fresh port.
+   */
+  let fine: boolean | null = null;
+  const fineNow = (): boolean => {
+    if (fine !== null) return fine;
+    try {
+      const v = globalThis.localStorage?.getItem(FINE_KEY);
+      if (v === '0' || v === '1') return v === '1';
+    } catch {
+      /* private window: the prefs still say */
+    }
+    return !!d.seen?.(FINE_SEEN);
+  };
   // Starts ▾ to focus at the next render (the one that draws the "attached" line).
   let focusStarts = false;
   // What the game page shows now, so a frame that changes nothing sends nothing.
@@ -663,8 +695,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       attached: fresh && fresh.key === key && c && (c.use ?? c.name) === fresh.name ? fresh.name : null,
       making: making && making.key === key ? (making.shown ? 'more' : 'drag') : null,
       made: madeKey && madeKey === key && c ? Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t))) : null,
-      // Only while making (the focused object has no keys yet): the steps are about keys, not about a motion just attached.
-      coach: !!d.seen && !d.seen(COACH) && !!key && key !== making?.key && (!c || CHANNELS.every((ch) => !c.keys[ch]?.length)),
+      // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
+      fine: fineNow(),
     };
   }
 
@@ -1032,6 +1064,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       const last = Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t)));
       return { ...c, len: Math.min(MAX_LEN, Math.max(MIN_LEN, last, Math.round(s * 1000) / 1000)) };
     }),
+    // The line's "[1 s ▾]": the motion takes this long, its points scaled (timeline-model.ts stretchClip). A scene's
+    // length only (its other objects' tracks are not this clip's keys; scaling one track would put them out of step).
+    stretch: (s) => editClip((c) => (c.scene ? { ...c, len: Math.min(MAX_LEN, Math.max(MIN_LEN, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t)), s)) } : stretchClip(c, s))),
     repeat: (r) => editClip((c) => ({ ...c, repeat: r })),
     // When the focused clip starts / stops (studio-motion-triggers): the head's second row.
     setWhen: (w) => editClip((c) => {
@@ -1132,9 +1167,18 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       return onKey({ key: e.key, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey }, true);
     },
     touched: () => (touched = true),
-    coachDone: () => {
-      d.markSeen?.(COACH);
+    fine(on) {
+      if (fineNow() === on) return;
+      fine = on;
+      try {
+        globalThis.localStorage?.setItem(FINE_KEY, on ? '1' : '0');
+      } catch {
+        /* private window: only the prefs below */
+      }
+      if (on) d.markSeen?.(FINE_SEEN);
       panel.render();
+      // The plate is taller / shorter now: the shell lays the bottom out again (the game's inset, the chat box).
+      d.layout();
     },
     ...(d.ask ? { ask: () => askAbout(head()) } : {}),
   });
@@ -1187,11 +1231,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const mod = e.ctrl || e.meta;
     const k = e.key.toLowerCase();
     const mine = onPlate || touched;
-    if (k === 'escape' && view().coach) {
-      d.markSeen?.(COACH);
-      panel.render();
-      return true;
-    }
     // Making (the line says "Esc to cancel"): Esc ends it — from the game page too (it drops the pick there as well).
     if (k === 'escape' && !mod && making) return endMaking();
     if (k === 'k' && !mod) return keyNow();
@@ -1276,8 +1315,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       // From the motion before the gesture each time (a live drag sends many poses; the last one wins).
       store().set(key, before!.get(key) ?? null);
       const m = keyed(key, pose, startPose.get(key)!);
+      const pre = end ? madeInGesture() : [];
       const from = end ? finish() : before;
-      commit(new Map([[key, m]]), from, end);
+      commit(new Map([[key, m]]), from, end, pre);
       if (end) stepEnds(key);
       return true;
     },
@@ -1301,6 +1341,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       for (const [k, m] of next) store().set(k, m);
       const changes: Change[] = [];
       if (end) {
+        changes.push(...madeInGesture());
         const from = finish();
         for (const [k, m] of next) if (!sameMotion(from?.get(k), m)) changes.push({ kind: 'motion', key: k, from: from?.get(k) ?? null, to: m });
         d.changed();
@@ -1320,8 +1361,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       begin(key, from);
       store().set(key, before!.get(key) ?? null);
       const m = keyed(key, pose, startPose.get(key)!);
+      const pre = live ? [] : madeInGesture();
       const was = live ? before : finish();
-      commit(new Map([[key, m]]), was, !live);
+      commit(new Map([[key, m]]), was, !live, pre);
       if (!live) stepEnds(key);
       return true;
     },

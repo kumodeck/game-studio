@@ -68,6 +68,7 @@ import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
+import { libCounted } from './timeline-model.ts';
 import { createMotionAsk } from './motion-ask.ts';
 import { motionLibrary } from './motion-library.ts';
 import { attachWorld, roundLib } from './motion-model.ts';
@@ -3286,7 +3287,10 @@ export function start(host: StudioHost) {
   }
   const toolsDirty = () => [...toolDirty.values()].reduce((a, b) => a + b, 0);
   /** Placement changes not saved, both layers (the UI's is 0 for a game without one). */
-  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + uiWire.model.dirty() + levels.dirtyElsewhere() + motionLibrary.changedNames().length;
+  // A Library motion that an object's changed motion uses is counted with that object (timeline-model.ts libCounted:
+  // one drag that makes a motion = Save · 1, studio-motion-line).
+  const placementDirty = () => worldModel.dirty() + uiModel.dirty() + uiWire.model.dirty() + levels.dirtyElsewhere()
+    + libCounted(motionLibrary.changedNames(), worldModel.motion.changedKeys(), (k) => (worldModel.motion.get(k)?.clips ?? []).map((c) => c.use ?? c.name)).length;
   /**
    * placement.json as it would be written now: the world's file plus the UI's `ui` (ui-layer.ts withUi; nothing is
    * added for a game without a UI, so its file keeps its bytes). Before the UI's list has come, the saved `ui` as it was.

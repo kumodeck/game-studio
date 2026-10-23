@@ -219,8 +219,8 @@ test('wire: open at 0 s with no motion yet, a move is still a move; after 0 s it
   assert.deepEqual(whenOf(c), { on: 'start' }, 'the first motion plays at the start');
   assert.deepEqual(c.keys.p, [{ t: 0, v: [0, 0, 0], ease: 'ease' }, { t: 2, v: [3, 0, -1], ease: 'ease' }], 'a key at 0 s of how it stood, and one at 2 s');
   assert.equal(c.keys.r, undefined, 'only what changed is keyed');
-  assert.equal(r.undo.peekUndo()!.changes.length, 1, 'one undo step for the drag');
-  assert.equal(r.undo.peekUndo()!.changes[0]!.kind, 'motion');
+  // One undo step for the drag (studio-motion-line, 2026-10-23: with the Library motion it made, first — ⌘Z takes both).
+  assert.deepEqual(r.undo.peekUndo()!.changes.map((x) => x.kind), ['motion-lib', 'motion'], 'one undo step for the drag');
   // The game shows the boat at its place + the clip at 2 s.
   assert.deepEqual(r.poses()!.poses.find((p) => p.key === 'boat')!.pose.p, [3, 0, -1]);
   // At 1 s it is on its way (ease: half way at half the time).
@@ -293,6 +293,7 @@ test('wire: several objects moved together at 1 s — each keyed, one undo step 
   r.tl.setTime(1);
   const out = r.tl.movedGroup([{ key: 'boat', pose: at([1, 0, 0]), from: at([0, 0, 0]) }, { key: 'buoy', pose: at([6, 0, 0]), from: at([5, 0, 0]) }], true);
   assert.equal(out.rest.length, 0);
-  assert.equal(out.changes.length, 2);
+  // Each object's motion and the Library motion each one made (studio-motion-line: undone together, nothing left behind).
+  assert.deepEqual(out.changes.map((x) => x.kind).sort(), ['motion', 'motion', 'motion-lib', 'motion-lib']);
   assert.ok(near(offsetsAt(r.tl.motionOf('buoy')!.clips![0]!, 1).p, [1, 0, 0]));
 });

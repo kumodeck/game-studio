@@ -1442,11 +1442,7 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-head .icon-btn .icon { width: 16px; height: 16px; }
 .tl-play { background: var(--solid); color: var(--solid-fg); width: var(--h); padding: 0; }
 .tl-play:hover:not(:disabled) { background: var(--solid); opacity: .88; }
-.tl-time { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px; font-variant-numeric: tabular-nums; }
-.tl-now { font-weight: 600; min-width: 4.2em; font-variant-numeric: tabular-nums; }
 .tl-of { color: var(--text-3); }
-.tl-len { width: 2.4em; height: 24px; text-align: right; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-variant-numeric: tabular-nums; padding: 0 4px; }
-.tl-len:hover:not(:disabled), .tl-len:focus { background: var(--raise); color: var(--text); }
 .tl-auto { background: var(--raise); padding: 0 10px; gap: 7px; }
 .tl-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-3); flex: none; }
 .tl-auto.on { color: var(--rec); }
@@ -1478,7 +1474,6 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-or-more:hover { color: var(--text); background: var(--raise-2); }
 /* ⋯ and ✦ Ask AI at the line's right end, before ⌄: ⋯ quiet (an icon), Ask AI in the AI's purple — the one thing on the
    line that talks to the AI, so it looks like the chat box's ✦ below it. */
-.tl-more-btn.on { background: var(--raise-2); color: var(--text); }
 .tl-ask { height: var(--h); padding: 0 12px 0 10px; gap: 6px; border-radius: var(--r); background: var(--ai-soft); color: var(--ai-text); font-weight: 600; white-space: nowrap; }
 .tl-ask .icon { width: 13px; height: 13px; color: var(--ai-text); }
 .tl-ask:hover:not(:disabled) { background: var(--ai-soft); filter: brightness(1.15); }
@@ -1556,36 +1551,42 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* The phone's cap, 176 px: two lines of "The old crate by the pier" beside the twist and the "+" (150 cut its second line). */
 .timeline.narrow { --tl-names: 96px; --tl-names-max: 176px; }
 .timeline.narrow .tl-head > * { order: 2; }
-.timeline.narrow .tl-head > .tl-play, .timeline.narrow .tl-head > .tl-time, .timeline.narrow .tl-head > .tl-auto { order: 0; }
-.timeline.narrow .tl-head > .tl-more-btn { order: 1; margin-left: auto; }
+.timeline.narrow .tl-head > .tl-play, .timeline.narrow .tl-head > .tl-line, .timeline.narrow .tl-head > .tl-first { order: 0; }
+.timeline.narrow .tl-head > .tl-break { order: 1; }
+.timeline.narrow .tl-head > .tl-sep { display: none; }
+/* studio-motion-line: the first row is ▶ (its icon: "Preview" is its tooltip) · the sentence · ⌄; the second is "when"
+   then, at its right, Fine-tune · ✦. A phone's 390 px held neither row with the word "Preview" and ▷ Try on it (a try of
+   2026-10-23: three rows) — ▷ Try is Fine-tune's "Try" there. */
+.timeline.narrow .tl-head > .tl-fold { order: 0; margin-left: auto; }
+.timeline.narrow .tl-play-w { display: none; }
+.timeline.narrow .tl-head > .tl-play { width: var(--h); padding: 0; justify-content: center; }
+.timeline.narrow .tl-head > .tl-try-this { display: none; }
+.timeline.narrow .tl-head > .tl-fine-btn { order: 3; margin-left: auto; }
+.timeline.narrow .tl-head > .tl-ask { order: 3; }
 /* studio-ui-lead2: "✦ AI" (a phone's light screen showed only a pale square: the spark alone, 13 px, in the soft tint). */
-.timeline.narrow .tl-head > .tl-ask { order: 1; padding: 0 10px 0 8px; gap: 4px; }
+.timeline.narrow .tl-head > .tl-ask { padding: 0 10px 0 8px; gap: 4px; }
 .tl-ask-s { display: none; }
 .timeline.narrow .tl-ask-s { display: inline; }
 .timeline.narrow .tl-head > .tl-ask .tl-ask-w { display: none; }
-.timeline.narrow .tl-head > .tl-fold { order: 1; }
-.timeline.narrow .tl-head:not(:has(> .tl-more-btn)) > .tl-fold { margin-left: auto; }
 .timeline.narrow .tl-head > .tl-lbl:not(.tl-first) { margin-left: 2px; }
 /* A phone's first row is ▶ · the time · ● · ⋯ · ✦ · ⌄ in 390 px (a try of 2026-10-22: with 40 px buttons and the time's
    fixed width, ⌄ fell to a row of its own) — the three right-hand buttons a little narrower, the time as wide as it is. */
 .timeline.narrow .tl-head { gap: 2px; }
-.timeline.narrow .tl-now { min-width: 0; }
-.timeline.narrow .tl-head > .tl-more-btn, .timeline.narrow .tl-head > .tl-fold { width: 36px; }
+.timeline.narrow .tl-head > .tl-fold { width: 36px; }
 /* The second row is the motion and its "when" — kept to one row: the menus a little narrower, "Starts" said by the menu
    itself (its words are a moment: "The player enters…"), the field as wide as a size or a key. */
 .timeline.narrow .tl-head > .tl-lbl:not(.tl-first):not(.tl-ease-lbl) { display: none; }
 /* PC: one line when it fits, and nothing on it shrinks (studio-ui-lead, 2026-10-23: before, the menus gave way first,
    to "Mo…" / "Ea…", and a hands-on try of 10/23 read nothing on it, even at 1800 px). When the line would wrap, timeline-panel.ts
    render() measures that and draws it in the narrow order instead (▶ · time · ● … ⋯ ✦ ⌄, the "when" under them). */
-.timeline:not(.narrow) .tl-head > .tl-pick, .timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-time, .timeline:not(.narrow) .tl-head > .tl-auto { flex: none; }
+.timeline:not(.narrow) .tl-head > .tl-pick, .timeline:not(.narrow) .tl-head > button, .timeline:not(.narrow) .tl-head > .tl-line { flex: none; }
+.timeline:not(.narrow) .tl-line { flex-wrap: nowrap; }
 .tl-break { display: none; }
-.timeline.narrow .tl-head > .tl-break { display: block; order: 1; flex-basis: 100%; height: 0; }
+.timeline.narrow .tl-head > .tl-break { display: block; flex-basis: 100%; height: 0; }
 .timeline.narrow .tl-head > .tl-gap { display: none; }
 .timeline.narrow .tl-clipname { display: none; }
 /* A phone's names column is 150 px at most: a long name the person gave wraps to two lines in its 36 px row rather than being cut (studio-ui-lead2). */
 .timeline.narrow .tl-obj { white-space: normal; text-align: left; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.timeline.narrow .tl-auto-w { display: none; }
-.timeline.narrow .tl-auto { padding: 0; width: var(--h); }
 .timeline.narrow .tl-body { max-height: calc(var(--tl-ruler) + 4 * var(--tl-row)); }
 .shell[data-layout="phone"]:not([data-fit="side"]) .timeline { --tl-ruler: 32px; --tl-row: 36px; border-radius: 22px; }
 /* studio-timeline-2 (2026-10-22): several ways to start ("E or a click"), the path's Point menu, scene motions.
@@ -1713,17 +1714,33 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-more .tl-pick { max-width: 100%; }
 .tl-more .tl-pick select { max-width: 100%; text-overflow: ellipsis; }
 
-/* The first-time steps, over the plate's right end (the rows stay readable on the left). */
+/* (studio-motion-line, 2026-10-23: the first-time three steps over the plate, .tl-coach, are gone — the line says the next step.) */
 .timeline { position: relative; }
-.tl-coach { position: absolute; right: 10px; bottom: 10px; z-index: 3; width: min(300px, calc(100% - 20px)); padding: 10px 12px; border-radius: 14px;
-  background: var(--plate); box-shadow: var(--shadow); color: var(--text); }
-.tl-coach-head { display: flex; align-items: center; gap: 8px; }
-.tl-coach-head b { flex: 1; }
-.tl-coach-x { width: 24px; height: 24px; padding: 0; }
-.tl-coach ol { list-style: none; margin: 8px 0 10px; padding: 0; display: grid; gap: 7px; }
-.tl-coach li { display: flex; align-items: center; gap: 9px; }
-.tl-coach li i { font-style: normal; flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--you); color: #fff; display: grid; place-items: center;
-  font-size: 11px; font-weight: 700; }
-.tl-coach-foot { display: flex; justify-content: flex-end; }
-.tl-coach-ok { background: var(--solid); color: var(--solid-fg); padding: 0 14px; }
-.tl-coach-ok:hover { opacity: .88; }
+
+/* studio-motion-line (2026-10-23): the line is a sentence — "▶ Preview  gate moves [Once ▾] in [1 s ▾] · When does it
+   move? [▾]" — and "Fine-tune" is a sheet in the plate, left of the rows (the mock: plan/shots/mock-fine.png), not a
+   popover over the game: the timeline stays out (the review of 10/23), the settings sit beside what they change. */
+.tl-play { width: auto; padding: 0 12px 0 9px; gap: 6px; border-radius: var(--r); font-weight: 600; white-space: nowrap; }
+.tl-play .icon { width: 13px; height: 13px; }
+.tl-line { display: inline-flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; min-width: 0; margin-left: 4px; }
+.tl-line-name { font-weight: 600; white-space: nowrap; }
+.tl-line-w { color: var(--text-2); white-space: nowrap; }
+.tl-sep { color: var(--text-3); margin: 0 2px; }
+.tl-fine-btn { height: var(--h); padding: 0 8px 0 11px; gap: 4px; border-radius: var(--r); background: var(--raise); color: var(--text); white-space: nowrap; }
+.tl-fine-btn .icon { width: 12px; height: 12px; color: var(--text-3); }
+.tl-fine-btn.on { background: var(--raise-2); }
+.tl-main { display: grid; grid-template-columns: minmax(0, 1fr); }
+.tl-main:has(> .tl-fine:not([hidden])) { grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); }
+.tl-right { min-width: 0; }
+.tl-fine { border-top: 1px solid var(--line); border-right: 1px solid var(--line); padding: 0 10px 4px; font-size: var(--fs);
+  max-height: calc(var(--tl-ruler) + 8 * var(--tl-row)); overflow: hidden auto; overscroll-behavior: contain; }
+.tl-fine[hidden] { display: none; }
+.tl-fine .tl-more-row { padding: 5px 0; }
+.tl-fine .tl-pick select, .tl-fine .tl-field, .tl-fine .tl-keycap, .tl-fine .tl-auto { height: 28px; }
+.tl-fine .tl-uses { margin: 4px 0 0; padding: 0; white-space: normal; }
+.tl-fine .tl-or { margin-left: 0; }
+.tl-fine .tl-pick { max-width: 100%; }
+.tl-fine .tl-pick select { max-width: 100%; text-overflow: ellipsis; }
+/* Narrow (a phone, the side window): the sheet above the rows, its own scroll — the rows stay under it. */
+.timeline.narrow .tl-main:has(> .tl-fine:not([hidden])) { grid-template-columns: minmax(0, 1fr); }
+.timeline.narrow .tl-fine { border-right: 0; border-bottom: 1px solid var(--line); max-height: min(34dvh, calc(var(--tl-ruler) + 6 * var(--tl-row))); }

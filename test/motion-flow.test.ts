@@ -19,7 +19,7 @@ globalThis.cancelAnimationFrame ??= (() => {}) as never;
 
 const hop: MotionClip = { name: 'Hop', len: 1, repeat: 'once', keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 1, v: [0, 2, 0] }] } };
 
-function rig() {
+function rig(seenBefore: string[] = []) {
   const places: Record<string, Pose> = { crate: { p: [0, 0, 0], r: 0, s: 1 }, barrel: { p: [5, 0, 0], r: 0, s: 1 } };
   const store = new MotionStore();
   const lib = new MotionLibrary();
@@ -28,7 +28,7 @@ function rig() {
   lib.markSaved();
   store.set('barrel', { clips: [{ name: 'Hop', use: 'Hop', len: 1, when: { on: 'start' }, keys: {} }] });
   const undo = new UndoStack();
-  const seen = new Set<string>();
+  const seen = new Set<string>(seenBefore);
   let picked: string | null = null;
   let acts!: TimelineActs;
   let view!: () => TimelineView;
@@ -93,26 +93,24 @@ test('attach + show: the plate opens on the attached motion, "attached" with Sta
   assert.equal(r.tl.attach('crate', 'Nope'), false, 'not a Library motion');
 });
 
-test('first-time steps: shown while making (no keys yet) until closed, then never again (Esc closes them too)', () => {
+// studio-motion-line (2026-10-23): the first-time three steps are gone (the line says the next step), and "Fine-tune"
+// is remembered — opened once, the plate opens with it open (the game's ui prefs `seen`, test/motion-line.test.ts has more).
+test('no first-time steps any more; Fine-tune, once opened, stays open (seen: timeline-fine)', () => {
   const r = rig();
-  r.pick('barrel');
-  r.tl.setOpen(true);
-  assert.equal(r.view().coach, false, 'not over a motion that has keys (an attach shows "When does it move?" instead)');
-  r.tl.setOpen(false);
   r.pick('crate');
   r.tl.setOpen(true);
-  assert.equal(r.view().coach, true);
-  r.acts().coachDone();
-  assert.equal(r.view().coach, false);
-  assert.ok(r.seen.has('timeline-steps'));
-  r.tl.setOpen(false);
-  r.tl.setOpen(true);
-  assert.equal(r.view().coach, false, 'not again');
-  const r2 = rig();
+  assert.equal('coach' in r.view(), false, 'the view has no first-time steps');
+  assert.equal(r.view().fine, false, 'Fine-tune starts closed');
+  r.acts().fine!(true);
+  assert.equal(r.view().fine, true);
+  assert.ok(r.seen.has('timeline-fine'), 'kept in the prefs');
+  // A new editor on the same game (the prefs say it was opened): open from the start.
+  const r2 = rig(['timeline-fine']);
   r2.pick('crate');
   r2.tl.setOpen(true);
-  assert.equal(r2.tl.onKey({ key: 'Escape', ctrl: false, meta: false, shift: false }), true);
-  assert.equal(r2.view().coach, false);
+  assert.equal(r2.view().fine, true, 'opened before: open from the start');
+  r2.acts().fine!(false);
+  assert.equal(r2.view().fine, false, 'closed by hand: closed');
 });
 
 test('ui prefs keep the hints closed (`seen`): short slugs only, at most 20', () => {

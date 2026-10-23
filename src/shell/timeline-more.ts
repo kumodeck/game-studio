@@ -1,4 +1,6 @@
 // The timeline's "⋯" (studio-motion-panel, 2026-10-22): the strip's sometimes-used settings, out of the one line.
+// studio-motion-line (2026-10-23): ⋯ is gone — its rows are "Fine-tune", a sheet in the plate (timeline-panel.ts
+// renderFine). This popover now holds only "+ Link an object"'s list. The notes below are its history.
 //
 // A review of 2026-10-22, on the strip of three rows (▶ · time · Auto key · Motion · Once · Ease ⌄ / Starts [In my words…]
 // [When? (for your AI)] Stops / Try ▶ ▶): "very cluttered, not organised". Everything on it was sorted by how often a
