@@ -317,32 +317,27 @@ img.thumb:not([src]) { content: url("data:image/gif;base64,R0lGODlhAQABAIAAAAAAA
 .list-tools:has(.list-hint) { flex-wrap: wrap; }
 .list-scroll { min-height: 0; }
 /* Levels (2026-10-22, level-switch.ts): the level is a part of the top bar's path since level-crumb (2026-10-22) —
-   ▣ Studio / Three Isles / Meadow ⌄ / Scene. The crumb reads as the path's own words (the text colour, the game's
+   ▣ Studio / Three Isles / Scene / Meadow ⌄ (the level last since level-menu2, 2026-10-23). The crumb reads as the path's own words (the text colour, the game's
    name's weight one step down: it is a place inside the game), a chevron in the third grey, and the bar's capsule fill
    only while hovered or open. Before that the switch was the Scene list's head ("Meadow ⌄ 1 of 3"), which read as a
    title and was missed. */
 .level-crumb { display: contents; }
 .level-crumb[hidden], .level-add-slot[hidden] { display: none; }
-.level-switch { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 220px; height: 26px; margin: 0 -6px; padding: 0 6px;
+.level-switch, .level-add { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 220px; height: 26px; margin: 0 -6px; padding: 0 6px;
   border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 500; }
-.level-switch:hover, .shell[data-menu="levels"] .level-switch { background: var(--raise-3); }
-.level-switch .level-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.level-switch .icon { flex: none; width: 12px; height: 12px; color: var(--text-3); }
+.level-switch:hover, .shell[data-menu="levels"] .level-switch, .level-add:hover, .shell[data-menu="levels"] .level-add { background: var(--raise-3); }
+.level-switch .level-name, .level-add .level-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.level-switch .icon, .level-add .icon { flex: none; width: 12px; height: 12px; color: var(--text-3); }
 /* While playing: the level's name as plain words (you are in it; the menu would reload the game). */
 .level-here { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); font-weight: 500; }
 .level-rename { flex: 0 1 180px; min-width: 80px; width: 180px; height: 26px; margin: 0 -6px; padding: 0 8px; border: 1px solid var(--line-2); border-radius: 999px;
   background: var(--studio-card); color: var(--text); font: inherit; font-weight: 500; }
-/* "+ Level" after the path, in a game without levels: the third grey and the small size (the adapter's words beside
-   it are the same), no plate until hovered — a door that is there, not a button that asks to be pressed. */
-.level-add-slot { display: inline-flex; }
-/* "Levels ⌄" (studio-uniforms, 2026-10-23): a visible button, not a dim word — a design review of the first build found
-   it read as a disabled crumb exactly when it was needed (the third grey of "+ Level" before). The path's text colour
-   and a hairline pill; it sits where the level's name will be (before "Scene"), so nothing jumps once Level 2 exists. */
-.level-add { display: inline-flex; align-items: center; gap: 3px; height: 24px; padding: 0 5px 0 8px; border: 1px solid var(--line-2); border-radius: 999px;
-  background: transparent; color: var(--text); font: inherit; font-size: var(--fs-s); cursor: pointer; }
-.level-add:hover { background: var(--raise-3); }
-.level-add .icon { width: 12px; height: 12px; }
-/* The line after "Make Level 2" (main.ts renderLevelMade): under the top bar's left end, where the level's name just
+/* A game without levels: "Level 1 ⌄" after "Scene" (level-menu2, 2026-10-23) — the crumb itself (.level-switch), the
+   same words and chevron, no frame. v0.1.25 had a framed "Levels ⌄" pill here (studio-uniforms), which read as a
+   button among the path's words; a hands-on try: "game name, scene, level name". .level-add shares .level-switch's
+   rules above (a class of its own, so "the crumb of a game with levels" stays one selector). */
+.level-add-slot { display: inline-flex; min-width: 0; }
+/* The line after New level / Duplicate (main.ts renderLevelMade): under the top bar's left end, where the level's name just
    appeared; the glass of every floating thing, the text size, no colour (it is the editor speaking, not the AI). */
 .level-made { position: absolute; top: 10px; left: 12px; z-index: 6; max-width: min(520px, calc(100% - 24px)); display: flex; align-items: center; gap: 10px;
   padding: 8px 8px 8px 12px; border-radius: var(--R); background: var(--glass); box-shadow: var(--glass-shadow); color: var(--text); line-height: 1.4; }

@@ -13,7 +13,7 @@ Press **▶ Play** to play your game right where you’re editing it. Press **Ed
 ## Play and Edit
 
 - **▶ Play** (or <kbd>P</kbd>) plays the game as you arranged it, saved or not. The top bar says **Playing**.
-- **Edit** (or <kbd>P</kbd>) takes you back. Everything is where it was before you pressed Play: your layout, your camera, what you selected. Anything the game moved while you played (the hero, an enemy) goes back too.
+- **Edit** (or <kbd>P</kbd>) takes you back to the scene you were editing, not to the moment you stopped playing. Everything is where it was before you pressed Play: your layout, your camera, what you selected, the timeline and its time, the level. Anything the game moved while you played (the hero, an enemy) goes back too, and in a 3D game so does what it added or took away (a bullet, a coin you picked up). Play again and the game gets those back.
 - Your [motions](motion.md) play too, whatever starts them: the start, a time, a key, a click, an area, or a cue from your game’s code. Back in Edit they stop, and everything is back in its place. Still the same page.
 - The game’s own state, like the score or a timer, isn’t part of your layout. To start that over, use **Play from the start** in Play’s ▾ menu (or <kbd>⌘</kbd><kbd>K</kbd>). It opens the game fresh.
 

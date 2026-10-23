@@ -2,7 +2,7 @@
 // again — tedious") in a headless browser: the real local server, the built editor, the starters.
 // bridge/play-switch.ts says what the switch does; contract.ts `studio:core/play`.
 //
-//   node test/studio-fast-switch.browser.mjs [--only time,cove,ruins,fresh,when,old,scene2d,levels,crumb] [--times <n>] [--before <studio-ui dir>]
+//   node test/studio-fast-switch.browser.mjs [--only time,cove,ruins,fresh,when,old,scene2d,levels,restore,crumb] [--shots <dir>] [--times <n>] [--before <studio-ui dir>]
 //
 // time   Lantern Cove (three.js) and Firefly Ruins (PixiJS), PC 1280×800: ▶ Play and back to Edit, `--times` rounds
 //        (3), timed in the editor's own page from the press to:
@@ -30,6 +30,13 @@
 //        copy on disk is unchanged.
 // scene2d Firefly Ruins (PixiJS) with a clip at the start and one on a cue: the same in 2D.
 // levels Three Isles (levels) with a cue motion on Meadow's flag: Play and Edit in the same page, the flag's clip runs.
+// restore (studio-edit-restore, 2026-10-23; a try of the editor on a neon runner: "after playing, Edit came back in the middle of the
+//        game — keep the edit scene I was on") test/neon-run (3D, a game that moves most of its things) with a motion on
+//        the gate, in light and dark: the gate picked, the timeline open at 1 s, the edit camera turned. ▶ Play, the
+//        game runs 3 s, the ship steered, and — as a game does — a new thing added to the scene ('spark') and a hexagon
+//        taken out. Edit: every object, the camera, the pick, the timeline (open, 1 s, the gate at its 1 s place) as
+//        before Play; the spark out of the scene and the hexagon back. Play again: the game gets its spark back and the
+//        hexagon stays out (its own state). Edit again: the edit scene again. `--shots <dir>`: before / after photos.
 // crumb  Three Isles (three levels; level-crumb, 2026-10-22) at every size (PC 1280×800, a side window 420×800, a phone
 //        390×844 by touch) in light and dark: go to Canyon from the top bar's level crumb, ▶ Play in the same page on
 //        Canyon — the crumb is the level's name as words then (no menu) — and Edit: the same page, the crumb a button
@@ -57,6 +64,8 @@ const BEFORE = take('--before');
 const SETTLE = Number(take('--settle') || 8000);
 // --games cove,ruins: which games `time` measures.
 const GAMES = take('--games')?.split(',') || ['cove', 'ruins'];
+// --shots <dir>: restore's before / after photos (light and dark).
+const SHOTS = take('--shots');
 const want = (n) => !ONLY || ONLY.includes(n);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -534,6 +543,98 @@ async function fresh() {
   }
 }
 
+// Neon Run's gate slides 4 m along x in 2 s (a clip at the start), so the timeline at 1 s shows it 2 m over.
+const NEON_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
+  motions: [{ name: 'Slide', len: 2, keys: { p: [{ t: 0, v: [0, 0, 0] }, { t: 2, v: [4, 0, 0] }] } }],
+  motion: { gate: { clips: [{ use: 'Slide', when: { on: 'start' } }] } } };
+/** The game's scene as the page holds it (the one with the gate), as an expression in the game page. */
+const NEON_SCENE = `(${GW}.__studioThree.scenes.find((s) => s.getObjectByName('gate')))`;
+
+async function restore() {
+  for (const dark of [false, true]) {
+    console.log(`restore: Neon Run (3D) — Edit comes back to the edit scene, PC ${dark ? 'dark' : 'light'}`);
+    const g = await open('test/neon-run', null, { w: 1280, h: 800, dark }, NEON_FILE,
+      (root) => cpSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(root, 'studio-placement.js')));
+    const { page } = g;
+    const shot = async (name) => {
+      if (!SHOTS) return;
+      mkdirSync(SHOTS, { recursive: true });
+      writeFileSync(join(SHOTS, `restore-${dark ? 'dark' : 'light'}-${name}.png`), await page.screenshot());
+    };
+    // Everything Edit should come back to.
+    const scene = async () => j(page, `JSON.stringify({
+      list: ${GW}.__gameStudio._debug.list().map((i) => ({ key: i.key, pose: i.pose })),
+      view: ${GW}.__gameStudio._debug.view(),
+      picked: studioShell.selected(),
+      timeline: (({ open, time, clip }) => ({ open, time, clip }))(__studioTimeline.state()),
+      spark: !!${NEON_SCENE}.getObjectByName('spark'),
+      hex2: !!${NEON_SCENE}.getObjectByName('hex-2') })`);
+    const same = (now, was, when) => {
+      const off = samePoses(now.list, was.list, 0.01);
+      check(off.length === 0 && now.list.length === was.list.length, `${when}: every object where it was before Play (${now.list.length} objects${off.length ? `; off: ${off.join(', ')}` : ''})`);
+      check(sameView(now.view, was.view), `${when}: the same edit camera${sameView(now.view, was.view) ? '' : ` (${JSON.stringify(was.view)} → ${JSON.stringify(now.view)})`}`);
+      check(now.picked === was.picked, `${when}: the same pick (${now.picked})`);
+      check(now.timeline.open && Math.abs(now.timeline.time - was.timeline.time) < 1e-6 && now.timeline.clip === was.timeline.clip,
+        `${when}: the timeline open at the same time (${JSON.stringify(now.timeline)})`);
+      check(!now.spark && now.hex2, `${when}: what the game added is out of the scene, what it took away is back (spark ${now.spark}, hex-2 ${now.hex2})`);
+    };
+    try {
+      await page.eval(`(${GW}.__fastSwitchMark = 'restore', true)`);
+      await page.eval(`studioShell.actions.select('gate')`);
+      await sleep(600);
+      await page.eval(`(__studioTimeline.setOpen(true), __studioTimeline.setTime(1), true)`);
+      // The edit camera turned (as a drag on the sky does), told to the shell as the page tells it.
+      await page.eval(`(${GW}.postMessage({ type: 'studio:core/view', view: { action: 'orbit', dx: 60, dy: 20 } }, '*'), true)`);
+      await sleep(1200);
+      const before = await scene();
+      check(before.picked === 'gate' && before.timeline.open && before.timeline.time === 1, `before Play: the gate picked, the timeline at 1 s (${JSON.stringify(before.timeline)})`);
+      // The timeline at 1 s shows the gate at its clip's 1 s place: 2 m over from the layout.
+      const gateAt1 = poseOf(before.list, 'gate')?.p;
+      await shot('1-edit');
+
+      // ▶ Play: the game runs, the ship steered, a thing made and a hexagon taken away — what a game does.
+      await pressPlay(page);
+      await page.waitFor(IN.play, 30000);
+      await page.eval(`(() => { const w = ${GW}; w.dispatchEvent(new w.KeyboardEvent('keydown', { code: 'ArrowRight', key: 'ArrowRight' })); return true; })()`);
+      await sleep(3000);
+      await page.eval(`(() => { const w = ${GW}; w.dispatchEvent(new w.KeyboardEvent('keyup', { code: 'ArrowRight', key: 'ArrowRight' })); return true; })()`);
+      await page.eval(`(() => { const s = ${NEON_SCENE}; const k = s.getObjectByName('hex-1').clone(); k.name = 'spark'; k.position.set(0, 2, 2); s.add(k);
+        s.remove(s.getObjectByName('hex-2')); return true; })()`);
+      await sleep(800);
+      const playing = await j(page, IN.list);
+      const moved = samePoses(playing, before.list, 0.01);
+      check(moved.includes('ship') && moved.some((k) => /^hex-/.test(k)), `Play: the game moved things (${moved.join(', ')})`);
+      await shot('2-play');
+
+      // Edit: the edit scene, not the moment of play.
+      const t = await page.eval(timed(IN.edit, ANSWER.edit));
+      check(t.screen >= 0, `Edit: up in ${t.screen} ms (the page answered in ${t.page} ms)`);
+      check((await page.eval(`${GW}.__fastSwitchMark`)) === 'restore', 'Edit: the same page (no reload)');
+      await sleep(800);
+      const back = await scene();
+      same(back, before, 'Edit');
+      check(close(poseOf(back.list, 'gate')?.p, gateAt1, 0.01), `Edit: the gate where the timeline at 1 s shows it (${JSON.stringify(poseOf(back.list, 'gate')?.p)})`);
+      await shot('3-edit-again');
+
+      // Play again: the game's own things are its own again (the spark it made, the hexagon it took).
+      await pressPlay(page);
+      await page.waitFor(IN.play, 30000);
+      await sleep(600);
+      const st = await j(page, `JSON.stringify({ spark: !!${NEON_SCENE}.getObjectByName('spark'), hex2: !!${NEON_SCENE}.getObjectByName('hex-2') })`);
+      check(st.spark && !st.hex2, `Play again: the game's spark is back and the hexagon stays taken (${JSON.stringify(st)})`);
+      await sleep(1500);
+      await page.eval(`document.querySelector('button.play').click()`);
+      await page.waitFor(IN.edit, 30000);
+      await sleep(800);
+      same(await scene(), before, 'Edit again');
+    } catch (e) {
+      check(false, e.message);
+    } finally {
+      await g.close();
+    }
+  }
+}
+
 async function crumb() {
   const SIZES = [{ id: 'pc', w: 1280, h: 800 }, { id: 'side', w: 420, h: 800 }, { id: 'phone', w: 390, h: 844, touch: true }];
   for (const sz of SIZES) for (const dark of [false, true]) {
@@ -589,6 +690,7 @@ try {
   if (want('old')) await when(true);
   if (want('scene2d')) await scene2d();
   if (want('levels')) await levels();
+  if (want('restore')) await restore();
   if (want('time')) await time();
 } catch (e) {
   check(false, `${e.message}`);

@@ -89,7 +89,7 @@ test('a rename is one undo step', () => {
 test('the words: F2 is Rename in the one key table; ✦ rows say "Ask AI to …" with an ellipsis, in both languages', () => {
   assert.deepEqual(KEYMAP.find((k) => k.id === 'rename')?.keys, ['F2']);
   for (const k of ['ctx.askObject', 'ctx.askMany', 'ctx.askGame', 'ctx.askMotion', 'ctx.nameAsk', 'ctx.nameAskMany', 'lib.askAboutIt', 'lib.addFileAi',
-    'tooloff.ask', 'tooloff.ask.moves', 'tooloff.ask.rule', 'level.askAi']) {
+    'tooloff.ask', 'tooloff.ask.moves', 'tooloff.ask.rule']) {
     const en = translate('en', k, { name: 'ship', n: 2 }), ja = translate('ja', k, { name: 'ship', n: 2 });
     assert.match(en, /^Ask AI .*…$/, `${k}: ${en}`);
     assert.match(ja, /AI に頼む…$/, `${k}: ${ja}`);
@@ -97,8 +97,10 @@ test('the words: F2 is Rename in the one key table; ✦ rows say "Ask AI to …"
   // A plain row never promises a draft: Rename has no "…" any more (it is a field, not a request).
   assert.equal(translate('en', 'ctx.rename'), 'Rename');
   assert.equal(translate('ja', 'ctx.rename'), '名前を変える');
-  for (const k of ['level.oneNote', 'level.make', 'level.first', 'level.askText', 'level.made', 'level.madeClose', 'level.undoMade', 'ctx.nameText', 'ctx.renameLabel', 'undo.rename']) {
+  for (const k of ['level.first', 'level.nth', 'level.blank', 'level.duplicate', 'level.made', 'level.madeTouch', 'level.madeClose', 'level.undoMade', 'ctx.nameText', 'ctx.renameLabel', 'undo.rename']) {
     for (const lang of ['en', 'ja'] as const) assert.notEqual(translate(lang, k), k, `${lang}: ${k}`);
   }
-  assert.equal(translate('en', 'level.made', { name: 'Level 2', from: 'Level 1' }), 'Level 2 made — a copy of Level 1. Change things here to make it different. Save, and your AI adds Level 2 to your game’s code.');
+  // level-menu2 (2026-10-23): the line after New level / Duplicate is one short sentence with the undo key.
+  assert.equal(translate('en', 'level.made', { name: 'Level 2', key: '⌘Z' }), 'Level 2 made. ⌘Z to undo.');
+  assert.equal(translate('ja', 'level.made', { name: 'レベル 2', key: '⌘Z' }), 'レベル 2 を作りました。⌘Z で取り消し');
 });

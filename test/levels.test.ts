@@ -2,10 +2,11 @@
 // page's studio.levels() answer (src/bridge/levels.ts) and placement.json's `levels` (the one validator).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Levels, slugOf } from '../src/shell/levels.ts';
+import { Levels, slugOf, worldOf } from '../src/shell/levels.ts';
+import { PlacementModel } from '../src/shell/placement-model.ts';
 import { cleanLevels, pickLevel } from '../src/bridge/levels.ts';
 import { validatePlacement } from '../src/schema/index.ts';
-import type { PlacementFile } from '../src/contract.ts';
+import type { Item, PlacementFile } from '../src/contract.ts';
 
 const CODE = [{ id: 'meadow', label: 'Meadow' }, { id: 'cave', label: 'Cave' }, { id: 'summit', label: 'Summit' }];
 const file = (objects: PlacementFile['objects'] = {}): PlacementFile => ({ version: 1, tool: 'placement', dim: '3d', space: 'local', objects });
@@ -267,4 +268,49 @@ test('"Make Level 2" taken back (⌘Z / the line\'s Undo): a game with one level
   const code = new Levels();
   code.fromGame(CODE, 'meadow');
   assert.equal(code.unstart(null), null);
+});
+
+// level-menu2 (2026-10-23; a hands-on try: "the levels' menu is New (blank) and Duplicate — make it new, then ask the AI").
+test('New level: the ground and sky stay, every other object is deleted; built from the same code level; ⌘Z takes it back', () => {
+  const m = new PlacementModel();
+  m.restore(file());
+  const it = (key: string, p: number[], extra: Partial<Item> = {}): Item => ({ key, label: key, kinds: ['mesh'], rotatable: true, scalable: true, pose: { p }, ...extra });
+  m.setItems([it('road', [0, 0, 0], { backdrop: true, held: 'ground' }), it('sky', [0, 50, 0], { backdrop: true }), it('pillar', [1, 0, -5]), it('orb', [0, 1, -9], { label: 'Glow orb' })], '3d');
+  m.moved('pillar', { p: [3, 0, -5] });
+  m.addCopy('pillar-2', 'pillar', { p: [4, 0, -5] });
+  const keep = (k: string) => k === 'road' || k === 'sky';
+  const blank = m.blank(keep);
+  assert.deepEqual(blank.objects, {}, 'the moved pillar is not carried: it is deleted');
+  assert.equal(blank.added, undefined, 'copies are left out');
+  assert.deepEqual(blank.removed, [{ key: 'orb', label: 'Glow orb', was: { p: [0, 1, -9] } }, { key: 'pillar', was: { p: [1, 0, -5] } }]);
+
+  const lv = new Levels();
+  lv.load(file());
+  lv.fromGame(CODE, 'cave');
+  const id = lv.blank(worldOf(blank), (n) => `Level ${n}`);
+  assert.equal(id, 'level-4', 'three levels: the new one is Level 4');
+  assert.deepEqual(lv.list.map((e) => e.id), ['meadow', 'cave', 'level-4', 'summit'], 'right after the one on screen');
+  assert.equal(lv.build(id), 'cave', 'built from the level on screen, its objects deleted');
+  assert.equal(lv.dirtyElsewhere(), 1);
+  const out = lv.compose(file());
+  assert.deepEqual(out.levels!.find((l) => l.id === id), { id, label: 'Level 4', from: 'cave', removed: blank.removed });
+  assert.ok(validatePlacement(out).ok);
+  assert.equal(lv.blank({ objects: {} }, (n) => `Level ${n}`), 'level-5', 'the next number');
+  assert.equal(lv.unadd('level-5'), true);
+  assert.equal(lv.unadd('cave'), false, 'only a level made in the editor');
+  assert.deepEqual(lv.list.map((e) => e.id), ['meadow', 'cave', 'level-4', 'summit']);
+  assert.equal(lv.dirtyElsewhere(), 1, 'its change on Save went with it');
+});
+
+test('a game without levels: New level makes Level 1 from what is on screen and a blank Level 2', () => {
+  const lv = new Levels();
+  lv.load(file({ rock }));
+  const id = lv.start({ objects: { rock } }, 'Level 1', { world: { objects: {}, removed: [{ key: 'rock' }] }, name: (n) => `Level ${n}` });
+  assert.equal(id, 'level-2');
+  assert.deepEqual(lv.list.map((e) => [e.id, lv.labelOf(e.id)]), [['level-1', 'Level 1'], ['level-2', 'Level 2']]);
+  const out = lv.compose(file({ rock }));
+  assert.deepEqual(out.levels!.map((l) => [l.id, Object.keys(l.objects || {}), (l.removed || []).map((r) => r.key)]), [['level-1', ['rock'], []], ['level-2', [], ['rock']]]);
+  assert.deepEqual(out.levelsWas, [], 'the code has no levels yet');
+  assert.ok(lv.unstart(null), '⌘Z: back to one level');
+  assert.equal(lv.active, false);
 });

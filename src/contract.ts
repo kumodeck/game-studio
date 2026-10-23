@@ -339,8 +339,11 @@ export interface StudioAdapter {
    * own draws still kept off the screen. The editor uses it once, for a moment, to find what the game moves by
    * itself (bridge/observe.ts). Adapters whose engine holds frames on its own (three.js: boot.js) need it; without
    * it the editor only thaws core.time's requestAnimationFrame.
+   * `whole` (▶ Play in the page and back to Edit, bridge/play-switch.ts; studio-edit-restore, 2026-10-23): off also puts
+   * the scene's things back as Play found them — what the game added is held out, what it took away is back — and the
+   * next on hands those back to the game first (three.js adapter.js holdOut / giveBack).
    */
-  watch?(on: boolean): void;
+  watch?(on: boolean, whole?: boolean): void;
   /**
    * Draw one frame of the edit view. Called by the bridge while frozen
    * (the game's own loop is paused, so nothing else draws).

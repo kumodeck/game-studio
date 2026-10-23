@@ -1,23 +1,27 @@
 // Levels (2026-10-22, CONTRACT.md §1.10): a game with three levels (examples/three-isles), the real
 // server and the built shell, in headless Chrome.
 //
-//   1. the top bar's path names the level (Studio / Three Isles / Meadow ⌄ / Scene; level-crumb, 2026-10-22), its
+//   1. the top bar's path names the level, last (Studio / Three Isles / Scene / Meadow ⌄; level-menu2, 2026-10-23), its
 //      tooltip says "1 of 3", and the list's head says "In this scene" again (one door, not two)
 //   2. a move in Meadow, then the menu → Canyon: the game opens on Canyon (its own objects), Save still counts the move
-//   3. New level from Canyon → "Canyon 2", built from Canyon; Rename… → "Crystal Hall"; Move up; back to Meadow: the move is
-//      still there
+//   3. the menu: the levels, New level, Duplicate, Rename…, Move up / down, Delete — no line of explanation, no ✦ row
+//      (level-menu2); New level → "Level 4", built from Canyon with its objects deleted and the ground kept, one line
+//      "Level 4 made. ⌘Z to undo.", ⌘Z → back on Canyon; Duplicate → "Canyon 2", built from Canyon; Rename… →
+//      "Crystal Hall"; Move up; back to Meadow: the move is still there
 //   4. Save: placement.json has every level (Meadow's move, the copy with `from`, the rename with `labelWas`) and the
 //      code's order (`levelsWas`); Delete level on Summit goes to its neighbour and Save writes it as missing
 //   5. ▶ Play plays the level shown (in the same page since the fast switch, 2026-10-22)
 //   6. ] and [ go to the next / previous level; ⌘K lists the levels' rows with those keys
-//   7. a game without levels (examples/three-orb-garden): no crumb, "Levels ⌄" after the path; pressing it opens its
-//      menu and writes nothing in the ask field (studio-uniforms, 2026-10-23: it typed a request there before); a saved
-//      move writes no `levels`. Making Level 2 in such a game: test/studio-uniforms.browser.mjs
-//   8. a game whose code has ONE level (three-isles with its list cut to Meadow): "Levels ⌄" → Make Level 2 → "Meadow 2"
-// Then pictures of the crumb and its menu (and of "Levels ⌄" with its menu in a game without levels): PC 1280×800, a side window
+//   7. a game without levels (examples/three-orb-garden): "Level 1 ⌄" last in the path (level-menu2); a saved move
+//      writes no `levels`; its menu is Level 1 ✓, New level, Duplicate, and writes nothing in the ask field; New level →
+//      Level 2 opens with the ground kept and the rest deleted (`levelsWas: []`). Duplicate there:
+//      test/studio-uniforms.browser.mjs
+//   8. a game whose code has ONE level (three-isles with its list cut to Meadow): "Meadow ⌄" → Duplicate → "Meadow 2"
+// Then pictures of the crumb and its menu (and of "Level 1 ⌄" with its menu in a game without levels): PC 1280×800, a side window
 // 420×800 (mouse), a phone 390×844 (touch), light and dark.
 //
-//   node test/studio-levels.browser.mjs [--shots <dir>] [--tag before|after] [--ui <built shell dir>] [--no-assert] [--lang en|ja]
+//   node test/studio-levels.browser.mjs [--shots <dir>] [--tag before|after] [--ui <built shell dir>] [--no-assert] [--lang en|ja] [--only pc|side|phone]
+// --only: the pictures of one size (level-menu2: the docs and the report need the PC ones only).
 // --lang: the pictures' words (the editor's own choice when left out). The checks themselves always run in English.
 // Added for the public docs' Japanese pages (docs/site, 2026-10-22), which use pictures of the Japanese screen.
 // --ui with --no-assert: pictures only, with another built shell (the "before" set: the shell of the commit before).
@@ -81,7 +85,7 @@ async function open({ w, h, touch = false, dark = false, side = false }) {
     await sleep(300);
   };
   // The crumb's words and its tooltip ("Meadow  Level 1 of 3: Meadow. Press…"): the place in the list is said there.
-  const head = () => ev(`(() => { const b = document.querySelector('.brand .level-switch'); return b && b.offsetParent ? b.textContent + '  ' + b.title : null; })()`);
+  const head = () => ev(`(() => { const b = document.querySelector('.brand .level-crumb .level-switch'); return b && b.offsetParent ? b.textContent + '  ' + b.title : null; })()`);
   const key = async (k) => {
     await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code: k === '[' ? 'BracketLeft' : 'BracketRight', text: k, windowsVirtualKeyCode: k === '[' ? 219 : 221 });
     await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code: k === '[' ? 'BracketLeft' : 'BracketRight', windowsVirtualKeyCode: k === '[' ? 219 : 221 });
@@ -96,7 +100,7 @@ async function open({ w, h, touch = false, dark = false, side = false }) {
 /** Choose a row of the levels' menu (opened from the head). */
 async function menu(p, id) {
   if (args.includes('--verbose')) console.log(`  menu → ${id}`);
-  await p.press('.level-switch');
+  await p.press('.level-crumb .level-switch');
   await p.page.waitFor(`document.querySelector('.ctx-menu') && !document.querySelector('.ctx-menu').hidden`, 3000);
   await p.press(`.ctx-menu [data-action="ctx-${id}"]`);
 }
@@ -108,11 +112,11 @@ async function flow() {
     await p.page.goto(srv.url);
     await p.waitReady();
     await sleep(800);
-    // 1. The crumb, between the game and the Scene.
+    // 1. The crumb, after the Scene: game / scene / level (level-menu2).
     assert.match(await p.head(), /Meadow.*1 of 3/, 'the crumb names the level, its tooltip its place');
     // (The level's slot is display: contents, so its parts are looked up by name, not by the bar's children.)
     assert.equal(await p.ev(`[...document.querySelectorAll('.brand .app, .brand .title, .brand .level-switch, .brand .here')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim()).join(' / ')`),
-      'Studio / Three Isles / Meadow / Scene', 'Studio / Three Isles / Meadow / Scene');
+      'Studio / Three Isles / Scene / Meadow', 'Studio / Three Isles / Scene / Meadow');
     assert.match(await p.ev(`document.querySelector('.list-title')?.textContent || ''`), /In this scene/, 'the list says "In this scene" again');
     assert.equal(await p.ev(`!!document.querySelector('.list-tools .level-switch')`), false, 'one door: not in the list too');
     assert.equal(await p.ev(`!!document.querySelector('.level-add')`), false, 'no "+ Level" in a game with levels');
@@ -133,8 +137,38 @@ async function flow() {
     assert.match(await p.head(), /Canyon.*2 of 3/);
     assert.equal(await p.ev(`studioShell.selected()`), null, 'nothing picked on a new level');
     assert.match(await p.saveCount(), /1/, 'Meadow\'s move still waits for Save');
-    // 3. Copy, rename, move up.
+    // 3. The menu's rows (level-menu2: no note, no ✦), New level and ⌘Z, then Duplicate, rename, move up.
+    await p.press('.level-crumb .level-switch');
+    await p.page.waitFor(`document.querySelector('.ctx-menu') && !document.querySelector('.ctx-menu').hidden`, 3000);
+    assert.deepEqual(JSON.parse(await p.ev(`JSON.stringify([...document.querySelectorAll('.ctx-menu [data-action]')].map((e) => e.dataset.action.replace(/^ctx-/, '')))`)),
+      ['level:meadow', 'level:canyon', 'level:summit', 'level-new', 'level-copy', 'level-rename', 'level-up', 'level-down', 'level-delete']);
+    assert.equal(await p.ev(`!!document.querySelector('.ctx-menu .ai, .ctx-menu .ctx-note')`), false, 'no ✦ row, no line of explanation');
+    await p.page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await p.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+    await sleep(200);
+    const canyonKeys = await p.keys();
     await menu(p, 'level-new');
+    await p.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=level-4')`, 5000);
+    assert.match(await p.frameUrl(), /studioBuild=canyon(&|$)/, 'a new level is built from the level on screen');
+    await p.page.waitFor(`${READY} && /Level 4/.test(document.querySelector('.brand .level-switch')?.textContent || '')`, 45000);
+    await sleep(800);
+    assert.match(await p.head(), /Level 4.*3 of 4/, 'right after Canyon');
+    const kept = await p.keys();
+    const ground = JSON.parse(await p.ev(`JSON.stringify(studioShell.items().filter((i) => i.backdrop || i.held === 'ground').map((i) => i.key))`));
+    if (args.includes('--verbose')) console.log(`  Canyon: ${canyonKeys.join(' ')}\n  Level 4 keeps: ${kept.join(' ')}`);
+    assert.ok(kept.length < canyonKeys.length && !kept.includes('crystal-1'), 'the placed objects are gone');
+    assert.ok(ground.length > 0 && ground.every((k) => kept.includes(k)), `the ground stays (${ground.join(', ')})`);
+    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent : ''; })()`), /^Level 4 made\. (⌘|Ctrl\+)Z to undo\.$/, 'one short line');
+    assert.match(await p.saveCount(), /2/, 'Meadow\'s move and the new level');
+    const mod0 = process.platform === 'darwin' ? 4 : 2;
+    await p.page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: mod0 });
+    await p.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', windowsVirtualKeyCode: 90, modifiers: mod0 });
+    await p.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=canyon&')`, 5000);
+    await p.page.waitFor(`${READY} && ${DBG}.list().some((i) => i.key === 'crystal-1')`, 45000);
+    assert.match(await p.head(), /Canyon.*2 of 3/, '⌘Z: the new level is gone, back on Canyon');
+    assert.match(await p.saveCount(), /1/, 'and its change on Save with it');
+    console.log('ok levels: New level keeps the ground, deletes the rest; one line; ⌘Z takes it back');
+    await menu(p, 'level-copy');
     await p.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=canyon-2')`, 5000);
     assert.match(await p.frameUrl(), /studioBuild=canyon(&|$)/, 'the copy is built from Canyon');
     await p.page.waitFor(`${READY} && ${DBG}.list().some((i) => i.key === 'crystal-1')`, 45000);
@@ -187,7 +221,7 @@ async function flow() {
     assert.equal(await p.head(), null);
     await p.press('[data-action=play]');
     await p.page.waitFor(`document.querySelector('.shell').dataset.playing !== 'on' && ${READY}`, 45000);
-    console.log('ok levels: switch, copy, rename, move, delete, save, play');
+    console.log('ok levels: switch, duplicate, rename, move, delete, save, play');
     // 6. [ / ]: Meadow, Crystal Hall, Canyon — on Canyon (the last), ] does nothing, [ goes to Crystal Hall.
     await sleep(500);
     await p.key(']');
@@ -197,7 +231,7 @@ async function flow() {
     await p.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=canyon-2')`, 5000);
     await p.page.waitFor(`${READY} && /Crystal Hall/.test(document.querySelector('.brand .level-switch')?.textContent || '')`, 45000);
     // The menu writes those keys on the neighbours' rows.
-    await p.press('.brand .level-switch');
+    await p.press('.brand .level-crumb .level-switch');
     await p.page.waitFor(`document.querySelector('.ctx-menu') && !document.querySelector('.ctx-menu').hidden`, 3000);
     assert.equal(await p.ev(`document.querySelector('.ctx-menu [data-action="ctx-level:meadow"] .ctx-key')?.textContent || ''`), '[');
     assert.equal(await p.ev(`document.querySelector('.ctx-menu [data-action="ctx-level:canyon"] .ctx-key')?.textContent || ''`), ']');
@@ -222,27 +256,16 @@ async function flow() {
     await p.page.close();
   }
 
-  // 7. No levels: as before, and "+ Level" after the path.
+  // 7. No levels: as before, and "Level 1 ⌄" last in the path; its menu; New level.
   await fresh('three-orb-garden');
   const q = await open({ w: 1280, h: 800 });
   try {
     await q.page.goto(srv.url);
     await q.waitReady();
-    assert.equal(await q.head(), null, 'no crumb in a game without levels');
+    assert.equal(await q.head(), null, 'no crumb of a game with levels');
     assert.match(await q.ev(`document.querySelector('.list-title')?.textContent || ''`), /In this scene/);
-    assert.match(await q.ev(`(() => { const b = document.querySelector('.brand .level-add'); return b && b.offsetParent ? b.textContent : ''; })()`), /Levels/, '"Levels ⌄" after the path');
-    // studio-uniforms (2026-10-23): it opens a menu and writes nothing in the AI box (it typed a request there before).
-    const asked = () => (existsSync(join(root, '.studio/requests')) ? readdirSync(join(root, '.studio/requests')).length : 0);
-    const before = asked();
-    await q.press('.brand .level-add');
-    await q.page.waitFor(`document.querySelector('.ctx-menu') && !document.querySelector('.ctx-menu').hidden`, 3000);
-    assert.ok(await q.ev(`!!document.querySelector('.ctx-menu [data-action="ctx-level-make"]') && !!document.querySelector('.ctx-menu .ai[data-action="ctx-level-ask"]')`), 'Make Level 2 and ✦ Ask AI');
-    assert.equal(await q.ev(`document.querySelector('.ask-input').value`), '', 'nothing in the ask field');
-    await sleep(500);
-    assert.equal(asked(), before, 'nothing sent');
-    await q.page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-    await q.page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
-    await sleep(200);
+    assert.match(await q.ev(`[...document.querySelectorAll('.brand .app, .brand .title, .brand .here, .brand .level-add')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim()).join(' / ')`),
+      /^Studio \/ .+ \/ Scene \/ Level 1$/, '"Level 1 ⌄" last in the path');
     const k = (await q.keys())[3];
     await q.ev(`studioShell.actions.select(${JSON.stringify(k)})`);
     await q.page.waitFor(`studioShell.selected() === ${JSON.stringify(k)}`, 3000);
@@ -251,7 +274,28 @@ async function flow() {
     await sleep(1500);
     const g = placement();
     assert.ok(g && Object.keys(g.objects).length === 1 && !('levels' in g) && !('levelsWas' in g), 'the draft is a one-level file');
-    console.log('ok no levels: as before, "Levels ⌄" opens its menu, the ask field stays empty');
+    // The menu: the one level ✓, New level, Duplicate — nothing typed in the AI box, nothing sent.
+    const asked = () => (existsSync(join(root, '.studio/requests')) ? readdirSync(join(root, '.studio/requests')).length : 0);
+    const before = asked();
+    await q.press('.brand .level-add');
+    await q.page.waitFor(`document.querySelector('.ctx-menu') && !document.querySelector('.ctx-menu').hidden`, 3000);
+    assert.deepEqual(JSON.parse(await q.ev(`JSON.stringify([...document.querySelectorAll('.ctx-menu [data-action]')].map((e) => e.dataset.action.replace(/^ctx-/, '')))`)), ['level-one', 'level-new', 'level-copy']);
+    assert.equal(await q.ev(`!!document.querySelector('.ctx-menu .ai, .ctx-menu .ctx-note')`), false, 'no ✦ row, no line of explanation');
+    assert.equal(await q.ev(`document.querySelector('.ask-input').value`), '', 'nothing in the ask field');
+    assert.equal(asked(), before, 'nothing sent');
+    const all = await q.keys();
+    await q.press('.ctx-menu [data-action="ctx-level-new"]');
+    await q.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=level-2')`, 5000);
+    await q.page.waitFor(`${READY} && /Level 2/.test(document.querySelector('.brand .level-crumb .level-switch')?.textContent || '')`, 45000);
+    await sleep(1500);
+    const left = await q.keys();
+    if (args.includes('--verbose')) console.log(`  Neon Orb: ${all.join(' ')}\n  Level 2 keeps: ${left.join(' ')}`);
+    assert.ok(left.length > 0 && left.length < all.length, `the ground stays, the rest goes (${left.join(', ')})`);
+    const n = placement();
+    assert.deepEqual(n?.levels?.map((l) => l.id), ['level-1', 'level-2']);
+    assert.deepEqual(n.levelsWas, [], 'the code has no levels yet');
+    assert.ok(n.levels[1].removed?.length === all.length - left.length, 'Level 2 lists what it deleted');
+    console.log('ok no levels: "Level 1 ⌄" last, its menu (New level, Duplicate), New level keeps the ground');
   } finally {
     await q.page.close();
   }
@@ -264,15 +308,16 @@ async function flow() {
     await r.waitReady();
     await sleep(500);
     assert.equal(await r.head(), null, 'one level: no crumb');
+    assert.match(await r.ev(`document.querySelector('.brand .level-add')?.textContent || ''`), /^Meadow$/, 'the code\'s one level by its name');
     await r.press('.brand .level-add');
-    await r.press('.ctx-menu [data-action="ctx-level-make"]');
+    await r.press('.ctx-menu [data-action="ctx-level-copy"]');
     await r.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=meadow-2')`, 5000);
     assert.match(await r.frameUrl(), /studioBuild=meadow(&|$)/, 'built from the one level');
     await r.page.waitFor(`${READY} && /Meadow 2/.test(document.querySelector('.brand .level-switch')?.textContent || '')`, 45000);
     assert.match(await r.head(), /Meadow 2.*2 of 2/);
     assert.equal(await r.ev(`!!document.querySelector('.level-add')`), false, '"+ Level" gives way to the crumb');
     assert.match(await r.saveCount(), /1/, 'one change on Save');
-    console.log('ok one level: "Levels ⌄" → Make Level 2 makes Meadow 2');
+    console.log('ok one level: "Meadow ⌄" → Duplicate makes Meadow 2');
   } finally {
     await r.page.close();
   }
@@ -298,10 +343,10 @@ async function shots() {
     { id: 'side', w: 420, h: 800, side: true },
     { id: 'phone', w: 390, h: 844, touch: true },
   ];
-  const sw = '.level-switch';
-  for (const sz of SIZES) for (const dark of [false, true]) {
+  const sw = '.level-crumb .level-switch';
+  for (const sz of SIZES.filter((s) => !opt('--only') || s.id === opt('--only'))) for (const dark of [false, true]) {
     const name = `${TAG}-${sz.id}-${dark ? 'dark' : 'light'}`;
-    for (const game of TAG === 'before' ? ['three-isles'] : ['three-isles', 'three-orb-garden']) {
+    for (const game of ['three-isles', 'three-orb-garden']) {
       await fresh(game);
       const p = await open({ ...sz, dark });
       try {
@@ -313,7 +358,7 @@ async function shots() {
         }
         await sleep(1500);
         if (game === 'three-orb-garden') {
-          // "Levels ⌄" with its menu open (studio-uniforms, 2026-10-23: the docs show what it offers). A phone has no room
+          // "Level 1 ⌄" with its menu open (the docs show what it offers). A phone has no room
           // for the button: the picture is the bar as it is.
           if (await p.ev(`!!document.querySelector('.brand .level-add')?.offsetParent`)) {
             await p.press('.brand .level-add');

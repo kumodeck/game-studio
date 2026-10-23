@@ -99,6 +99,9 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   let view = null;
   let dirty = true;
   let watchSnap = null; // transforms kept while the editor watches the game play (watch)
+  // What the game added and took away while it played (watch(false, true): Play → Edit), held out of / put back into the
+  // scene for Edit and handed back to the game at the next Play (watch(true, true)). null = nothing held.
+  let playStash = null;
   let loopGen = 0; // each begin() starts a new paint loop; an old loop sees a stale generation and stops
   let lastCount = -1;
   let cands = [];
@@ -123,6 +126,53 @@ export function createThreeAdapter({ scene, renderer, camera }) {
   // let go). `skip`: the keys moving together (the selection): never a surface for each other.
   let snap = { on: false, free: false, skip: [] };
   const leaveHome = () => { atHome = false; glide = 0; };
+  /** `o` into `parent` at `index` among its children (the end when the list is shorter now). */
+  const putAt = (o, parent, index) => {
+    if (o.parent !== parent) {
+      o.parent?.remove(o);
+      parent.add(o);
+    }
+    const c = parent.children;
+    c.splice(c.indexOf(o), 1);
+    c.splice(Math.max(0, Math.min(index, c.length)), 0, o);
+  };
+  /**
+   * Play → Edit (studio-edit-restore, 2026-10-23; a try of the editor: "after playing, Edit came back in the middle of the game —
+   * keep the edit scene I was on"): the scene as Play found it, not only its transforms. What the game ADDED while
+   * playing (a bullet, a spawned obstacle, an effect) is taken out of the scene, and what it TOOK AWAY or moved to
+   * another parent (a coin picked up, a part attached to the player) goes back where it was, at the same place among
+   * its parent's children — so every key (name#2, path:…) is the one the editor had. Returns what to hand back at the
+   * next Play (giveBack): the game's code still holds these objects, and its next frame expects them where it left
+   * them (a bullet it moves, a coin it took). WHY not keep them out for good: Play goes on from the game's own state
+   * (play-switch.ts: the score, a timer, what it made), and a spawned enemy the game still steps but no longer sees in
+   * the scene would be a ghost.
+   */
+  function holdOut(snap) {
+    const had = new Set(snap.map((x) => x[0]));
+    const added = [];
+    scene.traverse((o) => {
+      // Only the top of each new subtree (its parent was there): the rest goes with it.
+      if (!had.has(o) && o.parent && had.has(o.parent)) added.push([o, o.parent, o.parent.children.indexOf(o)]);
+    });
+    for (const [o] of added) o.parent.remove(o);
+    const back = [];
+    for (const [o, , , , , parent, index] of snap) {
+      if (!parent || o.parent === parent) continue;
+      back.push([o, o.parent, o.parent ? o.parent.children.indexOf(o) : -1]);
+      putAt(o, parent, index);
+    }
+    return added.length || back.length ? { added, back } : null;
+  }
+  /** The next Play: the game's things as it left them (holdOut, undone in reverse order). */
+  function giveBack(st) {
+    for (const [o, parent, index] of st.back.slice().reverse()) {
+      if (parent) putAt(o, parent, index);
+      else o.parent?.remove(o);
+    }
+    for (const [o, parent, index] of st.added.slice().reverse()) putAt(o, parent, index);
+    scene.updateMatrixWorld(true);
+    touch();
+  }
   /**
    * Move the edit camera from view state `from` to `to` in 0.6 s (ease in-out), starting at `from`. Any look-around
    * gesture (leaveHome / a new glide) stops it where it is. `done` runs at the end. `stop()` true ends it early (the
@@ -559,18 +609,25 @@ export function createThreeAdapter({ scene, renderer, camera }) {
      * the list does not show move too — a lighthouse's turning beam stayed turned and caught taps meant for the sky,
      * and a camera that sways moved the opening view (studio-deselect / web-demo-move, 2026-10-19).
      */
-    watch(on) {
+    watch(on, whole = false) {
       if (on) {
         watchSnap = [];
         // The Euler angles, not the quaternion (the same lesson as boot.js snapLayout): copying a quaternion makes three
         // re-derive the angles, and a boat turned 115° came back as (180°, 65°, 180°) — the same turn, but read as
         // "tilted upside down" with r = 65°. Then "Put back and save" (safe-save) or an undo set r alone and left the
         // 180° tilt, and Lantern Cove's sailboat was saved turned 49° from where it was (e2e-016, 2026-10-20).
-        const keep = (o) => watchSnap.push([o, o.position.clone(), o.rotation.clone(), o.scale.clone(), o.visible]);
+        // The parent and the place among its children too, for whole (Play → Edit: what the game took away goes back there).
+        const keep = (o) => watchSnap.push([o, o.position.clone(), o.rotation.clone(), o.scale.clone(), o.visible, o.parent, o.parent ? o.parent.children.indexOf(o) : -1]);
         scene.traverse(keep);
         const gc = gameCamera();
         if (gc && !gc.parent) keep(gc);
+        // The next Play after an Edit (whole): the game's own things back as it left them — AFTER the snapshot, so the
+        // snapshot stays the edit scene and the next Edit holds out everything the game made, this Play's and the last's.
+        const st = playStash;
+        playStash = null;
+        if (whole && st) giveBack(st);
       } else if (watchSnap) {
+        if (whole) playStash = holdOut(watchSnap);
         for (const [o, p, e, s, v] of watchSnap) {
           o.position.copy(p);
           o.rotation.copy(e); // also updates the quaternion (three keeps them in sync)

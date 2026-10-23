@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.25 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.26 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -355,8 +355,11 @@ const CONTRACT_VERSION = 1;
                                                                                                                
                                                                                                                    
                                                                 
+                                                                                                                         
+                                                                                                                      
+                                                                                         
      
-                            
+                                             
      
                                                                        
                                                             
@@ -12876,14 +12879,39 @@ class PlacementModel {
     }
     if (!this.removed.has(key)) {
       this.removed.add(key);
-      const m = this.meta.get(key);
-      const was = this.was.get(key);
-      const e                   = { key };
-      if (m?.label && m.label !== key) e.label = m.label;
-      if (was) e.was = roundPose(was, this.dim);
-      if (m?.unstable || key.startsWith('path:')) e.unstable = true;
-      if (!this.removedMeta.has(key)) this.removedMeta.set(key, e);
+      if (!this.removedMeta.has(key)) this.removedMeta.set(key, this.removedEntry(key));
     }
+  }
+  /** How a deleted game object is written (`removed`): its key, the game's name and pose, to find it in the code. */
+          removedEntry(key        )                   {
+    const m = this.meta.get(key);
+    const was = this.was.get(key);
+    const e                   = { key };
+    if (m?.label && m.label !== key) e.label = m.label;
+    if (was) e.was = roundPose(was, this.dim);
+    if (m?.unstable || key.startsWith('path:')) e.unstable = true;
+    return e;
+  }
+
+  /**
+   * "New level" (level-menu2, 2026-10-23): this level's world with every game object deleted except the ones `keep`
+   * says (the ground / road / sea / sky — the scene's base; main.ts passes the backdrop test). Lights and the camera are
+   * never in the list (adapters/three/keys.js skips them), so they stay too. Copies, motions, names and draw orders are
+   * left out: a blank level has none of its own yet. The kept objects keep the poses they have here.
+   * WHY deletions of the same code level (and not an empty file): the game's code builds a level by id, and a new
+   * level is built from the one on screen (`from`) until the AI writes it into the code — the same way a copy is.
+   */
+  blank(keep                          )                {
+    const now = this.result();
+    const out                = { version: 1, tool: 'placement', dim: this.dim, space: 'local', objects: {} };
+    for (const [k, e] of Object.entries(now.objects)) if (keep(k) && !this.orphans.has(k)) out.objects[k] = e;
+    const removed = new Map((now.removed || []).map((r) => [r.key, r]));
+    for (const it of this.items) {
+      if (this.copyFrom.has(it.key) || it.copyOf || keep(it.key) || removed.has(it.key)) continue;
+      removed.set(it.key, this.removedEntry(it.key));
+    }
+    if (removed.size) out.removed = [...removed.keys()].sort().map((k) => removed.get(k) );
+    return out;
   }
 
   /** Undo of remove(). */
@@ -13339,7 +13367,7 @@ const en = {
   'tl.when.aiHead': 'Ask AI to Set Up',
   'tl.when.touchNow': 'On Collision (AI)',
   'tl.when.cueNow': 'On Signal (AI)',
-  'tl.when.sayNow': 'As you asked in the chat',
+  'tl.when.sayNow': 'Custom',
   // "Make a motion" by showing it (studio-no-presets; the kinds — Back and forth, Round, Once, Spin — are gone).
   'tl.make': '+ Make a motion',
   'tl.make.drag': 'Drag {name} to where it should move (Esc to cancel)',
@@ -13444,7 +13472,7 @@ const en = {
   'tl.when.short.key': 'Key',
   'tl.when.short.time': 'Timer',
   'tl.when.short.start': 'Start',
-  'tl.when.say': 'Custom with AI…',
+  'tl.when.say': 'Custom…',
   'tl.when.cue': 'Moves when something happens in the game',
   'tl.when.touch': 'Moves when the player touches it',
   'tl.when.enter': 'When Near',
@@ -13698,6 +13726,10 @@ const en = {
   'play.toLayoutTip': 'Keep this place, as a move in Edit would (Save · N)',
   'play.putBack': 'Put back',
   'play.putBackTip': 'Back where it was when you paused',
+  // Back in Edit (studio-edit-restore, 2026-10-23): Edit is the scene from before Play; the only thing of the play that
+  // stays is what the person put in the layout themselves, and then the editor says so (main.ts editInPage).
+  'play.keptOne': 'Back to your edit scene. Kept 1 change you put in the layout while playing',
+  'play.keptN': 'Back to your edit scene. Kept {n} changes you put in the layout while playing',
   // Empty on purpose (the third design review, 5-3 / ⑩, 2026-10-20): the line after Save is one line, "Your request is
   // in. It goes into the game the next time your AI runs." + "Call your AI". "Your layout is saved" said what the top
   // bar's "✓ Saved" says. Emptied here, not taken out of main.ts renderAiLine(), which another fix of the same day
@@ -13879,28 +13911,29 @@ const en = {
   'list.titleUi': 'On screen',
   // Levels (2026-10-22, level-switch.ts): the list's head names the level; pressing it opens the levels' menu.
   'level.of': '{n} of {total}',
-  'level.switch': 'Level {where}: {name}. Press to switch levels, or to copy, rename, reorder or delete them',
-  // The top bar's level crumb and "+ Level" (level-crumb, 2026-10-22; level-switch.ts).
+  'level.switch': 'Level {where}: {name}. Press to switch levels, make a new one, duplicate, rename, reorder or delete them',
+  // The top bar's level crumb, after "Scene" (level-crumb, 2026-10-22; level-menu2, 2026-10-23; level-switch.ts).
   'level.prev': 'Previous level',
   'level.next': 'Next level',
-  'level.add': 'Levels',
-  'level.addTip': 'Levels: make a second level from this one, or ask AI for one',
-  // Written into the ask field by "+ Level" in a game whose code has no levels yet; sent only when the person presses Enter.
-  'level.oneNote': 'This game has one level. Add another and this one becomes Level 1.',
-  'level.make': 'Make Level 2 — a copy of this one',
+  // A game without levels: its one level's name, then the menu with New level / Duplicate.
+  'level.addTip': '{name}: press to make a new level or duplicate this one',
   'level.first': 'Level 1',
-  'level.askAi': 'Ask AI for a different kind of level…',
-  'level.askText': 'Add a new level. How it should differ from this one: ',
-  'level.made': '{name} made — a copy of {from}. Change things here to make it different. Save, and your AI adds {name} to your game’s code.',
+  // The name of a New level (number n).
+  'level.nth': 'Level {n}',
+  // The menu's two ways to make a level (level-menu2; a hands-on try: "New (blank) and Duplicate").
+  'level.blank': 'New level',
+  'level.duplicate': 'Duplicate',
+  // The one line after making one (renderLevelMade): {key} = ⌘Z / Ctrl+Z; a phone gets an Undo button instead.
+  'level.made': '{name} made. {key} to undo.',
+  'level.madeTouch': '{name} made.',
   'level.madeClose': 'Close',
   'level.undoMade': 'make {name}',
   'level.pal.open': 'Levels… (on {name})',
   'level.pal.prev': 'Previous level: {name}',
   'level.pal.next': 'Next level: {name}',
-  'level.pal.add': 'Levels… (add a level)',
-  'level.pal.words': 'level levels stage map world switch go next previous add new レベル ステージ マップ 面 切り替え 次 前 足す',
+  'level.pal.add': 'Levels… (new level, duplicate)',
+  'level.pal.words': 'level levels stage map world switch go next previous add new blank duplicate copy レベル ステージ マップ 面 切り替え 次 前 足す 新規 複製',
   'level.menu': 'Levels',
-  'level.new': 'New level from {name}',
   'level.rename': 'Rename…',
   'level.renameLabel': 'Name of this level',
   'level.up': 'Move up',
@@ -14153,7 +14186,7 @@ const ja                               = {
   'tl.when.aiHead': 'AI に仕掛けを作ってもらう',
   'tl.when.touchNow': 'ぶつかったとき（AI）',
   'tl.when.cueNow': 'ほかの合図を受けたら（AI）',
-  'tl.when.sayNow': 'チャットでお願いしたとおり',
+  'tl.when.sayNow': 'カスタム',
   'tl.make': '＋ 動きを作る',
   'tl.make.drag': '{name} を、動いてほしい所までドラッグしてください（Esc でやめる）',
   'tl.made.more': '0〜{t} 秒の動きができました。続けて動かすと 1 秒ずつ足されます',
@@ -14266,7 +14299,7 @@ const ja                               = {
   'tl.when.short.key': 'キー',
   'tl.when.short.time': '時間',
   'tl.when.short.start': '始まり',
-  'tl.when.say': 'チャットで自由にお願い…',
+  'tl.when.say': 'カスタム…',
   'tl.when.cue': 'ゲームで何かが起きたら動く',
   'tl.when.touch': 'プレイヤーが触れると動く',
   'tl.when.enter': '近くに近づいたら',
@@ -14482,6 +14515,8 @@ const ja                               = {
   'play.toLayoutTip': 'この位置を残す（編集で動かしたのと同じ・保存 · N）',
   'play.putBack': '元に戻す',
   'play.putBackTip': '止めた時の位置に戻す',
+  'play.keptOne': '編集の場面に戻りました。遊んでいる間に「配置に入れる」した 1 件の変更は残しています',
+  'play.keptN': '編集の場面に戻りました。遊んでいる間に「配置に入れる」した {n} 件の変更は残しています',
   'ai.savedSub': '', // empty on purpose: see the English table
   'ai.updating': 'ゲームを新しくしています…',
   'ai.undo': 'AI の直しを戻す',
@@ -14644,26 +14679,24 @@ const ja                               = {
   'list.title': 'このシーンの物',
   'list.titleUi': '画面の上の物',
   'level.of': '{n} / {total}',
-  'level.switch': 'レベル {where}: {name}。押すとレベルを切り替え・写す・名前を変える・並べ替え・消す',
+  'level.switch': 'レベル {where}: {name}。押すとレベルを切り替え・新規・複製・名前を変える・並べ替え・消す',
   'level.prev': '前のレベル',
   'level.next': '次のレベル',
-  'level.add': 'レベル',
-  'level.addTip': 'レベル: このレベルを写して 2 つ目を作る・AI に頼む',
-  'level.oneNote': 'このゲームのレベルは 1 つです。もう 1 つ作ると、今のレベルがレベル 1 になります。',
-  'level.make': 'レベル 2 を作る（今のレベルの写し）',
+  'level.addTip': '{name}: 押すと新しいレベルを作る・このレベルを複製する',
   'level.first': 'レベル 1',
-  'level.askAi': '別の種類のレベルを AI に頼む…',
-  'level.askText': '新しいレベルを足して。今のレベルとの違い：',
-  'level.made': '{name} を作りました（{from} の写し）。ここで物を変えて、違うレベルにしてください。保存すると、AI がゲームのコードに {name} を足します。',
+  'level.nth': 'レベル {n}',
+  'level.blank': '新規レベル',
+  'level.duplicate': '複製',
+  'level.made': '{name} を作りました。{key} で取り消し',
+  'level.madeTouch': '{name} を作りました',
   'level.madeClose': '閉じる',
   'level.undoMade': '{name} を作った',
   'level.pal.open': 'レベル…（今は {name}）',
   'level.pal.prev': '前のレベル: {name}',
   'level.pal.next': '次のレベル: {name}',
-  'level.pal.add': 'レベル…（レベルを足す）',
-  'level.pal.words': 'level levels stage map world switch go next previous add new レベル ステージ マップ 面 切り替え 次 前 足す',
+  'level.pal.add': 'レベル…（新規・複製）',
+  'level.pal.words': 'level levels stage map world switch go next previous add new blank duplicate copy レベル ステージ マップ 面 切り替え 次 前 足す 新規 複製',
   'level.menu': 'レベル',
-  'level.new': '{name} を写して新しいレベル',
   'level.rename': '名前を変える…',
   'level.renameLabel': 'このレベルの名前',
   'level.up': '上へ',
@@ -20320,6 +20353,12 @@ __defs[61] = function (__exports) {
 
 const emptyWorld = ()            => ({ objects: {} });
 
+/** "New level" instead of a copy (start()): the blank layout and the name for number n ("Level 2"). */
+                           
+                   
+                              
+ 
+
 /** The world part of a file, deep-copied (only the fields it has). */
 function worldOf(f                                                            )            {
   const w            = { objects: structuredClone(f?.objects || {}) };
@@ -20534,16 +20573,16 @@ class Levels {
    * "+ Level" in a game whose code has one level (`single`): that level becomes the list's first, with `world` (the
    * live model's layout), and a copy of it is made right after (copy()). Returns the copy's id ('' = no single level).
    */
-  start(world           , first         )         {
+  start(world           , first         , blank           )         {
     const one = this.single;
     if (this.active) return '';
-    if (!one) return first ? this.startCodeless(world, first) : '';
+    if (!one) return first ? this.startCodeless(world, first, blank) : '';
     this.list = [{ id: one.id, ...(one.label ? { codeLabel: one.label } : {}), world: worldOf(world), dirty: 0 }];
     this.code = [one.id];
     this.current = one.id;
     this.active = true;
     this.single = null;
-    return this.copy(world);
+    return blank ? this.blank(blank.world, blank.name) : this.copy(world);
   }
 
   /**
@@ -20555,14 +20594,14 @@ class Levels {
    * scene, move things); only the switch in the code is the AI's, and that rides on Save like a moved object. Until
    * then the editor builds the game as it is for both levels and lays each level's entries over it (build()).
    */
-          startCodeless(world           , first        )         {
+          startCodeless(world           , first        , blank           )         {
     this.list = [{ id: 'level-1', label: first.trim().slice(0, 120) || 'Level 1', world: worldOf(world), dirty: 0 }];
     this.code = [];
     this.current = 'level-1';
     this.active = true;
     // One press, one change on "Save · n": the copy counts it (copy()), as for a game whose code has one level.
     this.structDirty = 0;
-    return this.copy(world);
+    return blank ? this.blank(blank.world, blank.name) : this.copy(world);
   }
 
   /**
@@ -20600,6 +20639,38 @@ class Levels {
     this.list.splice(this.index() + 1, 0, e);
     this.structDirty++;
     return e.id;
+  }
+
+  /**
+   * "New level" (level-menu2, 2026-10-23; a hands-on try: "the levels' menu is New (blank) and Duplicate — make it new,
+   * then ask the AI"): a level right after the one on screen, built from the same code level (`from`, as a copy is) with
+   * `world` = the blank layout (PlacementModel.blank(): the ground / sky kept, every other object deleted). Named by
+   * `name(n)` ("Level 3"), n = the list's length + 1, or the next number free. Returns the new id.
+   */
+  blank(world           , name                       )         {
+    const src = this.entry(this.current);
+    if (!src) return '';
+    const taken = new Set([...this.list.map((e) => e.id), ...(this.code || []), ...this.deleted]);
+    const names = new Set(this.list.map((e) => this.labelOf(e.id)));
+    let n = this.list.length + 1;
+    while (names.has(name(n)) || taken.has(levelIdOf(name(n)))) n++;
+    const label = name(n);
+    const e             = { id: levelIdOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    this.list.splice(this.index() + 1, 0, e);
+    this.structDirty++;
+    return e.id;
+  }
+
+  /**
+   * ⌘Z right after New level / Duplicate in a game that already had levels (level-menu2): the level `id` made by it goes
+   * again, with its one change on "Save · n". false = it is not there, or not one made in the editor.
+   */
+  unadd(id        )          {
+    const i = this.index(id);
+    if (i < 0 || !this.list[i] .from || this.list.length <= 1) return false;
+    this.list.splice(i, 1);
+    this.structDirty = Math.max(0, this.structDirty - 1);
+    return true;
   }
 
   /** A new name (trimmed, ≤ 120 characters); false = nothing changed. */
@@ -20645,16 +20716,21 @@ __defs[62] = function (__exports) {
 
 // The level switch (levels, 2026-10-22; CONTRACT.md §1.10), in the top bar's path since level-crumb (2026-10-22).
 //
-// Where: ▣ Studio / Three Isles / Meadow ⌄ / Scene. The level is a place you are in, between the game and the Scene,
-// so it is a part of the path that already says where you are. Pressing it opens the levels' menu (the same plate
+// Where: ▣ Studio / Three Isles / Scene / Meadow ⌄ — the game, the Scene, the level (level-menu2, 2026-10-23; a hands-on try
+// of v0.1.25's "Studio / NEON DASH / [Levels ⌄] / Scene": "it's game name, scene, level name, isn't it").
+// Until then the level sat between the game and the Scene (level-crumb, 2026-10-22). It is a part of the path that
+// already says where you are, a word of it and not a framed button. Pressing it opens the levels' menu (the same plate
 // as the right-click menu, context-menu.ts): every level (✓ on the one on screen, "[" / "]" on its neighbours), then
-// New level from Meadow, Rename…, Move up, Move down, Delete level. Rename turns the crumb into a text field in place.
+// New level, Duplicate, then Rename…, Move up, Move down, Delete level. Rename turns the crumb into a text field in place.
+// The menu has no line of explanation and no ✦ AI row (level-menu2; a hands-on try: "New (blank) and Duplicate are
+// enough — make it new, then ask the AI"). v0.1.25 had "This game has one level…", "Make Level 2 (a copy of this
+// one)" and "✦ Ask AI for a different kind of level…".
 // History: the first version (same day) made the Scene list's head the switch ("Meadow ⌄  1 of 3" instead of "In
 // this scene"). A try of the editor (10/22): "where to switch levels is hard to find too" — the head read as a title,
 // and a game without levels had no way in at all. The list's head is "In this scene" again: one door, not two.
 //
-// A game WITHOUT levels gets "Levels ⌄" where the level's name will be (addButton; it was a quiet "+ Level" after the path
-// until studio-uniforms, 2026-10-23 — see addButton). Chosen over a ⌄ on the game's name with
+// A game WITHOUT levels gets "Level 1 ⌄" where the level's name will be (addButton; level-menu2 — it was a framed
+// "Levels ⌄" in v0.1.25, and a quiet "+ Level" after the path before studio-uniforms, 2026-10-23 — see addButton). Chosen over a ⌄ on the game's name with
 // one row "Add levels…" (the other plan drawn for it): nobody opens a menu to find one row, and the
 // "+" sits where the level will appear. It is the third grey and small, like the path's own words: the tools stay
 // quieter than the game. What it does is main.ts's (a game whose code has one level gets the second one at once;
@@ -20679,13 +20755,22 @@ const { icon } = __require(21);
                                                                                                          
                                                
                        
+                                                                                                   
+                
+                                                        
                
                                           
                                      
                            
-                                                                                                                           
-                        
  
+
+/** New level and Duplicate: the two ways to make a level, in both menus (a game with levels and one without). */
+function makeRows(d                                               )              {
+  return [
+    { id: 'level-new', label: d.t('level.blank'), run: () => d.blank() },
+    { id: 'level-copy', label: d.t('level.duplicate'), run: () => d.copy() },
+  ];
+}
 
 function createLevelSwitch(d                 ) {
   let renaming = false;
@@ -20700,14 +20785,14 @@ function createLevelSwitch(d                 ) {
       run: () => e.id !== cur && d.go(e.id) }));
     rows.push(
       { sep: true },
-      { id: 'level-new', label: d.t('level.new', { name: lv.labelOf(cur) }), run: () => d.copy() },
+      ...makeRows(d),
+      { sep: true },
       { id: 'level-rename', label: d.t('level.rename'), run: () => startRename() },
       { id: 'level-up', label: d.t('level.up'), disabled: i <= 0, run: () => d.move(cur, -1) },
       { id: 'level-down', label: d.t('level.down'), disabled: i < 0 || i >= lv.list.length - 1, run: () => d.move(cur, 1) },
       { sep: true },
       { id: 'level-delete', label: d.t('level.delete'), disabled: lv.list.length <= 1, run: () => d.remove(cur) },
     );
-    if (d.ask) rows.push({ sep: true }, d.ask());
     return rows;
   };
 
@@ -20775,14 +20860,16 @@ function createLevelSwitch(d                 ) {
   }
 
   /**
-   * "Levels ⌄" in the path (before "Scene"), for a game without levels (main.ts decides when it shows). It opens a menu
-   * (`run(button)` → openAt), never acts at once — studio-uniforms, 2026-10-23: it was "+ Level", which typed into the
-   * AI box, and a hands-on try asked for the menu back. The look is the crumb's own (a word and a chevron): the two
-   * states of the same place, "Level 2 ⌄" with levels and "Levels ⌄" without (a design review: "+" promised one step).
+   * "Level 1 ⌄" in the path (after "Scene"), for a game without levels (main.ts decides when it shows; `name` = the
+   * code's one level's name, else "Level 1"). It opens a menu (`run(button)` → openAt), never acts at once —
+   * studio-uniforms, 2026-10-23: it was "+ Level", which typed into the AI box, and a hands-on try asked for the menu
+   * back. Since level-menu2 it looks like the crumb itself (shell.css: the same rules): the game already has one level,
+   * so the path names it, and the menu says New level / Duplicate. v0.1.25's framed "Levels ⌄" read as a button
+   * among the path's words.
    */
-  function addButton(run                          )              {
-    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, 'aria-haspopup': 'menu', title: d.t('level.addTip') },
-      h('span', { text: d.t('level.add') }), icon('chevronDown'));
+  function addButton(name        , run                          )              {
+    const b = h('button', { type: 'button', class: 'level-add', dataset: { action: 'level-add', part: 'level-add' }, 'aria-haspopup': 'menu', title: d.t('level.addTip', { name }) },
+      h('span', { class: 'level-name', text: name }), icon('chevronDown'));
     b.addEventListener('click', () => run(b));
     return b;
   }
@@ -20794,6 +20881,7 @@ function createLevelSwitch(d                 ) {
   return { render, entries, open, openAt, addButton, isRenaming: () => renaming };
 }
 
+__def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
 __defs[63] = function (__exports) {
@@ -22288,7 +22376,7 @@ const { installTooltips } = __require(58);
 const { createShortcutSheet } = __require(59);
 const { createContextMenu } = __require(60);
 const { Levels, worldOf } = __require(61);
-const { createLevelSwitch } = __require(62);
+const { createLevelSwitch, makeRows } = __require(62);
 const { contextRows } = __require(63);
 const { bigChanges, createSafeSave } = __require(64);
 const { createUnsavedGuard, lostBy, playAsks } = __require(65);
@@ -22683,18 +22771,22 @@ function start(host            ) {
   const toolsRow = h('div', { class: 'game-tools', role: 'toolbar', dataset: { part: 'tools' } });
   // Buttons added by .studio/ui/shell.js (studioShell.addButton), kept across re-renders.
   const customTools                      = [];
-  // Where you are, always in one line: ▣ Studio / <the game> / Scene — and, in a game with levels, the level between
-  // the game and the Scene (▣ Studio / Three Isles / Meadow ⌄ / Scene; level-crumb, 2026-10-22). A game without levels
-  // gets "+ Level" after the path instead (level-switch.ts says why there). Both slots are filled by renderLevelCrumb().
+  // Where you are, always in one line: ▣ Studio / <the game> / Scene / <the level> ⌄ (level-menu2, 2026-10-23; a hands-on try:
+  // "game name, scene, level name"). A game with levels shows the one on screen; a game without them "Level 1 ⌄"
+  // while its world is edited (level-switch.ts says why). Both slots are filled by renderLevelCrumb().
   const levelSlot = h('span', { class: 'level-crumb', hidden: true, dataset: { part: 'level-crumb' } });
   const levelAddSlot = h('span', { class: 'level-add-slot', hidden: true });
-  // The line after "Make Level 2" (renderLevelMade), under the top bar's left end where the level's name just appeared.
+  // The line after New level / Duplicate (renderLevelMade), under the top bar's left end.
   const levelNote = h('div', { class: 'level-made', role: 'status', hidden: true, dataset: { part: 'level-made' } });
-  /** "Make Level 2" that can still be taken back: the game's one level (`single`), its model, the two names. */
-  let levelMade                                                                                         = null;
+  /**
+   * A level made by New level / Duplicate that ⌘Z can still take back: its id and name, the level shown before (`back`),
+   * and — when it was the game's second level (`started`: the game had none before) — the game's one level (`single`)
+   * and its model, to go back to a game with one level exactly as it was.
+   */
+  let levelMade                                                                                                                       = null;
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), levelSlot, levelAddSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), levelSlot, levelAddSlot, h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -23037,8 +23129,8 @@ function start(host            ) {
       if (m.top < head.bottom && m.bottom > head.top) ctxMenu.el.style.top = `${Math.max(8, Math.round(head.top - m.height - 4))}px`;
     },
     go: (id) => void goLevel(id),
-    copy: () => void goLevel(levels.copy(worldModel.result())),
-    ask: host.offline ? undefined : () => levelAskEntry(),
+    blank: () => void addLevel('blank'),
+    copy: () => void addLevel('copy'),
     rename: (id, label) => levelsChanged(levels.rename(id, label)),
     move: (id, by) => levelsChanged(levels.move(id, by)),
     remove: (id) => {
@@ -25455,7 +25547,7 @@ function start(host            ) {
 
   // ----- actions -----
   function doUndo() {
-    // Nothing else left to undo right after "Make Level 2": ⌘Z takes the level back (makeLevel).
+    // Nothing else left to undo right after New level / Duplicate: ⌘Z takes the level back (addLevel).
     if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
     if (e) applyEntry(e, 'undo');
@@ -25821,11 +25913,18 @@ function start(host            ) {
     phase = 'ready';
     send({ type: 'studio:core/play', on: false, viewState: keptView() });
     // "Put in layout" while paused moved the model: the page puts things back where Play found them, then these.
+    let kept = 0;
     for (const i of worldItems) {
       const now = worldModel.pose(i.key);
       const was = from?.get(i.key);
-      if (now && was && !samePose(now, was, worldDim)) send({ type: 'studio:placement/pose', key: i.key, pose: now });
+      if (now && was && !samePose(now, was, worldDim)) {
+        send({ type: 'studio:placement/pose', key: i.key, pose: now });
+        kept++;
+      }
     }
+    // Edit is the scene from before Play (studio-edit-restore, 2026-10-23: "Edit came back in the middle of the game").
+    // The one thing of the play that stays is what the person put in the layout themselves: said, so it is no surprise.
+    if (kept) showToast(kept === 1 ? t('play.keptOne') : t('play.keptN', { n: kept }), 6000);
     // The stage is the game's size with the side panel again: the corners the panels cover, sent again.
     insetSent = '';
     sendInset();
@@ -25922,7 +26021,7 @@ function start(host            ) {
   async function goLevel(id        , keep = true) {
     if (!id || !levels.has(id)) return;
     if (!(await confirmLoss('reload'))) return levelsChanged(true);
-    // Another level shown: "Make Level 2" is not the last step any more (makeLevel arms it again after its own goLevel).
+    // Another level shown: the level just made is not the last step any more (addLevel arms it again after its own goLevel).
     if (levelMade) {
       levelMade = null;
       renderLevelMade();
@@ -25947,7 +26046,7 @@ function start(host            ) {
     renderAll();
     keepSoon();
   }
-  /** The top bar's level: the crumb (a game with levels; plain words while playing), or "+ Level" after the path. */
+  /** The top bar's level, after "Scene": the crumb (a game with levels; plain words while playing), or "Level 1 ⌄". */
   function renderLevelCrumb() {
     const crumb = levelSwitch.render(!playing);
     levelSlot.hidden = !crumb;
@@ -25955,63 +26054,88 @@ function start(host            ) {
     else if (crumb.parentElement !== levelSlot) levelSlot.replaceChildren(h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), crumb);
     const add = levelAddable();
     levelAddSlot.hidden = !add;
-    // Where the level's name will be (Studio / Game / Levels ⌄ / Scene), so the crumb does not jump once Level 2 exists.
-    levelAddSlot.replaceChildren(...(add ? [h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), levelSwitch.addButton(() => openLevelFresh())] : []));
+    // Where the level's name is once there are two (Studio / Game / Scene / Level 1 ⌄): nothing jumps when Level 2 opens.
+    levelAddSlot.replaceChildren(...(add ? [h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), levelSwitch.addButton(oneLevelName(), () => openLevelFresh())] : []));
   }
   /**
-   * "+ Level" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
+   * "Level 1 ⌄" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
    * needs the AI for it (its code must build a level by id), so not without one (host.offline).
    */
   function levelAddable()          {
     return !levels.active && editing && !playing && page === 'tool' && tool === 'placement' && editLayer === 'world' && (!!levels.single || !host.offline);
   }
+  /** The name of a game's one level: its code's, else "Level 1" (what it is called once a second one is made). */
+  function oneLevelName()         {
+    return levels.single?.label || t('level.first');
+  }
   /**
-   * "Levels ⌄" in a game without levels (studio-uniforms, 2026-10-23): the menu, never an action at once. History: it
-   * was "+ Level", which typed a request into the AI box (a game whose code has no levels) — a hands-on try: "pressing +
-   * Level suddenly put text in the AI chat window, it makes no sense"; and on the plan to make Level 2 at once: "it just
-   * makes it without asking?? there used to be a menu with copy and other things". So the same menu as a game with
-   * levels (level-switch.ts): one line on what happens, "Make Level 2 — a copy of this one" (made here and opened; ⌘Z or
-   * the line's Undo takes it back; the code's switch is the AI's, on Save), and ✦ "Ask AI for a different kind of
-   * level…" (a draft in the box, nothing sent). The web demo (no AI) has no ✦ row, and only a game whose code already
-   * builds a level by id gets the button there (levelAddable).
+   * The menu of a game without levels (level-menu2, 2026-10-23): the one level (✓), then New level and Duplicate — the
+   * same rows as a game with levels (level-switch.ts makeRows). History: "+ Level" typed a request into the AI box
+   * (studio-uniforms: "it makes no sense"); v0.1.25's menu had a line on what happens, "Make Level 2 — a copy of this
+   * one" and ✦ "Ask AI for a different kind of level…"; a hands-on try (10/23): "New (blank) and Duplicate are enough —
+   * make it new, then ask the AI". Only a game whose code already builds a level by id gets it in the web demo
+   * (levelAddable).
    */
   function levelFreshEntries()              {
-    const rows              = [{ note: t('level.oneNote') }, { id: 'level-make', label: t('level.make'), run: () => void makeLevel() }];
-    if (!host.offline) rows.push({ sep: true }, levelAskEntry());
-    return rows;
+    return [
+      { id: 'level-one', label: oneLevelName(), checked: true, run: () => {} },
+      { sep: true },
+      ...makeRows({ t, blank: () => void addLevel('blank'), copy: () => void addLevel('copy') }),
+    ];
   }
-  /** The menu of a game without levels: under its "Levels ⌄" (⌘K's "Levels…" too); a phone, which has no such button, at the top. */
+  /** The menu of a game without levels: under its "Level 1 ⌄" (⌘K's "Levels…" too); a phone, which has no such button, at the top. */
   function openLevelFresh() {
     const b = levelAddSlot.querySelector('button');
     if (b && b.offsetParent) return levelSwitch.openAt(levelFreshEntries(), b);
     ctxMenu.show(levelFreshEntries(), window.innerWidth / 2, 56, { place: 'levels', touch: phone(), label: t('level.menu'), floor: menuFloor() });
   }
-  /** ✦ Ask AI for a different kind of level… (the menus of both kinds of game): a draft in the box, nothing sent. */
-  function levelAskEntry()            {
-    return { id: 'level-ask', label: t('level.askAi'), ai: true, run: () => focusAsk(t('level.askText')) };
+  /**
+   * The ground / sky that a New level keeps (PlacementModel.blank): the objects the editor holds still as the scene's
+   * base (`backdrop`, held 'ground' — adapters/three/ground.js, a 2D game's background at the back of its list).
+   * Tried on NEON DASH-like runners (level-menu2): the road and the sky stay, the pillars and the orb go; lights and the
+   * camera are never listed, so they stay too.
+   */
+  function keepInBlank(k        )          {
+    const it = worldItems.find((i) => i.key === k);
+    return !!it && (!!it.backdrop || it.held === 'ground');
   }
   /**
-   * "Make Level 2": what is on screen becomes Level 1 and a copy of it opens as Level 2 (levels.ts start()). It can be
-   * taken back while Level 2 is still the copy — ⌘Z once nothing else is left to undo, or the line's [Undo] — and
-   * not after Save or another level change (levelMade = null then).
+   * New level ('blank') or Duplicate ('copy'): made right after the one on screen and opened, one change on "Save · n";
+   * Save hands it to the AI like a moved object (the code's switch is the AI's: placement.json `levels`, `from`).
+   * In a game without levels, what is on screen becomes Level 1 first (levels.ts start()). It can be taken back while
+   * nothing else was done on the new level — ⌘Z, or the line's Undo on a phone — not after Save or another level
+   * change (levelMade = null then).
    */
-  async function makeLevel() {
+  async function addLevel(kind                  ) {
+    const started = !levels.active;
     const single = levels.single;
     const before = worldModel;
-    const id = levels.start(worldModel.result(), t('level.first'));
+    const back = levels.current;
+    const blank = kind === 'blank' ? { world: worldModel.blank(keepInBlank), name: (n        ) => t('level.nth', { n }) } : undefined;
+    const id = started ? levels.start(worldModel.result(), t('level.first'), blank)
+      : blank ? levels.blank(blank.world, blank.name) : levels.copy(worldModel.result());
     if (!id) return;
     await goLevel(id);
     if (levels.current !== id) return;
-    levelMade = { single, model: before, from: levels.labelOf(levels.list[0] .id), name: levels.labelOf(id) };
+    levelMade = { id, name: levels.labelOf(id), back: started ? '' : back, started, single, model: before };
     renderLevelMade();
     renderButtons();
   }
-  /** Back to a game with one level, as it was before "Make Level 2" (its own model: the unsaved moves come back too). */
+  /**
+   * ⌘Z right after New level / Duplicate: the level goes again. The game's second level: back to a game with one level,
+   * as it was (its own model: the unsaved moves come back too); otherwise back to the level shown before.
+   */
   function unmakeLevel() {
     const made = levelMade;
     levelMade = null;
     renderLevelMade();
-    if (!made || !levels.unstart(made.single)) return renderButtons();
+    if (!made) return renderButtons();
+    if (!made.started) {
+      if (!levels.unadd(made.id)) return renderButtons();
+      // keep = false: the level on screen is the one just taken out (its layout goes with it).
+      return void goLevel(made.back, false);
+    }
+    if (!levels.unstart(made.single)) return renderButtons();
     worldModel = made.model;
     if (editLayer !== 'ui') model = worldModel;
     undo.clear();
@@ -26023,17 +26147,19 @@ function start(host            ) {
     });
   }
   /**
-   * The line after "Make Level 2" (a design review of the plan, 2026-10-23: the copy looks exactly like Level 1, so the
-   * line is the one thing that says where you are): what was made, what to do, that Save adds the switch — and
-   * [Undo]. It stays until the first change on the new level, a level change, Save or ×; not a toast that times out.
+   * The line after New level / Duplicate (level-menu2, 2026-10-23: one short line — "Level 2 made. ⌘Z to undo."; v0.1.25
+   * said what it was a copy of and what Save does, three sentences): the new level can look just like the last one,
+   * so the line says where you are. A phone has no ⌘Z: its line has an Undo button instead. It stays until the first
+   * change on the new level, a level change, Save or ×; not a toast that times out.
    */
   function renderLevelMade() {
     const on = !!levelMade && !playing && levels.active && !undo.canUndo;
     levelNote.hidden = !on;
     if (!on) return levelNote.replaceChildren();
+    const key = phone() ? '' : keyOf('undo', isMac());
     levelNote.replaceChildren(
-      h('span', { class: 'level-made-text', text: t('level.made', { name: levelMade .name, from: levelMade .from }) }),
-      h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() }),
+      h('span', { class: 'level-made-text', text: key ? t('level.made', { name: levelMade .name, key }) : t('level.madeTouch', { name: levelMade .name }) }),
+      ...(key ? [] : [h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() })]),
       h('button', { type: 'button', class: 'level-made-close', dataset: { action: 'level-made-close' }, 'aria-label': t('level.madeClose'), title: t('level.madeClose'), onclick: () => {
         levelNote.hidden = true;
       } }, icon('close')),

@@ -42,7 +42,7 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     list: () => raw.list(),
     begin: () => raw.begin(),
     end: () => raw.end(),
-    watch: (on) => raw.watch(on),
+    watch: (on, whole) => raw.watch(on, whole),
     // adapter.js repaints from its own loop whenever something changed.
     render: () => {},
     pickNear: (x, y, radius) => raw.pickNear(...ndc(x, y), radius),

@@ -18,6 +18,11 @@
 //               2. the game is held as a pause holds it (frames, clock, sound, the mouse let go)
 //               3. everything goes back to where Play found it: what the game moved while playing (the hero, an enemy,
 //                  the camera) is not kept. "Put in layout" from a pause is the shell's: it sends those after this.
+//                  Where the adapter can (three.js, watch(false, true); studio-edit-restore, 2026-10-23: "after playing,
+//                  Edit came back in the middle of the game"), the scene too: what the game added while playing (a
+//                  bullet, an obstacle it spawned) is held out of it and what it took away (a coin) is back, so Edit
+//                  shows the scene the person was editing. The next Play hands those back to the game first (go 2.):
+//                  its code still holds them, and Play goes on from the game's own state (below).
 //               4. the editor is up again on the edit camera it had (core/edit on with the shell's view state)
 //
 // WHY "Play starts from the layout, Edit goes back to it" (the call made for this change, as recommended): Edit is where the
@@ -112,7 +117,7 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
     kept = layers.map((l) => ({ ...l, poses: listOf(l.edits).map((i) => [i.key, structuredClone(i.pose)] as [string, Pose]) }));
     for (const l of layers) {
       try {
-        l.raw.watch?.(true);
+        l.raw.watch?.(true, true);
       } catch {
         /* the listed poses above still go back */
       }
@@ -165,7 +170,7 @@ export function createPlaySwitch(d: PlaySwitchDeps): PlaySwitch {
     loaders = [];
     for (const l of kept) {
       try {
-        l.raw.watch?.(false);
+        l.raw.watch?.(false, true);
       } catch {
         /* the listed poses below */
       }

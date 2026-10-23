@@ -95,7 +95,7 @@ Under **Trigger**:
 
 Under **Ask AI to Set Up**:
 
-- **Custom with AI…**: the chat box at the bottom opens with this motion in it. Say when, like “when it is hit, turn red and blow up,” and your AI writes the rule into the game’s code. The menu then says **As you asked in the chat**. A motion your AI already set up shows it, like **On Collision (AI)** or **On Signal (AI)**.
+- **Custom…**: the chat box at the bottom opens with this motion in it. Say when, like “when it is hit, turn red and blow up,” and your AI writes the rule into the game’s code. The menu then says **Custom**. A motion your AI already set up shows it, like **On Collision (AI)** or **On Signal (AI)**.
 
 In **⋯**, **+ or** adds another way to start, like “a key is pressed **or** this is clicked.” Any one of them starts it. **×** removes one. The top line then says **+1 more**.
 

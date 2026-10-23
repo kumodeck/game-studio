@@ -208,14 +208,39 @@ export class PlacementModel {
     }
     if (!this.removed.has(key)) {
       this.removed.add(key);
-      const m = this.meta.get(key);
-      const was = this.was.get(key);
-      const e: PlacementRemoved = { key };
-      if (m?.label && m.label !== key) e.label = m.label;
-      if (was) e.was = roundPose(was, this.dim);
-      if (m?.unstable || key.startsWith('path:')) e.unstable = true;
-      if (!this.removedMeta.has(key)) this.removedMeta.set(key, e);
+      if (!this.removedMeta.has(key)) this.removedMeta.set(key, this.removedEntry(key));
     }
+  }
+  /** How a deleted game object is written (`removed`): its key, the game's name and pose, to find it in the code. */
+  private removedEntry(key: string): PlacementRemoved {
+    const m = this.meta.get(key);
+    const was = this.was.get(key);
+    const e: PlacementRemoved = { key };
+    if (m?.label && m.label !== key) e.label = m.label;
+    if (was) e.was = roundPose(was, this.dim);
+    if (m?.unstable || key.startsWith('path:')) e.unstable = true;
+    return e;
+  }
+
+  /**
+   * "New level" (level-menu2, 2026-10-23): this level's world with every game object deleted except the ones `keep`
+   * says (the ground / road / sea / sky — the scene's base; main.ts passes the backdrop test). Lights and the camera are
+   * never in the list (adapters/three/keys.js skips them), so they stay too. Copies, motions, names and draw orders are
+   * left out: a blank level has none of its own yet. The kept objects keep the poses they have here.
+   * WHY deletions of the same code level (and not an empty file): the game's code builds a level by id, and a new
+   * level is built from the one on screen (`from`) until the AI writes it into the code — the same way a copy is.
+   */
+  blank(keep: (key: string) => boolean): PlacementFile {
+    const now = this.result();
+    const out: PlacementFile = { version: 1, tool: 'placement', dim: this.dim, space: 'local', objects: {} };
+    for (const [k, e] of Object.entries(now.objects)) if (keep(k) && !this.orphans.has(k)) out.objects[k] = e;
+    const removed = new Map((now.removed || []).map((r) => [r.key, r]));
+    for (const it of this.items) {
+      if (this.copyFrom.has(it.key) || it.copyOf || keep(it.key) || removed.has(it.key)) continue;
+      removed.set(it.key, this.removedEntry(it.key));
+    }
+    if (removed.size) out.removed = [...removed.keys()].sort().map((k) => removed.get(k)!);
+    return out;
   }
 
   /** Undo of remove(). */

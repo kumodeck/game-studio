@@ -84,7 +84,7 @@ import { installTooltips } from './tooltip.ts';
 import { createShortcutSheet } from './shortcuts.ts';
 import { createContextMenu, type MenuEntry } from './context-menu.ts';
 import { Levels, worldOf, type WorldPart } from './levels.ts';
-import { createLevelSwitch } from './level-switch.ts';
+import { createLevelSwitch, makeRows } from './level-switch.ts';
 import { contextRows, type CtxPlace } from './context-rows.ts';
 import { bigChanges, createSafeSave } from './safe-save.ts';
 import { createUnsavedGuard, lostBy, playAsks, type GuardOp } from './unsaved-guard.ts';
@@ -479,18 +479,22 @@ export function start(host: StudioHost) {
   const toolsRow = h('div', { class: 'game-tools', role: 'toolbar', dataset: { part: 'tools' } });
   // Buttons added by .studio/ui/shell.js (studioShell.addButton), kept across re-renders.
   const customTools: HTMLButtonElement[] = [];
-  // Where you are, always in one line: ▣ Studio / <the game> / Scene — and, in a game with levels, the level between
-  // the game and the Scene (▣ Studio / Three Isles / Meadow ⌄ / Scene; level-crumb, 2026-10-22). A game without levels
-  // gets "+ Level" after the path instead (level-switch.ts says why there). Both slots are filled by renderLevelCrumb().
+  // Where you are, always in one line: ▣ Studio / <the game> / Scene / <the level> ⌄ (level-menu2, 2026-10-23; a hands-on try:
+  // "game name, scene, level name"). A game with levels shows the one on screen; a game without them "Level 1 ⌄"
+  // while its world is edited (level-switch.ts says why). Both slots are filled by renderLevelCrumb().
   const levelSlot = h('span', { class: 'level-crumb', hidden: true, dataset: { part: 'level-crumb' } });
   const levelAddSlot = h('span', { class: 'level-add-slot', hidden: true });
-  // The line after "Make Level 2" (renderLevelMade), under the top bar's left end where the level's name just appeared.
+  // The line after New level / Duplicate (renderLevelMade), under the top bar's left end.
   const levelNote = h('div', { class: 'level-made', role: 'status', hidden: true, dataset: { part: 'level-made' } });
-  /** "Make Level 2" that can still be taken back: the game's one level (`single`), its model, the two names. */
-  let levelMade: { single: LevelInfo | null; model: PlacementModel; from: string; name: string } | null = null;
+  /**
+   * A level made by New level / Duplicate that ⌘Z can still take back: its id and name, the level shown before (`back`),
+   * and — when it was the game's second level (`started`: the game had none before) — the game's one level (`single`)
+   * and its model, to go back to a game with one level exactly as it was.
+   */
+  let levelMade: { id: string; name: string; back: string; started: boolean; single: LevelInfo | null; model: PlacementModel } | null = null;
   const brand = h('div', { class: 'brand', dataset: { part: 'brand' } },
     h('span', { class: 'mark', 'aria-hidden': 'true' }, icon('mark')), h('span', { class: 'app' }), h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }),
-    h('strong', { class: 'title' }), levelSlot, levelAddSlot, h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), h('span', { class: 'adapter' }), langBtn);
+    h('strong', { class: 'title' }), h('span', { class: 'sep here-sep', 'aria-hidden': 'true', text: '/' }), h('span', { class: 'here' }), levelSlot, levelAddSlot, h('span', { class: 'adapter' }), langBtn);
   // One "Save" (play test 10/16: "Hand to AI" meant nothing to people; "Save"
   // does). "Save · 3" (⌘S) while there are changes not saved; pressing it
   // writes placement.json and hands it to the AI, as Save always did. Then
@@ -833,8 +837,8 @@ export function start(host: StudioHost) {
       if (m.top < head.bottom && m.bottom > head.top) ctxMenu.el.style.top = `${Math.max(8, Math.round(head.top - m.height - 4))}px`;
     },
     go: (id) => void goLevel(id),
-    copy: () => void goLevel(levels.copy(worldModel.result())),
-    ask: host.offline ? undefined : () => levelAskEntry(),
+    blank: () => void addLevel('blank'),
+    copy: () => void addLevel('copy'),
     rename: (id, label) => levelsChanged(levels.rename(id, label)),
     move: (id, by) => levelsChanged(levels.move(id, by)),
     remove: (id) => {
@@ -3251,7 +3255,7 @@ export function start(host: StudioHost) {
 
   // ----- actions -----
   function doUndo() {
-    // Nothing else left to undo right after "Make Level 2": ⌘Z takes the level back (makeLevel).
+    // Nothing else left to undo right after New level / Duplicate: ⌘Z takes the level back (addLevel).
     if (!undo.canUndo && levelMade) return unmakeLevel();
     const e = undo.undo();
     if (e) applyEntry(e, 'undo');
@@ -3617,11 +3621,18 @@ export function start(host: StudioHost) {
     phase = 'ready';
     send({ type: 'studio:core/play', on: false, viewState: keptView() });
     // "Put in layout" while paused moved the model: the page puts things back where Play found them, then these.
+    let kept = 0;
     for (const i of worldItems) {
       const now = worldModel.pose(i.key);
       const was = from?.get(i.key);
-      if (now && was && !samePose(now, was, worldDim)) send({ type: 'studio:placement/pose', key: i.key, pose: now });
+      if (now && was && !samePose(now, was, worldDim)) {
+        send({ type: 'studio:placement/pose', key: i.key, pose: now });
+        kept++;
+      }
     }
+    // Edit is the scene from before Play (studio-edit-restore, 2026-10-23: "Edit came back in the middle of the game").
+    // The one thing of the play that stays is what the person put in the layout themselves: said, so it is no surprise.
+    if (kept) showToast(kept === 1 ? t('play.keptOne') : t('play.keptN', { n: kept }), 6000);
     // The stage is the game's size with the side panel again: the corners the panels cover, sent again.
     insetSent = '';
     sendInset();
@@ -3718,7 +3729,7 @@ export function start(host: StudioHost) {
   async function goLevel(id: string, keep = true) {
     if (!id || !levels.has(id)) return;
     if (!(await confirmLoss('reload'))) return levelsChanged(true);
-    // Another level shown: "Make Level 2" is not the last step any more (makeLevel arms it again after its own goLevel).
+    // Another level shown: the level just made is not the last step any more (addLevel arms it again after its own goLevel).
     if (levelMade) {
       levelMade = null;
       renderLevelMade();
@@ -3743,7 +3754,7 @@ export function start(host: StudioHost) {
     renderAll();
     keepSoon();
   }
-  /** The top bar's level: the crumb (a game with levels; plain words while playing), or "+ Level" after the path. */
+  /** The top bar's level, after "Scene": the crumb (a game with levels; plain words while playing), or "Level 1 ⌄". */
   function renderLevelCrumb() {
     const crumb = levelSwitch.render(!playing);
     levelSlot.hidden = !crumb;
@@ -3751,63 +3762,88 @@ export function start(host: StudioHost) {
     else if (crumb.parentElement !== levelSlot) levelSlot.replaceChildren(h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), crumb);
     const add = levelAddable();
     levelAddSlot.hidden = !add;
-    // Where the level's name will be (Studio / Game / Levels ⌄ / Scene), so the crumb does not jump once Level 2 exists.
-    levelAddSlot.replaceChildren(...(add ? [h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), levelSwitch.addButton(() => openLevelFresh())] : []));
+    // Where the level's name is once there are two (Studio / Game / Scene / Level 1 ⌄): nothing jumps when Level 2 opens.
+    levelAddSlot.replaceChildren(...(add ? [h('span', { class: 'sep', 'aria-hidden': 'true', text: '/' }), levelSwitch.addButton(oneLevelName(), () => openLevelFresh())] : []));
   }
   /**
-   * "+ Level" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
+   * "Level 1 ⌄" shows in a game without levels while its world is edited in the Scene. A game that never says its levels
    * needs the AI for it (its code must build a level by id), so not without one (host.offline).
    */
   function levelAddable(): boolean {
     return !levels.active && editing && !playing && page === 'tool' && tool === 'placement' && editLayer === 'world' && (!!levels.single || !host.offline);
   }
+  /** The name of a game's one level: its code's, else "Level 1" (what it is called once a second one is made). */
+  function oneLevelName(): string {
+    return levels.single?.label || t('level.first');
+  }
   /**
-   * "Levels ⌄" in a game without levels (studio-uniforms, 2026-10-23): the menu, never an action at once. History: it
-   * was "+ Level", which typed a request into the AI box (a game whose code has no levels) — a hands-on try: "pressing +
-   * Level suddenly put text in the AI chat window, it makes no sense"; and on the plan to make Level 2 at once: "it just
-   * makes it without asking?? there used to be a menu with copy and other things". So the same menu as a game with
-   * levels (level-switch.ts): one line on what happens, "Make Level 2 — a copy of this one" (made here and opened; ⌘Z or
-   * the line's Undo takes it back; the code's switch is the AI's, on Save), and ✦ "Ask AI for a different kind of
-   * level…" (a draft in the box, nothing sent). The web demo (no AI) has no ✦ row, and only a game whose code already
-   * builds a level by id gets the button there (levelAddable).
+   * The menu of a game without levels (level-menu2, 2026-10-23): the one level (✓), then New level and Duplicate — the
+   * same rows as a game with levels (level-switch.ts makeRows). History: "+ Level" typed a request into the AI box
+   * (studio-uniforms: "it makes no sense"); v0.1.25's menu had a line on what happens, "Make Level 2 — a copy of this
+   * one" and ✦ "Ask AI for a different kind of level…"; a hands-on try (10/23): "New (blank) and Duplicate are enough —
+   * make it new, then ask the AI". Only a game whose code already builds a level by id gets it in the web demo
+   * (levelAddable).
    */
   function levelFreshEntries(): MenuEntry[] {
-    const rows: MenuEntry[] = [{ note: t('level.oneNote') }, { id: 'level-make', label: t('level.make'), run: () => void makeLevel() }];
-    if (!host.offline) rows.push({ sep: true }, levelAskEntry());
-    return rows;
+    return [
+      { id: 'level-one', label: oneLevelName(), checked: true, run: () => {} },
+      { sep: true },
+      ...makeRows({ t, blank: () => void addLevel('blank'), copy: () => void addLevel('copy') }),
+    ];
   }
-  /** The menu of a game without levels: under its "Levels ⌄" (⌘K's "Levels…" too); a phone, which has no such button, at the top. */
+  /** The menu of a game without levels: under its "Level 1 ⌄" (⌘K's "Levels…" too); a phone, which has no such button, at the top. */
   function openLevelFresh() {
     const b = levelAddSlot.querySelector('button');
     if (b && b.offsetParent) return levelSwitch.openAt(levelFreshEntries(), b);
     ctxMenu.show(levelFreshEntries(), window.innerWidth / 2, 56, { place: 'levels', touch: phone(), label: t('level.menu'), floor: menuFloor() });
   }
-  /** ✦ Ask AI for a different kind of level… (the menus of both kinds of game): a draft in the box, nothing sent. */
-  function levelAskEntry(): MenuEntry {
-    return { id: 'level-ask', label: t('level.askAi'), ai: true, run: () => focusAsk(t('level.askText')) };
+  /**
+   * The ground / sky that a New level keeps (PlacementModel.blank): the objects the editor holds still as the scene's
+   * base (`backdrop`, held 'ground' — adapters/three/ground.js, a 2D game's background at the back of its list).
+   * Tried on NEON DASH-like runners (level-menu2): the road and the sky stay, the pillars and the orb go; lights and the
+   * camera are never listed, so they stay too.
+   */
+  function keepInBlank(k: string): boolean {
+    const it = worldItems.find((i) => i.key === k);
+    return !!it && (!!it.backdrop || it.held === 'ground');
   }
   /**
-   * "Make Level 2": what is on screen becomes Level 1 and a copy of it opens as Level 2 (levels.ts start()). It can be
-   * taken back while Level 2 is still the copy — ⌘Z once nothing else is left to undo, or the line's [Undo] — and
-   * not after Save or another level change (levelMade = null then).
+   * New level ('blank') or Duplicate ('copy'): made right after the one on screen and opened, one change on "Save · n";
+   * Save hands it to the AI like a moved object (the code's switch is the AI's: placement.json `levels`, `from`).
+   * In a game without levels, what is on screen becomes Level 1 first (levels.ts start()). It can be taken back while
+   * nothing else was done on the new level — ⌘Z, or the line's Undo on a phone — not after Save or another level
+   * change (levelMade = null then).
    */
-  async function makeLevel() {
+  async function addLevel(kind: 'blank' | 'copy') {
+    const started = !levels.active;
     const single = levels.single;
     const before = worldModel;
-    const id = levels.start(worldModel.result(), t('level.first'));
+    const back = levels.current;
+    const blank = kind === 'blank' ? { world: worldModel.blank(keepInBlank), name: (n: number) => t('level.nth', { n }) } : undefined;
+    const id = started ? levels.start(worldModel.result(), t('level.first'), blank)
+      : blank ? levels.blank(blank.world, blank.name) : levels.copy(worldModel.result());
     if (!id) return;
     await goLevel(id);
     if (levels.current !== id) return;
-    levelMade = { single, model: before, from: levels.labelOf(levels.list[0]!.id), name: levels.labelOf(id) };
+    levelMade = { id, name: levels.labelOf(id), back: started ? '' : back, started, single, model: before };
     renderLevelMade();
     renderButtons();
   }
-  /** Back to a game with one level, as it was before "Make Level 2" (its own model: the unsaved moves come back too). */
+  /**
+   * ⌘Z right after New level / Duplicate: the level goes again. The game's second level: back to a game with one level,
+   * as it was (its own model: the unsaved moves come back too); otherwise back to the level shown before.
+   */
   function unmakeLevel() {
     const made = levelMade;
     levelMade = null;
     renderLevelMade();
-    if (!made || !levels.unstart(made.single)) return renderButtons();
+    if (!made) return renderButtons();
+    if (!made.started) {
+      if (!levels.unadd(made.id)) return renderButtons();
+      // keep = false: the level on screen is the one just taken out (its layout goes with it).
+      return void goLevel(made.back, false);
+    }
+    if (!levels.unstart(made.single)) return renderButtons();
     worldModel = made.model;
     if (editLayer !== 'ui') model = worldModel;
     undo.clear();
@@ -3819,17 +3855,19 @@ export function start(host: StudioHost) {
     });
   }
   /**
-   * The line after "Make Level 2" (a design review of the plan, 2026-10-23: the copy looks exactly like Level 1, so the
-   * line is the one thing that says where you are): what was made, what to do, that Save adds the switch — and
-   * [Undo]. It stays until the first change on the new level, a level change, Save or ×; not a toast that times out.
+   * The line after New level / Duplicate (level-menu2, 2026-10-23: one short line — "Level 2 made. ⌘Z to undo."; v0.1.25
+   * said what it was a copy of and what Save does, three sentences): the new level can look just like the last one,
+   * so the line says where you are. A phone has no ⌘Z: its line has an Undo button instead. It stays until the first
+   * change on the new level, a level change, Save or ×; not a toast that times out.
    */
   function renderLevelMade() {
     const on = !!levelMade && !playing && levels.active && !undo.canUndo;
     levelNote.hidden = !on;
     if (!on) return levelNote.replaceChildren();
+    const key = phone() ? '' : keyOf('undo', isMac());
     levelNote.replaceChildren(
-      h('span', { class: 'level-made-text', text: t('level.made', { name: levelMade!.name, from: levelMade!.from }) }),
-      h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() }),
+      h('span', { class: 'level-made-text', text: key ? t('level.made', { name: levelMade!.name, key }) : t('level.madeTouch', { name: levelMade!.name }) }),
+      ...(key ? [] : [h('button', { type: 'button', class: 'link-btn', dataset: { action: 'level-made-undo' }, text: t('btn.undo'), onclick: () => unmakeLevel() })]),
       h('button', { type: 'button', class: 'level-made-close', dataset: { action: 'level-made-close' }, 'aria-label': t('level.madeClose'), title: t('level.madeClose'), onclick: () => {
         levelNote.hidden = true;
       } }, icon('close')),

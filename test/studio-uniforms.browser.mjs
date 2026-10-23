@@ -4,15 +4,15 @@
 // A hands-on try of v0.1.24: "pressing + Level suddenly typed text into the AI chat window — makes no sense", then, on
 // the plan to make Level 2 at once: "it just makes it without asking?? there used to be a menu with copy and more".
 //
-//   1. "Levels ⌄" opens a menu (a line on what happens, "Make Level 2 — a copy of this one", ✦ "Ask AI for a different
-//      kind of level…") and writes nothing in the AI box
-//   2. "Make Level 2": the game opens on Level 2 (built from Level 1), the crumb says so, the line "Level 2 made — a copy of
-//      Level 1…" with [Undo]; the box is still empty; [Undo] and ⌘Z take it back (no crumb, "Levels ⌄" again)
+//   1. "Level 1 ⌄" (last in the path since level-menu2, 2026-10-23) opens a menu — Level 1 ✓, New level, Duplicate; no
+//      line of explanation, no ✦ row — and writes nothing in the AI box
+//   2. Duplicate: the game opens on Level 2 (built from Level 1), the crumb says so, one line "Level 2 made. ⌘Z to
+//      undo."; the box is still empty; ⌘Z takes it back (no crumb, "Level 1 ⌄" again), twice
 //   3. a move on Level 2 hides the line; Save writes both levels and `levelsWas: []` (the code has none yet)
 //   4. every plain row of the object's and the scene's menus, and F2: the box stays empty and is not focused; Rename
 //      is a field on the card (Enter keeps: the list shows the name, the draft has `names`); ✦ rows are last, violet
 //   5. ✦ "Ask AI to change …" puts the cursor in the box (a draft only: nothing is sent)
-// Then pictures (--shots): the menu of "Levels ⌄", the line after Make, the object menu, the name field — PC 1280×800,
+// Then pictures (--shots): the menu of "Level 1 ⌄", the line after Duplicate, the object menu, the name field — PC 1280×800,
 // light and dark. With --tag before and --ui <the v0.1.24 shell>: the same moments in the old shell (no checks).
 //
 //   node test/studio-uniforms.browser.mjs [--shots <dir>] [--tag before|after] [--ui <built shell dir>] [--lang en|ja]
@@ -108,32 +108,32 @@ async function flow() {
     await p.waitReady();
     await sleep(800);
     const sent = asked();
-    // 1. "Levels ⌄" is a menu; the box stays empty.
+    // 1. "Level 1 ⌄" is a menu; the box stays empty.
     assert.equal(await p.crumb(), null, 'no levels yet');
-    assert.match(await p.ev(`document.querySelector('.brand .level-add')?.textContent || ''`), /^Levels$/, '"Levels ⌄", not "+ Level"');
-    // Where the level's name will be: before "Scene" (Studio / game / Levels ⌄ / Scene), so nothing jumps after Make.
-    assert.equal(await p.ev(`(() => { const a = document.querySelector('.brand .level-add'), s = document.querySelector('.brand .here'); return !!(a.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING); })()`), true);
+    assert.match(await p.ev(`document.querySelector('.brand .level-add')?.textContent || ''`), /^Level 1$/, '"Level 1 ⌄"');
+    // Where the level's name is once there are two: after "Scene" (Studio / game / Scene / Level 1 ⌄; level-menu2).
+    assert.equal(await p.ev(`(() => { const a = document.querySelector('.brand .level-add'), s = document.querySelector('.brand .here'); return !!(a.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_PRECEDING); })()`), true);
     await p.press('.brand .level-add');
-    assert.deepEqual(await p.rows(), ['> This game has one level. Add another and this one becomes Level 1.', 'level-make', '—', '✦ level-ask']);
+    assert.deepEqual(await p.rows(), ['level-one', '—', 'level-new', 'level-copy']);
     assert.deepEqual(await p.box(), EMPTY, 'the button wrote nothing in the AI box');
     await p.key('Escape', { vk: 27 });
-    console.log('ok 1 "Levels ⌄" opens a menu, the box stays empty');
+    console.log('ok 1 "Level 1 ⌄" opens a menu (New level, Duplicate), the box stays empty');
 
-    // 2. Make Level 2, then take it back with the line's Undo, and again with ⌘Z.
+    // 2. Duplicate → Level 2, then take it back with ⌘Z, twice.
     const make = async () => {
       await p.press('.brand .level-add');
-      await p.press('.ctx-menu [data-action="ctx-level-make"]');
+      await p.press('.ctx-menu [data-action="ctx-level-copy"]');
       await p.page.waitFor(`document.querySelector('iframe').src.includes('studioLevel=level-2')`, 5000);
       await p.page.waitFor(`${READY} && /Level 2/.test(document.querySelector('.brand .level-switch')?.textContent || '')`, 45000);
       await sleep(400);
     };
     await make();
     assert.match(await p.ev(`document.querySelector('iframe').src`), /studioBuild=level-1(&|$)/, 'built from the game as it is');
-    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent : ''; })()`), /Level 2 made — a copy of Level 1\. Change things here to make it different\. Save, and your AI adds Level 2 to your game’s code\./);
+    assert.match(await p.ev(`(() => { const l = document.querySelector('.level-made'); return l && !l.hidden ? l.textContent : ''; })()`), /^Level 2 made\. (⌘|Ctrl\+)Z to undo\.$/);
     assert.deepEqual(await p.box(), EMPTY, 'still nothing in the AI box');
     assert.match(await p.saveCount(), /1/, 'one change on Save');
     assert.equal(asked(), sent, 'nothing sent to the AI');
-    await p.press('.level-made [data-action="level-made-undo"]');
+    await p.key('z', { meta: true, vk: 90 });
     await p.page.waitFor(`${READY} && !document.querySelector('.brand .level-switch') && !!document.querySelector('.brand .level-add')`, 45000);
     assert.doesNotMatch(await p.ev(`document.querySelector('iframe').src`), /studioLevel=/, 'the game as it was');
     await sleep(800);
@@ -141,7 +141,7 @@ async function flow() {
     await make();
     await p.key('z', { meta: true, vk: 90 });
     await p.page.waitFor(`${READY} && !document.querySelector('.brand .level-switch')`, 45000);
-    console.log('ok 2 Make Level 2 opens it with a line and Undo; Undo and ⌘Z take it back');
+    console.log('ok 2 Duplicate opens Level 2 with one line; ⌘Z takes it back, twice');
 
     // 3. A move hides the line; Save writes both levels and levelsWas: [].
     await make();
@@ -263,7 +263,7 @@ async function shots() {
       await sleep(400);
       writeFileSync(join(SHOTS, `${name}-1-level.png`), await p.page.screenshot());
       if (TAG !== 'before') {
-        await p.press('.ctx-menu [data-action="ctx-level-make"]');
+        await p.press('.ctx-menu [data-action="ctx-level-copy"]');
         await p.page.waitFor(`${READY} && !!document.querySelector('.brand .level-switch')`, 45000);
         await sleep(1500);
         writeFileSync(join(SHOTS, `${name}-2-made.png`), await p.page.screenshot());

@@ -35,6 +35,12 @@ export interface LevelEntry {
 
 const emptyWorld = (): WorldPart => ({ objects: {} });
 
+/** "New level" instead of a copy (start()): the blank layout and the name for number n ("Level 2"). */
+export interface NewLevel {
+  world: WorldPart;
+  name: (n: number) => string;
+}
+
 /** The world part of a file, deep-copied (only the fields it has). */
 export function worldOf(f: Partial<PlacementFile> | PlacementLevel | null | undefined): WorldPart {
   const w: WorldPart = { objects: structuredClone(f?.objects || {}) };
@@ -249,16 +255,16 @@ export class Levels {
    * "+ Level" in a game whose code has one level (`single`): that level becomes the list's first, with `world` (the
    * live model's layout), and a copy of it is made right after (copy()). Returns the copy's id ('' = no single level).
    */
-  start(world: WorldPart, first?: string): string {
+  start(world: WorldPart, first?: string, blank?: NewLevel): string {
     const one = this.single;
     if (this.active) return '';
-    if (!one) return first ? this.startCodeless(world, first) : '';
+    if (!one) return first ? this.startCodeless(world, first, blank) : '';
     this.list = [{ id: one.id, ...(one.label ? { codeLabel: one.label } : {}), world: worldOf(world), dirty: 0 }];
     this.code = [one.id];
     this.current = one.id;
     this.active = true;
     this.single = null;
-    return this.copy(world);
+    return blank ? this.blank(blank.world, blank.name) : this.copy(world);
   }
 
   /**
@@ -270,14 +276,14 @@ export class Levels {
    * scene, move things); only the switch in the code is the AI's, and that rides on Save like a moved object. Until
    * then the editor builds the game as it is for both levels and lays each level's entries over it (build()).
    */
-  private startCodeless(world: WorldPart, first: string): string {
+  private startCodeless(world: WorldPart, first: string, blank?: NewLevel): string {
     this.list = [{ id: 'level-1', label: first.trim().slice(0, 120) || 'Level 1', world: worldOf(world), dirty: 0 }];
     this.code = [];
     this.current = 'level-1';
     this.active = true;
     // One press, one change on "Save · n": the copy counts it (copy()), as for a game whose code has one level.
     this.structDirty = 0;
-    return this.copy(world);
+    return blank ? this.blank(blank.world, blank.name) : this.copy(world);
   }
 
   /**
@@ -315,6 +321,38 @@ export class Levels {
     this.list.splice(this.index() + 1, 0, e);
     this.structDirty++;
     return e.id;
+  }
+
+  /**
+   * "New level" (level-menu2, 2026-10-23; a hands-on try: "the levels' menu is New (blank) and Duplicate — make it new,
+   * then ask the AI"): a level right after the one on screen, built from the same code level (`from`, as a copy is) with
+   * `world` = the blank layout (PlacementModel.blank(): the ground / sky kept, every other object deleted). Named by
+   * `name(n)` ("Level 3"), n = the list's length + 1, or the next number free. Returns the new id.
+   */
+  blank(world: WorldPart, name: (n: number) => string): string {
+    const src = this.entry(this.current);
+    if (!src) return '';
+    const taken = new Set([...this.list.map((e) => e.id), ...(this.code || []), ...this.deleted]);
+    const names = new Set(this.list.map((e) => this.labelOf(e.id)));
+    let n = this.list.length + 1;
+    while (names.has(name(n)) || taken.has(levelIdOf(name(n)))) n++;
+    const label = name(n);
+    const e: LevelEntry = { id: levelIdOf(label), label, from: this.build(src.id), world: worldOf(world), dirty: 0 };
+    this.list.splice(this.index() + 1, 0, e);
+    this.structDirty++;
+    return e.id;
+  }
+
+  /**
+   * ⌘Z right after New level / Duplicate in a game that already had levels (level-menu2): the level `id` made by it goes
+   * again, with its one change on "Save · n". false = it is not there, or not one made in the editor.
+   */
+  unadd(id: string): boolean {
+    const i = this.index(id);
+    if (i < 0 || !this.list[i]!.from || this.list.length <= 1) return false;
+    this.list.splice(i, 1);
+    this.structDirty = Math.max(0, this.structDirty - 1);
+    return true;
   }
 
   /** A new name (trimmed, ≤ 120 characters); false = nothing changed. */

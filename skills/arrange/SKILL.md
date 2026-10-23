@@ -845,13 +845,15 @@ Don't add it to a game with one level: nothing would change.
   that level's objects only (the top has no `motion` then).
 - `from`: a level the user made in the editor. Add it to the code as a copy of level `from`, with this `id` and
   `label`, then apply its entries. Until you do, the editor and the loader build `from` and lay this level's entries
-  over it.
+  over it. A level made with **New level** (a blank one) is written the same way: `from` plus a `removed` list of
+  every object the user did not keep (the ground, sky and lights stay). Build it as a level of its own with only what
+  is left, not as a copy that hides things.
 - `labelWas`: the user renamed the level. Change the name in the code from `labelWas` to `label`; keep the `id`.
 - `levelsWas` (only when something differs): the code's order. Reorder the code's levels to the order of `levels`. An
   id in `levelsWas` that is not in `levels` was **deleted**: ask once before you delete a level's code ("Delete the
   Summit level from the code?"), since it cannot be seen again in the editor.
-- `levelsWas: []`: the game had **no levels** in its code, and the user made Level 2 in the editor ("Levels ⌄ → Make
-  Level 2"). The level without `from` (usually `level-1`) is the game as it is now. Give the game levels: add the
+- `levelsWas: []`: the game had **no levels** in its code, and the user made Level 2 in the editor ("Level 1 ⌄ →
+  New level" or "Duplicate"). The level without `from` (usually `level-1`) is the game as it is now. Give the game levels: add the
   `studio.levels(…)` lines above with every level of `levels` (ids and labels as written), build the game as it is for
   the first one, add each `from` level as a copy of it, pass `{ level }` to `applyPlacement`, and copy this skill's
   `bin/studio-placement.js` into the game again (an older copy reads such a file only with `{ level }`). Then apply
