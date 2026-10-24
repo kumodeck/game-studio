@@ -149,6 +149,18 @@ export interface PlacementPanelDeps {
   ruleTag?: (key: string) => { group: string; tag: string; tip: string } | null;
   /** The card's ⋯ rows for a code layout's object ("Place individually", "Reset to rule"). [] / absent = none. */
   ruleRows?: (key: string) => Array<{ id: string; label: string; run(): void }>;
+  /**
+   * ✦ Turn into a rule (studio-code-torule, 2026-10-24; need 3, the plan's picture n3-place): several hand-placed objects
+   * picked → the chat box gets their chip and the draft "Turn into a close rule" (nothing is sent: the person sends it,
+   * or adds "6 m apart" first). null / absent = not for these (one object, a rule's own objects, the UI, no AI here).
+   */
+  toRule?: (keys: string[]) => (() => void) | null;
+  /**
+   * studio-code-torule: a hand-placed object a rule layout took the place of (`places[id].from`, hidden in the game until
+   * the AI takes it out of the code): not in the list, so the list says what the game shows (one "Street lamps ×6 [Rule]",
+   * not that and the hidden "lamp ×6"). ⌘Z of the swap brings the row back. Absent = none.
+   */
+  replaced?: (key: string) => boolean;
 }
 
 export interface PlacementPanel {
@@ -585,6 +597,14 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     if (members.some((m) => m.movable === false)) body.append(h('p', { class: 'muted note-line', text: d.t('ops.lockedSkipped') }));
     const lr = groupLayerRow(keys);
     if (lr) body.append(lr);
+    // ✦ Turn into a rule: the hand-placed ones picked together are what a rule could put (a row of lamps by hand).
+    const toRule = d.toRule?.(keys);
+    if (toRule) {
+      const b = aiButton(d.t('toRule.place'), 'to-rule link-btn', 'to-rule', toRule);
+      b.title = d.t('toRule.placeTip', { n: members.length });
+      b.dataset.part = 'to-rule';
+      body.append(b);
+    }
     if (!d.multi()) body.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-none' }, text: d.t('ops.selectNone'), onclick: () => d.selectMany([], '') }));
     card.append(body);
   };
@@ -1140,6 +1160,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     const tags = new Map<string, { tag: string; tip: string }>();
     for (const it of d.items()) {
       if (fold && it.unstable) continue;
+      if (d.replaced?.(it.key)) continue;
       const rt = d.ruleTag?.(it.key) ?? null;
       if (rt) tags.set(rt.group, { tag: rt.tag, tip: rt.tip });
       const g = rt?.group || it.group || `key:${it.key}`;

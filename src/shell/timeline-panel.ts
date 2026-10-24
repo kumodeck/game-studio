@@ -80,7 +80,13 @@ export interface TimelineRow {
    * studio-code-knobs (2026-10-24): its clip is a rule motion — drawn as a violet strip one round wide ("Rule motion:
    * Spiral · Radius 2 m · Lap 4 s"), not keys. `off` = disabled (grey, dashed), `missing` = the game has no such rule.
    */
-  rule?: { words: string; off: boolean; missing: boolean; round: number | null; len: number } | null;
+  rule?: { words: string; off: boolean; missing: boolean; round: number | null; len: number;
+    /**
+     * studio-code-torule (2026-10-24, ✦ Turn into a rule): the motion of points the AI replaced with this rule, until Save —
+     * `was` = its points' times (small orange marks on the strip's lower edge: the hand's, to compare), `lit` = the strip
+     * glows violet (what the AI just changed, as its other changes do).
+     */
+    was?: number[]; lit?: boolean } | null;
 }
 
 /** Several ways to start, in a row's few characters: "▣ Area or ⌨ E" (studio-timeline-2). */
@@ -148,7 +154,12 @@ export interface TimelineView {
    * studio-code-knobs (2026-10-24): the focused clip is a rule motion — its knobs go on the line where "Repeat [Once ▾]"
    * is for a motion of points (a rule goes on; it has no "once"). `loading` = the game page has not said its knobs yet.
    */
-  rule?: { knobs: RuleKnob[]; off: boolean; missing: boolean; loading: boolean; pointsTip: string } | null;
+  rule?: { knobs: RuleKnob[]; off: boolean; missing: boolean; loading: boolean; pointsTip: string;
+    /**
+     * studio-code-torule: the focused rule replaced a motion of points (until Save) — the line's right end has the switch
+     * "Compare with original" and, on, "Max deviation 0.1 m (1.2 s)" (`gap`: the editor's measure; null = not measured).
+     */
+    compare?: { on: boolean; gap: string | null; at: string | null } | null } | null;
 }
 
 export interface TimelineActs {
@@ -203,6 +214,8 @@ export interface TimelineActs {
   ruleOff?(key: string, off: boolean): void;
   /** "Make editable points" on `key`'s strip: the rule's shape becomes a motion of points (one undo step). */
   rulePoints?(key: string): void;
+  /** studio-code-torule: the line's "Compare with original" switched (the orange marks shown / hidden; nothing saved). */
+  compare?(on: boolean): void;
   leave?(key: string): void;
   /** ⋯'s "Show every motion in the scene" on / off (the rows' "Show only the picked one" turns it off). */
   showAll?(on: boolean): void;
@@ -283,6 +296,8 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
+    // ✦ Turn into a rule (studio-code-torule): the comparison with the points it replaced, at the line's right end.
+    if (c && v.rule?.compare) items.push(compareItem(v.rule.compare));
     // Fine-tune: also with no motion here when others move (its "Moving objects", studio-motion-focus).
     // Folded to the line (studio-fix-0143 ⑨ B): it is also the way back to the rows, so it is there, pointing up.
     if (c || v.moving || v.slim) {
@@ -328,6 +343,26 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     if (r.missing) return [h('span', { class: 'tl-lbl tl-rule-missing', title: t('rule.missingTip', { name: view().clip?.use ?? view().clip?.name ?? '' }), dataset: { part: 'tl-rule-missing' }, text: t('rule.missing') })];
     return [h('span', { class: 'tl-knobs', dataset: { part: 'tl-knobs' } }, ...r.knobs.map((k) => knobEl({ label: k.label, unit: k.unit ? t(`hands.unit.${k.unit}`) : '', v: k.v, min: k.min, max: k.max, step: k.step,
       tip: t('rule.knobTip'), part: `tl-knob-${k.name}`, set: (v, end) => act.ruleKnob?.(k.name, v, end) })))];
+  }
+
+  /**
+   * "◉ Compare with original · Max deviation 0.1 m (1.2 s)" (studio-code-torule, 2026-10-24; the plan's picture
+   * n3-motion: "the line's right: Compare with original · the largest gap"): the switch shows / hides the orange marks
+   * (the strip's lower edge, the game's path); the number is the editor's own measure of the rule against the points.
+   * Gone on Save (the AI takes the points out of the code then).
+   */
+  // Short of room (the line's 'snug' step, a narrow plate), the switch's words and the time go to its tooltip: the line
+  // keeps "◉ Max deviation 0.1 m" — measured, not cut to "…" — instead of tipping the whole line into two rows (it did:
+  // the first pictures of 10/24 lost "Preview" and "When does it move?" to it).
+  function compareItem(cmp: { on: boolean; gap: string | null; at: string | null }): HTMLElement {
+    const all = [t('toRule.compareMotion'), [cmp.gap, cmp.at].filter(Boolean).join('')].filter(Boolean).join(' · ');
+    const sw = h('button', { type: 'button', class: 'tl-rule-sw cmp-sw', role: 'switch', 'aria-checked': String(cmp.on), title: `${all}\n${t('toRule.compareTip')}`,
+      'aria-label': t('toRule.compareMotion'), dataset: { part: 'tl-compare-sw' }, onclick: () => act.compare?.(!cmp.on) }, h('i', {}));
+    // The words press the switch too (a finger on a phone finds the line, not a 22 px switch).
+    return h('span', { class: 'tl-compare', title: all, dataset: { part: 'tl-compare' }, onclick: (e: Event) => !sw.contains(e.target as Node) && act.compare?.(!cmp.on) }, sw,
+      h('span', { class: 'tl-compare-w', text: `${t('toRule.compareMotion')}${cmp.gap ? ' ·' : ''}` }),
+      cmp.gap ? h('span', { class: 'tl-compare-gap', dataset: { part: 'tl-compare-gap' }, text: cmp.gap }) : null,
+      cmp.gap && cmp.at ? h('span', { class: 'tl-compare-t', text: cmp.at }) : null);
   }
 
   /** A small text field that acts on Enter / leaving (Esc: as it was). */
@@ -812,9 +847,11 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     const rr = r.rule!;
     const len = rr.len > 0 ? rr.len : 4;
     const total = span();
-    const strip = h('div', { class: `tl-rule${rr.off ? ' off' : ''}${rr.missing ? ' missing' : ''}`, style: `left:${xOf(0)}px;width:${Math.max(24, xOf(total) - xOf(0))}px`,
+    const strip = h('div', { class: `tl-rule${rr.off ? ' off' : ''}${rr.missing ? ' missing' : ''}${rr.lit ? ' lit' : ''}`, style: `left:${xOf(0)}px;width:${Math.max(24, xOf(total) - xOf(0))}px`,
       title: rr.missing ? t('rule.missingTip', { name: r.clip?.use ?? r.clip?.name ?? '' }) : t('rule.motionTip'), dataset: { part: 'tl-rule', key: r.key } });
     for (let k = 1; rr.round && k * len < total; k++) strip.append(h('i', { class: 'tl-rule-round', style: `left:${xOf(k * len) - xOf(0)}px` }));
+    // ✦ Turn into a rule (studio-code-torule): where the points it replaced were, small orange marks on the lower edge.
+    for (const w of rr.was ?? []) if (w <= total) strip.append(h('i', { class: 'tl-rule-was', style: `left:${xOf(w) - xOf(0)}px`, dataset: { part: 'tl-rule-was' } }));
     const sw = h('button', { type: 'button', class: 'tl-rule-sw', role: 'switch', 'aria-checked': String(!rr.off), title: t(rr.off ? 'rule.enableTip' : 'rule.disableTip'),
       'aria-label': t(rr.off ? 'rule.enableTip' : 'rule.disableTip'), dataset: { part: 'tl-rule-sw', ruleAct: '1' }, onclick: () => act.ruleOff?.(r.key, !rr.off) }, h('i', {}));
     const words = rr.missing ? t('rule.missing') : rr.off ? `${t('rule.disabled')} · ${rr.words}` : `${t('rule.motion')}: ${rr.words}`;

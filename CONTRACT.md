@@ -612,6 +612,20 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   soft reload — stage 2 moves the objects in place); a knob the code has caught up with leaves the file without a count.
 - Stage 1 shows a layout by its name (the shelf, the card's title, `--do list`); its knobs on the card, dragging one
   object to turn a knob, ⌥ "just this one", the purple path and the keep-out list on the ground are stages 2–3.
+- **✦ Turn into a rule** (studio-code-torule, 2026-10-24; the other way round: hand → rule). Several hand-placed objects
+  picked: the card's "✦ Turn into a rule"; a motion of points: its row's ⋯ / right-click "✦ Turn into a rule…". Either
+  puts the draft "Turn into a close rule" in the chat box (nothing is sent; the request then has `intent: "to-code"`,
+  §3.4). The AI writes the rule and swaps it in (`--do place.code --replace` / `motion.code --replace`, §3.6); the
+  editor reads where the hand's shape was just before and **measures** how close the rule came (`src/shell/to-rule.ts`:
+  each object against the rule's object of the same number, the whole distance; a motion at 64 places of one round, its
+  own repeat included). Until Save (Save clears it; ⌘Z of the swap hides it, ⌘⇧Z shows it again): the layout's card has
+  "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)", its guide (`studio:place/guide` `compare`: `was` and
+  `names` per rule number) draws an orange dot where each stood, a thin line to the rule's object and the chip
+  "lamp-3 · 0.6 m" over the farthest; a rule motion's strip glows with orange marks at the old points' times, the
+  timeline's line says "Compare with original · Max deviation 0.1 m (at 0.8 s)", and its path (`studio:timeline/path`
+  `code.was`: `pts`, `keys`) is drawn with the old path in orange beside it (short of room, the line keeps "◉ Max
+  deviation 0.1 m" and the rest goes to its tooltip). The rule's objects are lit violet (the AI's marks), and the
+  hand-placed ones it replaced are left out of the list while `from` names them. One switch for both.
 
 ## 2. Messages (bridge ⇄ shell)
 
@@ -877,7 +891,11 @@ a bonus that wakes an agent that happens to be watching.
   the editor knows them), `assets` (`ask`: files picked in the Library that the
   words are about — "Add this to the scene" asks for a new object made from
   them; plain folder paths, ≤ 50), `motions` (`ask`, studio-motion-triggers: Library motions picked with the words,
-  ≤ 20, each `{ name, len, repeat?, on: [{ key, when?, until? }] }` — a hint, bad entries dropped), `step`, `lang`, `dim`, `unsaved` (changes not
+  ≤ 20, each `{ name, len, repeat?, on: [{ key, when?, until? }], keys? }` — a hint, bad entries dropped; `keys.p` = its
+  points, with `intent` only), `intent` (`ask`, studio-code-torule: `"to-code"` = the words came from ✦ Turn into a rule —
+  the AI fits the nearest rule to these hand-placed `objects` or this motion's points and swaps it in with `--do
+  place.code --replace` / `motion.code --replace` (§3.6), or, when none comes within half the object's size / a tenth of
+  the path's, replaces nothing and says so), `step`, `lang`, `dim`, `unsaved` (changes not
   saved yet), `view` (`ask`, 3D: the camera's `eye` and `target` when they
   asked, so new things land in sight), `files` (what it is about: `placement.json`,
   `.studio/next-step.md`, …; for `delete-files`, `.studio/next-step.md` then
@@ -1193,15 +1211,15 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 
 | Op | Fields | Editor | No editor (placement.json) |
 |---|---|---|---|
-| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `motions`, `unstable`, `ground`; the Library's motions with `on` (a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels |
+| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `p` (where it stands in the editor now, saved or not: cm / whole px; studio-code-torule), `motions`, `unstable`, `ground`; the Library's motions with `on` (a motion of points: its `keys.p`; a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels |
 | `motion.make` | `name`, `points` \| `keys`, `len` (default 2), `repeat`, `ease` (default linear for points), `key`, `when`, `until`, `replace` | A Library motion (`hands.mjs` handsMotion: points spread evenly over `len`, checked with the validator) and, with `key`, the object's clip (`timeline-wire` handsMake); one undo step | `motions` + `motion.<key>.clips` |
 | `motion.attach` | `key`, `name`, `when`, `until` | `timeline.attach` (+ when / until) | a clip `{ use, when }` |
 | `motion.detach` | `key`, `name` \| `all` | `timeline.detach` ("Remove from this object") | the clip out |
 | `motion.delete` | `name` | `timeline.deleteLib` | out of `motions` and every `motion` |
 | `motion.rename` | `name`, `to` | `timeline.renameLib` | `motions[].name`, every `use`, every `after` |
 | `motion.set` | `name`, `repeat`, `len` (stretches the keys), `key`, `when`, `until`, `knobs` (a code motion's: `{ "radius": 3 }`), `off` (with `key`) | `handsClipSet` / `handsLibSet`; knobs → `{ v, was = the code's }` (one back on the code's number leaves the file) | the same fields; `knobs` refused ("change the number in the codeMotion() directly"); a code motion's `len` / `repeat` refused |
-| `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | The page's code motions (`studio:code-motions`); an id it lacks → the game is read again first, still lacking → `the game has no codeMotion('wave') (it has: 'spiral')`. A Library motion `{ name, code }` (the same code already there = that motion), on `key` starting with the game; `replace` = the motion of points called `name` becomes it | `motions` `{ name, code }` + the clip |
-| `place.code` | `id`, `replace` (keys) | The page's layouts (`studio:code-places`, read again when missing: `the game has no codePlace('lamp') (it has: 'hex')`). `replace` → `places[id].from` (the hand-placed ones hidden; one undo step); without it nothing changes (the line names the layout; no ⌘Z) | `from`, and those keys out of `objects` / `added`; without `replace` nothing |
+| `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | The page's code motions (`studio:code-motions`); an id it lacks → the game is read again first, still lacking → `the game has no codeMotion('wave') (it has: 'spiral')`. A Library motion `{ name, code }` (the same code already there = that motion), on `key` starting with the game; `replace` = the motion of points called `name` becomes it — ✦ Turn into a rule (studio-code-torule): its points kept to compare until Save, and the rule measured against them over one round at 64 places (`studio:timeline/code-points`): the line ends `; the editor measured how close it is: the largest gap is 0.12 m at 0.8 s of a 2 s round (…)` | `motions` `{ name, code }` + the clip |
+| `place.code` | `id`, `replace` (keys) | The page's layouts (`studio:code-places`, read again when missing: `the game has no codePlace('lamp') (it has: 'hex')`). `replace` → `places[id].from` (the hand-placed ones hidden; one undo step); without it nothing changes (the line names the layout; no ⌘Z). ✦ Turn into a rule (studio-code-torule): where each replaced object stood is read before the game is read again, and compared with the rule's object of the same number (`replace[i]` ↔ `<id>-<i+1>`, the whole distance): the line ends `; the editor measured how close it is: the largest gap is lamp-3 ↔ lamp-row-3, 0.62 m (6 of 6 compared)`, the person's says "Max deviation: lamp-3 (0.6 m)" | `from`, and those keys out of `objects` / `added`; without `replace` nothing |
 | `place.set` | `id`, `knobs`, `pin` (`{ key, p, r?, s? }`), `unpin`, `hand` | `places[id]` (knobs `{ v, was }`, a pin of one of its objects, `hand: true` = every object's place now as pins, `false` = back to code); one undo step, the game reads the draft again | `pin` / `unpin`; `knobs` / `hand` refused (they need the game) |
 | `place.avoid` | `id`, `code` (+ `knobs`, `off`) \| `box` (+ `name`) \| `remove` (index or code id) | `places[id].avoid` (a condition the page must have: `codeAvoid`; a box named "Box n" when unnamed; one of the code's own conditions back on with nothing changed leaves no entry) | the same; `knobs` refused |
 | `object.move` / `turn` / `scale` | `key`, `to` \| `by` (`deg`) | as the card's numbers (one pose change) | `objects.<key>` (`by` needs its pose in the file) |

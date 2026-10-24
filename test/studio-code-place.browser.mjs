@@ -13,11 +13,19 @@
 //           the line, no "Repeat: Once"; the ◇ of its path dragged out: Radius 2 → 3 m; Disable / enable; "Make editable
 //           points": a motion of points; ⌘Z back to the rule.
 //   plain   (the first theme) a game with no rule (Neon Run as it is): the card and the list as before (no Layout, no tag).
-// Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures).
+//   torule  (the first theme; studio-code-torule, 2026-10-24 — need 3: "turn what I placed / moved by hand into a close
+//           formula") six street lamps placed by hand (the third 0.6 m off the line) and the ship's motion of points:
+//           pick the six → ✦ Turn into a rule → the draft in the chat box, sent (intent "to-code") → a stand-in AI writes
+//           codePlace('lamp-row') and sends `--do place.code --replace` → the hand lamps hidden, the rule's lit violet,
+//           orange dots where they stood and the chip "lamp-3 · 0.6 m", the card's "Max deviation: lamp-3 (0.6 m)" → ⌘Z:
+//           the hand lamps back. The ship: the motion row's ⋯ → Turn into a rule… → `motion.code --replace` → the strip
+//           lit with orange marks, "Compare with original · Max deviation …" on the line, orange dots in the game → Save:
+//           the comparison gone.
+// Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 4-<lang>-<theme>-<step>.png (step 4).
 //
-//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain] [--shots <dir>]
+//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,torule] [--shots <dir>]
 // Exit 1 on a failure.
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,7 +46,7 @@ const LANG = take('--lang', 'ja');
 const THEMES = take('--themes', 'dark,light').split(',').filter((x) => x === 'dark' || x === 'light');
 const WIDTH = Number(take('--width', '1280'));
 const PHONE = WIDTH < 500;
-const ONLY = take('--only', 'layout,motion,plain').split(',');
+const ONLY = take('--only', 'layout,motion,plain,torule').split(',');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = LANG === 'ja'
   ? { saved: '間 → 4 m', layout: '並べ方', line: '直線 · 4 個', tag: 'ルール', gap: '間', note: '動かすと間が変わる', pinned: 'この 1 個だけ手動で配置中', hand: '個別に配置', motion: '動きのルール', radius: '半径', points: '編集点にする', repeat: 'くり返し', off: '一時停止' }
@@ -74,12 +82,64 @@ const MOTION_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', 
   motions: [{ name: LANG === 'ja' ? 'らせん' : 'Spiral', code: 'spiral' }],
   motion: { pillar: { clips: [{ use: LANG === 'ja' ? 'らせん' : 'Spiral', when: { on: 'start' } }] } } };
 
-/** Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion. */
+// ✦ Turn into a rule (studio-code-torule): the hand-placed lamps and the hand-made motion, as a person's game has them.
+const SHIP_MOTION = LANG === 'ja' ? 'ship の動き' : 'Ship motion';
+// Six street lamps on the left of the road, put one by one by hand (the third 0.6 m off the line), and the lamp's look
+// the rule will use too.
+const LAMPS = `
+    const makeLamp = () => {
+      const lamp = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08, .1, 3.2, 8), glow(0x8a7cff, .6));
+      pole.position.y = 1.6;
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(.32, 16, 12), glow(0xffb3f0, 2));
+      bulb.position.y = 3.3;
+      lamp.add(pole, bulb);
+      return lamp;
+    };
+    window.__lamps = [-6, -6, -6.6, -6, -6, -6].map((x, i) => {
+      const lamp = makeLamp();
+      lamp.name = \`lamp-\${i + 1}\`;
+      lamp.position.set(x, 0, -6 - i * 6);
+      scene.add(lamp);
+      return lamp;
+    });
+    // @rules
+`;
+// What the stand-in AI writes for ✦ Turn into a rule (SKILL.md "Turn into a rule"): a row 6 m apart, and a wave.
+const TO_RULE = `
+    codePlace('lamp-row', {
+      name: ${JSON.stringify(LANG === 'ja' ? '街灯' : 'Street lamps')},
+      knobs: { n: { v: 6, label: ${JSON.stringify(LANG === 'ja' ? '本数' : 'Count')}, unit: '', min: 1, max: 20, step: 1 }, gap: { v: 6, label: ${JSON.stringify(LANG === 'ja' ? '間' : 'Gap')}, unit: 'm', min: 2, max: 15 } },
+      count: (k) => k.n,
+      make: () => makeLamp(),
+      at: (i, k) => ({ p: [-6, 0, -6 - i * k.gap] }),
+      drag: 'gap',
+    });
+    codeMotion('ship-wave', {
+      name: ${JSON.stringify(LANG === 'ja' ? '波' : 'Wave')},
+      knobs: { w: { v: 1.5, label: ${JSON.stringify(LANG === 'ja' ? '幅' : 'Width')}, unit: 'm', min: .2, max: 4 }, lap: { v: 2, label: ${JSON.stringify(LANG === 'ja' ? '1 往復' : 'Round')}, unit: 's', min: .5, max: 10 } },
+      round: (k) => k.lap,
+      at: (t, k) => ({ p: [k.w * Math.sin((t / k.lap) * 2 * Math.PI), 0, 0] }),
+      drag: 'w',
+    });
+`;
+// The ship's motion as the person made it on the timeline: a wave side to side, 9 points, the fourth a little off.
+const SHIP_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {},
+  motions: [{ name: SHIP_MOTION, len: 2, repeat: 'loop', keys: { p: Array.from({ length: 9 }, (_, i) => ({ t: i / 4, v: [Math.round((Math.sin((i / 8) * 2 * Math.PI) * 1.5 + (i === 3 ? 0.12 : 0)) * 1000) / 1000, 0, 0], ease: 'linear' })) } }],
+  motion: { ship: { clips: [{ use: SHIP_MOTION, when: { on: 'start' } }] } } };
+
+/** Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion; 'torule' = the hand lamps and the ship's hand motion. */
 function makeGame(theme, rules) {
   const root = mkdtempSync(join(tmpdir(), 'studio-code-knobs-'));
   cpSync(join(PKG, 'test/neon-run'), root, { recursive: true });
   copyFileSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(root, 'studio-placement.js'));
-  if (rules) {
+  if (rules === 'torule') {
+    const html = readFileSync(join(root, 'index.html'), 'utf8')
+      .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codeMotion, codePlace } from './studio-placement.js';")
+      .replace("    await applyPlacement(scene, './placement.json');", `${LAMPS}\n    await applyPlacement(scene, './placement.json');`);
+    writeFileSync(join(root, 'index.html'), html);
+    writeFileSync(join(root, 'placement.json'), JSON.stringify(SHIP_FILE, null, 2));
+  } else if (rules) {
     let html = readFileSync(join(root, 'index.html'), 'utf8')
       .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codeMotion, codePlace } from './studio-placement.js';");
     // The hand-placed loop out (the rule puts them now), the pillar standing still (the rule motion moves it).
@@ -320,9 +380,165 @@ async function plain(theme) {
   }
 }
 
+/**
+ * ✦ Turn into a rule (studio-code-torule, 2026-10-24; the plan's flows 8 and 9, pictures n3-place / n3-motion): the hand
+ * lamps and the ship's hand motion turned into rules by a stand-in AI (the request, then what SKILL.md says it does).
+ */
+async function toRule(theme) {
+  console.log(`${LANG} ${theme} ${WIDTH} torule`);
+  const root = makeGame(theme, 'torule');
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
+  const browser = await launch();
+  const T = LANG === 'ja'
+    ? { btn: 'ルール化する', draft: '近いルールにして', compare: '元の配置と比べる', compareMotion: '元の動きと比べる', max: '最大のずれ: lamp-3（0.6 m）', menu: 'ルール化する…', lit: '最大のずれ', motion: '動きのルール' }
+    : { btn: 'Turn into a rule', draft: 'Turn into a close rule', compare: 'Compare with original', compareMotion: 'Compare with original', max: 'Max deviation: lamp-3 (0.6 m)', menu: 'Turn into a rule…', lit: 'Max deviation', motion: 'Rule motion' };
+  try {
+    const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
+    const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `4-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
+    const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+    const card = () => page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && !f.open) f.open = true; return document.querySelector('[data-part=card]')?.innerText ?? ''; })()`);
+    const toast = () => page.eval(`[...document.querySelectorAll('.ai-line, .ask-news:not([hidden]), .toast.on')].map((e) => e.textContent).join(' | ')`);
+    const marks = (sel) => page.eval(`${GW}.document.querySelector('[data-studio-code-place]')?.shadowRoot?.querySelectorAll(${JSON.stringify(sel)}).length ?? 0`);
+    const chipText = () => page.eval(`(() => { const r = ${GW}.document.querySelector('[data-studio-code-place]')?.shadowRoot?.querySelector('[data-part=place-gap-chip]'); return r?.nextSibling?.textContent ?? ''; })()`);
+    const shown = () => page.eval(`JSON.stringify(${GW}.__lamps.map((l) => l.visible))`);
+    const lastRequest = () => {
+      const dir = join(root, '.studio/requests');
+      const f = readdirSync(dir).filter((x) => x.includes('-ask-')).sort().at(-1);
+      return f ? JSON.parse(readFileSync(join(dir, f), 'utf8')) : null;
+    };
+    const undoKey = async () => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', modifiers: 4, windowsVirtualKeyCode: 90 });
+    };
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug`, 90000);
+    await sleep(1500);
+    const lamps = ['lamp-1', 'lamp-2', 'lamp-3', 'lamp-4', 'lamp-5', 'lamp-6'];
+
+    // ---- 1. the six hand lamps picked: ✦ Turn into a rule on their card → the draft in the chat box ----
+    await page.eval(`studioShell.actions.selectMany(${JSON.stringify(lamps)}, 'lamp-1')`);
+    await sleep(900);
+    check(await page.eval(`(document.querySelector('[data-part=to-rule]')?.textContent ?? '').includes(${JSON.stringify(T.btn)})`), `the card of the six has "✦ ${T.btn}"`);
+    await shot('0-pick');
+    await page.eval(`document.querySelector('[data-part=to-rule]').click()`);
+    await sleep(500);
+    const draft = await page.eval(`document.querySelector('.ask-input')?.value ?? ''`);
+    check(draft === T.draft, `the draft in the chat box: "${draft}" (nothing sent yet)`);
+    check(await page.eval(`document.activeElement?.classList.contains('ask-input')`), 'the cursor is in the chat box');
+    await shot('1-draft');
+    await page.eval(`document.querySelector('[data-part=ask]').requestSubmit()`);
+    await sleep(1200);
+    const req = lastRequest();
+    check(req?.intent === 'to-code' && req?.objects?.length === 6 && req.objects.every((o) => o.pose?.p?.length === 3), `the request: intent to-code, 6 objects with where each stands (${JSON.stringify({ intent: req?.intent, n: req?.objects?.length })})`);
+    check(req?.objects?.find((o) => o.key === 'lamp-3')?.pose?.p?.[0] === -6.6, 'lamp-3\'s place as it stands (x -6.6)');
+
+    // ---- 2. the stand-in AI: the rule in the code, then one --do (SKILL.md "Turn into a rule") ----
+    const html = readFileSync(join(root, 'index.html'), 'utf8').replace('    // @rules\n', TO_RULE);
+    writeFileSync(join(root, 'index.html'), html);
+    const r = await ai([{ do: 'place.code', id: 'lamp-row', replace: lamps }]);
+    const said = r.results?.[0]?.said ?? r.results?.[0]?.error ?? JSON.stringify(r);
+    check(/the largest gap is lamp-3 ↔ lamp-row-3, 0\.6 m \(6 of 6 compared\)/.test(said), `the AI's line has the editor's measure: "${said.slice(-90)}"`);
+    await sleep(2500);
+    check((await toast()).includes(T.max.replace(/^[^:]+: /, '')), `the line over the chat box: "${(await toast()).slice(0, 160)}"`);
+    check((await shown()) === JSON.stringify([false, false, false, false, false, false]), `the hand lamps hidden (${await shown()})`);
+    const handRows = () => page.eval(`document.querySelectorAll('.obj[data-key^="lamp-"]:not([data-key^="lamp-row"])').length`);
+    check((await handRows()) === 0, `…and not in the list (${await handRows()} rows)`);
+    const c2 = await card();
+    check(c2.includes(T.compare) && c2.includes(T.max), `the card (lamp-row-3, the farthest): "${c2.replace(/\n/g, ' / ').slice(0, 160)}"`);
+    check(await page.eval(`(document.querySelector('.card-head .key')?.textContent ?? '') + (document.querySelector('.card-head strong')?.textContent ?? '')`).then((x) => x.includes('3')), 'the card is the rule\'s 3rd lamp');
+    check((await marks('[data-part=place-was]')) === 6, `six orange dots where they stood (${await marks('[data-part=place-was]')})`);
+    check((await chipText()).startsWith('lamp-3 · 0.6'), `the chip over the farthest: "${await chipText()}"`);
+    check(await page.eval(`JSON.stringify(${GW}[Symbol.for('game-studio.codePlaces')].get('lamp-row').objs.map((o) => o.position.z))`).then((x) => x === '[-6,-12,-18,-24,-30,-36]'), 'the rule put six lamps 6 m apart');
+    await shot('2-place');
+
+    // ---- 3. the switch hides the marks; on again ----
+    await page.eval(`document.querySelector('[data-part=rule-compare-sw]').click()`);
+    await sleep(500);
+    check((await marks('[data-part=place-was]')) === 0, 'Compare off: no orange dots');
+    await page.eval(`document.querySelector('[data-part=rule-compare-sw]').click()`);
+    await sleep(500);
+    check((await marks('[data-part=place-was]')) === 6, 'Compare on: the dots again');
+
+    // ---- 4. ⌘Z: the hand lamps back, the comparison gone ----
+    await page.eval(`document.activeElement?.blur()`);
+    await undoKey();
+    await sleep(2500);
+    check((await shown()) === JSON.stringify([true, true, true, true, true, true]), `⌘Z: the hand lamps back (${await shown()})`);
+    check((await handRows()) > 0, `…and in the list again (${await handRows()} rows)`);
+    const p4 = (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === 'lamp-row');
+    check(!p4?.from, `…and the layout no longer replaces them (${JSON.stringify(p4?.from ?? null)})`);
+    await page.eval(`studioShell.actions.select('lamp-row-3')`);
+    await sleep(700);
+    check(!(await card()).includes(T.compare), 'no comparison on the card after ⌘Z');
+    await shot('3-undo');
+    // ⌘⇧Z: the swap again (and its comparison).
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'z', code: 'KeyZ', modifiers: 12, windowsVirtualKeyCode: 90 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'z', code: 'KeyZ', modifiers: 12, windowsVirtualKeyCode: 90 });
+    await sleep(2500);
+    await page.eval(`studioShell.actions.select('lamp-row-3')`);
+    await sleep(700);
+    check((await card()).includes(T.max), '⌘⇧Z: the swap and its comparison again');
+
+    // ---- 5. the ship's motion: the row's ⋯ → Turn into a rule… → the stand-in AI's motion.code --replace ----
+    await page.eval(`studioShell.actions.select('ship')`);
+    await sleep(800);
+    await card();
+    await page.eval(`document.querySelector('[data-part=motion-more]')?.click()`);
+    await sleep(400);
+    const row = await page.eval(`document.querySelector('[data-part=context-menu]:not([hidden]) [data-action=ctx-motion-to-rule]')?.textContent ?? ''`);
+    check(row.includes(T.menu), `the motion row's menu has "✦ ${T.menu}" ("${row}")`);
+    await shot('4-menu');
+    await page.eval(`document.querySelector('[data-action=ctx-motion-to-rule]').click()`);
+    await sleep(500);
+    check(await page.eval(`document.querySelector('.ask-input')?.value ?? ''`).then((x) => x === T.draft), 'the draft in the chat box');
+    check(await page.eval(`document.querySelector('.ask-chip')?.textContent ?? ''`).then((x) => x.includes(SHIP_MOTION)), 'the chip names the ship\'s motion');
+    await page.eval(`document.querySelector('[data-part=ask]').requestSubmit()`);
+    await sleep(1200);
+    const req2 = lastRequest();
+    check(req2?.intent === 'to-code' && req2?.motions?.[0]?.name === SHIP_MOTION && req2.motions[0].keys?.p?.length === 9, `the request: intent to-code, the motion with its 9 points (${JSON.stringify({ intent: req2?.intent, m: req2?.motions?.[0]?.name, n: req2?.motions?.[0]?.keys?.p?.length })})`);
+    const r2 = await ai([{ do: 'motion.code', code: 'ship-wave', name: SHIP_MOTION, replace: true }]);
+    const said2 = r2.results?.[0]?.said ?? r2.results?.[0]?.error ?? '';
+    check(/the largest gap is 0\.1\d? m at [\d.]+ s of a 2 s round/.test(said2), `the AI's line has the editor's measure: "${said2.slice(-90)}"`);
+    await sleep(1500);
+    // The timeline on the ship: the strip lit, the old points' marks on its edge, the comparison on the line.
+    await page.eval(`studioShell.actions.select('ship')`);
+    await sleep(600);
+    await page.eval(`document.querySelector('[data-part=motion-timeline-line]')?.click()`);
+    await page.waitFor(`!!document.querySelector('[data-part=tl-rule]')`, 15000);
+    await sleep(900);
+    check(await page.eval(`!!document.querySelector('.tl-rule.lit')`), 'the rule strip glows (the AI\'s change)');
+    check(await page.eval(`document.querySelectorAll('[data-part=tl-rule-was]').length`).then((n) => n === 9), 'nine orange marks on its lower edge (the old points)');
+    const line = await page.eval(`document.querySelector('[data-part=tl-compare]')?.textContent ?? ''`);
+    check(line.includes(T.compareMotion) && line.includes(T.lit) && /0\.1 m/.test(line), `the line: "${line}"`);
+    // PC: the line stays one row (a phone's line is two rows anyway: the switch keeps its size there).
+    if (!PHONE) check(await page.eval(`!document.querySelector('.timeline.narrow')`), 'the line stays one row (the comparison is short of room before the line is)');
+    else check(await page.eval(`document.querySelector('[data-part=tl-compare-sw]').getBoundingClientRect().height <= 16`), 'the phone\'s switch stays a switch (not a 40 px button)');
+    const dots = await page.eval(`${GW}.document.querySelector('[data-studio-code-motion]')?.shadowRoot?.querySelectorAll('[data-part=tl-was-dot]').length ?? 0`);
+    check(dots === 9, `orange dots of the old points in the game (${dots})`);
+    check(await page.eval(`document.querySelector('[data-part=tl-rule-words]')?.textContent ?? ''`).then((x) => x.includes(T.motion)), 'the strip says it is a rule motion now (the same name)');
+    await shot('5-motion');
+
+    // ---- 6. Save: the comparison is gone (the AI takes the hand's shape out of the code now) ----
+    await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+    await sleep(1800);
+    check(await page.eval(`!document.querySelector('[data-part=tl-compare]') && !document.querySelector('.tl-rule.lit') && !document.querySelector('[data-part=tl-rule-was]')`), 'Save: no comparison on the timeline');
+    await page.eval(`studioShell.actions.select('lamp-row-3')`);
+    await sleep(700);
+    check(!(await card()).includes(T.compare) && (await marks('[data-part=place-was]')) === 0, 'Save: none on the card, no orange dots');
+    const saved = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    check(JSON.stringify(saved.places?.['lamp-row']?.from) === JSON.stringify(lamps) && saved.motions?.find((m) => m.name === SHIP_MOTION)?.code === 'ship-wave',
+      `placement.json: places.lamp-row.from = the six, the ship's motion a rule (${JSON.stringify({ from: saved.places?.['lamp-row']?.from, m: saved.motions?.map((m) => m.code ?? 'points') })})`);
+    await shot('6-saved');
+  } finally {
+    await browser.close();
+    await srv.close();
+  }
+}
+
 for (const [i, theme] of THEMES.entries()) {
-  await run(theme, i === 0);
+  if (ONLY.some((x) => x !== 'plain' && x !== 'torule')) await run(theme, i === 0);
   if (i === 0 && ONLY.includes('plain')) await plain(theme);
+  if (i === 0 && ONLY.includes('torule')) await toRule(theme);
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

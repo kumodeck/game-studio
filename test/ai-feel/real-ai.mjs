@@ -8,6 +8,17 @@
 //      in the code and --do place.code (the editor lists ten lamps under the layout's name, a knob at 6).
 // `--steps points` runs the earlier set (studio-ai-hands): the spiral, then "take the old motion off, only the spiral"
 // in the same conversation and in a new one with Sway put back first.
+// `--steps to-rule` (studio-code-torule, 2026-10-24 — "turn what I placed / moved by hand into a close formula"): the
+// plaza gets six street lamps put by hand along the left (the third 0.6 m off the line), a ship that sways side to side
+// by a motion of points made on the timeline ("Ship sway", 9 points, a little shaky) and five crates dropped here and
+// there; each in a new conversation:
+//   1. "turn the street lamps into a rule" (in Japanese, as STEPS has it) → a codePlace() in the code and `--do place.code
+//      --replace` with the six lamps (the editor hides them, the rule's lamps stand in their place), the reply has the
+//      editor's number for how close it is;
+//   2. "turn the ship's motion into a rule" → a codeMotion() and `--do motion.code --replace`: "Ship sway" is a rule
+//      now, still on the ship, starting with the game;
+//   3. "turn the crates into a rule" → no rule comes close (scattered by hand): nothing replaced, said in a line.
+// None of them may hand steps back to the person.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -41,7 +52,12 @@ if (spawnSync('claude', ['--version'], { encoding: 'utf8' }).status !== 0) {
   process.exit(3);
 }
 
-const STEPS = take('--steps') === 'points' ? [
+const TO_RULE = take('--steps') === 'to-rule';
+const STEPS = TO_RULE ? [
+  { say: '街灯をルールにして', first: true, kind: 'to-rule-place' },
+  { say: '船の動きをルールにして', first: true, kind: 'to-rule-motion' },
+  { say: '木箱をルールにして', first: true, kind: 'to-rule-none' },
+] : take('--steps') === 'points' ? [
   { say: '青い柱を螺旋で動かして', first: true, kind: 'spiral' },
   { say: '青い柱の前の動きを外して、螺旋だけにして', kind: 'only' },
   { say: '青い柱の前の動きを外して、螺旋だけにして', first: true, seed: true, kind: 'only' },
@@ -51,6 +67,11 @@ const STEPS = take('--steps') === 'points' ? [
 ];
 // Handing the work back (Japanese and English): steps to click, asking for a reload or a Save, "in the editor, do …".
 const HANDBACK = /右クリック|再読み込み|リロード|を押して(?!くだ)|押してください|開き直|選んで.*(外|押)|手順|^\s*[1-9]\.\s|Reload|right-click|press Save|保存してください|Save を押/m;
+
+// ✦ Turn into a rule: the editor's measure in the `studio: did …` lines the AI got back ("the largest gap is lamp-3 ↔
+// lamp-row-3, 0.62 m", "… 0.12 m at 0.8 s"), and whether the reply says it (to one or two decimals).
+const measured = (stream) => [...String(stream).matchAll(/largest gap is .*?(\d+(?:\.\d+)?) m\b/g)].map((m) => Number(m[1]));
+const saysMeasure = (stream, reply) => measured(stream).some((x) => [x.toFixed(1), String(Math.round(x * 100) / 100)].some((v) => reply.includes(v)));
 
 let failed = 0;
 const check = (ok, what) => {
@@ -68,9 +89,52 @@ cpSync(join(PKG, 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
+// The to-rule set's plaza (above): lamps, a ship with its motion of points, crates — all put by hand.
+if (TO_RULE) {
+  const main = readFileSync(join(game, 'main.js'), 'utf8').replace("await applyPlacement(scene, './placement.json');", `// Six street lamps along the left of the plaza, put one by one by hand.
+function lamp(key, x, z) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 8), new THREE.MeshStandardMaterial({ color: '#3a3f4c' }));
+  pole.position.y = 1.6;
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshStandardMaterial({ color: '#fff1b8', emissive: '#ffd36b' }));
+  bulb.position.y = 3.3;
+  g.add(pole, bulb);
+  g.position.set(x, 0, z);
+  g.userData.studioKey = key;
+  scene.add(g);
+  return g;
+}
+lamp('lamp-1', -8, 6);
+lamp('lamp-2', -8, 2);
+lamp('lamp-3', -8.6, -2);
+lamp('lamp-4', -8, -6);
+lamp('lamp-5', -8, -10);
+lamp('lamp-6', -8, -14);
+// A small ship on the right (it sways side to side: "Ship sway" in placement.json, made on the timeline).
+const ship = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.8, 3), new THREE.MeshStandardMaterial({ color: '#36c98e' }));
+ship.rotation.x = -Math.PI / 2;
+ship.position.set(6, 0.6, 4);
+ship.userData.studioKey = 'ship';
+scene.add(ship);
+// Five wooden crates dropped here and there by hand.
+for (const [i, [x, z]] of [[3, -3], [9, -8], [-2, 9], [11, 1], [4.5, -12]].entries()) {
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: '#a0703c' }));
+  crate.position.set(x, 0.5, z);
+  crate.userData.studioKey = \`crate-\${i + 1}\`;
+  scene.add(crate);
+}
+
+await applyPlacement(scene, './placement.json');`);
+  writeFileSync(join(game, 'main.js'), main);
+  const pl = JSON.parse(readFileSync(join(game, 'placement.json'), 'utf8'));
+  pl.motions.push({ name: 'Ship sway', len: 2, repeat: 'loop', keys: { p: Array.from({ length: 9 }, (_, i) => ({ t: i / 4, v: [Math.round((Math.sin((i / 8) * 2 * Math.PI) * 1.5 + (i === 3 ? 0.12 : 0)) * 1000) / 1000, 0, 0], ease: 'linear' })) } });
+  pl.motion.ship = { clips: [{ use: 'Ship sway', when: { on: 'start' } }] };
+  writeFileSync(join(game, 'placement.json'), JSON.stringify(pl, null, 2));
+}
 mkdirSync(join(game, '.studio/ui'), { recursive: true });
 writeFileSync(join(game, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'ja', theme: 'dark', seen: ['timeline-steps', 'open-line'] }));
 const code0 = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
+const LAMPS = ['lamp-1', 'lamp-2', 'lamp-3', 'lamp-4', 'lamp-5', 'lamp-6'];
 // Every .js of the game but the loader's copy (the AI may put the layout in a file of its own).
 const readGameJs = () => readdirSync(game).filter((f) => f.endsWith('.js') && f !== 'studio-placement.js' && f !== 'main.js').map((f) => readFileSync(join(game, f), 'utf8')).join('\n');
 // STUDIO_BROWSER: whatever the AI starts never opens a browser of this computer (the headless one below is the editor).
@@ -149,7 +213,8 @@ try {
     console.log(`  blue-pillar in the editor now: ${JSON.stringify(m.map((c) => [c.name, c.points, c.len, c.repeat]))}`);
     const codeNow = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
     check(r.code === 0 && !!reply, 'the AI answered');
-    check(dos.length > 0, 'it used --do (the editor\'s own work)');
+    // A rule that does not come close is no change at all: it may just say so (it may still read the editor's --do list).
+    if (step.kind !== 'to-rule-none') check(dos.length > 0, 'it used --do (the editor\'s own work)');
     check(!HANDBACK.test(reply), 'no steps, reload or Save handed back to the person');
     check(/^https?:\/\/127\.0\.0\.1:\d+\/__studio\/\?t=/.test(reply.trim()), 'the editor\'s link is the first line');
     const codeText = Object.values(codeNow).join('\n') + readGameJs();
@@ -167,6 +232,33 @@ try {
       check(/codeMotion\s*\(/.test(codeText), 'it wrote a codeMotion() in the game\'s code');
       check(dos.some((c) => /motion\.code/.test(c)), 'it put it on the timeline itself (--do motion.code)');
       check(cm.some((x) => onPillar.includes(x.name) && !x.missing && Object.keys(x.knobs ?? {}).length >= 1 && Object.keys(x.knobs ?? {}).length <= 3), 'the blue pillar has the code motion on its timeline, with 1–3 knobs');
+    } else if (step.kind === 'to-rule-place') {
+      const l = listNow();
+      const lp = (l?.places ?? []).find((p) => LAMPS.every((k) => p.from?.includes(k)));
+      console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: Object.fromEntries(Object.entries(p.knobs ?? {}).map(([k, v]) => [k, v.v])), from: p.from })))}`);
+      check(/codePlace\s*\(/.test(codeText), 'it wrote a codePlace() in the game\'s code');
+      check(dos.some((c) => /place\.code/.test(c) && /replace/.test(c)), 'it swapped it in itself (--do place.code --replace)');
+      check(!!lp && lp.keys.length === 6 && !lp.keys.some((k) => LAMPS.includes(k)), `the six hand lamps replaced by six of the rule's own (${lp ? `${lp.id}: ${lp.keys.join(', ')}` : 'none'})`);
+      const rows = JSON.parse(await page.eval(`JSON.stringify(Array.from(document.querySelectorAll('.obj'), (e) => e.dataset.key))`) || '[]');
+      check(!rows.some((k) => LAMPS.includes(k)), 'the hand lamps are out of the editor\'s list (hidden in the game)');
+      check(saysMeasure(r.s, reply), `the reply says how close it is, in the editor's number (${measured(r.s).join(', ') || 'none measured'})`);
+      writeFileSync(join(out, 'to-rule-place.png'), await page.screenshot());
+    } else if (step.kind === 'to-rule-motion') {
+      const l = listNow();
+      const sway = (l?.motions ?? []).find((m) => m.name === 'Ship sway');
+      const onShip = l?.objects?.find((o) => o.key === 'ship')?.motions ?? [];
+      console.log(`  editor's list: Ship sway ${JSON.stringify(sway)}; ship's motions ${JSON.stringify(onShip)}`);
+      check(/codeMotion\s*\(/.test(codeText), 'it wrote a codeMotion() in the game\'s code');
+      check(dos.some((c) => /motion\.code/.test(c) && /replace/.test(c)), 'it swapped it in itself (--do motion.code --replace)');
+      check(!!sway?.code && !sway.missing && onShip.includes('Ship sway'), '"Ship sway" is a rule now, by the same name, still on the ship');
+      check(saysMeasure(r.s, reply), `the reply says how close it is, in the editor's number (${measured(r.s).join(', ') || 'none measured'})`);
+      writeFileSync(join(out, 'to-rule-motion.png'), await page.screenshot());
+    } else if (step.kind === 'to-rule-none') {
+      const l = listNow();
+      const crates = ['crate-1', 'crate-2', 'crate-3', 'crate-4', 'crate-5'];
+      const replaced = (l?.places ?? []).some((p) => crates.some((k) => p.from?.includes(k)));
+      check(!replaced && !dos.some((c) => /replace/.test(c) && /crate/.test(c)), 'nothing replaced: the crates stay where they were put');
+      check(reply.trim().split('\n').filter((x) => x.trim()).length <= 4, 'said in a line or two (with the link)');
     } else if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);

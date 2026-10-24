@@ -12,10 +12,11 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, Pose } from '../contract.ts';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, Pose } from '../contract.ts';
 import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
 import { CODE_LEN } from './motion-library.ts';
+import { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText, type HandMotion, type HandSpot, type MotionGap, type PlaceGap } from './to-rule.ts';
 
 export interface HandsJob {
   id: string;
@@ -88,6 +89,16 @@ export interface HandsDeps {
   placeIds(): string[];
   /** Set them (null = none): one undo change, counted on Save, and the game shows the layout so (it reads it again). */
   setPlace(id: string, e: PlacementPlace | null): void;
+  /**
+   * ✦ Turn into a rule (studio-code-torule, 2026-10-24): a rule motion's offsets over `len` seconds, `per` places, as
+   * the game page runs its at() (studio:timeline/code-points) — null when the page did not answer. Absent: not measured.
+   */
+  ruleSamples?(code: string, knobs: Record<string, number>, len: number, per: number): Promise<MotionKey[] | null>;
+  /**
+   * The AI swapped a rule in for the hand's shape (`--replace`): what it replaced and how close it came, for the
+   * comparison on screen until Save (shell/to-rule.ts RuleCompare; the layout's objects lit violet, as the AI's).
+   */
+  swapped?(s: { kind: 'place'; id: string; spots: HandSpot[]; gap: PlaceGap | null } | { kind: 'motion'; name: string; hand: HandMotion; gap: MotionGap | null }): void;
   levels: {
     active(): boolean;
     current(): string;
@@ -165,6 +176,13 @@ export function createAiHands(d: HandsDeps) {
     const bad = Object.keys(set).find((n) => !(n in code));
     return bad ? `${fn} has no knob "${bad}" (its knobs: ${Object.keys(code).join(', ') || 'none'})` : null;
   };
+  /** A unit as the knobs say it (" m", " s"); the code's own word when the editor has none. */
+  const unit = (u: string) => {
+    const s = d.t(`hands.unit.${u}`);
+    return s === `hands.unit.${u}` ? ` ${u}` : s;
+  };
+  /** A gap in the AI's line (English, exact enough to quote): 3D metres to the centimetre, 2D whole pixels. */
+  const gapNum = (x: number) => (d.dim() === '2d' ? `${Math.round(x)} px` : `${Math.round(x * 100) / 100} m`);
   /** A code layout's objects are its own keys: "hex-3" of codePlace('hex'). */
   const ofPlace = (p: CodePlaceInfo, key: string) => p.keys.includes(key) || (key.startsWith(`${p.id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(p.id.length + 1)));
 
@@ -279,11 +297,30 @@ export function createAiHands(d: HandsDeps) {
         }
         const len = info.round && info.round >= 0.1 && info.round <= 600 ? info.round : CODE_LEN;
         const m = { name: op.name, len, keys: {}, code: op.code } as LibraryMotion;
+        // ✦ Turn into a rule (studio-code-torule): the points it had, kept to measure the rule against (and to compare on
+        // screen until Save) — the shape the person made, not the file's (it may not be saved yet).
+        const hand: HandMotion | null = named && op.replace && !named.code && named.keys?.p?.length
+          ? { keys: structuredClone(named.keys.p), len: named.len, ...(named.repeat ? { repeat: named.repeat } : {}) } : null;
         const r = d.make(op.key ?? null, m, { when: op.when, until: op.until, replace: op.replace, whenOf: () => ({ ...HANDS_MAKE_WHEN }) as MotionWhen });
         if ('error' in r) return { error: r.error };
-        return { name: r.name, when: r.when, replaced: !!(named && op.replace), words: words(r.name) };
+        if (!hand) return { name: r.name, when: r.when, replaced: !!(named && op.replace), words: words(r.name) };
+        // How close the rule came, measured here (the person reads the editor's number, not the AI's word for it): one
+        // round of the rule — what its violet line shows — at 64 places, each against the points at the same time.
+        const round = info.round && info.round > 0 ? info.round : CODE_LEN;
+        const pts = d.ruleSamples ? await d.ruleSamples(op.code, knobsNow(info.knobs, d.lib(r.name)?.knobs), round, MOTION_SAMPLES) : null;
+        const g = pts?.length ? motionGap(hand, pts).max : null;
+        d.swapped?.({ kind: 'motion', name: r.name, hand, gap: g });
+        const w = { ...words(r.name), ...(g ? { gap: gapText(g.d, d.dim(), unit), t: timeText(g.t) } : {}) };
+        return { name: r.name, when: r.when, replaced: true, words: w, wordsKey: g ? 'hands.motion.toRule' : 'hands.motion.toRuleSame',
+          gapSaid: g ? `; the editor measured how close it is: the largest gap is ${gapNum(g.d)} at ${timeText(g.t)} s of a ${timeText(round)} s round (${pts!.length} places against the ${hand.keys.length} points it had)` : '' };
       }
       case 'place.code': {
+        // ✦ Turn into a rule (studio-code-torule): where the hand-placed objects stand NOW, read before the game is read
+        // again for the new layout — each to be compared with the rule's object of the same number (`replace` order).
+        const hand: HandSpot[] = (Array.isArray(op.replace) ? op.replace as string[] : []).flatMap((k, i) => {
+          const ps = d.item(k) ? d.pose(k) : undefined;
+          return ps ? [{ key: k, label: name(k), p: ps.p.slice(), n: i + 1 }] : [];
+        });
         const info = await findCode(d.codePlaces, (p) => p.id, op.id);
         if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
         const e = d.place(op.id) ?? {};
@@ -293,7 +330,13 @@ export function createAiHands(d: HandsDeps) {
         const gone = op.replace.filter((k: string) => !d.item(k) && !(e.from ?? []).includes(k));
         if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
         d.setPlace(op.id, { ...e, from: [...new Set([...(e.from ?? []), ...op.replace])] });
-        return { keys: info.keys.length, words: { name: info.name, n: op.replace.length, what }, wordsKey: 'hands.place.codeReplace' };
+        // How close: each hand object against the rule's object of its number, where it stands now (the model's pose).
+        const g = hand.length ? placeGaps(hand, (n) => (info.keys.includes(`${op.id}-${n}`) ? d.pose(`${op.id}-${n}`)?.p : null)) : null;
+        if (hand.length) d.swapped?.({ kind: 'place', id: op.id, spots: hand, gap: g?.max ?? null });
+        const max = g?.max;
+        return { keys: info.keys.length, words: { name: info.name, n: op.replace.length, what, ...(max ? { obj: max.label, gap: gapText(max.d, d.dim(), unit) } : {}) },
+          wordsKey: max ? 'hands.place.toRule' : 'hands.place.codeReplace',
+          gapSaid: max ? `; the editor measured how close it is: the largest gap is ${max.key} ↔ ${op.id}-${max.n}, ${gapNum(max.d)} (${hand.length - g!.unmatched} of ${hand.length} compared${g!.unmatched ? `; ${g!.unmatched} with no object of that number in the rule` : ''})` : '' };
       }
       case 'place.set': {
         const info = await findCode(d.codePlaces, (p) => p.id, op.id);
@@ -511,7 +554,8 @@ export function createAiHands(d: HandsDeps) {
       if (did.error) results.push({ do: op.do, ok: false, error: did.error });
       else {
         if (op.do.startsWith('level.')) levelLast = op.do === 'level.new' || op.do === 'level.duplicate' ? 'made' : 'other';
-        results.push({ do: op.do, ok: true, said: handsSaid(op, did), ...(did.list ? { list: did.list } : {}) });
+        // ✦ Turn into a rule: the editor's measure goes after what was done, for the AI to quote in its one line.
+        results.push({ do: op.do, ok: true, said: handsSaid(op, did) + (typeof did.gapSaid === 'string' ? did.gapSaid : ''), ...(did.list ? { list: did.list } : {}) });
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
           if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code'].includes(op.do)) lead = said.length;

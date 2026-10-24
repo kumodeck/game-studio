@@ -16,12 +16,16 @@
 //                 ⌥ (or a layout without `drag`, or another tool): the ordinary move — the shell keeps it as that one
 //                 object's pin ("Manually overridden").
 //   the line      the one line under the strip says, before a touch, which of the two a drag will do.
+//   place/guide `compare`  ✦ Turn into a rule (studio-code-torule, 2026-10-24): where the hand-placed objects the
+//                 layout replaced stood, until Save — an orange dot each (the hand's colour) and a thin line to where
+//                 the rule's object of that number stands now, and over the farthest one the chip "lamp-3 · 0.6 m".
+//                 Measured from what is on screen each frame, so a knob turned moves the lines and the number.
 //
 // WHY the look-up runs the game's at() (not a field the AI writes): "dragging one changes the formula's number, and
 // the others follow" (the choice (a) of 10/24) must work for any rule the AI writes — a row, a spiral of
 // lamps, a ring — and the editor only knows the rule by running it.
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
-import type { BridgeToShell, Lang, PlacementPlace, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
+import type { BridgeToShell, Lang, PlaceCompareMarks, PlacementPlace, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
 import { codeSpot, knobValues, relayCodePlace } from '../loader/studio-placement.js';
 import { kindOf } from './code-lists.ts';
 
@@ -82,6 +86,11 @@ export function knobText(v: number, step?: number): string {
   return String(r === 0 ? 0 : r);
 }
 export const unitText = (lang: Lang, unit: string) => (UNITS[lang] ?? UNITS.en)[unit] ?? (unit ? ` ${unit}` : '');
+/** A gap as the card says it (shell/to-rule.ts gapText): 3D one decimal from 0.1 m, two below; 2D whole pixels. */
+export function gapWords(lang: Lang, d: number, three: boolean): string {
+  if (!three) return `${Math.round(d)}${unitText(lang, 'px')}`;
+  return `${d >= 0.095 ? Math.round(d * 10) / 10 : Math.round(d * 100) / 100}${unitText(lang, 'm')}`;
+}
 
 /** The knob a Move drag of one of its objects turns (codePlace `drag`: a name, or { move }), or null. */
 export function dragKnob(p: Pick<Entry, 'drag' | 'knobs'>): string | null {
@@ -175,6 +184,8 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   // The draft's places (the shell's, with every guide / layout message): the pins, by hand, the knobs turned.
   let places: Record<string, PlacementPlace> = {};
   let guide: { ids: string[]; sel: string | null } = { ids: [], sel: null };
+  // ✦ Turn into a rule (studio-code-torule): the hand-placed objects each layout replaced (the shell's, until Save).
+  let compare: Record<string, PlaceCompareMarks> = {};
   // The layout of the object under the mouse (no button down): its rings too, before a press — "a layout's object tells
   // itself from a hand-placed one before it is touched" (the plan's need 2, n2-tell). Read once a frame (pickNear).
   let hoverId: string | null = null;
@@ -289,7 +300,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       }
       return out;
     };
-    const parts: Array<{ kind: 'ring' | 'line' | 'tag' | 'old'; pts: Array<[number, number]>; dash?: boolean; on?: boolean; text?: string }> = [];
+    const parts: Array<{ kind: 'ring' | 'line' | 'tag' | 'old' | 'was' | 'gap' | 'chip'; pts: Array<[number, number]>; dash?: boolean; on?: boolean; text?: string; side?: -1 | 1 }> = [];
     for (const p of shown) {
       const spots = p.spots!;
       const centres: Array<[number, number] | null> = [];
@@ -313,6 +324,29 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       if (!kinds.has(p.id)) kinds.set(p.id, kindOf(p as unknown as Record<string, unknown>));
       const isLine = kinds.get(p.id) === 'line';
       if (isLine) for (let i = 1; i < centres.length; i++) if (centres[i - 1] && centres[i]) parts.push({ kind: 'line', pts: [centres[i - 1]!, centres[i]!] });
+      // ✦ Turn into a rule: where the hand-placed ones stood (orange dots), a thin line to the rule's object of the same
+      // number where it stands now, and the chip over the farthest. The same distance as the card's (the whole one).
+      const cmp = compare[p.id];
+      if (cmp) {
+        let far: { at: [number, number]; to: [number, number] | null; d: number; name: string } | null = null;
+        cmp.was.forEach((w, i) => {
+          if (!w) return;
+          const key = `${p.id}-${i + 1}`;
+          const ring = p.keys.includes(key) ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
+          const s0 = a.toScreen!(toScene(p, w).map((v, j) => v + (ring.foot[j] ?? 0)));
+          if (!s0) return;
+          const now = p.keys.includes(key) ? a.anchor(key)?.pose.p : null;
+          const s1 = now ? a.toScreen!(toScene(p, now).map((v, j) => v + (ring.foot[j] ?? 0))) : null;
+          if (s1 && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) > 2) parts.push({ kind: 'gap', pts: [s0, s1] });
+          parts.push({ kind: 'was', pts: [s0] });
+          const dd = now && now.length === w.length ? Math.hypot(...w.map((v, j) => v - now[j]!)) : null;
+          if (dd !== null && (!far || dd > far.d + 1e-9)) far = { at: s0, to: s1, d: dd, name: cmp.names[i] ?? key };
+        });
+        // The chip beside the farthest dot, on the side away from the rule's object (over it, the object's own outline
+        // and the strip cut it: the first picture of 10/24).
+        const f = far as { at: [number, number]; to: [number, number] | null; d: number; name: string } | null;
+        if (f) parts.push({ kind: 'chip', pts: [f.at], side: f.to && f.to[0] > f.at[0] ? -1 : 1, text: `${f.name} · ${gapWords(d.lang(), f.d, three)}` });
+      }
       // While a drag turns the knob: where they stood before, dashed, with an arrow to where they go.
       if (drag && drag.id === p.id) drag.before.forEach((q, i) => {
         const now = spots[i];
@@ -344,12 +378,28 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     for (const x of parts) {
       if (x.kind === 'line') (path(x.pts, 'rgba(0,0,0,.35)', 4), path(x.pts, VIOLET, 1.6, '4 5'));
       else if (x.kind === 'old') path(x.pts, 'rgba(255,255,255,.55)', 1.2, '3 4', x.pts.length > 2);
+      else if (x.kind === 'gap') (path(x.pts, 'rgba(0,0,0,.35)', 3), path(x.pts, YOU, 1.2));
+      else if (x.kind === 'was') {
+        const [cx, cy] = x.pts[0]!;
+        const c = doc.createElementNS(NS, 'circle');
+        c.setAttribute('cx', cx.toFixed(1));
+        c.setAttribute('cy', cy.toFixed(1));
+        c.setAttribute('r', '4');
+        c.setAttribute('fill', YOU);
+        c.setAttribute('stroke', '#fff');
+        c.setAttribute('stroke-width', '1.2');
+        c.setAttribute('data-part', 'place-was');
+        svg.append(c);
+      }
       else if (x.kind === 'ring') {
         path(x.pts, 'rgba(0,0,0,.35)', 4, undefined, true);
         path(x.pts, x.on ? '#c4b5fd' : VIOLET, x.on ? 2.2 : 1.6, x.dash ? '4 4' : undefined, true);
-      } else if (x.kind === 'tag' && x.text) {
-        const [cx, cy] = x.pts[0]!;
-        const w = 10 + x.text.length * 7;
+      } else if ((x.kind === 'tag' || x.kind === 'chip') && x.text) {
+        // About the text's width at 10 px bold: a kana / kanji is twice as wide as a Latin letter (a Japanese name's chip).
+        const w = 10 + [...x.text].reduce((n, ch) => n + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 10.5 : 6.4), 0);
+        // A chip with a side sits beside its point (8 px off), else centred on it (a tag over its object).
+        const cx = x.pts[0]![0] + (x.side ? x.side * (w / 2 + 8) : 0);
+        const cy = x.pts[0]![1];
         const r = doc.createElementNS(NS, 'rect');
         r.setAttribute('x', (cx - w / 2).toFixed(1));
         r.setAttribute('y', (cy - 9).toFixed(1));
@@ -361,6 +411,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         tx.setAttribute('x', (cx - w / 2 + 5).toFixed(1));
         tx.setAttribute('y', (cy + 3).toFixed(1));
         tx.textContent = x.text;
+        if (x.kind === 'chip') r.setAttribute('data-part', 'place-gap-chip');
         svg.append(r, tx);
       }
     }
@@ -388,6 +439,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       } else if (msg.type === 'studio:place/guide') {
         guide = { ids: msg.ids.slice(), sel: msg.sel };
         if (msg.places) places = structuredClone(msg.places);
+        compare = structuredClone(msg.compare ?? {});
         drawn = '';
         d.markDirty();
       }

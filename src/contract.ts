@@ -1040,8 +1040,10 @@ export type ShellToBridge =
   // on now is not taken by a press — a drag there moves the object, the next step (studio-motion-move, 2026-10-23).
   // `code` (studio-code-knobs): the picked object's rule motion instead of keys — the page samples its at() over one
   // round (none: 4 s) as a violet dotted line, nothing to grab but the ◇ of its `drag` knob (studio:timeline/code-knob).
+  // `code.was` (studio-code-torule, ✦ Turn into a rule): the motion of points it replaced, until Save — `pts` its path over
+  // the same round (offsets from `base`), `keys` its points: drawn orange beside the violet line (the hand's, to compare).
   | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean; making?: boolean;
-      code?: { code: string; name: string; knobs: Record<string, number>; round: number | null; drag?: string; unit?: string; label?: string } }
+      code?: { code: string; name: string; knobs: Record<string, number>; round: number | null; drag?: string; unit?: string; label?: string; was?: { pts: number[][]; keys: number[][] } } }
   /**
    * studio-code-knobs (2026-10-24): "Make editable points" — a rule motion's shape as points: the page runs its at()
    * over `len` seconds, `per` points a round, and answers with the keys (studio:timeline/code-points, same `id`).
@@ -1058,7 +1060,7 @@ export type ShellToBridge =
    * the rule puts each of its objects, an empty ring where one is placed by hand. `sel` = the picked object, `places` =
    * the level's `places` of the draft (which ones are put by hand). [] = none.
    */
-  | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace> }
+  | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace>; compare?: Record<string, PlaceCompareMarks> }
   /**
    * studio-motion-move (2026-10-23): a move / turn / resize is a point of a motion now (the timeline open, ● on, no Try
    * running) — or not any more. While on, a thing the game moves takes every tool as a motion's point (Item.meets),
@@ -1513,6 +1515,14 @@ export interface StudioRequestInput {
    */
   motions?: RequestMotion[];
   /**
+   * "ask" only (studio-code-torule, 2026-10-24; the plan's need 3: "turn what I placed / moved by hand into a formula"):
+   * 'to-code' = the words came from ✦ Turn into a rule — the AI writes the nearest rule for these hand-placed objects
+   * (`objects`, with where each stands now) or this motion of points (`motions`, with its `keys`) and puts it in their
+   * place itself (`--do place.code --replace` / `motion.code --replace`); the editor measures how close it came. When no
+   * rule comes close (half the object's size; a tenth of the path's), it replaces nothing and says so in one line.
+   */
+  intent?: 'to-code';
+  /**
    * UI stage 1: 'ui' when the objects are the game's HTML UI (data-studio-key elements, picked in the UI layer), so
    * the AI changes that element's HTML / CSS, not a world object. Absent = the world, as before.
    */
@@ -1547,6 +1557,11 @@ export interface RequestMotion {
   repeat?: MotionRepeat;
   /** The objects it is on now and when each starts. */
   on: Array<{ key: string; when?: MotionWhen; until?: MotionUntil }>;
+  /**
+   * `intent: 'to-code'` only (studio-code-torule): its position points (offsets from where the object stands, as
+   * placement.json keeps them), so the AI fits a rule to the shape the person made — saved or not.
+   */
+  keys?: { p: MotionKey[] };
 }
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -2171,6 +2186,17 @@ export interface CodePlaceInfo {
   kind?: 'line' | 'scatter';
   /** The codeAvoid() ids it names in the code (on unless the file switches them off). */
   avoid: string[];
+}
+/**
+ * ✦ Turn into a rule (studio-code-torule, 2026-10-24): what a code layout's guide draws beside its violet rings until
+ * Save — where the hand-placed objects it replaced stood (`was[i]` = the place of the one the rule's number i + 1 took
+ * over, as the editor's model had it; null = none) and their names (`names[i]`). The page draws an orange dot each and a
+ * thin line to where the rule's object stands NOW (a knob turned moves the line), and over the farthest one the chip
+ * "lamp-3 · 0.6 m" — the same measure as the card's "Max deviation" (shell/to-rule.ts), drawn by bridge/code-place.ts.
+ */
+export interface PlaceCompareMarks {
+  was: Array<number[] | null>;
+  names: Array<string | null>;
 }
 /** A keep-out condition as the game page lists it (codeAvoid): its words ("From the player" … "within") and knobs. */
 export interface CodeAvoidInfo {

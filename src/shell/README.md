@@ -220,3 +220,12 @@ the card's pose, Rename, Duplicate, Delete, Drop to floor, the levels, Save — 
 off Blue pillar · ⌘Z undoes it", i18n `hands.*`). The jobs come on an event stream (`host.hands`, host-local.ts), which a
 hidden tab still gets. What an op means is `src/schema/hands.mjs`'s, shared with the CLI's placement.json path.
 `test/ai-hands-shell.test.ts`, `test/studio-ai-hands.browser.mjs`.
+
+✦ Turn into a rule (studio-code-torule, 2026-10-24; the other way round from "Place individually" / "Make editable
+points": hand → rule): `to-rule.ts` measures how close the rule the AI swapped in came to the hand's shape (each
+object against the rule's object of the same number; a motion at 64 places of one round) and keeps that shape until
+Save (`RuleCompare`: shown only while the swap stands). The way in is the card of several hand-placed objects
+(`placement-panel.ts`) and a motion row's ⋯ (`motion-card.ts`), both a draft in the chat box; `ai-hands.ts` reads the
+hand's shape before `--replace` and reports the measure; `code-place-wire.ts` (the card's "Compare with original ·
+Max deviation") and `timeline-panel.ts` / `timeline-wire.ts` (the strip's orange marks, the line's comparison) show it.
+`test/to-rule.test.ts`, `test/studio-code-place.browser.mjs --only torule`.

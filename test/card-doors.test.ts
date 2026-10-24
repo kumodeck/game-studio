@@ -25,6 +25,9 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     [/^focusAsk\(t\(keys\.length > 1 \? 'ctx\.nameTextMany'/, 'nameDraft: ✦ Ask AI to name it…'],
     [/^ask: \(\) => focusAsk\(\),$/, 'the menu\'s ✦ Ask rows (cursor only)'],
     [/^focusAsk\(text\);$/, 'Ideas for your AI: ✦ Ask Claude… (a draft)'],
+    // studio-code-torule (2026-10-24): ✦ Turn into a rule — the draft "Turn into a close rule", sent by the person.
+    [/^focusAsk\(draft\);$/, 'askMotion: ✦ Ask AI on a motion (cursor only) / ✦ Turn into a rule… (its draft)'],
+    [/^focusAsk\(t\('toRule\.draft'\)\);$/, 'the card\'s ✦ Turn into a rule (a draft)'],
   ];
   for (const l of lines) assert.ok(allowed.some(([re]) => re.test(l)), `a new caller writes in the ask box: ${l}`);
 });
@@ -33,6 +36,8 @@ test('nothing is sent at once except what the person sends (askAi callers)', () 
   const lines = callers(src('main.ts'), 'askAi(').filter((l) => !l.startsWith('async function askAi'));
   const allowed: Array<[RegExp, string]> = [
     [/^ask: \(keys, text, files\) => \(answering\(\) \? answerAi\(text\) : askAi\(\{ kind: 'ask'/, 'the ask box\'s own send'],
+    // studio-code-torule: the same send, written out (the words of ✦ Turn into a rule go with `intent: 'to-code'`).
+    [/^return askAi\(\{ kind: 'ask', text, objects: requestObjects\(keys\)/, 'the ask box\'s own send (with ✦ Turn into a rule\'s intent)'],
     [/^return askAi\(\{ kind: 'answer'/, 'the answer the person typed to the AI\'s question'],
     [/^void askAi\(\{ kind: 'play'/, 'the pause ask box\'s own send'],
     [/^ask: \(r\) => askAi\(r\),$/, 'the Library tool\'s ctx.ask (its own buttons: studio-library, not this step)'],

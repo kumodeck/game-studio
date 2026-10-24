@@ -31,6 +31,7 @@ export const HANDOFF_LIMITS = Object.freeze({
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
   maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
+  maxPoints: 256, // ✦ Turn into a rule: a motion's points (the timeline's own limit, MAX_KEYS)
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -170,6 +171,13 @@ export function normalizeRequestInput(input) {
         if (o.until && typeof o.until === 'object') x.until = JSON.parse(JSON.stringify(o.until));
         return x;
       });
+      // ✦ Turn into a rule (studio-code-torule, 2026-10-24): the motion's position points, the shape the AI fits a rule
+      // to — as placement.json keeps them (t, v, ease); a bad point is dropped, never an error (it is a hint).
+      if (m.keys && typeof m.keys === 'object' && Array.isArray(m.keys.p)) {
+        const p = m.keys.p.filter((k) => k && isFin(k.t) && Array.isArray(k.v) && (k.v.length === 2 || k.v.length === 3) && k.v.every(isFin)).slice(0, HANDOFF_LIMITS.maxPoints)
+          .map((k) => ({ t: roundTo(k.t, 1000), v: k.v.map((x) => roundTo(x, 1000)), ...(k.ease === 'linear' || k.ease === 'step' || k.ease === 'ease' ? { ease: k.ease } : {}) }));
+        if (p.length) e.keys = { p };
+      }
       ms.push(e);
     }
     if (ms.length) out.motions = ms;
@@ -178,6 +186,8 @@ export function normalizeRequestInput(input) {
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
   if (kind === 'name' && !(out.objects && out.objects.length)) errors.push('a "name" request names at least one object');
+  // "ask" only (studio-code-torule): the words came from ✦ Turn into a rule. Anything else is left out, never an error.
+  if (kind === 'ask' && r.intent === 'to-code') out.intent = 'to-code';
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
   if (Number.isInteger(r.unsaved) && r.unsaved > 0) out.unsaved = Math.min(r.unsaved, 100000);
   if (r.dim === '2d' || r.dim === '3d') out.dim = r.dim;

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.51 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.52 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4663,8 +4663,10 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                                                                                      
                                                                                                                          
+                                                                                                                            
+                                                                                                                           
                                                                                                                                                                       
-                                                                                                                                                
+                                                                                                                                                                                             
      
                                                                                                                      
                                                                                                                   
@@ -4681,7 +4683,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                                                
      
-                                                                                                              
+                                                                                                                                                           
      
                                                                                                                         
                                                                                                                     
@@ -5136,6 +5138,14 @@ function isStudioMessage(x         )                     {
      
                             
      
+                                                                                                                         
+                                                                                                                      
+                                                                                                                       
+                                                                                                                         
+                                                                                                                   
+     
+                     
+     
                                                                                                                     
                                                                                                  
      
@@ -5170,6 +5180,11 @@ function isStudioMessage(x         )                     {
                         
                                                        
                                                                      
+     
+                                                                                                                 
+                                                                                                   
+     
+                            
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -5794,6 +5809,17 @@ const RESULT_FILES                         = {
                             
                                                                                          
                   
+ 
+/**
+ * ✦ Turn into a rule (studio-code-torule, 2026-10-24): what a code layout's guide draws beside its violet rings until
+ * Save — where the hand-placed objects it replaced stood (`was[i]` = the place of the one the rule's number i + 1 took
+ * over, as the editor's model had it; null = none) and their names (`names[i]`). The page draws an orange dot each and a
+ * thin line to where the rule's object stands NOW (a knob turned moves the line), and over the farthest one the chip
+ * "lamp-3 · 0.6 m" — the same measure as the card's "Max deviation" (shell/to-rule.ts), drawn by bridge/code-place.ts.
+ */
+                                    
+                              
+                              
  
 /** A keep-out condition as the game page lists it (codeAvoid): its words ("From the player" … "within") and knobs. */
                                 
@@ -16312,12 +16338,16 @@ __defs[44] = function (__exports) {
 //                 ⌥ (or a layout without `drag`, or another tool): the ordinary move — the shell keeps it as that one
 //                 object's pin ("Manually overridden").
 //   the line      the one line under the strip says, before a touch, which of the two a drag will do.
+//   place/guide `compare`  ✦ Turn into a rule (studio-code-torule, 2026-10-24): where the hand-placed objects the
+//                 layout replaced stood, until Save — an orange dot each (the hand's colour) and a thin line to where
+//                 the rule's object of that number stands now, and over the farthest one the chip "lamp-3 · 0.6 m".
+//                 Measured from what is on screen each frame, so a knob turned moves the lines and the number.
 //
 // WHY the look-up runs the game's at() (not a field the AI writes): "dragging one changes the formula's number, and
 // the others follow" (the choice (a) of 10/24) must work for any rule the AI writes — a row, a spiral of
 // lamps, a ring — and the editor only knows the rule by running it.
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
-                                                                                                              
+                                                                                                                                 
 const { codeSpot, knobValues, relayCodePlace } = __require(20);
 const { kindOf } = __require(43);
 
@@ -16378,6 +16408,11 @@ function knobText(v        , step         )         {
   return String(r === 0 ? 0 : r);
 }
 const unitText = (lang      , unit        ) => (UNITS[lang] ?? UNITS.en)[unit] ?? (unit ? ` ${unit}` : '');
+/** A gap as the card says it (shell/to-rule.ts gapText): 3D one decimal from 0.1 m, two below; 2D whole pixels. */
+function gapWords(lang      , d        , three         )         {
+  if (!three) return `${Math.round(d)}${unitText(lang, 'px')}`;
+  return `${d >= 0.095 ? Math.round(d * 10) / 10 : Math.round(d * 100) / 100}${unitText(lang, 'm')}`;
+}
 
 /** The knob a Move drag of one of its objects turns (codePlace `drag`: a name, or { move }), or null. */
 function dragKnob(p                               )                {
@@ -16471,6 +16506,8 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   // The draft's places (the shell's, with every guide / layout message): the pins, by hand, the knobs turned.
   let places                                 = {};
   let guide                                        = { ids: [], sel: null };
+  // ✦ Turn into a rule (studio-code-torule): the hand-placed objects each layout replaced (the shell's, until Save).
+  let compare                                    = {};
   // The layout of the object under the mouse (no button down): its rings too, before a press — "a layout's object tells
   // itself from a hand-placed one before it is touched" (the plan's need 2, n2-tell). Read once a frame (pickNear).
   let hoverId                = null;
@@ -16585,7 +16622,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       }
       return out;
     };
-    const parts                                                                                                                              = [];
+    const parts                                                                                                                                                                      = [];
     for (const p of shown) {
       const spots = p.spots ;
       const centres                                 = [];
@@ -16609,6 +16646,29 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       if (!kinds.has(p.id)) kinds.set(p.id, kindOf(p                                      ));
       const isLine = kinds.get(p.id) === 'line';
       if (isLine) for (let i = 1; i < centres.length; i++) if (centres[i - 1] && centres[i]) parts.push({ kind: 'line', pts: [centres[i - 1] , centres[i] ] });
+      // ✦ Turn into a rule: where the hand-placed ones stood (orange dots), a thin line to the rule's object of the same
+      // number where it stands now, and the chip over the farthest. The same distance as the card's (the whole one).
+      const cmp = compare[p.id];
+      if (cmp) {
+        let far                                                                                        = null;
+        cmp.was.forEach((w, i) => {
+          if (!w) return;
+          const key = `${p.id}-${i + 1}`;
+          const ring = p.keys.includes(key) ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
+          const s0 = a.toScreen (toScene(p, w).map((v, j) => v + (ring.foot[j] ?? 0)));
+          if (!s0) return;
+          const now = p.keys.includes(key) ? a.anchor(key)?.pose.p : null;
+          const s1 = now ? a.toScreen (toScene(p, now).map((v, j) => v + (ring.foot[j] ?? 0))) : null;
+          if (s1 && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) > 2) parts.push({ kind: 'gap', pts: [s0, s1] });
+          parts.push({ kind: 'was', pts: [s0] });
+          const dd = now && now.length === w.length ? Math.hypot(...w.map((v, j) => v - now[j] )) : null;
+          if (dd !== null && (!far || dd > far.d + 1e-9)) far = { at: s0, to: s1, d: dd, name: cmp.names[i] ?? key };
+        });
+        // The chip beside the farthest dot, on the side away from the rule's object (over it, the object's own outline
+        // and the strip cut it: the first picture of 10/24).
+        const f = far                                                                                         ;
+        if (f) parts.push({ kind: 'chip', pts: [f.at], side: f.to && f.to[0] > f.at[0] ? -1 : 1, text: `${f.name} · ${gapWords(d.lang(), f.d, three)}` });
+      }
       // While a drag turns the knob: where they stood before, dashed, with an arrow to where they go.
       if (drag && drag.id === p.id) drag.before.forEach((q, i) => {
         const now = spots[i];
@@ -16640,12 +16700,28 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     for (const x of parts) {
       if (x.kind === 'line') (path(x.pts, 'rgba(0,0,0,.35)', 4), path(x.pts, VIOLET, 1.6, '4 5'));
       else if (x.kind === 'old') path(x.pts, 'rgba(255,255,255,.55)', 1.2, '3 4', x.pts.length > 2);
+      else if (x.kind === 'gap') (path(x.pts, 'rgba(0,0,0,.35)', 3), path(x.pts, YOU, 1.2));
+      else if (x.kind === 'was') {
+        const [cx, cy] = x.pts[0] ;
+        const c = doc.createElementNS(NS, 'circle');
+        c.setAttribute('cx', cx.toFixed(1));
+        c.setAttribute('cy', cy.toFixed(1));
+        c.setAttribute('r', '4');
+        c.setAttribute('fill', YOU);
+        c.setAttribute('stroke', '#fff');
+        c.setAttribute('stroke-width', '1.2');
+        c.setAttribute('data-part', 'place-was');
+        svg.append(c);
+      }
       else if (x.kind === 'ring') {
         path(x.pts, 'rgba(0,0,0,.35)', 4, undefined, true);
         path(x.pts, x.on ? '#c4b5fd' : VIOLET, x.on ? 2.2 : 1.6, x.dash ? '4 4' : undefined, true);
-      } else if (x.kind === 'tag' && x.text) {
-        const [cx, cy] = x.pts[0] ;
-        const w = 10 + x.text.length * 7;
+      } else if ((x.kind === 'tag' || x.kind === 'chip') && x.text) {
+        // About the text's width at 10 px bold: a kana / kanji is twice as wide as a Latin letter (a Japanese name's chip).
+        const w = 10 + [...x.text].reduce((n, ch) => n + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 10.5 : 6.4), 0);
+        // A chip with a side sits beside its point (8 px off), else centred on it (a tag over its object).
+        const cx = x.pts[0] [0] + (x.side ? x.side * (w / 2 + 8) : 0);
+        const cy = x.pts[0] [1];
         const r = doc.createElementNS(NS, 'rect');
         r.setAttribute('x', (cx - w / 2).toFixed(1));
         r.setAttribute('y', (cy - 9).toFixed(1));
@@ -16657,6 +16733,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         tx.setAttribute('x', (cx - w / 2 + 5).toFixed(1));
         tx.setAttribute('y', (cy + 3).toFixed(1));
         tx.textContent = x.text;
+        if (x.kind === 'chip') r.setAttribute('data-part', 'place-gap-chip');
         svg.append(r, tx);
       }
     }
@@ -16684,6 +16761,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       } else if (msg.type === 'studio:place/guide') {
         guide = { ids: msg.ids.slice(), sel: msg.sel };
         if (msg.places) places = structuredClone(msg.places);
+        compare = structuredClone(msg.compare ?? {});
         drawn = '';
         d.markDirty();
       }
@@ -16755,6 +16833,7 @@ __def(__exports, "NOTE_FULL_PX", () => NOTE_FULL_PX);
 __def(__exports, "placeNote", () => placeNote);
 __def(__exports, "knobText", () => knobText);
 __def(__exports, "unitText", () => unitText);
+__def(__exports, "gapWords", () => gapWords);
 __def(__exports, "dragKnob", () => dragKnob);
 __def(__exports, "findKnob", () => findKnob);
 __def(__exports, "knobRange", () => knobRange);
@@ -16778,7 +16857,11 @@ __defs[45] = function (__exports) {
 //                          says it (timeline/code-knob: live, then `end` = one ⌘Z in the shell). Its label "Radius 2 m",
 //                          its chip "Radius 2 → 3 m" while dragged.
 //   timeline/code-points   "Make editable points": the rule's shape over `len` seconds as position keys (`per` a round),
-//                          for the shell to turn it into an ordinary motion of points (one ⌘Z).
+//                          for the shell to turn it into an ordinary motion of points (one ⌘Z). Also ✦ Turn into a
+//                          rule's measure (studio-code-torule): the same samples, 64 a round, against the old points.
+//   timeline/path `was`    ✦ Turn into a rule (studio-code-torule, 2026-10-24): the motion of points the rule replaced,
+//                          until Save — its path as a thin orange line beside the violet one and an orange dot at each of
+//                          its points (orange = the hand's, as everywhere), so the person sees how close the rule came.
 // WHY violet and a ◇: violet is the rule's (and the AI's) colour everywhere; a white dot with an orange ring is a point
 // the hand put (timeline-path.ts), so a ◇ says at a glance "this is not a point: it turns a number".
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
@@ -16930,7 +17013,10 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     const os = o ? a.toScreen(o) : null;
     const w = words();
     const label = w && p.drag ? (drag ? `${w.label} ${knobText(drag.from, w.step)} → ${knobText(drag.v, w.step)}${w.unit}` : `${w.label} ${knobText(k[p.drag] , w.step)}${w.unit}`) : '';
-    const sig = JSON.stringify([scr, os, label, !!drag]);
+    // The replaced points (✦ Turn into a rule): their path and the points themselves, on screen.
+    const wasLine = p.was ? p.was.pts.map((q) => a.toScreen (q.map((v, j) => v + (p.base[j] ?? 0)))) : [];
+    const wasDots = p.was ? p.was.keys.map((q) => a.toScreen (q.map((v, j) => v + (p.base[j] ?? 0)))) : [];
+    const sig = JSON.stringify([scr, os, label, !!drag, wasLine, wasDots]);
     if (sig === drawn) return;
     drawn = sig;
     if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
@@ -16957,6 +17043,39 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     };
     stroke('rgba(0,0,0,.3)', 5);
     stroke(VIOLET, 2.2, '5 5');
+    if (wasLine.length) {
+      // Under the dots, over the violet line: thin, so the rule stays the line to read and the hand's is the one to compare.
+      let wd = '';
+      let wp = false;
+      for (const s of wasLine) {
+        if (!s) {
+          wp = false;
+          continue;
+        }
+        wd += `${wp ? 'L' : 'M'}${s[0].toFixed(1)} ${s[1].toFixed(1)}`;
+        wp = true;
+      }
+      const el = doc.createElementNS(NS, 'path');
+      el.setAttribute('d', wd);
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', YOU);
+      el.setAttribute('stroke-width', '1.2');
+      el.setAttribute('stroke-opacity', '.75');
+      el.setAttribute('data-part', 'tl-was-line');
+      svg.append(el);
+      for (const s of wasDots) {
+        if (!s) continue;
+        const c = doc.createElementNS(NS, 'circle');
+        c.setAttribute('cx', s[0].toFixed(1));
+        c.setAttribute('cy', s[1].toFixed(1));
+        c.setAttribute('r', '3.5');
+        c.setAttribute('fill', YOU);
+        c.setAttribute('stroke', '#fff');
+        c.setAttribute('stroke-width', '1');
+        c.setAttribute('data-part', 'tl-was-dot');
+        svg.append(c);
+      }
+    }
     if (!os) return;
     // The ◇: violet (orange while dragged — the hand on it), its knob's name and number beside it.
     const r = drag ? 8 : 7;

@@ -175,6 +175,15 @@ Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save
 
 ![The pillar’s rule motion: the violet strip “Rule motion: Spiral · Radius 3 m · Lap 4 s”, its knobs on the top line, and the ◇ dragged in the game](media/rule-motion.webp)
 
+### Turn a motion you made into a rule
+
+On a motion made of points, the **⋯** of its line on the card (or a right-click on that line) has **✦ Turn into a rule…**. The chat box gets **Turn into a close rule**; send it, and your AI writes the nearest rule motion (a wave, a bob, a circle, a spiral) in its place — the same name, on the same things, starting at the same moment.
+
+- **How close it came is measured by the editor**: the top line says **Max deviation 0.1 m** (and when, **at 0.8 s**, in its tooltip when the line is short of room). The strip glows, with small orange marks on its lower edge where your points were; in the game the path has orange dots for your points beside the violet line. **Compare with original** hides them.
+- One <kbd>⌘</kbd><kbd>Z</kbd> gives you your points back. The comparison stays until **Save**.
+
+![The ship’s motion turned into a rule: the glowing strip with orange marks, “Max deviation 0.1 m” on the top line, and orange dots of the old points beside the violet path in the game](media/to-rule-motion.webp)
+
 ## In the game
 
 Motions are saved in `placement.json` with the rest of your layout. When the game starts, the line that reads your layout plays them too. In **▶ Play**, you see them as they’ll be in the game.

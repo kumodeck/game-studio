@@ -341,7 +341,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). `intent: "to-code"` = they pressed **✦ Turn into a rule** on these hand-placed objects or this motion (its points in `motions[].keys`): "Turn into a rule" in §4. A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
@@ -515,15 +515,15 @@ and `hand` are refused (they need the game's numbers): change the number in the 
 
 | Op | Fields | Does |
 |---|---|---|
-| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)") and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`); the levels. Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
+| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)"), `p` (where it stands in the editor now, saved or not) and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`; a motion of points with its `keys.p`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`, `from`); the levels. Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
 | `motion.make` | `name`, `points` or `keys`, `len` (s, default 2), `repeat` (once / loop / pingpong), `ease`, `key`, `when`, `until`, `replace` | A Library motion — on the timeline, played by the loader — and, with `key`, put on that object. `points` = positions it goes through, offsets from where it stands, spread evenly over `len` (linear between them); `keys` = the file's own keys (`p` / `r` / `s`) for turns and sizes. A taken name becomes "Spiral 2" unless `replace: true` (the same motion with new keys) |
 | `motion.attach` | `key`, `name`, `when`, `until` | Put a Library motion on an object |
 | `motion.detach` | `key`, `name` (or `all: true`) | Take a motion off that object (the "Remove from this object" of its card); the motion stays in the Library |
 | `motion.delete` | `name` | Delete it from the Library and every object |
 | `motion.rename` | `name`, `to` | Rename it everywhere |
 | `motion.set` | `name`, `repeat`, `len` (stretches its keys), `key` + `when` / `until`, `knobs`, `key` + `off` | Change how it repeats, how long it takes, when it starts / stops (`key` = on that object; without it, on every object that has it). `knobs` (`{ "radius": 3 }`): a code motion's numbers, turned on screen (needs the editor open). `off: true` / `false`: switched off on that object (it stays there and does not play) / on again |
-| `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | Put the code motion you wrote (`codeMotion('<code>', …)` in the game's code, "Motion" below) on the timeline: a Library motion with the knobs, played by the loader, and on `key` (starting with the game unless `when` says). The same `code` already in the Library is that motion (the person may have renamed it). `replace: true`: the motion of points called `name` becomes this code motion (every object that has it keeps it) |
-| `place.code` | `id`, `replace` (keys) | Show the code layout you wrote (`codePlace('<id>', …)`, "Code layouts" below) in the editor: its objects, listed under the layout's name. `replace`: the hand-placed objects it takes the place of (`["lamp-1", …]`) — hidden at once (one ⌘Z brings them back), gone from the code by you on Save |
+| `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | Put the code motion you wrote (`codeMotion('<code>', …)` in the game's code, "Motion" below) on the timeline: a Library motion with the knobs, played by the loader, and on `key` (starting with the game unless `when` says). The same `code` already in the Library is that motion (the person may have renamed it). `replace: true`: the motion of points called `name` becomes this code motion (every object that has it keeps it); the line then ends with the editor's measure of how close it is (the largest gap over one round, and when) |
+| `place.code` | `id`, `replace` (keys) | Show the code layout you wrote (`codePlace('<id>', …)`, "Code layouts" below) in the editor: its objects, listed under the layout's name. `replace`: the hand-placed objects it takes the place of (`["lamp-1", …]`, in the layout's own order: its number 1 takes the first one's place) — hidden at once (one ⌘Z brings them back), gone from the code by you on Save; the line then ends with the editor's measure of how close it is (the largest gap, which object) |
 | `place.set` | `id`, `knobs`, `pin`, `unpin`, `hand` | `knobs` (`{ "gap": 4 }`): the layout's numbers, on screen (needs the editor open). `pin` (`{ "key": "lamp-3", "p": [x, y, z] }`): just that one put by hand; `unpin`: that one back on the formula. `hand: true`: every object placed by hand where it stands now (needs the editor open); `false`: back on the code |
 | `place.avoid` | `id`, `code` (+ `knobs`, `off`) or `box` (+ `name`), or `remove` | A keep-out area of that layout only: your `codeAvoid('<code>', …)` added, switched `off` / on, its `knobs` turned; or a box `{ "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] }` (2D: `[x, y]` middle / `[w, h]` px); or `remove`: which one (its place in the list, 0 = the first, or its code id) |
 | `object.move` / `object.turn` / `object.scale` | `key`, `to` or `by` (turn: radians, `deg: true` for degrees; scale `by` = times) | Move, turn, resize (its place; its motion comes along) |
@@ -982,6 +982,8 @@ later", "scatter crystals on the field", "not on the road", "not within 5 m of t
    place) and take `from` out. The editor takes a knob out of the file once the code says the same.
 6. **No loader, or bodies that place themselves** (a physics engine owns the positions): keep the layout in the game's
    code and say in one line: "This layout is in the game's code, so the editor shows each object on its own."
+7. **"Turn these into a rule"** (hand-placed objects → a code layout; a motion of points → a code motion): "Turn into a
+   rule" below.
 
 A row and a scatter, and two keep-out conditions (the loader is in the game, §4 Way 1; refresh an older copy):
 
@@ -1045,6 +1047,38 @@ node <…>/bin/studio.mjs <game folder> --do '[{"do":"place.code","id":"crystals
   (all by hand), `avoid` (in order: a box drawn by hand — `p` = the middle of its bottom, `size` = [w, h, d] —, or one
   of your conditions with its knobs; `off: true` = switched off), `from` (hand-placed objects it replaced). Change them
   through `--do place.*`, never by hand while the editor is open.
+
+### Turn into a rule (`intent: "to-code"`)
+
+The person picked hand-placed objects (or a motion made of points) and pressed **✦ Turn into a rule**: an `ask` with
+`intent: "to-code"` and their words (often just "Turn into a close rule"; "6 m apart" when they know) — `objects` with
+where each stands now (`pose.p`), or `motions` with the points (`keys.p`, offsets from where the object stands). Or they
+said it in your window ("turn the street lamps into a rule"): find them with `--do list` (each object's `p`, a motion's
+`keys.p`). They want the same look as **a formula they can tune** (its knobs) instead of loose coordinates. Do it
+yourself, in this order — never answer with steps for them:
+
+1. **Pick the shape a person would name** and fit its knobs. Places: a row (a straight line, an even gap), a grid, a
+   circle, a scatter. A motion: a wave (there and back), a bob (up and down), a circle, a spiral. 1–3 knobs, rounded to
+   what a person would say (6 m, not 5.97 m); the row's start and direction from the points themselves (least squares).
+2. **Too far: don't swap.** Work out the largest gap first — each object against the rule's object of the same number;
+   a motion at 64 places of one round. Over **half the object's size** (its largest side: a 4 m lamp → 2 m), or for a
+   motion over **a tenth of its path's size**, leave it as it is, write no rule, and say **one line** with the number and
+   one other shape — not a list of every shape you tried: "The closest row is still 2.1 m off at the 4th lamp, so I left
+   them placed by hand. Shall I scatter them instead?"
+3. **Write the rule and swap it in**, one `--do`. Places: `codePlace('lamp-row', …)` (Code layouts above), then `--do
+   place.code --id lamp-row --replace '["lamp-1","lamp-2",…]'` — the keys in the rule's own order (number 1 takes the
+   first key's place); an id of its own (`lamp-row`, not `lamp`), so the rule's objects (`lamp-row-1` …) are never
+   mistaken for the hand ones. A motion: `codeMotion('ship-wave', …)` (Motion above), then `--do motion.code --code
+   ship-wave --name "<the motion's name>" --replace` — the same name, the same objects and "when", now the rule.
+4. **One line, in their language, with the editor's number.** The `studio: did …` line ends with `the editor measured how
+   close it is: the largest gap is lamp-3 ↔ lamp-row-3, 0.62 m …` (a motion: `… 0.12 m at 0.8 s of a 2 s round`).
+   Quote that, not your own estimate. The link first (§3), then this one line in the words they asked in (a request in
+   Japanese gets its line in Japanese), and nothing after it — no lists of what changed, what is left for Save or what
+   you checked: "Turned the 6 street lamps into a row 6 m apart. The farthest off is the 3rd lamp, 0.6 m." The editor
+   shows the original beside the rule (orange dots, "Max deviation") until Save, ⌘Z puts the hand's shape back, and Save
+   is yours to tidy up after: don't explain any of them.
+5. **On Save**: `from` → take those hand-placed objects out of the code and `from` out of `places` (Code layouts, step
+   5). A motion needs nothing more: the file has `{ "name", "code" }` in place of its points now.
 
 ### Levels (`levels`)
 

@@ -58,6 +58,12 @@ export interface MotionCardDeps {
   isRule?(name: string): boolean;
   ruleTag?: string;
   ruleTip?: string;
+  /**
+   * ✦ Turn into a rule… (studio-code-torule, 2026-10-24; need 3, the plan's picture n3-motion): the menu's row on a motion
+   * of points — the chat box gets the "object · motion" chip and the draft "Turn into a close rule" (nothing sent).
+   * Absent = no AI here: no row.
+   */
+  toRule?(clip: MotionClip): void;
 }
 
 export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
@@ -125,7 +131,11 @@ export function motionCardRow(d: MotionCardDeps): HTMLElement[] {
 export function motionMenu(d: MotionCardDeps, c: MotionClip, at: HTMLElement | { x: number; y: number }): MenuEntry[] {
   const lib = c.use ?? c.name;
   const inLib = !!d.remove && d.library().some((l) => l.name === lib);
-  const out: MenuEntry[] = [{ id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {
+  // ✦ Turn into a rule… first (the way on from here, as the plan's picture has it), then the two that take it away.
+  // Only on points: a rule motion is a rule already ("Make editable points" is its way back to points).
+  const toRule: MenuEntry[] = d.toRule && !d.isRule?.(lib) && (c.keys?.p?.length ?? 0) >= 2
+    ? [{ id: 'motion-to-rule', label: d.t('toRule.motion'), ai: true, run: () => d.toRule!(c) }, { sep: true }] : [];
+  const out: MenuEntry[] = [...toRule, { id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {
     d.detach(c.name);
     d.say?.(d.t('motion.removed', { name: c.name }));
   } }];

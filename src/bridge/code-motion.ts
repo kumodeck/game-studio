@@ -12,7 +12,11 @@
 //                          says it (timeline/code-knob: live, then `end` = one ⌘Z in the shell). Its label "Radius 2 m",
 //                          its chip "Radius 2 → 3 m" while dragged.
 //   timeline/code-points   "Make editable points": the rule's shape over `len` seconds as position keys (`per` a round),
-//                          for the shell to turn it into an ordinary motion of points (one ⌘Z).
+//                          for the shell to turn it into an ordinary motion of points (one ⌘Z). Also ✦ Turn into a
+//                          rule's measure (studio-code-torule): the same samples, 64 a round, against the old points.
+//   timeline/path `was`    ✦ Turn into a rule (studio-code-torule, 2026-10-24): the motion of points the rule replaced,
+//                          until Save — its path as a thin orange line beside the violet one and an orange dot at each of
+//                          its points (orange = the hand's, as everywhere), so the person sees how close the rule came.
 // WHY violet and a ◇: violet is the rule's (and the AI's) colour everywhere; a white dot with an orange ring is a point
 // the hand put (timeline-path.ts), so a ◇ says at a glance "this is not a point: it turns a number".
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
@@ -164,7 +168,10 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     const os = o ? a.toScreen(o) : null;
     const w = words();
     const label = w && p.drag ? (drag ? `${w.label} ${knobText(drag.from, w.step)} → ${knobText(drag.v, w.step)}${w.unit}` : `${w.label} ${knobText(k[p.drag]!, w.step)}${w.unit}`) : '';
-    const sig = JSON.stringify([scr, os, label, !!drag]);
+    // The replaced points (✦ Turn into a rule): their path and the points themselves, on screen.
+    const wasLine = p.was ? p.was.pts.map((q) => a.toScreen!(q.map((v, j) => v + (p.base[j] ?? 0)))) : [];
+    const wasDots = p.was ? p.was.keys.map((q) => a.toScreen!(q.map((v, j) => v + (p.base[j] ?? 0)))) : [];
+    const sig = JSON.stringify([scr, os, label, !!drag, wasLine, wasDots]);
     if (sig === drawn) return;
     drawn = sig;
     if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
@@ -191,6 +198,39 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     };
     stroke('rgba(0,0,0,.3)', 5);
     stroke(VIOLET, 2.2, '5 5');
+    if (wasLine.length) {
+      // Under the dots, over the violet line: thin, so the rule stays the line to read and the hand's is the one to compare.
+      let wd = '';
+      let wp = false;
+      for (const s of wasLine) {
+        if (!s) {
+          wp = false;
+          continue;
+        }
+        wd += `${wp ? 'L' : 'M'}${s[0].toFixed(1)} ${s[1].toFixed(1)}`;
+        wp = true;
+      }
+      const el = doc.createElementNS(NS, 'path');
+      el.setAttribute('d', wd);
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', YOU);
+      el.setAttribute('stroke-width', '1.2');
+      el.setAttribute('stroke-opacity', '.75');
+      el.setAttribute('data-part', 'tl-was-line');
+      svg.append(el);
+      for (const s of wasDots) {
+        if (!s) continue;
+        const c = doc.createElementNS(NS, 'circle');
+        c.setAttribute('cx', s[0].toFixed(1));
+        c.setAttribute('cy', s[1].toFixed(1));
+        c.setAttribute('r', '3.5');
+        c.setAttribute('fill', YOU);
+        c.setAttribute('stroke', '#fff');
+        c.setAttribute('stroke-width', '1');
+        c.setAttribute('data-part', 'tl-was-dot');
+        svg.append(c);
+      }
+    }
     if (!os) return;
     // The ◇: violet (orange while dragged — the hand on it), its knob's name and number beside it.
     const r = drag ? 8 : 7;

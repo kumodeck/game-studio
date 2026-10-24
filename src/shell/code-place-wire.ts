@@ -11,11 +11,16 @@
 // What the person changes lives in the level's `places` (code-places.ts PlaceStore; CONTRACT.md §1.12): knobs as
 // { v, was }, pins, hand. Every change is one ⌘Z and one Save count per layout (the plan's decision 16); the game page
 // lays the layout out again IN PLACE (studio:place/layout) — the first step reloaded the game for each number.
-import type { CodePlaceInfo, Dim, PlacementPlace, Pose, ShellToBridge } from '../contract.ts';
+//
+// studio-code-torule (2026-10-24, need 3 — the other way round): after the AI swapped a layout in for hand-placed
+// objects (✦ Turn into a rule), the card's Layout has "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)",
+// and the guide sends where those hand objects stood (orange dots and thin lines in the game) — until Save.
+import type { CodePlaceInfo, Dim, PlaceCompareMarks, PlacementPlace, Pose, ShellToBridge } from '../contract.ts';
 import { h } from './dom.ts';
 import { knobEl, knobNumber } from './knob.ts';
 import { turnKnobs, type PlaceStore } from './code-places.ts';
 import { roundPose } from './pose-compare.ts';
+import { gapText, placeGaps, type HandSpot } from './to-rule.ts';
 
 type T = (key: string, vars?: Record<string, string | number>) => string;
 
@@ -43,6 +48,13 @@ export interface CodePlaceWireDeps {
   group(): string[];
   /** The world is on screen and editable (no guide otherwise). */
   editing(): boolean;
+  /**
+   * ✦ Turn into a rule (studio-code-torule): the hand-placed objects layout `id` replaced, while the swap stands and until
+   * Save ([] = none), and the comparison's switch (one for the card and the timeline's line).
+   */
+  compare?(id: string): HandSpot[];
+  compareOn?(): boolean;
+  setCompareOn?(on: boolean): void;
 }
 
 export interface CodePlaceWire {
@@ -126,11 +138,43 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     const ids = d.editing() ? [...new Set(keys.map((k) => layoutOf(k)?.id).filter((x): x is string => !!x))] : [];
     const places = ids.length ? d.store().result() ?? {} : {};
     const sel = d.selected();
-    const sig = JSON.stringify([ids, sel, ids.map((id) => places[id] ?? null)]);
+    const compare = compareMarks(ids);
+    const sig = JSON.stringify([ids, sel, ids.map((id) => places[id] ?? null), compare]);
     if (sig === guideSig && !force) return;
     if (!ids.length && !guideSig) return;
     guideSig = ids.length ? sig : '';
-    d.send({ type: 'studio:place/guide', ids, sel, places });
+    d.send({ type: 'studio:place/guide', ids, sel, places, ...(Object.keys(compare).length ? { compare } : {}) });
+  }
+  /** The guide's orange marks (✦ Turn into a rule): for each shown layout with a swap to compare, where its hand objects stood. */
+  function compareMarks(ids: string[]): Record<string, PlaceCompareMarks> {
+    const out: Record<string, PlaceCompareMarks> = {};
+    if (d.compareOn && !d.compareOn()) return out;
+    for (const id of ids) {
+      const spots = d.compare?.(id) ?? [];
+      if (!spots.length) continue;
+      const n = Math.max(...spots.map((x) => x.n));
+      const was: Array<number[] | null> = Array.from({ length: n }, () => null);
+      const names: Array<string | null> = Array.from({ length: n }, () => null);
+      for (const x of spots) (was[x.n - 1] = x.p.slice()), (names[x.n - 1] = x.label);
+      out[id] = { was, names };
+    }
+    return out;
+  }
+  /**
+   * The card's comparison (studio-code-torule; the plan's picture n3-place): "◉ Compare with original" and, under it,
+   * "Max deviation: lamp-3 (0.6 m)" — the hand object farthest from the rule's object of its number, where each stands
+   * now (a knob turned, the card drawn again: the number follows). Orange: it is about the hand's shape.
+   */
+  function compareBlock(p: CodePlaceInfo): HTMLElement | null {
+    const spots = d.compare?.(p.id) ?? [];
+    if (!spots.length) return null;
+    const on = d.compareOn?.() ?? true;
+    const g = placeGaps(spots, (n) => (p.keys.includes(`${p.id}-${n}`) ? d.pose(`${p.id}-${n}`)?.p : null)).max;
+    const sw = h('button', { type: 'button', class: 'tl-rule-sw cmp-sw', role: 'switch', 'aria-checked': String(on), title: t('toRule.compareTip'),
+      'aria-label': t('toRule.compare'), dataset: { part: 'rule-compare-sw' }, onclick: () => d.setCompareOn?.(!on) }, h('i', {}));
+    return h('div', { class: 'rule-compare', dataset: { part: 'rule-compare' } },
+      h('label', { class: 'rule-compare-sw' }, sw, h('span', { text: t('toRule.compare') })),
+      g ? h('p', { class: 'rule-gap', dataset: { part: 'rule-gap' }, text: t('toRule.maxPlace', { obj: g.label, gap: gapText(g.d, d.dim(), unit) }) }) : null);
   }
 
   /** The Layout block: "Layout  Line · 4  [Rule]", the knobs, "Place individually" and "No. 2". */
@@ -156,7 +200,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       h('button', { type: 'button', class: 'link-btn rule-hand', title: t('rule.individuallyTip', { n: p.keys.length }), dataset: { action: 'rule-individually', part: 'rule-individually' },
         onclick: () => individually(p) }, t('rule.individually')),
       h('span', { class: 'muted rule-nth', text: t('rule.nth', { n: nth(p, key) }) }));
-    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), foot,
+    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), compareBlock(p), foot,
       unused ? h('p', { class: 'muted note-line', text: t('rule.unusedPins', { n: unused }) }) : null);
   }
 

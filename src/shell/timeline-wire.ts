@@ -16,6 +16,7 @@
 // the card's numbers, undo and the bridge's messages through here.
 import type { BridgeToShell, CodeAt, CodeMotionInfo, Dim, LibraryMotion, Motion, MotionChannel, MotionClip, MotionEase, MotionKey, MotionRepeat, MotionUntil, MotionWhen, Pose, ShellToBridge } from '../contract.ts';
 import { ruleKnobsAfter, ruleOf, ruleWords, type RuleInfo } from './rule-motion.ts';
+import { handPath, type HandMotion } from './to-rule.ts';
 import { motionRunner, whenOf, whensOf } from '../loader/studio-placement.js';
 import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from './path-edit.ts';
 import { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder as sceneOrder, withOrder, withTrack, withoutTrack } from './scene-motion.ts';
@@ -101,6 +102,21 @@ export interface TimelineDeps {
   codeMotions?(): CodeMotionInfo[];
   /** A one-line notice with the way back ("Made “Spiral” into editable points (16) · ⌘Z undoes it"). Absent = none. */
   told?(text: string): void;
+  /**
+   * ✦ Turn into a rule (studio-code-torule, 2026-10-24): the points Library motion `name` had before the AI made it a
+   * rule, the editor's measure of the gap ("0.1 m (1.2 s)", null = not measured) and whether the comparison is on —
+   * until Save (shell/to-rule.ts RuleCompare). null = nothing to compare (never replaced, ⌘Z'd, saved).
+   */
+  compare?(name: string): { hand: HandMotion; gap: string | null; at: string | null; on: boolean } | null;
+  /**
+   * ✦ Turn into a rule… on a motion of points (the card's Motion row menu): like `ask`, with the draft "Turn into a close
+   * rule" in the chat box and the request marked `intent: 'to-code'`. Absent = no AI here: no row.
+   */
+  toRule?(key: string, motion: { name: string; use: string }): void;
+  /** The line's "Compare with original" switched (one switch with the card's: the person wants the marks or not). */
+  compareShow?(on: boolean): void;
+  /** A knob of a compared rule turned: measure it again (the game page runs the rule; compare() then has the new gap). */
+  remeasure?(name: string): void;
 }
 
 /**
@@ -242,6 +258,16 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   });
   /** A rule's knob values now (code's, then the file's), for the page's path and its points. */
   const ruleValues = (r: RuleInfo) => Object.fromEntries(r.knobs.map((k) => [k.name, k.v]));
+  /** ✦ Turn into a rule (studio-code-torule): the points a rule replaced, shown to compare (null: none, or switched off). */
+  const comparing = (libName: string) => {
+    const x = d.compare?.(libName);
+    return x && x.on ? x : null;
+  };
+  /** The path message's `was`: the replaced points' path over one round of the rule (none: 4 s) and the points themselves. */
+  const wasOf = (libName: string, round: number | null) => {
+    const x = comparing(libName);
+    return x ? { was: { pts: handPath(x.hand, round && round > 0 ? round : 4), keys: x.hand.keys.map((k) => k.v.slice()) } } : {};
+  };
   // "Make editable points" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
   let pointsAsk: { id: number; name: string; len: number; per: number } | null = null;
   let pointsId = 0;
@@ -407,7 +433,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const dragKnob = rule?.drag ? rule.knobs.find((k) => k.name === rule.drag) : undefined;
     const msg: ShellToBridge = key && place && rule && !rule.missing && !rule.loading && !c!.off
       ? { type: 'studio:timeline/path', key, base: place.p.slice(), code: { code: rule.code, name: c!.use ?? c!.name, knobs: ruleValues(rule), round: rule.round,
-        ...(dragKnob ? { drag: dragKnob.name, unit: dragKnob.unit, label: dragKnob.label } : {}) } }
+        ...(dragKnob ? { drag: dragKnob.name, unit: dragKnob.unit, label: dragKnob.label } : {}), ...wasOf(c!.use ?? c!.name, rule.round) } }
       : key && place && ks?.length
       ? { type: 'studio:timeline/path', key, base: place.p.slice(), keys: structuredClone(ks), now: offsets(key)?.p ?? null,
         sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0),
@@ -619,8 +645,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       const r = ruleFor(c);
       return { key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: c, ...(scene ? { member: ms.includes(k) } : {}),
         // A rule motion's strip (studio-code-knobs): its words from its knobs, one round wide.
-        ...(r && c ? { rule: { words: ruleWords(d.t, r), off: !!c.off, missing: r.missing, round: r.round, len: c.len } } : {}) };
+        ...(r && c ? { rule: { words: ruleWords(d.t, r), off: !!c.off, missing: r.missing, round: r.round, len: c.len, ...ruleWas(c.use ?? c.name) } } : {}) };
     });
+  }
+  /** A compared rule's strip: lit (the AI's change), and its replaced points' times on the lower edge when the switch is on. */
+  function ruleWas(libName: string): { was?: number[]; lit?: boolean } {
+    const x = d.compare?.(libName);
+    if (!x) return {};
+    return { lit: true, ...(x.on ? { was: x.hand.keys.map((k) => k.t) } : {}) };
   }
   /** The rows' objects in their order (rows() without what each row draws): also the objects ▶ moves (offsets). */
   function rowKeys(): Set<string> {
@@ -799,7 +831,9 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       // A rule motion (studio-code-knobs): its knobs on the line, in place of Repeat.
       rule: (() => {
         const r = ruleFor(c);
-        return r && c ? { knobs: r.knobs, off: !!c.off, missing: r.missing, loading: r.loading, pointsTip: d.t('rule.pointsTip', { n: POINTS_PER_ROUND }) } : null;
+        const x = r && c ? d.compare?.(c.use ?? c.name) : null;
+        return r && c ? { knobs: r.knobs, off: !!c.off, missing: r.missing, loading: r.loading, pointsTip: d.t('rule.pointsTip', { n: POINTS_PER_ROUND }),
+          ...(x ? { compare: { on: x.on, gap: x.gap, at: x.at } } : {}) } : null;
       })(),
     };
   }
@@ -824,6 +858,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       knobFrom = null;
       if (JSON.stringify(from) !== JSON.stringify(lib().get(libName))) d.undo.push({ changes: [{ kind: 'motion-lib', key: libName, from, to: structuredClone(lib().get(libName)!) }] });
       d.changed();
+      // A rule being compared with the points it replaced: the gap is measured again for the new number.
+      if (d.compare?.(libName)) d.remeasure?.(libName);
     }
     refresh();
     // The line's own knob keeps its drag (not drawn again under the pointer): only the strips' words follow, until `end`.
@@ -1247,6 +1283,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       });
     },
     rulePoints: (key) => rulePoints(key),
+    compare: (on) => d.compareShow?.(on),
     play: (on) => (on ? play() : stop()),
     scrub(t, end) {
       if (playing) stop();
@@ -1740,6 +1777,14 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (shown()) panel.render();
       d.changed();
     },
+    /**
+     * ✦ Turn into a rule (studio-code-torule): the comparison changed (the AI swapped a rule in, the switch, a new
+     * measure, Save cleared it): the strip, the line and the game's orange marks drawn again.
+     */
+    compared() {
+      sendPath(true);
+      if (shown()) panel.render();
+    },
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
       stop();
@@ -1784,6 +1829,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
           setOpen(!open);
         },
         ...(d.ask ? { ask: () => askAbout(key) } : {}),
+        ...(d.toRule ? { toRule: (c: MotionClip) => d.toRule!(key, { name: c.name, use: c.use ?? c.name }) } : {}),
       });
     },
     // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.

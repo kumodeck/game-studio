@@ -18,6 +18,7 @@ import {
   type Dim,
   type EditLayer,
   type FlyKey,
+  type MotionKey,
   type GameConfig,
   type Inset,
   type GameToolInfo,
@@ -74,7 +75,7 @@ import { createPlacementPanel } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
 import { libCounted } from './timeline-model.ts';
 import { createMotionAsk } from './motion-ask.ts';
-import { motionLibrary } from './motion-library.ts';
+import { CODE_LEN, motionLibrary } from './motion-library.ts';
 import { attachWorld, roundLib } from './motion-model.ts';
 import { icon, setButton } from './icons.ts';
 import { receipt, type SavedThing } from './save-receipt.ts';
@@ -84,6 +85,7 @@ import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, sharedMotion, type Change, type UndoEntry } from './undo.ts';
 import { createAiHands } from './ai-hands.ts';
+import { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } from './to-rule.ts';
 import { copyKey, groupLayerMoves, groupLayerPossible, sameKind } from './edit-ops.ts';
 import { displayName, forgetNames, noteItems, useGivenNames, useNameLang } from './names.ts';
 import { keyOf, tipText } from './keymap.ts';
@@ -324,7 +326,91 @@ export function start(host: StudioHost) {
     markSeen: (id) => markHint(id),
     // ✦ Ask AI on a motion (studio-motion-panel, motion-ask.ts): the chat box with the "object · motion" chip.
     ask: host.offline ? undefined : (k, m) => askMotion(k, m),
+    // ✦ Turn into a rule… (studio-code-torule): the same chip, the draft "Turn into a close rule", the request's intent.
+    toRule: host.offline ? undefined : (k, m) => {
+      askMotion(k, m, t('toRule.draft'));
+      toRuleAsk = { key: k, use: m.use };
+    },
+    compare: (name) => {
+      const hand = ruleCompare.motion(name, !!motionLibrary.get(name)?.code);
+      if (!hand) return null;
+      const g = ruleCompare.motionGapOf(name);
+      return { hand, on: ruleCompare.show, gap: g ? t('toRule.maxMotion', { gap: gapText(g.d, worldDim, unitWord) }) : null, at: g ? t('toRule.atTime', { t: timeText(g.t) }) : null };
+    },
+    compareShow: (on) => setCompareShown(on),
+    remeasure: (name) => void remeasureMotion(name),
   });
+  // ----- ✦ Turn into a rule (studio-code-torule, 2026-10-24; shell/to-rule.ts) -----
+  // What the AI swapped in for the hand's shape, and the hand's shape itself, until Save: the comparison on the card,
+  // the timeline and in the game.
+  const ruleCompare = new RuleCompare();
+  /**
+   * The ✦ press the chat box's words are for: the hand-placed objects picked then (sorted keys), or the motion (its object
+   * and Library motion). The request gets `intent: 'to-code'` only while the screen still shows that (motion-ask.ts's rule).
+   */
+  let toRuleAsk: { keys: string } | { key: string; use: string } | null = null;
+  const unitWord = (u: string) => t(`hands.unit.${u}`);
+  const levelNow = () => (levels.active ? levels.current : '');
+  let measureId = 0;
+  /** A rule motion's offsets over `len` seconds (`per` places), as the game page runs it — null when it does not answer. */
+  function ruleSamples(code: string, knobs: Record<string, number>, len: number, per: number): Promise<MotionKey[] | null> {
+    return new Promise((resolve) => {
+      // Ids of their own (timeline-wire's "Make editable points" counts from 1): an answer is never taken for the other's.
+      const id = 1_000_000 + ++measureId;
+      const off = ctx.on('studio:timeline/code-points', (m) => {
+        if (m.id !== id) return;
+        off();
+        clearTimeout(timer);
+        resolve(m.keys ?? null);
+      });
+      const timer = window.setTimeout(() => (off(), resolve(null)), 3000);
+      send({ type: 'studio:timeline/code-points', id, code, knobs, len, per });
+    });
+  }
+  /** A compared rule motion's knob turned: its largest gap again, for the line. */
+  async function remeasureMotion(name: string) {
+    const l = motionLibrary.get(name);
+    const hand = ruleCompare.motion(name, !!l?.code);
+    const info = l?.code ? codeMotionList.find((c) => c.code === l.code) : undefined;
+    if (!l?.code || !hand || !info) return;
+    const knobs = Object.fromEntries(Object.entries(info.knobs).map(([n, k]) => [n, l.knobs?.[n]?.v ?? k.v]));
+    const pts = await ruleSamples(l.code, knobs, info.round && info.round > 0 ? info.round : CODE_LEN, MOTION_SAMPLES);
+    ruleCompare.setMotionGap(name, pts?.length ? motionGap(hand, pts).max : null);
+    timeline.compared();
+  }
+  /** The comparison changed (a swap, Save, the switch): the card, the guide, the timeline and the game's marks again. */
+  function compareChanged() {
+    codePlaces.guide(true);
+    timeline.compared();
+    if (tool === 'placement' && page === 'tool') placementPanel.render();
+  }
+  function setCompareShown(on: boolean) {
+    ruleCompare.show = on;
+    compareChanged();
+  }
+  /** ✦ Turn into a rule on the card: several hand-placed world objects, none of them a rule's own already. */
+  function toRuleFor(keys: string[]): (() => void) | null {
+    if (host.offline || editLayer !== 'world' || keys.length < 2) return null;
+    const its = keys.map((k) => items.find((i) => i.key === k));
+    if (its.some((i) => !i || i.kinds.includes('ui') || i.backdrop || i.held === 'ground' || i.movable === false || codePlaces.layoutOf(i.key))) return null;
+    return () => {
+      toRuleAsk = { keys: [...keys].sort().join('\n') };
+      focusAsk(t('toRule.draft'));
+    };
+  }
+  /** The request's `intent` (and whether its motion carries its points): only while the screen is what ✦ was pressed on. */
+  function toRuleNow(keys: string[]): 'objects' | 'motion' | null {
+    const a = toRuleAsk;
+    if (!a) return null;
+    if ('keys' in a) {
+      if ([...keys].sort().join('\n') === a.keys && !libraryShown()) return 'objects';
+    } else {
+      const at = motionAsk.now();
+      if (at && at.key === a.key && at.use === a.use && !libraryShown()) return 'motion';
+    }
+    toRuleAsk = null;
+    return null;
+  }
   // The motion the chat box is about (studio-motion-panel): set by ✦ Ask AI, gone once the screen shows something else.
   const motionAsk = createMotionAsk({
     picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
@@ -1197,6 +1283,10 @@ export function start(host: StudioHost) {
     selected: () => (editLayer === 'world' ? selected : null),
     group: () => (editLayer === 'world' ? group : []),
     editing: () => editing && !playing && editLayer === 'world',
+    // ✦ Turn into a rule (studio-code-torule): the hand objects a layout replaced, while its `from` still names them.
+    compare: (id) => ruleCompare.place(levelNow(), id, worldModel.places.get(id)?.from),
+    compareOn: () => ruleCompare.show,
+    setCompareOn: (on) => setCompareShown(on),
   });
   /** One change of a code layout's `places` entry: one undo step, laid out in the game (studio-code-base's setPlace). */
   function setPlace(id: string, from: PlacementPlace | null, to: PlacementPlace | null) {
@@ -1285,7 +1375,13 @@ export function start(host: StudioHost) {
       applyPose(k, pose);
     },
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
-    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
+    ask: (keys, text, files) => {
+      if (answering()) return answerAi(text);
+      // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
+      const toRule = toRuleNow(keys);
+      if (toRule) toRuleAsk = null;
+      return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code' as const } : {}) });
+    },
     answering: () => answering(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
     // presence words beside the field say that (it was "Write a note for Claude…" when unsure, a second wording).
@@ -1314,6 +1410,10 @@ export function start(host: StudioHost) {
     layout: (k) => (editLayer === 'world' ? codePlaces.card(k) : null),
     ruleTag: (k) => (editLayer === 'world' ? codePlaces.listTag(k) : null),
     ruleRows: (k) => (editLayer === 'world' ? codePlaces.rows(k) : []),
+    // ✦ Turn into a rule (studio-code-torule): several hand-placed objects picked → the draft in the chat box.
+    toRule: (keys) => toRuleFor(keys),
+    // …and the hand objects a rule layout took the place of are not listed while it does (they are hidden in the game).
+    replaced: (k) => editLayer === 'world' && codePlaceList.some((p) => worldModel.places.get(p.id)?.from?.includes(k) && !p.keys.includes(k)),
     motion: (k) => timeline.cardRow(k, {
       menu: (at, entries) => {
         const o = { place: 'card-motion', label: t('motion.label'), holdDelete: true };
@@ -1483,13 +1583,14 @@ export function start(host: StudioHost) {
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
    * (`on`: keys with when / until), so "make this crate Hop when the player walks up" reaches the AI with both names.
    */
-  function requestMotions(): { motions?: RequestMotion[] } {
+  function requestMotions(points = false): { motions?: RequestMotion[] } {
     const at = libraryShown() ? null : motionAsk.now();
     if (!libraryShown() && !at) return {};
     const out: RequestMotion[] = [];
     for (const name of at ? [at.use] : libraryMotions.picked()) {
       const m = motionLibrary.get(name);
-      if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name) });
+      // ✦ Turn into a rule…: its points go too — the shape on screen, saved or not, is what the AI fits a rule to.
+      if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name), ...(points && m.keys?.p?.length ? { keys: { p: structuredClone(m.keys.p) } } : {}) });
     }
     return out.length ? { motions: out } : {};
   }
@@ -1822,11 +1923,15 @@ export function start(host: StudioHost) {
     if (keys.length === 1) selectObject(keys[0]!);
     else selectMany(keys, keys[0]!);
   }
-  /** ✦ Ask AI on `key`'s motion: picked (no camera move), the chip names both, the cursor in the chat box. Nothing is sent. */
-  function askMotion(key: string, m: { name: string; use: string }) {
+  /**
+   * ✦ Ask AI on `key`'s motion: picked (no camera move), the chip names both, the cursor in the chat box. Nothing is sent.
+   * `draft`: words put in first (✦ Turn into a rule…'s "Turn into a close rule").
+   */
+  function askMotion(key: string, m: { name: string; use: string }, draft?: string) {
     if (selected !== key || group.length > 1) selectObject(key);
     motionAsk.set(key, m);
-    focusAsk();
+    toRuleAsk = null;
+    focusAsk(draft);
   }
   /**
    * Rename in place (studio-uniforms, 2026-10-23; the menu's Rename, F2): the name shows everywhere at once, one undo
@@ -3890,6 +3995,11 @@ export function start(host: StudioHost) {
             renderLevelMade();
           }
           motionLibrary.markSaved();
+          // ✦ Turn into a rule (studio-code-torule): the AI takes the hand's shape out of the code now — nothing to compare.
+          if (ruleCompare.any()) {
+            ruleCompare.clear();
+            compareChanged();
+          }
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -5149,6 +5259,24 @@ export function start(host: StudioHost) {
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
     setPlace: (id, e) => setPlace(id, worldModel.places.get(id), e),
+    // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
+    ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
+    swapped: (x) => {
+      if (x.kind === 'motion') {
+        ruleCompare.setMotion(x.name, x.hand, x.gap);
+        timeline.compared();
+        return;
+      }
+      ruleCompare.setPlace(levelNow(), x.id, x.spots);
+      // The rule's objects lit violet, as the AI's other changes are (the person sees what came in).
+      const keys = codePlaceList.find((p) => p.id === x.id)?.keys ?? [];
+      if (keys.length) setAiMarks(new Map(keys.map((k) => [k, 'added' as const])));
+      // The person was looking at the hand objects (✦ on their card): the card turns to the rule's farthest one, its
+      // "Max deviation" and the game's orange marks in view at once.
+      const looking = [selected, ...group].some((k) => !!k && x.spots.some((s) => s.key === k));
+      if (looking && x.gap && keys.includes(`${x.id}-${x.gap.n}`)) selectObject(`${x.id}-${x.gap.n}`);
+      compareChanged();
+    },
     levels: {
       active: () => levels.active,
       current: () => levels.current,
@@ -5188,9 +5316,15 @@ export function start(host: StudioHost) {
       level: levels.active ? { id: levels.current, name: levels.labelOf(levels.current) } : undefined,
       objects: worldItems.map((i) => {
         const ms = (timeline.motionOf(i.key)?.clips ?? []).map((c) => c.name);
-        return { key: i.key, name: displayName(i, t), ...(ms.length ? { motions: ms } : {}), ...(i.unstable ? { unstable: true } : {}), ...(i.backdrop || i.held === 'ground' ? { ground: true } : {}) };
+        // `p` (studio-code-torule): where it stands in the editor now, saved or not — what "turn the lamps into a rule"
+        // fits a rule to (centimetres / whole pixels: the rule's knobs are rounder than that anyway).
+        const ps = worldModel.pose(i.key);
+        const p = ps ? ps.p.map((v) => (worldDim === '2d' ? Math.round(v) : Math.round(v * 100) / 100)) : undefined;
+        return { key: i.key, name: displayName(i, t), ...(p ? { p } : {}), ...(ms.length ? { motions: ms } : {}), ...(i.unstable ? { unstable: true } : {}), ...(i.backdrop || i.held === 'ground' ? { ground: true } : {}) };
       }),
-      motions: motionLibrary.list().map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once', on: timeline.usage(m.name).map((u) => u.key) })),
+      // A motion of points with its points (`keys.p`, studio-code-torule): "turn the ship's motion into a rule" fits them.
+      motions: motionLibrary.list().map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once', on: timeline.usage(m.name).map((u) => u.key),
+        ...(!m.code && m.keys?.p?.length ? { keys: { p: m.keys.p.map((k) => ({ t: k.t, v: k.v.slice() })) } } : {}) })),
       ...(levels.active ? { levels: levels.list.map((e) => ({ id: e.id, name: levels.labelOf(e.id) })) } : {}),
     }),
     undoBegin: () => undo.begin(),

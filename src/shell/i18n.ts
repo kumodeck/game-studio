@@ -950,6 +950,23 @@ const en = {
   'rule.missingTip': 'Your game has no rule for “{name}” any more. Ask {ai} to bring it back',
   'rule.edit': 'Editing the rule motion “{name}”',
   'rule.saved': '{name} {knob} → {v}',
+  // ✦ Turn into a rule (studio-code-torule, 2026-10-24; need 3: hand → rule). The words: the choice of 10/24
+  // ("rule", never "code" on screen) and Gemini's of that day (G7 "✦ Turn into a rule", G13 "Compare with original ·
+  // Max deviation"). The AI writes the rule and swaps it in itself; the editor measures how close it came. The ✦ of the
+  // glossary's "✦ Turn into a rule" is the spark icon the button / menu row draws before the words (as "Ask … to name it…").
+  'toRule.place': 'Turn into a rule',
+  'toRule.placeTip': 'Ask {ai} for a close rule (a row, a grid, a circle, a scatter) to put in place of these {n}. The box below gets a draft; you send it',
+  'toRule.motion': 'Turn into a rule…',
+  'toRule.draft': 'Turn into a close rule',
+  'toRule.compare': 'Compare with original',
+  'toRule.compareMotion': 'Compare with original',
+  'toRule.compareTip': 'Shows where it was by hand (orange) beside the rule. Gone when you save',
+  'toRule.maxPlace': 'Max deviation: {obj} ({gap})',
+  'toRule.maxMotion': 'Max deviation {gap}',
+  'toRule.atTime': ' (at {t} s)',
+  'hands.place.toRule': '{Ai} turned {n:1 object|# objects} into the rule layout “{name}” ({what}) · Max deviation: {obj} ({gap})',
+  'hands.motion.toRule': '{Ai} turned “{name}” into a rule motion · Max deviation {gap} (at {t} s)',
+  'hands.motion.toRuleSame': '{Ai} turned “{name}” into a rule motion',
 };
 
 type Key = keyof typeof en;
@@ -1783,6 +1800,19 @@ const ja: Partial<Record<Key, string>> = {
   'rule.missingTip': 'ゲームに「{name}」のルールがもうありません。{ai} に頼めます',
   'rule.edit': '動きのルール「{name}」を変えています',
   'rule.saved': '{name}の{knob} → {v}',
+  'toRule.place': 'ルール化する',
+  'toRule.placeTip': 'この {n} 個に近いルール（列・格子・円・ランダム）を {ai} に作ってもらい、入れ替えます。下の欄に下書きが入ります（送るのはあなた）',
+  'toRule.motion': 'ルール化する…',
+  'toRule.draft': '近いルールにして',
+  'toRule.compare': '元の配置と比べる',
+  'toRule.compareMotion': '元の動きと比べる',
+  'toRule.compareTip': '手で決めていた形（橙）を、ルールと並べて見せます。保存すると消えます',
+  'toRule.maxPlace': '最大のずれ: {obj}（{gap}）',
+  'toRule.maxMotion': '最大のずれ {gap}',
+  'toRule.atTime': '（{t} 秒）',
+  'hands.place.toRule': '{ai}が {n} 個をルールの並べ方「{name}」にしました（{what}）· 最大のずれ: {obj}（{gap}）',
+  'hands.motion.toRule': '{ai}が「{name}」を動きのルールにしました · 最大のずれ {gap}（{t} 秒）',
+  'hands.motion.toRuleSame': '{ai}が「{name}」を動きのルールにしました',
 };
 
 const TABLES: Record<Lang, Partial<Record<Key, string>>> = { en, ja };

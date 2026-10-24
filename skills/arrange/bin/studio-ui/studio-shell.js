@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.51 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.52 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1056,8 +1056,10 @@ const MSG_PREFIX = 'studio:';
                                                                                                                     
                                                                                                                      
                                                                                                                          
+                                                                                                                            
+                                                                                                                           
                                                                                                                                                                       
-                                                                                                                                                
+                                                                                                                                                                                             
      
                                                                                                                      
                                                                                                                   
@@ -1074,7 +1076,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                                                
      
-                                                                                                              
+                                                                                                                                                           
      
                                                                                                                         
                                                                                                                     
@@ -1529,6 +1531,14 @@ function isStudioMessage(x         )                     {
      
                             
      
+                                                                                                                         
+                                                                                                                      
+                                                                                                                       
+                                                                                                                         
+                                                                                                                   
+     
+                     
+     
                                                                                                                     
                                                                                                  
      
@@ -1563,6 +1573,11 @@ function isStudioMessage(x         )                     {
                         
                                                        
                                                                      
+     
+                                                                                                                 
+                                                                                                   
+     
+                            
  
 
 /** A stored request (.studio/requests/<id>.json). `saved` records are written by the host on every save. */
@@ -2187,6 +2202,17 @@ const RESULT_FILES                         = {
                             
                                                                                          
                   
+ 
+/**
+ * ✦ Turn into a rule (studio-code-torule, 2026-10-24): what a code layout's guide draws beside its violet rings until
+ * Save — where the hand-placed objects it replaced stood (`was[i]` = the place of the one the rule's number i + 1 took
+ * over, as the editor's model had it; null = none) and their names (`names[i]`). The page draws an orange dot each and a
+ * thin line to where the rule's object stands NOW (a knob turned moves the line), and over the farthest one the chip
+ * "lamp-3 · 0.6 m" — the same measure as the card's "Max deviation" (shell/to-rule.ts), drawn by bridge/code-place.ts.
+ */
+                                    
+                              
+                              
  
 /** A keep-out condition as the game page lists it (codeAvoid): its words ("From the player" … "within") and knobs. */
                                 
@@ -11633,7 +11659,13 @@ function whenShort(t                                                            
                                                                                                                       
                                                                                                                        
      
-                                                                                                     
+                                                                                            
+       
+                                                                                                                             
+                                                                                                                          
+                                                                        
+       
+                                           
  
 
 /** Several ways to start, in a row's few characters: "▣ Area or ⌨ E" (studio-timeline-2). */
@@ -11701,7 +11733,12 @@ function whensShort(t                                                           
                                                                                                                          
                                                                                                                         
      
-                                                                                                           
+                                                                                                  
+       
+                                                                                                                          
+                                                                                                                         
+       
+                                                                                     
  
 
                                
@@ -11756,6 +11793,8 @@ function whensShort(t                                                           
                                             
                                                                                                               
                                  
+                                                                                                                          
+                              
                             
                                                                                                            
                               
@@ -11836,6 +11875,8 @@ function createTimelinePanel(view                    , act              ) {
     // ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
     items.push(...whenItems(v));
     items.push(h('span', { class: 'tl-gap' }));
+    // ✦ Turn into a rule (studio-code-torule): the comparison with the points it replaced, at the line's right end.
+    if (c && v.rule?.compare) items.push(compareItem(v.rule.compare));
     // Fine-tune: also with no motion here when others move (its "Moving objects", studio-motion-focus).
     // Folded to the line (studio-fix-0143 ⑨ B): it is also the way back to the rows, so it is there, pointing up.
     if (c || v.moving || v.slim) {
@@ -11881,6 +11922,26 @@ function createTimelinePanel(view                    , act              ) {
     if (r.missing) return [h('span', { class: 'tl-lbl tl-rule-missing', title: t('rule.missingTip', { name: view().clip?.use ?? view().clip?.name ?? '' }), dataset: { part: 'tl-rule-missing' }, text: t('rule.missing') })];
     return [h('span', { class: 'tl-knobs', dataset: { part: 'tl-knobs' } }, ...r.knobs.map((k) => knobEl({ label: k.label, unit: k.unit ? t(`hands.unit.${k.unit}`) : '', v: k.v, min: k.min, max: k.max, step: k.step,
       tip: t('rule.knobTip'), part: `tl-knob-${k.name}`, set: (v, end) => act.ruleKnob?.(k.name, v, end) })))];
+  }
+
+  /**
+   * "◉ Compare with original · Max deviation 0.1 m (1.2 s)" (studio-code-torule, 2026-10-24; the plan's picture
+   * n3-motion: "the line's right: Compare with original · the largest gap"): the switch shows / hides the orange marks
+   * (the strip's lower edge, the game's path); the number is the editor's own measure of the rule against the points.
+   * Gone on Save (the AI takes the points out of the code then).
+   */
+  // Short of room (the line's 'snug' step, a narrow plate), the switch's words and the time go to its tooltip: the line
+  // keeps "◉ Max deviation 0.1 m" — measured, not cut to "…" — instead of tipping the whole line into two rows (it did:
+  // the first pictures of 10/24 lost "Preview" and "When does it move?" to it).
+  function compareItem(cmp                                                        )              {
+    const all = [t('toRule.compareMotion'), [cmp.gap, cmp.at].filter(Boolean).join('')].filter(Boolean).join(' · ');
+    const sw = h('button', { type: 'button', class: 'tl-rule-sw cmp-sw', role: 'switch', 'aria-checked': String(cmp.on), title: `${all}\n${t('toRule.compareTip')}`,
+      'aria-label': t('toRule.compareMotion'), dataset: { part: 'tl-compare-sw' }, onclick: () => act.compare?.(!cmp.on) }, h('i', {}));
+    // The words press the switch too (a finger on a phone finds the line, not a 22 px switch).
+    return h('span', { class: 'tl-compare', title: all, dataset: { part: 'tl-compare' }, onclick: (e       ) => !sw.contains(e.target        ) && act.compare?.(!cmp.on) }, sw,
+      h('span', { class: 'tl-compare-w', text: `${t('toRule.compareMotion')}${cmp.gap ? ' ·' : ''}` }),
+      cmp.gap ? h('span', { class: 'tl-compare-gap', dataset: { part: 'tl-compare-gap' }, text: cmp.gap }) : null,
+      cmp.gap && cmp.at ? h('span', { class: 'tl-compare-t', text: cmp.at }) : null);
   }
 
   /** A small text field that acts on Enter / leaving (Esc: as it was). */
@@ -12365,9 +12426,11 @@ function createTimelinePanel(view                    , act              ) {
     const rr = r.rule ;
     const len = rr.len > 0 ? rr.len : 4;
     const total = span();
-    const strip = h('div', { class: `tl-rule${rr.off ? ' off' : ''}${rr.missing ? ' missing' : ''}`, style: `left:${xOf(0)}px;width:${Math.max(24, xOf(total) - xOf(0))}px`,
+    const strip = h('div', { class: `tl-rule${rr.off ? ' off' : ''}${rr.missing ? ' missing' : ''}${rr.lit ? ' lit' : ''}`, style: `left:${xOf(0)}px;width:${Math.max(24, xOf(total) - xOf(0))}px`,
       title: rr.missing ? t('rule.missingTip', { name: r.clip?.use ?? r.clip?.name ?? '' }) : t('rule.motionTip'), dataset: { part: 'tl-rule', key: r.key } });
     for (let k = 1; rr.round && k * len < total; k++) strip.append(h('i', { class: 'tl-rule-round', style: `left:${xOf(k * len) - xOf(0)}px` }));
+    // ✦ Turn into a rule (studio-code-torule): where the points it replaced were, small orange marks on the lower edge.
+    for (const w of rr.was ?? []) if (w <= total) strip.append(h('i', { class: 'tl-rule-was', style: `left:${xOf(w) - xOf(0)}px`, dataset: { part: 'tl-rule-was' } }));
     const sw = h('button', { type: 'button', class: 'tl-rule-sw', role: 'switch', 'aria-checked': String(!rr.off), title: t(rr.off ? 'rule.enableTip' : 'rule.disableTip'),
       'aria-label': t(rr.off ? 'rule.enableTip' : 'rule.disableTip'), dataset: { part: 'tl-rule-sw', ruleAct: '1' }, onclick: () => act.ruleOff?.(r.key, !rr.off) }, h('i', {}));
     const words = rr.missing ? t('rule.missing') : rr.off ? `${t('rule.disabled')} · ${rr.words}` : `${t('rule.motion')}: ${rr.words}`;
@@ -16017,6 +16080,23 @@ const en = {
   'rule.missingTip': 'Your game has no rule for “{name}” any more. Ask {ai} to bring it back',
   'rule.edit': 'Editing the rule motion “{name}”',
   'rule.saved': '{name} {knob} → {v}',
+  // ✦ Turn into a rule (studio-code-torule, 2026-10-24; need 3: hand → rule). The words: the choice of 10/24
+  // ("rule", never "code" on screen) and Gemini's of that day (G7 "✦ Turn into a rule", G13 "Compare with original ·
+  // Max deviation"). The AI writes the rule and swaps it in itself; the editor measures how close it came. The ✦ of the
+  // glossary's "✦ Turn into a rule" is the spark icon the button / menu row draws before the words (as "Ask … to name it…").
+  'toRule.place': 'Turn into a rule',
+  'toRule.placeTip': 'Ask {ai} for a close rule (a row, a grid, a circle, a scatter) to put in place of these {n}. The box below gets a draft; you send it',
+  'toRule.motion': 'Turn into a rule…',
+  'toRule.draft': 'Turn into a close rule',
+  'toRule.compare': 'Compare with original',
+  'toRule.compareMotion': 'Compare with original',
+  'toRule.compareTip': 'Shows where it was by hand (orange) beside the rule. Gone when you save',
+  'toRule.maxPlace': 'Max deviation: {obj} ({gap})',
+  'toRule.maxMotion': 'Max deviation {gap}',
+  'toRule.atTime': ' (at {t} s)',
+  'hands.place.toRule': '{Ai} turned {n:1 object|# objects} into the rule layout “{name}” ({what}) · Max deviation: {obj} ({gap})',
+  'hands.motion.toRule': '{Ai} turned “{name}” into a rule motion · Max deviation {gap} (at {t} s)',
+  'hands.motion.toRuleSame': '{Ai} turned “{name}” into a rule motion',
 };
 
                            
@@ -16850,6 +16930,19 @@ const ja                               = {
   'rule.missingTip': 'ゲームに「{name}」のルールがもうありません。{ai} に頼めます',
   'rule.edit': '動きのルール「{name}」を変えています',
   'rule.saved': '{name}の{knob} → {v}',
+  'toRule.place': 'ルール化する',
+  'toRule.placeTip': 'この {n} 個に近いルール（列・格子・円・ランダム）を {ai} に作ってもらい、入れ替えます。下の欄に下書きが入ります（送るのはあなた）',
+  'toRule.motion': 'ルール化する…',
+  'toRule.draft': '近いルールにして',
+  'toRule.compare': '元の配置と比べる',
+  'toRule.compareMotion': '元の動きと比べる',
+  'toRule.compareTip': '手で決めていた形（橙）を、ルールと並べて見せます。保存すると消えます',
+  'toRule.maxPlace': '最大のずれ: {obj}（{gap}）',
+  'toRule.maxMotion': '最大のずれ {gap}',
+  'toRule.atTime': '（{t} 秒）',
+  'hands.place.toRule': '{ai}が {n} 個をルールの並べ方「{name}」にしました（{what}）· 最大のずれ: {obj}（{gap}）',
+  'hands.motion.toRule': '{ai}が「{name}」を動きのルールにしました · 最大のずれ {gap}（{t} 秒）',
+  'hands.motion.toRuleSame': '{ai}が「{name}」を動きのルールにしました',
 };
 
 const TABLES                                             = { en, ja };
@@ -17053,6 +17146,7 @@ const HANDOFF_LIMITS = Object.freeze({
   maxLog: 300, // one console line (a stack trace is cut: the first line says what broke)
   maxNear: 12, // things near the player: enough to name "this one", few enough to read
   maxHistory: 12, // pause (2026-10-22): the chat's earlier turns a message carries; the whole talk is in .studio/chat/
+  maxPoints: 256, // ✦ Turn into a rule: a motion's points (the timeline's own limit, MAX_KEYS)
 });
 
 // 'saved' and 'undone' are written by the host itself, never sent by the browser: 'saved' on every
@@ -17192,6 +17286,13 @@ function normalizeRequestInput(input) {
         if (o.until && typeof o.until === 'object') x.until = JSON.parse(JSON.stringify(o.until));
         return x;
       });
+      // ✦ Turn into a rule (studio-code-torule, 2026-10-24): the motion's position points, the shape the AI fits a rule
+      // to — as placement.json keeps them (t, v, ease); a bad point is dropped, never an error (it is a hint).
+      if (m.keys && typeof m.keys === 'object' && Array.isArray(m.keys.p)) {
+        const p = m.keys.p.filter((k) => k && isFin(k.t) && Array.isArray(k.v) && (k.v.length === 2 || k.v.length === 3) && k.v.every(isFin)).slice(0, HANDOFF_LIMITS.maxPoints)
+          .map((k) => ({ t: roundTo(k.t, 1000), v: k.v.map((x) => roundTo(x, 1000)), ...(k.ease === 'linear' || k.ease === 'step' || k.ease === 'ease' ? { ease: k.ease } : {}) }));
+        if (p.length) e.keys = { p };
+      }
       ms.push(e);
     }
     if (ms.length) out.motions = ms;
@@ -17200,6 +17301,8 @@ function normalizeRequestInput(input) {
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
   if (kind === 'name' && !(out.objects && out.objects.length)) errors.push('a "name" request names at least one object');
+  // "ask" only (studio-code-torule): the words came from ✦ Turn into a rule. Anything else is left out, never an error.
+  if (kind === 'ask' && r.intent === 'to-code') out.intent = 'to-code';
   if (r.lang === 'en' || r.lang === 'ja') out.lang = r.lang;
   if (Number.isInteger(r.unsaved) && r.unsaved > 0) out.unsaved = Math.min(r.unsaved, 100000);
   if (r.dim === '2d' || r.dim === '3d') out.dim = r.dim;
@@ -18511,6 +18614,18 @@ const { toneThumb } = __require(17);
                                                                                 
                                                                                                                   
                                                                                 
+     
+                                                                                                                          
+                                                                                                                        
+                                                                                                                      
+     
+                                                   
+     
+                                                                                                                          
+                                                                                                                           
+                                                                                           
+     
+                                      
  
 
                                  
@@ -18947,6 +19062,14 @@ function createPlacementPanel(d                    )                 {
     if (members.some((m) => m.movable === false)) body.append(h('p', { class: 'muted note-line', text: d.t('ops.lockedSkipped') }));
     const lr = groupLayerRow(keys);
     if (lr) body.append(lr);
+    // ✦ Turn into a rule: the hand-placed ones picked together are what a rule could put (a row of lamps by hand).
+    const toRule = d.toRule?.(keys);
+    if (toRule) {
+      const b = aiButton(d.t('toRule.place'), 'to-rule link-btn', 'to-rule', toRule);
+      b.title = d.t('toRule.placeTip', { n: members.length });
+      b.dataset.part = 'to-rule';
+      body.append(b);
+    }
     if (!d.multi()) body.append(h('button', { type: 'button', class: 'link-btn', dataset: { action: 'select-none' }, text: d.t('ops.selectNone'), onclick: () => d.selectMany([], '') }));
     card.append(body);
   };
@@ -19502,6 +19625,7 @@ function createPlacementPanel(d                    )                 {
     const tags = new Map                                      ();
     for (const it of d.items()) {
       if (fold && it.unstable) continue;
+      if (d.replaced?.(it.key)) continue;
       const rt = d.ruleTag?.(it.key) ?? null;
       if (rt) tags.set(rt.group, { tag: rt.tag, tip: rt.tip });
       const g = rt?.group || it.group || `key:${it.key}`;
@@ -19697,6 +19821,212 @@ __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
 __defs[52] = function (__exports) {
 'use strict';
+// to-rule.ts
+
+// ✦ Turn into a rule (studio-code-torule, 2026-10-24; the plan's step 4 — need 3 of the four asked for that day: "I want to
+// turn what I placed by hand, or a motion I made by hand, into a close procedural / formula version"). The other way
+// round from "Place individually" / "Make editable points" (rule → hand): hand → rule.
+//
+// Who does what (the plan's decisions 13 and 15):
+//   the person   picks the hand-placed objects (or a motion of points) and presses ✦ Turn into a rule: the chat box gets a
+//                draft ("Turn these into a close rule"), and they send it (or add "6 m apart" first).
+//   the AI       writes the nearest rule (codePlace / codeMotion, 1–3 knobs) and swaps it in ITSELF — `--do place.code
+//                --replace` / `motion.code --replace` — never handing steps back (10/24: "the worst experience").
+//   the editor   (this file) keeps the hand's shape from just before the swap and MEASURES how close the rule came: the
+//                largest gap, which object (places, in the `replace` order) or which moment (a motion, 64 places over
+//                one round of the rule). A number the person reads off the screen, not the AI's word for it; ⌘Z puts
+//                the hand's shape back.
+// The comparison (orange dots = the hand, a thin line = the gap, "Max deviation: lamp-3 (0.6 m)") stays until Save:
+// after Save the AI takes the hand's shape out of the code, and there is nothing left to compare with.
+// Pure (no DOM): test/to-rule.test.ts.
+                                                                               
+const { offsetsAt } = __require(24);
+
+/**
+ * One hand-placed object a layout replaced: its key, the name the person saw, where it stood (the model's pose), and
+ * the rule's object it is compared with — number `n` (1-based: `<id>-<n>`), its place in the `replace` list.
+ */
+                           
+              
+                
+              
+            
+ 
+/** The motion of points a rule motion replaced: its position keys (offsets), length and repeat. */
+                             
+                    
+              
+                        
+ 
+/** The largest gap of a layout: the rule's number it was (1-based), the hand object, how far (m / px). */
+                           
+            
+              
+                
+            
+ 
+/** The largest gap of a motion over one round: when (s from its start), how far, and the hand's path at the same times. */
+                            
+            
+            
+ 
+
+/** How many places one round of a rule motion is compared at (the plan's decision 13: 64, as its violet line has). */
+const MOTION_SAMPLES = 64;
+
+const dist = (a          , b          ) => Math.hypot(...a.map((v, i) => v - (b[i] ?? 0)));
+
+/**
+ * A layout against the hand-placed objects it replaced: each hand object ↔ the rule's object number `n` (`ruleAt(n)`,
+ * where it stands now; null = the rule has no such number — a count that came out smaller, a number a keep-out area
+ * skipped). The distance is the whole one (3D x, y and z: a lamp a metre too high is as wrong as a metre to the side;
+ * 2D px). `max` = the farthest pair, null when no pair could be measured; `unmatched` = hand objects with no partner.
+ */
+function placeGaps(hand            , ruleAt                                            )                                                                          {
+  const each                       = [];
+  let max                  = null;
+  let unmatched = 0;
+  for (const h of hand) {
+    const r = ruleAt(h.n);
+    if (!r || r.length !== h.p.length) {
+      each.push(null);
+      unmatched++;
+      continue;
+    }
+    const d = dist(h.p, r);
+    each.push(d);
+    if (!max || d > max.d + 1e-9) max = { n: h.n, key: h.key, label: h.label, d };
+  }
+  return { each, max, unmatched };
+}
+
+/** The hand motion as a clip the loader's maths reads (position only: the rule is compared where it goes, not how it turns). */
+const handClip = (m            )             => ({ name: '', len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), keys: { p: m.keys } })              ;
+
+/**
+ * A rule motion against the motion of points it replaced, over one round of the rule: `rule` = its offsets at
+ * MOTION_SAMPLES + 1 times (the game page runs its at(): studio:timeline/code-points), each compared with the hand
+ * motion at the same time (its own repeat: a 2 s back-and-forth is 4 s a round). `was` = the hand's path at those times
+ * (the orange line drawn beside the violet one). `max` null = nothing to compare.
+ */
+function motionGap(hand            , rule                                   )                                             {
+  const clip = handClip(hand);
+  const was             = [];
+  let max                   = null;
+  for (const s of rule) {
+    const p = offsetsAt(clip, s.t).p;
+    if (!p) continue;
+    was.push(p);
+    if (p.length !== s.v.length) continue;
+    const d = dist(p, s.v);
+    if (!max || d > max.d + 1e-9) max = { t: s.t, d };
+  }
+  return { max, was };
+}
+
+/**
+ * The hand motion's path over one round of the rule (`n` + 1 places, as the violet line has), offsets from where the
+ * object stands: the orange line the game page draws beside the rule's.
+ */
+function handPath(hand            , round        , n = MOTION_SAMPLES)             {
+  const clip = handClip(hand);
+  const out             = [];
+  for (let i = 0; i <= n; i++) {
+    const p = offsetsAt(clip, (round * i) / n).p;
+    if (p) out.push(p.map((v) => Math.round(v * 1000) / 1000));
+  }
+  return out;
+}
+
+/**
+ * A gap as people read it: 3D metres (one decimal from 0.1 m, two below it: "0.6 m", "0.04 m"), 2D whole pixels.
+ * The unit is the knobs' own words (hands.unit.m / px), so "m" / "px" read the same as the card's Gap.
+ */
+function gapText(d        , dim     , unit                       )         {
+  if (dim === '2d') return `${Math.round(d)}${unit('px')}`;
+  const r = d >= 0.095 ? Math.round(d * 10) / 10 : Math.round(d * 100) / 100;
+  return `${r}${unit('m')}`;
+}
+
+/** Seconds as the ruler reads them ("1.2"). */
+const timeText = (t        ) => String(Math.round(t * 10) / 10);
+
+/**
+ * What the editor keeps of the hand's shape between the AI's swap and Save: per layout (by level, since `places` are
+ * the level's) the objects it replaced, per Library motion the points it had. It is shown only while the swap is still
+ * there (the layout's `from` still names those objects; the motion is still a rule) — ⌘Z the swap and the comparison
+ * goes with it, ⌘⇧Z and it is back — and the whole of it goes on Save.
+ */
+class RuleCompare {
+          places = new Map                    ();
+          motions = new Map                    ();
+          gaps = new Map                          ();
+  /** The card's / the line's switch "Compare with original" (one for both: the person either wants the marks or not). */
+  show = true;
+
+          static placeId(level        , id        ) {
+    return `${level}\n${id}`;
+  }
+  /** A swap of the AI's: the hand objects it replaced (added to an earlier swap of the same layout). */
+  setPlace(level        , id        , spots            )       {
+    const k = RuleCompare.placeId(level, id);
+    const old = (this.places.get(k) ?? []).filter((s) => !spots.some((x) => x.key === s.key));
+    this.places.set(k, [...old, ...spots.map((s) => ({ key: s.key, label: s.label, p: s.p.slice(), n: s.n }))]);
+    this.show = true;
+  }
+  /** The hand objects layout `id` replaced, in the `replace` order — only those its `from` still names (else []). */
+  place(level        , id        , from                      )             {
+    const spots = this.places.get(RuleCompare.placeId(level, id)) ?? [];
+    return from?.length ? spots.filter((s) => from.includes(s.key)) : [];
+  }
+  /** A swap of the AI's: the points motion `name` had, and the gap measured then (null = not measured). */
+  setMotion(name        , m            , gap                   = null)       {
+    this.motions.set(name, { keys: structuredClone(m.keys), len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}) });
+    this.gaps.set(name, gap);
+    this.show = true;
+  }
+  /** Measured again (a knob of the rule turned). */
+  setMotionGap(name        , gap                  )       {
+    if (this.motions.has(name)) this.gaps.set(name, gap);
+  }
+  motionGapOf(name        )                   {
+    return this.gaps.get(name) ?? null;
+  }
+  /** The points Library motion `name` had before the AI made it a rule — while it is a rule (`isRule`), else null. */
+  motion(name        , isRule         )                    {
+    return isRule ? this.motions.get(name) ?? null : null;
+  }
+  /** A Library motion renamed: its comparison goes with it. */
+  rename(from        , to        )       {
+    const m = this.motions.get(from);
+    if (!m) return;
+    this.motions.delete(from);
+    this.motions.set(to, m);
+    this.gaps.set(to, this.gaps.get(from) ?? null);
+    this.gaps.delete(from);
+  }
+  any()          {
+    return this.places.size > 0 || this.motions.size > 0;
+  }
+  /** Save: the AI takes the hand's shape out of the code now — nothing left to compare with. */
+  clear()       {
+    this.places.clear();
+    this.motions.clear();
+    this.gaps.clear();
+    this.show = true;
+  }
+}
+
+__def(__exports, "MOTION_SAMPLES", () => MOTION_SAMPLES);
+__def(__exports, "placeGaps", () => placeGaps);
+__def(__exports, "motionGap", () => motionGap);
+__def(__exports, "handPath", () => handPath);
+__def(__exports, "gapText", () => gapText);
+__def(__exports, "timeText", () => timeText);
+__def(__exports, "RuleCompare", () => RuleCompare);
+};
+__defs[53] = function (__exports) {
+'use strict';
 // path-edit.ts
 
 // The path's shape (studio-timeline-2, 2026-10-22; CONTRACT.md §1.9.2): a point's two handles, a corner, and a key put
@@ -19823,7 +20153,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -19943,7 +20273,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -20007,6 +20337,12 @@ const { icon, setButton } = __require(21);
                                  
                    
                    
+     
+                                                                                                                           
+                                                                                                                    
+                                 
+     
+                                  
  
 
 function motionCardRow(d                )                {
@@ -20074,7 +20410,11 @@ function motionCardRow(d                )                {
 function motionMenu(d                , c            , at                                        )              {
   const lib = c.use ?? c.name;
   const inLib = !!d.remove && d.library().some((l) => l.name === lib);
-  const out              = [{ id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {
+  // ✦ Turn into a rule… first (the way on from here, as the plan's picture has it), then the two that take it away.
+  // Only on points: a rule motion is a rule already ("Make editable points" is its way back to points).
+  const toRule              = d.toRule && !d.isRule?.(lib) && (c.keys?.p?.length ?? 0) >= 2
+    ? [{ id: 'motion-to-rule', label: d.t('toRule.motion'), ai: true, run: () => d.toRule (c) }, { sep: true }] : [];
+  const out              = [...toRule, { id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {
     d.detach(c.name);
     d.say?.(d.t('motion.removed', { name: c.name }));
   } }];
@@ -20095,7 +20435,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -20117,11 +20457,12 @@ __defs[55] = function (__exports) {
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
 const { ruleKnobsAfter, ruleOf, ruleWords } = __require(51);
+const { handPath } = __require(52);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(52);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(53);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(53);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(54);
 const { libOf } = __require(34);
-const { motionCardRow } = __require(54);
+const { motionCardRow } = __require(55);
                                                      
 const { sameMotion: sameFile } = __require(35);
 
@@ -20199,6 +20540,21 @@ const { blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, eas
                                    
                                                                                                                        
                             
+     
+                                                                                                                      
+                                                                                                                    
+                                                                                                        
+     
+                                                                                                          
+     
+                                                                                                                          
+                                                                                                   
+     
+                                                                    
+                                                                                                                     
+                                  
+                                                                                                                          
+                                 
  
 
 /**
@@ -20340,6 +20696,16 @@ function createTimeline(d              , makePanel                             =
   });
   /** A rule's knob values now (code's, then the file's), for the page's path and its points. */
   const ruleValues = (r          ) => Object.fromEntries(r.knobs.map((k) => [k.name, k.v]));
+  /** ✦ Turn into a rule (studio-code-torule): the points a rule replaced, shown to compare (null: none, or switched off). */
+  const comparing = (libName        ) => {
+    const x = d.compare?.(libName);
+    return x && x.on ? x : null;
+  };
+  /** The path message's `was`: the replaced points' path over one round of the rule (none: 4 s) and the points themselves. */
+  const wasOf = (libName        , round               ) => {
+    const x = comparing(libName);
+    return x ? { was: { pts: handPath(x.hand, round && round > 0 ? round : 4), keys: x.hand.keys.map((k) => k.v.slice()) } } : {};
+  };
   // "Make editable points" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
   let pointsAsk                                                                = null;
   let pointsId = 0;
@@ -20505,7 +20871,7 @@ function createTimeline(d              , makePanel                             =
     const dragKnob = rule?.drag ? rule.knobs.find((k) => k.name === rule.drag) : undefined;
     const msg                = key && place && rule && !rule.missing && !rule.loading && !c .off
       ? { type: 'studio:timeline/path', key, base: place.p.slice(), code: { code: rule.code, name: c .use ?? c .name, knobs: ruleValues(rule), round: rule.round,
-        ...(dragKnob ? { drag: dragKnob.name, unit: dragKnob.unit, label: dragKnob.label } : {}) } }
+        ...(dragKnob ? { drag: dragKnob.name, unit: dragKnob.unit, label: dragKnob.label } : {}), ...wasOf(c .use ?? c .name, rule.round) } }
       : key && place && ks?.length
       ? { type: 'studio:timeline/path', key, base: place.p.slice(), keys: structuredClone(ks), now: offsets(key)?.p ?? null,
         sel: ks.map((k, i) => (sel.some((r) => r.key === key && r.ch === 'p' && sameT(r.t, k.t)) ? i : -1)).filter((i) => i >= 0),
@@ -20717,8 +21083,14 @@ function createTimeline(d              , makePanel                             =
       const r = ruleFor(c);
       return { key: k, label: d.label(k), picked: k === p, open: openRows.has(k), clip: c, ...(scene ? { member: ms.includes(k) } : {}),
         // A rule motion's strip (studio-code-knobs): its words from its knobs, one round wide.
-        ...(r && c ? { rule: { words: ruleWords(d.t, r), off: !!c.off, missing: r.missing, round: r.round, len: c.len } } : {}) };
+        ...(r && c ? { rule: { words: ruleWords(d.t, r), off: !!c.off, missing: r.missing, round: r.round, len: c.len, ...ruleWas(c.use ?? c.name) } } : {}) };
     });
+  }
+  /** A compared rule's strip: lit (the AI's change), and its replaced points' times on the lower edge when the switch is on. */
+  function ruleWas(libName        )                                    {
+    const x = d.compare?.(libName);
+    if (!x) return {};
+    return { lit: true, ...(x.on ? { was: x.hand.keys.map((k) => k.t) } : {}) };
   }
   /** The rows' objects in their order (rows() without what each row draws): also the objects ▶ moves (offsets). */
   function rowKeys()              {
@@ -20897,7 +21269,9 @@ function createTimeline(d              , makePanel                             =
       // A rule motion (studio-code-knobs): its knobs on the line, in place of Repeat.
       rule: (() => {
         const r = ruleFor(c);
-        return r && c ? { knobs: r.knobs, off: !!c.off, missing: r.missing, loading: r.loading, pointsTip: d.t('rule.pointsTip', { n: POINTS_PER_ROUND }) } : null;
+        const x = r && c ? d.compare?.(c.use ?? c.name) : null;
+        return r && c ? { knobs: r.knobs, off: !!c.off, missing: r.missing, loading: r.loading, pointsTip: d.t('rule.pointsTip', { n: POINTS_PER_ROUND }),
+          ...(x ? { compare: { on: x.on, gap: x.gap, at: x.at } } : {}) } : null;
       })(),
     };
   }
@@ -20922,6 +21296,8 @@ function createTimeline(d              , makePanel                             =
       knobFrom = null;
       if (JSON.stringify(from) !== JSON.stringify(lib().get(libName))) d.undo.push({ changes: [{ kind: 'motion-lib', key: libName, from, to: structuredClone(lib().get(libName) ) }] });
       d.changed();
+      // A rule being compared with the points it replaced: the gap is measured again for the new number.
+      if (d.compare?.(libName)) d.remeasure?.(libName);
     }
     refresh();
     // The line's own knob keeps its drag (not drawn again under the pointer): only the strips' words follow, until `end`.
@@ -21345,6 +21721,7 @@ function createTimeline(d              , makePanel                             =
       });
     },
     rulePoints: (key) => rulePoints(key),
+    compare: (on) => d.compareShow?.(on),
     play: (on) => (on ? play() : stop()),
     scrub(t, end) {
       if (playing) stop();
@@ -21838,6 +22215,14 @@ function createTimeline(d              , makePanel                             =
       if (shown()) panel.render();
       d.changed();
     },
+    /**
+     * ✦ Turn into a rule (studio-code-torule): the comparison changed (the AI swapped a rule in, the switch, a new
+     * measure, Save cleared it): the strip, the line and the game's orange marks drawn again.
+     */
+    compared() {
+      sendPath(true);
+      if (shown()) panel.render();
+    },
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
       stop();
@@ -21882,6 +22267,7 @@ function createTimeline(d              , makePanel                             =
           setOpen(!open);
         },
         ...(d.ask ? { ask: () => askAbout(key) } : {}),
+        ...(d.toRule ? { toRule: (c            ) => d.toRule (key, { name: c.name, use: c.use ?? c.name }) } : {}),
       });
     },
     // The Library's motions (library-motions.ts): what each is on, and what the Library page does with them.
@@ -21933,7 +22319,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -21985,7 +22371,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -22078,7 +22464,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -22095,11 +22481,16 @@ __defs[58] = function (__exports) {
 // What the person changes lives in the level's `places` (code-places.ts PlaceStore; CONTRACT.md §1.12): knobs as
 // { v, was }, pins, hand. Every change is one ⌘Z and one Save count per layout (the plan's decision 16); the game page
 // lays the layout out again IN PLACE (studio:place/layout) — the first step reloaded the game for each number.
-                                                                                              
+//
+// studio-code-torule (2026-10-24, need 3 — the other way round): after the AI swapped a layout in for hand-placed
+// objects (✦ Turn into a rule), the card's Layout has "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)",
+// and the guide sends where those hand objects stood (orange dots and thin lines in the game) — until Save.
+                                                                                                                 
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(33);
 const { roundPose } = __require(31);
+const { gapText, placeGaps } = __require(52);
 
                                                                          
 
@@ -22127,6 +22518,13 @@ const { roundPose } = __require(31);
                     
                                                                   
                      
+     
+                                                                                                                           
+                                                                                              
+     
+                                   
+                        
+                                   
  
 
                                 
@@ -22210,11 +22608,43 @@ function createCodePlaceWire(d                   )                {
     const ids = d.editing() ? [...new Set(keys.map((k) => layoutOf(k)?.id).filter((x)              => !!x))] : [];
     const places = ids.length ? d.store().result() ?? {} : {};
     const sel = d.selected();
-    const sig = JSON.stringify([ids, sel, ids.map((id) => places[id] ?? null)]);
+    const compare = compareMarks(ids);
+    const sig = JSON.stringify([ids, sel, ids.map((id) => places[id] ?? null), compare]);
     if (sig === guideSig && !force) return;
     if (!ids.length && !guideSig) return;
     guideSig = ids.length ? sig : '';
-    d.send({ type: 'studio:place/guide', ids, sel, places });
+    d.send({ type: 'studio:place/guide', ids, sel, places, ...(Object.keys(compare).length ? { compare } : {}) });
+  }
+  /** The guide's orange marks (✦ Turn into a rule): for each shown layout with a swap to compare, where its hand objects stood. */
+  function compareMarks(ids          )                                    {
+    const out                                    = {};
+    if (d.compareOn && !d.compareOn()) return out;
+    for (const id of ids) {
+      const spots = d.compare?.(id) ?? [];
+      if (!spots.length) continue;
+      const n = Math.max(...spots.map((x) => x.n));
+      const was                         = Array.from({ length: n }, () => null);
+      const names                       = Array.from({ length: n }, () => null);
+      for (const x of spots) (was[x.n - 1] = x.p.slice()), (names[x.n - 1] = x.label);
+      out[id] = { was, names };
+    }
+    return out;
+  }
+  /**
+   * The card's comparison (studio-code-torule; the plan's picture n3-place): "◉ Compare with original" and, under it,
+   * "Max deviation: lamp-3 (0.6 m)" — the hand object farthest from the rule's object of its number, where each stands
+   * now (a knob turned, the card drawn again: the number follows). Orange: it is about the hand's shape.
+   */
+  function compareBlock(p               )                     {
+    const spots = d.compare?.(p.id) ?? [];
+    if (!spots.length) return null;
+    const on = d.compareOn?.() ?? true;
+    const g = placeGaps(spots, (n) => (p.keys.includes(`${p.id}-${n}`) ? d.pose(`${p.id}-${n}`)?.p : null)).max;
+    const sw = h('button', { type: 'button', class: 'tl-rule-sw cmp-sw', role: 'switch', 'aria-checked': String(on), title: t('toRule.compareTip'),
+      'aria-label': t('toRule.compare'), dataset: { part: 'rule-compare-sw' }, onclick: () => d.setCompareOn?.(!on) }, h('i', {}));
+    return h('div', { class: 'rule-compare', dataset: { part: 'rule-compare' } },
+      h('label', { class: 'rule-compare-sw' }, sw, h('span', { text: t('toRule.compare') })),
+      g ? h('p', { class: 'rule-gap', dataset: { part: 'rule-gap' }, text: t('toRule.maxPlace', { obj: g.label, gap: gapText(g.d, d.dim(), unit) }) }) : null);
   }
 
   /** The Layout block: "Layout  Line · 4  [Rule]", the knobs, "Place individually" and "No. 2". */
@@ -22240,7 +22670,7 @@ function createCodePlaceWire(d                   )                {
       h('button', { type: 'button', class: 'link-btn rule-hand', title: t('rule.individuallyTip', { n: p.keys.length }), dataset: { action: 'rule-individually', part: 'rule-individually' },
         onclick: () => individually(p) }, t('rule.individually')),
       h('span', { class: 'muted rule-nth', text: t('rule.nth', { n: nth(p, key) }) }));
-    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), foot,
+    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), compareBlock(p), foot,
       unused ? h('p', { class: 'muted note-line', text: t('rule.unusedPins', { n: unused }) }) : null);
   }
 
@@ -22372,7 +22802,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -22678,7 +23108,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -22779,7 +23209,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -22964,7 +23394,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // ../schema/hands.mjs
 
@@ -23857,7 +24287,7 @@ __def(__exports, "applyHandsToFile", () => applyHandsToFile);
 __def(__exports, "handsPlaceKey", () => handsPlaceKey);
 __def(__exports, "handsAvoid", () => handsAvoid);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -23875,10 +24305,11 @@ __defs[63] = function (__exports) {
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-                                                                                                                                                                                                                   
-const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(62);
+                                                                                                                                                                                                                              
+const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(63);
 const { roundKnob, turnKnobs } = __require(33);
 const { CODE_LEN } = __require(34);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(52);
 
                            
              
@@ -23951,6 +24382,16 @@ const { CODE_LEN } = __require(34);
                        
                                                                                                                         
                                                        
+     
+                                                                                                                      
+                                                                                                                         
+     
+                                                                                                                   
+     
+                                                                                                                 
+                                                                                                                  
+     
+                                                                                                                                                                        
            
                       
                       
@@ -24028,6 +24469,13 @@ function createAiHands(d           ) {
     const bad = Object.keys(set).find((n) => !(n in code));
     return bad ? `${fn} has no knob "${bad}" (its knobs: ${Object.keys(code).join(', ') || 'none'})` : null;
   };
+  /** A unit as the knobs say it (" m", " s"); the code's own word when the editor has none. */
+  const unit = (u        ) => {
+    const s = d.t(`hands.unit.${u}`);
+    return s === `hands.unit.${u}` ? ` ${u}` : s;
+  };
+  /** A gap in the AI's line (English, exact enough to quote): 3D metres to the centimetre, 2D whole pixels. */
+  const gapNum = (x        ) => (d.dim() === '2d' ? `${Math.round(x)} px` : `${Math.round(x * 100) / 100} m`);
   /** A code layout's objects are its own keys: "hex-3" of codePlace('hex'). */
   const ofPlace = (p               , key        ) => p.keys.includes(key) || (key.startsWith(`${p.id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(p.id.length + 1)));
 
@@ -24142,11 +24590,30 @@ function createAiHands(d           ) {
         }
         const len = info.round && info.round >= 0.1 && info.round <= 600 ? info.round : CODE_LEN;
         const m = { name: op.name, len, keys: {}, code: op.code }                 ;
+        // ✦ Turn into a rule (studio-code-torule): the points it had, kept to measure the rule against (and to compare on
+        // screen until Save) — the shape the person made, not the file's (it may not be saved yet).
+        const hand                    = named && op.replace && !named.code && named.keys?.p?.length
+          ? { keys: structuredClone(named.keys.p), len: named.len, ...(named.repeat ? { repeat: named.repeat } : {}) } : null;
         const r = d.make(op.key ?? null, m, { when: op.when, until: op.until, replace: op.replace, whenOf: () => ({ ...HANDS_MAKE_WHEN })               });
         if ('error' in r) return { error: r.error };
-        return { name: r.name, when: r.when, replaced: !!(named && op.replace), words: words(r.name) };
+        if (!hand) return { name: r.name, when: r.when, replaced: !!(named && op.replace), words: words(r.name) };
+        // How close the rule came, measured here (the person reads the editor's number, not the AI's word for it): one
+        // round of the rule — what its violet line shows — at 64 places, each against the points at the same time.
+        const round = info.round && info.round > 0 ? info.round : CODE_LEN;
+        const pts = d.ruleSamples ? await d.ruleSamples(op.code, knobsNow(info.knobs, d.lib(r.name)?.knobs), round, MOTION_SAMPLES) : null;
+        const g = pts?.length ? motionGap(hand, pts).max : null;
+        d.swapped?.({ kind: 'motion', name: r.name, hand, gap: g });
+        const w = { ...words(r.name), ...(g ? { gap: gapText(g.d, d.dim(), unit), t: timeText(g.t) } : {}) };
+        return { name: r.name, when: r.when, replaced: true, words: w, wordsKey: g ? 'hands.motion.toRule' : 'hands.motion.toRuleSame',
+          gapSaid: g ? `; the editor measured how close it is: the largest gap is ${gapNum(g.d)} at ${timeText(g.t)} s of a ${timeText(round)} s round (${pts .length} places against the ${hand.keys.length} points it had)` : '' };
       }
       case 'place.code': {
+        // ✦ Turn into a rule (studio-code-torule): where the hand-placed objects stand NOW, read before the game is read
+        // again for the new layout — each to be compared with the rule's object of the same number (`replace` order).
+        const hand             = (Array.isArray(op.replace) ? op.replace             : []).flatMap((k, i) => {
+          const ps = d.item(k) ? d.pose(k) : undefined;
+          return ps ? [{ key: k, label: name(k), p: ps.p.slice(), n: i + 1 }] : [];
+        });
         const info = await findCode(d.codePlaces, (p) => p.id, op.id);
         if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
         const e = d.place(op.id) ?? {};
@@ -24156,7 +24623,13 @@ function createAiHands(d           ) {
         const gone = op.replace.filter((k        ) => !d.item(k) && !(e.from ?? []).includes(k));
         if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
         d.setPlace(op.id, { ...e, from: [...new Set([...(e.from ?? []), ...op.replace])] });
-        return { keys: info.keys.length, words: { name: info.name, n: op.replace.length, what }, wordsKey: 'hands.place.codeReplace' };
+        // How close: each hand object against the rule's object of its number, where it stands now (the model's pose).
+        const g = hand.length ? placeGaps(hand, (n) => (info.keys.includes(`${op.id}-${n}`) ? d.pose(`${op.id}-${n}`)?.p : null)) : null;
+        if (hand.length) d.swapped?.({ kind: 'place', id: op.id, spots: hand, gap: g?.max ?? null });
+        const max = g?.max;
+        return { keys: info.keys.length, words: { name: info.name, n: op.replace.length, what, ...(max ? { obj: max.label, gap: gapText(max.d, d.dim(), unit) } : {}) },
+          wordsKey: max ? 'hands.place.toRule' : 'hands.place.codeReplace',
+          gapSaid: max ? `; the editor measured how close it is: the largest gap is ${max.key} ↔ ${op.id}-${max.n}, ${gapNum(max.d)} (${hand.length - g .unmatched} of ${hand.length} compared${g .unmatched ? `; ${g .unmatched} with no object of that number in the rule` : ''})` : '' };
       }
       case 'place.set': {
         const info = await findCode(d.codePlaces, (p) => p.id, op.id);
@@ -24374,7 +24847,8 @@ function createAiHands(d           ) {
       if (did.error) results.push({ do: op.do, ok: false, error: did.error });
       else {
         if (op.do.startsWith('level.')) levelLast = op.do === 'level.new' || op.do === 'level.duplicate' ? 'made' : 'other';
-        results.push({ do: op.do, ok: true, said: handsSaid(op, did), ...(did.list ? { list: did.list } : {}) });
+        // ✦ Turn into a rule: the editor's measure goes after what was done, for the AI to quote in its one line.
+        results.push({ do: op.do, ok: true, said: handsSaid(op, did) + (typeof did.gapSaid === 'string' ? did.gapSaid : ''), ...(did.list ? { list: did.list } : {}) });
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
           if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code'].includes(op.do)) lead = said.length;
@@ -24402,7 +24876,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -24522,7 +24996,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -24605,7 +25079,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -24868,7 +25342,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -25288,7 +25762,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -25327,7 +25801,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -25501,7 +25975,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -25699,7 +26173,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -25810,7 +26284,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -25967,7 +26441,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -26037,7 +26511,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -26126,7 +26600,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -26275,7 +26749,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -26338,7 +26812,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -26551,7 +27025,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -26641,7 +27115,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -26657,11 +27131,11 @@ __defs[79] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(75);
-const { withLooks } = __require(74);
-const { createUiScreens } = __require(76);
-const { UiStyleModel, validLook, validTheme } = __require(77);
-const { createUiTheme } = __require(78);
+const { createUiCard } = __require(76);
+const { withLooks } = __require(75);
+const { createUiScreens } = __require(77);
+const { UiStyleModel, validLook, validTheme } = __require(78);
+const { createUiTheme } = __require(79);
                                                    
 
                              
@@ -26856,7 +27330,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -26933,7 +27407,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -26975,35 +27449,36 @@ const { renderSettings } = __require(47);
 const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(46);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
 const { createPlacementPanel } = __require(50);
-const { createTimeline } = __require(55);
+const { createTimeline } = __require(56);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(56);
-const { motionLibrary } = __require(34);
+const { createMotionAsk } = __require(57);
+const { CODE_LEN, motionLibrary } = __require(34);
 const { attachWorld, roundLib } = __require(35);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(57);
-const { createCodePlaceWire } = __require(58);
-const { createPalette } = __require(59);
-const { fitPicture } = __require(60);
+const { receipt } = __require(58);
+const { createCodePlaceWire } = __require(59);
+const { createPalette } = __require(60);
+const { fitPicture } = __require(61);
 const { PlacementModel } = __require(36);
-const { UndoStack, poseChange, sharedMotion } = __require(61);
-const { createAiHands } = __require(63);
+const { UndoStack, poseChange, sharedMotion } = __require(62);
+const { createAiHands } = __require(64);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(52);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(48);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(49);
-const { installTooltips } = __require(64);
-const { createShortcutSheet } = __require(65);
-const { createContextMenu } = __require(66);
-const { Levels, worldOf } = __require(67);
-const { checkNoteId } = __require(68);
-const { createLevelSwitch, makeRows } = __require(69);
-const { contextRows } = __require(70);
-const { bigChanges, createSafeSave } = __require(71);
-const { createUnsavedGuard, lostBy, playAsks } = __require(72);
-const { createLayerSwitch } = __require(73);
-const { uiAsPlacement, uiEntries, withUi } = __require(74);
-const { createUiWire } = __require(79);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(80);
+const { installTooltips } = __require(65);
+const { createShortcutSheet } = __require(66);
+const { createContextMenu } = __require(67);
+const { Levels, worldOf } = __require(68);
+const { checkNoteId } = __require(69);
+const { createLevelSwitch, makeRows } = __require(70);
+const { contextRows } = __require(71);
+const { bigChanges, createSafeSave } = __require(72);
+const { createUnsavedGuard, lostBy, playAsks } = __require(73);
+const { createLayerSwitch } = __require(74);
+const { uiAsPlacement, uiEntries, withUi } = __require(75);
+const { createUiWire } = __require(80);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(81);
 
                                                                         
 
@@ -27228,7 +27703,91 @@ function start(host            ) {
     markSeen: (id) => markHint(id),
     // ✦ Ask AI on a motion (studio-motion-panel, motion-ask.ts): the chat box with the "object · motion" chip.
     ask: host.offline ? undefined : (k, m) => askMotion(k, m),
+    // ✦ Turn into a rule… (studio-code-torule): the same chip, the draft "Turn into a close rule", the request's intent.
+    toRule: host.offline ? undefined : (k, m) => {
+      askMotion(k, m, t('toRule.draft'));
+      toRuleAsk = { key: k, use: m.use };
+    },
+    compare: (name) => {
+      const hand = ruleCompare.motion(name, !!motionLibrary.get(name)?.code);
+      if (!hand) return null;
+      const g = ruleCompare.motionGapOf(name);
+      return { hand, on: ruleCompare.show, gap: g ? t('toRule.maxMotion', { gap: gapText(g.d, worldDim, unitWord) }) : null, at: g ? t('toRule.atTime', { t: timeText(g.t) }) : null };
+    },
+    compareShow: (on) => setCompareShown(on),
+    remeasure: (name) => void remeasureMotion(name),
   });
+  // ----- ✦ Turn into a rule (studio-code-torule, 2026-10-24; shell/to-rule.ts) -----
+  // What the AI swapped in for the hand's shape, and the hand's shape itself, until Save: the comparison on the card,
+  // the timeline and in the game.
+  const ruleCompare = new RuleCompare();
+  /**
+   * The ✦ press the chat box's words are for: the hand-placed objects picked then (sorted keys), or the motion (its object
+   * and Library motion). The request gets `intent: 'to-code'` only while the screen still shows that (motion-ask.ts's rule).
+   */
+  let toRuleAsk                                                         = null;
+  const unitWord = (u        ) => t(`hands.unit.${u}`);
+  const levelNow = () => (levels.active ? levels.current : '');
+  let measureId = 0;
+  /** A rule motion's offsets over `len` seconds (`per` places), as the game page runs it — null when it does not answer. */
+  function ruleSamples(code        , knobs                        , len        , per        )                              {
+    return new Promise((resolve) => {
+      // Ids of their own (timeline-wire's "Make editable points" counts from 1): an answer is never taken for the other's.
+      const id = 1_000_000 + ++measureId;
+      const off = ctx.on('studio:timeline/code-points', (m) => {
+        if (m.id !== id) return;
+        off();
+        clearTimeout(timer);
+        resolve(m.keys ?? null);
+      });
+      const timer = window.setTimeout(() => (off(), resolve(null)), 3000);
+      send({ type: 'studio:timeline/code-points', id, code, knobs, len, per });
+    });
+  }
+  /** A compared rule motion's knob turned: its largest gap again, for the line. */
+  async function remeasureMotion(name        ) {
+    const l = motionLibrary.get(name);
+    const hand = ruleCompare.motion(name, !!l?.code);
+    const info = l?.code ? codeMotionList.find((c) => c.code === l.code) : undefined;
+    if (!l?.code || !hand || !info) return;
+    const knobs = Object.fromEntries(Object.entries(info.knobs).map(([n, k]) => [n, l.knobs?.[n]?.v ?? k.v]));
+    const pts = await ruleSamples(l.code, knobs, info.round && info.round > 0 ? info.round : CODE_LEN, MOTION_SAMPLES);
+    ruleCompare.setMotionGap(name, pts?.length ? motionGap(hand, pts).max : null);
+    timeline.compared();
+  }
+  /** The comparison changed (a swap, Save, the switch): the card, the guide, the timeline and the game's marks again. */
+  function compareChanged() {
+    codePlaces.guide(true);
+    timeline.compared();
+    if (tool === 'placement' && page === 'tool') placementPanel.render();
+  }
+  function setCompareShown(on         ) {
+    ruleCompare.show = on;
+    compareChanged();
+  }
+  /** ✦ Turn into a rule on the card: several hand-placed world objects, none of them a rule's own already. */
+  function toRuleFor(keys          )                      {
+    if (host.offline || editLayer !== 'world' || keys.length < 2) return null;
+    const its = keys.map((k) => items.find((i) => i.key === k));
+    if (its.some((i) => !i || i.kinds.includes('ui') || i.backdrop || i.held === 'ground' || i.movable === false || codePlaces.layoutOf(i.key))) return null;
+    return () => {
+      toRuleAsk = { keys: [...keys].sort().join('\n') };
+      focusAsk(t('toRule.draft'));
+    };
+  }
+  /** The request's `intent` (and whether its motion carries its points): only while the screen is what ✦ was pressed on. */
+  function toRuleNow(keys          )                              {
+    const a = toRuleAsk;
+    if (!a) return null;
+    if ('keys' in a) {
+      if ([...keys].sort().join('\n') === a.keys && !libraryShown()) return 'objects';
+    } else {
+      const at = motionAsk.now();
+      if (at && at.key === a.key && at.use === a.use && !libraryShown()) return 'motion';
+    }
+    toRuleAsk = null;
+    return null;
+  }
   // The motion the chat box is about (studio-motion-panel): set by ✦ Ask AI, gone once the screen shows something else.
   const motionAsk = createMotionAsk({
     picked: () => (editLayer === 'world' && group.length <= 1 ? selected : null),
@@ -28101,6 +28660,10 @@ function start(host            ) {
     selected: () => (editLayer === 'world' ? selected : null),
     group: () => (editLayer === 'world' ? group : []),
     editing: () => editing && !playing && editLayer === 'world',
+    // ✦ Turn into a rule (studio-code-torule): the hand objects a layout replaced, while its `from` still names them.
+    compare: (id) => ruleCompare.place(levelNow(), id, worldModel.places.get(id)?.from),
+    compareOn: () => ruleCompare.show,
+    setCompareOn: (on) => setCompareShown(on),
   });
   /** One change of a code layout's `places` entry: one undo step, laid out in the game (studio-code-base's setPlace). */
   function setPlace(id        , from                       , to                       ) {
@@ -28189,7 +28752,13 @@ function start(host            ) {
       applyPose(k, pose);
     },
     // While the AI waits for an answer, the field answers it (hands-on test 2026-10-19).
-    ask: (keys, text, files) => (answering() ? answerAi(text) : askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions() })),
+    ask: (keys, text, files) => {
+      if (answering()) return answerAi(text);
+      // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
+      const toRule = toRuleNow(keys);
+      if (toRule) toRuleAsk = null;
+      return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code'          } : {}) });
+    },
     answering: () => answering(),
     // The field's one placeholder (studio-words-plan, 2026-10-23): "Ask Claude…" whether or not Claude is there — the
     // presence words beside the field say that (it was "Write a note for Claude…" when unsure, a second wording).
@@ -28218,6 +28787,10 @@ function start(host            ) {
     layout: (k) => (editLayer === 'world' ? codePlaces.card(k) : null),
     ruleTag: (k) => (editLayer === 'world' ? codePlaces.listTag(k) : null),
     ruleRows: (k) => (editLayer === 'world' ? codePlaces.rows(k) : []),
+    // ✦ Turn into a rule (studio-code-torule): several hand-placed objects picked → the draft in the chat box.
+    toRule: (keys) => toRuleFor(keys),
+    // …and the hand objects a rule layout took the place of are not listed while it does (they are hidden in the game).
+    replaced: (k) => editLayer === 'world' && codePlaceList.some((p) => worldModel.places.get(p.id)?.from?.includes(k) && !p.keys.includes(k)),
     motion: (k) => timeline.cardRow(k, {
       menu: (at, entries) => {
         const o = { place: 'card-motion', label: t('motion.label'), holdDelete: true };
@@ -28387,13 +28960,14 @@ function start(host            ) {
    * The motions picked in the Library, for an ask (studio-motion-triggers): each with its length and what it is on now
    * (`on`: keys with when / until), so "make this crate Hop when the player walks up" reaches the AI with both names.
    */
-  function requestMotions()                                {
+  function requestMotions(points = false)                                {
     const at = libraryShown() ? null : motionAsk.now();
     if (!libraryShown() && !at) return {};
     const out                  = [];
     for (const name of at ? [at.use] : libraryMotions.picked()) {
       const m = motionLibrary.get(name);
-      if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name) });
+      // ✦ Turn into a rule…: its points go too — the shape on screen, saved or not, is what the AI fits a rule to.
+      if (m) out.push({ name, len: m.len, ...(m.repeat ? { repeat: m.repeat } : {}), on: timeline.usage(name), ...(points && m.keys?.p?.length ? { keys: { p: structuredClone(m.keys.p) } } : {}) });
     }
     return out.length ? { motions: out } : {};
   }
@@ -28726,11 +29300,15 @@ function start(host            ) {
     if (keys.length === 1) selectObject(keys[0] );
     else selectMany(keys, keys[0] );
   }
-  /** ✦ Ask AI on `key`'s motion: picked (no camera move), the chip names both, the cursor in the chat box. Nothing is sent. */
-  function askMotion(key        , m                               ) {
+  /**
+   * ✦ Ask AI on `key`'s motion: picked (no camera move), the chip names both, the cursor in the chat box. Nothing is sent.
+   * `draft`: words put in first (✦ Turn into a rule…'s "Turn into a close rule").
+   */
+  function askMotion(key        , m                               , draft         ) {
     if (selected !== key || group.length > 1) selectObject(key);
     motionAsk.set(key, m);
-    focusAsk();
+    toRuleAsk = null;
+    focusAsk(draft);
   }
   /**
    * Rename in place (studio-uniforms, 2026-10-23; the menu's Rename, F2): the name shows everywhere at once, one undo
@@ -30794,6 +31372,11 @@ function start(host            ) {
             renderLevelMade();
           }
           motionLibrary.markSaved();
+          // ✦ Turn into a rule (studio-code-torule): the AI takes the hand's shape out of the code now — nothing to compare.
+          if (ruleCompare.any()) {
+            ruleCompare.clear();
+            compareChanged();
+          }
           written.placement = sig;
           // The host keeps every hand-off as a request (§3.4): wait for the AI's pick-up like any ask.
           handedOver('saved', r.request, r.at, undefined, r);
@@ -32053,6 +32636,24 @@ function start(host            ) {
     place: (id) => worldModel.places.get(id),
     placeIds: () => worldModel.places.ids(),
     setPlace: (id, e) => setPlace(id, worldModel.places.get(id), e),
+    // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
+    ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
+    swapped: (x) => {
+      if (x.kind === 'motion') {
+        ruleCompare.setMotion(x.name, x.hand, x.gap);
+        timeline.compared();
+        return;
+      }
+      ruleCompare.setPlace(levelNow(), x.id, x.spots);
+      // The rule's objects lit violet, as the AI's other changes are (the person sees what came in).
+      const keys = codePlaceList.find((p) => p.id === x.id)?.keys ?? [];
+      if (keys.length) setAiMarks(new Map(keys.map((k) => [k, 'added'         ])));
+      // The person was looking at the hand objects (✦ on their card): the card turns to the rule's farthest one, its
+      // "Max deviation" and the game's orange marks in view at once.
+      const looking = [selected, ...group].some((k) => !!k && x.spots.some((s) => s.key === k));
+      if (looking && x.gap && keys.includes(`${x.id}-${x.gap.n}`)) selectObject(`${x.id}-${x.gap.n}`);
+      compareChanged();
+    },
     levels: {
       active: () => levels.active,
       current: () => levels.current,
@@ -32092,9 +32693,15 @@ function start(host            ) {
       level: levels.active ? { id: levels.current, name: levels.labelOf(levels.current) } : undefined,
       objects: worldItems.map((i) => {
         const ms = (timeline.motionOf(i.key)?.clips ?? []).map((c) => c.name);
-        return { key: i.key, name: displayName(i, t), ...(ms.length ? { motions: ms } : {}), ...(i.unstable ? { unstable: true } : {}), ...(i.backdrop || i.held === 'ground' ? { ground: true } : {}) };
+        // `p` (studio-code-torule): where it stands in the editor now, saved or not — what "turn the lamps into a rule"
+        // fits a rule to (centimetres / whole pixels: the rule's knobs are rounder than that anyway).
+        const ps = worldModel.pose(i.key);
+        const p = ps ? ps.p.map((v) => (worldDim === '2d' ? Math.round(v) : Math.round(v * 100) / 100)) : undefined;
+        return { key: i.key, name: displayName(i, t), ...(p ? { p } : {}), ...(ms.length ? { motions: ms } : {}), ...(i.unstable ? { unstable: true } : {}), ...(i.backdrop || i.held === 'ground' ? { ground: true } : {}) };
       }),
-      motions: motionLibrary.list().map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once', on: timeline.usage(m.name).map((u) => u.key) })),
+      // A motion of points with its points (`keys.p`, studio-code-torule): "turn the ship's motion into a rule" fits them.
+      motions: motionLibrary.list().map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once', on: timeline.usage(m.name).map((u) => u.key),
+        ...(!m.code && m.keys?.p?.length ? { keys: { p: m.keys.p.map((k) => ({ t: k.t, v: k.v.slice() })) } } : {}) })),
       ...(levels.active ? { levels: levels.list.map((e) => ({ id: e.id, name: levels.labelOf(e.id) })) } : {}),
     }),
     undoBegin: () => undo.begin(),
@@ -32269,7 +32876,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -32469,19 +33076,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(81);
-const { createLocalHost } = __require(82);
+const { start } = __require(82);
+const { createLocalHost } = __require(83);
 
 start(createLocalHost());
 
 
 };
-__require(83);
+__require(84);
 })();

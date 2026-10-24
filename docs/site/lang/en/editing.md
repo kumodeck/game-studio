@@ -174,6 +174,16 @@ Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save
 
 ![A hexagon of a row dragged toward the camera: violet rings, “Gap 4 → 2.5 m”, and the card’s Layout with Count and Gap](media/rule-layout.webp)
 
+### Turn things you placed into a rule
+
+Put a row of street lamps down one by one, and now you would rather tune it as a row? Select them (several things you placed yourself) and press **✦ Turn into a rule** on their card. The chat box at the bottom gets the words **Turn into a close rule** — add “6 m apart” if you know it — and you send them. Your AI writes the nearest rule (a row, a grid, a circle, a scatter) and puts it in their place: the ones you placed are hidden, the rule’s stand there, lit violet, with their knobs on the card.
+
+- **How close it came is measured by the editor**, not said by the AI: the card says **Max deviation: lamp-3 (0.6 m)**, and in the game an orange dot marks where each one stood, with a thin line to the rule’s one and **lamp-3 · 0.6 m** over the farthest. **Compare with original** turns those marks off and on.
+- One <kbd>⌘</kbd><kbd>Z</kbd> brings back the ones you placed. When no rule comes close (things scattered by hand), your AI leaves them as they are and tells you in a line.
+- The comparison stays until **Save**; after Save, your AI takes the ones you placed out of the game’s code (the rule is in their place).
+
+![Six street lamps turned into a row: the rule’s lamps lit violet, orange dots where the hand-placed ones stood, “lamp-3 · 0.6 m”, and the card’s “Compare with original” with “Max deviation: lamp-3 (0.6 m)”](media/to-rule-place.webp)
+
 ## The side window and phones
 
 In the pane next to the chat in the Claude app, and on a phone, everything at the bottom is **one sheet** under the game:

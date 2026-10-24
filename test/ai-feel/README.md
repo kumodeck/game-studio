@@ -15,4 +15,8 @@ Purpose: what the editor needs to test "asking the AI" without an AI: a stand-in
   game's code alone, puts the editor's link first and hands no steps, Reload or Save back to the person. The editor
   runs with its own HOME (no KUMODeck sign-in read) in a headless Chrome. `node test/ai-feel/real-ai.mjs [--model m]
   [--keep] [--out <dir>]`; exit 3 without the claude CLI or Chrome. Costs real AI usage.
+  `--steps to-rule` (studio-code-torule, 2026-10-24): the plaza gets six street lamps, a swaying ship and five crates,
+  all put by hand, and the AI is asked (in Japanese) to turn the lamps, then the ship's motion, then the crates into a
+  rule: a `--replace` of its own for the first two with the editor's measure in the reply, nothing replaced for the
+  crates (no rule comes close), and never steps for the person.
 - `pillars/` - the game it uses (Pillar Plaza: a blue pillar that already sways, three grey ones)
