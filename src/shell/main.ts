@@ -306,7 +306,7 @@ export function start(host: StudioHost) {
     reselect: (k) => selectObject(k),
     // Rule motions (studio-code-knobs): the game page's codeMotion() list (knobs, round, the ◇'s knob).
     codeMotions: () => codeMotionList,
-    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    told: (text, undo = true) => showToast(!undo ? text : phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
     place: (k) => worldModel.pose(k),
     order: () => worldItems.map((i) => i.key),
     label: (k) => {
@@ -357,7 +357,7 @@ export function start(host: StudioHost) {
   /** A rule motion's offsets over `len` seconds (`per` places), as the game page runs it — null when it does not answer. */
   function ruleSamples(code: string, knobs: Record<string, number>, len: number, per: number): Promise<MotionKey[] | null> {
     return new Promise((resolve) => {
-      // Ids of their own (timeline-wire's "Make editable points" counts from 1): an answer is never taken for the other's.
+      // Ids of their own (timeline-wire's "Convert to coordinates" counts from 1): an answer is never taken for the other's.
       const id = 1_000_000 + ++measureId;
       const off = ctx.on('studio:timeline/code-points', (m) => {
         if (m.id !== id) return;
@@ -1267,7 +1267,7 @@ export function start(host: StudioHost) {
   new ResizeObserver(() => placeTimeline()).observe(timeline.el);
 
   // The game's code layouts on the card, in the list and in the game (studio-code-knobs, 2026-10-24; code-place-wire.ts):
-  // the card's Layout and its knobs, a drag that turns a knob, "Manually overridden", "Place individually".
+  // the card's Layout and its knobs, a drag that turns a knob, "Hand-placed" (⌥ only), "Convert to coordinates".
   const codePlaces = createCodePlaceWire({
     t,
     list: () => codePlaceList,
@@ -1281,7 +1281,15 @@ export function start(host: StudioHost) {
       if (card) placementPanel.render();
       renderButtons();
     },
-    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    // studio-to-coords: with pressable words after it ("Reset to rule", "✦ Ask Claude: …"); `undo` false = nothing was
+    // done (a rule kept its object still), so no "⌘Z undoes it".
+    told: (text, actions, undo = true) => showToast(!undo ? text : phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), actions?.length ? 9000 : 6000, actions),
+    name: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    },
+    ask: (draft) => focusAsk(draft),
+    touch: () => phone() || !!window.matchMedia?.('(pointer: coarse)').matches,
     selected: () => (editLayer === 'world' ? selected : null),
     group: () => (editLayer === 'world' ? group : []),
     editing: () => editing && !playing && editLayer === 'world',
@@ -2116,7 +2124,7 @@ export function start(host: StudioHost) {
       ai: r.ai,
       run: run[r.id] ?? (() => undefined),
     }));
-    // A code layout's object (studio-code-knobs): "Place individually" / "Reset to rule", in a group of their own before
+    // A code layout's object (studio-code-knobs): "Convert to coordinates" / "Reset to rule", in a group of their own before
     // the last group (Delete stays last).
     const rr = place === 'object' && its.length === 1 && editLayer === 'world' ? codePlaces.rows(its[0]!.key) : [];
     if (rr.length) {
@@ -3544,6 +3552,10 @@ export function start(host: StudioHost) {
         codePlaces.knob(m);
         if (m.end) keepSoon();
         break;
+      // …or went a way its rule keeps (studio-to-coords): nothing moved — why, ⌥, and ✦ to ask for that knob.
+      case 'studio:place/held':
+        if (editLayer === 'world') codePlaces.held(m);
+        break;
       // Keep-out areas in the game (studio-code-keepout; bridge/keep-out.ts): a box drawn / dragged, a ◇ turned, the
       // objects put by hand that stand in an area, "+ Draw a box" stopped there.
       case 'studio:place/avoid-box':
@@ -3744,9 +3756,9 @@ export function start(host: StudioHost) {
         }
         // Otherwise the place moves; with the timeline open, what the game shows is the place + the motion now.
         if (hand) (m.pose = timeline.placeFor(m.key, m.pose)), m.from && (m.from = timeline.placeFor(m.key, m.from));
-        // An object of a code layout (studio-code-knobs): ⌥-dragged (or a turn / a resize) = just this one by hand, its
-        // pin (one undo step); never an `objects` entry of its own.
-        if (hand && codePlaces.moved(m.key, m.pose, !!m.end)) {
+        // An object of a code layout (studio-code-knobs): ⌥-dragged = just this one by hand, its pin (one undo step);
+        // never an `objects` entry of its own. Without ⌥ it stays in its rule (studio-to-coords: put back, and why).
+        if (hand && codePlaces.moved(m.key, m.pose, !!m.end, !!m.alone, m.press)) {
           if (m.key === selected) placementPanel.updateNumbers();
           renderButtons();
           break;
@@ -3764,7 +3776,7 @@ export function start(host: StudioHost) {
         // The timeline: those that record become keys (one undo step with the others' moves), the rest move their place.
         const tl0 = editLayer === 'world' ? timeline.movedGroup(m.poses, !!m.end) : { rest: m.poses, changes: [] };
         // A code layout's objects among them (studio-code-knobs): their pins, in the same undo step.
-        const cp = editLayer === 'world' ? codePlaces.groupMoved(tl0.rest, !!m.end) : { rest: tl0.rest, changes: [] };
+        const cp = editLayer === 'world' ? codePlaces.groupMoved(tl0.rest, !!m.end, !!m.alone) : { rest: tl0.rest, changes: [] };
         const tl = { rest: cp.rest, changes: [...tl0.changes, ...cp.changes] };
         for (const e of tl.rest) model.moved(e.key, e.pose);
         if (m.end) {
@@ -4786,14 +4798,27 @@ export function start(host: StudioHost) {
     if (!selected || !editing || blind) return false;
     const s = keyStep(e.key, e.shift, dim);
     if (!s) return false;
-    send({ type: 'studio:placement/step', key: selected, ...s, hold: false, keys: group.length > 1 ? group.slice() : undefined });
+    sendStep(s, false);
     return true;
+  }
+  /**
+   * A key step for what is picked (arrows, Q / E, PgUp / PgDn, End). A rule layout's objects among them stay where the
+   * rule puts them (studio-to-coords, 2026-10-24: "a rule's object stays a rule however you touch it" — a step was a pin
+   * without ⌥), and the line says why; the others step. None left: nothing is sent.
+   */
+  function sendStep(s: Omit<Extract<ShellToBridge, { type: 'studio:placement/step' }>, 'type' | 'key' | 'hold' | 'keys'>, hold: boolean) {
+    const picked = group.length > 1 ? group.slice() : selected ? [selected] : [];
+    // A held key repeats: the why is said once, at the first press.
+    const keys = editLayer === 'world' ? codePlaces.steps(picked, hold) : picked;
+    if (!keys.length) return;
+    const key = keys.includes(selected!) ? selected! : keys[0]!;
+    send({ type: 'studio:placement/step', key, ...s, hold, keys: keys.length > 1 ? keys : undefined });
   }
 
   /** Drop to floor (End, ⌘K, the place's menu): the step the End key sends, for what is picked. */
   function dropToFloor() {
     if (!selected || !editing || !canDrop) return;
-    send({ type: 'studio:placement/step', key: selected, op: 'drop', hold: false, keys: group.length > 1 ? group.slice() : undefined });
+    sendStep({ op: 'drop' }, false);
   }
 
   function closeStripMenu() {
@@ -4905,7 +4930,7 @@ export function start(host: StudioHost) {
     if (e.repeat && selected && !libraryShown()) {
       const s = keyStep(e.key, e.shiftKey, dim);
       if (s && !e.ctrlKey && !e.metaKey) {
-        send({ type: 'studio:placement/step', key: selected, ...s, hold: true, keys: group.length > 1 ? group.slice() : undefined });
+        sendStep(s, true);
         e.preventDefault();
         return;
       }
@@ -4920,16 +4945,26 @@ export function start(host: StudioHost) {
   // not on a plate stacked over it (the second design review's ⑧, 2026-10-19: on a phone the foot then held the plate,
   // the card and the bar; PC the same). Only while the field is empty and not being typed in, and while the bar is on
   // screen; anything longer (an error, Save's "what next") or a bar in use keeps the news plate above it, as before.
-  function showToast(text: string, ms = 3500) {
+  /**
+   * A short line for a few seconds: over the ask field when it fits, else in the news card. `actions` (studio-to-coords):
+   * pressable words after it ("Reset to rule", "✦ Ask Claude: …") — always in the news card (the field's line is not
+   * pressable).
+   */
+  function showToast(text: string, ms = 3500, actions?: Array<{ label: string; run(): void }>) {
     toast = text;
     clearTimeout(toastTimer);
     hideNews();
-    if (newsInBar(text)) {
+    if (!actions?.length && newsInBar(text)) {
       toastEl.classList.remove('on');
       toastTimer = window.setTimeout(hideNews, ms);
       return;
     }
     toastEl.textContent = toast;
+    // ✦ (asking the AI) in the AI's violet, the rest in the hand's orange (the colours' one rule).
+    for (const a of actions ?? []) toastEl.append(' · ', h('button', { type: 'button', class: `link-btn toast-act${a.label.startsWith('✦') ? ' ai' : ''}`, dataset: { part: 'toast-act' }, onclick: () => {
+      toastEl.classList.remove('on');
+      a.run();
+    } }, a.label));
     toastEl.classList.add('on');
     toastTimer = window.setTimeout(() => toastEl.classList.remove('on'), ms);
   }

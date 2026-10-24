@@ -5,7 +5,8 @@
 //   - a drag finds the knob: the value that brings the object nearest the finger, the edge where the rule cannot reach
 //   - what a layout looks like (a line / a scatter) comes from running its rule
 //   - the shell: one knob turn = one undo step and one Save count, a drag of one object with ⌥ = its pin, Place
-//     individually = hand + every pin, and a layout's objects never become `objects` entries of their own
+//     individually (now "Convert to coordinates", studio-to-coords) = hand + every pin, and a layout's objects never
+//     become `objects` entries of their own
 //   - a rule motion's words come from its knobs, and a knob back on the code's number leaves the file
 //   node --experimental-strip-types --no-warnings --test test/code-knobs.test.ts
 import test from 'node:test';
@@ -162,6 +163,7 @@ function shell() {
   const w = createCodePlaceWire({
     t: (k, v) => translate('en', k, v), list: () => [info], store: () => model.places, codePoses: (p) => model.codePoses(p), pose: (k) => model.pose(k), dim: () => '3d',
     send: (m) => sent.push(m), commit, changed: () => {}, told: (x) => told.push(x), selected: () => selected, group: () => [], editing: () => true,
+    name: (k) => items.find((i) => i.key === k)?.label ?? k,
   });
   const undoOnce = () => {
     const e = undo.undo();
@@ -191,12 +193,12 @@ test('the shell: one knob turn is one undo step and one Save count; a layout\'s 
   assert.deepEqual(s.w.savedWords(), ['hex Gap → 4 m'], 'the Save receipt says the rule\'s number');
 });
 
-test('the shell: ⌥-drag of one object = its pin (one undo step); Place individually = hand + every pin; a hand object as before', () => {
+test('the shell: ⌥-drag of one object = its pin (one undo step); Convert to coordinates = hand + every pin; a hand object as before', () => {
   const s = shell();
   assert.equal(s.w.moved('gate', { p: [1, 0, -22] }, true), false, 'a hand-placed object is not a layout\'s: as before');
-  assert.equal(s.w.moved('hex-3', { p: [-3, 0.95, -12] }, false), true, 'live: taken, no undo');
+  assert.equal(s.w.moved('hex-3', { p: [-3, 0.95, -12] }, false, true), true, 'live: taken, no undo');
   assert.equal(s.undo.size, 0);
-  s.w.moved('hex-3', { p: [-3.1, 0.95, -12] }, true);
+  s.w.moved('hex-3', { p: [-3.1, 0.95, -12] }, true, true);
   assert.equal(s.undo.size, 1);
   assert.deepEqual(s.model.places.get('hex')?.pins, { 'hex-3': { p: [-3.1, 0.95, -12] } });
   assert.deepEqual(s.model.result().objects, {}, 'the pin is the layout\'s, not an object entry');
@@ -207,7 +209,8 @@ test('the shell: ⌥-drag of one object = its pin (one undo step); Place individ
   assert.equal(e.hand, true);
   assert.deepEqual(Object.keys(e.pins!).sort(), ['hex-1', 'hex-2', 'hex-3', 'hex-4']);
   assert.equal(s.undo.size, 2);
-  assert.match(s.told[0]!, /Placed hex ×4 individually/);
+  assert.match(s.told[0]!, /Placed hex 3 by hand/, 'the ⌥ one was told (studio-to-coords)');
+  assert.match(s.told[1]!, /Converted the hex rule to coordinates/);
   assert.deepEqual(s.w.card('hex-2'), { els: [], numbers: true }, 'now an ordinary card (its own numbers)');
   assert.equal(s.w.listTag('hex-2'), null, 'and no Rule tag in the list');
   s.undoOnce();
@@ -224,10 +227,14 @@ test('the screen says "rule", never "code", for a rule motion or layout (the wor
     assert.doesNotMatch(translate('en', k, vars), /\bcode\b/i, `en ${k}`);
     assert.doesNotMatch(translate('ja', k, vars), /コード/, `ja ${k}`);
   }
-  assert.equal(translate('ja', 'rule.points'), '編集点にする');
-  assert.equal(translate('en', 'rule.individually'), 'Place individually');
-  assert.equal(translate('ja', 'rule.pinned'), 'この 1 個だけ手動で配置中');
-  assert.equal(translate('ja', 'rule.reset'), '元の並びに戻す');
+  // studio-to-coords (the request of 10/24): one button, the same words for a rule motion and a rule layout.
+  assert.equal(translate('ja', 'rule.points'), '座標にする');
+  assert.equal(translate('ja', 'rule.individually'), '座標にする');
+  assert.equal(translate('en', 'rule.points'), 'Convert to coordinates');
+  assert.equal(translate('en', 'rule.individually'), 'Convert to coordinates');
+  assert.equal(translate('ja', 'rule.pointsDone', { name: 'らせん' }), 'らせんのルールを座標にしました');
+  assert.equal(translate('ja', 'rule.handTag'), '手置き');
+  assert.equal(translate('ja', 'rule.reset'), 'ルールに戻す');
   assert.equal(translate('en', 'rule.missing'), 'No motion rule found');
   assert.equal(translate('ja', 'rule.disableTip'), '一時停止（動きは残る）');
 });
@@ -237,5 +244,8 @@ test('the line under the strip: the words chosen on 10/24; shorter in a narrow w
   assert.equal(placeNote('en', 'hex', 4, 'Gap', { narrow: false, touch: false }), 'hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one');
   assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: true, touch: false }), '動かすと間が変わる · ⌥+ドラッグで 1 個だけ');
   assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: true, touch: true }), '動かすと間が変わる');
-  assert.equal(placeNote('en', 'crystal', 12, null, { narrow: false, touch: false }), 'crystal ×12 (rule): Moving one places it individually');
+  // studio-to-coords: no knob for that way = the rule keeps it (never "moving one places it individually" any more).
+  assert.equal(placeNote('en', 'crystal', 12, null, { narrow: false, touch: false }), 'crystal ×12 (rule): Position is set by the rule · ⌥-drag to move one');
+  assert.equal(placeNote('ja', '街灯', 12, ['間', '道からの距離'], { narrow: true, touch: false }), '動かすと間・道からの距離が変わる · ⌥+ドラッグで 1 個だけ');
+  assert.equal(placeNote('ja', '街灯', 12, null, { narrow: true, touch: true, way: 'up' }), '高さはルールで決まっています');
 });

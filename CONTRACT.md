@@ -507,6 +507,12 @@ any motion (`{ use: name, when, until }`), so detach, delete, rename, `when` / `
   In the editor (stage 1) a code motion is its row and its name — the strip one round wide (4 s until the page says),
   no points; ▶ Play plays it (the play hook runs the draft's `motions`). Its knobs on the row, the ◇ on the path and
   "Turn into points" come in stage 2.
+- **A rule motion stays a rule** (studio-to-coords, 2026-10-24; a request that day: "a rule's thing should stay a rule however it
+  is moved — to make it your own shape, a button converts the rule to coordinates"): its knobs and the ◇ change its
+  numbers; moving the object moves where it goes round; K / ⌘V on the timeline add no point to it (the line says so).
+  **Convert to coordinates** (the strip's button, it was "Make editable points") makes it a motion of points, 16 a
+  round, one ⌘Z — and the points are **relative**: offsets from where the object stands (`at()`'s offsets, as every
+  motion's keys are), so moving the object moves the path with it.
 
 ### 1.10 Levels (2026-10-22)
 
@@ -612,6 +618,18 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   soft reload — stage 2 moves the objects in place); a knob the code has caught up with leaves the file without a count.
 - Stage 1 shows a layout by its name (the shelf, the card's title, `--do list`); its knobs on the card, dragging one
   object to turn a knob, ⌥ "just this one", the purple path and the keep-out list on the ground are stages 2–3.
+- **A rule's object stays in its rule** (studio-to-coords, 2026-10-24; a request that day: "however it is moved", and the CRYSTAL
+  FIELD try of that day — a lamp dragged away from the road did nothing and said nothing; lifted, it silently became a
+  pin). `drag` names the knob each way a person drags one of its objects turns: `'gap'` (Move, as before) or
+  `{ along, side, up, turn, size }` — Move turns `along` and `side` together (the numbers that bring the object nearest
+  the finger), Height `up`, Turn `turn`, Size `size`. A way with no knob does not move it: the chip says why while the
+  finger is down ("Sideways position is set by the rule · ⌥ for just this one") and, when the drag ends where the rule
+  cannot follow, `studio:place/held { id, key, way }` makes the editor say it again with ✦ (a draft asking for that knob).
+  Only ⌥ (Ctrl) puts one object by hand (`placement/moved` `alone: true` → its pin), told "Placed Street lamps 3 by hand ·
+  ⌘Z · Reset to rule" and marked **Hand-placed** on the card and in the list. A key step, a game's tool, a group drag or
+  the AI's `object.move` never take one out of its rule (put back / left out / refused with the `place.set` ways).
+  **Convert to coordinates** (the card's button, it was "Place individually") turns the whole layout into coordinates
+  (`hand: true`, every object's pin; one ⌘Z) — where each stands now, as before.
 - **✦ Turn into a rule** (studio-code-torule, 2026-10-24; the other way round: hand → rule). Several hand-placed objects
   picked: the card's "✦ Turn into a rule"; a motion of points: its row's ⋯ / right-click "✦ Turn into a rule…". Either
   puts the draft "Turn into a close rule" in the chat box (nothing is sent; the request then has `intent: "to-code"`,
@@ -659,14 +677,14 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `placement/items` | `Item[]`; `layer?` whose list it is (UI stage 1; absent = the world). When editing starts in a game with a UI, the UI's list is sent once too, so its saved places are kept and shown |
 | | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`), when editing starts and after `ui/theme-set` (only when there are some) |
 | | `placement/selected` | `{ key, item? }` |
-| | `placement/moved` | `{ key, pose, end?, from?, press?, hold? }` |
+| | `placement/moved` | `{ key, pose, end?, from?, press?, hold?, alone? }` (`alone`: ⌥ held — a rule's object put by hand, §1.12) |
 | | `placement/thumb` | `{ key, src }` (`data:image/png;base64,…` or null), one per key asked for by `placement/thumbs` |
 | | `placement/tool` | `{ tool }`: the strip's chosen tool changed in the game (a strip button, M / H / T / S, Escape) |
 | | `placement/menu` | `{ open }`: the strip's choices (the ▾ on turn / size) opened or closed in the game |
 | | `placement/context` | `{ key, x, y, touch }`: a right-click (Mac: also Control-click) or a long press on the game: the editor page opens the menu for that place. `key` = the object under it (null = nothing / only the ground); an object not picked yet was picked first, without moving the camera |
 | | `placement/at-is` | `{ id, key }`: the answer to `placement/at` (the same test as a tap; `key` null = nothing there) |
 | | `placement/motion-press` | `{ key, x, y, w, h, touch, keyboard }`: the strip's Motion button pressed (or A / 5 with the game page focused; studio-motion-tool). The editor opens the pick's motion on the timeline, or — none yet — its small menu at the button (`x y w h`, the game page's px; 0 × 0 for a key): "No motion yet", **Make a motion** (the timeline at 1 s, where it stands being 0 s; §1.9.3) and **Use a saved motion** (the Library's; studio-tool-clear, 2026-10-23 — no list of kinds) |
-| | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold? }` (§1.8) |
+| | `placement/moved-group` | `{ poses: [{ key, pose, from? }], end?, press?, hold?, alone? }` (§1.8; without `alone` a rule's objects are left out, §1.12) |
 | | `placement/added` | `{ items: [{ key, from, pose, ghost? }], failed }` (§1.8) |
 | | `library/assets` | `{ loads: LoadEntry[], uses: { key: AssetRef[] } }` |
 | | `library/previewed` | `{ url, ok }` |
@@ -1235,11 +1253,11 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 | `place.code` | `id`, `replace` (keys) | The page's layouts (`studio:code-places`, read again when missing: `the game has no codePlace('lamp') (it has: 'hex')`). `replace` → `places[id].from` (the hand-placed ones hidden; one undo step); without it nothing changes (the line names the layout; no ⌘Z). ✦ Turn into a rule (studio-code-torule): where each replaced object stood is read before the game is read again, and compared with the rule's object of the same number (`replace[i]` ↔ `<id>-<i+1>`, the whole distance): the line ends `; the editor measured how close it is: the largest gap is lamp-3 ↔ lamp-row-3, 0.62 m (6 of 6 compared)`, the person's says "Max deviation: lamp-3 (0.6 m)" | `from`, and those keys out of `objects` / `added`; without `replace` nothing |
 | `place.set` | `id`, `knobs`, `pin` (`{ key, p, r?, s? }`), `unpin`, `hand` | `places[id]` (knobs `{ v, was }`, a pin of one of its objects, `hand: true` = every object's place now as pins, `false` = back to code); one undo step, the game reads the draft again | `pin` / `unpin`; `knobs` / `hand` refused (they need the game) |
 | `place.avoid` | `id`, `code` (+ `knobs`, `off`) \| `box` (+ `name`) \| `remove` (index or code id) | `places[id].avoid` (a condition the page must have: `codeAvoid`; a box named "Box n" when unnamed; one of the code's own conditions back on with nothing changed leaves no entry) | the same; `knobs` refused |
-| `object.move` / `turn` / `scale` | `key`, `to` \| `by` (`deg`) | as the card's numbers (one pose change) | `objects.<key>` (`by` needs its pose in the file) |
+| `object.move` / `turn` / `scale` | `key`, `to` \| `by` (`deg`) | as the card's numbers (one pose change). A rule layout's object (not by hand) is refused: `lamp-row-3 is placed by codePlace('lamp-row') (its rule) and stays in it: …` with the `place.set` ways (studio-to-coords) | `objects.<key>` (`by` needs its pose in the file) |
 | `object.rename` | `key`, `to` | Rename (F2) | `names` |
 | `object.duplicate` | `key`, `to` \| `by` | ⌘D (the game page makes the copy) | `added` |
 | `object.delete` | `key` | Delete | `removed` |
-| `object.ground` | `key` | Drop to floor (End) | refused |
+| `object.ground` | `key` | Drop to floor (End); a rule layout's object refused as `object.move` | refused |
 | `level.new` / `level.duplicate` | `name`; `id` | New level / Duplicate, opened | duplicate: a level with `from`; new: refused |
 | `level.rename` / `level.switch` | `id`, `to`; `id` | the levels' menu | rename: `label` / `labelWas`; switch: refused |
 | `save` | — | the person's Save (only when they ask the AI for it) | nothing to do |

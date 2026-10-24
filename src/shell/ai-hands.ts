@@ -185,6 +185,18 @@ export function createAiHands(d: HandsDeps) {
   const gapNum = (x: number) => (d.dim() === '2d' ? `${Math.round(x)} px` : `${Math.round(x * 100) / 100} m`);
   /** A code layout's objects are its own keys: "hex-3" of codePlace('hex'). */
   const ofPlace = (p: CodePlaceInfo, key: string) => p.keys.includes(key) || (key.startsWith(`${p.id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(p.id.length + 1)));
+  /**
+   * An object a rule layout places, not put by hand (studio-to-coords, 2026-10-24: "a rule's thing stays a rule however
+   * it is moved"): object.move / turn / scale / ground would give it a coordinate of its own and take it out of its rule
+   * — the AI is told the ways that keep it a rule instead (its knobs), or that say so (a pin, Convert to coordinates).
+   */
+  const ruleHeld = (key: string): string | null => {
+    const p = (d.codePlaces?.() ?? []).find((x) => x.keys.includes(key));
+    const e = p ? d.place(p.id) : null;
+    if (!p || e?.hand || e?.pins?.[key]) return null;
+    return `${key} is placed by codePlace('${p.id}') (its rule) and stays in it: change the rule's numbers with place.set --knobs, `
+      + `put just this one by hand with place.set --pin, or turn the whole layout into coordinates with place.set --hand`;
+  };
 
   async function one(op: Op): Promise<Did> {
     if (op.level && d.levels.active() && op.level !== d.levels.current()) {
@@ -413,6 +425,7 @@ export function createAiHands(d: HandsDeps) {
       case 'object.turn':
       case 'object.scale': {
         if (need(op.key)) return { error: need(op.key)! };
+        if (ruleHeld(op.key)) return { error: ruleHeld(op.key)! };
         const from = d.pose(op.key);
         if (!from) return { error: `${op.key} cannot be moved here` };
         const it = d.item(op.key)!;
@@ -449,6 +462,7 @@ export function createAiHands(d: HandsDeps) {
       }
       case 'object.ground': {
         if (need(op.key)) return { error: need(op.key)! };
+        if (ruleHeld(op.key)) return { error: ruleHeld(op.key)! };
         if (!(await d.ground(op.key))) return { error: `${op.key} did not move: there is nothing under it to stand on, or this game cannot (2D)` };
         return { words: { obj: name(op.key) } };
       }

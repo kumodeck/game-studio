@@ -30,10 +30,21 @@
 //           the hand lamps back. The ship: the motion row's ⋯ → Turn into a rule… → `motion.code --replace` → the strip
 //           lit with orange marks, "Compare with original · Max deviation …" on the line, orange dots in the game → Save:
 //           the comparison gone.
-// Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 3-… (step 3), 4-… (step 4).
+//   coords  (the first theme; studio-to-coords, 2026-10-24 — a request that day: "a rule's thing stays a rule however it is moved;
+//           a button converts it to coordinates", and the CRYSTAL FIELD try: a lamp dragged away from the road did nothing
+//           and said nothing, and lifted it silently left its row) a first-time maker drags one lamp of each row
+//           forward / back, left / right, up / down. The row of that try (Count and Gap, its distance from the road fixed,
+//           `drag: 'gap'`): forward = every gap follows; sideways, Height, Turn = nothing moves, the chip says why while the
+//           finger is down and the line after says it again with ✦ (its draft in the chat box); ⌥ + Height = just that
+//           one, told "Placed … by hand · ⌘Z · Reset to rule", marked Hand-placed on the card and in the list, the line's
+//           Reset to rule puts it back; an arrow key and the whole row dragged keep it too. The row SKILL.md asks for now
+//           (`drag: { along, side, up }`): sideways = its distance from the road, Height = its height, for all of them.
+//           Never a pin without ⌥, never an object entry.
+// Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 3-… (step 3), 4-… (step 4),
+// c-<lang>-<theme>-<step>.png (to coords).
 // `--before`: only the first keep-out picture (run with the previous version's UI: `--ui <dir>`).
 //
-//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule] [--shots <dir>] [--before]
+//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords] [--shots <dir>] [--before]
 // Exit 1 on a failure.
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -56,12 +67,12 @@ const LANG = take('--lang', 'ja');
 const THEMES = take('--themes', 'dark,light').split(',').filter((x) => x === 'dark' || x === 'light');
 const WIDTH = Number(take('--width', '1280'));
 const PHONE = WIDTH < 500;
-const ONLY = take('--only', 'layout,motion,plain,keepout,torule').split(',');
+const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords').split(',');
 const BEFORE = args.includes('--before');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = LANG === 'ja'
-  ? { saved: '間 → 4 m', layout: '並べ方', line: '直線 · 4 個', tag: 'ルール', gap: '間', note: '動かすと間が変わる', pinned: 'この 1 個だけ手動で配置中', hand: '個別に配置', motion: '動きのルール', radius: '半径', points: '編集点にする', repeat: 'くり返し', off: '一時停止' }
-  : { saved: 'Gap → 4 m', layout: 'Layout', line: 'Line · 4', tag: 'Rule', gap: 'Gap', note: 'Drag to adjust Gap', pinned: 'Manually overridden', hand: 'Place individually', motion: 'Rule motion', radius: 'Radius', points: 'Make editable points', repeat: 'Repeat', off: 'Disable' };
+  ? { saved: '間 → 4 m', layout: '並べ方', line: '直線 · 4 個', tag: 'ルール', gap: '間', note: '動かすと間が変わる', pinned: 'この 1 個だけ手で置いています', handTag: '手置き', hand: '座標にする', motion: '動きのルール', radius: '半径', points: '座標にする', pointsDone: 'らせんのルールを座標にしました', repeat: 'くり返し', off: '一時停止' }
+  : { saved: 'Gap → 4 m', layout: 'Layout', line: 'Line · 4', tag: 'Rule', gap: 'Gap', note: 'Drag to adjust Gap', pinned: 'Manually overridden', handTag: 'Hand-placed', hand: 'Convert to coordinates', motion: 'Rule motion', radius: 'Radius', points: 'Convert to coordinates', pointsDone: 'Converted the Spiral rule to coordinates', repeat: 'Repeat', off: 'Disable' };
 
 let failed = 0;
 const check = (ok, what) => {
@@ -163,12 +174,53 @@ const SHIP_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', ob
   motions: [{ name: SHIP_MOTION, len: 2, repeat: 'loop', keys: { p: Array.from({ length: 9 }, (_, i) => ({ t: i / 4, v: [Math.round((Math.sin((i / 8) * 2 * Math.PI) * 1.5 + (i === 3 ? 0.12 : 0)) * 1000) / 1000, 0, 0], ease: 'linear' })) } }],
   motion: { ship: { clips: [{ use: SHIP_MOTION, when: { on: 'start' } }] } } };
 
-/** Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion ('keepout': the crystals; 'torule': the hand lamps and the ship's hand motion). */
+// To coords (studio-to-coords): two rows of street lamps by the road. Left: the CRYSTAL FIELD row of 10/24 (Count and Gap,
+// its distance from the road fixed in the code, `drag: 'gap'`). Right: the row SKILL.md asks for now — a knob for each way
+// a person may drag one (along the road: Gap, away from it: From the road, up: Height).
+const LAMP_NAME = LANG === 'ja' ? '街灯' : 'Street lamps';
+const LAMP_NAME_R = LANG === 'ja' ? '街灯（右）' : 'Right lamps';
+const COORDS = `
+    const makeLamp = () => {
+      const lamp = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08, .1, 3.2, 8), glow(0x8a7cff, .6));
+      pole.position.y = 1.6;
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(.32, 16, 12), glow(0xffb3f0, 2));
+      bulb.position.y = 3.3;
+      lamp.add(pole, bulb);
+      return lamp;
+    };
+    codePlace('lamp-row', {
+      name: ${JSON.stringify(LAMP_NAME)},
+      knobs: { n: { v: 5, label: ${JSON.stringify(LANG === 'ja' ? '本数' : 'Count')}, unit: '', min: 1, max: 10, step: 1 }, gap: { v: 8, label: ${JSON.stringify(LANG === 'ja' ? '間' : 'Gap')}, unit: 'm', min: 2, max: 15 } },
+      count: (k) => k.n,
+      make: () => makeLamp(),
+      at: (i, k) => ({ p: [-5.6, 0, -6 - i * k.gap] }),
+      drag: 'gap',
+    });
+    codePlace('lamp-way', {
+      name: ${JSON.stringify(LAMP_NAME_R)},
+      knobs: { gap: { v: 8, label: ${JSON.stringify(LANG === 'ja' ? '間' : 'Gap')}, unit: 'm', min: 2, max: 15 }, side: { v: 5.6, label: ${JSON.stringify(LANG === 'ja' ? '道からの距離' : 'From the road')}, unit: 'm', min: 2, max: 12 }, h: { v: 0, label: ${JSON.stringify(LANG === 'ja' ? '高さ' : 'Height')}, unit: 'm', min: 0, max: 6 } },
+      count: 5,
+      make: () => makeLamp(),
+      at: (i, k) => ({ p: [k.side, k.h, -6 - i * k.gap] }),
+      drag: { along: 'gap', side: 'side', up: 'h' },
+    });
+`;
+
+/**
+ * Neon Run in a temporary folder: `rules` = with the hexagons as a rule layout and the pillar's rule motion; 'keepout' =
+ * the crystals; 'torule' = the hand lamps and the ship's hand motion; 'coords' = the two rows of rule lamps.
+ */
 function makeGame(theme, rules) {
   const root = mkdtempSync(join(tmpdir(), 'studio-code-knobs-'));
   cpSync(join(PKG, 'test/neon-run'), root, { recursive: true });
   copyFileSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(root, 'studio-placement.js'));
-  if (rules === 'torule') {
+  if (rules === 'coords') {
+    const html = readFileSync(join(root, 'index.html'), 'utf8')
+      .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codePlace } from './studio-placement.js';")
+      .replace("    await applyPlacement(scene, './placement.json');", `${COORDS}\n    await applyPlacement(scene, './placement.json');`);
+    writeFileSync(join(root, 'index.html'), html);
+  } else if (rules === 'torule') {
     const html = readFileSync(join(root, 'index.html'), 'utf8')
       .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codeMotion, codePlace } from './studio-placement.js';")
       .replace("    await applyPlacement(scene, './placement.json');", `${LAMPS}\n    await applyPlacement(scene, './placement.json');`);
@@ -297,7 +349,7 @@ async function run(theme, first) {
       const p4 = await hexPlace();
       check(p4?.pins?.includes('hex-3'), `⌥: hex-3 put by hand (pins ${JSON.stringify(p4?.pins)})`);
       check(p4?.knobs?.gap?.v === g3, `Gap unchanged (${p4?.knobs?.gap?.v})`);
-      check((await card()).includes(W.pinned), `the card: "${(await card()).replace(/\n/g, ' / ').slice(0, 80)}"`);
+      check((await card()).includes(W.pinned) && (await card()).includes(W.handTag), `the card: "${(await card()).replace(/\n/g, ' / ').slice(0, 80)}"`);
       await shot('4-one');
 
       // ---- 5. Place individually (hex-1's card) ----
@@ -385,11 +437,21 @@ async function run(theme, first) {
       await sleep(500);
       check(await page.eval(`!document.querySelector('.tl-rule.off')`), 'enabled again');
 
-      // ---- 12. Make editable points, ⌘Z back to the rule ----
+      // ---- 12. Convert to coordinates (studio-to-coords: it was "Make editable points"), ⌘Z back to the rule ----
+      const btn = await page.eval(`document.querySelector('[data-part=tl-rule-points]')?.textContent ?? ''`);
+      check(btn === W.points, `the strip's button: "${btn}"`);
+      const place0 = JSON.stringify((await list())?.objects?.find?.((o) => o.key === 'pillar')?.p ?? null);
       await page.eval(`document.querySelector('[data-part=tl-rule-points]').click()`);
       await sleep(1200);
       const pts = (await list())?.motions?.find((m) => m.name === (LANG === 'ja' ? 'らせん' : 'Spiral'));
       check(pts && !pts.code, `made into a motion of points (${JSON.stringify(pts).slice(0, 120)})`);
+      const told = await page.eval(`[...document.querySelectorAll('.ai-line, .ask-news:not([hidden]), .toast.on')].map((e) => e.textContent).join(' | ')`);
+      check(told.includes(W.pointsDone), `the line: "${told.slice(0, 120)}"`);
+      // Relative (the request of 10/24: "for a motion, relative is better"): the first point is the pillar's own place (offset 0),
+      // and its place is not in the points — moving the pillar moves its path.
+      const first = pts?.points?.[0] ?? pts?.keys?.p?.[0]?.v;
+      check(Array.isArray(first) && first.every((v) => Math.abs(v) < 1e-6), `the points are offsets from where it stands (first ${JSON.stringify(first)})`);
+      check(JSON.stringify((await list())?.objects?.find?.((o) => o.key === 'pillar')?.p ?? null) === place0, 'the pillar\'s place as it was');
       check(await page.eval(`!document.querySelector('[data-part=tl-rule]')`), 'the strip is points now (no rule strip)');
       await shot('12-points');
       await page.eval(`document.activeElement?.blur()`);
@@ -796,11 +858,204 @@ async function keepout(theme) {
   }
 }
 
+/**
+ * To coords (studio-to-coords, 2026-10-24): a first-time maker drags one lamp of each row forward / back, left / right
+ * and up / down — never "nothing happened" without a word, never a lamp silently out of its row (see the top).
+ */
+async function toCoords(theme) {
+  console.log(`${LANG} ${theme} ${WIDTH} coords`);
+  const root = makeGame(theme, 'coords');
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
+  const browser = await launch();
+  const C = LANG === 'ja'
+    ? { note: '動かすと間が変わる', noteWay: '動かすと間・道からの距離が変わる', side: '横の位置はルールで決まっています', up: '高さはルールで決まっています', turn: '向きはルールで決まっています',
+      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯を横にも動かせるようにして', pinned: '街灯 3 だけ手で置きました', reset: 'ルールに戻す',
+      hand: '手置き', keys: '街灯はルールで並んでいます', group: '街灯はルールで並んでいるので、まとめては動きません', gap: '間' }
+    : { note: 'Drag to adjust Gap', noteWay: 'Drag to adjust Gap, From the road ·', side: 'Sideways position is set by the rule', up: 'Height is set by the rule', turn: 'Angle is set by the rule',
+      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Let me move Street lamps sideways too', pinned: 'Placed Street lamps 3 by hand (just this one)', reset: 'Reset to rule',
+      hand: 'Hand-placed', keys: 'Street lamps is laid out by a rule', group: 'Street lamps is laid out by a rule, so it doesn’t move as a group', gap: 'Gap' };
+  try {
+    const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
+    const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `c-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
+    const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+    const place = async (id) => (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === id);
+    const rows = (id) => page.eval(`JSON.stringify([...${GW}[Symbol.for('game-studio.codePlaces')].get(${JSON.stringify(id)}).objs].map((o) => [o.position.x, o.position.y, o.position.z, o.rotation.y].map((v) => Math.round(v * 100) / 100)))`).then((x) => JSON.parse(x));
+    const at = async (key) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)'); const r = f.getBoundingClientRect();
+      const a = ${DBG}.anchor(${JSON.stringify(key)}); return a ? JSON.stringify({ x: r.left + a.center[0], y: r.top + a.center[1] }) : 'null'; })()`));
+    const card = () => page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && !f.open) f.open = true; return document.querySelector('[data-part=card]')?.innerText ?? ''; })()`);
+    const fold = async () => (await page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && f.open && ${PHONE}) f.open = false; return 1; })()`), await sleep(300));
+    const inUi = (cls) => page.eval(`(() => { const h = [...${GW}.document.querySelectorAll('[data-studio-ui]')].map((x) => x.shadowRoot?.querySelector(${JSON.stringify(cls)})).find((n) => n && n.style.display !== 'none'); return h ? h.textContent : ''; })()`);
+    const toast = () => page.eval(`document.querySelector('.toast.on')?.textContent ?? ''`);
+    const toastActs = () => page.eval(`JSON.stringify([...document.querySelectorAll('.toast.on [data-part=toast-act]')].map((b) => b.textContent))`).then((x) => JSON.parse(x));
+    const strip = async (k) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect();
+      const b = [...${GW}.document.querySelectorAll('[data-studio-ui]')].map((x) => x.shadowRoot?.querySelector('[data-studio-handle=${k}]')).find(Boolean);
+      if (!b || !b.getBoundingClientRect().width) return 'null'; const r = b.getBoundingClientRect(); return JSON.stringify({ x: f.left + r.left + r.width / 2, y: f.top + r.top + r.height / 2 }); })()`));
+    /** No lamp of either row by hand, and none an object of its own (the CRYSTAL FIELD file had two pins). */
+    const noneOut = async (what) => {
+      const a = await place('lamp-row'), b = await place('lamp-way');
+      const objs = (await ai([{ do: 'list' }])).results?.[0]?.list?.objects ?? [];
+      check(!a?.pins?.length && !b?.pins?.length && !a?.hand && !b?.hand, `${what}: no lamp out of its row (pins ${JSON.stringify([a?.pins ?? [], b?.pins ?? []])})`);
+      void objs;
+    };
+    /** A mouse drag with modifiers (1 = ⌥); `mid` runs before the release. The press must land on the game (not the card). */
+    const drag = async (a, b, modifiers = 0, mid = null) => {
+      check(await page.eval(`document.elementFromPoint(${a.x}, ${a.y})?.tagName === 'IFRAME'`), `the press at ${Math.round(a.x)},${Math.round(a.y)} is on the game`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y, modifiers });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1, modifiers });
+      for (let i = 1; i <= 12; i++) {
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x + ((b.x - a.x) * i) / 12, y: a.y + ((b.y - a.y) * i) / 12, button: 'left', buttons: 1, modifiers });
+        await sleep(30);
+      }
+      if (mid) await mid();
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers });
+      await sleep(600);
+    };
+    const pick = async (key) => {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+      await page.eval(`studioShell.actions.select(${JSON.stringify(key)})`);
+      await sleep(800);
+      await fold();
+    };
+    const blurAsk = () => page.eval(`(() => { const i = document.querySelector('.ask-input'); if (i) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); } document.activeElement?.blur?.(); return 1; })()`);
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug && !!${GW}[Symbol.for('game-studio.codePlaces')]?.get('lamp-way')?.objs?.length`, 90000);
+    await sleep(1500);
+
+    // ---- 1. the left row (CRYSTAL FIELD's): before a touch, the line says what a drag does ----
+    await pick('lamp-row-3');
+    check((await inUi('.note')).includes(C.note), `the line under the strip: "${await inUi('.note')}"`);
+    const r0 = await rows('lamp-row');
+    await shot('1-pick');
+
+    // ---- 2. forward / back (toward lamp 2): every gap follows ----
+    let a3 = await at('lamp-row-3');
+    const a2 = await at('lamp-row-2');
+    let chip = '';
+    await drag(a3, { x: a3.x + (a2.x - a3.x) * 0.4, y: a3.y + (a2.y - a3.y) * 0.4 }, 0, async () => (chip = await inUi('.chip')));
+    const g2 = (await place('lamp-row'))?.knobs?.gap?.v;
+    const r2 = await rows('lamp-row');
+    check(typeof g2 === 'number' && g2 < 8, `forward: the gap 8 → ${g2} (chip "${chip}")`);
+    check(r2.every((q, i) => Math.abs(q[2] - (-6 - i * g2)) < 0.02 && q[0] === -5.6), `every lamp on the rule with it (${JSON.stringify(r2.map((q) => q[2]))})`);
+    await noneOut('forward');
+    await shot('2-forward');
+
+    // ---- 3. left / right (away from the road): nothing moves, and it says why (while dragging, then the line with ✦) ----
+    a3 = await at('lamp-row-3');
+    await drag(a3, { x: a3.x - 160, y: a3.y }, 0, async () => {
+      chip = await inUi('.chip');
+      await shot('3-side-chip');
+    });
+    const r3 = await rows('lamp-row');
+    check(JSON.stringify(r3) === JSON.stringify(r2), `sideways: every lamp where it was (${JSON.stringify(r3.map((q) => q[0]))})`);
+    check(chip.includes(C.side), `while dragging, the chip says why: "${chip}"`);
+    check((await toast()).includes(C.heldSide), `after, the line says it again: "${await toast()}"`);
+    const acts = await toastActs();
+    check(acts.length === 1 && acts[0].startsWith(C.ask) && acts[0].includes(C.draft), `…with ✦: ${JSON.stringify(acts)}`);
+    await noneOut('sideways');
+    await shot('3-side-told');
+    await page.eval(`document.querySelector('.toast.on [data-part=toast-act]')?.click()`);
+    await sleep(400);
+    check((await page.eval(`document.querySelector('.ask-input')?.value ?? ''`)) === C.draft, `✦: the draft in the chat box ("${await page.eval(`document.querySelector('.ask-input')?.value ?? ''`)}"), nothing sent`);
+    await shot('3-side-ask');
+    await blurAsk();
+
+    // ---- 4. up / down (Height) and a turn (Turn): nothing moves, why ----
+    await pick('lamp-row-3');
+    for (const [tool, want, dy, dx] of [['lift', C.up, -110, 0], ['rotate', C.turn, 0, 120]]) {
+      const b = await strip(tool);
+      check(!!b, `the strip has ${tool}`);
+      if (!b) continue;
+      const before = await rows('lamp-row');
+      await drag(b, { x: b.x + dx, y: b.y + dy }, 0, async () => {
+        chip = await inUi('.chip');
+        if (tool === 'lift') await shot('4-up-chip');
+      });
+      check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(before), `${tool}: every lamp where it was`);
+      check(chip.includes(want), `${tool}: the chip "${chip}"`);
+      check((await toast()).includes(want.replace(/^./, (c) => c.toLowerCase())) || (await toast()).includes(want), `${tool}: the line "${await toast()}"`);
+      await noneOut(tool);
+    }
+
+    // ---- 5. ⌥ + Height: just that one by hand — told, marked, and Reset to rule puts it back ----
+    const lift = await strip('lift');
+    await drag(lift, { x: lift.x, y: lift.y - 110 }, 1);
+    const p5 = await place('lamp-row');
+    const r5 = await rows('lamp-row');
+    check(p5?.pins?.length === 1 && p5.pins[0] === 'lamp-row-3', `⌥: lamp 3 by hand (pins ${JSON.stringify(p5?.pins)})`);
+    check(r5[2][1] > 0.3 && r5.filter((_, i) => i !== 2).every((q) => q[1] === 0), `…it alone went up (${JSON.stringify(r5.map((q) => q[1]))})`);
+    check((await toast()).includes(C.pinned), `told: "${await toast()}"`);
+    check((await toastActs()).includes(C.reset), `…with ${C.reset}: ${JSON.stringify(await toastActs())}`);
+    const c5 = await card();
+    check(c5.includes(C.hand) && c5.includes(C.reset), `the card marks it: "${c5.replace(/\n/g, ' / ').slice(0, 100)}"`);
+    const listMark = await page.eval(`document.querySelectorAll('[data-part=list-hand-tag]').length`);
+    check(listMark >= 1, `the list marks it too (${listMark})`);
+    await shot('5-alone');
+    await page.eval(`[...document.querySelectorAll('.toast.on [data-part=toast-act]')].find((b) => b.textContent === ${JSON.stringify(C.reset)})?.click()`);
+    await sleep(900);
+    check(!(await place('lamp-row'))?.pins?.length && (await rows('lamp-row'))[2][1] === 0, 'Reset to rule: back in its row');
+
+    // ---- 6. an arrow key, and the whole row dragged together: the rule keeps them ----
+    await pick('lamp-row-2');
+    const r6 = await rows('lamp-row');
+    await page.eval(`document.activeElement?.blur?.()`);
+    await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
+    await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'ArrowLeft', code: 'ArrowLeft', windowsVirtualKeyCode: 37 });
+    await sleep(700);
+    check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(r6), 'an arrow key: every lamp where it was');
+    check((await toast()).includes(C.keys), `…and why: "${await toast()}"`);
+    await page.eval(`studioShell.actions.selectMany(${JSON.stringify(['lamp-row-1', 'lamp-row-2', 'lamp-row-3', 'lamp-row-4', 'lamp-row-5'])}, 'lamp-row-3')`);
+    await sleep(800);
+    await fold();
+    const g6 = await at('lamp-row-3');
+    await drag(g6, { x: g6.x + 120, y: g6.y + 30 });
+    check(JSON.stringify(await rows('lamp-row')) === JSON.stringify(r6), 'the whole row dragged: every lamp where it was');
+    check((await toast()).includes(C.group), `…and why: "${await toast()}"`);
+    await noneOut('keys and the group');
+    await shot('6-group');
+
+    // ---- 7. the right row (a knob for each way): sideways = From the road, Height = its height, for all of them ----
+    await pick('lamp-way-3');
+    check((await inUi('.note')).includes(C.noteWay), `the line (Move's two knobs): "${await inUi('.note')}"`);
+    let w3 = await at('lamp-way-3');
+    await drag(w3, { x: w3.x + 50, y: w3.y }, 0, async () => {
+      chip = await inUi('.chip');
+      await shot('7-side-chip');
+    });
+    const sd = (await place('lamp-way'))?.knobs?.side?.v;
+    const rw = await rows('lamp-way');
+    check(typeof sd === 'number' && sd > 5.6, `sideways: From the road 5.6 → ${sd} (chip "${chip}")`);
+    check(rw.every((q) => Math.abs(q[0] - sd) < 0.02), `every lamp of the row with it (${JSON.stringify(rw.map((q) => q[0]))})`);
+    check(!(await toast()).includes(C.side), 'no "set by the rule": it followed');
+    const lw = await strip('lift');
+    await drag(lw, { x: lw.x, y: lw.y - 90 }, 0, async () => (chip = await inUi('.chip')));
+    const hv = (await place('lamp-way'))?.knobs?.h?.v;
+    const rh = await rows('lamp-way');
+    check(typeof hv === 'number' && hv > 0.2 && rh.every((q) => Math.abs(q[1] - hv) < 0.02), `Height: every lamp up ${hv} (${JSON.stringify(rh.map((q) => q[1]))}; chip "${chip}")`);
+    w3 = await at('lamp-way-3');
+    const w2 = await at('lamp-way-2');
+    await drag(w3, { x: w3.x + (w2.x - w3.x) * 0.4, y: w3.y + (w2.y - w3.y) * 0.4 });
+    check(((await place('lamp-way'))?.knobs?.gap?.v ?? 8) < 8, `forward: its gap ${(await place('lamp-way'))?.knobs?.gap?.v}`);
+    await noneOut('the right row');
+    await shot('7-way');
+
+    // ---- 8. Save: knobs only — no pin, no lamp an object of its own ----
+    await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+    await sleep(1500);
+    const saved = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    check(!Object.keys(saved.objects ?? {}).some((k) => k.startsWith('lamp-')) && !saved.places?.['lamp-row']?.pins && !saved.places?.['lamp-way']?.pins,
+      `placement.json: knobs only (${JSON.stringify(saved.places)})`);
+  } finally {
+    await browser.close();
+    await srv.close();
+  }
+}
+
 for (const [i, theme] of THEMES.entries()) {
   if (ONLY.includes('layout') || ONLY.includes('motion')) await run(theme, i === 0);
   if (i === 0 && ONLY.includes('plain')) await plain(theme);
   if (ONLY.includes('keepout')) await keepout(theme);
   if (i === 0 && ONLY.includes('torule')) await toRule(theme);
+  if (i === 0 && ONLY.includes('coords')) await toCoords(theme);
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

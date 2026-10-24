@@ -1045,7 +1045,7 @@ export type ShellToBridge =
   | { type: 'studio:timeline/path'; key: string | null; base?: number[]; keys?: MotionKey[]; now?: number[] | null; sel?: number[]; times?: boolean; making?: boolean;
       code?: { code: string; name: string; knobs: Record<string, number>; round: number | null; drag?: string; unit?: string; label?: string; was?: { pts: number[][]; keys: number[][] } } }
   /**
-   * studio-code-knobs (2026-10-24): "Make editable points" — a rule motion's shape as points: the page runs its at()
+   * studio-code-knobs (2026-10-24): "Convert to coordinates" (it was "Make editable points") — a rule motion's shape as points: the page runs its at()
    * over `len` seconds, `per` points a round, and answers with the keys (studio:timeline/code-points, same `id`).
    */
   | { type: 'studio:timeline/code-points'; id: number; code: string; knobs: Record<string, number>; len: number; per: number }
@@ -1306,13 +1306,17 @@ export type BridgeToShell =
    * The shell records exactly one undo step per `end`.
    */
   /** `set` (studio-timeline): the answer to the shell's own placement/pose (undo, a typed number), not a hand's move. */
-  | { type: 'studio:placement/moved'; key: string; pose: Pose; end?: boolean; from?: Pose; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean; set?: boolean }
+  /**
+   * `alone` (studio-to-coords, 2026-10-24): ⌥ (Ctrl) was held — for a rule layout's object, "just this one by hand" (its
+   * pin). Without it a rule's object never leaves its rule: the shell puts it back and says why.
+   */
+  | { type: 'studio:placement/moved'; key: string; pose: Pose; end?: boolean; from?: Pose; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean; set?: boolean; alone?: boolean }
   /**
    * Several objects moved together (a selection of more than one). Same rules
    * as `moved`: only the last message of a gesture has `end: true`, and then
    * every entry carries `from`. The shell records ONE undo step for all.
    */
-  | { type: 'studio:placement/moved-group'; poses: Array<{ key: string; pose: Pose; from?: Pose }>; end?: boolean; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean }
+  | { type: 'studio:placement/moved-group'; poses: Array<{ key: string; pose: Pose; from?: Pose }>; end?: boolean; press?: 'move' | 'rotate' | 'lift' | 'scale'; hold?: boolean; alone?: boolean }
   /**
    * A point of the timeline's path was dragged in the game (studio-timeline): position key `i` of the picked object's
    * clip is now `v` (an offset from its place). `end` false while the finger is down, true once at the release (one
@@ -1333,9 +1337,10 @@ export type BridgeToShell =
   | { type: 'studio:place/poses'; poses: Array<{ key: string; pose: Pose }> }
   /**
    * A drag of a code layout's object turned its `drag` knob (studio-code-knobs, decision 11 of the plan): `v` live, then
-   * `end` (one undo step and one Save count in the shell). `key` = the object dragged.
+   * `end` (one undo step and one Save count in the shell). `key` = the object dragged. `knobs` (studio-to-coords): every
+   * knob the drag turned (Move turns `along` and `side` together) — one undo step for all of them.
    */
-  | { type: 'studio:place/knob'; id: string; knob: string; v: number; end: boolean; key: string }
+  | { type: 'studio:place/knob'; id: string; knob: string; v: number; end: boolean; key: string; knobs?: Record<string, number> }
   /**
    * studio-code-keepout: a keep-out box of layout `id` drawn (i = -1, a new one), moved or resized (i = its place in
    * the file's list) in the game: live, then `end` (one undo step in the shell). The game page has laid the layout out
@@ -1348,6 +1353,13 @@ export type BridgeToShell =
   | { type: 'studio:place/avoid-inside'; id: string; keys: string[] }
   /** studio-code-keepout: "+ Draw a box" stopped in the game (Esc there) before a box was drawn. */
   | { type: 'studio:place/avoid-draw'; id: string; on: false }
+  /**
+   * A drag that tried to move a rule layout's object a way its rule has no knob for (studio-to-coords, 2026-10-24; the
+   * CRYSTAL FIELD try: a lamp dragged away from the road did nothing and said nothing). Nothing moved; the shell says
+   * why once the drag ends, with ✦ to ask for that knob. `way`: side / along (Move, a row), move (Move, no knob for
+   * it), up / turn / size (Height / Turn / Size), group (several picked: a rule's objects stay where the rule puts them).
+   */
+  | { type: 'studio:place/held'; id: string; key: string; way: PlaceWay }
   /** studio-motion-triggers: the area's middle dragged in the game (world [x, y, z]); `end` = the drag ended. `size` (studio-timeline-2): a corner dragged — the area's new size (and middle). */
   | { type: 'studio:timeline/area-moved'; key: string; p: number[]; end: boolean; size?: number[] }
   /**
@@ -2211,6 +2223,12 @@ export interface CodeAt {
   t: number;
   knobs: Record<string, number>;
 }
+/**
+ * The ways a person drags a rule layout's object (studio-to-coords, 2026-10-24; codePlace `drag` by way): along / side =
+ * Move along the row / away from it, up = Height, turn = Turn, size = Size; move = Move of a layout that is not a row,
+ * group = several picked together.
+ */
+export type PlaceWay = 'along' | 'side' | 'move' | 'up' | 'turn' | 'size' | 'group';
 /** A code layout as the game page lists it (`studio:code-places`): the objects it put and its keep-out conditions. */
 export interface CodePlaceInfo {
   id: string;

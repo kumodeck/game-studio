@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.53 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.54 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4668,7 +4668,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                                                       
                                                                                                                                                                                              
      
-                                                                                                                     
+                                                                                                                                                       
                                                                                                                   
      
                                                                                                                               
@@ -4929,13 +4929,17 @@ const MSG_PREFIX = 'studio:';
                                                        
      
                                                                                                                          
-                                                                                                                                                                        
+     
+                                                                                                                         
+                                                                                                 
+     
+                                                                                                                                                                                         
      
                                                                               
                                                                              
                                                                          
      
-                                                                                                                                                                                 
+                                                                                                                                                                                                  
      
                                                                                                                       
                                                                                                                     
@@ -4956,9 +4960,10 @@ const MSG_PREFIX = 'studio:';
                                                                              
      
                                                                                                                          
-                                                                                       
+                                                                                                                         
+                                                                                                   
      
-                                                                                                 
+                                                                                                                                 
      
                                                                                                                      
                                                                                                                        
@@ -4971,6 +4976,13 @@ const MSG_PREFIX = 'studio:';
                                                                      
                                                                                                     
                                                               
+     
+                                                                                                                       
+                                                                                                                      
+                                                                                                                    
+                                                                                                                          
+     
+                                                                         
                                                                                                                                                                                                   
                                                                                                    
      
@@ -5834,6 +5846,12 @@ const RESULT_FILES                         = {
             
                                 
  
+/**
+ * The ways a person drags a rule layout's object (studio-to-coords, 2026-10-24; codePlace `drag` by way): along / side =
+ * Move along the row / away from it, up = Height, turn = Turn, size = Size; move = Move of a layout that is not a row,
+ * group = several picked together.
+ */
+                                                                                    
 /** A code layout as the game page lists it (`studio:code-places`): the objects it put and its keep-out conditions. */
                                 
              
@@ -7478,6 +7496,9 @@ __defs[20] = function (__exports) {
 //       and named hex-1, hex-2 … by this file inside applyPlacement (after the world, before `objects`), placed at
 //       at(i, k, g) — `places.hex` in the file: knobs, pins ("just this one" by hand, over the formula), hand (all by
 //       hand), avoid (keep-out areas), from (hand-placed objects it replaced: hidden). Placed with or without a file.
+//       `drag` = the knob each way a person drags one of its objects turns: 'gap' (moving it), or by way
+//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob does not move (the editor
+//       says why); only ⌥ puts one object by hand.
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
@@ -8254,7 +8275,12 @@ function codeMotion(id, def) {
  *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
  *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
  *          scatter stays where it was); try counts the places refused by a keep-out area
- *   drag   the knob a drag of one of its objects turns (the editor: "moving it changes Gap · ⌥ just this one")
+ *   drag   the knob a drag of one of its objects turns: a name (moving it: "moving it changes Gap · ⌥ just this one"),
+ *          or one per way a person may drag it (studio-to-coords, 2026-10-24 — a lamp row dragged away from the road did
+ *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
+ *          turn: 'angle', size: 'scale' } — along / side = moving it along the row / away from it (both are Move's: the
+ *          editor looks for the numbers that bring it nearest the finger), up = Height, turn = Turn, size = Size. A way
+ *          with no knob does not move the object (the editor says why); ⌥ is the one way to put one by hand
  *   avoid  codeAvoid ids on from the start (the person can switch them off)
  */
 function codePlace(id, def) {
@@ -8564,6 +8590,26 @@ function codeSpot(id, i, k) {
   const n = p && p.home && p.home.three ? 3 : 2;
   const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
   return a ? vecOf(a.p, n, false) : null;
+}
+
+/**
+ * Number i's whole formula pose with the knob values `k`, or null: { p, r?, s? } — `r` the turn round the up axis (3D:
+ * at()'s r[1] or its number; 2D: the angle), `t` the tilt [x, z] when at() gives an [x, y, z] turn, `s` a size (a
+ * number, or one per axis). The editor's Height / Turn / Size drags look for a knob with it (studio-to-coords,
+ * 2026-10-24); what at() leaves out stays out (the object keeps its own).
+ */
+function codePose(id, i, k) {
+  const p = codeList(CODE_PLACES).get(id);
+  const n = p && p.home && p.home.three ? 3 : 2;
+  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
+  if (!a) return null;
+  const out = { p: vecOf(a.p, n, false) };
+  if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
+  else if (isNum(a.r)) out.r = a.r;
+  else if (Array.isArray(a.r) && isNum(a.r[0])) out.r = a.r[0];
+  if (isNum(a.s) && a.s !== 0) out.s = a.s;
+  else if (Array.isArray(a.s) && a.s.every(isNum)) out.s = a.s.slice(0, n);
+  return out;
 }
 
 /** The object with this key that is not one of `made` (a code layout's). */
@@ -8910,6 +8956,7 @@ __def(__exports, "codeAvoid", () => codeAvoid);
 __def(__exports, "codeRound", () => codeRound);
 __def(__exports, "relayCodePlace", () => relayCodePlace);
 __def(__exports, "codeSpot", () => codeSpot);
+__def(__exports, "codePose", () => codePose);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
@@ -12254,6 +12301,901 @@ __def(__exports, "slideOf", () => slideOf);
 };
 __defs[34] = function (__exports) {
 'use strict';
+// code-lists.ts
+
+// The game's code motions and code layouts, as the editor sees them (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4,
+// §1.12). The game's copy of the loader keeps what codeMotion() / codePlace() / codeAvoid() were told on globalThis
+// (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids')); this reads them in the game's page and words
+// them for the shell (`studio:code-motions`, `studio:code-places`): names, the objects a layout put, the knobs with the
+// code's numbers.
+//
+// WHY sent with every world list (editor.ts post): the shell must know them as soon as it knows the objects — the
+// AI's `--do place.code` waits for the id to be there, and a knob the AI wrote into the code on Save (the file's v
+// now equal to the code's) is taken out of the file then (shell code-places.ts). Functions (at, make, test) never
+// leave the page; only plain data does.
+                                                                                             
+
+                                      
+                                     
+
+const listOf = (win     , name        )                            => {
+  const m = (win                                      )[Symbol.for(`game-studio.${name}`)];
+  return m instanceof Map ? (m                      ) : null;
+};
+const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
+const str = (v         , max        ) => (typeof v === 'string' ? v.slice(0, max) : '');
+
+/** A knob list as plain data (the loader has checked its shape already; this only copies what it knows). */
+function knobs(v         )                           {
+  const out                           = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [n, k] of Object.entries(v                         ).slice(0, 3)) {
+    if (!k || !num(k.v)) continue;
+    out[n] = { v: k.v, label: str(k.label, 20) || n, unit: str(k.unit, 8), ...(num(k.min) ? { min: k.min } : {}), ...(num(k.max) ? { max: k.max } : {}), ...(num(k.step) ? { step: k.step } : {}) };
+  }
+  return out;
+}
+
+/** One round of a code motion in seconds with the code's knobs; null = none (it never ends) or it failed. */
+function roundOf(m       )                {
+  let r = m.round;
+  try {
+    if (typeof r === 'function') r = (r                                          )(Object.fromEntries(Object.entries(knobs(m.knobs)).map(([n, k]) => [n, k.v])));
+  } catch {
+    r = null;
+  }
+  return num(r) && r > 0 ? r : null;
+}
+
+/** The code motions of the game's page (none: an empty list, the same as a game without the loader). */
+function codeMotionsOf(win     )                   {
+  return [...(listOf(win, 'codeMotions')?.values() ?? [])].map((m) => ({
+    code: str(m.id, 40), name: str(m.name, 40), knobs: knobs(m.knobs), round: roundOf(m),
+    ...(str(m.note, 20) ? { note: str(m.note, 20) } : {}), ...(m.game === true ? { game: true } : {}),
+    // The ◇ on its path (studio-code-knobs): only a knob it has.
+    ...(typeof m.drag === 'string' && m.drag in knobs(m.knobs) ? { drag: m.drag } : {}),
+  }));
+}
+
+/** The code layouts of the game's page, with the objects they put (keys) and the ones left out (skipped). */
+function codePlacesOf(win     )                  {
+  return [...(listOf(win, 'codePlaces')?.values() ?? [])].map((p) => {
+    const drag = typeof p.drag === 'string' || (p.drag && typeof p.drag === 'object') ? structuredClone(p.drag                                   ) : undefined;
+    return {
+      id: str(p.id, 40), name: str(p.name, 40),
+      keys: Array.isArray(p.keys) ? (p.keys            ).slice() : [],
+      skipped: Array.isArray(p.skipped) ? (p.skipped            ).slice() : [],
+      knobs: knobs(p.knobs),
+      ...(drag ? { drag } : {}),
+      avoid: Array.isArray(p.avoid) ? (p.avoid            ).slice() : [],
+      ...(kindOf(p) ? { kind: kindOf(p)  } : {}),
+    };
+  });
+}
+
+/**
+ * What a layout's rule looks like, for the card's "Layout: Line · 4" / "Scatter · 12" (studio-code-knobs, 2026-10-24;
+ * the words chosen with Gemini that day): 'scatter' when at() reads its seeded random, 'line' when every place it gives
+ * is on one straight line (three or more objects), else nothing (the card says the layout's name). WHY by running at()
+ * and not a field the AI writes: the editor learns it from the rule itself, so it can never say "Line" of a ring.
+ */
+function kindOf(p       )                            {
+  if (typeof p.at !== 'function') return null;
+  const spots = Array.isArray(p.spots) ? (p.spots                          ) : [];
+  const k = Object.fromEntries(Object.entries(knobs(p.knobs)).map(([n, x]) => [n, x.v]));
+  let random = false;
+  const at = p.at                                                                                 ;
+  try {
+    for (let i = 0; i < Math.min(3, Math.max(1, spots.length)); i++) at(i, k, { try: 0, rand: () => ((random = true), 0.5), level: null });
+  } catch {
+    return null;
+  }
+  if (random) return 'scatter';
+  const ps = spots.filter((q)                => Array.isArray(q));
+  if (ps.length < 3) return ps.length === 2 ? 'line' : null;
+  const a = ps[0] , b = ps[ps.length - 1] ;
+  const ab = b.map((v, i) => v - a[i] );
+  const len = Math.hypot(...ab);
+  if (len < 1e-6) return null;
+  // Every place within 2 % of the row's length off the line through its two ends.
+  return ps.every((q) => {
+    const aq = q.map((v, i) => v - a[i] );
+    const t = aq.reduce((s, v, i) => s + v * ab[i] , 0) / (len * len);
+    return Math.hypot(...aq.map((v, i) => v - t * ab[i] )) <= len * 0.02;
+  }) ? 'line' : null;
+}
+
+/** Every keep-out condition of the game's page (codeAvoid), whichever layouts use it. */
+function codeAvoidsOf(win     )                  {
+  return [...(listOf(win, 'codeAvoids')?.values() ?? [])].map((a) => ({
+    code: str(a.id, 40), name: str(a.name, 40), ...(str(a.after, 20) ? { after: str(a.after, 20) } : {}), knobs: knobs(a.knobs), ...(typeof a.show === 'function' ? { show: true } : {}),
+  }));
+}
+
+/**
+ * A layout's objects under its name and number ("Hex row 2" for hex-2) where the adapter knows them by their key
+ * alone (the loader marks them with their key): the editor's list, card and `--do list` then say what the person was
+ * told ("a row of hexagons"). An object the game names itself keeps its own label.
+ */
+function namedByLayout                                           (items     , places                 )      {
+  const names = new Map                ();
+  for (const p of places) p.keys.forEach((k) => names.set(k, `${p.name} ${k.slice(p.id.length + 1)}`));
+  return items.map((it) => (names.has(it.key) && (!it.label || it.label === it.key) ? { ...it, label: names.get(it.key)  } : it));
+}
+
+__def(__exports, "codeMotionsOf", () => codeMotionsOf);
+__def(__exports, "codePlacesOf", () => codePlacesOf);
+__def(__exports, "kindOf", () => kindOf);
+__def(__exports, "codeAvoidsOf", () => codeAvoidsOf);
+__def(__exports, "namedByLayout", () => namedByLayout);
+};
+__defs[35] = function (__exports) {
+'use strict';
+// code-place.ts
+
+// The game's code layouts in the game page (studio-code-knobs, 2026-10-24; the plan's step 2, "hand and rule", its
+// decisions 9–11 and 16). A layout is the game's codePlace() — "hex: four hexagons, Gap m
+// apart" — whose objects the loader put (loader/studio-placement.js layOut). Here:
+//
+//   place/layout  the draft's `places` changed (a knob on the card, a pin, "Convert to coordinates", their ⌘Z): the layouts
+//                 are laid out again WHERE THEY STAND (relayCodePlace: the same objects move; a new count makes / takes
+//                 out objects, then the list is sent again). Before (studio-code-base) every change read the whole game
+//                 again — a second of a blank game for one number (the first step's report: "a layout's number reloads the game").
+//   place/guide   the violet rings and dotted line of the picked object's layout (and the one under the mouse): where the
+//                 rule puts each of its objects, an empty dashed ring where one is placed by hand, its "Hand" tag.
+//                 Nothing to grab (the plan: "no points, no handles"): what the rule decides is changed by its knobs.
+//   a drag        the picked object of a layout with a `drag` knob, moved with Move: the knob value that puts THIS object
+//                 nearest the finger's spot on the ground is looked for (golden-section search over at() — the formula
+//                 is never read, only run), and all its objects are laid out with it: the row follows, the object stops
+//                 where the formula cannot reach (beside a row). place/knob goes to the shell (one ⌘Z, one Save count).
+//                 ⌥: the ordinary move — the shell keeps it as that one object's pin ("Hand-placed").
+//   by way        studio-to-coords (2026-10-24; a request that day: "a rule's object stays a rule however you touch it", and the
+//                 CRYSTAL FIELD try of that day: a lamp of a row dragged away from the road did nothing and said nothing,
+//                 and lifted or turned it silently became a pin). `drag` may name a knob per way — { along, side, up,
+//                 turn, size }: Move turns along and side together (the numbers that bring it nearest the finger),
+//                 Height up, Turn turn, Size size. A way with no knob does not move the object: the chip says why while
+//                 the finger is down ("Sideways position is set by the rule · ⌥ for just this one"), and the shell says
+//                 it again with ✦ when the drag ends where the rule cannot follow (place/held). WHY not move it and
+//                 make a pin as before: the same drag gave "the whole row changes" one way and "this one leaves the
+//                 rule" the other, without ⌥, and nobody saw it leave.
+//   the line      the one line under the strip says, before a touch, which of the two a drag will do.
+//   place/guide `compare`  ✦ Turn into a rule (studio-code-torule, 2026-10-24): where the hand-placed objects the
+//                 layout replaced stood, until Save — an orange dot each (the hand's colour) and a thin line to where
+//                 the rule's object of that number stands now, and over the farthest one the chip "lamp-3 · 0.6 m".
+//                 Measured from what is on screen each frame, so a knob turned moves the lines and the number.
+//
+// WHY the look-up runs the game's at() (not a field the AI writes): "dragging one changes the formula's number, and
+// the others follow" (the choice (a) of 10/24) must work for any rule the AI writes — a row, a spiral of
+// lamps, a ring — and the editor only knows the rule by running it.
+// WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
+                                                                                                                                           
+const { codePose, knobValues, relayCodePlace } = __require(20);
+const { kindOf } = __require(34);
+
+const VIOLET = '#a78bfa';
+const YOU = '#ff6b1a';
+
+                                      
+/** A layout as the loader keeps it on globalThis (Symbol.for('game-studio.codePlaces')): plain fields only are read. */
+                 
+             
+               
+                                                                                                               
+                                         
+                 
+                                                                                                    
+                                 
+                 
+ 
+
+// The words of the line and the chip ("rule", chosen on 10/24 with Gemini's wording of that day).
+// The line is one line next to the strip (handles.ts .note, no wrap): in a narrow window (the side window, a phone) the
+// layout's name goes ("Drag to adjust Gap · ⌥-drag to move one"), and with a finger the ⌥ part does (no ⌥ key there).
+// studio-to-coords (2026-10-24): a way with no knob says so ("Height is set by the rule"), never "moving one places it
+// individually" — without ⌥ a rule's object no longer leaves its rule. The shell's i18n.ts rule.held.* say the same.
+const PLACE_WORDS                
+                                                                                                                  
+                                                                                  
+   = {
+  en: {
+    head: (name, n) => `${name} ×${n} (rule): `,
+    drag: (labels) => `Drag to adjust ${labels.join(', ')}`,
+    alone: ' · ⌥-drag to move one',
+    chipAlone: ' · ⌥ for just this one',
+    fixed: { along: 'Position along the row is set by the rule', side: 'Sideways position is set by the rule', move: 'Position is set by the rule',
+      up: 'Height is set by the rule', turn: 'Angle is set by the rule', size: 'Size is set by the rule', group: 'Objects placed by a rule don’t move as a group' },
+    pinned: (name) => `Hand-placed: just this one (${name})`,
+    hand: 'Hand-placed',
+  },
+  ja: {
+    head: (name, n) => `${name} ×${n}（ルールの並び）: `,
+    drag: (labels) => `動かすと${labels.join('・')}が変わる`,
+    alone: ' · ⌥+ドラッグで 1 個だけ',
+    chipAlone: ' · ⌥ でこの 1 個だけ',
+    fixed: { along: '並びに沿った位置はルールで決まっています', side: '横の位置はルールで決まっています', move: '場所はルールで決まっています',
+      up: '高さはルールで決まっています', turn: '向きはルールで決まっています', size: '大きさはルールで決まっています', group: 'ルールで並んだ物はまとめて動かせません' },
+    pinned: (name) => `手置き: この 1 個だけ（${name}）`,
+    hand: '手置き',
+  },
+};
+/** Narrower than this (css px), the line under the strip leaves the layout's name out (it was cut at 420 / 390). */
+const NOTE_FULL_PX = 600;
+/**
+ * The line under the strip for one object of a layout: what a drag with the tool does — the knobs it turns (`labels`),
+ * or, with none for that way (`way`, default Move's), that the rule sets it. `narrow` = no name, `touch` = no ⌥ part.
+ */
+function placeNote(lang      , name        , n        , labels                          , o                                                     )         {
+  const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
+  const ls = labels === null ? [] : Array.isArray(labels) ? labels : [labels];
+  const what = `${ls.length ? w.drag(ls) : w.fixed[o.way ?? 'move']}${o.touch ? '' : w.alone}`;
+  return o.narrow ? what : `${w.head(name, n)}${what}`;
+}
+/** The chip while a drag does not move a rule's object that way: why, and (not on a finger) ⌥. */
+function heldChip(lang      , way          , touch         )         {
+  const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
+  return `${w.fixed[way]}${touch || way === 'group' ? '' : w.chipAlone}`;
+}
+// The knobs' units as the person reads them (the shell's hands.unit.* say the same).
+const UNITS                                       = {
+  en: { m: ' m', px: ' px', s: ' s', deg: '°', '%': '%', x: '×', 'm/s': ' m/s', 'px/s': ' px/s' },
+  ja: { m: ' m', px: ' px', s: ' 秒', deg: '°', '%': '%', x: '×', 'm/s': ' m/秒', 'px/s': ' px/秒' },
+};
+/** A knob's number as the card writes it: an integer knob whole, others with up to two decimals. */
+function knobText(v        , step         )         {
+  if (step && step >= 1) return String(Math.round(v));
+  const r = Math.round(v * 100) / 100;
+  return String(r === 0 ? 0 : r);
+}
+const unitText = (lang      , unit        ) => (UNITS[lang] ?? UNITS.en)[unit] ?? (unit ? ` ${unit}` : '');
+/** A gap as the card says it (shell/to-rule.ts gapText): 3D one decimal from 0.1 m, two below; 2D whole pixels. */
+function gapWords(lang      , d        , three         )         {
+  if (!three) return `${Math.round(d)}${unitText(lang, 'px')}`;
+  return `${d >= 0.095 ? Math.round(d * 10) / 10 : Math.round(d * 100) / 100}${unitText(lang, 'm')}`;
+}
+
+/** The editor's tools a drag uses (handles.ts HandleKind). */
+                                                            
+                                                         
+/** The ways each tool drags (Move: along and side together). */
+const TOOL_WAYS                              = { move: ['along', 'side'], lift: ['up'], rotate: ['turn'], scale: ['size'] };
+/** The way a tool's drag is called when it has no knob (Move of a row: which of along / side is worked out from the drag). */
+const TOOL_WAY                             = { move: 'move', lift: 'up', rotate: 'turn', scale: 'size' };
+
+/**
+ * The knob each way a drag of one of its objects turns (codePlace `drag`): a name = Move's (along the row, as before
+ * studio-to-coords); { along | move, side, up, turn, size } = one per way. Only knobs the layout has.
+ */
+function dragKnobs(p                               )                                   {
+  const out                                   = {};
+  const has = (k         )              => typeof k === 'string' && !!p.knobs && k in p.knobs;
+  if (typeof p.drag === 'string') {
+    if (has(p.drag)) out.along = p.drag;
+    return out;
+  }
+  if (!p.drag || typeof p.drag !== 'object') return out;
+  const d = p.drag                           ;
+  const along = d.along ?? d.move;
+  if (has(along)) out.along = along;
+  for (const w of ['side', 'up', 'turn', 'size']         ) if (has(d[w])) out[w] = d[w];
+  return out;
+}
+/** The knobs a drag with `tool` turns (none: the rule decides that way), each once. */
+function toolKnobs(p                               , tool          )           {
+  const k = dragKnobs(p);
+  return [...new Set(TOOL_WAYS[tool].map((w) => k[w]).filter((x)              => !!x))];
+}
+/** The knob a Move drag of one of its objects turns first (codePlace `drag`: a name, or { along / move, side }), or null. */
+function dragKnob(p                               )                {
+  const k = dragKnobs(p);
+  return k.along ?? k.side ?? null;
+}
+
+/**
+ * The knob value in [lo, hi] that brings `spot(v)` nearest `want` (golden-section search, 30 steps: ~1e-6 of the range,
+ * well under 1 ms for a formula). The distance is measured on the ground (3D x and z; 2D x and y). `whole` = an integer
+ * knob (a count): the nearest of the two whole numbers round the best. A formula that does not reach `want` (beside a
+ * row) gives the value that comes closest — the object stops at the edge, the layout stays a formula.
+ */
+function findKnob(spot                                , want          , lo        , hi        , whole = false)                {
+  return findBy((v) => {
+    const q = spot(v);
+    if (!q) return Infinity;
+    return q.length === 3 ? Math.hypot(q[0]  - want[0] , q[2]  - want[2] ) : Math.hypot(q[0]  - want[0] , q[1]  - want[1] );
+  }, lo, hi, whole);
+}
+
+/**
+ * The value in [lo, hi] with the smallest `dist` (golden-section search, 30 steps), or null: findKnob's search for any
+ * measure (studio-to-coords: a height, an angle, a size — not only a spot on the ground).
+ */
+function findBy(dist                       , lo        , hi        , whole = false)                {
+  if (!(hi > lo)) return null;
+  const g = (Math.sqrt(5) - 1) / 2;
+  let a = lo, b = hi;
+  let c = b - g * (b - a), d = a + g * (b - a);
+  let fc = dist(c), fd = dist(d);
+  for (let i = 0; i < 30; i++) {
+    if (fc < fd) (b = d, d = c, fd = fc, c = b - g * (b - a), fc = dist(c));
+    else (a = c, c = d, fc = fd, d = a + g * (b - a), fd = dist(d));
+  }
+  let v = (a + b) / 2;
+  // The ends themselves (the search never tries them): a finger past the end of the range gets the end.
+  for (const e of [lo, hi]) if (dist(e) < dist(v)) v = e;
+  if (whole) {
+    const f = Math.floor(v), k = Math.ceil(v);
+    v = dist(f) <= dist(k) ? f : k;
+  }
+  return Number.isFinite(dist(v)) ? v : null;
+}
+
+/** A knob's search range: its min / max, else ten times round its number (a knob written without a range). */
+function knobRange(k                                           )                   {
+  const span = Math.max(1, Math.abs(k.v)) * 10;
+  return [typeof k.min === 'number' ? k.min : k.v > 0 ? 0 : k.v - span, typeof k.max === 'number' ? k.max : k.v + span];
+}
+
+const wrapAngle = (a        ) => Math.atan2(Math.sin(a), Math.cos(a));
+/** One number for a size (a number, or the mean of one per axis); 1 = none given. */
+const sizeOf = (s                               ) => (typeof s === 'number' ? Math.abs(s) || 1 : Array.isArray(s) && s.length ? s.reduce((a, b) => a + Math.abs(b), 0) / s.length || 1 : 1);
+/** A formula pose (loader codePose) as a Pose (the same fields). */
+                                                                                         
+/**
+ * How far a rule's pose is from the pose a drag of `tool` asked for, in that tool's own measure: Move = the distance on
+ * the ground (3D x, z; 2D x, y), Height = metres up, Turn = radians (round the up axis, and the tilt when the rule
+ * gives one), Size = the log of the size ratio. The drag's look-up makes it smallest; what is left says whether the rule
+ * could follow (studio-to-coords).
+ */
+function poseGap(tool          , q                 , want      )         {
+  if (!q || !q.p) return Infinity;
+  if (tool === 'move') return q.p.length === 3 ? Math.hypot(q.p[0]  - want.p[0] , q.p[2]  - (want.p[2] ?? 0)) : Math.hypot(q.p[0]  - want.p[0] , q.p[1]  - want.p[1] );
+  if (tool === 'lift') return Math.abs((q.p[1] ?? 0) - (want.p[1] ?? 0));
+  if (tool === 'rotate') {
+    const tilt = q.t && want.t ? Math.hypot(wrapAngle(q.t[0] - want.t[0]), wrapAngle(q.t[1] - want.t[1])) : 0;
+    return Math.hypot(wrapAngle((q.r ?? 0) - (want.r ?? 0)), tilt);
+  }
+  return Math.abs(Math.log(sizeOf(q.s) / sizeOf(want.s)));
+}
+/** Is the object somewhere else than its rule's pose (its place, and its turn / size when the rule gives them)? */
+function offRule(q                 , now                  )          {
+  if (!q || !now) return false;
+  if (q.p.some((v, i) => Math.abs(v - (now.p[i] ?? v)) > 1e-4)) return true;
+  if (q.r !== undefined && Math.abs(wrapAngle(q.r - (now.r ?? 0))) > 1e-4) return true;
+  return q.s !== undefined && Math.abs(Math.log(sizeOf(q.s) / sizeOf(now.s))) > 1e-4;
+}
+/** How much a drag of `tool` asked for, from `from` to `want`, in poseGap's measure. */
+function poseAsk(tool          , from      , want      )         {
+  return poseGap(tool, { p: from.p, r: from.r, t: from.t, s: from.s }, want);
+}
+/**
+ * Did the rule not follow the drag? What is left of it (poseGap after the look-up) is over 40 % of what the drag asked,
+ * and more than a little (Move / Height: `px` on screen, 24 px; Turn: 8°; Size: 8 %) — a hand's wobble across a row is
+ * not "sideways".
+ */
+function ruleLags(tool          , left        , asked        , px                                  )          {
+  if (tool === 'move' || tool === 'lift') return !!px && px.left > 24 && px.left > 0.4 * px.asked;
+  const floor = tool === 'rotate' ? (8 * Math.PI) / 180 : Math.log(1.08);
+  return left > floor && left > 0.4 * asked;
+}
+/**
+ * Which way a Move the rule did not follow went (studio-to-coords): along the row or away from it (a row: the line
+ * through number i's neighbours), or just "this way" (anything else). `miss` = what was left, on the ground.
+ */
+function moveWay(spots                        , i        , miss          , line         )           {
+  if (!line) return 'move';
+  const a = spots[i - 1] ?? spots[i], b = spots[i + 1] ?? spots[i];
+  if (!a || !b) return 'move';
+  const g = (v          ) => (v.length === 3 ? [v[0] , v[2] ] : [v[0] , v[1] ]);
+  const [ax, az] = g(a), [bx, bz] = g(b), [mx, mz] = g(miss);
+  const len = Math.hypot(bx - ax, bz - az);
+  if (len < 1e-9) return 'move';
+  const along = Math.abs((mx * (bx - ax) + mz * (bz - az)) / len);
+  const side = Math.abs((mx * (bz - az) - mz * (bx - ax)) / len);
+  return along >= side ? 'along' : 'side';
+}
+
+                                    
+           
+                           
+                               
+               
+                    
+                                                                                                    
+                 
+ 
+
+                                
+                                   
+                
+                
+                                                                                                              
+                                                           
+     
+                                                                                                     
+                                                                                                       
+                                                                                                                    
+                                                                                                    
+                                                                                                                   
+     
+                                                                                           
+     
+                                                                                                                    
+                                                                                                       
+     
+                                                                                        
+                                                                                                                           
+                                            
+     
+                                                                                                                          
+                                                                                                                        
+                                                                                                  
+     
+                                                          
+                                                                                                       
+                       
+                                                                                         
+                                               
+                                                                                 
+                                         
+                                                                                                             
+                              
+ 
+
+function createCodePlaceView(d                   )                {
+  const { win } = d;
+  const doc = win.document;
+  const host = doc.createElement('div');
+  host.setAttribute('data-studio-ui', '');
+  host.setAttribute('data-studio-code-place', '');
+  const shadow = host.attachShadow({ mode: 'open' });
+  const style = doc.createElement('style');
+  style.textContent = `.root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483645; }
+svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; }`;
+  const root = doc.createElement('div');
+  root.className = 'root';
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = doc.createElementNS(NS, 'svg')                 ;
+  root.append(svg);
+  shadow.append(style, root);
+  let mounted = false;
+
+  // The draft's places (the shell's, with every guide / layout message): the pins, by hand, the knobs turned.
+  let places                                 = {};
+  let guide                                        = { ids: [], sel: null };
+  // ✦ Turn into a rule (studio-code-torule): the hand-placed objects each layout replaced (the shell's, until Save).
+  let compare                                    = {};
+  // The layout of the object under the mouse (no button down): its rings too, before a press — "a layout's object tells
+  // itself from a hand-placed one before it is touched" (the plan's need 2, n2-tell). Read once a frame (pickNear).
+  let hoverId                = null;
+  let hoverAt                                  = null;
+  // A drag that turns knobs: the layout, the tool, its knobs with their numbers before and now, where the objects stood
+  // before, the pose the object had, and the way the rule did not follow (null: it followed) at the last step.
+  let drag                                                                                                                                 
+                                                                                      = null;
+  // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
+  let moving                                                        = null;
+  let drawn = '';
+  // Each object's ring (world radius, offset from its pivot to its foot), worked out once per object.
+  const rings = new Map                                       ();
+  // Each layout's look (a row is joined by a line; code-lists.ts kindOf runs its at()), worked out once per layout out.
+  const kinds = new Map                       ();
+
+  const list = ()                     => {
+    const m = (win                                      )[Symbol.for('game-studio.codePlaces')];
+    return m instanceof Map ? (m                      ) : new Map();
+  };
+  const layoutOf = (key        )               => {
+    for (const p of list().values()) if (p.keys?.includes(key)) return p;
+    return null;
+  };
+  const entryOf = (id        )                 => places[id] ?? {};
+  const pinned = (p       , key        ) => !!entryOf(p.id).pins?.[key];
+  // The way a Move missed, unless the layout has a knob for it (then it is the end of that knob's range, not a way the
+  // rule keeps: a gap at its largest).
+  const uncovered = (p       , way          )                  => ((way === 'along' || way === 'side') && dragKnobs(p)[way] ? null : way);
+  // A finger (no ⌥ key there): the words leave the ⌥ part out.
+  const touch = () => !!win.matchMedia?.('(pointer: coarse)').matches;
+
+  /** Lay out these layouts again with the draft; moved objects go to the shell (made / taken out: a new list). */
+  function relay(ids          ) {
+    const all = list();
+    const poses                                     = [];
+    let listAgain = false;
+    for (const id of ids) {
+      const p = all.get(id);
+      if (!p) continue;
+      const before = p.keys.join('\n');
+      if (!relayCodePlace(id, entryOf(id))) continue;
+      kinds.delete(id);
+      if (p.keys.join('\n') !== before) listAgain = true;
+      for (const k of p.keys) {
+        rings.delete(k);
+        const a = d.adapter().anchor(k);
+        if (a) poses.push({ key: k, pose: a.pose });
+      }
+    }
+    if (listAgain) d.relist();
+    else if (poses.length) d.post({ type: 'studio:place/poses', poses });
+    drawn = '';
+    d.markDirty();
+  }
+
+  /** Scene space ← the layout's root space (its objects' parent; a scene at the top is the same). */
+  const toScene = (p       , v          )           => {
+    const home = p.home                                                                                     ;
+    const m = home?.root?.parent && home.root.matrixWorld ? home.root.matrixWorld.elements : null;
+    if (!m || v.length !== 3) return v;
+    const [x, y, z] = v                            ;
+    return [m[0]  * x + m[4]  * y + m[8]  * z + m[12] , m[1]  * x + m[5]  * y + m[9]  * z + m[13] , m[2]  * x + m[6]  * y + m[10]  * z + m[14] ];
+  };
+
+  /** An object's ring: about its width on screen, at its foot (3D), measured once (and again after a relayout). */
+  function ringOf(p       , key        )                                {
+    const known = rings.get(key);
+    if (known) return known;
+    const a = d.adapter();
+    const pose = a.anchor(key)?.pose;
+    const foot = a.foot?.(key) ?? null;
+    const off = pose && foot && pose.p.length === 3 ? foot.map((v, i) => v - toScene(p, pose.p)[i] ) : [0, 0, 0];
+    let r = a.dim === '3d' ? 0.6 : 24;
+    const an = a.anchor(key);
+    if (a.dim === '3d' && an?.rect && pose && a.toScreen) {
+      const c = toScene(p, pose.p);
+      const s0 = a.toScreen(c), s1 = a.toScreen([c[0]  + 1, c[1] , c[2] ]);
+      const ppm = s0 && s1 ? Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) : 0;
+      if (ppm > 1) r = Math.max(0.2, Math.min(4, (an.rect.w / 2 / ppm) * 0.85));
+    } else if (an?.rect) r = Math.max(8, an.rect.w / 2);
+    const out = { r, foot: off };
+    rings.set(key, out);
+    return out;
+  }
+
+  const draw = () => {
+    const a = d.adapter();
+    if (hoverAt) {
+      const at = hoverAt;
+      hoverAt = null;
+      let k                    ;
+      try {
+        k = a.pickNear(at.x, at.y, 2)[0];
+      } catch {
+        k = undefined;
+      }
+      const p = k ? layoutOf(k) : null;
+      hoverId = p && !entryOf(p.id).hand ? p.id : null;
+    }
+    const ids = hoverId && !guide.ids.includes(hoverId) ? [...guide.ids, hoverId] : guide.ids;
+    const shown = ids.map((id) => list().get(id)).filter((p)             => !!p && !entryOf(p.id).hand && !!p.spots);
+    if (!shown.length || !a.toScreen) {
+      if (svg.firstChild) svg.replaceChildren();
+      drawn = '';
+      return;
+    }
+    const three = a.dim === '3d';
+    // A ring on the ground round `c` (3D: 24 points of a circle; 2D: an ellipse on the screen).
+    const ringAt = (c          , r        )                                 => {
+      if (!three) {
+        const s = a.toScreen (c);
+        return s ? Array.from({ length: 25 }, (_, j) => [s[0] + r * Math.cos((j / 24) * 2 * Math.PI), s[1] + r * 0.4 * Math.sin((j / 24) * 2 * Math.PI)]                    ) : null;
+      }
+      const out                          = [];
+      for (let j = 0; j <= 24; j++) {
+        const t = (j / 24) * 2 * Math.PI;
+        const s = a.toScreen ([c[0]  + r * Math.cos(t), c[1] , c[2]  + r * Math.sin(t)]);
+        if (!s) return null;
+        out.push(s);
+      }
+      return out;
+    };
+    const parts                                                                                                                                                                      = [];
+    for (const p of shown) {
+      const spots = p.spots ;
+      const centres                                 = [];
+      spots.forEach((q, i) => {
+        const key = `${p.id}-${i + 1}`;
+        if (!q) return void centres.push(null);
+        const has = p.keys.includes(key);
+        const ring = has ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
+        const c = toScene(p, q).map((v, j) => v + (ring.foot[j] ?? 0));
+        const pts = ringAt(c, ring.r);
+        const pin = pinned(p, key);
+        if (pts) parts.push({ kind: 'ring', pts, dash: pin, on: key === guide.sel });
+        centres.push(a.toScreen (c));
+        // A pinned one: its "Hand" tag over it (where it stands now).
+        if (pin && has) {
+          const an = a.anchor(key);
+          if (an?.visible) parts.push({ kind: 'tag', pts: [[an.center[0], (an.rect ? an.rect.y : an.center[1] - 20) - 8]], text: (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).hand });
+        }
+      });
+      // A row: the rings joined in order by a dotted line (a scatter is not a line: no line).
+      if (!kinds.has(p.id)) kinds.set(p.id, kindOf(p                                      ));
+      const isLine = kinds.get(p.id) === 'line';
+      if (isLine) for (let i = 1; i < centres.length; i++) if (centres[i - 1] && centres[i]) parts.push({ kind: 'line', pts: [centres[i - 1] , centres[i] ] });
+      // ✦ Turn into a rule: where the hand-placed ones stood (orange dots), a thin line to the rule's object of the same
+      // number where it stands now, and the chip over the farthest. The same distance as the card's (the whole one).
+      const cmp = compare[p.id];
+      if (cmp) {
+        let far                                                                                        = null;
+        cmp.was.forEach((w, i) => {
+          if (!w) return;
+          const key = `${p.id}-${i + 1}`;
+          const ring = p.keys.includes(key) ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
+          const s0 = a.toScreen (toScene(p, w).map((v, j) => v + (ring.foot[j] ?? 0)));
+          if (!s0) return;
+          const now = p.keys.includes(key) ? a.anchor(key)?.pose.p : null;
+          const s1 = now ? a.toScreen (toScene(p, now).map((v, j) => v + (ring.foot[j] ?? 0))) : null;
+          if (s1 && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) > 2) parts.push({ kind: 'gap', pts: [s0, s1] });
+          parts.push({ kind: 'was', pts: [s0] });
+          const dd = now && now.length === w.length ? Math.hypot(...w.map((v, j) => v - now[j] )) : null;
+          if (dd !== null && (!far || dd > far.d + 1e-9)) far = { at: s0, to: s1, d: dd, name: cmp.names[i] ?? key };
+        });
+        // The chip beside the farthest dot, on the side away from the rule's object (over it, the object's own outline
+        // and the strip cut it: the first picture of 10/24).
+        const f = far                                                                                         ;
+        if (f) parts.push({ kind: 'chip', pts: [f.at], side: f.to && f.to[0] > f.at[0] ? -1 : 1, text: `${f.name} · ${gapWords(d.lang(), f.d, three)}` });
+      }
+      // While a drag turns the knob (or a keep-out box is drawn): where they stood before, dashed, with an arrow to where they go.
+      const before = drag && drag.id === p.id ? drag.before : moving && moving.id === p.id ? moving.before : null;
+      if (before) before.forEach((q, i) => {
+        const now = spots[i];
+        if (!q || !now) return;
+        const key = `${p.id}-${i + 1}`;
+        const ring = p.keys.includes(key) ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
+        const c0 = toScene(p, q).map((v, j) => v + (ring.foot[j] ?? 0));
+        const c1 = toScene(p, now).map((v, j) => v + (ring.foot[j] ?? 0));
+        const pts = ringAt(c0, ring.r);
+        const s0 = a.toScreen (c0), s1 = a.toScreen (c1);
+        if (pts && s0 && s1 && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) > 6) parts.push({ kind: 'old', pts }, { kind: 'old', pts: [s0, s1] });
+      });
+    }
+    const sig = JSON.stringify(parts);
+    if (sig === drawn) return;
+    drawn = sig;
+    if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
+    svg.replaceChildren();
+    const path = (pts                         , stroke        , width        , dash         , close = false) => {
+      const el = doc.createElementNS(NS, 'path');
+      el.setAttribute('d', pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join('') + (close ? 'Z' : ''));
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', stroke);
+      el.setAttribute('stroke-width', String(width));
+      el.setAttribute('stroke-linecap', 'round');
+      if (dash) el.setAttribute('stroke-dasharray', dash);
+      svg.append(el);
+    };
+    for (const x of parts) {
+      if (x.kind === 'line') (path(x.pts, 'rgba(0,0,0,.35)', 4), path(x.pts, VIOLET, 1.6, '4 5'));
+      else if (x.kind === 'old') path(x.pts, 'rgba(255,255,255,.55)', 1.2, '3 4', x.pts.length > 2);
+      else if (x.kind === 'gap') (path(x.pts, 'rgba(0,0,0,.35)', 3), path(x.pts, YOU, 1.2));
+      else if (x.kind === 'was') {
+        const [cx, cy] = x.pts[0] ;
+        const c = doc.createElementNS(NS, 'circle');
+        c.setAttribute('cx', cx.toFixed(1));
+        c.setAttribute('cy', cy.toFixed(1));
+        c.setAttribute('r', '4');
+        c.setAttribute('fill', YOU);
+        c.setAttribute('stroke', '#fff');
+        c.setAttribute('stroke-width', '1.2');
+        c.setAttribute('data-part', 'place-was');
+        svg.append(c);
+      }
+      else if (x.kind === 'ring') {
+        path(x.pts, 'rgba(0,0,0,.35)', 4, undefined, true);
+        path(x.pts, x.on ? '#c4b5fd' : VIOLET, x.on ? 2.2 : 1.6, x.dash ? '4 4' : undefined, true);
+      } else if ((x.kind === 'tag' || x.kind === 'chip') && x.text) {
+        // About the text's width at 10 px bold: a kana / kanji is twice as wide as a Latin letter (a Japanese name's chip).
+        const w = 10 + [...x.text].reduce((n, ch) => n + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 10.5 : 6.4), 0);
+        // A chip with a side sits beside its point (8 px off), else centred on it (a tag over its object).
+        const cx = x.pts[0] [0] + (x.side ? x.side * (w / 2 + 8) : 0);
+        const cy = x.pts[0] [1];
+        const r = doc.createElementNS(NS, 'rect');
+        r.setAttribute('x', (cx - w / 2).toFixed(1));
+        r.setAttribute('y', (cy - 9).toFixed(1));
+        r.setAttribute('width', String(w));
+        r.setAttribute('height', '16');
+        r.setAttribute('rx', '4');
+        r.setAttribute('fill', YOU);
+        const tx = doc.createElementNS(NS, 'text');
+        tx.setAttribute('x', (cx - w / 2 + 5).toFixed(1));
+        tx.setAttribute('y', (cy + 3).toFixed(1));
+        tx.textContent = x.text;
+        if (x.kind === 'chip') r.setAttribute('data-part', 'place-gap-chip');
+        svg.append(r, tx);
+      }
+    }
+  };
+
+  // The mouse over the game (never taken: the game's own listeners and input.ts see the same move).
+  win.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse' || e.buttons) return;
+    hoverAt = { x: e.clientX, y: e.clientY };
+    d.markDirty();
+  }, { capture: true, passive: true });
+  // Out of the game page (into the editor's panels): no layout under the mouse any more.
+  win.addEventListener('pointerout', (e) => {
+    if (e.relatedTarget || !hoverId) return;
+    hoverId = null;
+    hoverAt = null;
+    d.markDirty();
+  }, { capture: true, passive: true });
+
+  return {
+    handle(msg) {
+      if (msg.type === 'studio:place/layout') {
+        places = structuredClone(msg.places ?? {});
+        relay(msg.ids ?? [...list().keys()]);
+      } else if (msg.type === 'studio:place/guide') {
+        guide = { ids: msg.ids.slice(), sel: msg.sel };
+        if (msg.places) places = structuredClone(msg.places);
+        compare = structuredClone(msg.compare ?? {});
+        drawn = '';
+        d.markDirty();
+      }
+    },
+    frame: draw,
+    clear() {
+      guide = { ids: [], sel: null };
+      drag = null;
+      moving = null;
+      draw();
+    },
+    note(key, tool) {
+      const p = layoutOf(key);
+      if (!p || entryOf(p.id).hand) return null;
+      if (pinned(p, key)) return (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).pinned(p.name);
+      const t = tool ?? 'move';
+      return placeNote(d.lang(), p.name, p.keys.length, toolKnobs(p, t).map((k) => p.knobs[k] .label),
+        { narrow: win.innerWidth < NOTE_FULL_PX, touch: touch(), way: TOOL_WAY[t] });
+    },
+    dragStart(key, alone, tool = 'move') {
+      drag = null;
+      const p = layoutOf(key);
+      if (!p || entryOf(p.id).hand || pinned(p, key)) return null;
+      if (alone) return 'free';
+      const knobs = toolKnobs(p, tool);
+      if (!knobs.length) return 'stop';
+      const v = knobValues(p.knobs, entryOf(p.id).knobs)                          ;
+      const from = Object.fromEntries(knobs.map((k) => [k, v[k] ]));
+      drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, tool, knobs, from, v: { ...from },
+        before: (p.spots ?? []).map((q) => (q ? q.slice() : null)), start: d.adapter().anchor(key)?.pose ?? null, lag: null };
+      return 'knob';
+    },
+    dragTo(key, want) {
+      const p = drag && drag.key === key ? list().get(drag.id) : null;
+      if (!drag || !p) return null;
+      const dr = drag;
+      const k0 = knobValues(p.knobs, entryOf(p.id).knobs)                          ;
+      const at = (k                        ) => codePose(p.id, dr.i, k)                   ;
+      const gap = (k                        ) => poseGap(dr.tool, at(k), want);
+      // Each knob in turn (Move: along, then side, three rounds — enough for a row's gap and its distance from the road,
+      // which do not pull against each other); the same steps as the card's knob after (shell/knob.ts snapKnob: a
+      // hundredth of its range, so a drag gives "4.5 m").
+      const k = { ...k0 };
+      for (let round = 0; round < (dr.knobs.length > 1 ? 3 : 1); round++) for (const name of dr.knobs) {
+        const def = p.knobs[name] ;
+        const [lo, hi] = knobRange(def);
+        const found = findBy((x) => gap({ ...k, [name]: x }), lo, hi, !!def.step && def.step >= 1);
+        if (found !== null) k[name] = found;
+      }
+      const next                         = {};
+      for (const name of dr.knobs) {
+        const def = p.knobs[name] ;
+        const [lo, hi] = knobRange(def);
+        const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
+        next[name] = def.step && def.step >= 1 ? k[name]  : Math.round(k[name]  / q) * q;
+      }
+      if (dr.knobs.some((n) => Math.abs(next[n]  - dr.v[n] ) > 1e-9)) {
+        dr.v = next;
+        const e = entryOf(p.id);
+        const ks = { ...(e.knobs ?? {}) };
+        for (const n of dr.knobs) ks[n] = { v: next[n]  };
+        places = { ...places, [p.id]: { ...e, knobs: ks } };
+        relay([p.id]);
+        d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knobs[0] , v: next[dr.knobs[0] ] , end: false, key, knobs: { ...next } });
+      } else if (offRule(at(dr.v), d.adapter().anchor(key)?.pose)) {
+        // The same numbers: the ordinary step has still moved this one object (input.ts drags it, then asks here) — back
+        // where the rule puts it. Before studio-to-coords it stayed under the finger until the drag ended (a lamp dragged
+        // sideways followed the finger, then jumped back on release).
+        relay([p.id]);
+      }
+      // Did the rule follow? What is left of the drag, against what it asked (on screen for Move / Height).
+      const now = at(dr.v);
+      const left = poseGap(dr.tool, now, want);
+      const asked = dr.start ? poseAsk(dr.tool, dr.start, want) : left;
+      let px                                             ;
+      const a = d.adapter();
+      if ((dr.tool === 'move' || dr.tool === 'lift') && a.toScreen && now?.p) {
+        const sw = a.toScreen(toScene(p, want.p)), sn = a.toScreen(toScene(p, now.p)), s0 = dr.start ? a.toScreen(toScene(p, dr.start.p)) : null;
+        if (sw && sn) px = { left: Math.hypot(sw[0] - sn[0], sw[1] - sn[1]), asked: s0 ? Math.hypot(sw[0] - s0[0], sw[1] - s0[1]) : Infinity };
+      }
+      // Both of Move's knobs there and the rule still short: the end of a knob's range — the object stops at the edge,
+      // the chip shows the knob at its end (no "why": every way is the rule's to follow).
+      dr.lag = !ruleLags(dr.tool, left, asked, px) ? null
+        : dr.tool === 'move' ? (dr.knobs.length > 1 ? null : uncovered(p, moveWay(p.spots ?? [], dr.i, want.p.map((v, j) => v - (now?.p[j] ?? v)), kindOf(p                                      ) === 'line')))
+        : TOOL_WAY[dr.tool];
+      const pose = a.anchor(key)?.pose;
+      const lang = d.lang();
+      const turned = dr.knobs.filter((n) => Math.abs(dr.v[n]  - dr.from[n] ) > 1e-9);
+      const said = (turned.length ? turned : dr.knobs.slice(0, 1)).map((n) => {
+        const def = p.knobs[n] ;
+        return `${def.label} ${knobText(dr.from[n] , def.step)} → ${knobText(dr.v[n] , def.step)}${unitText(lang, def.unit)}`;
+      });
+      const why = dr.lag ? heldChip(lang, dr.lag, touch()) : '';
+      return pose ? { pose, chip: !turned.length && why ? why : [...said, why].filter(Boolean).join(' · ') } : null;
+    },
+    preview(id, entry) {
+      const p = list().get(id);
+      if (!p) return;
+      if (!moving || moving.id !== id) moving = { id, before: (p.spots ?? []).map((q) => (q ? q.slice() : null)) };
+      places = { ...places };
+      if (entry) places[id] = structuredClone(entry);
+      else delete places[id];
+      relay([id]);
+    },
+    previewEnd() {
+      const mv = moving;
+      moving = null;
+      drawn = '';
+      d.markDirty();
+      const now = mv ? list().get(mv.id)?.spots ?? [] : [];
+      return mv ? mv.before.filter((q, i) => q && (!now[i] || now[i] .some((v, j) => Math.abs(v - q[j] ) > 1e-6))).length : 0;
+    },
+    dragEnd(key, keep) {
+      const dr = drag;
+      drag = null;
+      drawn = '';
+      if (!dr || dr.key !== key) return;
+      const changed = dr.knobs.some((n) => dr.v[n] !== dr.from[n]);
+      if (!keep && changed) {
+        const e = entryOf(dr.id);
+        const ks = { ...(e.knobs ?? {}) };
+        for (const n of dr.knobs) ks[n] = { v: dr.from[n]  };
+        places = { ...places, [dr.id]: { ...e, knobs: ks } };
+        relay([dr.id]);
+      }
+      const end = keep ? dr.v : dr.from;
+      d.post({ type: 'studio:place/knob', id: dr.id, knob: dr.knobs[0] , v: end[dr.knobs[0] ] , end: true, key, knobs: { ...end } });
+      // The finger let go where the rule could not follow (a lamp dragged away from the road): the shell says why.
+      if (keep && dr.lag) d.post({ type: 'studio:place/held', id: dr.id, key, way: dr.lag });
+      d.markDirty();
+    },
+    stopChip(key, way) {
+      void key;
+      return heldChip(d.lang(), way, touch());
+    },
+    held(key, way) {
+      const p = layoutOf(key);
+      if (p) d.post({ type: 'studio:place/held', id: p.id, key, way });
+    },
+    ruled(key) {
+      const p = layoutOf(key);
+      return !!p && !entryOf(p.id).hand && !pinned(p, key);
+    },
+  };
+}
+
+__def(__exports, "PLACE_WORDS", () => PLACE_WORDS);
+__def(__exports, "NOTE_FULL_PX", () => NOTE_FULL_PX);
+__def(__exports, "placeNote", () => placeNote);
+__def(__exports, "heldChip", () => heldChip);
+__def(__exports, "knobText", () => knobText);
+__def(__exports, "unitText", () => unitText);
+__def(__exports, "gapWords", () => gapWords);
+__def(__exports, "TOOL_WAY", () => TOOL_WAY);
+__def(__exports, "dragKnobs", () => dragKnobs);
+__def(__exports, "toolKnobs", () => toolKnobs);
+__def(__exports, "dragKnob", () => dragKnob);
+__def(__exports, "findKnob", () => findKnob);
+__def(__exports, "findBy", () => findBy);
+__def(__exports, "knobRange", () => knobRange);
+__def(__exports, "poseGap", () => poseGap);
+__def(__exports, "poseAsk", () => poseAsk);
+__def(__exports, "ruleLags", () => ruleLags);
+__def(__exports, "moveWay", () => moveWay);
+__def(__exports, "createCodePlaceView", () => createCodePlaceView);
+};
+__defs[36] = function (__exports) {
+'use strict';
 // input.ts
 
 // Pointer, wheel and key input in the game page while editing, plus the
@@ -12355,7 +13297,12 @@ const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __requi
 const { canLift, offWhy } = __require(26);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(27);
 const { slideOf } = __require(33);
-                                                     
+const { TOOL_WAY } = __require(35);
+// What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
+// still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
+const CODE_KNOB = 1;
+const CODE_STOP = 2;
+const CODE_FREE = 3;
 
                             
                          
@@ -12383,10 +13330,11 @@ const { slideOf } = __require(33);
                                     
      
                                                                                                                       
-                                                                                                               
-                                              
+                                                                                                                        
+                                                                                                                       
+                                                                                              
      
-                                                                               
+                                                                                                               
  
 
                               
@@ -12451,7 +13399,9 @@ const { slideOf } = __require(33);
                                                                      
                                   
                                                                                                                     
-                                                                                                                                 
+                                                                                                                           
+                                                                                                                    
+                                                                                                                                               
                                                                                                                                           
                    
                                                            
@@ -12728,7 +13678,7 @@ function attachInput(deps           )              {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
     // One object of a code layout (studio-code-knobs): before a touch, what a drag will do — turn the layout's knob
     // ("hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one") or place just it by hand.
-    const rule = picked.length === 1 ? deps.codePlace?.note(picked[0] .key) : null;
+    const rule = picked.length === 1 ? deps.codePlace?.note(picked[0] .key, tool) : null;
     if (rule) return rule;
     const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
     if (moved) {
@@ -12842,7 +13792,18 @@ function attachInput(deps           )              {
   };
 
   const startGroup = (handle            , p     , anywhere = false)       => {
-    const session = beginGroup(adapter, state.group, state.selected );
+    // A rule layout's objects among them (studio-to-coords, 2026-10-24: "a rule's object stays a rule however you touch
+    // it"): they stay where the rule puts them and the rest move; the chip says why. ⌥ = they move too, each put by hand
+    // (the moves say `alone`). All of them a rule's: nothing moves (a 'stop' drag of the picked one, the group's why).
+    const ruled = free ? [] : state.group.filter((k) => deps.codePlace?.ruled(k));
+    const movers = state.group.filter((k) => !ruled.includes(k));
+    if (ruled.length && !movers.length) {
+      const pose = adapter.anchor(state.selected )?.pose;
+      if (!pose) return { kind: 'none' };
+      if (!anywhere) handles.setActive(handle);
+      return { kind: 'handle', handle, key: state.selected , from: pose, last: pose, data: { code: CODE_STOP, group: 1 }, anywhere };
+    }
+    const session = beginGroup(adapter, movers, movers.includes(state.selected ) ? state.selected  : movers[0] );
     if (!session) return { kind: 'none' };
     const ga = groupAnchor(adapter, session.keys, session.primary);
     const data                         = { d: 0, f: 1 };
@@ -12866,6 +13827,8 @@ function attachInput(deps           )              {
       }
     }
     if (!anywhere) handles.setActive(handle);
+    if (ruled.length) data.heldOut = 1;
+    if (free) data.free = 1;
     return { kind: 'group', handle, session, x0: p.x, y0: p.y, data, anywhere };
   };
 
@@ -12906,9 +13869,12 @@ function attachInput(deps           )              {
       if (Math.abs(dy) > 1e-6) groupLift(adapter, s, dy);
     }
     markDirty();
-    post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle });
+    post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle, ...(data.free ? { alone: true } : {}) });
     const from = s.from.get(s.primary), now = adapter.anchor(s.primary)?.pose;
-    if (from && now) handles.readout(readout(m.handle, from, now, canTurn() ? state.axis : 'y'));
+    // A rule's objects left where they are (startGroup): the readout says why after the numbers.
+    const why = data.heldOut && deps.codePlace ? ` · ${deps.codePlace.stopChip(s.primary, 'group')}` : '';
+    if (from && now) handles.readout(readout(m.handle, from, now, canTurn() ? state.axis : 'y') + why);
+    if (data.heldOut) data.moved = 1;
   };
 
   const startHandle = (handle            , p     , anywhere = false)       => {
@@ -12954,7 +13920,24 @@ function attachInput(deps           )              {
   const moveHandle = (m                                   , p     ) => {
     const { key, data } = m;
     lastRead = p;
+    // An object of a code layout (studio-code-knobs, decision 11; by way since studio-to-coords, 2026-10-24): decided at
+    // the drag's first step, before anything moves — the tool's knobs turn (Move: the ones that bring it nearest where
+    // the finger put it, every object of the layout laid out with them; it stops where the rule cannot reach), or the
+    // rule has none for that way and nothing moves (the chip says why), or ⌥ (Ctrl) held = just this one, an ordinary
+    // move the shell keeps as its pin. Before, only Move looked: a turn, a resize or a lift made a pin without ⌥.
+    if (data.code === undefined) {
+      const c = deps.codePlace?.dragStart(key, free, m.handle) ?? null;
+      data.code = c === 'knob' ? CODE_KNOB : c === 'stop' ? CODE_STOP : c === 'free' ? CODE_FREE : 0;
+    }
+    if (data.code === CODE_STOP) {
+      data.stopped = 1;
+      handles.readout(deps.codePlace?.stopChip(key, data.group ? 'group' : TOOL_WAY[m.handle]) ?? null);
+      return;
+    }
     if (m.handle === 'move' || m.handle === 'lift') adapter.setSnap?.({ on: true, free, skip: snapKeys() });
+    // Turning knobs: the ordinary step goes on from where the last one would have put it (Move needs none: its place
+    // comes from the grab and the finger).
+    if (data.code === CODE_KNOB && m.ghost && m.handle !== 'move') adapter.setPose(key, m.ghost);
     let pose       = m.last;
     if (m.anywhere && m.handle === 'rotate') {
       // Turn by the horizontal travel; 15° steps within ±3° of the gesture's total unless Shift.
@@ -12974,19 +13957,6 @@ function attachInput(deps           )              {
       if (Math.abs(f - 1) > 1e-4) pose = adapter.scale(key, f);
     } else if (m.handle === 'move') {
       pose = adapter.drag(key, p.x, p.y);
-      // An object of a code layout with a `drag` knob (studio-code-knobs, decision 11): decided at the drag's first step —
-      // the knob that brings it nearest where the finger put it, every object of the layout laid out with it (it stops
-      // where the rule cannot reach); ⌥ (Ctrl) held = just this one, an ordinary move (the shell keeps it as its pin).
-      if (data.code === undefined) data.code = deps.codePlace?.dragStart(key, free) ? 1 : 0;
-      if (data.code === 1) {
-        const r = deps.codePlace .dragTo(key, pose.p);
-        if (r) {
-          m.last = r.pose;
-          markDirty();
-          handles.readout(r.chip);
-        }
-        return;
-      }
     } else if (m.handle === 'rotate') {
       const a = adapter.anchor(key);
       if (!a) return;
@@ -13023,8 +13993,18 @@ function attachInput(deps           )              {
       const dy = Math.max(-5, Math.min(5, liftWith([key], err * data.k , data.k , data.breakPx )));
       if (Math.abs(dy) > 1e-6) pose = adapter.nudgeY (key, dy);
     }
+    if (data.code === CODE_KNOB) {
+      m.ghost = pose;
+      const r = deps.codePlace .dragTo(key, pose, m.handle);
+      if (r) {
+        m.last = r.pose;
+        markDirty();
+        handles.readout(r.chip);
+      }
+      return;
+    }
     m.last = pose;
-    emitMoved(key, pose, { press: m.handle });
+    emitMoved(key, pose, { press: m.handle, ...(data.code === CODE_FREE ? { alone: true } : {}) });
     handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y'));
   };
 
@@ -13067,16 +14047,22 @@ function attachInput(deps           )              {
       const poses = groupPoses(adapter, mode.session, true);
       if (poses.some((e) => !samePose(e.pose, e.from ))) {
         markDirty();
-        post({ type: 'studio:placement/moved-group', poses, end: true, press: mode.handle });
+        post({ type: 'studio:placement/moved-group', poses, end: true, press: mode.handle, ...(mode.data.free ? { alone: true } : {}) });
       }
+      // A rule's objects stayed (startGroup): the shell says why, with ✦ — once the drag went somewhere.
+      const stayed = mode.data.heldOut && mode.data.moved ? state.group.find((k) => deps.codePlace?.ruled(k)) : undefined;
+      if (stayed) deps.codePlace?.held(stayed, 'group');
     }
     if (mode.kind === 'handle') {
       const m = mode;
       const pose = adapter.anchor(m.key)?.pose ?? m.last;
       handles.setActive(null);
       // A drag that turned a code layout's knob: the knob's end (one undo step in the shell), never a move of its own.
-      if (m.data.code === 1) deps.codePlace?.dragEnd(m.key, true);
-      else if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle });
+      // One that the rule kept still: nothing moved — the shell says why once it went somewhere (studio-to-coords).
+      if (m.data.code === CODE_KNOB) deps.codePlace?.dragEnd(m.key, true);
+      else if (m.data.code === CODE_STOP) {
+        if (m.data.stopped) deps.codePlace?.held(m.key, m.data.group ? 'group' : TOOL_WAY[m.handle]);
+      } else if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle, ...(m.data.code === CODE_FREE ? { alone: true } : {}) });
     }
     mode = { kind: 'none' };
   };
@@ -13995,7 +14981,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[35] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -14053,7 +15039,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[36] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -14726,7 +15712,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[37] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ui-extras.ts
 
@@ -15238,7 +16224,7 @@ function createUiExtras(deps              )           {
 __def(__exports, "hexColor", () => hexColor);
 __def(__exports, "createUiExtras", () => createUiExtras);
 };
-__defs[38] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -15377,7 +16363,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[39] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -15430,7 +16416,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[40] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -15801,7 +16787,7 @@ __def(__exports, "legacyOffsets", () => legacyOffsets);
 __def(__exports, "libCounted", () => libCounted);
 __def(__exports, "stretchClip", () => stretchClip);
 };
-__defs[41] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -15826,9 +16812,9 @@ __defs[41] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(38);
-const { samePose } = __require(39);
-const { compose, legacyOffsets } = __require(40);
+const { hasLayer, orderOfLayer } = __require(40);
+const { samePose } = __require(41);
+const { compose, legacyOffsets } = __require(42);
 const { motionRunner, resolveClip } = __require(20);
 
                                                                                                                                   
@@ -16017,7 +17003,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[42] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -16068,7 +17054,7 @@ __defs[42] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(41);
+const { moveInPlay } = __require(43);
                                                    
 
                                  
@@ -16225,688 +17211,6 @@ function createPlaySwitch(d                )             {
 
 __def(__exports, "loaderPlay", () => loaderPlay);
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
-};
-__defs[43] = function (__exports) {
-'use strict';
-// code-lists.ts
-
-// The game's code motions and code layouts, as the editor sees them (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4,
-// §1.12). The game's copy of the loader keeps what codeMotion() / codePlace() / codeAvoid() were told on globalThis
-// (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids')); this reads them in the game's page and words
-// them for the shell (`studio:code-motions`, `studio:code-places`): names, the objects a layout put, the knobs with the
-// code's numbers.
-//
-// WHY sent with every world list (editor.ts post): the shell must know them as soon as it knows the objects — the
-// AI's `--do place.code` waits for the id to be there, and a knob the AI wrote into the code on Save (the file's v
-// now equal to the code's) is taken out of the file then (shell code-places.ts). Functions (at, make, test) never
-// leave the page; only plain data does.
-                                                                                             
-
-                                      
-                                     
-
-const listOf = (win     , name        )                            => {
-  const m = (win                                      )[Symbol.for(`game-studio.${name}`)];
-  return m instanceof Map ? (m                      ) : null;
-};
-const num = (v         )              => typeof v === 'number' && Number.isFinite(v);
-const str = (v         , max        ) => (typeof v === 'string' ? v.slice(0, max) : '');
-
-/** A knob list as plain data (the loader has checked its shape already; this only copies what it knows). */
-function knobs(v         )                           {
-  const out                           = {};
-  if (!v || typeof v !== 'object') return out;
-  for (const [n, k] of Object.entries(v                         ).slice(0, 3)) {
-    if (!k || !num(k.v)) continue;
-    out[n] = { v: k.v, label: str(k.label, 20) || n, unit: str(k.unit, 8), ...(num(k.min) ? { min: k.min } : {}), ...(num(k.max) ? { max: k.max } : {}), ...(num(k.step) ? { step: k.step } : {}) };
-  }
-  return out;
-}
-
-/** One round of a code motion in seconds with the code's knobs; null = none (it never ends) or it failed. */
-function roundOf(m       )                {
-  let r = m.round;
-  try {
-    if (typeof r === 'function') r = (r                                          )(Object.fromEntries(Object.entries(knobs(m.knobs)).map(([n, k]) => [n, k.v])));
-  } catch {
-    r = null;
-  }
-  return num(r) && r > 0 ? r : null;
-}
-
-/** The code motions of the game's page (none: an empty list, the same as a game without the loader). */
-function codeMotionsOf(win     )                   {
-  return [...(listOf(win, 'codeMotions')?.values() ?? [])].map((m) => ({
-    code: str(m.id, 40), name: str(m.name, 40), knobs: knobs(m.knobs), round: roundOf(m),
-    ...(str(m.note, 20) ? { note: str(m.note, 20) } : {}), ...(m.game === true ? { game: true } : {}),
-    // The ◇ on its path (studio-code-knobs): only a knob it has.
-    ...(typeof m.drag === 'string' && m.drag in knobs(m.knobs) ? { drag: m.drag } : {}),
-  }));
-}
-
-/** The code layouts of the game's page, with the objects they put (keys) and the ones left out (skipped). */
-function codePlacesOf(win     )                  {
-  return [...(listOf(win, 'codePlaces')?.values() ?? [])].map((p) => {
-    const drag = typeof p.drag === 'string' || (p.drag && typeof p.drag === 'object') ? structuredClone(p.drag                                   ) : undefined;
-    return {
-      id: str(p.id, 40), name: str(p.name, 40),
-      keys: Array.isArray(p.keys) ? (p.keys            ).slice() : [],
-      skipped: Array.isArray(p.skipped) ? (p.skipped            ).slice() : [],
-      knobs: knobs(p.knobs),
-      ...(drag ? { drag } : {}),
-      avoid: Array.isArray(p.avoid) ? (p.avoid            ).slice() : [],
-      ...(kindOf(p) ? { kind: kindOf(p)  } : {}),
-    };
-  });
-}
-
-/**
- * What a layout's rule looks like, for the card's "Layout: Line · 4" / "Scatter · 12" (studio-code-knobs, 2026-10-24;
- * the words chosen with Gemini that day): 'scatter' when at() reads its seeded random, 'line' when every place it gives
- * is on one straight line (three or more objects), else nothing (the card says the layout's name). WHY by running at()
- * and not a field the AI writes: the editor learns it from the rule itself, so it can never say "Line" of a ring.
- */
-function kindOf(p       )                            {
-  if (typeof p.at !== 'function') return null;
-  const spots = Array.isArray(p.spots) ? (p.spots                          ) : [];
-  const k = Object.fromEntries(Object.entries(knobs(p.knobs)).map(([n, x]) => [n, x.v]));
-  let random = false;
-  const at = p.at                                                                                 ;
-  try {
-    for (let i = 0; i < Math.min(3, Math.max(1, spots.length)); i++) at(i, k, { try: 0, rand: () => ((random = true), 0.5), level: null });
-  } catch {
-    return null;
-  }
-  if (random) return 'scatter';
-  const ps = spots.filter((q)                => Array.isArray(q));
-  if (ps.length < 3) return ps.length === 2 ? 'line' : null;
-  const a = ps[0] , b = ps[ps.length - 1] ;
-  const ab = b.map((v, i) => v - a[i] );
-  const len = Math.hypot(...ab);
-  if (len < 1e-6) return null;
-  // Every place within 2 % of the row's length off the line through its two ends.
-  return ps.every((q) => {
-    const aq = q.map((v, i) => v - a[i] );
-    const t = aq.reduce((s, v, i) => s + v * ab[i] , 0) / (len * len);
-    return Math.hypot(...aq.map((v, i) => v - t * ab[i] )) <= len * 0.02;
-  }) ? 'line' : null;
-}
-
-/** Every keep-out condition of the game's page (codeAvoid), whichever layouts use it. */
-function codeAvoidsOf(win     )                  {
-  return [...(listOf(win, 'codeAvoids')?.values() ?? [])].map((a) => ({
-    code: str(a.id, 40), name: str(a.name, 40), ...(str(a.after, 20) ? { after: str(a.after, 20) } : {}), knobs: knobs(a.knobs), ...(typeof a.show === 'function' ? { show: true } : {}),
-  }));
-}
-
-/**
- * A layout's objects under its name and number ("Hex row 2" for hex-2) where the adapter knows them by their key
- * alone (the loader marks them with their key): the editor's list, card and `--do list` then say what the person was
- * told ("a row of hexagons"). An object the game names itself keeps its own label.
- */
-function namedByLayout                                           (items     , places                 )      {
-  const names = new Map                ();
-  for (const p of places) p.keys.forEach((k) => names.set(k, `${p.name} ${k.slice(p.id.length + 1)}`));
-  return items.map((it) => (names.has(it.key) && (!it.label || it.label === it.key) ? { ...it, label: names.get(it.key)  } : it));
-}
-
-__def(__exports, "codeMotionsOf", () => codeMotionsOf);
-__def(__exports, "codePlacesOf", () => codePlacesOf);
-__def(__exports, "kindOf", () => kindOf);
-__def(__exports, "codeAvoidsOf", () => codeAvoidsOf);
-__def(__exports, "namedByLayout", () => namedByLayout);
-};
-__defs[44] = function (__exports) {
-'use strict';
-// code-place.ts
-
-// The game's code layouts in the game page (studio-code-knobs, 2026-10-24; the plan's step 2, "hand and rule", its
-// decisions 9–11 and 16). A layout is the game's codePlace() — "hex: four hexagons, Gap m
-// apart" — whose objects the loader put (loader/studio-placement.js layOut). Here:
-//
-//   place/layout  the draft's `places` changed (a knob on the card, a pin, "Place individually", their ⌘Z): the layouts
-//                 are laid out again WHERE THEY STAND (relayCodePlace: the same objects move; a new count makes / takes
-//                 out objects, then the list is sent again). Before (studio-code-base) every change read the whole game
-//                 again — a second of a blank game for one number (the first step's report: "a layout's number reloads the game").
-//   place/guide   the violet rings and dotted line of the picked object's layout (and the one under the mouse): where the
-//                 rule puts each of its objects, an empty dashed ring where one is placed by hand, its "Hand" tag.
-//                 Nothing to grab (the plan: "no points, no handles"): what the rule decides is changed by its knobs.
-//   a drag        the picked object of a layout with a `drag` knob, moved with Move: the knob value that puts THIS object
-//                 nearest the finger's spot on the ground is looked for (golden-section search over at() — the formula
-//                 is never read, only run), and all its objects are laid out with it: the row follows, the object stops
-//                 where the formula cannot reach (beside a row). place/knob goes to the shell (one ⌘Z, one Save count).
-//                 ⌥ (or a layout without `drag`, or another tool): the ordinary move — the shell keeps it as that one
-//                 object's pin ("Manually overridden").
-//   the line      the one line under the strip says, before a touch, which of the two a drag will do.
-//   place/guide `compare`  ✦ Turn into a rule (studio-code-torule, 2026-10-24): where the hand-placed objects the
-//                 layout replaced stood, until Save — an orange dot each (the hand's colour) and a thin line to where
-//                 the rule's object of that number stands now, and over the farthest one the chip "lamp-3 · 0.6 m".
-//                 Measured from what is on screen each frame, so a knob turned moves the lines and the number.
-//
-// WHY the look-up runs the game's at() (not a field the AI writes): "dragging one changes the formula's number, and
-// the others follow" (the choice (a) of 10/24) must work for any rule the AI writes — a row, a spiral of
-// lamps, a ring — and the editor only knows the rule by running it.
-// WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
-                                                                                                                                 
-const { codeSpot, knobValues, relayCodePlace } = __require(20);
-const { kindOf } = __require(43);
-
-const VIOLET = '#a78bfa';
-const YOU = '#ff6b1a';
-
-                                      
-/** A layout as the loader keeps it on globalThis (Symbol.for('game-studio.codePlaces')): plain fields only are read. */
-                 
-             
-               
-                                                                                                               
-                                    
-                 
-                                                                                                    
-                                 
-                 
- 
-
-// The words of the line and the chip ("rule", chosen on 10/24 with Gemini's wording of that day).
-// The line is one line next to the strip (handles.ts .note, no wrap): in a narrow window (the side window, a phone) the
-// layout's name goes ("Drag to adjust Gap · ⌥-drag to move one"), and with a finger the ⌥ part does (no ⌥ key there).
-const PLACE_WORDS                                                                                                                                                                           = {
-  en: {
-    head: (name, n) => `${name} ×${n} (rule): `,
-    drag: (label) => `Drag to adjust ${label}`,
-    alone: ' · ⌥-drag to move one',
-    one: 'Moving one places it individually',
-    pinned: (name) => `Manually overridden (${name})`,
-    hand: 'Hand',
-  },
-  ja: {
-    head: (name, n) => `${name} ×${n}（ルールの並び）: `,
-    drag: (label) => `動かすと${label}が変わる`,
-    alone: ' · ⌥+ドラッグで 1 個だけ',
-    one: '動かすとこの 1 個だけ手動で配置',
-    pinned: (name) => `この 1 個だけ手動で配置中（${name}）`,
-    hand: '手',
-  },
-};
-/** Narrower than this (css px), the line under the strip leaves the layout's name out (it was cut at 420 / 390). */
-const NOTE_FULL_PX = 600;
-/** The line under the strip for one object of a layout: `narrow` = no name, `touch` = no ⌥ part. */
-function placeNote(lang      , name        , n        , knobLabel               , o                                     )         {
-  const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
-  const what = knobLabel ? `${w.drag(knobLabel)}${o.touch ? '' : w.alone}` : w.one;
-  return o.narrow ? what : `${w.head(name, n)}${what}`;
-}
-// The knobs' units as the person reads them (the shell's hands.unit.* say the same).
-const UNITS                                       = {
-  en: { m: ' m', px: ' px', s: ' s', deg: '°', '%': '%', x: '×', 'm/s': ' m/s', 'px/s': ' px/s' },
-  ja: { m: ' m', px: ' px', s: ' 秒', deg: '°', '%': '%', x: '×', 'm/s': ' m/秒', 'px/s': ' px/秒' },
-};
-/** A knob's number as the card writes it: an integer knob whole, others with up to two decimals. */
-function knobText(v        , step         )         {
-  if (step && step >= 1) return String(Math.round(v));
-  const r = Math.round(v * 100) / 100;
-  return String(r === 0 ? 0 : r);
-}
-const unitText = (lang      , unit        ) => (UNITS[lang] ?? UNITS.en)[unit] ?? (unit ? ` ${unit}` : '');
-/** A gap as the card says it (shell/to-rule.ts gapText): 3D one decimal from 0.1 m, two below; 2D whole pixels. */
-function gapWords(lang      , d        , three         )         {
-  if (!three) return `${Math.round(d)}${unitText(lang, 'px')}`;
-  return `${d >= 0.095 ? Math.round(d * 10) / 10 : Math.round(d * 100) / 100}${unitText(lang, 'm')}`;
-}
-
-/** The knob a Move drag of one of its objects turns (codePlace `drag`: a name, or { move }), or null. */
-function dragKnob(p                               )                {
-  const k = typeof p.drag === 'string' ? p.drag : p.drag && typeof p.drag === 'object' ? p.drag.move : undefined;
-  return typeof k === 'string' && p.knobs && k in p.knobs ? k : null;
-}
-
-/**
- * The knob value in [lo, hi] that brings `spot(v)` nearest `want` (golden-section search, 30 steps: ~1e-6 of the range,
- * well under 1 ms for a formula). The distance is measured on the ground (3D x and z; 2D x and y). `whole` = an integer
- * knob (a count): the nearest of the two whole numbers round the best. A formula that does not reach `want` (beside a
- * row) gives the value that comes closest — the object stops at the edge, the layout stays a formula.
- */
-function findKnob(spot                                , want          , lo        , hi        , whole = false)                {
-  const dist = (v        ) => {
-    const q = spot(v);
-    if (!q) return Infinity;
-    return q.length === 3 ? Math.hypot(q[0]  - want[0] , q[2]  - want[2] ) : Math.hypot(q[0]  - want[0] , q[1]  - want[1] );
-  };
-  if (!(hi > lo)) return null;
-  const g = (Math.sqrt(5) - 1) / 2;
-  let a = lo, b = hi;
-  let c = b - g * (b - a), d = a + g * (b - a);
-  let fc = dist(c), fd = dist(d);
-  for (let i = 0; i < 30; i++) {
-    if (fc < fd) (b = d, d = c, fd = fc, c = b - g * (b - a), fc = dist(c));
-    else (a = c, c = d, fc = fd, d = a + g * (b - a), fd = dist(d));
-  }
-  let v = (a + b) / 2;
-  // The ends themselves (the search never tries them): a finger past the end of the range gets the end.
-  for (const e of [lo, hi]) if (dist(e) < dist(v)) v = e;
-  if (whole) {
-    const f = Math.floor(v), k = Math.ceil(v);
-    v = dist(f) <= dist(k) ? f : k;
-  }
-  return Number.isFinite(dist(v)) ? v : null;
-}
-
-/** A knob's search range: its min / max, else ten times round its number (a knob written without a range). */
-function knobRange(k                                           )                   {
-  const span = Math.max(1, Math.abs(k.v)) * 10;
-  return [typeof k.min === 'number' ? k.min : k.v > 0 ? 0 : k.v - span, typeof k.max === 'number' ? k.max : k.v + span];
-}
-
-                                    
-           
-                           
-                               
-               
-                    
-                                                                                                    
-                 
- 
-
-                                
-                                   
-                
-                
-                                                                            
-                                   
-     
-                                                                                                                      
-                                                                                                             
-     
-                                                  
-                                                                                                                              
-                                                                           
-                                                                          
-                                            
-     
-                                                                                                                          
-                                                                                                                        
-                                                                                                  
-     
-                                                          
-                                                                                                       
-                       
- 
-
-function createCodePlaceView(d                   )                {
-  const { win } = d;
-  const doc = win.document;
-  const host = doc.createElement('div');
-  host.setAttribute('data-studio-ui', '');
-  host.setAttribute('data-studio-code-place', '');
-  const shadow = host.attachShadow({ mode: 'open' });
-  const style = doc.createElement('style');
-  style.textContent = `.root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483645; }
-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; }`;
-  const root = doc.createElement('div');
-  root.className = 'root';
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = doc.createElementNS(NS, 'svg')                 ;
-  root.append(svg);
-  shadow.append(style, root);
-  let mounted = false;
-
-  // The draft's places (the shell's, with every guide / layout message): the pins, by hand, the knobs turned.
-  let places                                 = {};
-  let guide                                        = { ids: [], sel: null };
-  // ✦ Turn into a rule (studio-code-torule): the hand-placed objects each layout replaced (the shell's, until Save).
-  let compare                                    = {};
-  // The layout of the object under the mouse (no button down): its rings too, before a press — "a layout's object tells
-  // itself from a hand-placed one before it is touched" (the plan's need 2, n2-tell). Read once a frame (pickNear).
-  let hoverId                = null;
-  let hoverAt                                  = null;
-  // A drag that turns a knob: the layout, the knob, its number before, its number now, where the objects stood before.
-  let drag                                                                                                                       = null;
-  // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
-  let moving                                                        = null;
-  let drawn = '';
-  // Each object's ring (world radius, offset from its pivot to its foot), worked out once per object.
-  const rings = new Map                                       ();
-  // Each layout's look (a row is joined by a line; code-lists.ts kindOf runs its at()), worked out once per layout out.
-  const kinds = new Map                       ();
-
-  const list = ()                     => {
-    const m = (win                                      )[Symbol.for('game-studio.codePlaces')];
-    return m instanceof Map ? (m                      ) : new Map();
-  };
-  const layoutOf = (key        )               => {
-    for (const p of list().values()) if (p.keys?.includes(key)) return p;
-    return null;
-  };
-  const entryOf = (id        )                 => places[id] ?? {};
-  const pinned = (p       , key        ) => !!entryOf(p.id).pins?.[key];
-
-  /** Lay out these layouts again with the draft; moved objects go to the shell (made / taken out: a new list). */
-  function relay(ids          ) {
-    const all = list();
-    const poses                                     = [];
-    let listAgain = false;
-    for (const id of ids) {
-      const p = all.get(id);
-      if (!p) continue;
-      const before = p.keys.join('\n');
-      if (!relayCodePlace(id, entryOf(id))) continue;
-      kinds.delete(id);
-      if (p.keys.join('\n') !== before) listAgain = true;
-      for (const k of p.keys) {
-        rings.delete(k);
-        const a = d.adapter().anchor(k);
-        if (a) poses.push({ key: k, pose: a.pose });
-      }
-    }
-    if (listAgain) d.relist();
-    else if (poses.length) d.post({ type: 'studio:place/poses', poses });
-    drawn = '';
-    d.markDirty();
-  }
-
-  /** Scene space ← the layout's root space (its objects' parent; a scene at the top is the same). */
-  const toScene = (p       , v          )           => {
-    const home = p.home                                                                                     ;
-    const m = home?.root?.parent && home.root.matrixWorld ? home.root.matrixWorld.elements : null;
-    if (!m || v.length !== 3) return v;
-    const [x, y, z] = v                            ;
-    return [m[0]  * x + m[4]  * y + m[8]  * z + m[12] , m[1]  * x + m[5]  * y + m[9]  * z + m[13] , m[2]  * x + m[6]  * y + m[10]  * z + m[14] ];
-  };
-
-  /** An object's ring: about its width on screen, at its foot (3D), measured once (and again after a relayout). */
-  function ringOf(p       , key        )                                {
-    const known = rings.get(key);
-    if (known) return known;
-    const a = d.adapter();
-    const pose = a.anchor(key)?.pose;
-    const foot = a.foot?.(key) ?? null;
-    const off = pose && foot && pose.p.length === 3 ? foot.map((v, i) => v - toScene(p, pose.p)[i] ) : [0, 0, 0];
-    let r = a.dim === '3d' ? 0.6 : 24;
-    const an = a.anchor(key);
-    if (a.dim === '3d' && an?.rect && pose && a.toScreen) {
-      const c = toScene(p, pose.p);
-      const s0 = a.toScreen(c), s1 = a.toScreen([c[0]  + 1, c[1] , c[2] ]);
-      const ppm = s0 && s1 ? Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) : 0;
-      if (ppm > 1) r = Math.max(0.2, Math.min(4, (an.rect.w / 2 / ppm) * 0.85));
-    } else if (an?.rect) r = Math.max(8, an.rect.w / 2);
-    const out = { r, foot: off };
-    rings.set(key, out);
-    return out;
-  }
-
-  const draw = () => {
-    const a = d.adapter();
-    if (hoverAt) {
-      const at = hoverAt;
-      hoverAt = null;
-      let k                    ;
-      try {
-        k = a.pickNear(at.x, at.y, 2)[0];
-      } catch {
-        k = undefined;
-      }
-      const p = k ? layoutOf(k) : null;
-      hoverId = p && !entryOf(p.id).hand ? p.id : null;
-    }
-    const ids = hoverId && !guide.ids.includes(hoverId) ? [...guide.ids, hoverId] : guide.ids;
-    const shown = ids.map((id) => list().get(id)).filter((p)             => !!p && !entryOf(p.id).hand && !!p.spots);
-    if (!shown.length || !a.toScreen) {
-      if (svg.firstChild) svg.replaceChildren();
-      drawn = '';
-      return;
-    }
-    const three = a.dim === '3d';
-    // A ring on the ground round `c` (3D: 24 points of a circle; 2D: an ellipse on the screen).
-    const ringAt = (c          , r        )                                 => {
-      if (!three) {
-        const s = a.toScreen (c);
-        return s ? Array.from({ length: 25 }, (_, j) => [s[0] + r * Math.cos((j / 24) * 2 * Math.PI), s[1] + r * 0.4 * Math.sin((j / 24) * 2 * Math.PI)]                    ) : null;
-      }
-      const out                          = [];
-      for (let j = 0; j <= 24; j++) {
-        const t = (j / 24) * 2 * Math.PI;
-        const s = a.toScreen ([c[0]  + r * Math.cos(t), c[1] , c[2]  + r * Math.sin(t)]);
-        if (!s) return null;
-        out.push(s);
-      }
-      return out;
-    };
-    const parts                                                                                                                                                                      = [];
-    for (const p of shown) {
-      const spots = p.spots ;
-      const centres                                 = [];
-      spots.forEach((q, i) => {
-        const key = `${p.id}-${i + 1}`;
-        if (!q) return void centres.push(null);
-        const has = p.keys.includes(key);
-        const ring = has ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
-        const c = toScene(p, q).map((v, j) => v + (ring.foot[j] ?? 0));
-        const pts = ringAt(c, ring.r);
-        const pin = pinned(p, key);
-        if (pts) parts.push({ kind: 'ring', pts, dash: pin, on: key === guide.sel });
-        centres.push(a.toScreen (c));
-        // A pinned one: its "Hand" tag over it (where it stands now).
-        if (pin && has) {
-          const an = a.anchor(key);
-          if (an?.visible) parts.push({ kind: 'tag', pts: [[an.center[0], (an.rect ? an.rect.y : an.center[1] - 20) - 8]], text: (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).hand });
-        }
-      });
-      // A row: the rings joined in order by a dotted line (a scatter is not a line: no line).
-      if (!kinds.has(p.id)) kinds.set(p.id, kindOf(p                                      ));
-      const isLine = kinds.get(p.id) === 'line';
-      if (isLine) for (let i = 1; i < centres.length; i++) if (centres[i - 1] && centres[i]) parts.push({ kind: 'line', pts: [centres[i - 1] , centres[i] ] });
-      // ✦ Turn into a rule: where the hand-placed ones stood (orange dots), a thin line to the rule's object of the same
-      // number where it stands now, and the chip over the farthest. The same distance as the card's (the whole one).
-      const cmp = compare[p.id];
-      if (cmp) {
-        let far                                                                                        = null;
-        cmp.was.forEach((w, i) => {
-          if (!w) return;
-          const key = `${p.id}-${i + 1}`;
-          const ring = p.keys.includes(key) ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
-          const s0 = a.toScreen (toScene(p, w).map((v, j) => v + (ring.foot[j] ?? 0)));
-          if (!s0) return;
-          const now = p.keys.includes(key) ? a.anchor(key)?.pose.p : null;
-          const s1 = now ? a.toScreen (toScene(p, now).map((v, j) => v + (ring.foot[j] ?? 0))) : null;
-          if (s1 && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) > 2) parts.push({ kind: 'gap', pts: [s0, s1] });
-          parts.push({ kind: 'was', pts: [s0] });
-          const dd = now && now.length === w.length ? Math.hypot(...w.map((v, j) => v - now[j] )) : null;
-          if (dd !== null && (!far || dd > far.d + 1e-9)) far = { at: s0, to: s1, d: dd, name: cmp.names[i] ?? key };
-        });
-        // The chip beside the farthest dot, on the side away from the rule's object (over it, the object's own outline
-        // and the strip cut it: the first picture of 10/24).
-        const f = far                                                                                         ;
-        if (f) parts.push({ kind: 'chip', pts: [f.at], side: f.to && f.to[0] > f.at[0] ? -1 : 1, text: `${f.name} · ${gapWords(d.lang(), f.d, three)}` });
-      }
-      // While a drag turns the knob (or a keep-out box is drawn): where they stood before, dashed, with an arrow to where they go.
-      const before = drag && drag.id === p.id ? drag.before : moving && moving.id === p.id ? moving.before : null;
-      if (before) before.forEach((q, i) => {
-        const now = spots[i];
-        if (!q || !now) return;
-        const key = `${p.id}-${i + 1}`;
-        const ring = p.keys.includes(key) ? ringOf(p, key) : { r: three ? 0.6 : 24, foot: [0, 0, 0] };
-        const c0 = toScene(p, q).map((v, j) => v + (ring.foot[j] ?? 0));
-        const c1 = toScene(p, now).map((v, j) => v + (ring.foot[j] ?? 0));
-        const pts = ringAt(c0, ring.r);
-        const s0 = a.toScreen (c0), s1 = a.toScreen (c1);
-        if (pts && s0 && s1 && Math.hypot(s1[0] - s0[0], s1[1] - s0[1]) > 6) parts.push({ kind: 'old', pts }, { kind: 'old', pts: [s0, s1] });
-      });
-    }
-    const sig = JSON.stringify(parts);
-    if (sig === drawn) return;
-    drawn = sig;
-    if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
-    svg.replaceChildren();
-    const path = (pts                         , stroke        , width        , dash         , close = false) => {
-      const el = doc.createElementNS(NS, 'path');
-      el.setAttribute('d', pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join('') + (close ? 'Z' : ''));
-      el.setAttribute('fill', 'none');
-      el.setAttribute('stroke', stroke);
-      el.setAttribute('stroke-width', String(width));
-      el.setAttribute('stroke-linecap', 'round');
-      if (dash) el.setAttribute('stroke-dasharray', dash);
-      svg.append(el);
-    };
-    for (const x of parts) {
-      if (x.kind === 'line') (path(x.pts, 'rgba(0,0,0,.35)', 4), path(x.pts, VIOLET, 1.6, '4 5'));
-      else if (x.kind === 'old') path(x.pts, 'rgba(255,255,255,.55)', 1.2, '3 4', x.pts.length > 2);
-      else if (x.kind === 'gap') (path(x.pts, 'rgba(0,0,0,.35)', 3), path(x.pts, YOU, 1.2));
-      else if (x.kind === 'was') {
-        const [cx, cy] = x.pts[0] ;
-        const c = doc.createElementNS(NS, 'circle');
-        c.setAttribute('cx', cx.toFixed(1));
-        c.setAttribute('cy', cy.toFixed(1));
-        c.setAttribute('r', '4');
-        c.setAttribute('fill', YOU);
-        c.setAttribute('stroke', '#fff');
-        c.setAttribute('stroke-width', '1.2');
-        c.setAttribute('data-part', 'place-was');
-        svg.append(c);
-      }
-      else if (x.kind === 'ring') {
-        path(x.pts, 'rgba(0,0,0,.35)', 4, undefined, true);
-        path(x.pts, x.on ? '#c4b5fd' : VIOLET, x.on ? 2.2 : 1.6, x.dash ? '4 4' : undefined, true);
-      } else if ((x.kind === 'tag' || x.kind === 'chip') && x.text) {
-        // About the text's width at 10 px bold: a kana / kanji is twice as wide as a Latin letter (a Japanese name's chip).
-        const w = 10 + [...x.text].reduce((n, ch) => n + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 10.5 : 6.4), 0);
-        // A chip with a side sits beside its point (8 px off), else centred on it (a tag over its object).
-        const cx = x.pts[0] [0] + (x.side ? x.side * (w / 2 + 8) : 0);
-        const cy = x.pts[0] [1];
-        const r = doc.createElementNS(NS, 'rect');
-        r.setAttribute('x', (cx - w / 2).toFixed(1));
-        r.setAttribute('y', (cy - 9).toFixed(1));
-        r.setAttribute('width', String(w));
-        r.setAttribute('height', '16');
-        r.setAttribute('rx', '4');
-        r.setAttribute('fill', YOU);
-        const tx = doc.createElementNS(NS, 'text');
-        tx.setAttribute('x', (cx - w / 2 + 5).toFixed(1));
-        tx.setAttribute('y', (cy + 3).toFixed(1));
-        tx.textContent = x.text;
-        if (x.kind === 'chip') r.setAttribute('data-part', 'place-gap-chip');
-        svg.append(r, tx);
-      }
-    }
-  };
-
-  // The mouse over the game (never taken: the game's own listeners and input.ts see the same move).
-  win.addEventListener('pointermove', (e) => {
-    if (e.pointerType !== 'mouse' || e.buttons) return;
-    hoverAt = { x: e.clientX, y: e.clientY };
-    d.markDirty();
-  }, { capture: true, passive: true });
-  // Out of the game page (into the editor's panels): no layout under the mouse any more.
-  win.addEventListener('pointerout', (e) => {
-    if (e.relatedTarget || !hoverId) return;
-    hoverId = null;
-    hoverAt = null;
-    d.markDirty();
-  }, { capture: true, passive: true });
-
-  return {
-    handle(msg) {
-      if (msg.type === 'studio:place/layout') {
-        places = structuredClone(msg.places ?? {});
-        relay(msg.ids ?? [...list().keys()]);
-      } else if (msg.type === 'studio:place/guide') {
-        guide = { ids: msg.ids.slice(), sel: msg.sel };
-        if (msg.places) places = structuredClone(msg.places);
-        compare = structuredClone(msg.compare ?? {});
-        drawn = '';
-        d.markDirty();
-      }
-    },
-    frame: draw,
-    clear() {
-      guide = { ids: [], sel: null };
-      drag = null;
-      moving = null;
-      draw();
-    },
-    note(key) {
-      const p = layoutOf(key);
-      if (!p || entryOf(p.id).hand) return null;
-      if (pinned(p, key)) return (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).pinned(p.name);
-      const k = dragKnob(p);
-      return placeNote(d.lang(), p.name, p.keys.length, k ? p.knobs[k] .label : null,
-        { narrow: win.innerWidth < NOTE_FULL_PX, touch: !!win.matchMedia?.('(pointer: coarse)').matches });
-    },
-    dragStart(key, alone) {
-      drag = null;
-      const p = layoutOf(key);
-      const knob = p ? dragKnob(p) : null;
-      if (!p || !knob || alone || entryOf(p.id).hand || pinned(p, key)) return false;
-      const v = (knobValues(p.knobs, entryOf(p.id).knobs)                          )[knob] ;
-      drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, knob, from: v, v, before: (p.spots ?? []).map((q) => (q ? q.slice() : null)) };
-      return true;
-    },
-    dragTo(key, want) {
-      const p = drag && drag.key === key ? list().get(drag.id) : null;
-      if (!drag || !p) return null;
-      const dr = drag;
-      const def = p.knobs[dr.knob] ;
-      const k0 = knobValues(p.knobs, entryOf(p.id).knobs)                          ;
-      const [lo, hi] = knobRange(def);
-      const found = findKnob((x) => codeSpot(p.id, dr.i, { ...k0, [dr.knob]: x })                   , want, lo, hi, !!def.step && def.step >= 1);
-      // The same steps as the card's knob (shell/knob.ts snapKnob): a hundredth of its range, so a drag gives "4.5 m".
-      const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
-      const v = found === null ? null : def.step && def.step >= 1 ? found : Math.round(found / q) * q;
-      if (v !== null && Math.abs(v - dr.v) > 1e-9) {
-        dr.v = v;
-        const e = entryOf(p.id);
-        places = { ...places, [p.id]: { ...e, knobs: { ...(e.knobs ?? {}), [dr.knob]: { v } } } };
-        relay([p.id]);
-        d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knob, v, end: false, key });
-      }
-      const pose = d.adapter().anchor(key)?.pose;
-      const lang = d.lang();
-      const u = unitText(lang, def.unit);
-      return pose ? { pose, chip: `${def.label} ${knobText(dr.from, def.step)} → ${knobText(dr.v, def.step)}${u}` } : null;
-    },
-    preview(id, entry) {
-      const p = list().get(id);
-      if (!p) return;
-      if (!moving || moving.id !== id) moving = { id, before: (p.spots ?? []).map((q) => (q ? q.slice() : null)) };
-      places = { ...places };
-      if (entry) places[id] = structuredClone(entry);
-      else delete places[id];
-      relay([id]);
-    },
-    previewEnd() {
-      const mv = moving;
-      moving = null;
-      drawn = '';
-      d.markDirty();
-      const now = mv ? list().get(mv.id)?.spots ?? [] : [];
-      return mv ? mv.before.filter((q, i) => q && (!now[i] || now[i] .some((v, j) => Math.abs(v - q[j] ) > 1e-6))).length : 0;
-    },
-    dragEnd(key, keep) {
-      const dr = drag;
-      drag = null;
-      drawn = '';
-      if (!dr || dr.key !== key) return;
-      if (!keep && dr.v !== dr.from) {
-        const e = entryOf(dr.id);
-        places = { ...places, [dr.id]: { ...e, knobs: { ...(e.knobs ?? {}), [dr.knob]: { v: dr.from } } } };
-        relay([dr.id]);
-      }
-      d.post({ type: 'studio:place/knob', id: dr.id, knob: dr.knob, v: keep ? dr.v : dr.from, end: true, key });
-      d.markDirty();
-    },
-  };
-}
-
-__def(__exports, "PLACE_WORDS", () => PLACE_WORDS);
-__def(__exports, "NOTE_FULL_PX", () => NOTE_FULL_PX);
-__def(__exports, "placeNote", () => placeNote);
-__def(__exports, "knobText", () => knobText);
-__def(__exports, "unitText", () => unitText);
-__def(__exports, "gapWords", () => gapWords);
-__def(__exports, "dragKnob", () => dragKnob);
-__def(__exports, "findKnob", () => findKnob);
-__def(__exports, "knobRange", () => knobRange);
-__def(__exports, "createCodePlaceView", () => createCodePlaceView);
 };
 __defs[45] = function (__exports) {
 'use strict';
@@ -17362,7 +17666,7 @@ __defs[47] = function (__exports) {
                                                                                                         
 const { codeSpot, findByKey, knobValues } = __require(20);
 const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(45);
-const { findKnob, knobRange, knobText, unitText } = __require(44);
+const { findKnob, knobRange, knobText, unitText } = __require(35);
 const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(46);
 
 const YOU = '#ff6b1a';
@@ -18140,7 +18444,7 @@ __defs[48] = function (__exports) {
 //                          the ground (golden-section, the same search as a layout's drag: code-place.ts findKnob) and
 //                          says it (timeline/code-knob: live, then `end` = one ⌘Z in the shell). Its label "Radius 2 m",
 //                          its chip "Radius 2 → 3 m" while dragged.
-//   timeline/code-points   "Make editable points": the rule's shape over `len` seconds as position keys (`per` a round),
+//   timeline/code-points   "Convert to coordinates": the rule's shape over `len` seconds as position keys (`per` a round),
 //                          for the shell to turn it into an ordinary motion of points (one ⌘Z). Also ✦ Turn into a
 //                          rule's measure (studio-code-torule): the same samples, 64 a round, against the old points.
 //   timeline/path `was`    ✦ Turn into a rule (studio-code-torule, 2026-10-24): the motion of points the rule replaced,
@@ -18151,7 +18455,7 @@ __defs[48] = function (__exports) {
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
 // pick or drag what is under it — the same reason as timeline-path.ts.
                                                                                                                  
-const { findKnob, knobRange, knobText, unitText } = __require(44);
+const { findKnob, knobRange, knobText, unitText } = __require(35);
 
 const VIOLET = '#8b7cff';
 const YOU = '#ff6b1a';
@@ -18467,7 +18771,7 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         drawn = '';
         d.markDirty();
       } else if (msg.type === 'studio:timeline/code-points') {
-        // "Make editable points": `per` places a round, over `len` seconds, as offsets (the object's place is not in them).
+        // "Convert to coordinates": `per` places a round, over `len` seconds, as offsets (the object's place is not in them).
         const m = motions(win).get(msg.code);
         let keys                     = null;
         if (m) {
@@ -18598,17 +18902,17 @@ const { withRules } = __require(24);
 const { withEdits } = __require(25);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(27);
 const { createToolHost } = __require(28);
-const { attachInput, tappableAt } = __require(34);
+const { attachInput, tappableAt } = __require(36);
                                                   
 const { firstToTouch, stepDetent } = __require(32);
 const { createHoldState, withHold } = __require(26);
-const { drivenBetween, WATCH_MS } = __require(35);
+const { drivenBetween, WATCH_MS } = __require(37);
 const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
-const { createTimelineView } = __require(36);
-const { createUiExtras } = __require(37);
-const { loaderPlay } = __require(42);
-const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(43);
-const { createCodePlaceView } = __require(44);
+const { createTimelineView } = __require(38);
+const { createUiExtras } = __require(39);
+const { loaderPlay } = __require(44);
+const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(34);
+const { createCodePlaceView } = __require(35);
 const { createKeepOutView } = __require(47);
 const { createCodeMotionView, withRuleMotions } = __require(48);
 const { seenEnough, tooSmall } = __require(49);
@@ -21091,7 +21395,7 @@ const { UI } = __require(13);
                                              
                                                     
 const { createEditor } = __require(50);
-const { drivenBetween } = __require(35);
+const { drivenBetween } = __require(37);
 const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
@@ -22587,8 +22891,8 @@ const { findDomUi, uiAdapterFromPort } = __require(22);
 const { runSelfCheck } = __require(23);
 const { createEditor } = __require(50);
 const { startPlayAsk } = __require(57);
-const { createPlaySwitch } = __require(42);
-const { arrangeInPlay, moveInPlay } = __require(41);
+const { createPlaySwitch } = __require(44);
+const { arrangeInPlay, moveInPlay } = __require(43);
 const { applyPlacement, placementForLevel } = __require(20);
 const { pickLevel } = __require(58);
 const { watchEarlyTaps } = __require(59);

@@ -2,7 +2,7 @@
 // decisions 9–11 and 16). A layout is the game's codePlace() — "hex: four hexagons, Gap m
 // apart" — whose objects the loader put (loader/studio-placement.js layOut). Here:
 //
-//   place/layout  the draft's `places` changed (a knob on the card, a pin, "Place individually", their ⌘Z): the layouts
+//   place/layout  the draft's `places` changed (a knob on the card, a pin, "Convert to coordinates", their ⌘Z): the layouts
 //                 are laid out again WHERE THEY STAND (relayCodePlace: the same objects move; a new count makes / takes
 //                 out objects, then the list is sent again). Before (studio-code-base) every change read the whole game
 //                 again — a second of a blank game for one number (the first step's report: "a layout's number reloads the game").
@@ -13,8 +13,16 @@
 //                 nearest the finger's spot on the ground is looked for (golden-section search over at() — the formula
 //                 is never read, only run), and all its objects are laid out with it: the row follows, the object stops
 //                 where the formula cannot reach (beside a row). place/knob goes to the shell (one ⌘Z, one Save count).
-//                 ⌥ (or a layout without `drag`, or another tool): the ordinary move — the shell keeps it as that one
-//                 object's pin ("Manually overridden").
+//                 ⌥: the ordinary move — the shell keeps it as that one object's pin ("Hand-placed").
+//   by way        studio-to-coords (2026-10-24; a request that day: "a rule's object stays a rule however you touch it", and the
+//                 CRYSTAL FIELD try of that day: a lamp of a row dragged away from the road did nothing and said nothing,
+//                 and lifted or turned it silently became a pin). `drag` may name a knob per way — { along, side, up,
+//                 turn, size }: Move turns along and side together (the numbers that bring it nearest the finger),
+//                 Height up, Turn turn, Size size. A way with no knob does not move the object: the chip says why while
+//                 the finger is down ("Sideways position is set by the rule · ⌥ for just this one"), and the shell says
+//                 it again with ✦ when the drag ends where the rule cannot follow (place/held). WHY not move it and
+//                 make a pin as before: the same drag gave "the whole row changes" one way and "this one leaves the
+//                 rule" the other, without ⌥, and nobody saw it leave.
 //   the line      the one line under the strip says, before a touch, which of the two a drag will do.
 //   place/guide `compare`  ✦ Turn into a rule (studio-code-torule, 2026-10-24): where the hand-placed objects the
 //                 layout replaced stood, until Save — an orange dot each (the hand's colour) and a thin line to where
@@ -25,8 +33,8 @@
 // the others follow" (the choice (a) of 10/24) must work for any rule the AI writes — a row, a spiral of
 // lamps, a ring — and the editor only knows the rule by running it.
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
-import type { BridgeToShell, Lang, PlaceCompareMarks, PlacementPlace, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
-import { codeSpot, knobValues, relayCodePlace } from '../loader/studio-placement.js';
+import type { BridgeToShell, Lang, PlaceCompareMarks, PlacementPlace, PlaceWay, Pose, ShellToBridge, StudioAdapter } from '../contract.ts';
+import { codePose, knobValues, relayCodePlace } from '../loader/studio-placement.js';
 import { kindOf } from './code-lists.ts';
 
 const VIOLET = '#a78bfa';
@@ -38,7 +46,7 @@ interface Entry {
   id: string;
   name: string;
   knobs: Record<string, { v: number; label: string; unit: string; min?: number; max?: number; step?: number }>;
-  drag?: string | { move?: string };
+  drag?: string | Record<string, string>;
   keys: string[];
   objs: Array<{ position?: unknown; parent?: unknown; geometry?: unknown; scale?: unknown } | null>;
   spots?: Array<number[] | null>;
@@ -48,31 +56,49 @@ interface Entry {
 // The words of the line and the chip ("rule", chosen on 10/24 with Gemini's wording of that day).
 // The line is one line next to the strip (handles.ts .note, no wrap): in a narrow window (the side window, a phone) the
 // layout's name goes ("Drag to adjust Gap · ⌥-drag to move one"), and with a finger the ⌥ part does (no ⌥ key there).
-export const PLACE_WORDS: Record<Lang, { head: (name: string, n: number) => string; drag: (label: string) => string; alone: string; one: string; pinned: (name: string) => string; hand: string }> = {
+// studio-to-coords (2026-10-24): a way with no knob says so ("Height is set by the rule"), never "moving one places it
+// individually" — without ⌥ a rule's object no longer leaves its rule. The shell's i18n.ts rule.held.* say the same.
+export const PLACE_WORDS: Record<Lang, {
+  head: (name: string, n: number) => string; drag: (labels: string[]) => string; alone: string; chipAlone: string;
+  fixed: Record<PlaceWay, string>; pinned: (name: string) => string; hand: string;
+}> = {
   en: {
     head: (name, n) => `${name} ×${n} (rule): `,
-    drag: (label) => `Drag to adjust ${label}`,
+    drag: (labels) => `Drag to adjust ${labels.join(', ')}`,
     alone: ' · ⌥-drag to move one',
-    one: 'Moving one places it individually',
-    pinned: (name) => `Manually overridden (${name})`,
-    hand: 'Hand',
+    chipAlone: ' · ⌥ for just this one',
+    fixed: { along: 'Position along the row is set by the rule', side: 'Sideways position is set by the rule', move: 'Position is set by the rule',
+      up: 'Height is set by the rule', turn: 'Angle is set by the rule', size: 'Size is set by the rule', group: 'Objects placed by a rule don’t move as a group' },
+    pinned: (name) => `Hand-placed: just this one (${name})`,
+    hand: 'Hand-placed',
   },
   ja: {
     head: (name, n) => `${name} ×${n}（ルールの並び）: `,
-    drag: (label) => `動かすと${label}が変わる`,
+    drag: (labels) => `動かすと${labels.join('・')}が変わる`,
     alone: ' · ⌥+ドラッグで 1 個だけ',
-    one: '動かすとこの 1 個だけ手動で配置',
-    pinned: (name) => `この 1 個だけ手動で配置中（${name}）`,
-    hand: '手',
+    chipAlone: ' · ⌥ でこの 1 個だけ',
+    fixed: { along: '並びに沿った位置はルールで決まっています', side: '横の位置はルールで決まっています', move: '場所はルールで決まっています',
+      up: '高さはルールで決まっています', turn: '向きはルールで決まっています', size: '大きさはルールで決まっています', group: 'ルールで並んだ物はまとめて動かせません' },
+    pinned: (name) => `手置き: この 1 個だけ（${name}）`,
+    hand: '手置き',
   },
 };
 /** Narrower than this (css px), the line under the strip leaves the layout's name out (it was cut at 420 / 390). */
 export const NOTE_FULL_PX = 600;
-/** The line under the strip for one object of a layout: `narrow` = no name, `touch` = no ⌥ part. */
-export function placeNote(lang: Lang, name: string, n: number, knobLabel: string | null, o: { narrow: boolean; touch: boolean }): string {
+/**
+ * The line under the strip for one object of a layout: what a drag with the tool does — the knobs it turns (`labels`),
+ * or, with none for that way (`way`, default Move's), that the rule sets it. `narrow` = no name, `touch` = no ⌥ part.
+ */
+export function placeNote(lang: Lang, name: string, n: number, labels: string | string[] | null, o: { narrow: boolean; touch: boolean; way?: PlaceWay }): string {
   const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
-  const what = knobLabel ? `${w.drag(knobLabel)}${o.touch ? '' : w.alone}` : w.one;
+  const ls = labels === null ? [] : Array.isArray(labels) ? labels : [labels];
+  const what = `${ls.length ? w.drag(ls) : w.fixed[o.way ?? 'move']}${o.touch ? '' : w.alone}`;
   return o.narrow ? what : `${w.head(name, n)}${what}`;
+}
+/** The chip while a drag does not move a rule's object that way: why, and (not on a finger) ⌥. */
+export function heldChip(lang: Lang, way: PlaceWay, touch: boolean): string {
+  const w = PLACE_WORDS[lang] ?? PLACE_WORDS.en;
+  return `${w.fixed[way]}${touch || way === 'group' ? '' : w.chipAlone}`;
 }
 // The knobs' units as the person reads them (the shell's hands.unit.* say the same).
 const UNITS: Record<Lang, Record<string, string>> = {
@@ -92,10 +118,41 @@ export function gapWords(lang: Lang, d: number, three: boolean): string {
   return `${d >= 0.095 ? Math.round(d * 10) / 10 : Math.round(d * 100) / 100}${unitText(lang, 'm')}`;
 }
 
-/** The knob a Move drag of one of its objects turns (codePlace `drag`: a name, or { move }), or null. */
+/** The editor's tools a drag uses (handles.ts HandleKind). */
+export type DragTool = 'move' | 'lift' | 'rotate' | 'scale';
+type KnobWay = 'along' | 'side' | 'up' | 'turn' | 'size';
+/** The ways each tool drags (Move: along and side together). */
+const TOOL_WAYS: Record<DragTool, KnobWay[]> = { move: ['along', 'side'], lift: ['up'], rotate: ['turn'], scale: ['size'] };
+/** The way a tool's drag is called when it has no knob (Move of a row: which of along / side is worked out from the drag). */
+export const TOOL_WAY: Record<DragTool, PlaceWay> = { move: 'move', lift: 'up', rotate: 'turn', scale: 'size' };
+
+/**
+ * The knob each way a drag of one of its objects turns (codePlace `drag`): a name = Move's (along the row, as before
+ * studio-to-coords); { along | move, side, up, turn, size } = one per way. Only knobs the layout has.
+ */
+export function dragKnobs(p: Pick<Entry, 'drag' | 'knobs'>): Partial<Record<KnobWay, string>> {
+  const out: Partial<Record<KnobWay, string>> = {};
+  const has = (k: unknown): k is string => typeof k === 'string' && !!p.knobs && k in p.knobs;
+  if (typeof p.drag === 'string') {
+    if (has(p.drag)) out.along = p.drag;
+    return out;
+  }
+  if (!p.drag || typeof p.drag !== 'object') return out;
+  const d = p.drag as Record<string, unknown>;
+  const along = d.along ?? d.move;
+  if (has(along)) out.along = along;
+  for (const w of ['side', 'up', 'turn', 'size'] as const) if (has(d[w])) out[w] = d[w];
+  return out;
+}
+/** The knobs a drag with `tool` turns (none: the rule decides that way), each once. */
+export function toolKnobs(p: Pick<Entry, 'drag' | 'knobs'>, tool: DragTool): string[] {
+  const k = dragKnobs(p);
+  return [...new Set(TOOL_WAYS[tool].map((w) => k[w]).filter((x): x is string => !!x))];
+}
+/** The knob a Move drag of one of its objects turns first (codePlace `drag`: a name, or { along / move, side }), or null. */
 export function dragKnob(p: Pick<Entry, 'drag' | 'knobs'>): string | null {
-  const k = typeof p.drag === 'string' ? p.drag : p.drag && typeof p.drag === 'object' ? p.drag.move : undefined;
-  return typeof k === 'string' && p.knobs && k in p.knobs ? k : null;
+  const k = dragKnobs(p);
+  return k.along ?? k.side ?? null;
 }
 
 /**
@@ -105,11 +162,18 @@ export function dragKnob(p: Pick<Entry, 'drag' | 'knobs'>): string | null {
  * row) gives the value that comes closest — the object stops at the edge, the layout stays a formula.
  */
 export function findKnob(spot: (v: number) => number[] | null, want: number[], lo: number, hi: number, whole = false): number | null {
-  const dist = (v: number) => {
+  return findBy((v) => {
     const q = spot(v);
     if (!q) return Infinity;
     return q.length === 3 ? Math.hypot(q[0]! - want[0]!, q[2]! - want[2]!) : Math.hypot(q[0]! - want[0]!, q[1]! - want[1]!);
-  };
+  }, lo, hi, whole);
+}
+
+/**
+ * The value in [lo, hi] with the smallest `dist` (golden-section search, 30 steps), or null: findKnob's search for any
+ * measure (studio-to-coords: a height, an angle, a size — not only a spot on the ground).
+ */
+export function findBy(dist: (v: number) => number, lo: number, hi: number, whole = false): number | null {
   if (!(hi > lo)) return null;
   const g = (Math.sqrt(5) - 1) / 2;
   let a = lo, b = hi;
@@ -135,6 +199,65 @@ export function knobRange(k: { v: number; min?: number; max?: number }): [number
   return [typeof k.min === 'number' ? k.min : k.v > 0 ? 0 : k.v - span, typeof k.max === 'number' ? k.max : k.v + span];
 }
 
+const wrapAngle = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
+/** One number for a size (a number, or the mean of one per axis); 1 = none given. */
+const sizeOf = (s: number | number[] | undefined) => (typeof s === 'number' ? Math.abs(s) || 1 : Array.isArray(s) && s.length ? s.reduce((a, b) => a + Math.abs(b), 0) / s.length || 1 : 1);
+/** A formula pose (loader codePose) as a Pose (the same fields). */
+type RulePose = { p: number[]; r?: number; t?: [number, number]; s?: number | number[] };
+/**
+ * How far a rule's pose is from the pose a drag of `tool` asked for, in that tool's own measure: Move = the distance on
+ * the ground (3D x, z; 2D x, y), Height = metres up, Turn = radians (round the up axis, and the tilt when the rule
+ * gives one), Size = the log of the size ratio. The drag's look-up makes it smallest; what is left says whether the rule
+ * could follow (studio-to-coords).
+ */
+export function poseGap(tool: DragTool, q: RulePose | null, want: Pose): number {
+  if (!q || !q.p) return Infinity;
+  if (tool === 'move') return q.p.length === 3 ? Math.hypot(q.p[0]! - want.p[0]!, q.p[2]! - (want.p[2] ?? 0)) : Math.hypot(q.p[0]! - want.p[0]!, q.p[1]! - want.p[1]!);
+  if (tool === 'lift') return Math.abs((q.p[1] ?? 0) - (want.p[1] ?? 0));
+  if (tool === 'rotate') {
+    const tilt = q.t && want.t ? Math.hypot(wrapAngle(q.t[0] - want.t[0]), wrapAngle(q.t[1] - want.t[1])) : 0;
+    return Math.hypot(wrapAngle((q.r ?? 0) - (want.r ?? 0)), tilt);
+  }
+  return Math.abs(Math.log(sizeOf(q.s) / sizeOf(want.s)));
+}
+/** Is the object somewhere else than its rule's pose (its place, and its turn / size when the rule gives them)? */
+function offRule(q: RulePose | null, now: Pose | undefined): boolean {
+  if (!q || !now) return false;
+  if (q.p.some((v, i) => Math.abs(v - (now.p[i] ?? v)) > 1e-4)) return true;
+  if (q.r !== undefined && Math.abs(wrapAngle(q.r - (now.r ?? 0))) > 1e-4) return true;
+  return q.s !== undefined && Math.abs(Math.log(sizeOf(q.s) / sizeOf(now.s))) > 1e-4;
+}
+/** How much a drag of `tool` asked for, from `from` to `want`, in poseGap's measure. */
+export function poseAsk(tool: DragTool, from: Pose, want: Pose): number {
+  return poseGap(tool, { p: from.p, r: from.r, t: from.t, s: from.s }, want);
+}
+/**
+ * Did the rule not follow the drag? What is left of it (poseGap after the look-up) is over 40 % of what the drag asked,
+ * and more than a little (Move / Height: `px` on screen, 24 px; Turn: 8°; Size: 8 %) — a hand's wobble across a row is
+ * not "sideways".
+ */
+export function ruleLags(tool: DragTool, left: number, asked: number, px?: { left: number; asked: number }): boolean {
+  if (tool === 'move' || tool === 'lift') return !!px && px.left > 24 && px.left > 0.4 * px.asked;
+  const floor = tool === 'rotate' ? (8 * Math.PI) / 180 : Math.log(1.08);
+  return left > floor && left > 0.4 * asked;
+}
+/**
+ * Which way a Move the rule did not follow went (studio-to-coords): along the row or away from it (a row: the line
+ * through number i's neighbours), or just "this way" (anything else). `miss` = what was left, on the ground.
+ */
+export function moveWay(spots: Array<number[] | null>, i: number, miss: number[], line: boolean): PlaceWay {
+  if (!line) return 'move';
+  const a = spots[i - 1] ?? spots[i], b = spots[i + 1] ?? spots[i];
+  if (!a || !b) return 'move';
+  const g = (v: number[]) => (v.length === 3 ? [v[0]!, v[2]!] : [v[0]!, v[1]!]);
+  const [ax, az] = g(a), [bx, bz] = g(b), [mx, mz] = g(miss);
+  const len = Math.hypot(bx - ax, bz - az);
+  if (len < 1e-9) return 'move';
+  const along = Math.abs((mx * (bx - ax) + mz * (bz - az)) / len);
+  const side = Math.abs((mx * (bz - az) - mz * (bx - ax)) / len);
+  return along >= side ? 'along' : 'side';
+}
+
 export interface CodePlaceViewDeps {
   win: Win;
   adapter(): StudioAdapter;
@@ -149,16 +272,22 @@ export interface CodePlaceView {
   handle(msg: ShellToBridge): void;
   frame(): void;
   clear(): void;
-  /** The line under the strip for this object, or null (not a layout's). */
-  note(key: string): string | null;
+  /** The line under the strip for this object with the chosen tool (none: Move), or null (not a layout's). */
+  note(key: string, tool?: DragTool | null): string | null;
   /**
-   * A Move drag of `key` starts (input.ts moveHandle, its first step): true = it turns the layout's knob (the rest of
-   * the drag goes to dragTo / dragEnd); false = an ordinary move (⌥, no `drag` knob, not a layout's object).
+   * A drag of `key` with `tool` starts (input.ts moveHandle, its first step), before anything moves:
+   *   'knob'  it turns the layout's knobs for that way (the rest of the drag goes to dragTo / dragEnd)
+   *   'stop'  the rule has no knob for that way: nothing moves (stopChip while the finger is down, held at the end)
+   *   'free'  ⌥: just this one, an ordinary move the shell keeps as its pin (the moves say `alone`)
+   *   null    not a rule's object (a hand one, a layout placed by hand, one already put by hand): an ordinary move
    */
-  dragStart(key: string, alone: boolean): boolean;
-  /** The finger's spot for `key` (where an ordinary move would put it): the layout laid out again; its pose, and the chip. */
-  dragTo(key: string, want: number[]): { pose: Pose; chip: string } | null;
-  /** The drag ended (keep false = cancelled: back to the knob it had). */
+  dragStart(key: string, alone: boolean, tool?: DragTool): 'knob' | 'stop' | 'free' | null;
+  /**
+   * Where an ordinary drag would put `key` (its whole pose): the layout laid out again with the knobs that bring it
+   * nearest; its pose, and the chip (the knobs' change, and why when the rule cannot follow that way).
+   */
+  dragTo(key: string, want: Pose, tool?: DragTool): { pose: Pose; chip: string } | null;
+  /** The drag ended (keep false = cancelled: back to the knobs it had). The rule did not follow at the end: place/held. */
   dragEnd(key: string, keep: boolean): void;
   /**
    * A keep-out box being drawn / dragged (studio-code-keepout; keep-out.ts): layout `id` laid out again with `entry` (the
@@ -168,6 +297,12 @@ export interface CodePlaceView {
   preview(id: string, entry: PlacementPlace | null): void;
   /** The preview is over: how many of its objects moved (or have no place any more) since it began. */
   previewEnd(): number;
+  /** The chip of a 'stop' drag (or of several picked, `group`): why it does not move. */
+  stopChip(key: string, way: PlaceWay): string;
+  /** A 'stop' drag ended after it travelled: the shell says why (place/held). */
+  held(key: string, way: PlaceWay): void;
+  /** Is `key` held by its rule (a layout's object, not put by hand)? Several picked: these stay unless ⌥. */
+  ruled(key: string): boolean;
 }
 
 export function createCodePlaceView(d: CodePlaceViewDeps): CodePlaceView {
@@ -198,8 +333,10 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   // itself from a hand-placed one before it is touched" (the plan's need 2, n2-tell). Read once a frame (pickNear).
   let hoverId: string | null = null;
   let hoverAt: { x: number; y: number } | null = null;
-  // A drag that turns a knob: the layout, the knob, its number before, its number now, where the objects stood before.
-  let drag: { id: string; key: string; i: number; knob: string; from: number; v: number; before: Array<number[] | null> } | null = null;
+  // A drag that turns knobs: the layout, the tool, its knobs with their numbers before and now, where the objects stood
+  // before, the pose the object had, and the way the rule did not follow (null: it followed) at the last step.
+  let drag: { id: string; key: string; i: number; tool: DragTool; knobs: string[]; from: Record<string, number>; v: Record<string, number>;
+    before: Array<number[] | null>; start: Pose | null; lag: PlaceWay | null } | null = null;
   // A keep-out box being drawn (studio-code-keepout): the layout and where its objects stood when it began.
   let moving: { id: string; before: Array<number[] | null> } | null = null;
   let drawn = '';
@@ -218,6 +355,11 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   };
   const entryOf = (id: string): PlacementPlace => places[id] ?? {};
   const pinned = (p: Entry, key: string) => !!entryOf(p.id).pins?.[key];
+  // The way a Move missed, unless the layout has a knob for it (then it is the end of that knob's range, not a way the
+  // rule keeps: a gap at its largest).
+  const uncovered = (p: Entry, way: PlaceWay): PlaceWay | null => ((way === 'along' || way === 'side') && dragKnobs(p)[way] ? null : way);
+  // A finger (no ⌥ key there): the words leave the ⌥ part out.
+  const touch = () => !!win.matchMedia?.('(pointer: coarse)').matches;
 
   /** Lay out these layouts again with the draft; moved objects go to the shell (made / taken out: a new list). */
   function relay(ids: string[]) {
@@ -462,45 +604,89 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       moving = null;
       draw();
     },
-    note(key) {
+    note(key, tool) {
       const p = layoutOf(key);
       if (!p || entryOf(p.id).hand) return null;
       if (pinned(p, key)) return (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).pinned(p.name);
-      const k = dragKnob(p);
-      return placeNote(d.lang(), p.name, p.keys.length, k ? p.knobs[k]!.label : null,
-        { narrow: win.innerWidth < NOTE_FULL_PX, touch: !!win.matchMedia?.('(pointer: coarse)').matches });
+      const t = tool ?? 'move';
+      return placeNote(d.lang(), p.name, p.keys.length, toolKnobs(p, t).map((k) => p.knobs[k]!.label),
+        { narrow: win.innerWidth < NOTE_FULL_PX, touch: touch(), way: TOOL_WAY[t] });
     },
-    dragStart(key, alone) {
+    dragStart(key, alone, tool = 'move') {
       drag = null;
       const p = layoutOf(key);
-      const knob = p ? dragKnob(p) : null;
-      if (!p || !knob || alone || entryOf(p.id).hand || pinned(p, key)) return false;
-      const v = (knobValues(p.knobs, entryOf(p.id).knobs) as Record<string, number>)[knob]!;
-      drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, knob, from: v, v, before: (p.spots ?? []).map((q) => (q ? q.slice() : null)) };
-      return true;
+      if (!p || entryOf(p.id).hand || pinned(p, key)) return null;
+      if (alone) return 'free';
+      const knobs = toolKnobs(p, tool);
+      if (!knobs.length) return 'stop';
+      const v = knobValues(p.knobs, entryOf(p.id).knobs) as Record<string, number>;
+      const from = Object.fromEntries(knobs.map((k) => [k, v[k]!]));
+      drag = { id: p.id, key, i: Number(key.slice(p.id.length + 1)) - 1, tool, knobs, from, v: { ...from },
+        before: (p.spots ?? []).map((q) => (q ? q.slice() : null)), start: d.adapter().anchor(key)?.pose ?? null, lag: null };
+      return 'knob';
     },
     dragTo(key, want) {
       const p = drag && drag.key === key ? list().get(drag.id) : null;
       if (!drag || !p) return null;
       const dr = drag;
-      const def = p.knobs[dr.knob]!;
       const k0 = knobValues(p.knobs, entryOf(p.id).knobs) as Record<string, number>;
-      const [lo, hi] = knobRange(def);
-      const found = findKnob((x) => codeSpot(p.id, dr.i, { ...k0, [dr.knob]: x }) as number[] | null, want, lo, hi, !!def.step && def.step >= 1);
-      // The same steps as the card's knob (shell/knob.ts snapKnob): a hundredth of its range, so a drag gives "4.5 m".
-      const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
-      const v = found === null ? null : def.step && def.step >= 1 ? found : Math.round(found / q) * q;
-      if (v !== null && Math.abs(v - dr.v) > 1e-9) {
-        dr.v = v;
-        const e = entryOf(p.id);
-        places = { ...places, [p.id]: { ...e, knobs: { ...(e.knobs ?? {}), [dr.knob]: { v } } } };
-        relay([p.id]);
-        d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knob, v, end: false, key });
+      const at = (k: Record<string, number>) => codePose(p.id, dr.i, k) as RulePose | null;
+      const gap = (k: Record<string, number>) => poseGap(dr.tool, at(k), want);
+      // Each knob in turn (Move: along, then side, three rounds — enough for a row's gap and its distance from the road,
+      // which do not pull against each other); the same steps as the card's knob after (shell/knob.ts snapKnob: a
+      // hundredth of its range, so a drag gives "4.5 m").
+      const k = { ...k0 };
+      for (let round = 0; round < (dr.knobs.length > 1 ? 3 : 1); round++) for (const name of dr.knobs) {
+        const def = p.knobs[name]!;
+        const [lo, hi] = knobRange(def);
+        const found = findBy((x) => gap({ ...k, [name]: x }), lo, hi, !!def.step && def.step >= 1);
+        if (found !== null) k[name] = found;
       }
-      const pose = d.adapter().anchor(key)?.pose;
+      const next: Record<string, number> = {};
+      for (const name of dr.knobs) {
+        const def = p.knobs[name]!;
+        const [lo, hi] = knobRange(def);
+        const q = Math.pow(10, Math.floor(Math.log10(Math.max(1e-6, (hi - lo) / 100))));
+        next[name] = def.step && def.step >= 1 ? k[name]! : Math.round(k[name]! / q) * q;
+      }
+      if (dr.knobs.some((n) => Math.abs(next[n]! - dr.v[n]!) > 1e-9)) {
+        dr.v = next;
+        const e = entryOf(p.id);
+        const ks = { ...(e.knobs ?? {}) };
+        for (const n of dr.knobs) ks[n] = { v: next[n]! };
+        places = { ...places, [p.id]: { ...e, knobs: ks } };
+        relay([p.id]);
+        d.post({ type: 'studio:place/knob', id: p.id, knob: dr.knobs[0]!, v: next[dr.knobs[0]!]!, end: false, key, knobs: { ...next } });
+      } else if (offRule(at(dr.v), d.adapter().anchor(key)?.pose)) {
+        // The same numbers: the ordinary step has still moved this one object (input.ts drags it, then asks here) — back
+        // where the rule puts it. Before studio-to-coords it stayed under the finger until the drag ended (a lamp dragged
+        // sideways followed the finger, then jumped back on release).
+        relay([p.id]);
+      }
+      // Did the rule follow? What is left of the drag, against what it asked (on screen for Move / Height).
+      const now = at(dr.v);
+      const left = poseGap(dr.tool, now, want);
+      const asked = dr.start ? poseAsk(dr.tool, dr.start, want) : left;
+      let px: { left: number; asked: number } | undefined;
+      const a = d.adapter();
+      if ((dr.tool === 'move' || dr.tool === 'lift') && a.toScreen && now?.p) {
+        const sw = a.toScreen(toScene(p, want.p)), sn = a.toScreen(toScene(p, now.p)), s0 = dr.start ? a.toScreen(toScene(p, dr.start.p)) : null;
+        if (sw && sn) px = { left: Math.hypot(sw[0] - sn[0], sw[1] - sn[1]), asked: s0 ? Math.hypot(sw[0] - s0[0], sw[1] - s0[1]) : Infinity };
+      }
+      // Both of Move's knobs there and the rule still short: the end of a knob's range — the object stops at the edge,
+      // the chip shows the knob at its end (no "why": every way is the rule's to follow).
+      dr.lag = !ruleLags(dr.tool, left, asked, px) ? null
+        : dr.tool === 'move' ? (dr.knobs.length > 1 ? null : uncovered(p, moveWay(p.spots ?? [], dr.i, want.p.map((v, j) => v - (now?.p[j] ?? v)), kindOf(p as unknown as Record<string, unknown>) === 'line')))
+        : TOOL_WAY[dr.tool];
+      const pose = a.anchor(key)?.pose;
       const lang = d.lang();
-      const u = unitText(lang, def.unit);
-      return pose ? { pose, chip: `${def.label} ${knobText(dr.from, def.step)} → ${knobText(dr.v, def.step)}${u}` } : null;
+      const turned = dr.knobs.filter((n) => Math.abs(dr.v[n]! - dr.from[n]!) > 1e-9);
+      const said = (turned.length ? turned : dr.knobs.slice(0, 1)).map((n) => {
+        const def = p.knobs[n]!;
+        return `${def.label} ${knobText(dr.from[n]!, def.step)} → ${knobText(dr.v[n]!, def.step)}${unitText(lang, def.unit)}`;
+      });
+      const why = dr.lag ? heldChip(lang, dr.lag, touch()) : '';
+      return pose ? { pose, chip: !turned.length && why ? why : [...said, why].filter(Boolean).join(' · ') } : null;
     },
     preview(id, entry) {
       const p = list().get(id);
@@ -524,13 +710,31 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       drag = null;
       drawn = '';
       if (!dr || dr.key !== key) return;
-      if (!keep && dr.v !== dr.from) {
+      const changed = dr.knobs.some((n) => dr.v[n] !== dr.from[n]);
+      if (!keep && changed) {
         const e = entryOf(dr.id);
-        places = { ...places, [dr.id]: { ...e, knobs: { ...(e.knobs ?? {}), [dr.knob]: { v: dr.from } } } };
+        const ks = { ...(e.knobs ?? {}) };
+        for (const n of dr.knobs) ks[n] = { v: dr.from[n]! };
+        places = { ...places, [dr.id]: { ...e, knobs: ks } };
         relay([dr.id]);
       }
-      d.post({ type: 'studio:place/knob', id: dr.id, knob: dr.knob, v: keep ? dr.v : dr.from, end: true, key });
+      const end = keep ? dr.v : dr.from;
+      d.post({ type: 'studio:place/knob', id: dr.id, knob: dr.knobs[0]!, v: end[dr.knobs[0]!]!, end: true, key, knobs: { ...end } });
+      // The finger let go where the rule could not follow (a lamp dragged away from the road): the shell says why.
+      if (keep && dr.lag) d.post({ type: 'studio:place/held', id: dr.id, key, way: dr.lag });
       d.markDirty();
+    },
+    stopChip(key, way) {
+      void key;
+      return heldChip(d.lang(), way, touch());
+    },
+    held(key, way) {
+      const p = layoutOf(key);
+      if (p) d.post({ type: 'studio:place/held', id: p.id, key, way });
+    },
+    ruled(key) {
+      const p = layoutOf(key);
+      return !!p && !entryOf(p.id).hand && !pinned(p, key);
     },
   };
 }

@@ -797,6 +797,19 @@ const n = p && p.home && p.home.three ? 3 : 2;
 const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
 return a ? vecOf(a.p, n, false) : null;
 }
+export function codePose(id, i, k) {
+const p = codeList(CODE_PLACES).get(id);
+const n = p && p.home && p.home.three ? 3 : 2;
+const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
+if (!a) return null;
+const out = { p: vecOf(a.p, n, false) };
+if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
+else if (isNum(a.r)) out.r = a.r;
+else if (Array.isArray(a.r) && isNum(a.r[0])) out.r = a.r[0];
+if (isNum(a.s) && a.s !== 0) out.s = a.s;
+else if (Array.isArray(a.s) && a.s.every(isNum)) out.s = a.s.slice(0, n);
+return out;
+}
 function handObject(root, key, three, made) {
 let found = null;
 walk(root, (o) => {

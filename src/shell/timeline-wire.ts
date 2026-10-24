@@ -100,8 +100,11 @@ export interface TimelineDeps {
    * round. [] / absent = not said yet (a page opening, a game without any). A rule motion's strip, line and ◇ read them.
    */
   codeMotions?(): CodeMotionInfo[];
-  /** A one-line notice with the way back ("Made “Spiral” into editable points (16) · ⌘Z undoes it"). Absent = none. */
-  told?(text: string): void;
+  /**
+   * A one-line notice with the way back ("Converted the Spiral rule to coordinates · ⌘Z undoes it"). `undo` false =
+   * nothing was done, no way back to say (a rule motion has no points to add). Absent = none.
+   */
+  told?(text: string, undo?: boolean): void;
   /**
    * ✦ Turn into a rule (studio-code-torule, 2026-10-24): the points Library motion `name` had before the AI made it a
    * rule, the editor's measure of the gap ("0.1 m (1.2 s)", null = not measured) and whether the comparison is on —
@@ -131,8 +134,10 @@ export interface TimelineDeps {
  */
 const FINE_SEEN = 'timeline-fine';
 /**
- * "Make editable points" (studio-code-knobs): points a round of a rule motion — the plan's 16 (its words table, "Make editable
- * points": "16 a turn"). Enough for a circle to read as one, few enough to drag by hand.
+ * "Convert to coordinates" (studio-to-coords, 2026-10-24; it was "Make editable points", studio-code-knobs): points a
+ * round of a rule motion — the plan's 16 ("16 a turn"). Enough for a circle to read as one, few enough to drag by hand.
+ * The points are offsets from where the object stands (as every motion's are: the loader adds them to its place), so
+ * moving the object moves its path with it — the request of 10/24: "for a motion, relative is better, I think".
  */
 const POINTS_PER_ROUND = 16;
 const FINE_KEY = 'studio.tl.fine';
@@ -268,7 +273,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const x = comparing(libName);
     return x ? { was: { pts: handPath(x.hand, round && round > 0 ? round : 4), keys: x.hand.keys.map((k) => k.v.slice()) } } : {};
   };
-  // "Make editable points" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
+  // "Convert to coordinates" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
   let pointsAsk: { id: number; name: string; len: number; per: number } | null = null;
   let pointsId = 0;
   // A rule's knob being turned (the line's knob or the path's ◇): its Library motion before it (one undo step).
@@ -838,7 +843,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     };
   }
 
-  // ----- rule motions: their knobs, their switch, "Make editable points" (studio-code-knobs) -----
+  // ----- rule motions: their knobs, their switch, "Convert to coordinates" (studio-code-knobs; studio-to-coords) -----
   /**
    * A rule's knob turned (the line's knob, or the ◇ of its path in the game): the Library motion's knobs, live, then ONE
    * undo step (`end`) — a knob is the Library motion's, so every object with that motion follows (as a point would).
@@ -868,7 +873,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (rr) for (const k of moving()) if ((clipOf(k)?.use ?? clipOf(k)?.name) === libName) panel.ruleWords?.(k, ruleWords(d.t, rr));
     } else panel.render();
   }
-  /** "Make editable points": ask the game page for the rule's shape (timeline/code-points); the answer makes the points. */
+  /** "Convert to coordinates": ask the game page for the rule's shape (timeline/code-points); the answer makes the points. */
   function rulePoints(key: string) {
     const c = clipOf(key);
     const r = ruleFor(c);
@@ -891,11 +896,21 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
     return true;
   }
+  /** A rule motion shown on `key` (studio-to-coords): it has no points to add — say so and the way to them, add none. */
+  function ruleKeeps(key: string): boolean {
+    const c = clipOf(key);
+    if (!ruleFor(c)) return false;
+    d.told?.(d.t('rule.noKeys', { name: c!.use ?? c!.name }), false);
+    return true;
+  }
   /** K: a key of every property the object's clip already moves (position when none) at the time line, as it shows now. */
   function keyNow() {
     const key = d.picked();
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
+    // A rule motion stays a rule (studio-to-coords, the request of 10/24: "a rule's thing stays a rule however you touch it"): K adds
+    // no point to it; "Convert to coordinates" is the way to points.
+    if (ruleKeeps(key)) return true;
     const pose = shownPose(key)!;
     let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
     const name = c.name;
@@ -1563,6 +1578,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     if (mod && k === 'v' && clipboard) {
       const key = focus() ?? sel[0]?.key;
       if (!key) return false;
+      if (ruleKeeps(key)) return true;
       const c = clipOf(key) ?? { name: firstName(key), len: 1, repeat: 'once' as MotionRepeat, when: { on: 'start' } as MotionWhen, keys: {} };
       const r = pasteKeys(c, clipboard, time, dim());
       sel = r.pasted.map((p) => ({ key, ch: p.ch, t: p.t }));

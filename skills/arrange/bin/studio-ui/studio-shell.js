@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.53 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.54 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1061,7 +1061,7 @@ const MSG_PREFIX = 'studio:';
                                                                                                                                                                       
                                                                                                                                                                                              
      
-                                                                                                                     
+                                                                                                                                                       
                                                                                                                   
      
                                                                                                                               
@@ -1322,13 +1322,17 @@ const MSG_PREFIX = 'studio:';
                                                        
      
                                                                                                                          
-                                                                                                                                                                        
+     
+                                                                                                                         
+                                                                                                 
+     
+                                                                                                                                                                                         
      
                                                                               
                                                                              
                                                                          
      
-                                                                                                                                                                                 
+                                                                                                                                                                                                  
      
                                                                                                                       
                                                                                                                     
@@ -1349,9 +1353,10 @@ const MSG_PREFIX = 'studio:';
                                                                              
      
                                                                                                                          
-                                                                                       
+                                                                                                                         
+                                                                                                   
      
-                                                                                                 
+                                                                                                                                 
      
                                                                                                                      
                                                                                                                        
@@ -1364,6 +1369,13 @@ const MSG_PREFIX = 'studio:';
                                                                      
                                                                                                     
                                                               
+     
+                                                                                                                       
+                                                                                                                      
+                                                                                                                    
+                                                                                                                          
+     
+                                                                         
                                                                                                                                                                                                   
                                                                                                    
      
@@ -2227,6 +2239,12 @@ const RESULT_FILES                         = {
             
                                 
  
+/**
+ * The ways a person drags a rule layout's object (studio-to-coords, 2026-10-24; codePlace `drag` by way): along / side =
+ * Move along the row / away from it, up = Height, turn = Turn, size = Size; move = Move of a layout that is not a row,
+ * group = several picked together.
+ */
+                                                                                    
 /** A code layout as the game page lists it (`studio:code-places`): the objects it put and its keep-out conditions. */
                                 
              
@@ -9256,6 +9274,9 @@ __defs[19] = function (__exports) {
 //       and named hex-1, hex-2 … by this file inside applyPlacement (after the world, before `objects`), placed at
 //       at(i, k, g) — `places.hex` in the file: knobs, pins ("just this one" by hand, over the formula), hand (all by
 //       hand), avoid (keep-out areas), from (hand-placed objects it replaced: hidden). Placed with or without a file.
+//       `drag` = the knob each way a person drags one of its objects turns: 'gap' (moving it), or by way
+//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob does not move (the editor
+//       says why); only ⌥ puts one object by hand.
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
@@ -10032,7 +10053,12 @@ function codeMotion(id, def) {
  *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
  *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
  *          scatter stays where it was); try counts the places refused by a keep-out area
- *   drag   the knob a drag of one of its objects turns (the editor: "moving it changes Gap · ⌥ just this one")
+ *   drag   the knob a drag of one of its objects turns: a name (moving it: "moving it changes Gap · ⌥ just this one"),
+ *          or one per way a person may drag it (studio-to-coords, 2026-10-24 — a lamp row dragged away from the road did
+ *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
+ *          turn: 'angle', size: 'scale' } — along / side = moving it along the row / away from it (both are Move's: the
+ *          editor looks for the numbers that bring it nearest the finger), up = Height, turn = Turn, size = Size. A way
+ *          with no knob does not move the object (the editor says why); ⌥ is the one way to put one by hand
  *   avoid  codeAvoid ids on from the start (the person can switch them off)
  */
 function codePlace(id, def) {
@@ -10342,6 +10368,26 @@ function codeSpot(id, i, k) {
   const n = p && p.home && p.home.three ? 3 : 2;
   const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
   return a ? vecOf(a.p, n, false) : null;
+}
+
+/**
+ * Number i's whole formula pose with the knob values `k`, or null: { p, r?, s? } — `r` the turn round the up axis (3D:
+ * at()'s r[1] or its number; 2D: the angle), `t` the tilt [x, z] when at() gives an [x, y, z] turn, `s` a size (a
+ * number, or one per axis). The editor's Height / Turn / Size drags look for a knob with it (studio-to-coords,
+ * 2026-10-24); what at() leaves out stays out (the object keeps its own).
+ */
+function codePose(id, i, k) {
+  const p = codeList(CODE_PLACES).get(id);
+  const n = p && p.home && p.home.three ? 3 : 2;
+  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
+  if (!a) return null;
+  const out = { p: vecOf(a.p, n, false) };
+  if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
+  else if (isNum(a.r)) out.r = a.r;
+  else if (Array.isArray(a.r) && isNum(a.r[0])) out.r = a.r[0];
+  if (isNum(a.s) && a.s !== 0) out.s = a.s;
+  else if (Array.isArray(a.s) && a.s.every(isNum)) out.s = a.s.slice(0, n);
+  return out;
 }
 
 /** The object with this key that is not one of `made` (a code layout's). */
@@ -10688,6 +10734,7 @@ __def(__exports, "codeAvoid", () => codeAvoid);
 __def(__exports, "codeRound", () => codeRound);
 __def(__exports, "relayCodePlace", () => relayCodePlace);
 __def(__exports, "codeSpot", () => codeSpot);
+__def(__exports, "codePose", () => codePose);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
@@ -11831,7 +11878,7 @@ function whensShort(t                                                           
                                                          
                                                                                                                 
                                             
-                                                                                                              
+                                                                                                                
                                  
                                                                                                                           
                               
@@ -12460,7 +12507,7 @@ function createTimelinePanel(view                    , act              ) {
    * A rule motion's strip (studio-code-knobs, 2026-10-24; the plan's first round, decision 6 and its picture one.png):
    * violet, with thin slanted lines (no points: its shape is the game's rule), one round wide and a thin line at every
    * round after it; a switch at its left (Disable / enable), its words from the knobs, and — on the picked row —
-   * "Make editable points". Disabled: grey and dashed. The game without that rule: dashed, "No motion rule found".
+   * "Convert to coordinates". Disabled: grey and dashed. The game without that rule: dashed, "No motion rule found".
    */
   function drawRule(lane             , r             , v              ) {
     const rr = r.rule ;
@@ -12495,7 +12542,7 @@ function createTimelinePanel(view                    , act              ) {
   const dtOf = (d                              , x        ) => (d.per !== undefined ? (x - d.x0) * d.per : tOf(x) - tOf(d.x0));
   track.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    // A rule motion strip's switch / "Make editable points" (studio-code-knobs): their own press, not a scrub or a box.
+    // A rule motion strip's switch / "Convert to coordinates" (studio-code-knobs): their own press, not a scrub or a box.
     if ((e.target               ).closest?.('[data-rule-act]')) return;
     act.touched();
     el.focus({ preventScroll: true });
@@ -16072,9 +16119,9 @@ const en = {
   'hands.place.codeReplace': '{Ai} turned {n:1 object|# objects} into the rule layout “{name}” ({what})',
   'hands.place.count': '{n:1 object|# objects}',
   'hands.place.set': '{Ai} changed “{name}”: {what}',
-  'hands.place.pin': '{obj} placed individually',
+  'hands.place.pin': '{obj} placed by hand (just this one)',
   'hands.place.unpin': '{obj} reset to rule',
-  'hands.place.hand': 'placed individually',
+  'hands.place.hand': 'converted to coordinates',
   'hands.place.unhand': 'reset to rule',
   'hands.place.avoid': '{Ai} added “{what}” to {name}’s keep-out areas',
   'hands.place.avoidSet': '{Ai} changed “{what}” in {name}’s keep-out areas',
@@ -16130,18 +16177,42 @@ const en = {
   'rule.kind.scatter': 'Scatter',
   'rule.nth': 'No. {n}',
   'rule.knobTip': 'Drag left or right · click to type',
-  'rule.individually': 'Place individually',
-  'rule.individuallyTip': 'Copies where the {n} are now into positions you can move one by one',
-  'rule.individuallyDone': 'Placed {name} ×{n} individually',
+  'rule.individually': 'Convert to coordinates',
+  'rule.individuallyTip': 'Turns the rule into coordinates: where the {n} are now, one by one, for you to move by hand',
+  'rule.individuallyDone': 'Converted the {name} rule to coordinates',
   'rule.pinned': 'Manually overridden',
+  'rule.handTag': 'Hand-placed',
+  'rule.handTip': 'Put by hand (⌥-drag), apart from its rule',
+  'rule.pinnedDone': 'Placed {obj} by hand (just this one)',
+  'rule.pinnedDoneMany': 'Placed {obj} by hand, apart from their rule',
   'rule.reset': 'Reset to rule',
   'rule.resetTip': 'Back where the rule puts it',
+  'rule.held': '{name}: {what}',
+  'rule.held.along': 'position along the row is set by the rule',
+  'rule.held.side': 'sideways position is set by the rule',
+  'rule.held.move': 'position is set by the rule',
+  'rule.held.up': 'height is set by the rule',
+  'rule.held.turn': 'angle is set by the rule',
+  'rule.held.size': 'size is set by the rule',
+  'rule.heldGroup': '{name} is laid out by a rule, so it doesn’t move as a group',
+  'rule.heldAlone': '⌥-drag to move just this one',
+  'rule.heldAloneGroup': '⌥-drag to place them by hand',
+  'rule.heldAsk': '✦ Ask {ai}: “{draft}”',
+  'rule.draft.along': 'Let me move {name} along the row',
+  'rule.draft.side': 'Let me move {name} sideways too',
+  'rule.draft.move': 'Let me drag {name} to move it',
+  'rule.draft.up': 'Let me change the height of {name} too',
+  'rule.draft.turn': 'Let me turn {name} too',
+  'rule.draft.size': 'Let me resize {name} too',
+  'rule.draft.group': 'Let me move all of {name} together',
+  'rule.keys': '{name} is laid out by a rule: drag one to change its numbers, or ⌥-drag to move just that one',
   'rule.unusedPins': '{n:1 manual position is|# manual positions are} not used now (fewer objects)',
   'rule.motion': 'Rule motion',
   'rule.motionTip': 'Moves by a rule in your game. Change the numbers here; ask {ai} for the shape',
-  'rule.points': 'Make editable points',
-  'rule.pointsTip': 'Copies its shape into points ({n} a round) you can edit by hand',
-  'rule.pointsDone': 'Made “{name}” into editable points ({n})',
+  'rule.points': 'Convert to coordinates',
+  'rule.pointsTip': 'Turns the rule into coordinates: its shape as points ({n} a round) you can move by hand. They start from where the object stands, so they go with it',
+  'rule.pointsDone': 'Converted the {name} rule to coordinates',
+  'rule.noKeys': '“{name}” is a rule motion: it has no points. To shape it by hand, Convert to coordinates',
   'rule.pointsFail': 'Couldn’t read “{name}” from the game',
   'rule.disable': 'Disable',
   'rule.disableTip': 'Disable (the motion stays)',
@@ -16955,10 +17026,10 @@ const ja                               = {
   'hands.place.codeReplace': '{ai}が {n} 個をルールの並べ方「{name}」にしました（{what}）',
   'hands.place.count': '{n} 個',
   'hands.place.set': '{ai}が「{name}」を変えました: {what}',
-  'hands.place.pin': '{obj} だけ手動で配置',
-  'hands.place.unpin': '{obj} を元の並びに戻す',
-  'hands.place.hand': '個別に配置',
-  'hands.place.unhand': '元の並びに戻す',
+  'hands.place.pin': '{obj} だけ手置き',
+  'hands.place.unpin': '{obj} をルールに戻す',
+  'hands.place.hand': '座標に',
+  'hands.place.unhand': 'ルールに戻す',
   'hands.place.avoid': '{ai}が「{name}」の置かない所に「{what}」を足しました',
   'hands.place.avoidSet': '{ai}が「{name}」の置かない所「{what}」を変えました',
   'hands.place.avoidOff': '{ai}が「{name}」の置かない所「{what}」をオフにしました',
@@ -17008,18 +17079,42 @@ const ja                               = {
   'rule.kind.scatter': 'ランダム',
   'rule.nth': '{n} 番目',
   'rule.knobTip': '左右にドラッグ · 押すと入力',
-  'rule.individually': '個別に配置',
-  'rule.individuallyTip': '今の {n} 個の場所を、1 個ずつの座標にします。手で動かせる物になります',
-  'rule.individuallyDone': '{name} ×{n} を個別に配置しました',
-  'rule.pinned': 'この 1 個だけ手動で配置中',
-  'rule.reset': '元の並びに戻す',
+  'rule.individually': '座標にする',
+  'rule.individuallyTip': 'ルールを座標にします。今の {n} 個の場所が 1 個ずつの座標になり、手で動かせる物になります',
+  'rule.individuallyDone': '{name}のルールを座標にしました',
+  'rule.pinned': 'この 1 個だけ手で置いています',
+  'rule.handTag': '手置き',
+  'rule.handTip': 'ルールから離して手で置いた物です（⌥+ドラッグ）',
+  'rule.pinnedDone': '{obj} だけ手で置きました',
+  'rule.pinnedDoneMany': '{obj} を手で置きました（ルールから離して）',
+  'rule.reset': 'ルールに戻す',
   'rule.resetTip': 'ルールが決めた場所に戻します',
+  'rule.held': '{name}の{what}',
+  'rule.held.along': '並びに沿った位置はルールで決まっています',
+  'rule.held.side': '横の位置はルールで決まっています',
+  'rule.held.move': '場所はルールで決まっています',
+  'rule.held.up': '高さはルールで決まっています',
+  'rule.held.turn': '向きはルールで決まっています',
+  'rule.held.size': '大きさはルールで決まっています',
+  'rule.heldGroup': '{name}はルールで並んでいるので、まとめては動きません',
+  'rule.heldAlone': '⌥+ドラッグでこの 1 個だけ',
+  'rule.heldAloneGroup': '⌥+ドラッグで手で置けます',
+  'rule.heldAsk': '✦ {ai} に「{draft}」',
+  'rule.draft.along': '{name}を並びに沿って動かせるようにして',
+  'rule.draft.side': '{name}を横にも動かせるようにして',
+  'rule.draft.move': '{name}をドラッグで動かせるようにして',
+  'rule.draft.up': '{name}の高さも変えられるようにして',
+  'rule.draft.turn': '{name}の向きも変えられるようにして',
+  'rule.draft.size': '{name}の大きさも変えられるようにして',
+  'rule.draft.group': '{name}をまとめて動かせるようにして',
+  'rule.keys': '{name}はルールで並んでいます。1 個をドラッグすると数字が変わります · ⌥+ドラッグでその 1 個だけ',
   'rule.unusedPins': '手動の位置 {n} 個は今は使われていません（個数が減ったため）',
   'rule.motion': '動きのルール',
   'rule.motionTip': 'ゲームのルールで動く動きです。数字はここで、形は {ai} に',
-  'rule.points': '編集点にする',
-  'rule.pointsTip': '今の形を、1 周に {n} 個の編集点にします。手で直せる動きになります',
-  'rule.pointsDone': '「{name}」を編集点にしました（{n} 個）',
+  'rule.points': '座標にする',
+  'rule.pointsTip': 'ルールを座標にします。今の形が 1 周 {n} 個のポイントになり、手で直せる動きになります。物の始まりの位置からの相対なので、物を動かすと一緒に動きます',
+  'rule.pointsDone': '{name}のルールを座標にしました',
+  'rule.noKeys': '「{name}」は動きのルールなのでポイントがありません。手で形を直すには［座標にする］',
   'rule.pointsFail': '「{name}」をゲームから読めませんでした',
   'rule.disable': '一時停止',
   'rule.disableTip': '一時停止（動きは残る）',
@@ -18736,13 +18831,17 @@ const { toneThumb } = __require(17);
                                           
      
                                                                                                                          
-                                                                                                                       
+                                                                                                                           
                                                                                                                                
      
                                                                             
-                                                                                                                       
-                                                                                
-                                                                                                                  
+     
+                                                                                                                   
+                                                                                                                          
+                                                                                                                        
+     
+                                                                                                                                                 
+                                                                                                                      
                                                                                 
      
                                                                                                                           
@@ -19763,14 +19862,33 @@ function createPlacementPanel(d                    )                 {
         list.append(sub);
       }
     }
+    /**
+     * The mark of objects put by hand apart from their rule (studio-to-coords): on a heading "Hand-placed 1" (how many of
+     * its objects), on an object's own row "Hand-placed" and "Reset to rule".
+     */
+    const handMark = (members        , own = false)                     => {
+      const hs = members.map((m) => hands.get(m.key)).filter((x)                             => !!x);
+      if (!hs.length) return null;
+      const w = hs[0] ;
+      const pill = h('span', { class: 'pill hand-tag', title: w.tip, dataset: { part: 'list-hand-tag' }, text: own || members.length === 1 ? w.tag : `${w.tag} ${hs.length}` });
+      if (!own && members.length > 1) return pill;
+      const back = h('button', { type: 'button', class: 'link-btn hand-reset', dataset: { part: 'list-rule-reset' }, title: w.tip, onclick: (e       ) => {
+        e.stopPropagation();
+        w.run();
+      } }, w.reset);
+      return h('span', { class: 'hand-mark' }, pill, back);
+    };
     const groups = new Map                ();
     // A code layout's objects share one heading (studio-code-knobs: "hex ×4 [Rule]"), whatever the adapter groups by.
     const tags = new Map                                      ();
+    // The objects put by hand apart from their rule (studio-to-coords): their mark and way back, by key.
+    const hands = new Map                                                                                                  ();
     for (const it of d.items()) {
       if (fold && it.unstable) continue;
       if (d.replaced?.(it.key)) continue;
       const rt = d.ruleTag?.(it.key) ?? null;
       if (rt) tags.set(rt.group, { tag: rt.tag, tip: rt.tip });
+      if (rt?.hand) hands.set(it.key, rt.hand);
       const g = rt?.group || it.group || `key:${it.key}`;
       const arr = groups.get(g) || [];
       arr.push(it);
@@ -19801,6 +19919,7 @@ function createPlacementPanel(d                    )                 {
         // A group is named by its kind ("crate ×4" → "crate"), not by its first member.
         many ? h('span', { class: 'name', text: heading }) : nameOf(first),
         tags.has(g) ? h('span', { class: 'pill rule-tag', title: tags.get(g) .tip, text: tags.get(g) .tag }) : null,
+        handMark(members),
         many ? h('span', { class: 'count n mono', text: String(members.length) }) : null,
         !many && first.unstable ? noNamePill(first) : null,
         !many && first.copyOf ? copyTag(first) : null,
@@ -19820,7 +19939,7 @@ function createPlacementPanel(d                    )                 {
           const mp = isGuessed(m) ? nameParts(displayName(m, d.t)) : null;
           const label = mp && mp.where && mp.base === heading ? h('span', { class: 'name unnamed', title: displayName(m, d.t), text: mp.where }) : nameOf(m);
           const sub = h('li', { role: 'option', class: 'obj sub', 'aria-selected': String(m.key === sel || inGroup(m.key)), dataset: { key: m.key } },
-            label, m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null);
+            label, m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null, handMark([m], true));
           sub.addEventListener('click', (e) => {
             e.stopPropagation();
             d.select(m.key, e.shiftKey);
@@ -19968,7 +20087,7 @@ __defs[52] = function (__exports) {
 
 // ✦ Turn into a rule (studio-code-torule, 2026-10-24; the plan's step 4 — need 3 of the four asked for that day: "I want to
 // turn what I placed by hand, or a motion I made by hand, into a close procedural / formula version"). The other way
-// round from "Place individually" / "Make editable points" (rule → hand): hand → rule.
+// round from "Convert to coordinates" (rule → hand; once "Place individually" / "Make editable points"): hand → rule.
 //
 // Who does what (the plan's decisions 13 and 15):
 //   the person   picks the hand-placed objects (or a motion of points) and presses ✦ Turn into a rule: the chat box gets a
@@ -20554,7 +20673,7 @@ function motionMenu(d                , c            , at                        
   const lib = c.use ?? c.name;
   const inLib = !!d.remove && d.library().some((l) => l.name === lib);
   // ✦ Turn into a rule… first (the way on from here, as the plan's picture has it), then the two that take it away.
-  // Only on points: a rule motion is a rule already ("Make editable points" is its way back to points).
+  // Only on points: a rule motion is a rule already ("Convert to coordinates" is its way back to points).
   const toRule              = d.toRule && !d.isRule?.(lib) && (c.keys?.p?.length ?? 0) >= 2
     ? [{ id: 'motion-to-rule', label: d.t('toRule.motion'), ai: true, run: () => d.toRule (c) }, { sep: true }] : [];
   const out              = [...toRule, { id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {
@@ -20681,8 +20800,11 @@ const { blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, eas
                                                                                                                          
      
                                    
-                                                                                                                       
-                            
+     
+                                                                                                                    
+                                                                                              
+     
+                                            
      
                                                                                                                       
                                                                                                                     
@@ -20712,8 +20834,10 @@ const { blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, eas
  */
 const FINE_SEEN = 'timeline-fine';
 /**
- * "Make editable points" (studio-code-knobs): points a round of a rule motion — the plan's 16 (its words table, "Make editable
- * points": "16 a turn"). Enough for a circle to read as one, few enough to drag by hand.
+ * "Convert to coordinates" (studio-to-coords, 2026-10-24; it was "Make editable points", studio-code-knobs): points a
+ * round of a rule motion — the plan's 16 ("16 a turn"). Enough for a circle to read as one, few enough to drag by hand.
+ * The points are offsets from where the object stands (as every motion's are: the loader adds them to its place), so
+ * moving the object moves its path with it — the request of 10/24: "for a motion, relative is better, I think".
  */
 const POINTS_PER_ROUND = 16;
 const FINE_KEY = 'studio.tl.fine';
@@ -20849,7 +20973,7 @@ function createTimeline(d              , makePanel                             =
     const x = comparing(libName);
     return x ? { was: { pts: handPath(x.hand, round && round > 0 ? round : 4), keys: x.hand.keys.map((k) => k.v.slice()) } } : {};
   };
-  // "Make editable points" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
+  // "Convert to coordinates" waiting for the page's answer (timeline/code-points): its id, the Library motion, its length.
   let pointsAsk                                                                = null;
   let pointsId = 0;
   // A rule's knob being turned (the line's knob or the path's ◇): its Library motion before it (one undo step).
@@ -21419,7 +21543,7 @@ function createTimeline(d              , makePanel                             =
     };
   }
 
-  // ----- rule motions: their knobs, their switch, "Make editable points" (studio-code-knobs) -----
+  // ----- rule motions: their knobs, their switch, "Convert to coordinates" (studio-code-knobs; studio-to-coords) -----
   /**
    * A rule's knob turned (the line's knob, or the ◇ of its path in the game): the Library motion's knobs, live, then ONE
    * undo step (`end`) — a knob is the Library motion's, so every object with that motion follows (as a point would).
@@ -21449,7 +21573,7 @@ function createTimeline(d              , makePanel                             =
       if (rr) for (const k of moving()) if ((clipOf(k)?.use ?? clipOf(k)?.name) === libName) panel.ruleWords?.(k, ruleWords(d.t, rr));
     } else panel.render();
   }
-  /** "Make editable points": ask the game page for the rule's shape (timeline/code-points); the answer makes the points. */
+  /** "Convert to coordinates": ask the game page for the rule's shape (timeline/code-points); the answer makes the points. */
   function rulePoints(key        ) {
     const c = clipOf(key);
     const r = ruleFor(c);
@@ -21472,11 +21596,21 @@ function createTimeline(d              , makePanel                             =
     commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
     return true;
   }
+  /** A rule motion shown on `key` (studio-to-coords): it has no points to add — say so and the way to them, add none. */
+  function ruleKeeps(key        )          {
+    const c = clipOf(key);
+    if (!ruleFor(c)) return false;
+    d.told?.(d.t('rule.noKeys', { name: c .use ?? c .name }), false);
+    return true;
+  }
   /** K: a key of every property the object's clip already moves (position when none) at the time line, as it shows now. */
   function keyNow() {
     const key = d.picked();
     const place = key ? d.place(key) : undefined;
     if (!key || !place || !shown()) return false;
+    // A rule motion stays a rule (studio-to-coords, the request of 10/24: "a rule's thing stays a rule however you touch it"): K adds
+    // no point to it; "Convert to coordinates" is the way to points.
+    if (ruleKeeps(key)) return true;
     const pose = shownPose(key) ;
     let c = clipOf(key) ?? { name: firstName(key), len: Math.max(1, snapT(time, MAX_LEN)), repeat: 'once'                , when: { on: 'start' }              , keys: {} };
     const name = c.name;
@@ -22144,6 +22278,7 @@ function createTimeline(d              , makePanel                             =
     if (mod && k === 'v' && clipboard) {
       const key = focus() ?? sel[0]?.key;
       if (!key) return false;
+      if (ruleKeeps(key)) return true;
       const c = clipOf(key) ?? { name: firstName(key), len: 1, repeat: 'once'                , when: { on: 'start' }              , keys: {} };
       const r = pasteKeys(c, clipboard, time, dim());
       sel = r.pasted.map((p) => ({ key, ch: p.ch, t: p.t }));
@@ -22617,9 +22752,15 @@ __defs[59] = function (__exports) {
 //      card's Layout ("Layout  Line · 4  [Rule]") with its knobs; turning one, or dragging an object in the game (the
 //      game page finds the knob: bridge/code-place.ts), changes the rule's number and every object follows. ⌥ (or a
 //      layout without a `drag` knob) puts just that one by hand: "Manually overridden [Reset to rule]".
-//   2. "Things placed by coordinates … fix them by hand, as coordinates": a hand object is as it was; "Place
-//      individually" turns a whole layout into coordinates (one ⌘Z).
+//   2. "Things placed by coordinates … fix them by hand, as coordinates": a hand object is as it was; "Convert to
+//      coordinates" turns a whole layout into coordinates (one ⌘Z).
 // The words on screen are "rule" (chosen on 10/24) and Gemini's wording of that day — never "code".
+//
+// studio-to-coords (2026-10-24; a request that day: "a rule's object should stay a rule however it is moved; to make it your own
+// shape, a button converts the rule to coordinates"): only ⌥ ever takes one object out of its rule (its pin), and it says
+// so ("Placed Street lamps 3 by hand · ⌘Z undoes it · Reset to rule") — the card and the list then mark it "Hand-placed".
+// Any other move of a rule's object (a turn, a lift, a key step, a game's tool: the CRYSTAL FIELD try of that day, where a
+// lamp lifted without ⌥ silently left its row) is put back where the rule puts it, with why and ✦ to ask for the knob.
 //
 // What the person changes lives in the level's `places` (code-places.ts PlaceStore; CONTRACT.md §1.12): knobs as
 // { v, was }, pins, hand. Every change is one ⌘Z and one Save count per layout (the plan's decision 16); the game page
@@ -22628,7 +22769,7 @@ __defs[59] = function (__exports) {
 // studio-code-torule (2026-10-24, need 3 — the other way round): after the AI swapped a layout in for hand-placed
 // objects (✦ Turn into a rule), the card's Layout has "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)",
 // and the guide sends where those hand objects stood (orange dots and thin lines in the game) — until Save.
-                                                                                                                 
+                                                                                                                           
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(33);
@@ -22655,8 +22796,17 @@ const { gapText, placeGaps } = __require(52);
                                                                                
      
                                
-                                                                                   
-                           
+     
+                                                                                                                      
+                                                                                                                     
+     
+                                                                                            
+                                                                  
+                             
+                                                                                 
+                            
+                                                                    
+                    
                             
                     
                                                                   
@@ -22683,33 +22833,46 @@ const { gapText, placeGaps } = __require(52);
                                                                                                               
      
                                                                      
-                                                                                                                         
-                                                        
+     
+                                                                                                                   
+                                                                                                                        
+     
+                                                                                                                       
                                                                            
                                             
-                                                                                            
-                                                                       
+                                                                                                                       
+                                                                                                       
+                                                                                                                   
+                                                            
+     
+                                                                                                                      
+                                                         
+     
+                                                   
                                                                                       
                                                          
                                                                                                   
                                
                                                                                        
                                
-                                                                                                                    
+                                                                                                                        
                                                                        
-                                                                                                                    
+                                                                                                                        
                                  
                                                                                                                     
                               
                                                                                      
                          
-                                                                                          
-                                                                           
+     
+                                                                                                                       
+                                                                      
+     
+                                                                                                                                            
      
                                                                                                                       
                                                                                                      
      
-                                                                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                                            
  
 
 /** A pose as a pin (the file's rounding; no draw order). */
@@ -22740,10 +22903,43 @@ function createCodePlaceWire(d                   )                {
     d.store().set(id, from);
     d.commit(id, from, next);
   }
-  const withKnob = (p               , name        , v        )                 => {
+  const withKnob = (p               , name        , v        )                 => withKnobs(p, { [name]: v });
+  const withKnobs = (p               , set                        )                 => {
     const e = entry(p.id);
-    return { ...e, knobs: turnKnobs(e.knobs, { [name]: v }, p.knobs) };
+    return { ...e, knobs: turnKnobs(e.knobs, set, p.knobs) };
   };
+  const nameOf = (key        ) => d.name?.(key) ?? key;
+  /** Is `key` held by its rule (not the whole layout by hand, not put by hand alone)? */
+  const ruled = (p               , key        ) => !entry(p.id).hand && !entry(p.id).pins?.[key];
+  /** Take `key`'s pin off: back where the rule puts it (one ⌘Z). */
+  function unpin(p               , key        ) {
+    const e = entry(p.id);
+    const pins = { ...(e.pins ?? {}) };
+    delete pins[key];
+    d.commit(p.id, d.store().get(p.id), { ...e, pins });
+  }
+  /**
+   * Why a rule's object did not move that way (the line over the ask field, studio-to-coords): "Street lamps: sideways
+   * position is set by the rule · ⌥-drag to move just this one · ✦ Ask Claude: “Let me move Street lamps sideways too”".
+   */
+  function sayHeld(p               , way          ) {
+    const group = way === 'group';
+    const why = group ? t('rule.heldGroup', { name: p.name }) : t('rule.held', { name: p.name, what: t(`rule.held.${way}`) });
+    const alone = d.touch?.() ? '' : ` · ${t(group ? 'rule.heldAloneGroup' : 'rule.heldAlone')}`;
+    const draft = t(`rule.draft.${way}`, { name: p.name });
+    d.told(`${why}${alone}`, d.ask ? [{ label: t('rule.heldAsk', { draft }), run: () => d.ask (draft) }] : [], false);
+  }
+  /** A pose as `key`'s pin (one ⌘Z), told when it is the first time this one leaves its rule (⌥). */
+  function pin(p               , key        , pose      ) {
+    const e = entry(p.id);
+    const first = !e.hand && !e.pins?.[key];
+    d.commit(p.id, d.store().get(p.id), { ...e, pins: { ...(e.pins ?? {}), [key]: pinOf(pose, d.dim()) } });
+    if (first) d.told(t('rule.pinnedDone', { obj: nameOf(key) }), [{ label: t('rule.reset'), run: () => {
+      const q = d.list().find((x) => x.id === p.id);
+      if (q && entry(q.id).pins?.[key]) unpin(q, key);
+    } }]);
+  }
+  const PRESS_WAY                                                         = { move: 'move', rotate: 'turn', lift: 'up', scale: 'size' };
   const knobNow = (p               , name        ) => entry(p.id).knobs?.[name]?.v ?? p.knobs[name] .v;
 
   function layout(ids           ) {
@@ -22796,7 +22992,7 @@ function createCodePlaceWire(d                   )                {
       g ? h('p', { class: 'rule-gap', dataset: { part: 'rule-gap' }, text: t('toRule.maxPlace', { obj: g.label, gap: gapText(g.d, d.dim(), unit) }) }) : null);
   }
 
-  /** The Layout block: "Layout  Line · 4  [Rule]", the knobs, "Place individually" and "No. 2". */
+  /** The Layout block: "Layout  Line · 4  [Rule]", the knobs, "Convert to coordinates" and "No. 2". */
   function layoutBlock(p               , key        )              {
     const kind = p.kind ? t(`rule.kind.${p.kind}`) : p.name;
     const head = h('div', { class: 'rule-head' },
@@ -22823,7 +23019,10 @@ function createCodePlaceWire(d                   )                {
       unused ? h('p', { class: 'muted note-line', text: t('rule.unusedPins', { n: unused }) }) : null);
   }
 
-  /** "Place individually": every object of the layout put where it stands now, by hand (one ⌘Z). */
+  /**
+   * "Convert to coordinates" (studio-to-coords; it was "Place individually"): every object of the layout put where it
+   * stands now, by hand — the rule becomes one coordinate each (one ⌘Z). The motion side's button has the same words.
+   */
   function individually(p               ) {
     const e = entry(p.id);
     const pins                                      = { ...(e.pins ?? {}) };
@@ -22844,38 +23043,65 @@ function createCodePlaceWire(d                   )                {
       if (e.hand) return { els: [], numbers: true };
       if (e.pins?.[key]) {
         // Just this one put by hand: the rule's other objects stay; its own numbers are its place (orange, the hand).
-        const back = h('button', { type: 'button', class: 'link-btn', title: t('rule.resetTip'), dataset: { action: 'rule-reset', part: 'rule-reset' }, onclick: () => {
-          const pins = { ...(e.pins ?? {}) };
-          delete pins[key];
-          d.commit(p.id, d.store().get(p.id), { ...e, pins });
-        } }, t('rule.reset'));
-        return { els: [h('div', { class: 'rule-pinned', dataset: { part: 'rule-pinned' } }, h('span', { text: t('rule.pinned') }), back)], numbers: true };
+        // Its mark "Hand-placed" (the list's too, studio-to-coords) and the way back.
+        const back = h('button', { type: 'button', class: 'link-btn', title: t('rule.resetTip'), dataset: { action: 'rule-reset', part: 'rule-reset' }, onclick: () => unpin(p, key) }, t('rule.reset'));
+        return { els: [h('div', { class: 'rule-pinned', dataset: { part: 'rule-pinned' } },
+          h('span', { class: 'pill hand-tag', title: t('rule.handTip'), dataset: { part: 'rule-hand-tag' }, text: t('rule.handTag') }), h('span', { text: t('rule.pinned') }), back)], numbers: true };
       }
       return { els: [layoutBlock(p, key)], numbers: false };
     },
-    moved(key, pose, end) {
+    moved(key, pose, end, alone, press) {
       const p = layoutOf(key);
       if (!p) return false;
+      if (ruled(p, key) && !alone) {
+        // Not ⌥: never out of its rule (studio-to-coords). The game page keeps a drag still already (bridge/code-place.ts);
+        // this is the rest — a key step, a game's tool, a drop to the floor: back where the rule puts it, and why.
+        if (end) {
+          layout([p.id]);
+          sayHeld(p, PRESS_WAY[press ?? 'move']);
+        }
+        return true;
+      }
       // While the drag goes on, the model follows the game (the card's numbers) without counting it as a move.
       d.codePoses([{ key, pose }]);
       if (!end) return true;
-      const e = entry(p.id);
-      d.commit(p.id, d.store().get(p.id), { ...e, pins: { ...(e.pins ?? {}), [key]: pinOf(pose, d.dim()) } });
+      pin(p, key, pose);
       return true;
     },
     setPose(key, pose) {
       const p = layoutOf(key);
       if (!p) return false;
+      // The card shows a rule's object no numbers to type (its Layout instead): one that gets here anyway stays in its rule.
+      if (ruled(p, key)) {
+        layout([p.id]);
+        return true;
+      }
       const e = entry(p.id);
       d.commit(p.id, d.store().get(p.id), { ...e, pins: { ...(e.pins ?? {}), [key]: pinOf(pose, d.dim()) } });
       return true;
     },
     knob(m) {
       const p = d.list().find((x) => x.id === m.id);
-      if (!p || !(m.knob in p.knobs)) return;
-      const next = withKnob(p, m.knob, m.v);
+      const set = Object.fromEntries(Object.entries(m.knobs ?? { [m.knob]: m.v }).filter(([n, v]) => !!p && n in p.knobs && typeof v === 'number'));
+      if (!p || !Object.keys(set).length) return;
+      const next = withKnobs(p, set);
       if (!m.end) setLive(p.id, next, true);
       else endLive(p.id, next);
+    },
+    held(m) {
+      const p = d.list().find((x) => x.id === m.id);
+      if (p) sayHeld(p, m.way);
+    },
+    steps(keys, quiet) {
+      const held = keys.filter((k) => {
+        const p = layoutOf(k);
+        return !!p && ruled(p, k);
+      });
+      if (held.length && !quiet) {
+        const p = layoutOf(held[0] ) ;
+        d.told(t('rule.keys', { name: p.name }), [], false);
+      }
+      return keys.filter((k) => !held.includes(k));
     },
     poses(poses) {
       const mine = poses.filter((x) => layoutOf(x.key));
@@ -22887,11 +23113,7 @@ function createCodePlaceWire(d                   )                {
       const p = layoutOf(key);
       const e = p ? entry(p.id) : null;
       if (!p || !e || e.hand) return [];
-      if (e.pins?.[key]) return [{ id: 'rule-reset', label: t('rule.reset'), run: () => {
-        const pins = { ...(entry(p.id).pins ?? {}) };
-        delete pins[key];
-        d.commit(p.id, d.store().get(p.id), { ...entry(p.id), pins });
-      } }];
+      if (e.pins?.[key]) return [{ id: 'rule-reset', label: t('rule.reset'), run: () => unpin(p, key) }];
       return [{ id: 'rule-individually', label: t('rule.individually'), run: () => individually(p) }];
     },
     individually(id) {
@@ -22919,17 +23141,27 @@ function createCodePlaceWire(d                   )                {
       }
       return out;
     },
-    groupMoved(poses, end) {
+    groupMoved(poses, end, alone) {
       const rest               = [];
       const next = new Map                        ();
+      const back = new Set        ();
+      // The rule's objects ⌥ takes out of their rule now (told at the end, as one object's are).
+      const first                                     = [];
       for (const x of poses) {
         const p = layoutOf(x.key);
         if (!p) {
           rest.push(x);
           continue;
         }
+        // Not ⌥: a rule's object stays in its rule (the game page leaves them out of a group drag; a key step's group
+        // may still bring one) — laid out again where the rule puts it.
+        if (ruled(p, x.key) && !alone) {
+          back.add(p.id);
+          continue;
+        }
         d.codePoses([{ key: x.key, pose: x.pose }]);
         if (!end) continue;
+        if (ruled(p, x.key)) first.push({ id: p.id, key: x.key });
         const e = next.get(p.id) ?? entry(p.id);
         next.set(p.id, { ...e, pins: { ...(e.pins ?? {}), [x.key]: pinOf(x.pose, d.dim()) } });
       }
@@ -22938,13 +23170,30 @@ function createCodePlaceWire(d                   )                {
         d.store().set(id, to);
         return { kind: 'code-place'         , key: id, from, to: d.store().get(id) };
       });
-      if (changes.length) layout(changes.map((c) => c.key));
+      const again = new Set([...changes.map((c) => c.key), ...(end ? back : [])]);
+      if (again.size) layout([...again]);
+      // ⌥ took some out of their rule together: said as for one ("Placed Street lamps 2, Street lamps 3 by hand"), with
+      // the way back for all of them (studio-to-coords: never out of a rule without being told).
+      if (first.length) {
+        const names = first.slice(0, 3).map((x) => nameOf(x.key)).join(', ') + (first.length > 3 ? ` +${first.length - 3}` : '');
+        d.told(t(first.length > 1 ? 'rule.pinnedDoneMany' : 'rule.pinnedDone', { obj: names }), [{ label: t('rule.reset'), run: () => {
+          for (const x of first) {
+            const q = d.list().find((y) => y.id === x.id);
+            if (q && entry(q.id).pins?.[x.key]) unpin(q, x.key);
+          }
+        } }]);
+      }
       return { rest, changes };
     },
     listTag(key) {
       const p = layoutOf(key);
       if (!p || entry(p.id).hand) return null;
-      return { group: `rule:${p.id}`, tag: t('rule.tag'), tip: t('rule.tagTip') };
+      const tag = { group: `rule:${p.id}`, tag: t('rule.tag'), tip: t('rule.tagTip') };
+      // Put by hand apart from its rule (⌥): its mark and the way back, in the list too (studio-to-coords — "a lamp left
+      // floating in the row, and nobody notices").
+      return entry(p.id).pins?.[key]
+        ? { ...tag, hand: { tag: t('rule.handTag'), tip: t('rule.handTip'), reset: t('rule.reset'), run: () => unpin(p, key) } }
+        : tag;
     },
   };
 }
@@ -25161,6 +25410,18 @@ function createAiHands(d           ) {
   const gapNum = (x        ) => (d.dim() === '2d' ? `${Math.round(x)} px` : `${Math.round(x * 100) / 100} m`);
   /** A code layout's objects are its own keys: "hex-3" of codePlace('hex'). */
   const ofPlace = (p               , key        ) => p.keys.includes(key) || (key.startsWith(`${p.id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(p.id.length + 1)));
+  /**
+   * An object a rule layout places, not put by hand (studio-to-coords, 2026-10-24: "a rule's thing stays a rule however
+   * it is moved"): object.move / turn / scale / ground would give it a coordinate of its own and take it out of its rule
+   * — the AI is told the ways that keep it a rule instead (its knobs), or that say so (a pin, Convert to coordinates).
+   */
+  const ruleHeld = (key        )                => {
+    const p = (d.codePlaces?.() ?? []).find((x) => x.keys.includes(key));
+    const e = p ? d.place(p.id) : null;
+    if (!p || e?.hand || e?.pins?.[key]) return null;
+    return `${key} is placed by codePlace('${p.id}') (its rule) and stays in it: change the rule's numbers with place.set --knobs, `
+      + `put just this one by hand with place.set --pin, or turn the whole layout into coordinates with place.set --hand`;
+  };
 
   async function one(op    )               {
     if (op.level && d.levels.active() && op.level !== d.levels.current()) {
@@ -25389,6 +25650,7 @@ function createAiHands(d           ) {
       case 'object.turn':
       case 'object.scale': {
         if (need(op.key)) return { error: need(op.key)  };
+        if (ruleHeld(op.key)) return { error: ruleHeld(op.key)  };
         const from = d.pose(op.key);
         if (!from) return { error: `${op.key} cannot be moved here` };
         const it = d.item(op.key) ;
@@ -25425,6 +25687,7 @@ function createAiHands(d           ) {
       }
       case 'object.ground': {
         if (need(op.key)) return { error: need(op.key)  };
+        if (ruleHeld(op.key)) return { error: ruleHeld(op.key)  };
         if (!(await d.ground(op.key))) return { error: `${op.key} did not move: there is nothing under it to stand on, or this game cannot (2D)` };
         return { words: { obj: name(op.key) } };
       }
@@ -28365,7 +28628,7 @@ function start(host            ) {
     reselect: (k) => selectObject(k),
     // Rule motions (studio-code-knobs): the game page's codeMotion() list (knobs, round, the ◇'s knob).
     codeMotions: () => codeMotionList,
-    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    told: (text, undo = true) => showToast(!undo ? text : phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
     place: (k) => worldModel.pose(k),
     order: () => worldItems.map((i) => i.key),
     label: (k) => {
@@ -28416,7 +28679,7 @@ function start(host            ) {
   /** A rule motion's offsets over `len` seconds (`per` places), as the game page runs it — null when it does not answer. */
   function ruleSamples(code        , knobs                        , len        , per        )                              {
     return new Promise((resolve) => {
-      // Ids of their own (timeline-wire's "Make editable points" counts from 1): an answer is never taken for the other's.
+      // Ids of their own (timeline-wire's "Convert to coordinates" counts from 1): an answer is never taken for the other's.
       const id = 1_000_000 + ++measureId;
       const off = ctx.on('studio:timeline/code-points', (m) => {
         if (m.id !== id) return;
@@ -29326,7 +29589,7 @@ function start(host            ) {
   new ResizeObserver(() => placeTimeline()).observe(timeline.el);
 
   // The game's code layouts on the card, in the list and in the game (studio-code-knobs, 2026-10-24; code-place-wire.ts):
-  // the card's Layout and its knobs, a drag that turns a knob, "Manually overridden", "Place individually".
+  // the card's Layout and its knobs, a drag that turns a knob, "Hand-placed" (⌥ only), "Convert to coordinates".
   const codePlaces = createCodePlaceWire({
     t,
     list: () => codePlaceList,
@@ -29340,7 +29603,15 @@ function start(host            ) {
       if (card) placementPanel.render();
       renderButtons();
     },
-    told: (text) => showToast(phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), 6000),
+    // studio-to-coords: with pressable words after it ("Reset to rule", "✦ Ask Claude: …"); `undo` false = nothing was
+    // done (a rule kept its object still), so no "⌘Z undoes it".
+    told: (text, actions, undo = true) => showToast(!undo ? text : phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), actions?.length ? 9000 : 6000, actions),
+    name: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    },
+    ask: (draft) => focusAsk(draft),
+    touch: () => phone() || !!window.matchMedia?.('(pointer: coarse)').matches,
     selected: () => (editLayer === 'world' ? selected : null),
     group: () => (editLayer === 'world' ? group : []),
     editing: () => editing && !playing && editLayer === 'world',
@@ -30175,7 +30446,7 @@ function start(host            ) {
       ai: r.ai,
       run: run[r.id] ?? (() => undefined),
     }));
-    // A code layout's object (studio-code-knobs): "Place individually" / "Reset to rule", in a group of their own before
+    // A code layout's object (studio-code-knobs): "Convert to coordinates" / "Reset to rule", in a group of their own before
     // the last group (Delete stays last).
     const rr = place === 'object' && its.length === 1 && editLayer === 'world' ? codePlaces.rows(its[0] .key) : [];
     if (rr.length) {
@@ -31603,6 +31874,10 @@ function start(host            ) {
         codePlaces.knob(m);
         if (m.end) keepSoon();
         break;
+      // …or went a way its rule keeps (studio-to-coords): nothing moved — why, ⌥, and ✦ to ask for that knob.
+      case 'studio:place/held':
+        if (editLayer === 'world') codePlaces.held(m);
+        break;
       // Keep-out areas in the game (studio-code-keepout; bridge/keep-out.ts): a box drawn / dragged, a ◇ turned, the
       // objects put by hand that stand in an area, "+ Draw a box" stopped there.
       case 'studio:place/avoid-box':
@@ -31803,9 +32078,9 @@ function start(host            ) {
         }
         // Otherwise the place moves; with the timeline open, what the game shows is the place + the motion now.
         if (hand) (m.pose = timeline.placeFor(m.key, m.pose)), m.from && (m.from = timeline.placeFor(m.key, m.from));
-        // An object of a code layout (studio-code-knobs): ⌥-dragged (or a turn / a resize) = just this one by hand, its
-        // pin (one undo step); never an `objects` entry of its own.
-        if (hand && codePlaces.moved(m.key, m.pose, !!m.end)) {
+        // An object of a code layout (studio-code-knobs): ⌥-dragged = just this one by hand, its pin (one undo step);
+        // never an `objects` entry of its own. Without ⌥ it stays in its rule (studio-to-coords: put back, and why).
+        if (hand && codePlaces.moved(m.key, m.pose, !!m.end, !!m.alone, m.press)) {
           if (m.key === selected) placementPanel.updateNumbers();
           renderButtons();
           break;
@@ -31823,7 +32098,7 @@ function start(host            ) {
         // The timeline: those that record become keys (one undo step with the others' moves), the rest move their place.
         const tl0 = editLayer === 'world' ? timeline.movedGroup(m.poses, !!m.end) : { rest: m.poses, changes: [] };
         // A code layout's objects among them (studio-code-knobs): their pins, in the same undo step.
-        const cp = editLayer === 'world' ? codePlaces.groupMoved(tl0.rest, !!m.end) : { rest: tl0.rest, changes: [] };
+        const cp = editLayer === 'world' ? codePlaces.groupMoved(tl0.rest, !!m.end, !!m.alone) : { rest: tl0.rest, changes: [] };
         const tl = { rest: cp.rest, changes: [...tl0.changes, ...cp.changes] };
         for (const e of tl.rest) model.moved(e.key, e.pose);
         if (m.end) {
@@ -32845,14 +33120,27 @@ function start(host            ) {
     if (!selected || !editing || blind) return false;
     const s = keyStep(e.key, e.shift, dim);
     if (!s) return false;
-    send({ type: 'studio:placement/step', key: selected, ...s, hold: false, keys: group.length > 1 ? group.slice() : undefined });
+    sendStep(s, false);
     return true;
+  }
+  /**
+   * A key step for what is picked (arrows, Q / E, PgUp / PgDn, End). A rule layout's objects among them stay where the
+   * rule puts them (studio-to-coords, 2026-10-24: "a rule's object stays a rule however you touch it" — a step was a pin
+   * without ⌥), and the line says why; the others step. None left: nothing is sent.
+   */
+  function sendStep(s                                                                                                   , hold         ) {
+    const picked = group.length > 1 ? group.slice() : selected ? [selected] : [];
+    // A held key repeats: the why is said once, at the first press.
+    const keys = editLayer === 'world' ? codePlaces.steps(picked, hold) : picked;
+    if (!keys.length) return;
+    const key = keys.includes(selected ) ? selected  : keys[0] ;
+    send({ type: 'studio:placement/step', key, ...s, hold, keys: keys.length > 1 ? keys : undefined });
   }
 
   /** Drop to floor (End, ⌘K, the place's menu): the step the End key sends, for what is picked. */
   function dropToFloor() {
     if (!selected || !editing || !canDrop) return;
-    send({ type: 'studio:placement/step', key: selected, op: 'drop', hold: false, keys: group.length > 1 ? group.slice() : undefined });
+    sendStep({ op: 'drop' }, false);
   }
 
   function closeStripMenu() {
@@ -32964,7 +33252,7 @@ function start(host            ) {
     if (e.repeat && selected && !libraryShown()) {
       const s = keyStep(e.key, e.shiftKey, dim);
       if (s && !e.ctrlKey && !e.metaKey) {
-        send({ type: 'studio:placement/step', key: selected, ...s, hold: true, keys: group.length > 1 ? group.slice() : undefined });
+        sendStep(s, true);
         e.preventDefault();
         return;
       }
@@ -32979,16 +33267,26 @@ function start(host            ) {
   // not on a plate stacked over it (the second design review's ⑧, 2026-10-19: on a phone the foot then held the plate,
   // the card and the bar; PC the same). Only while the field is empty and not being typed in, and while the bar is on
   // screen; anything longer (an error, Save's "what next") or a bar in use keeps the news plate above it, as before.
-  function showToast(text        , ms = 3500) {
+  /**
+   * A short line for a few seconds: over the ask field when it fits, else in the news card. `actions` (studio-to-coords):
+   * pressable words after it ("Reset to rule", "✦ Ask Claude: …") — always in the news card (the field's line is not
+   * pressable).
+   */
+  function showToast(text        , ms = 3500, actions                                        ) {
     toast = text;
     clearTimeout(toastTimer);
     hideNews();
-    if (newsInBar(text)) {
+    if (!actions?.length && newsInBar(text)) {
       toastEl.classList.remove('on');
       toastTimer = window.setTimeout(hideNews, ms);
       return;
     }
     toastEl.textContent = toast;
+    // ✦ (asking the AI) in the AI's violet, the rest in the hand's orange (the colours' one rule).
+    for (const a of actions ?? []) toastEl.append(' · ', h('button', { type: 'button', class: `link-btn toast-act${a.label.startsWith('✦') ? ' ai' : ''}`, dataset: { part: 'toast-act' }, onclick: () => {
+      toastEl.classList.remove('on');
+      a.run();
+    } }, a.label));
     toastEl.classList.add('on');
     toastTimer = window.setTimeout(() => toastEl.classList.remove('on'), ms);
   }

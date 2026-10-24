@@ -97,7 +97,12 @@ import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type Dete
 import { canLift, offWhy, type OffWhy } from './hold.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
 import { slideOf } from './outline-slide.ts';
-import type { CodePlaceView } from './code-place.ts';
+import { TOOL_WAY, type CodePlaceView } from './code-place.ts';
+// What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
+// still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
+const CODE_KNOB = 1;
+const CODE_STOP = 2;
+const CODE_FREE = 3;
 
 export interface InputDeps {
   adapter: StudioAdapter;
@@ -125,10 +130,11 @@ export interface InputDeps {
   unhold?: (keys: string[]) => void;
   /**
    * The game's code layouts (studio-code-knobs, 2026-10-24; code-place.ts): the line under the strip for one of their
-   * objects, and a Move drag that turns the layout's knob instead of moving the one object (⌥: just this one).
-   * Absent = none (the UI layer, pause-move).
+   * objects, and a drag that turns the layout's knobs instead of moving the one object (⌥: just this one). By way since
+   * studio-to-coords: a way with no knob does not move it (why on the chip, then place/held); several picked, a rule's
+   * objects stay where the rule puts them unless ⌥. Absent = none (the UI layer, pause-move).
    */
-  codePlace?: Pick<CodePlaceView, 'note' | 'dragStart' | 'dragTo' | 'dragEnd'>;
+  codePlace?: Pick<CodePlaceView, 'note' | 'dragStart' | 'dragTo' | 'dragEnd' | 'stopChip' | 'held' | 'ruled'>;
 }
 
 export interface InputHandle {
@@ -193,7 +199,9 @@ type Mode =
   | { kind: 'pending' } // pressed, not moved beyond the tap slop yet
   | { kind: 'look'; pan: boolean }
   // `anywhere`: the chosen tool, dragged from anywhere (measured from the drag's own travel, not round the object).
-  | { kind: 'handle'; handle: HandleKind; key: string; from: Pose; last: Pose; data: Record<string, number>; anywhere?: boolean }
+  // `ghost` (studio-to-coords): a drag that turns a rule layout's knobs — where an ordinary drag would have put the object
+  // (Height / Turn / Size go on from it each step, so the asking adds up while the rule puts the object elsewhere).
+  | { kind: 'handle'; handle: HandleKind; key: string; from: Pose; last: Pose; data: Record<string, number>; anywhere?: boolean; ghost?: Pose }
   | { kind: 'group'; handle: HandleKind; session: GroupSession; x0: number; y0: number; data: Record<string, number>; anywhere?: boolean }
   | { kind: 'box' }
   | { kind: 'pinch'; dist: number; cx: number; cy: number }
@@ -470,7 +478,7 @@ export function attachInput(deps: InputDeps): InputHandle {
     const picked = state.items.filter((i) => (state.group.length > 1 ? state.group.includes(i.key) : i.key === state.selected));
     // One object of a code layout (studio-code-knobs): before a touch, what a drag will do — turn the layout's knob
     // ("hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one") or place just it by hand.
-    const rule = picked.length === 1 ? deps.codePlace?.note(picked[0]!.key) : null;
+    const rule = picked.length === 1 ? deps.codePlace?.note(picked[0]!.key, tool) : null;
     if (rule) return rule;
     const moved = picked.find((i) => i.held === 'game' && i.driven?.length);
     if (moved) {
@@ -584,7 +592,18 @@ export function attachInput(deps: InputDeps): InputHandle {
   };
 
   const startGroup = (handle: HandleKind, p: Ptr, anywhere = false): Mode => {
-    const session = beginGroup(adapter, state.group, state.selected!);
+    // A rule layout's objects among them (studio-to-coords, 2026-10-24: "a rule's object stays a rule however you touch
+    // it"): they stay where the rule puts them and the rest move; the chip says why. ⌥ = they move too, each put by hand
+    // (the moves say `alone`). All of them a rule's: nothing moves (a 'stop' drag of the picked one, the group's why).
+    const ruled = free ? [] : state.group.filter((k) => deps.codePlace?.ruled(k));
+    const movers = state.group.filter((k) => !ruled.includes(k));
+    if (ruled.length && !movers.length) {
+      const pose = adapter.anchor(state.selected!)?.pose;
+      if (!pose) return { kind: 'none' };
+      if (!anywhere) handles.setActive(handle);
+      return { kind: 'handle', handle, key: state.selected!, from: pose, last: pose, data: { code: CODE_STOP, group: 1 }, anywhere };
+    }
+    const session = beginGroup(adapter, movers, movers.includes(state.selected!) ? state.selected! : movers[0]!);
     if (!session) return { kind: 'none' };
     const ga = groupAnchor(adapter, session.keys, session.primary);
     const data: Record<string, number> = { d: 0, f: 1 };
@@ -608,6 +627,8 @@ export function attachInput(deps: InputDeps): InputHandle {
       }
     }
     if (!anywhere) handles.setActive(handle);
+    if (ruled.length) data.heldOut = 1;
+    if (free) data.free = 1;
     return { kind: 'group', handle, session, x0: p.x, y0: p.y, data, anywhere };
   };
 
@@ -648,9 +669,12 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (Math.abs(dy) > 1e-6) groupLift(adapter, s, dy);
     }
     markDirty();
-    post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle });
+    post({ type: 'studio:placement/moved-group', poses: groupPoses(adapter, s, false), press: m.handle, ...(data.free ? { alone: true } : {}) });
     const from = s.from.get(s.primary), now = adapter.anchor(s.primary)?.pose;
-    if (from && now) handles.readout(readout(m.handle, from, now, canTurn() ? state.axis : 'y'));
+    // A rule's objects left where they are (startGroup): the readout says why after the numbers.
+    const why = data.heldOut && deps.codePlace ? ` · ${deps.codePlace.stopChip(s.primary, 'group')}` : '';
+    if (from && now) handles.readout(readout(m.handle, from, now, canTurn() ? state.axis : 'y') + why);
+    if (data.heldOut) data.moved = 1;
   };
 
   const startHandle = (handle: HandleKind, p: Ptr, anywhere = false): Mode => {
@@ -696,7 +720,24 @@ export function attachInput(deps: InputDeps): InputHandle {
   const moveHandle = (m: Extract<Mode, { kind: 'handle' }>, p: Ptr) => {
     const { key, data } = m;
     lastRead = p;
+    // An object of a code layout (studio-code-knobs, decision 11; by way since studio-to-coords, 2026-10-24): decided at
+    // the drag's first step, before anything moves — the tool's knobs turn (Move: the ones that bring it nearest where
+    // the finger put it, every object of the layout laid out with them; it stops where the rule cannot reach), or the
+    // rule has none for that way and nothing moves (the chip says why), or ⌥ (Ctrl) held = just this one, an ordinary
+    // move the shell keeps as its pin. Before, only Move looked: a turn, a resize or a lift made a pin without ⌥.
+    if (data.code === undefined) {
+      const c = deps.codePlace?.dragStart(key, free, m.handle) ?? null;
+      data.code = c === 'knob' ? CODE_KNOB : c === 'stop' ? CODE_STOP : c === 'free' ? CODE_FREE : 0;
+    }
+    if (data.code === CODE_STOP) {
+      data.stopped = 1;
+      handles.readout(deps.codePlace?.stopChip(key, data.group ? 'group' : TOOL_WAY[m.handle]) ?? null);
+      return;
+    }
     if (m.handle === 'move' || m.handle === 'lift') adapter.setSnap?.({ on: true, free, skip: snapKeys() });
+    // Turning knobs: the ordinary step goes on from where the last one would have put it (Move needs none: its place
+    // comes from the grab and the finger).
+    if (data.code === CODE_KNOB && m.ghost && m.handle !== 'move') adapter.setPose(key, m.ghost);
     let pose: Pose = m.last;
     if (m.anywhere && m.handle === 'rotate') {
       // Turn by the horizontal travel; 15° steps within ±3° of the gesture's total unless Shift.
@@ -716,19 +757,6 @@ export function attachInput(deps: InputDeps): InputHandle {
       if (Math.abs(f - 1) > 1e-4) pose = adapter.scale(key, f);
     } else if (m.handle === 'move') {
       pose = adapter.drag(key, p.x, p.y);
-      // An object of a code layout with a `drag` knob (studio-code-knobs, decision 11): decided at the drag's first step —
-      // the knob that brings it nearest where the finger put it, every object of the layout laid out with it (it stops
-      // where the rule cannot reach); ⌥ (Ctrl) held = just this one, an ordinary move (the shell keeps it as its pin).
-      if (data.code === undefined) data.code = deps.codePlace?.dragStart(key, free) ? 1 : 0;
-      if (data.code === 1) {
-        const r = deps.codePlace!.dragTo(key, pose.p);
-        if (r) {
-          m.last = r.pose;
-          markDirty();
-          handles.readout(r.chip);
-        }
-        return;
-      }
     } else if (m.handle === 'rotate') {
       const a = adapter.anchor(key);
       if (!a) return;
@@ -765,8 +793,18 @@ export function attachInput(deps: InputDeps): InputHandle {
       const dy = Math.max(-5, Math.min(5, liftWith([key], err * data.k!, data.k!, data.breakPx!)));
       if (Math.abs(dy) > 1e-6) pose = adapter.nudgeY!(key, dy);
     }
+    if (data.code === CODE_KNOB) {
+      m.ghost = pose;
+      const r = deps.codePlace!.dragTo(key, pose, m.handle);
+      if (r) {
+        m.last = r.pose;
+        markDirty();
+        handles.readout(r.chip);
+      }
+      return;
+    }
     m.last = pose;
-    emitMoved(key, pose, { press: m.handle });
+    emitMoved(key, pose, { press: m.handle, ...(data.code === CODE_FREE ? { alone: true } : {}) });
     handles.readout(readout(m.handle, m.from, pose, canTurn() ? state.axis : 'y'));
   };
 
@@ -809,16 +847,22 @@ export function attachInput(deps: InputDeps): InputHandle {
       const poses = groupPoses(adapter, mode.session, true);
       if (poses.some((e) => !samePose(e.pose, e.from!))) {
         markDirty();
-        post({ type: 'studio:placement/moved-group', poses, end: true, press: mode.handle });
+        post({ type: 'studio:placement/moved-group', poses, end: true, press: mode.handle, ...(mode.data.free ? { alone: true } : {}) });
       }
+      // A rule's objects stayed (startGroup): the shell says why, with ✦ — once the drag went somewhere.
+      const stayed = mode.data.heldOut && mode.data.moved ? state.group.find((k) => deps.codePlace?.ruled(k)) : undefined;
+      if (stayed) deps.codePlace?.held(stayed, 'group');
     }
     if (mode.kind === 'handle') {
       const m = mode;
       const pose = adapter.anchor(m.key)?.pose ?? m.last;
       handles.setActive(null);
       // A drag that turned a code layout's knob: the knob's end (one undo step in the shell), never a move of its own.
-      if (m.data.code === 1) deps.codePlace?.dragEnd(m.key, true);
-      else if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle });
+      // One that the rule kept still: nothing moved — the shell says why once it went somewhere (studio-to-coords).
+      if (m.data.code === CODE_KNOB) deps.codePlace?.dragEnd(m.key, true);
+      else if (m.data.code === CODE_STOP) {
+        if (m.data.stopped) deps.codePlace?.held(m.key, m.data.group ? 'group' : TOOL_WAY[m.handle]);
+      } else if (!samePose(pose, m.from)) emitMoved(m.key, pose, { end: true, from: m.from, press: m.handle, ...(m.data.code === CODE_FREE ? { alone: true } : {}) });
     }
     mode = { kind: 'none' };
   };

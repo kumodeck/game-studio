@@ -132,7 +132,7 @@ export function motionMenu(d: MotionCardDeps, c: MotionClip, at: HTMLElement | {
   const lib = c.use ?? c.name;
   const inLib = !!d.remove && d.library().some((l) => l.name === lib);
   // ✦ Turn into a rule… first (the way on from here, as the plan's picture has it), then the two that take it away.
-  // Only on points: a rule motion is a rule already ("Make editable points" is its way back to points).
+  // Only on points: a rule motion is a rule already ("Convert to coordinates" is its way back to points).
   const toRule: MenuEntry[] = d.toRule && !d.isRule?.(lib) && (c.keys?.p?.length ?? 0) >= 2
     ? [{ id: 'motion-to-rule', label: d.t('toRule.motion'), ai: true, run: () => d.toRule!(c) }, { sep: true }] : [];
   const out: MenuEntry[] = [...toRule, { id: 'motion-detach', label: d.t('motion.menu.detach'), run: () => {

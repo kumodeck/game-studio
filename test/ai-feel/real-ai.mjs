@@ -19,6 +19,10 @@
 //      now, still on the ship, starting with the game;
 //   3. "turn the crates into a rule" → no rule comes close (scattered by hand): nothing replaced, said in a line.
 // None of them may hand steps back to the person.
+// `--steps to-coords` (studio-to-coords, 2026-10-24 — the CRYSTAL FIELD try: the AI gave a lamp row only Count and Gap, so
+// a lamp dragged away from the road did nothing): the plaza gets a road, then "line the street lamps along both sides of
+// the road" (in Japanese) → a codePlace() with a knob for each way a person would drag one (SKILL.md: `drag` by way —
+// along the road and away from it at least), shown with --do place.code. One conversation.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -53,7 +57,10 @@ if (spawnSync('claude', ['--version'], { encoding: 'utf8' }).status !== 0) {
 }
 
 const TO_RULE = take('--steps') === 'to-rule';
-const STEPS = TO_RULE ? [
+const TO_COORDS = take('--steps') === 'to-coords';
+const STEPS = TO_COORDS ? [
+  { say: '街灯を道の両側に並べて', first: true, kind: 'by-way' },
+] : TO_RULE ? [
   { say: '街灯をルールにして', first: true, kind: 'to-rule-place' },
   { say: '船の動きをルールにして', first: true, kind: 'to-rule-motion' },
   { say: '木箱をルールにして', first: true, kind: 'to-rule-none' },
@@ -130,6 +137,18 @@ await applyPlacement(scene, './placement.json');`);
   pl.motions.push({ name: 'Ship sway', len: 2, repeat: 'loop', keys: { p: Array.from({ length: 9 }, (_, i) => ({ t: i / 4, v: [Math.round((Math.sin((i / 8) * 2 * Math.PI) * 1.5 + (i === 3 ? 0.12 : 0)) * 1000) / 1000, 0, 0], ease: 'linear' })) } });
   pl.motion.ship = { clips: [{ use: 'Ship sway', when: { on: 'start' } }] };
   writeFileSync(join(game, 'placement.json'), JSON.stringify(pl, null, 2));
+}
+// The to-coords set's road: a dark strip down the middle of the plaza (front to back), 5 m wide.
+if (TO_COORDS) {
+  const main = readFileSync(join(game, 'main.js'), 'utf8').replace("await applyPlacement(scene, './placement.json');", `// A road down the middle of the plaza, from the front to the back (5 m wide).
+const road = new THREE.Mesh(new THREE.PlaneGeometry(5, 30), new THREE.MeshStandardMaterial({ color: '#2b2d33' }));
+road.rotation.x = -Math.PI / 2;
+road.position.y = 0.01;
+road.userData.studioKey = 'road';
+scene.add(road);
+
+await applyPlacement(scene, './placement.json');`);
+  writeFileSync(join(game, 'main.js'), main);
 }
 mkdirSync(join(game, '.studio/ui'), { recursive: true });
 writeFileSync(join(game, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'ja', theme: 'dark', seen: ['timeline-steps', 'open-line'] }));
@@ -259,6 +278,17 @@ try {
       const replaced = (l?.places ?? []).some((p) => crates.some((k) => p.from?.includes(k)));
       check(!replaced && !dos.some((c) => /replace/.test(c) && /crate/.test(c)), 'nothing replaced: the crates stay where they were put');
       check(reply.trim().split('\n').filter((x) => x.trim()).length <= 4, 'said in a line or two (with the link)');
+    } else if (step.kind === 'by-way') {
+      const l = listNow();
+      const ps = l?.places ?? [];
+      console.log(`  editor's list: places ${JSON.stringify(ps.map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: Object.fromEntries(Object.entries(p.knobs ?? {}).map(([k, v]) => [k, `${v.label} ${v.v}${v.unit ?? ''}`])), drag: p.drag })))}`);
+      const row = ps.find((p) => (p.keys?.length ?? 0) >= 4);
+      const ways = row?.drag && typeof row.drag === 'object' ? Object.keys(row.drag) : row?.drag ? ['along'] : [];
+      check(/codePlace\s*\(/.test(codeText), 'it wrote a codePlace() in the game\'s code');
+      check(dos.some((c) => /place\.code/.test(c)), 'it showed it in the editor itself (--do place.code)');
+      check(!!row && Object.keys(row.knobs ?? {}).length <= 3, `the lamps in the editor under the layout's name, 1–3 knobs (${row ? `${row.name} ×${row.keys.length}` : 'none'})`);
+      check(ways.includes('side') && (ways.includes('along') || ways.includes('move')), `a knob for each way a person drags one: along the road and away from it (drag ${JSON.stringify(row?.drag ?? null)})`);
+      writeFileSync(join(out, 'by-way.png'), await page.screenshot());
     } else if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);

@@ -167,8 +167,13 @@ When it isn’t, the line says what happened: **Kept as a note for Claude. Nothi
 When your AI lays things out by a rule (“four hexagons in a row, 6 m apart”, “scatter crystals on the field”), the list shows them under one name with the tag **Rule**, and a press on one shows the card’s **Layout** where its position was: **Line · 4** (or **Scatter · 12**), with the rule’s numbers as knobs, like **Count** and **Gap**. Things you placed yourself stay as they are: their numbers are their place.
 
 - **Turn a knob** (drag it left or right, or press it and type), **or just drag one of them** in the game: the rule’s number changes, the others follow and they stay a rule. While you drag, a small label says it: **Gap 4 → 2.5 m**. Violet rings show where the rule puts each one (point at one in the game to see them before you press), and the line under the tool strip says what a drag will do.
-- **Hold <kbd>⌥</kbd> while you drag** to move just that one: its card says **Manually overridden**, with **Reset to rule**. The rest stays on the rule. (A scatter, which has no number to turn by a drag, places the one you drag this way.)
-- **Place individually** turns the whole layout into ordinary things you move one by one.
+- **They stay a rule, however you move them.** A way the rule has no number for doesn’t move: drag a street lamp away from the road when the rule only has **Gap**, or lift it, or turn it, and it stays where it is while a small label says why — **Sideways position is set by the rule · ⌥ for just this one**. When you let go, the line above the chat box says it again, with **✦ Ask Claude: “Let me move Street lamps sideways too”**: your AI gives the rule a number for that way. (A rule with a number for each way — along the road, away from it, up — changes it for all of them, whichever way you drag.)
+- **Hold <kbd>⌥</kbd> while you drag** to move just that one: the line says **Placed Street lamps 3 by hand (just this one) · ⌘Z undoes it · Reset to rule**, and it is marked **Hand-placed** on its card and in the list, with **Reset to rule** beside it. The rest stays on the rule. Nothing else takes one out of its rule: arrow keys, or moving several together, leave a rule’s things where it puts them.
+- **Convert to coordinates** turns the rule into coordinates: every one of them becomes an ordinary thing at its own position, which you move one by one.
+
+![A lamp of the row dragged away from the road: it stays, and the line says “Street lamps: sideways position is set by the rule · ⌥-drag to move just this one · ✦ Ask Claude”](media/rule-held.webp)
+
+![⌥ and a drag up: just that lamp, marked “Hand-placed” on its card and in the list, and “Reset to rule”](media/rule-hand.webp)
 
 Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save, your AI writes the new numbers into the game’s code (**Saved: hex Gap → 4 m**).
 

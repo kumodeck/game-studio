@@ -28,6 +28,9 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     // studio-code-torule (2026-10-24): ✦ Turn into a rule — the draft "Turn into a close rule", sent by the person.
     [/^focusAsk\(draft\);$/, 'askMotion: ✦ Ask AI on a motion (cursor only) / ✦ Turn into a rule… (its draft)'],
     [/^focusAsk\(t\('toRule\.draft'\)\);$/, 'the card\'s ✦ Turn into a rule (a draft)'],
+    // studio-to-coords (2026-10-24): the line after a drag the rule kept still — ✦ Ask Claude: "Let me move Street lamps
+    // sideways too" puts that draft in the box (the person sends it).
+    [/^ask: \(draft\) => focusAsk\(draft\),$/, 'a rule\'s object held still: ✦ Ask for that knob (a draft)'],
   ];
   for (const l of lines) assert.ok(allowed.some(([re]) => re.test(l)), `a new caller writes in the ask box: ${l}`);
 });

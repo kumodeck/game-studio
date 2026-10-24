@@ -76,6 +76,9 @@
 //       and named hex-1, hex-2 … by this file inside applyPlacement (after the world, before `objects`), placed at
 //       at(i, k, g) — `places.hex` in the file: knobs, pins ("just this one" by hand, over the formula), hand (all by
 //       hand), avoid (keep-out areas), from (hand-placed objects it replaced: hidden). Placed with or without a file.
+//       `drag` = the knob each way a person drags one of its objects turns: 'gap' (moving it), or by way
+//       { along, side, up, turn, size } (studio-to-coords, 2026-10-24). A way with no knob does not move (the editor
+//       says why); only ⌥ puts one object by hand.
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
@@ -852,7 +855,12 @@ export function codeMotion(id, def) {
  *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
  *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
  *          scatter stays where it was); try counts the places refused by a keep-out area
- *   drag   the knob a drag of one of its objects turns (the editor: "moving it changes Gap · ⌥ just this one")
+ *   drag   the knob a drag of one of its objects turns: a name (moving it: "moving it changes Gap · ⌥ just this one"),
+ *          or one per way a person may drag it (studio-to-coords, 2026-10-24 — a lamp row dragged away from the road did
+ *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
+ *          turn: 'angle', size: 'scale' } — along / side = moving it along the row / away from it (both are Move's: the
+ *          editor looks for the numbers that bring it nearest the finger), up = Height, turn = Turn, size = Size. A way
+ *          with no knob does not move the object (the editor says why); ⌥ is the one way to put one by hand
  *   avoid  codeAvoid ids on from the start (the person can switch them off)
  */
 export function codePlace(id, def) {
@@ -1162,6 +1170,26 @@ export function codeSpot(id, i, k) {
   const n = p && p.home && p.home.three ? 3 : 2;
   const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
   return a ? vecOf(a.p, n, false) : null;
+}
+
+/**
+ * Number i's whole formula pose with the knob values `k`, or null: { p, r?, s? } — `r` the turn round the up axis (3D:
+ * at()'s r[1] or its number; 2D: the angle), `t` the tilt [x, z] when at() gives an [x, y, z] turn, `s` a size (a
+ * number, or one per axis). The editor's Height / Turn / Size drags look for a knob with it (studio-to-coords,
+ * 2026-10-24); what at() leaves out stays out (the object keeps its own).
+ */
+export function codePose(id, i, k) {
+  const p = codeList(CODE_PLACES).get(id);
+  const n = p && p.home && p.home.three ? 3 : 2;
+  const a = p && codePlaceAt(p, i, k, 0, (p.home && p.home.opts && p.home.opts.level) || null, n);
+  if (!a) return null;
+  const out = { p: vecOf(a.p, n, false) };
+  if (n === 3 && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) (out.r = a.r[1]), (out.t = [a.r[0], a.r[2]]);
+  else if (isNum(a.r)) out.r = a.r;
+  else if (Array.isArray(a.r) && isNum(a.r[0])) out.r = a.r[0];
+  if (isNum(a.s) && a.s !== 0) out.s = a.s;
+  else if (Array.isArray(a.s) && a.s.every(isNum)) out.s = a.s.slice(0, n);
+  return out;
 }
 
 /** The object with this key that is not one of `made` (a code layout's). */

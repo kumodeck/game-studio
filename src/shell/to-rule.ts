@@ -1,6 +1,6 @@
 // ✦ Turn into a rule (studio-code-torule, 2026-10-24; the plan's step 4 — need 3 of the four asked for that day: "I want to
 // turn what I placed by hand, or a motion I made by hand, into a close procedural / formula version"). The other way
-// round from "Place individually" / "Make editable points" (rule → hand): hand → rule.
+// round from "Convert to coordinates" (rule → hand; once "Place individually" / "Make editable points"): hand → rule.
 //
 // Who does what (the plan's decisions 13 and 15):
 //   the person   picks the hand-placed objects (or a motion of points) and presses ✦ Turn into a rule: the chat box gets a

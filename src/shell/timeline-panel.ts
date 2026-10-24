@@ -212,7 +212,7 @@ export interface TimelineActs {
   ruleKnob?(name: string, v: number, end: boolean): void;
   /** A rule motion's switch on `key`'s strip: disabled (it stays on the object and does not play) / enabled. */
   ruleOff?(key: string, off: boolean): void;
-  /** "Make editable points" on `key`'s strip: the rule's shape becomes a motion of points (one undo step). */
+  /** "Convert to coordinates" on `key`'s strip: the rule's shape becomes a motion of points (one undo step). */
   rulePoints?(key: string): void;
   /** studio-code-torule: the line's "Compare with original" switched (the orange marks shown / hidden; nothing saved). */
   compare?(on: boolean): void;
@@ -841,7 +841,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
    * A rule motion's strip (studio-code-knobs, 2026-10-24; the plan's first round, decision 6 and its picture one.png):
    * violet, with thin slanted lines (no points: its shape is the game's rule), one round wide and a thin line at every
    * round after it; a switch at its left (Disable / enable), its words from the knobs, and — on the picked row —
-   * "Make editable points". Disabled: grey and dashed. The game without that rule: dashed, "No motion rule found".
+   * "Convert to coordinates". Disabled: grey and dashed. The game without that rule: dashed, "No motion rule found".
    */
   function drawRule(lane: HTMLElement, r: TimelineRow, v: TimelineView) {
     const rr = r.rule!;
@@ -876,7 +876,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const dtOf = (d: { x0: number; per?: number }, x: number) => (d.per !== undefined ? (x - d.x0) * d.per : tOf(x) - tOf(d.x0));
   track.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    // A rule motion strip's switch / "Make editable points" (studio-code-knobs): their own press, not a scrub or a box.
+    // A rule motion strip's switch / "Convert to coordinates" (studio-code-knobs): their own press, not a scrub or a box.
     if ((e.target as HTMLElement).closest?.('[data-rule-act]')) return;
     act.touched();
     el.focus({ preventScroll: true });

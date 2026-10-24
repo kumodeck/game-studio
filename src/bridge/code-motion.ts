@@ -11,7 +11,7 @@
 //                          the ground (golden-section, the same search as a layout's drag: code-place.ts findKnob) and
 //                          says it (timeline/code-knob: live, then `end` = one ⌘Z in the shell). Its label "Radius 2 m",
 //                          its chip "Radius 2 → 3 m" while dragged.
-//   timeline/code-points   "Make editable points": the rule's shape over `len` seconds as position keys (`per` a round),
+//   timeline/code-points   "Convert to coordinates": the rule's shape over `len` seconds as position keys (`per` a round),
 //                          for the shell to turn it into an ordinary motion of points (one ⌘Z). Also ✦ Turn into a
 //                          rule's measure (studio-code-torule): the same samples, 64 a round, against the old points.
 //   timeline/path `was`    ✦ Turn into a rule (studio-code-torule, 2026-10-24): the motion of points the rule replaced,
@@ -338,7 +338,7 @@ text { font: 600 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         drawn = '';
         d.markDirty();
       } else if (msg.type === 'studio:timeline/code-points') {
-        // "Make editable points": `per` places a round, over `len` seconds, as offsets (the object's place is not in them).
+        // "Convert to coordinates": `per` places a round, over `len` seconds, as offsets (the object's place is not in them).
         const m = motions(win).get(msg.code);
         let keys: MotionKey[] | null = null;
         if (m) {

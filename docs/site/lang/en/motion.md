@@ -169,7 +169,8 @@ A motion your AI wrote as a rule is a violet strip on the timeline that says wha
 - **Its knobs are on the top line**, where **Repeat** is for a motion of points (a rule goes on as long as the game runs): drag one left or right, or press it and type. The strip’s words follow.
 - **In the game**, its path is a violet dotted line with one **◇**. Drag the ◇ and the number it stands for (the rule says which) changes so the path goes through your finger: **Radius 2 → 3 m**.
 - The **switch** at the strip’s left disables it: the motion stays on the object and doesn’t play until you switch it on again.
-- **Make editable points** copies its shape into an ordinary motion of points (16 a round) that you move one by one.
+- **It stays a rule however you move it**: moving the thing moves where it goes round, and <kbd>K</kbd> adds no point to it (it has none).
+- **Convert to coordinates** turns the rule into coordinates: its shape becomes an ordinary motion of points (16 a round) that you move one by one — **Converted the Spiral rule to coordinates · ⌘Z undoes it**. The points start from where the thing stands, so they go with it when you move it.
 
 Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save, your AI writes the new numbers into the game’s code.
 

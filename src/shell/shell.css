@@ -1916,6 +1916,19 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 /* The one placed by hand: its numbers are its place, in the hand's colour (the plan: "orange = coordinates"). */
 .card:has(.rule-pinned) .f-cells .num input { color: var(--you-text); }
 li.obj .rule-tag { margin-left: 4px; flex: none; }
+/* studio-to-coords (2026-10-24): one object put by hand apart from its rule (⌥) — the hand's orange mark "Hand-placed",
+   on the card, on its row and (with a count) on its layout's heading, and "Reset to rule" beside it on its row. */
+.hand-tag { height: 18px; padding: 0 6px; background: var(--you-soft); color: var(--you-text); font-size: 10px; }
+li.obj .hand-tag { margin-left: 4px; flex: none; }
+li.obj .hand-mark { display: inline-flex; align-items: center; gap: 2px; flex: none; min-width: 0; }
+li.obj .hand-reset { min-height: 20px; padding: 0 4px; font-size: 10px; color: var(--text-2); }
+li.obj .hand-reset:hover { color: var(--text); text-decoration: underline; }
+.rule-pinned { grid-template-columns: auto 1fr; align-items: center; }
+.rule-pinned > .link-btn { grid-column: 1 / -1; }
+/* The news card's pressable words after a line (code-place-wire told: "Reset to rule", "✦ Ask Claude: …"). */
+.toast .toast-act { min-height: 20px; padding: 0 2px; color: var(--you-text); font-weight: 600; }
+.toast .toast-act:hover { text-decoration: underline; }
+.toast .toast-act.ai { color: var(--ai-text); }
 /* Phone / side window: the same parts in the sheet; the knobs' names a little wider (as the numbers' labels, .fields). */
 .shell[data-layout="phone"] .knob { grid-template-columns: 56px minmax(0, 1fr); }
 .shell[data-layout="phone"] .knob-box { max-width: none; }
@@ -1974,7 +1987,7 @@ li.obj .rule-tag { margin-left: 4px; flex: none; }
 /* ----- A rule motion on the timeline (studio-code-knobs, 2026-10-24; timeline-panel.ts drawRule / ruleItems) -----
    Its row is a violet strip with thin slanted lines (no points: the game's rule is its shape), as wide as the ruler — it
    goes on as the game runs —, a thin line at every round, a switch at its left, its words from its knobs, and on the
-   picked row "Make editable points". Disabled: no fill, a dashed grey edge. Its knobs sit on the line where Repeat is. */
+   picked row "Convert to coordinates". Disabled: no fill, a dashed grey edge. Its knobs sit on the line where Repeat is. */
 .tl-rule { position: absolute; top: 3px; bottom: 3px; display: flex; align-items: center; gap: 6px; padding: 0 4px 0 5px; border-radius: 6px; overflow: hidden;
   background: repeating-linear-gradient(135deg, rgba(139, 124, 255, .22) 0 5px, rgba(139, 124, 255, .1) 5px 10px); box-shadow: inset 0 0 0 1px rgba(139, 124, 255, .6);
   color: var(--ai-text); font-size: 11px; white-space: nowrap; z-index: 1; }

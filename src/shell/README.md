@@ -221,11 +221,20 @@ off Blue pillar · ⌘Z undoes it", i18n `hands.*`). The jobs come on an event s
 hidden tab still gets. What an op means is `src/schema/hands.mjs`'s, shared with the CLI's placement.json path.
 `test/ai-hands-shell.test.ts`, `test/studio-ai-hands.browser.mjs`.
 
-✦ Turn into a rule (studio-code-torule, 2026-10-24; the other way round from "Place individually" / "Make editable
-points": hand → rule): `to-rule.ts` measures how close the rule the AI swapped in came to the hand's shape (each
+✦ Turn into a rule (studio-code-torule, 2026-10-24; the other way round from "Convert to coordinates": hand → rule): `to-rule.ts` measures how close the rule the AI swapped in came to the hand's shape (each
 object against the rule's object of the same number; a motion at 64 places of one round) and keeps that shape until
 Save (`RuleCompare`: shown only while the swap stands). The way in is the card of several hand-placed objects
 (`placement-panel.ts`) and a motion row's ⋯ (`motion-card.ts`), both a draft in the chat box; `ai-hands.ts` reads the
 hand's shape before `--replace` and reports the measure; `code-place-wire.ts` (the card's "Compare with original ·
 Max deviation") and `timeline-panel.ts` / `timeline-wire.ts` (the strip's orange marks, the line's comparison) show it.
 `test/to-rule.test.ts`, `test/studio-code-place.browser.mjs --only torule`.
+
+A rule's object stays in its rule (studio-to-coords, 2026-10-24; a request that day: "a rule's thing should stay a rule however it
+is moved — to make it your own shape, a button converts the rule to coordinates"). `code-place-wire.ts`: only a move
+the game page marks `alone` (⌥) puts one object by hand (its pin, told with "Reset to rule"; the card and the list mark it
+"Hand-placed"); any other move of a rule's object — a key step (`main.ts` sendStep), a game's tool, a drop — is put back
+where the rule puts it, with why and ✦ to ask for the knob. The game page (`bridge/code-place.ts`, `bridge/input.ts`)
+turns the knob for each way a drag goes (`drag: { along, side, up, turn, size }`), or keeps the object still with why.
+"Convert to coordinates" is the one button for both: a layout's objects become one coordinate each, a rule motion's
+shape becomes points (offsets from where the object stands, so they go with it). `test/to-coords.test.ts`,
+`test/studio-code-place.browser.mjs --only coords`.

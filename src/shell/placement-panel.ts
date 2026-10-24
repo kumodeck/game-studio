@@ -147,13 +147,17 @@ export interface PlacementPanelDeps {
   motion?: (key: string) => HTMLElement[];
   /**
    * An object a code layout of the game put (studio-code-knobs, 2026-10-24; code-place-wire.ts): the card's Layout block
-   * (the rule's kind and count, its knobs, "Place individually") — `numbers` false = in place of Position / Rotation /
+   * (the rule's kind and count, its knobs, "Convert to coordinates") — `numbers` false = in place of Position / Rotation /
    * Size, which the rule decides; true = above the object's own numbers (one put by hand). null / absent = an ordinary object.
    */
   layout?: (key: string) => { els: HTMLElement[]; numbers: boolean } | null;
-  /** The list: a code layout's objects under one heading with its tag ("hex ×4 [Rule]"). null / absent = as before. */
-  ruleTag?: (key: string) => { group: string; tag: string; tip: string } | null;
-  /** The card's ⋯ rows for a code layout's object ("Place individually", "Reset to rule"). [] / absent = none. */
+  /**
+   * The list: a code layout's objects under one heading with its tag ("hex ×4 [Rule]"). null / absent = as before.
+   * `hand` (studio-to-coords, 2026-10-24): this one is put by hand apart from its rule (⌥) — its row's mark "Hand-placed"
+   * and "Reset to rule", and a count of them on the heading, so a lamp left out of its row is seen with the row folded.
+   */
+  ruleTag?: (key: string) => { group: string; tag: string; tip: string; hand?: { tag: string; tip: string; reset: string; run(): void } } | null;
+  /** The card's ⋯ rows for a code layout's object ("Convert to coordinates", "Reset to rule"). [] / absent = none. */
   ruleRows?: (key: string) => Array<{ id: string; label: string; run(): void }>;
   /**
    * ✦ Turn into a rule (studio-code-torule, 2026-10-24; need 3, the plan's picture n3-place): several hand-placed objects
@@ -1174,14 +1178,33 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         list.append(sub);
       }
     }
+    /**
+     * The mark of objects put by hand apart from their rule (studio-to-coords): on a heading "Hand-placed 1" (how many of
+     * its objects), on an object's own row "Hand-placed" and "Reset to rule".
+     */
+    const handMark = (members: Item[], own = false): HTMLElement | null => {
+      const hs = members.map((m) => hands.get(m.key)).filter((x): x is NonNullable<typeof x> => !!x);
+      if (!hs.length) return null;
+      const w = hs[0]!;
+      const pill = h('span', { class: 'pill hand-tag', title: w.tip, dataset: { part: 'list-hand-tag' }, text: own || members.length === 1 ? w.tag : `${w.tag} ${hs.length}` });
+      if (!own && members.length > 1) return pill;
+      const back = h('button', { type: 'button', class: 'link-btn hand-reset', dataset: { part: 'list-rule-reset' }, title: w.tip, onclick: (e: Event) => {
+        e.stopPropagation();
+        w.run();
+      } }, w.reset);
+      return h('span', { class: 'hand-mark' }, pill, back);
+    };
     const groups = new Map<string, Item[]>();
     // A code layout's objects share one heading (studio-code-knobs: "hex ×4 [Rule]"), whatever the adapter groups by.
     const tags = new Map<string, { tag: string; tip: string }>();
+    // The objects put by hand apart from their rule (studio-to-coords): their mark and way back, by key.
+    const hands = new Map<string, NonNullable<NonNullable<ReturnType<NonNullable<PlacementPanelDeps['ruleTag']>>>['hand']>>();
     for (const it of d.items()) {
       if (fold && it.unstable) continue;
       if (d.replaced?.(it.key)) continue;
       const rt = d.ruleTag?.(it.key) ?? null;
       if (rt) tags.set(rt.group, { tag: rt.tag, tip: rt.tip });
+      if (rt?.hand) hands.set(it.key, rt.hand);
       const g = rt?.group || it.group || `key:${it.key}`;
       const arr = groups.get(g) || [];
       arr.push(it);
@@ -1212,6 +1235,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
         // A group is named by its kind ("crate ×4" → "crate"), not by its first member.
         many ? h('span', { class: 'name', text: heading }) : nameOf(first),
         tags.has(g) ? h('span', { class: 'pill rule-tag', title: tags.get(g)!.tip, text: tags.get(g)!.tag }) : null,
+        handMark(members),
         many ? h('span', { class: 'count n mono', text: String(members.length) }) : null,
         !many && first.unstable ? noNamePill(first) : null,
         !many && first.copyOf ? copyTag(first) : null,
@@ -1231,7 +1255,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
           const mp = isGuessed(m) ? nameParts(displayName(m, d.t)) : null;
           const label = mp && mp.where && mp.base === heading ? h('span', { class: 'name unnamed', title: displayName(m, d.t), text: mp.where }) : nameOf(m);
           const sub = h('li', { role: 'option', class: 'obj sub', 'aria-selected': String(m.key === sel || inGroup(m.key)), dataset: { key: m.key } },
-            label, m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null);
+            label, m.unstable ? noNamePill(m) : null, m.copyOf ? copyTag(m) : null, handMark([m], true));
           sub.addEventListener('click', (e) => {
             e.stopPropagation();
             d.select(m.key, e.shiftKey);

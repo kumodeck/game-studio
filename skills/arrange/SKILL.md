@@ -962,12 +962,15 @@ later", "scatter crystals on the field", "not on the road", "not within 5 m of t
    `object.duplicate` (§3.4), as always.
 2. **A layout said by numbers, spacing or a rule** (N of them, every 6 m, along both sides, in a ring, scattered) is a
    **code layout**: write it once with `codePlace()` (below), with **1–3 knobs** (only the numbers the person would say:
-   a gap, a count, a radius) and **one `drag`** (the knob a drag of one object turns), then show it with `--do
-   place.code --id lamp-row`. Its objects are named `lamp-row-1`, `lamp-row-2` … and the editor lists them under the
-   layout's name. When the person asks for "closer" / "two more", turn the knob yourself (`--do place.set --id lamp-row
-   --knobs '{"gap":4}'`): the row changes on screen and stays a formula. Reply in one line, about the game, not the
-   editor's buttons: "Ten street lamps, 6 m apart on the left of the road. Say "closer" or "more" and I'll change it."
-   Don't explain Save, knobs or what a drag does: the editor says that itself (a drag of one object moves that one).
+   a gap, a count, a radius, the distance from the road) and **a knob for each way the person is likely to drag one
+   object** — along the row, away from it (the distance from the road), its height — named per way in `drag`
+   (`drag: { along: 'gap', side: 'side', up: 'height' }`; a way with no knob does not move when dragged, and the editor
+   tells the person why). Then show it with `--do place.code --id lamp-row`. Its objects are named `lamp-row-1`,
+   `lamp-row-2` … and the editor lists them under the layout's name. When the person asks for "closer" / "two more",
+   turn the knob yourself (`--do place.set --id lamp-row --knobs '{"gap":4}'`): the row changes on screen and stays a
+   formula. Reply in one line, about the game, not the editor's buttons: "Ten street lamps, 6 m apart on the left of the
+   road. Say "closer" or "more" and I'll change it." Don't explain Save, knobs or what a drag does: the editor says that
+   itself (a drag of one object turns the knobs, and ⌥ moves just that one).
 3. **Where not to put them**, said as a rule ("not on the road", "not near the player") → write a `codeAvoid()` and add
    it with `--do place.avoid --id crystals --code near-player`; said as a place ("not around here") → `--do place.avoid
    --id crystals --box '{"p":[x,y,z],"size":[w,h,d]}'`. A keep-out area belongs to that one layout (another layout
@@ -988,19 +991,26 @@ later", "scatter crystals on the field", "not on the road", "not within 5 m of t
    code and say in one line: "This layout is in the game's code, so the editor shows each object on its own."
 7. **"Turn these into a rule"** (hand-placed objects → a code layout; a motion of points → a code motion): "Turn into a
    rule" below.
+8. **"Let me move the lamps sideways too" / "…change the height too"** (the editor's ✦ after the person dragged one
+   object a way its rule has no knob for): add that knob to the `codePlace` and name it in `drag` for that way (at most
+   3 knobs: take out the one least likely to be changed, or say in one line which one you dropped), then `--do
+   place.code --id lamp-row` again — the person's other changes stay. Never a `place.set --pin` for it: that takes the
+   object out of its rule.
 
 A row and a scatter, and two keep-out conditions (the loader is in the game, §4 Way 1; refresh an older copy):
 
 ```js
 import { applyPlacement, codePlace, codeAvoid } from './studio-placement.js';
-// Street lamps on the left of the road: Gap and Count are its knobs (on Save, write the person's numbers here).
+// Street lamps on both sides of the road: Count, Gap and From the road are its knobs (on Save, write the person's
+// numbers here). A knob for each way a person drags one lamp: along the road turns the Gap, away from it From the road.
 codePlace('lamp-row', {
   name: 'Street lamps',
-  knobs: { n: { v: 10, label: 'Count', unit: '', min: 1, max: 30, step: 1 }, gap: { v: 6, label: 'Gap', unit: 'm', min: 2, max: 20 } },
+  knobs: { n: { v: 10, label: 'Count', unit: '', min: 2, max: 30, step: 1 }, gap: { v: 6, label: 'Gap', unit: 'm', min: 2, max: 20 },
+    side: { v: 4.5, label: 'From the road', unit: 'm', min: 1, max: 15 } },
   count: (k) => k.n,
   make: (i) => makeLamp(),                                        // number i's object; the loader names it lamp-row-<i+1>
-  at: (i, k) => ({ p: [-4.5, 0, -8 - i * k.gap] }),               // where number i goes: { p, r?, s? }, the scene's space
-  drag: 'gap',                                                     // dragging one lamp turns the Gap
+  at: (i, k) => ({ p: [(i % 2 ? 1 : -1) * k.side, 0, -8 - Math.floor(i / 2) * k.gap] }), // { p, r?, s? }, the scene's space
+  drag: { along: 'gap', side: 'side' },                            // along the road: Gap; away from it: From the road
 });
 // Crystals scattered on the field, never on the road nor near the player (rand: the same places every load).
 codePlace('crystals', {
@@ -1025,7 +1035,10 @@ node <…>/bin/studio.mjs <game folder> --do '[{"do":"place.code","id":"crystals
 ```
 
 - `codePlace(id, { name, knobs, count, make, at, drag, avoid })`: put in by `applyPlacement()` after the world is built,
-  before the file's `objects` — with or without a `placement.json`. `make(i)` returns a new object (three.js: an
+  before the file's `objects` — with or without a `placement.json`. `drag`: the knob each way a drag of one object turns
+  — `'gap'` (moving it), or `{ along, side, up, turn, size }` (Move along the row / away from it, Height, Turn, Size);
+  the editor looks for the numbers that bring the object to the finger. A way without a knob stays put (only ⌥ moves
+  one object by hand, as a pin). `make(i)` returns a new object (three.js: an
   Object3D; PixiJS: a display object); the loader names it `<id>-<i+1>` and adds it to the root you pass to
   `applyPlacement`. `at(i, k, g)`: `p` in the root's space (3D `[x, y, z]`, 2D `[x, y]` px), `r` (3D `[x, y, z]` or one
   number = the turn round the up axis; 2D the angle), `s`; `g.rand()` = a random number that is the same every load for
