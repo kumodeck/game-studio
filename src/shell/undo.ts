@@ -129,6 +129,22 @@ export class UndoStack {
     return true;
   }
 
+  /**
+   * Every step's change of code layout `key`, both ways, through `fn` (studio-writeback, 2026-10-24): what the AI wrote
+   * into the code left the file (`place.code --fold`), so it leaves the history too — an offset is added on top of the
+   * rule, and a ⌘Z / ⇧⌘Z that put it back in the file would shift the rule twice (the code has it now). A step left with
+   * nothing to change stays (its ⌘Z just changes nothing): the steps around it keep their places.
+   */
+  rebase(key: string, fn: (e: PlacementPlace | null) => PlacementPlace | null): void {
+    for (const e of [...this.done, ...this.undone, ...(this.group ? [this.group.entry] : [])]) {
+      for (const c of e.changes) {
+        if (c.kind !== 'code-place' || c.key !== key) continue;
+        c.from = fn(c.from);
+        c.to = fn(c.to);
+      }
+    }
+  }
+
   /** What Undo / Redo would change next, without changing it (their tooltips name it). */
   peekUndo(): UndoEntry | null {
     return this.done[this.done.length - 1] ?? null;

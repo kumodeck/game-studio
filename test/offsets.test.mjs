@@ -155,6 +155,76 @@ for (const [name, file] of [['source', 'src/loader/studio-placement.js'], ['buil
     assert.equal(r2(scene.children.find((o) => o.userData.studioKey === 'lamp-row-9').position.x), -9, 'the pin stays in the ditch (the hand wins)');
   });
 
+  test(`offsets (${name}): a pin written into the rule ({ p, hand: true }, studio-writeback) looks as the pin did — out of the keep-out areas' reach and of the row's frame`, async () => {
+    const L = await load();
+    clear();
+    L.codeAvoid('ditch', { name: '溝', test: (p) => p[0] < -6 });
+    // The file's way: a pin in the ditch, the others ramped.
+    lampRow(L, { avoid: ['ditch'] });
+    const s1 = new O3('scene');
+    await L.applyPlacement(s1, file3({ 'lamp-row': { offsets: [{ way: 'side', how: 'zigzag', v: 0.3 }], pins: { 'lamp-row-9': { p: [-9, 0, -30] } } } }));
+    // The code's way after the write-back: the same pin as an exception of the rule, the file without it.
+    clear();
+    lampRow(L, { avoid: ['ditch'], at: (i, k) => (i === 8 ? { p: [-9, 0, -30], hand: true } : { p: [(i % 2 ? 1 : -1) * 5.6, 0, -6 - Math.floor(i / 2) * k.gap] }) });
+    const s2 = new O3('scene');
+    const r = await L.applyPlacement(s2, file3({ 'lamp-row': { offsets: [{ way: 'side', how: 'zigzag', v: 0.3 }] } }));
+    assert.deepEqual(r.places['lamp-row'].skipped, [], 'the ditch does not refuse the hand\'s place');
+    assert.deepEqual(xs(s2), xs(s1), 'the same look: the zigzag still works on the others (the row is still a row)');
+    assert.equal(r2(lamps(s2)[8].position.z), -30);
+  });
+
+  test(`offsets (${name}): a zigzag written into the rule as \`by\` (studio-writeback) keeps the row a row — a sideways offset after it still leaves the road on both sides`, async () => {
+    const L = await load();
+    clear();
+    // As the AI writes a saved zigzag: the row's own place in p, the person's shift in by.
+    lampRow(L, { at: (i, k) => { const side = i % 2 ? 1 : -1, rank = Math.floor(i / 2); return { p: [side * 5.6, 0, -6 - rank * k.gap], by: [side * (rank % 2 === 1 ? 1.5 : 0), 0, 0] }; } });
+    const scene = new O3('scene');
+    await L.applyPlacement(scene, file3({ 'lamp-row': { offsets: [{ way: 'side', how: 'same', v: 1 }] } }));
+    assert.deepEqual(xs(scene), Array.from({ length: 10 }, (_, i) => r2((i % 2 ? 1 : -1) * (5.6 + 1 + (Math.floor(i / 2) % 2 === 1 ? 1.5 : 0)))));
+    assert.ok(globalThis[Symbol.for('game-studio.codePlaces')].get('lamp-row').frame, 'still a row for the editor (its frame from p, before by)');
+    // Written into p instead, the zigzag is no row (what by is for).
+    clear();
+    lampRow(L, { at: (i, k) => { const side = i % 2 ? 1 : -1, rank = Math.floor(i / 2); return { p: [side * (5.6 + (rank % 2 === 1 ? 1.5 : 0)), 0, -6 - rank * k.gap] }; } });
+    await L.applyPlacement(new O3('scene'), file3());
+    assert.equal(globalThis[Symbol.for('game-studio.codePlaces')].get('lamp-row').frame, null);
+  });
+
+  test(`offsets (${name}): jitter (studio-writeback) — a little, the same every load for its seed, another seed another shape; a scatter too`, async () => {
+    const L = await load();
+    clear();
+    lampRow(L);
+    const at = async (offsets) => {
+      const scene = new O3('scene');
+      await L.applyPlacement(scene, file3({ 'lamp-row': { offsets } }));
+      return lamps(scene);
+    };
+    const base = (await at([])).map((o) => o.position.x);
+    const a = await at([{ way: 'side', how: 'jitter', v: 0.3, seed: 42 }]);
+    const d = a.map((o, i) => Math.abs(o.position.x - base[i]));
+    assert.ok(d.every((x) => x <= 0.3 + 1e-9), 'never more than v');
+    assert.ok(d.some((x) => x > 0.01), 'some do move');
+    assert.ok(new Set(d.map((x) => x.toFixed(3))).size > 3, 'each its own amount');
+    assert.deepEqual((await at([{ way: 'side', how: 'jitter', v: 0.3, seed: 42 }])).map((o) => o.position.x), a.map((o) => o.position.x), 'the same every load');
+    // The game's code gets the same numbers (the AI writes a jitter row into at() as `+ jitter(seed, i) * v`).
+    assert.ok(a.every((o, i) => Math.abs(o.position.x - (base[i] + (i % 2 ? 1 : -1) * 0.3 * L.jitter(42, i))) < 1e-9), 'jitter(seed, i) is the loader\'s own number');
+    assert.notDeepEqual((await at([{ way: 'side', how: 'jitter', v: 0.3, seed: 43 }])).map((o) => o.position.x), a.map((o) => o.position.x), 'another seed, another shape');
+    // Turn and size: within ±10° and ×0.9–1.1.
+    const t = await at([{ way: 'turn', how: 'jitter', v: 10, seed: 1 }, { way: 'size', how: 'jitter', v: 1.1, seed: 2 }]);
+    assert.ok(t.every((o) => Math.abs(o.rotation.y) <= (10 * Math.PI) / 180 + 1e-9 && o.scale.x >= 0.9 - 1e-9 && o.scale.x <= 1.1 + 1e-9));
+    // A scatter (not a row): the ground jitter works, a sideways one waits.
+    clear();
+    L.codePlace('crystal', { name: 'クリスタル', count: 6, make: () => new O3('c'), at: (i, k, g) => ({ p: [g.rand() * 20 - 10, 0, -g.rand() * 20] }) });
+    const s0 = new O3('scene');
+    await L.applyPlacement(s0, file3());
+    // (A layout's objects move to the next root they are applied to: read the first places now.)
+    const p0 = s0.children.map((o) => [o.position.x, o.position.z]);
+    const s1 = new O3('scene');
+    await L.applyPlacement(s1, file3({ crystal: { offsets: [{ way: 'move', how: 'jitter', v: [0.5, 0.5], seed: 9 }, { way: 'side', how: 'jitter', v: 3, seed: 9 }] } }));
+    const moved = s1.children.map((o, i) => [o.position.x - p0[i][0], o.position.z - p0[i][1]]);
+    assert.ok(moved.every(([dx, dz]) => Math.abs(dx) <= 0.5 + 1e-9 && Math.abs(dz) <= 0.5 + 1e-9), 'the ground jitter only (the sideways one waits for a row)');
+    assert.ok(moved.some(([dx, dz]) => Math.abs(dx) > 0.01 && Math.abs(dz) > 0.01));
+  });
+
   test(`offsets (${name}): not a row — a scatter keeps move / up / turn / size "same"; along, side, zigzag and ramp wait in the file`, async () => {
     const L = await load();
     clear();
@@ -208,7 +278,7 @@ for (const [name, file] of [['source', 'src/loader/studio-placement.js'], ['buil
   });
 }
 
-test('offsets: placement.json keeps which way, how and how much — checked, rounded, ≤ 8, move only "same"', async () => {
+test('offsets: placement.json keeps which way, how and how much — checked, rounded, ≤ 8, move only "same" (or "jitter")', async () => {
   const { validateStudioFile } = await import('../src/schema/studio-files.mjs');
   const ok = validateStudioFile(file3({ 'lamp-row': { offsets: [{ way: 'side', how: 'zigzag', v: 1.500004, odd: true }, { way: 'turn', how: 'ramp', v: -12 }, { way: 'size', how: 'same', v: 1.2 }] }, crystal: { offsets: [{ way: 'move', how: 'same', v: [1.2, -0.5] }] } }));
   assert.equal(ok.ok, true, JSON.stringify(ok.errors));
@@ -217,7 +287,12 @@ test('offsets: placement.json keeps which way, how and how much — checked, rou
   const bad = (offsets) => validateStudioFile(file3({ 'lamp-row': { offsets } }));
   assert.match(bad([{ way: 'sideways', how: 'same', v: 1 }]).errors.join(), /way: must be one of/);
   assert.match(bad([{ way: 'side', how: 'wobble', v: 1 }]).errors.join(), /how: must be one of/);
-  assert.match(bad([{ way: 'move', how: 'zigzag', v: [1, 1] }]).errors.join(), /"same" only/);
+  assert.match(bad([{ way: 'move', how: 'zigzag', v: [1, 1] }]).errors.join(), /"same" or "jitter" only/);
+  // studio-writeback: a jitter keeps its seed (a whole number); nothing else has one.
+  assert.match(bad([{ way: 'side', how: 'jitter', v: 0.3 }]).errors.join(), /a jitter needs a seed/);
+  assert.match(bad([{ way: 'side', how: 'same', v: 1, seed: 4 }]).errors.join(), /only a jitter has a seed/);
+  const jit = validateStudioFile(file3({ crystal: { offsets: [{ way: 'move', how: 'jitter', v: [0.5, 0.5], seed: 42 }, { way: 'turn', how: 'jitter', v: 10, seed: 7 }] } }));
+  assert.deepEqual(jit.value.places.crystal.offsets, [{ way: 'move', how: 'jitter', v: [0.5, 0.5], seed: 42 }, { way: 'turn', how: 'jitter', v: 10, seed: 7 }]);
   assert.match(bad([{ way: 'side', how: 'same', v: 1, odd: true }]).errors.join(), /only a zigzag has odd/);
   assert.match(bad([{ way: 'size', how: 'same', v: 0 }]).errors.join(), /between/);
   assert.match(bad(Array.from({ length: 9 }, () => ({ way: 'up', how: 'same', v: 1 }))).errors.join(), /at most 8/);

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.57 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.58 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -5238,8 +5238,13 @@ function isStudioMessage(x         )                     {
                        
  
 
-/** What an ask is for, when a button set it (StudioRequestInput.intent). */
-                                                
+/**
+ * What an ask is for, when a button set it (StudioRequestInput.intent). 'to-knob' (studio-writeback, 2026-10-24; the
+ * card's / the four choices' ✦ Write into the rule): the layout in `places` with `way` — the AI writes that way's offsets
+ * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
+ * --fold <way>`; the offset row becomes that knob on the card.
+ */
+                                                            
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -5248,6 +5253,12 @@ function isStudioMessage(x         )                     {
             
                                  
                                                                                                                                                                   
+                                                                                     
+                  
+                                                                                                     
+                          
+                                                                                                                 
+                                                                                    
  
 
 /** A Library motion named in an ask (StudioRequestInput.motions). */
@@ -5858,10 +5869,17 @@ const RESULT_FILES                         = {
  * rank; size 1 + (v − 1) × rank). `v` = the number the card shows.
  */
                                                                            
-                                                   
+/**
+ * 'jitter' (studio-writeback, 2026-10-24; a request that day: "a little, by a fixed random amount"): v × a random number from
+ * −1 to 1 per object, the same every load for the row's `seed` (size: 1 + (v − 1) × it; move: x and z each their own).
+ * Made from the card's ⋯ (Add jitter), never by a drag.
+ */
+                                                              
                          
-                                                                              
-                                                      
+                                                                                                 
+                                                                               
+                                                     
+                                                                      
                             
                                                                        
                                                                     
@@ -8323,7 +8341,12 @@ function codeMotion(id, def) {
  *   make(i)  a new object for number i (three: an Object3D; PixiJS: a display object)
  *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
  *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
- *          scatter stays where it was); try counts the places refused by a keep-out area
+ *          scatter stays where it was); try counts the places refused by a keep-out area. `by` (studio-writeback): a
+ *          shift added after the row's frame is read from `p` — the person's zigzag / ramp / jitter written in on Save,
+ *          so the row stays a row for the editor. `hand: true` in the answer
+ *          (studio-writeback, 2026-10-24: one the person placed by hand, written into the rule on Save — "the code is the
+ *          truth"): no keep-out area moves it and it is not part of a row's frame (an offset that needs a row — along,
+ *          side, zigzag, ramp — passes it by), as a pin in the file did
  *   drag   the knob a drag of one of its objects turns: a name (moving it: "moving it changes Gap · ⌥ just this one"),
  *          or one per way a person may drag it (studio-to-coords, 2026-10-24 — a lamp row dragged away from the road did
  *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
@@ -8516,6 +8539,18 @@ function codePlaceAt(p, i, k, tr, level, n, seen) {
   return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
 }
 
+/**
+ * at()'s answer with its `by` added to `p` (studio-writeback, 2026-10-24): `by` is the person's shift written into the
+ * rule on Save (a zigzag, a ramp, a jitter — what `offsets` did in the file), added AFTER the row's frame is read from `p`.
+ * WHY: written straight into `p`, every other lamp 1.5 m out is no straight row any more — the editor would stop seeing
+ * a row (no "sideways", no zigzag / ramp, a side drag of the right row toward the road). `p` stays the row's own place.
+ */
+function placeOf(a, n) {
+  if (!a) return a;
+  const by = vecOf(a.by, n, false);
+  return by ? { ...a, p: vecOf(a.p, n, false).map((v, j) => v + by[j]) } : a;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets", §4.1 `places[id].offsets`). The CRYSTAL FIELD try of
 // CRYSTAL FIELD that day: a lamp of a row dragged away from the road "did nothing and said nothing" (the code had no knob
@@ -8527,12 +8562,24 @@ function codePlaceAt(p, i, k, tr, level, n, seen) {
 //   way  along · side (a row: along it / away from the middle line of its two rows) · up · turn (degrees; the second row
 //        mirrored) · size (× a factor) · move (the ground [x, z] — 2D [x, y] — for a layout that is not a row)
 //   how  same (every object v) · zigzag (every other one: the ones whose rank is odd when `odd`, else even) · ramp
-//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank)
-// Only `same` works without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file until it is
-// a row again (decision 13: a count of 2 has no row).
+//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank) · jitter (studio-writeback, 2026-10-24 — the
+//        request of that day, "a little, by a fixed random amount": v × a number from −1 to 1 that is the same every load for the
+//        row's `seed` and the object's number — size: 1 + (v − 1) × it; move: each of x and z its own)
+// Only `same` and `jitter` work without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file
+// until it is a row again (decision 13: a count of 2 has no row).
 
 const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+/** A jitter row's number for object i (−1 … 1), the same every load: the row's seed, the number, the axis (move: 0 / 1). */
+const jitterAt = (seed, i, axis) => randOf(`jitter:${isNum(seed) ? seed : 0}:${i}:${axis}`)() * 2 - 1;
+/**
+ * The same number for the game's code (studio-writeback, 2026-10-24: on Save the AI writes a jitter row into at() — "the
+ * code is the truth" — as `+ jitter(seed, i) * 0.3`, so the look stays exactly what the person saw): −1 … 1 for the
+ * row's `seed` and number `i` (0 = the first); `axis` 1 = a move's second number (z, or 2D y).
+ */
+function jitter(seed, i, axis = 0) {
+  return jitterAt(seed, i, axis);
+}
 // A rule's rows of offsets at most (decision 6: the card's rows; beyond, ✦ folds them into the rule).
 const MAX_OFFSETS = 8;
 
@@ -8541,7 +8588,7 @@ function offsetsOf(v, where) {
   if (!Array.isArray(v)) return [];
   const out = [];
   for (const o of v.slice(0, MAX_OFFSETS)) {
-    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how) && (o.way !== 'move' || o.how === 'same' || o.how === 'jitter')
       && (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
     if (ok) out.push(o);
     else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
@@ -8621,13 +8668,14 @@ function offsetAt(offs, frame, i, n) {
   const z = n === 3 ? 2 : 1;
   let r = 0, s = 1;
   for (const o of offs) {
-    if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
-    const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
-    if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+    const jit = o.how === 'jitter';
+    if (!f && ((o.how !== 'same' && !jit) || o.way === 'along' || o.way === 'side')) continue;
+    const k = jit ? jitterAt(o.seed, i, 0) : o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+    if (o.way === 'size') s *= o.how === 'ramp' || jit ? 1 + (o.v - 1) * k : k ? o.v : 1;
     else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
     else if (o.way === 'up') {
       if (n === 3) p[1] += o.v * k;
-    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * (jit ? jitterAt(o.seed, i, 1) : k));
     else {
       const u = o.way === 'along' ? f.a : f.s;
       p[0] += u[0] * o.v * k;
@@ -8727,7 +8775,9 @@ function layOut(p, f) {
   const seen = { rand: false };
   const first = [];
   for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
-  p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+  // A place at() answers with `hand: true` (studio-writeback: one placed by hand, written into the rule by the AI on
+  // Save) is not in the row's frame — a lamp moved off its row must not make the row "not a row" for the others.
+  p.base = first.map((a) => (a && a.hand !== true ? vecOf(a.p, n, false) : null));
   p.frame = offsetFrame(p.base, n, seen.rand);
   p.random = seen.rand;
   p.fk = { sig: JSON.stringify(k), frame: p.frame };
@@ -8740,11 +8790,12 @@ function layOut(p, f) {
     // The same offset on every try (its frame is the rule's first places): a scatter tried again keeps its shift.
     const off = offsetAt(offs, p.frame, i, n);
     let at = null;
-    if (pin || !tests.length) at = shiftAt(first[i], off, n);
+    // A hand's place in the code (`hand: true`) is kept out of the keep-out areas' reach, as a pin is (decision 11).
+    if (pin || !tests.length || (first[i] && first[i].hand === true)) at = shiftAt(placeOf(first[i], n), off, n);
     else {
       let prev = null;
       for (let tr = 0; tr < MAX_TRIES; tr++) {
-        const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
+        const a = shiftAt(placeOf(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], n), off, n);
         if (!a) break;
         const q = vecOf(a.p, n, false);
         if (!tests.some((t) => t(q))) {
@@ -8814,7 +8865,7 @@ function ruleAt(id, i, k) {
   if (!p) return null;
   const n = p.home && p.home.three ? 3 : 2;
   const level = (p.home && p.home.opts && p.home.opts.level) || null;
-  const a = codePlaceAt(p, i, k, 0, level, n);
+  const a = placeOf(codePlaceAt(p, i, k, 0, level, n), n);
   if (!a) return null;
   let off = null;
   if (p.offs && p.offs.length) {
@@ -8826,7 +8877,7 @@ function ruleAt(id, i, k) {
       const spots = [];
       for (let j = 0; j < countOf(p, k); j++) {
         const b = codePlaceAt(p, j, k, 0, level, n, seen);
-        spots.push(b ? vecOf(b.p, n, false) : null);
+        spots.push(b && b.hand !== true ? vecOf(b.p, n, false) : null);
       }
       p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
     }
@@ -9203,6 +9254,7 @@ __def(__exports, "codeMotion", () => codeMotion);
 __def(__exports, "codePlace", () => codePlace);
 __def(__exports, "codeAvoid", () => codeAvoid);
 __def(__exports, "codeRound", () => codeRound);
+__def(__exports, "jitter", () => jitter);
 __def(__exports, "offsetFrame", () => offsetFrame);
 __def(__exports, "offsetAt", () => offsetAt);
 __def(__exports, "relayCodePlace", () => relayCodePlace);
@@ -12606,10 +12658,23 @@ function movesRank(o             , rank        )          {
   return o.how !== 'ramp' || rank > 0;
 }
 
-/** The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). */
+/**
+ * The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). A jitter row
+ * is never one (studio-writeback: a drag says where, not how much to scatter — its number is the card's alone).
+ */
 function lastOf(offs                           , way           )                     {
-  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs [i] .way === way) return offs [i] ;
+  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs [i] .way === way && offs [i] .how !== 'jitter') return offs [i] ;
   return null;
+}
+
+/**
+ * A new jitter row of `way` (studio-writeback: the card's ⋯ → Add jitter): a little — 0.3 m / 10 px, 10°, ×1.1, the
+ * ground ±0.5 m / ±12 px — with its own seed (the same objects shift the same way every load; Shuffle gives another).
+ */
+function jitterRow(way           , three         , seed        )              {
+  const s = Math.max(0, Math.min(999999, Math.floor(seed)));
+  if (way === 'move') return { way, how: 'jitter', v: three ? [0.5, 0.5] : [12, 12], seed: s };
+  return { way, how: 'jitter', v: way === 'turn' ? 10 : way === 'size' ? 1.1 : three ? 0.3 : 10, seed: s };
 }
 
 /**
@@ -12618,7 +12683,7 @@ function lastOf(offs                           , way           )                
  * ramp from the nearest one: decision 5, "ramps start from the nearest"; move is "same" only).
  */
 function addOffset(offs                           , a              , how           , rank        )                       {
-  if (how === 'ramp' && rank < 1) return null;
+  if (how === 'jitter' || (how === 'ramp' && rank < 1)) return null;
   if (a.way === 'move' && how !== 'same') return null;
   const list = (offs ?? []).map((o) => structuredClone(o));
   const at = list.findIndex((o) => sameRow(o, a.way, how, rank));
@@ -12634,7 +12699,7 @@ function addOffset(offs                           , a              , how        
       // × a factor: the ramp's 1 + (v − 1) × rank for this one, times the drag's factor, then back to its v.
       v = how === 'ramp' ? 1 + ((1 + (was - 1) * rank) * a.d - 1) / rank : was * a.d;
     } else v = was + (how === 'ramp' ? a.d / rank : a.d);
-    row = { way: a.way, how, v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true          } : {}) };
+    row = { way: a.way, how: how                                , v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true          } : {}) };
   }
   // A ninth row would not save: the drag cannot make it (the line says "Up to 8 offsets · ✦ to fold them into the rule").
   if (!old && list.length >= MAX_OFFSETS) return null;
@@ -12681,7 +12746,7 @@ const noAmount = (a              ) => (a.way === 'move' ? Math.abs(a.d[0]) < 1e-
  * same → v; zigzag → v or 0; ramp → v × rank (size: 1 + (v − 1) × rank).
  */
 function rowAt(o             , rank        )                            {
-  if (o.way === 'move') return o.v;
+  if (o.way === 'move' || o.how === 'jitter') return o.v;
   if (o.how === 'zigzag') return movesRank(o, rank) ? o.v : o.way === 'size' ? 1 : 0;
   if (o.how === 'ramp') return o.way === 'size' ? 1 + (o.v - 1) * rank : o.v * rank;
   return o.v;
@@ -12692,6 +12757,7 @@ __def(__exports, "round4", () => round4);
 __def(__exports, "sameRow", () => sameRow);
 __def(__exports, "movesRank", () => movesRank);
 __def(__exports, "lastOf", () => lastOf);
+__def(__exports, "jitterRow", () => jitterRow);
 __def(__exports, "addOffset", () => addOffset);
 __def(__exports, "offsetsFull", () => offsetsFull);
 __def(__exports, "dragAmount", () => dragAmount);
@@ -13874,8 +13940,13 @@ text.hand { fill: ${SAND_TEXT}; }
       if (keep && changed && p && pose && dr.start && dr.way) {
         const n = d.adapter().dim === '3d' ? 3 : 2;
         const amt = dr.mode === 'offset' && dr.amount ? dr.amount : dragAmount(dr.tool, dr.row, dr.start, pose, n, dr.knobs.length > 1 ? undefined : dr.way);
+        // The knob the four's first choice names: the one for the way the object went (studio-writeback: after ✦ Write
+        // into the rule added "From the road", a sideways drag said "Change Gap" — Move turns along and side together,
+        // and the first of them was named), else the one that turned, else the first.
+        const wayKnob = dragKnobs(p)[amt.way           ];
+        const knob = wayKnob && dr.knobs.includes(wayKnob) ? wayKnob : dr.knobs.find((nm) => dr.v[nm] !== dr.from[nm]) ?? dr.knobs[0] ;
         d.post({ type: 'studio:place/dragged', id: dr.id, key, way: amt.way, d: amt.d, rank: dr.row?.rank ?? 0, row: !!dr.row,
-          did: dr.mode === 'knob' ? 'knob' : dr.how, ...(dr.mode === 'knob' ? { knob: dr.knobs[0]  } : {}), pose,
+          did: dr.mode === 'knob' ? 'knob' : dr.how, ...(dr.mode === 'knob' ? { knob } : {}), pose,
           ...((p.skipped?.length ?? 0) > dr.skip0 ? { skipped: (p.skipped?.length ?? 0) - dr.skip0 } : {}) });
       }
       d.markDirty();

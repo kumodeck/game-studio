@@ -4,7 +4,8 @@
 // WHY (the CRYSTAL FIELD try that day): "a lamp dragged away from the road did nothing" — now every lamp follows
 // from the drag's first step (bridge/code-place.ts), and when the finger lets go, the line where Studio always speaks
 // (over the ask field) offers how the rest should have followed: All the same (or the code knob's name) · Zigzag ·
-// Ramp · Just this one, and ✦ Make this way a knob. Nothing has to be pressed (the drag did the first); a pointer over
+// Ramp · Just this one, and ✦ Write into the rule (studio-writeback; it was "✦ Make this way a knob"). Nothing has to
+// be pressed (the drag did the first); a pointer over
 // one shows that shape in place; a press (or key 1–4) swaps it IN THE SAME ⌘Z (undo.ts retarget); Esc or the next
 // action closes them. Ramp is dim when the nearest one was dragged ("ramps start from the nearest"); a layout that is
 // not a row has All the same and Just this one only (zigzag and ramp need an order). NOT beside the object: there it
@@ -33,8 +34,10 @@ export function offsetPic(kind: OffsetHow | 'one'): SVGSVGElement {
   svg.setAttribute('height', '12');
   svg.setAttribute('aria-hidden', 'true');
   svg.classList.add('off-pic');
+  // Jitter (studio-writeback): five dots a little up and down, no pattern a hand would draw.
+  const JIT = [7, 4, 9, 5, 8];
   for (let i = 0; i < 5; i++) {
-    const y = kind === 'same' ? 6 : kind === 'zigzag' ? (i % 2 ? 3 : 9) : kind === 'ramp' ? 10 - i * 2 : i === 2 ? 3 : 9;
+    const y = kind === 'same' ? 6 : kind === 'zigzag' ? (i % 2 ? 3 : 9) : kind === 'ramp' ? 10 - i * 2 : kind === 'jitter' ? JIT[i]! : i === 2 ? 3 : 9;
     const c = document.createElementNS(SVG, 'circle');
     c.setAttribute('cx', String(3 + i * 6));
     c.setAttribute('cy', String(y));
@@ -72,8 +75,11 @@ export interface OffsetChoicesDeps {
   show(id: string, e: PlacementPlace | null): void;
   /** The drag's undo step ends at `e` now (the same ⌘Z), and the Save count / card follow. */
   retarget(id: string, e: PlacementPlace | null): void;
-  /** ✦ Make this way a knob: a draft in the chat box (nothing is sent; the AI's side is stage 3). */
-  ask?(draft: string): void;
+  /**
+   * ✦ Write into the rule (studio-writeback; it was "✦ Make this way a knob" — the person who asked did not know what a "knob"
+   * was): a draft in the chat box for layout `id`'s `way` (nothing is sent; the request says `intent: "to-knob"`).
+   */
+  ask?(id: string, way: OffsetWay, draft: string): void;
   /** The choices opened / closed: the game page's keys 1–4 and Esc are theirs while open (studio:place/choices). */
   opened(on: boolean): void;
   /** "Placed Street lamps 5 by hand" with Reset to rule (code-place-wire's pin words). */
@@ -177,14 +183,18 @@ export function createOffsetChoices(d: OffsetChoicesDeps): OffsetChoices {
       }, offsetPic(c.pic), h('span', { text: c.label }), h('kbd', { text: String(KEY_OF[c.id]) }));
       el.append(b);
     });
-    if (d.ask) {
+    // ✦ only when the choice made left an offset that way (a drag that turned the code's own knob, or Just this one,
+    // has nothing to write into the rule).
+    const chosen = s.list[s.on]?.entry;
+    if (d.ask && (chosen?.offsets ?? []).some((o) => o.way === s.m.way)) {
       const p = d.place(s.m.id);
       el.append(h('button', { type: 'button', class: 'oc-ask', title: t('offset.toKnobTip'), dataset: { part: 'offset-ask' },
         onclick: () => {
           const name = p?.name ?? s.m.id;
           const draft = t('offset.draft', { name, way: t(`offset.way.${s.m.way}`) });
+          const { id, way } = s.m;
           close();
-          d.ask!(draft);
+          d.ask!(id, way, draft);
         } }, `✦ ${t('offset.toKnob')}`));
     }
   }
@@ -258,8 +268,15 @@ export interface OffsetRowsOpts {
   /** Row i's number turned (live, then `end`); null = removed. */
   set(i: number, row: PlaceOffset | null, end: boolean): void;
   ask?(i: number): void;
-  /** ⋯: its menu at the button (Remove). */
+  /** ⋯: its menu at the button (Remove; Add jitter / Shuffle, studio-writeback). */
   menu?(at: HTMLElement, rows: Array<{ id: string; label: string; run(): void }>): void;
+  /**
+   * studio-writeback: a jitter row of row i's way added (the row's ⋯ → Add jitter: "a little, by a fixed random amount").
+   * Absent = no such item (eight rows already, or a jitter of that way there).
+   */
+  jitter?(i: number): void;
+  /** A new seed for a jitter row (Shuffle): the same objects, other little shifts. Default: Math.random. */
+  seed?(): number;
 }
 
 /**
@@ -270,11 +287,14 @@ export function offsetRowsEl(o: OffsetRowsOpts): HTMLElement | null {
   if (!o.offs.length) return null;
   const t = o.t;
   const u = (w: OffsetWay) => (w === 'turn' ? '°' : w === 'size' ? '×' : t(`hands.unit.${o.dim === '3d' ? 'm' : 'px'}`));
-  const span = (w: OffsetWay, how: OffsetHow) => (w === 'turn' ? 90 : w === 'size' ? 1 : o.dim === '3d' ? (how === 'ramp' ? 1 : 5) : 200);
+  const span = (w: OffsetWay, how: OffsetHow) => (w === 'turn' ? 90 : w === 'size' ? 1 : o.dim === '3d' ? (how === 'ramp' ? 1 : how === 'jitter' ? 2 : 5) : 200);
+  // A jitter's number is how far at most (never below 0; a size's spread never below ×1).
+  const lowest = (r: PlaceOffset, v: number) => (r.how === 'jitter' ? (r.way === 'size' ? Math.max(1, v - span(r.way, r.how)) : Math.max(0, v - span(r.way, r.how))) : null);
+  const newSeed = () => (o.seed ? o.seed() : Math.floor(Math.random() * 1e6));
   const rows = o.offs.map((r, i) => {
     const boxes = r.way === 'move'
       ? (['X', o.dim === '3d' ? 'Z' : 'Y'] as const).map((ax, j) => knobEl({
-        label: ax, unit: u('move'), v: r.v[j]!, min: r.v[j]! - span('move', 'same'), max: r.v[j]! + span('move', 'same'), tip: t('rule.knobTip'), part: `offset-row-${i}-${j}`,
+        label: ax, unit: u('move'), v: r.v[j]!, min: lowest(r, r.v[j]!) ?? r.v[j]! - span('move', 'same'), max: r.v[j]! + span('move', 'same'), tip: t('rule.knobTip'), part: `offset-row-${i}-${j}`,
         set: (v, end) => {
           const nv: [number, number] = [r.v[0], r.v[1]];
           nv[j] = Math.round(v * 10000) / 10000;
@@ -283,12 +303,17 @@ export function offsetRowsEl(o: OffsetRowsOpts): HTMLElement | null {
       }))
       : [knobEl({
         label: offsetRowWords(t, r), unit: u(r.way), v: r.v,
-        min: r.way === 'size' ? Math.max(0.01, r.v - span(r.way, r.how)) : r.v - span(r.way, r.how), max: r.v + span(r.way, r.how),
+        min: lowest(r, r.v) ?? (r.way === 'size' ? Math.max(0.01, r.v - span(r.way, r.how)) : r.v - span(r.way, r.how)), max: r.v + span(r.way, r.how),
         tip: t('rule.knobTip'), part: `offset-row-${i}`,
         set: (v, end) => o.set(i, { ...r, v: Math.round(v * 10000) / 10000 } as PlaceOffset, end),
       })];
+    // ⋯: a jitter row can be shuffled (a new seed: other little shifts); another row can get a jitter of its way
+    // (studio-writeback: "a little, by a fixed random amount" — the third pattern asked for that day); every row can go.
+    const extra = r.how === 'jitter'
+      ? [{ id: 'offset-reroll', label: t('offset.reroll'), run: () => o.set(i, { ...r, seed: newSeed() } as PlaceOffset, true) }]
+      : o.jitter && !o.offs.some((x) => x.how === 'jitter' && x.way === r.way) && o.offs.length < 8 ? [{ id: 'offset-jitter', label: t('offset.jitterAdd'), run: () => o.jitter!(i) }] : [];
     const more = h('button', { type: 'button', class: 'icon-btn off-more', title: t('offset.more'), 'aria-label': t('offset.more'), dataset: { part: `offset-row-${i}-more` },
-      onclick: (e: Event) => o.menu?.(e.currentTarget as HTMLElement, [{ id: 'offset-remove', label: t('offset.remove'), run: () => o.set(i, null, true) }]) }, '⋯');
+      onclick: (e: Event) => o.menu?.(e.currentTarget as HTMLElement, [...extra, { id: 'offset-remove', label: t('offset.remove'), run: () => o.set(i, null, true) }]) }, '⋯');
     return h('div', { class: `off-row${i === o.lit ? ' lit' : ''}`, title: t('offset.rowTip'), dataset: { part: 'offset-row', way: r.way, how: r.how } },
       offsetPic(r.how), h('span', { class: 'off-words', text: offsetRowWords(t, r) }), h('span', { class: 'off-boxes' }, ...boxes),
       o.ask ? h('button', { type: 'button', class: 'icon-btn off-ask', title: t('offset.toKnob'), 'aria-label': t('offset.toKnob'), dataset: { part: `offset-row-${i}-ask` }, onclick: () => o.ask!(i) }, '✦') : null,

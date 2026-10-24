@@ -250,3 +250,13 @@ the card's offset rows under the knobs. `code-place-wire.ts` wires them (studio:
 key step of one rule's object and Move / Height of several picked are offsets too. `test/offset-model.test.ts`,
 `test/offsets.test.mjs` (the loader, placement.json, `--do place.set --offsets`), `test/studio-code-place.browser.mjs
 --only offsets`.
+
+The code is the truth (studio-writeback, 2026-10-24; a request that day: "Is what the code says then hard-coded again
+by the JSON? The code has to be the truth"). On Save the AI writes a layout's changes into its codePlace / codeAvoid and
+sends `place.code --fold <parts>`: `ai-hands.ts` notes every object, `code-places.ts` PlaceStore.fold takes the parts out
+of the draft and of what is saved (no Save count), `undo.ts` rebase out of the history, main.ts reads the game again,
+and `write-back.ts` (pure) measures each object before and after (1 cm / 1 px, 0.5°, 1 %) for the AI's line and, when
+off, the person's ("Farthest off: …"). "Undo AI change" puts the folded parts back (PlaceStore.unfold). ✦ Write into the
+rule (it was "Make this way a knob"): `code-place-wire.ts` ruleAsk — the request's `intent: "to-knob"` with the way, the
+offsets and the ranks; a knob the AI adds lights once on the card. Jitter (`how: "jitter"` + seed): the card's ⋯ Add
+jitter, a row's ⋯ Add jitter / Shuffle (`offset-model.ts` jitterRow). `test/write-back.test.ts`.

@@ -50,10 +50,23 @@ export function movesRank(o: PlaceOffset, rank: number): boolean {
   return o.how !== 'ramp' || rank > 0;
 }
 
-/** The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). */
+/**
+ * The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). A jitter row
+ * is never one (studio-writeback: a drag says where, not how much to scatter — its number is the card's alone).
+ */
 export function lastOf(offs: PlaceOffset[] | undefined, way: OffsetWay): PlaceOffset | null {
-  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs![i]!.way === way) return offs![i]!;
+  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs![i]!.way === way && offs![i]!.how !== 'jitter') return offs![i]!;
   return null;
+}
+
+/**
+ * A new jitter row of `way` (studio-writeback: the card's ⋯ → Add jitter): a little — 0.3 m / 10 px, 10°, ×1.1, the
+ * ground ±0.5 m / ±12 px — with its own seed (the same objects shift the same way every load; Shuffle gives another).
+ */
+export function jitterRow(way: OffsetWay, three: boolean, seed: number): PlaceOffset {
+  const s = Math.max(0, Math.min(999999, Math.floor(seed)));
+  if (way === 'move') return { way, how: 'jitter', v: three ? [0.5, 0.5] : [12, 12], seed: s };
+  return { way, how: 'jitter', v: way === 'turn' ? 10 : way === 'size' ? 1.1 : three ? 0.3 : 10, seed: s };
 }
 
 /**
@@ -62,7 +75,7 @@ export function lastOf(offs: PlaceOffset[] | undefined, way: OffsetWay): PlaceOf
  * ramp from the nearest one: decision 5, "ramps start from the nearest"; move is "same" only).
  */
 export function addOffset(offs: PlaceOffset[] | undefined, a: OffsetAmount, how: OffsetHow, rank: number): PlaceOffset[] | null {
-  if (how === 'ramp' && rank < 1) return null;
+  if (how === 'jitter' || (how === 'ramp' && rank < 1)) return null;
   if (a.way === 'move' && how !== 'same') return null;
   const list = (offs ?? []).map((o) => structuredClone(o));
   const at = list.findIndex((o) => sameRow(o, a.way, how, rank));
@@ -78,7 +91,7 @@ export function addOffset(offs: PlaceOffset[] | undefined, a: OffsetAmount, how:
       // × a factor: the ramp's 1 + (v − 1) × rank for this one, times the drag's factor, then back to its v.
       v = how === 'ramp' ? 1 + ((1 + (was - 1) * rank) * a.d - 1) / rank : was * a.d;
     } else v = was + (how === 'ramp' ? a.d / rank : a.d);
-    row = { way: a.way, how, v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true as const } : {}) };
+    row = { way: a.way, how: how as Exclude<OffsetHow, 'jitter'>, v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true as const } : {}) };
   }
   // A ninth row would not save: the drag cannot make it (the line says "Up to 8 offsets · ✦ to fold them into the rule").
   if (!old && list.length >= MAX_OFFSETS) return null;
@@ -125,7 +138,7 @@ export const noAmount = (a: OffsetAmount) => (a.way === 'move' ? Math.abs(a.d[0]
  * same → v; zigzag → v or 0; ramp → v × rank (size: 1 + (v − 1) × rank).
  */
 export function rowAt(o: PlaceOffset, rank: number): number | [number, number] {
-  if (o.way === 'move') return o.v;
+  if (o.way === 'move' || o.how === 'jitter') return o.v;
   if (o.how === 'zigzag') return movesRank(o, rank) ? o.v : o.way === 'size' ? 1 : 0;
   if (o.how === 'ramp') return o.way === 'size' ? 1 + (o.v - 1) * rank : o.v * rank;
   return o.v;

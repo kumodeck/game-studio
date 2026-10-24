@@ -17,6 +17,7 @@ import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSa
 import { roundKnob, turnKnobs } from './code-places.ts';
 import { CODE_LEN } from './motion-library.ts';
 import { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText, type HandMotion, type HandSpot, type MotionGap, type PlaceGap } from './to-rule.ts';
+import { foldGaps, foldSaid, type FoldSpot } from './write-back.ts';
 
 export interface HandsJob {
   id: string;
@@ -90,6 +91,14 @@ export interface HandsDeps {
   /** Set them (null = none): one undo change, counted on Save, and the game shows the layout so (it reads it again). */
   setPlace(id: string, e: PlacementPlace | null): void;
   /**
+   * studio-writeback (2026-10-24, "the code is the truth"): the AI wrote these parts of layout `id` into the code
+   * (`place.code --fold`, hands.mjs HANDS_FOLD_PARTS) — out of the file without a change of the person's (not on ⌘Z, not
+   * on Save · n; "Undo AI change" brings them back). true = the file had some of them. Absent: nothing to take out.
+   */
+  fold?(id: string, parts: string[]): boolean;
+  /** A knob the AI added to layout `id` (✦ Write into the rule): it lights once on the card. Absent = nothing. */
+  knobAdded?(id: string, names: string[]): void;
+  /**
    * ✦ Turn into a rule (studio-code-torule, 2026-10-24): a rule motion's offsets over `len` seconds, `per` places, as
    * the game page runs its at() (studio:timeline/code-points) — null when the page did not answer. Absent: not measured.
    */
@@ -153,6 +162,11 @@ export function createAiHands(d: HandsDeps) {
     const ns = d.libNames();
     return ns.length ? ns.map((n) => `"${n}"`).join(', ') : 'it has none';
   };
+
+  // studio-writeback: where each object of a layout stood before the AI's write-back, while its rule is still off (the
+  // AI fixes it and sends place.code again: measured against the same before). `entry` = the layout's entry then: a
+  // change of the person's since makes the before stale (dropped, not measured).
+  const foldBase = new Map<string, { before: FoldSpot[]; entry: string }>();
 
   // ----- code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12) -----
   // The AI has just written codeMotion / codePlace / codeAvoid into the game's code when it sends these: a page that does
@@ -334,11 +348,23 @@ export function createAiHands(d: HandsDeps) {
           const ps = d.item(k) ? d.pose(k) : undefined;
           return ps ? [{ key: k, label: name(k), p: ps.p.slice(), n: i + 1 }] : [];
         });
+        if (op.fold) return foldInto(op);
         const info = await findCode(d.codePlaces, (p) => p.id, op.id);
         if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
         const e = d.place(op.id) ?? {};
         const what = [d.t('hands.place.count', { n: info.keys.length }), knobWords(info.knobs, knobsNow(info.knobs, e.knobs))].filter(Boolean).join(' · ');
-        if (!op.replace) return { keys: info.keys.length, words: { name: info.name, what }, wordsKey: 'hands.place.code' };
+        if (!op.replace) {
+          // The AI fixed its rule after a write-back that was off (studio-writeback): measured against the same before.
+          const base = foldBase.get(op.id);
+          if (base && base.entry === JSON.stringify(d.place(op.id))) {
+            // The fixed code is on disk, not yet in the page (the id is listed, so findCode did not read it again).
+            if (!(await d.reloadGame())) return { error: `the game did not come back after reading it again (an error in the code?): look at the game (§3.3), fix it and send place.code --id ${op.id}` };
+            const now = d.codePlaces().find((p) => p.id === op.id) ?? info;
+            return { keys: now.keys.length, ...measureFold(op.id, now, base.before) };
+          }
+          foldBase.delete(op.id);
+          return { keys: info.keys.length, words: { name: info.name, what }, wordsKey: 'hands.place.code' };
+        }
         // ✦ To code: the hand-placed objects are hidden until the AI takes them out of the code (one ⌘Z brings them back).
         const gone = op.replace.filter((k: string) => !d.item(k) && !(e.from ?? []).includes(k));
         if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
@@ -516,6 +542,49 @@ export function createAiHands(d: HandsDeps) {
       default:
         return { error: `unknown op ${op.do}` };
     }
+  }
+
+  /**
+   * `place.code --fold` (studio-writeback, 2026-10-24; CONTRACT.md §1.12 "Written into the code"): the AI has written
+   * these parts of the layout's entry into its codePlace / codeAvoid — "the code must be the truth" (a request that day). The
+   * editor notes where every object stands, takes the parts out of the file (fold: not a change of the person's), reads
+   * the game again (the new code, the file without them) and measures each object against where it stood. The same look
+   * is said to nobody but the AI; a gap goes in the person's line too ("Farthest off: Street lamps 3, 0.4 m").
+   */
+  async function foldInto(op: Op): Promise<Did> {
+    const first = await findCode(d.codePlaces, (p) => p.id, op.id);
+    if (!first) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+    const before: FoldSpot[] = first.keys.flatMap((k) => {
+      const ps = d.pose(k);
+      return ps ? [{ key: k, label: name(k), pose: structuredClone(ps) }] : [];
+    });
+    const knobs0 = Object.keys(first.knobs);
+    const folded = d.fold?.(op.id, op.fold) ?? false;
+    // Always read again: the code changed (the page may still run the old one), and the file no longer has the parts.
+    if (!(await d.reloadGame())) return { error: `the game did not come back after reading it again (an error in the code?): look at the game (§3.3), fix it and send place.code --id ${op.id}` };
+    const info = d.codePlaces().find((p) => p.id === op.id) ?? null;
+    if (!info) return { error: `after reading the game again it has no codePlace('${op.id}') (it has: ${d.codePlaces().map((p) => `'${p.id}'`).join(', ') || 'none'}): fix the code and send place.code --id ${op.id}` };
+    // ✦ Write into the rule (`intent: "to-knob"`): the knob the AI added for that way lights on the card, and the line names it.
+    const added = Object.keys(info.knobs).filter((n) => !knobs0.includes(n));
+    if (added.length) d.knobAdded?.(op.id, added);
+    const m = measureFold(op.id, info, before, added);
+    return { folded, ...m };
+  }
+
+  /** The measure of a write-back (foldInto, and place.code again after a fix): words for the person and the AI. */
+  function measureFold(id: string, info: CodePlaceInfo, before: FoldSpot[], added: string[] = []): Did {
+    const others = d.keys().filter((k) => !info.keys.includes(k) && !before.some((b) => b.key === k)).flatMap((k) => (d.pose(k) ? [d.pose(k)!] : []));
+    const g = foldGaps(before, (k) => (info.keys.includes(k) ? d.pose(k) : undefined), d.dim(), others);
+    if (g.max || g.gone.length) foldBase.set(id, { before, entry: JSON.stringify(d.place(id)) });
+    else foldBase.delete(id);
+    const e = d.place(id) ?? {};
+    const knob = added[0] ? info.knobs[added[0]] : undefined;
+    const gap = g.max ? (g.max.what === 'p' ? gapText(g.max.d, d.dim(), unit) : g.max.what === 'r' ? `${Math.round(g.max.d)}°` : `×${Math.round(g.max.d * 100) / 100}`) : '';
+    const words: Record<string, string | number> = { name: info.name,
+      ...(knob ? { knob: knob.label, v: `${roundKnob(e.knobs?.[added[0]!]?.v ?? knob.v)}${unit(knob.unit)}` } : {}),
+      ...(g.max ? { obj: g.max.label, gap } : g.gone.length ? { obj: g.gone[0]!.label } : {}) };
+    const wordsKey = g.max ? (knob ? 'hands.place.foldKnobGap' : 'hands.place.foldGap') : g.gone.length ? 'hands.place.foldGone' : knob ? 'hands.place.foldKnob' : 'hands.place.fold';
+    return { words, wordsKey, measured: foldSaid(id, g, d.dim()) };
   }
 
   /**

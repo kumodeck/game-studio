@@ -50,3 +50,16 @@ test('pressed → putting it in the code → in the game; nobody there → the f
   // Failed, asking, undone…: the editor's usual words.
   for (const ph of ['failed', 'asking', 'undone', 'waiting']) assert.equal(r(ph), null, ph);
 });
+
+test('a write-back on Save: "In the game" by name, and the AI\'s line under it says it went into the rule', () => {
+  // studio-integrate-writeback (2026-10-24): the receipt by name (studio-motion-next) and the code is the truth
+  // (studio-writeback: the AI writes a rule's changes into the rule and they leave placement.json) say both.
+  const things = [{ kind: 'moved' as const, name: 'Street lamps' }];
+  const note = 'Claude wrote your changes to “Street lamps” into its rule';
+  const r = receipt({ phase: 'done', things, total: 1, vars: vars('en'), t: en, note });
+  assert.equal(r?.head, 'Saved: moved Street lamps · In the game');
+  assert.equal(r?.sub, note);
+  assert.equal(r?.short, 'In the game: moved Street lamps', 'the chip keeps the result first');
+  // Only once it is done: while the AI works, its "putting it in the code…" stays.
+  assert.equal(receipt({ phase: 'working', things, total: 1, vars: vars('en'), t: en, note })?.sub, 'Claude is putting it in the code…');
+});

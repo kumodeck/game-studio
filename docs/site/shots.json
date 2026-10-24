@@ -69,7 +69,6 @@
     { "as": "keep-out", "run": "code-keepout", "file": "3-{lang}-light-4-6m.png" },
     { "as": "to-rule-place", "run": "to-rule", "file": "4-{lang}-light-2-place.png" },
     { "as": "to-rule-motion", "run": "to-rule", "file": "4-{lang}-light-5-motion.png" },
-    { "as": "rule-held", "run": "to-coords", "file": "c-{lang}-light-3-side-told.png" },
     { "as": "rule-hand", "run": "to-coords", "file": "c-{lang}-light-5-alone.png" }
   ]
 }

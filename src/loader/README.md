@@ -13,7 +13,11 @@ chooses "add the loader" instead of rewriting numbers in code.
 
 Since studio-offsets (2026-10-24) a code layout's `places[id].offsets` shift the whole rule (`offsetFrame`: one row
 or two parallel rows — a road's two sides — ranks per row, side away from their middle line; `offsetAt`: same / zigzag
-/ ramp), after `at()` and before the keep-out areas and the pins (`test/offsets.test.mjs`).
+/ ramp / jitter), after `at()` and before the keep-out areas and the pins (`test/offsets.test.mjs`). Since
+studio-writeback (2026-10-24, "the code is the truth") an at() answer with `hand: true` (a pin the AI wrote into the
+rule) is out of the keep-out areas' reach and of the row's frame, `by` in an answer is added after the frame is read (a
+saved zigzag / ramp / jitter keeps the row a row), and `jitter(seed, i, axis)` is exported so the game's
+code gives the same jitter numbers the editor showed.
 
 - `studio-placement.test.mjs` - `node --test src/loader/studio-placement.test.mjs` (source and built copy)
 - `fixtures/` - two tiny games (three.js, PixiJS) for the headless end-to-end check

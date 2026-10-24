@@ -12,6 +12,10 @@
 //
 // Plain JavaScript, no imports: runs in Node, in the browser and inside the bundled CLI.
 
+// The offsets' ways and hows (CONTRACT.md §1.12 "Offsets"; the same lists as studio-files.mjs — no imports here).
+const OFFSET_WAYS_H = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS_H = ['same', 'zigzag', 'ramp', 'jitter'];
+
 export const HANDOFF_LIMITS = Object.freeze({
   maxText: 500, // the person's words; a request is one sentence or two, not a document
   maxObjects: 50, // a multi-selection larger than this is described by its first 50 objects
@@ -203,12 +207,28 @@ export function normalizeRequestInput(input) {
         const ak = nums(a.knobs);
         return [{ code: a.code, ...(typeof a.name === 'string' && a.name.trim() ? { name: oneLine(a.name, 80) } : {}), ...(Object.keys(ak).length ? { knobs: ak } : {}), ...off }];
       });
+      // ✦ Write into the rule (studio-writeback, 2026-10-24; `intent: "to-knob"`): the way the person wants in the rule,
+      // the layout's offsets as they are, and each object's row / rank / what the offsets add — so the AI writes the
+      // same shape into at() without counting ranks itself. Hints: a bad part is dropped.
+      if (OFFSET_WAYS_H.includes(p.way)) e.way = p.way;
+      const offs = (Array.isArray(p.offsets) ? p.offsets : []).slice(0, 8).filter((o) => o && OFFSET_WAYS_H.includes(o.way) && OFFSET_HOWS_H.includes(o.how)
+        && (Array.isArray(o.v) ? o.v.length === 2 && o.v.every(isFin) : isFin(o.v)));
+      if (offs.length) {
+        e.offsets = offs.map((o) => ({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map((x) => roundTo(x, 10000)) : roundTo(o.v, 10000),
+          ...(o.odd === true ? { odd: true } : {}), ...(Number.isInteger(o.seed) ? { seed: o.seed } : {}) }));
+      }
+      const objs = (Array.isArray(p.objects) ? p.objects : []).slice(0, 200).filter((x) => x && typeof x.key === 'string' && /^[a-z0-9][a-z0-9-]{0,39}-[1-9][0-9]{0,3}$/.test(x.key));
+      if (objs.length) {
+        e.objects = objs.map((x) => ({ key: x.key, ...(Number.isInteger(x.line) && Number.isInteger(x.rank) ? { line: x.line, rank: x.rank } : {}),
+          ...(Array.isArray(x.offset) && x.offset.length <= 3 && x.offset.every(isFin) ? { offset: x.offset.map((v) => roundTo(v, 10000)) } : {}) }));
+      }
       ps.push(e);
     }
     if (ps.length) out.places = ps;
   }
-  // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4).
-  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code')) out.intent = r.intent;
+  // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
+  // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob')) out.intent = r.intent;
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.

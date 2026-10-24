@@ -691,14 +691,23 @@ return null;
 }
 return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
 }
+function placeOf(a, n) {
+if (!a) return a;
+const by = vecOf(a.by, n, false);
+return by ? { ...a, p: vecOf(a.p, n, false).map((v, j) => v + by[j]) } : a;
+}
 const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+const jitterAt = (seed, i, axis) => randOf(`jitter:${isNum(seed) ? seed : 0}:${i}:${axis}`)() * 2 - 1;
+export function jitter(seed, i, axis = 0) {
+return jitterAt(seed, i, axis);
+}
 const MAX_OFFSETS = 8;
 function offsetsOf(v, where) {
 if (!Array.isArray(v)) return [];
 const out = [];
 for (const o of v.slice(0, MAX_OFFSETS)) {
-const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how) && (o.way !== 'move' || o.how === 'same' || o.how === 'jitter')
 && (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
 if (ok) out.push(o);
 else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
@@ -754,13 +763,14 @@ const p = n === 3 ? [0, 0, 0] : [0, 0];
 const z = n === 3 ? 2 : 1;
 let r = 0, s = 1;
 for (const o of offs) {
-if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
-const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
-if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+const jit = o.how === 'jitter';
+if (!f && ((o.how !== 'same' && !jit) || o.way === 'along' || o.way === 'side')) continue;
+const k = jit ? jitterAt(o.seed, i, 0) : o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+if (o.way === 'size') s *= o.how === 'ramp' || jit ? 1 + (o.v - 1) * k : k ? o.v : 1;
 else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
 else if (o.way === 'up') {
 if (n === 3) p[1] += o.v * k;
-} else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+} else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * (jit ? jitterAt(o.seed, i, 1) : k));
 else {
 const u = o.way === 'along' ? f.a : f.s;
 p[0] += u[0] * o.v * k;
@@ -834,7 +844,7 @@ const count = countOf(p, k);
 const seen = { rand: false };
 const first = [];
 for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
-p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+p.base = first.map((a) => (a && a.hand !== true ? vecOf(a.p, n, false) : null));
 p.frame = offsetFrame(p.base, n, seen.rand);
 p.random = seen.rand;
 p.fk = { sig: JSON.stringify(k), frame: p.frame };
@@ -845,11 +855,11 @@ const key = `${p.id}-${i + 1}`;
 const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
 const off = offsetAt(offs, p.frame, i, n);
 let at = null;
-if (pin || !tests.length) at = shiftAt(first[i], off, n);
+if (pin || !tests.length || (first[i] && first[i].hand === true)) at = shiftAt(placeOf(first[i], n), off, n);
 else {
 let prev = null;
 for (let tr = 0; tr < MAX_TRIES; tr++) {
-const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
+const a = shiftAt(placeOf(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], n), off, n);
 if (!a) break;
 const q = vecOf(a.p, n, false);
 if (!tests.some((t) => t(q))) {
@@ -907,7 +917,7 @@ const p = codeList(CODE_PLACES).get(id);
 if (!p) return null;
 const n = p.home && p.home.three ? 3 : 2;
 const level = (p.home && p.home.opts && p.home.opts.level) || null;
-const a = codePlaceAt(p, i, k, 0, level, n);
+const a = placeOf(codePlaceAt(p, i, k, 0, level, n), n);
 if (!a) return null;
 let off = null;
 if (p.offs && p.offs.length) {
@@ -917,7 +927,7 @@ const seen = { rand: false };
 const spots = [];
 for (let j = 0; j < countOf(p, k); j++) {
 const b = codePlaceAt(p, j, k, 0, level, n, seen);
-spots.push(b ? vecOf(b.p, n, false) : null);
+spots.push(b && b.hand !== true ? vecOf(b.p, n, false) : null);
 }
 p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
 }

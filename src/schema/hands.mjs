@@ -33,7 +33,10 @@ export const HANDS_OPS = Object.freeze({
   // in the game's code (codeMotion / codePlace / codeAvoid) and puts it in the editor with these — it is then on the
   // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
   'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
-  'place.code': { need: ['id'], may: ['replace', 'level'] },
+  // `fold` (studio-writeback, 2026-10-24 — a request that day: "the code must be the truth"): the parts of the layout's entry the
+  // AI has just written into the code (its offsets of a way, all its offsets, its pins, its keep-out areas, its knobs,
+  // what it replaced, or all) — the editor reads the game again and takes them out of the file without counting a change.
+  'place.code': { need: ['id'], may: ['replace', 'fold', 'level'] },
   // `offsets` (studio-offsets, 2026-10-24): the rule's shifts as the person's drags make them ([] takes them off) — "move
   // every lamp 1 m further from the road" without writing code; on Save the AI writes them into the rule and sends [].
   'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'offsets', 'level'] },
@@ -125,6 +128,11 @@ function readHandsOp(op, at, errors) {
     if (!ok) fail('"replace" must be the keys of the hand-placed objects this layout takes the place of, each once (["lamp-1", "lamp-2"])');
     else out.replace = op.replace.slice();
   }
+  if (has('fold')) {
+    const f = readHandsFold(op.fold);
+    if (f.error) fail(`"fold": ${f.error}`);
+    else out.fold = f.parts;
+  }
   for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
     if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
     if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
@@ -201,6 +209,7 @@ function readHandsOp(op, at, errors) {
   if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
   if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
   if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand', 'offsets'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand", "offsets"');
+  if (op.do === 'place.code' && has('fold') && has('replace')) fail('"replace" (a new rule in place of hand-placed objects) or "fold" (what you wrote into an existing rule), one at a time');
   if (op.do === 'place.avoid') {
     if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
     else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
@@ -428,9 +437,10 @@ export function handsSaid(op, x = {}) {
       return `${x.replaced ? `turned ${handsQ(name)} into` : 'put'} the code motion ${handsQ(name)} (codeMotion('${op.code}'))${op.key ? `${x.replaced ? ',' : ''} on ${op.key}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : x.replaced ? '' : ' in the Library'}`;
     }
     case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
-      : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
+      : op.fold ? `read the game again and took ${handsFoldWords(op.fold)} of codePlace('${op.id}') out of placement.json — your code has them now${x.folded === false ? ' (the file had none of them)' : ''}${typeof x.measured === 'string' ? x.measured : ''}`
+      : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it${typeof x.measured === 'string' ? x.measured : ''}`;
     case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : '',
-      op.offsets ? (op.offsets.length ? `offsets ${op.offsets.map((o) => `${o.way} ${o.how} ${Array.isArray(o.v) ? `[${o.v.join(', ')}]` : o.v}${o.odd ? ' (odd)' : ''}`).join(', ')}` : 'no offsets (back on the formula)') : ''].filter(Boolean).join(', ')}`;
+      op.offsets ? (op.offsets.length ? `offsets ${op.offsets.map((o) => `${o.way} ${o.how} ${Array.isArray(o.v) ? `[${o.v.join(', ')}]` : o.v}${o.odd ? ' (odd)' : ''}${o.how === 'jitter' ? ` (seed ${o.seed})` : ''}`).join(', ')}` : 'no offsets (back on the formula)') : ''].filter(Boolean).join(', ')}`;
     case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
       : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
     case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
@@ -708,7 +718,7 @@ function handsFileCode(f, op, w) {
 }
 
 const HANDS_OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const HANDS_OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const HANDS_OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
 /**
  * place.set's `offsets` (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): the rule's whole list of shifts,
  * ≤ 8 — [{ way, how, v, odd? }] as placement.json keeps them; [] = none. { offsets } or { error }.
@@ -717,15 +727,66 @@ export function readHandsOffsets(v) {
   if (!Array.isArray(v) || v.length > 8) return { error: 'must be a list of at most 8 offsets ([] takes them off): [{ "way": "side", "how": "same", "v": 1 }]' };
   const out = [];
   for (const o of v) {
-    if (!o || typeof o !== 'object' || Array.isArray(o) || !Object.keys(o).every((k) => ['way', 'how', 'v', 'odd'].includes(k))) return { error: 'each is { "way", "how", "v", "odd"? }' };
+    if (!o || typeof o !== 'object' || Array.isArray(o) || !Object.keys(o).every((k) => ['way', 'how', 'v', 'odd', 'seed'].includes(k))) return { error: 'each is { "way", "how", "v", "odd"?, "seed"? }' };
     if (!HANDS_OFFSET_WAYS.includes(o.way)) return { error: `"way" is one of ${HANDS_OFFSET_WAYS.join(', ')} (along / side: a row's; move: [x, z] on the ground for a layout that is not a row)` };
     if (!HANDS_OFFSET_HOWS.includes(o.how)) return { error: `"how" is one of ${HANDS_OFFSET_HOWS.join(', ')}` };
-    if (o.way === 'move' ? !(o.how === 'same' && handsVec(o.v, 2)) : !handsNum(o.v) || (o.way === 'size' && o.v <= 0)) return { error: o.way === 'move' ? 'a move is "same" with v = [x, z] (2D [x, y])' : `"v" is a number (m / px; ° for turn; a factor above 0 for size)` };
+    const jit = o.how === 'jitter';
+    if (o.way === 'move' ? !((o.how === 'same' || jit) && handsVec(o.v, 2)) : !handsNum(o.v) || (o.way === 'size' && o.v <= 0)) return { error: o.way === 'move' ? 'a move is "same" or "jitter" with v = [x, z] (2D [x, y])' : `"v" is a number (m / px; ° for turn; a factor above 0 for size)` };
     if (o.odd !== undefined && (o.odd !== true || o.how !== 'zigzag')) return { error: '"odd": true is a zigzag\'s only (the odd ranks move; leave it out for the even)' };
+    // A jitter (studio-writeback) keeps its seed: the same objects shift the same way every load; none given = a new one.
+    if (o.seed !== undefined && (!jit || !Number.isInteger(o.seed) || o.seed < 0 || o.seed > 999999)) return { error: '"seed" is a jitter\'s only: a whole number from 0 to 999999' };
     const r = (x) => Math.round(x * 10000) / 10000 + 0;
-    out.push({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map(r) : r(o.v), ...(o.odd ? { odd: true } : {}) });
+    out.push({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map(r) : r(o.v), ...(o.odd ? { odd: true } : {}), ...(jit ? { seed: o.seed ?? Math.floor(Math.random() * 1e6) } : {}) });
   }
   return { offsets: out };
+}
+
+/**
+ * What `place.code --fold` takes out of a layout's entry (studio-writeback, 2026-10-24; CONTRACT.md §1.12 "Written into
+ * the code"). WHY: a request that day — "Is what the code says then hard-coded again by the JSON? The code has to be
+ * the truth." placement.json only holds a layout's changes until the AI writes them into its codePlace / codeAvoid; then
+ * they leave the file. A knob leaves by itself once the code says its number (shell/code-places.ts settledKnobs); the
+ * rest cannot be read off the code, so the AI says what it wrote:
+ *   along · side · up · turn · size · move   the offsets of that way      offsets  every offset
+ *   pins     every object placed by hand (and `hand`: the layout converted to coordinates)
+ *   avoid    the keep-out areas (boxes drawn by hand, conditions switched off or turned)
+ *   knobs    the turned knobs (they also leave on their own)    from   the hand-placed objects a rule replaced
+ *   all      the whole entry
+ */
+export const HANDS_FOLD_PARTS = Object.freeze(['along', 'side', 'up', 'turn', 'size', 'move', 'offsets', 'pins', 'avoid', 'knobs', 'from', 'all']);
+
+/** `fold`: one part ("side"), a list (["side", "pins"]) or words with commas ("side,pins"). { parts } or { error }. */
+export function readHandsFold(v) {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',').map((x) => x.trim()) : null;
+  if (!list || !list.length || list.length > HANDS_FOLD_PARTS.length || !list.every((x) => HANDS_FOLD_PARTS.includes(x))) {
+    return { error: `the parts you wrote into the code: one or more of ${HANDS_FOLD_PARTS.join(', ')} ("side", "side,pins", ["offsets","pins"], or "all")` };
+  }
+  return { parts: [...new Set(list)] };
+}
+
+/** A layout's entry without the parts written into the code; null = nothing left (no entry). */
+export function handsFoldEntry(e, parts) {
+  if (!e || parts.includes('all')) return null;
+  const o = structuredClone(e);
+  const ways = parts.filter((p) => HANDS_OFFSET_WAYS.includes(p));
+  if (parts.includes('offsets')) delete o.offsets;
+  else if (ways.length && Array.isArray(o.offsets)) o.offsets = o.offsets.filter((x) => !ways.includes(x.way));
+  if (parts.includes('pins')) (delete o.pins, delete o.hand);
+  for (const k of ['avoid', 'knobs', 'from']) if (parts.includes(k)) delete o[k];
+  for (const k of Object.keys(o)) {
+    const v = o[k];
+    if (v === undefined || (Array.isArray(v) && !v.length) || (v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length)) delete o[k];
+  }
+  return Object.keys(o).length ? o : null;
+}
+
+/** "the side offsets and the pins": the parts as the AI's line says them. */
+export function handsFoldWords(parts) {
+  if (parts.includes('all')) return 'everything';
+  const ways = parts.filter((p) => HANDS_OFFSET_WAYS.includes(p));
+  const w = ways.length ? [`the ${ways.join(' / ')} offsets`] : [];
+  const rest = parts.filter((p) => !ways.includes(p)).map((p) => (p === 'offsets' ? 'the offsets' : p === 'pins' ? 'the objects placed by hand' : p === 'avoid' ? 'the keep-out areas' : p === 'knobs' ? 'the knobs' : 'the replaced objects (from)'));
+  return [...w, ...rest].join(' and ');
 }
 
 /** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
@@ -740,6 +801,14 @@ function handsFilePlace(w, op, dim) {
   const e = (places[op.id] ||= {});
   const n = dim === '2d' ? 2 : 3;
   if (op.do === 'place.code') {
+    // Written into the code (studio-writeback): out of the file. No editor = nothing to measure against.
+    if (op.fold) {
+      const next = handsFoldEntry(e, op.fold);
+      const folded = Object.keys(e).length > 0 && JSON.stringify(next ?? {}) !== JSON.stringify(e);
+      if (next) places[op.id] = next;
+      else delete places[op.id];
+      return { folded, measured: '' };
+    }
     if (!op.replace) return {};
     // ✦ To code: the hand-placed objects are hidden (`from`) until the AI takes them out of the code; their moves and
     // copies are no longer the person's to keep (the layout is now where they stand).

@@ -19,4 +19,9 @@ Purpose: what the editor needs to test "asking the AI" without an AI: a stand-in
   all put by hand, and the AI is asked (in Japanese) to turn the lamps, then the ship's motion, then the crates into a
   rule: a `--replace` of its own for the first two with the editor's measure in the reply, nothing replaced for the
   crates (no rule comes close), and never steps for the person.
+  `--steps writeback` (studio-writeback, 2026-10-24 — "the code is the truth"): the plaza gets a road and street lamps on
+  both sides as one codePlace; in two new conversations the person (through the editor) shifts every lamp 1 m from the
+  road, then puts lamp 5 by hand, presses Save each time and says "saved" — the AI writes each into the code and sends
+  `place.code --fold`: the file no longer has it, every lamp stands where it stood (1 cm), nothing is left to save, and
+  the editor's measure ("the look is the same") is what the AI got back.
 - `pillars/` - the game it uses (Pillar Plaza: a blue pillar that already sways, three grey ones)

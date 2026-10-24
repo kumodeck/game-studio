@@ -598,9 +598,13 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
 - **Code layout**: `codePlace(id, { name, knobs, count, make, at, drag, avoid })` in the game's code. `applyPlacement()`
   puts it in after the world is built and before the file's `objects`, **with or without a file** (it is the game's
   own): `count` objects (≤ 200) from `make(i)`, named `<id>-<i+1>` (three: `name` + `userData.studioKey`; Pixi: `label`
-  + `studioKey`) under the root, at `at(i, k, g)` = `{ p, r?, s? }` in the root's space; `g` = `{ try, rand, level }`,
-  `rand()` seeded by id, number and try (the same places every load). A second `applyPlacement()` takes the layout's
-  earlier objects out first. `report.places = { id: { keys, skipped } }`.
+  + `studioKey`) under the root, at `at(i, k, g)` = `{ p, r?, s?, by?, hand? }` in the root's space; `g` = `{ try, rand,
+  level }`, `rand()` seeded by id, number and try (the same places every load). `by` (studio-writeback): a shift added
+  after the offsets' frame is read from `p` (the person's zigzag / ramp / jitter written into the rule on Save — in `p`
+  it would be no straight row, and the editor would lose the row's sideways, zigzag and ramp). `hand: true`: one
+  placed by hand, written into the rule on Save — no keep-out area moves it and it is not in a row's frame (an offset
+  that needs a row passes it by), as its pin did. A second `applyPlacement()` takes the layout's earlier objects out
+  first. `report.places = { id: { keys, skipped } }`.
 - **Keep-out conditions**: `codeAvoid(id, { name, after, knobs, test, show })`; `test(p, k, g)` true = nothing goes at
   `p`, `g` = `{ player, level }` (the player where the level starts: `setPlayer`, `applyPlacement(…, { player })`, or a
   `player` key). A layout's place inside any of its keep-out areas (its code's `avoid` ids unless the file switches them
@@ -647,8 +651,8 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   same (or the code knob's name when the way has one: "Change Gap") · Zigzag · Ramp · Just this one (a pin, as ⌥) —
   dot pictures, keys 1–4, a pointer over one shows that shape in place, a press swaps it **in the same ⌘Z**, Esc or the
   next action closes them; Ramp is dim when the nearest one was dragged ("ramps start from the nearest"); a layout that
-  is not a row has All the same and Just this one only — and **✦ Make this way a knob** (stage 2: a draft in the chat
-  box; the AI's side is stage 3). The card lists each row under the code's knobs (its dot picture, "Sideways · Zigzag
+  is not a row has All the same and Just this one only — and **✦ Write into the rule** (below; shown when the choice
+  left an offset that way). The card lists each row under the code's knobs (its dot picture, "Sideways · Zigzag
   width", a number box, ✦, ⋯ Remove; violet as the knobs, lit once when new); the same way and how are one row (a
   second "All the same" sideways adds to it), ≤ 8 (a drag that would need a ninth says "Up to 8 offsets · ✦ to fold them
   into the rule" and moves nothing); the next drag that way turns the row chosen last when it moves the dragged one (a
@@ -660,9 +664,36 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   with its offsets and drops them. Bridge → shell: `studio:place/offsets { id, key,
   offsets, end }` (live, then one undo step, as place/knob) and `studio:place/dragged { id, key, way, d, rank, row, did,
   knob?, pose, skipped? }` (what the four need). `--do place.set --offsets '[…]'` replaces a rule's offsets (`[]` takes
-  them off); `--do list` gives each layout's `offsets` and each object's `line` / `rank` / `offset`. On Save the AI
-  writes them into the rule (SKILL.md) and takes them out of the file (`place.set --offsets '[]'` in the same `--do`):
-  the code is the truth, the file only holds them until then.
+  them off); `--do list` gives each layout's `offsets` and each object's `line` / `rank` / `offset`.
+  **Jitter** (studio-writeback; the third pattern asked for that day, "a little, by a fixed random amount"): `how: 'jitter'` with
+  a `seed` (0–999999) — v × a number from −1 to 1 per object, the same every load for the seed and the object's number
+  (size: 1 + (v − 1) × it; `move`: x and z each their own; works without a row for up / turn / size / move). Never made
+  by a drag (a drag never turns it): the card's ⋯ **Add jitter (Sideways / Position, Turn, Size)** and a row's ⋯ **Add
+  jitter** add one (0.3 m / 10 px, 10°, ×1.1, the ground ±0.5 m / ±12 px; one ⌘Z), a jitter row's ⋯ **Shuffle** gives
+  it a new seed. The loader exports `jitter(seed, i, axis = 0)`, the same number, for the game's code.
+- **Written into the code** (studio-writeback, 2026-10-24; a request that day: "Is what the code says then hard-coded
+  again by the JSON? The code has to be the truth"). A layout's `places` entry only holds the person's changes until the
+  AI writes them into its `codePlace` / `codeAvoid` on Save (SKILL.md "Code layouts" step 5): knobs into their numbers,
+  offsets into `at()` (same into `p`; zigzag / ramp by rank and jitter with `jitter(seed, i)` into `by`), a pin as an exception of the rule (`{ p,
+  hand: true }` for its number; its own object only when it left the rule and is the last number), `hand: true` as a
+  list of coordinates, boxes as `codeAvoid()`s (with `show`), `from` out of the code. Then `--do place.code --id <id>
+  --fold <parts>` (§3.6): the editor notes where every object of the layout stands, takes those parts out of the level's
+  `places` — **in what is saved too, so it is no change of the person's: no Save count, not on ⌘Z** (the undo history
+  loses them as well, `UndoStack.rebase`: an offset back in the file on top of the code's would shift the rule twice) —,
+  writes the draft, reads the game again and measures every object against where it stood (`src/shell/write-back.ts`: 1 cm / 1 px, 0.5°, 1 % of the size; one that
+  left the layout but stands where it stood as another object is not gone). The AI's line ends with "the look is the
+  same" or the farthest off with where it stood and stands (then the AI fixes its rule and sends `place.code` again,
+  measured against the same before); the person's line says who wrote it ("Claude wrote your changes to “Street lamps”
+  into its rule"), and a gap only when there is one ("· Farthest off: Street lamps 3 (0.4 m)"). **Undo AI change**
+  puts the folded parts back into the file with the old code (and knobs the code had caught up with: they leave the
+  file the same way, `PlaceStore.settle`); Redo folds them again.
+- **✦ Write into the rule** (studio-writeback; it was "✦ Make this way a knob" — the person who asked did not know what a "knob"
+  was: the screen never says it). The four choices' ✦ and an offset row's ✦ put a draft in the chat box ("Write the
+  Sideways offset of Street lamps into the rule") with the chips "Street lamps (rule)" "Sideways · All the same 1 m";
+  while the same object stays picked the request has `intent: "to-knob"` and `places: [{ id, name, n, knobs, avoid, way,
+  offsets, objects }]` (each object's `line` / `rank` / `offset`, §3.4). The AI adds a knob for that way in the game's
+  words ("From the road 6.6 m" = the code's 5.6 + the offset), names it in `drag`, and sends `place.code --fold <way>`:
+  the offset row leaves the card and the new knob lights there once.
 - **✦ Turn into a rule** (studio-code-torule, 2026-10-24; the other way round: hand → rule). Several hand-placed objects
   picked: the card's "✦ Turn into a rule"; a motion of points: its row's ⋯ / right-click "✦ Turn into a rule…". Either
   puts the draft "Turn into a close rule" in the chat box (nothing is sent; the request then has `intent: "to-code"`,
@@ -959,7 +990,9 @@ a bonus that wakes an agent that happens to be watching.
   words are a keep-out area for `places` (the card's ✦ Describe with text); `"to-code"` (studio-code-torule) = the words
   came from ✦ Turn into a rule — the AI fits the nearest rule to these hand-placed `objects` or this motion's points and
   swaps it in with `--do place.code --replace` / `motion.code --replace` (§3.6), or, when none comes within half the
-  object's size / a tenth of the path's, replaces nothing and says so), `step`, `lang`, `dim`, `unsaved` (changes not
+  object's size / a tenth of the path's, replaces nothing and says so; `"to-knob"` (studio-writeback) = ✦ Write into the
+  rule: `places[0]` also has `way`, its `offsets` and `objects` (`{ key, line?, rank?, offset? }`, ≤ 200) — the AI
+  writes that way into the rule as a knob and sends `place.code --fold <way>`, §1.12), `step`, `lang`, `dim`, `unsaved` (changes not
   saved yet), `view` (`ask`, 3D: the camera's `eye` and `target` when they
   asked, so new things land in sight), `files` (what it is about: `placement.json`,
   `.studio/next-step.md`, …; for `delete-files`, `.studio/next-step.md` then
@@ -1283,8 +1316,8 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 | `motion.rename` | `name`, `to` | `timeline.renameLib` | `motions[].name`, every `use`, every `after` |
 | `motion.set` | `name`, `repeat`, `len` (stretches the keys), `key`, `when`, `until`, `knobs` (a code motion's: `{ "radius": 3 }`), `off` (with `key`) | `handsClipSet` / `handsLibSet`; knobs → `{ v, was = the code's }` (one back on the code's number leaves the file) | the same fields; `knobs` refused ("change the number in the codeMotion() directly"); a code motion's `len` / `repeat` refused |
 | `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | The page's code motions (`studio:code-motions`); an id it lacks → the game is read again first, still lacking → `the game has no codeMotion('wave') (it has: 'spiral')`. A Library motion `{ name, code }` (the same code already there = that motion), on `key` starting with the game; `replace` = the motion of points called `name` becomes it — ✦ Turn into a rule (studio-code-torule): its points kept to compare until Save, and the rule measured against them over one round at 64 places (`studio:timeline/code-points`): the line ends `; the editor measured how close it is: the largest gap is 0.12 m at 0.8 s of a 2 s round (…)` | `motions` `{ name, code }` + the clip |
-| `place.code` | `id`, `replace` (keys) | The page's layouts (`studio:code-places`, read again when missing: `the game has no codePlace('lamp') (it has: 'hex')`). `replace` → `places[id].from` (the hand-placed ones hidden; one undo step); without it nothing changes (the line names the layout; no ⌘Z). ✦ Turn into a rule (studio-code-torule): where each replaced object stood is read before the game is read again, and compared with the rule's object of the same number (`replace[i]` ↔ `<id>-<i+1>`, the whole distance): the line ends `; the editor measured how close it is: the largest gap is lamp-3 ↔ lamp-row-3, 0.62 m (6 of 6 compared)`, the person's says "Max deviation: lamp-3 (0.6 m)" | `from`, and those keys out of `objects` / `added`; without `replace` nothing |
-| `place.set` | `id`, `knobs`, `pin` (`{ key, p, r?, s? }`), `unpin` (a key, or `"*"` = every one placed by hand), `hand` | `places[id]` (knobs `{ v, was }`, a pin of one of its objects, `unpin: "*"` = all its pins off — the card's "All back to rule", `hand: true` = every object's place now as pins, `false` = back to code); one undo step, the game reads the draft again | `pin` / `unpin`; `knobs` / `hand` refused (they need the game) |
+| `place.code` | `id`, `replace` (keys) \| `fold` (`side` … `move`, `offsets`, `pins`, `avoid`, `knobs`, `from`, `all`; a list or `"side,pins"`) | The page's layouts (`studio:code-places`, read again when missing: `the game has no codePlace('lamp') (it has: 'hex')`). `replace` → `places[id].from` (the hand-placed ones hidden; one undo step); without it nothing changes (the line names the layout; no ⌘Z). ✦ Turn into a rule (studio-code-torule): where each replaced object stood is read before the game is read again, and compared with the rule's object of the same number (`replace[i]` ↔ `<id>-<i+1>`, the whole distance): the line ends `; the editor measured how close it is: the largest gap is lamp-3 ↔ lamp-row-3, 0.62 m (6 of 6 compared)`, the person's says "Max deviation: lamp-3 (0.6 m)". `fold` (studio-writeback, §1.12 "Written into the code"): those parts out of `places[id]` and of what is saved (no Save count, no ⌘Z, out of the undo history), the game read again, every object measured against where it stood: `; the editor measured every object before and after: all within 1 cm — the look is the same` or `…: the farthest off is lamp-row-3, 0.4 m (it stood at […], now […]) — fix codePlace('lamp-row') …`; a later `place.code` without `fold` measures against the same before until it matches. A knob the AI added lights on the card | `fold`: those parts out of the file (nothing measured); `from`, and those keys out of `objects` / `added` for `replace`; without either nothing |
+| `place.set` | `id`, `knobs`, `pin` (`{ key, p, r?, s? }`), `unpin` (a key, or `"*"` = every one placed by hand), `hand`, `offsets` (≤ 8; a jitter row gets a `seed` when it has none) | `places[id]` (knobs `{ v, was }`, a pin of one of its objects, `unpin: "*"` = all its pins off — the card's "All back to rule", `hand: true` = every object's place now as pins, `false` = back to code); one undo step, the game reads the draft again | `pin` / `unpin`; `knobs` / `hand` refused (they need the game) |
 | `place.avoid` | `id`, `code` (+ `knobs`, `off`) \| `box` (+ `name`) \| `remove` (index or code id) | `places[id].avoid` (a condition the page must have: `codeAvoid`; a box named "Box n" when unnamed; one of the code's own conditions back on with nothing changed leaves no entry) | the same; `knobs` refused |
 | `object.move` / `turn` / `scale` | `key`, `to` \| `by` (`deg`) | as the card's numbers (one pose change). A rule layout's object (not by hand) is refused: `lamp-row-3 is placed by codePlace('lamp-row') (its rule) and stays in it: …` with the `place.set` ways (studio-to-coords) | `objects.<key>` (`by` needs its pose in the file) |
 | `object.rename` | `key`, `to` | Rename (F2) | `names` |
@@ -1504,11 +1537,13 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   `avoid`: ≤ 16, in order; each a `box` (3D `p` = the middle of its bottom, `size` = [w, h, d] ≥ 0; 2D `p` = its
   middle, `size` = [w, h] px; `name?` ≤ 40) or a `code` (a `codeAvoid` id, once each, `knobs?`), either with `off:
   true`. `from`: object keys, each once (the hand-placed objects it replaced; they may have the layout's own keys).
-  `offsets` (studio-offsets, §1.12): ≤ 8, in order (the order does not change the result); each `{ way, how, v, odd? }`
-  — `way` along · side · up · turn · size · move, `how` same · zigzag · ramp (`move`: same only, `v` = [x, z] / 2D [x,
-  y]), `v` a number (m / px; ° for turn, ±3600; a factor for size, 0.0001–10000), rounded to 1e-4; `odd: true` only on a
-  zigzag. Which way, how and how much only — never a place per object. Until Save: the AI writes them into the rule
-  and takes them out.
+  `offsets` (studio-offsets, §1.12): ≤ 8, in order (the order does not change the result); each `{ way, how, v, odd?,
+  seed? }` — `way` along · side · up · turn · size · move, `how` same · zigzag · ramp · jitter (`move`: same or jitter,
+  `v` = [x, z] / 2D [x, y]), `v` a number (m / px; ° for turn, ±3600; a factor for size, 0.0001–10000), rounded to
+  1e-4; `odd: true` only on a zigzag; `seed` (0–999999) on a jitter only, and always there. Which way, how and how much
+  only — never a place per object. **The whole entry lasts only until Save** (studio-writeback, §1.12 "Written into the
+  code"): the AI writes it into its codePlace / codeAvoid and folds it out (`place.code --fold`); the file never keeps
+  what the code can say.
   Absent = nothing changed (the file keeps its bytes).
 
 ### 4.2 library.json

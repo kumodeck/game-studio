@@ -64,9 +64,18 @@
 // `--before`: only the first keep-out picture, and the hand marks' "before" pictures (run with the previous version's UI:
 // `--ui <dir>`).
 //
-//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords,hands,offsets] [--shots <dir>] [--before]
+// --only writeback (studio-writeback, 2026-10-24 — "the code is the truth"; ✦ Write into the rule; jitter): the same lamps.
+//           ✦ on a sideways drag → the chips and the request (`intent: "to-knob"`, the way, the ranks) → the "AI" adds the
+//           knob "From the road" in the code and folds the offset (the look the same, no Save count, the knob lit, the line)
+//           → Undo AI change (the code back, the offset back in the file, the same look) → a zigzag saved, written into
+//           at() and folded (⌘Z does not shift it twice) → a lamp placed by hand saved, written as { p, hand: true } and
+//           folded → a write-back that is off (the farthest off said; place.code again after the fix) → Add jitter from
+//           the card's ⋯, Shuffle, ⌘Z. Never the word "knob" (nor its Japanese) on screen. Pictures w-<lang>-<theme>-<step>.png.
+//
+//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords,hands,offsets,writeback] [--shots <dir>] [--before]
 // Exit 1 on a failure.
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,7 +96,7 @@ const LANG = take('--lang', 'ja');
 const THEMES = take('--themes', 'dark,light').split(',').filter((x) => x === 'dark' || x === 'light');
 const WIDTH = Number(take('--width', '1280'));
 const PHONE = WIDTH < 500;
-const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords,hands,offsets').split(',');
+const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords,hands,offsets,writeback').split(',');
 const BEFORE = args.includes('--before');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = LANG === 'ja'
@@ -923,10 +932,10 @@ async function toCoords(theme) {
   const browser = await launch();
   const C = LANG === 'ja'
     ? { note: '動かすと間が変わる', noteWay: '動かすと間・道からの距離が変わる', side: '横の位置はルールで決まっています', up: '高さ +', turn: '向き ', chipSide: '横 +',
-      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯の横を、ルールのつまみにして', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す',
+      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯の横のずらしを、ルールに書き込んで', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す',
       hand: '手で置いた', keys: '街灯はルールで並んでいます', group: '街灯はルールで並んでいるので、まとめては動きません', gap: '間' }
     : { note: 'Drag to adjust Gap', noteWay: 'Drag to adjust Gap, From the road ·', side: 'Sideways position is set by the rule', up: 'Height +', turn: 'Turn ', chipSide: 'Sideways +',
-      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Add a knob to the Street lamps rule for its Sideways offset', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Back to rule',
+      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Write the Sideways offset of Street lamps into the rule', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Back to rule',
       hand: 'By hand', keys: 'Street lamps is laid out by a rule', group: 'Street lamps is laid out by a rule, so it doesn’t move as a group', gap: 'Gap' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
@@ -1326,8 +1335,8 @@ async function offsets(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const O = LANG === 'ja'
-    ? { note: '（ほかの向きは全部が付いてくる）', chip: '横 +1.0 m · 全部', same: '全部同じ', zig: 'ジグザグ', ramp: 'だんだん', one: 'この 1 個だけ', rowSame: '横 · 全部同じ', rowZig: '横 · ジグザグの幅', rowRamp: '横 · だんだん 1 個ごと', oneDone: '街灯 5 を手で置きました', ask: '街灯の横を、ルールのつまみにして', count: '本数（片側）' }
-    : { note: '(other ways move them all)', chip: 'Sideways +1.0 m · all', same: 'All the same', zig: 'Zigzag', ramp: 'Ramp', one: 'Just this one', rowSame: 'Sideways · All the same', rowZig: 'Sideways · Zigzag width', rowRamp: 'Sideways · Ramp, each', oneDone: 'Placed Street lamps 5 by hand', ask: 'Add a knob to the Street lamps rule for its Sideways offset', count: 'Count (each side)' };
+    ? { note: '（ほかの向きは全部が付いてくる）', chip: '横 +1.0 m · 全部', same: '全部同じ', zig: 'ジグザグ', ramp: 'だんだん', one: 'この 1 個だけ', rowSame: '横 · 全部同じ', rowZig: '横 · ジグザグの幅', rowRamp: '横 · だんだん 1 個ごと', oneDone: '街灯 5 を手で置きました', ask: '街灯の横のずらしを、ルールに書き込んで', count: '本数（片側）' }
+    : { note: '(other ways move them all)', chip: 'Sideways +1.0 m · all', same: 'All the same', zig: 'Zigzag', ramp: 'Ramp', one: 'Just this one', rowSame: 'Sideways · All the same', rowZig: 'Sideways · Zigzag width', rowRamp: 'Sideways · Ramp, each', oneDone: 'Placed Street lamps 5 by hand', ask: 'Write the Sideways offset of Street lamps into the rule', count: 'Count (each side)' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
     const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `o-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
@@ -1625,6 +1634,313 @@ async function offsets(theme) {
   }
 }
 
+/**
+ * studio-writeback (2026-10-24): the code is the truth — what the AI writes into the rule leaves placement.json without a
+ * Save count and without moving anything; ✦ Write into the rule; jitter. The "AI" here is this test: it rewrites the
+ * game's codePlace as SKILL.md says and sends the same `--do` an AI would.
+ */
+async function writeback(theme) {
+  console.log(`${LANG} ${theme} ${WIDTH} writeback`);
+  const root = makeGame(theme, 'offsets');
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
+  const browser = await launch();
+  const B = LANG === 'ja'
+    ? { ask: 'ルールに書き込む', draft: '街灯の横のずらしを、ルールに書き込んで', chip: '街灯（ルール）', tag: '横 · 全部同じ 1 m', side: '道からの距離',
+      knobLine: 'Claude が「街灯」に「道からの距離」を足しました（今は 6.6 m）', fold: 'Claude が「街灯」の変更をルールに書き込みました', gap: 'いちばんずれた所: ',
+      jitter: 'ゆらぎを足す（横）', jitterRow: '横 · ゆらぎ 最大', jitterDone: '街灯に横のゆらぎを足しました', reroll: 'ばらつきを変える', first: '道からの距離を変える' }
+    : { ask: 'Write into the rule', draft: 'Write the Sideways offset of Street lamps into the rule', chip: 'Street lamps (rule)', tag: 'Sideways · All the same 1 m', side: 'From the road',
+      knobLine: 'Claude added “From the road” to “Street lamps” (now 6.6 m)', fold: 'Claude wrote your changes to “Street lamps” into its rule', gap: 'Farthest off: ',
+      jitter: 'Add jitter (Sideways)', jitterRow: 'Sideways · Jitter, up to', jitterDone: 'Added Sideways jitter to Street lamps', reroll: 'Shuffle', first: 'Change From the road' };
+  const CLI = join(PKG, 'skills/arrange/bin/studio.mjs');
+  // The lamps' codePlace as the AI rewrites it (SKILL.md "Code layouts" step 5 / 8): `side` = the knob "From the road"
+  // (else the code's 5.6), `extra` = what at() adds away from the road, `y` = up, `exception` = a line before the formula.
+  const lampRule = (o = {}) => `codePlace('lamp-row', {
+      name: ${JSON.stringify(LAMP_NAME)},
+      knobs: { n: { v: 5, label: ${JSON.stringify(LANG === 'ja' ? '本数（片側）' : 'Count (each side)')}, unit: '', min: 1, max: 10, step: 1 }, gap: { v: 6, label: ${JSON.stringify(LANG === 'ja' ? '間' : 'Gap')}, unit: 'm', min: 2, max: 15 }${o.side ? `, side: { v: ${o.side}, label: ${JSON.stringify(B.side)}, unit: 'm', min: 1, max: 15 }` : ''} },
+      count: (k) => k.n * 2,
+      make: () => makeLamp(),
+      at: (i, k) => { const rank = Math.floor(i / 2); ${o.exception ?? ''} return { p: [(i % 2 ? 1 : -1) * (${o.side ? 'k.side' : '5.6'} + ${o.extra ?? '0'}), ${o.y ?? 0}, -4 - rank * k.gap]${o.by ? `, by: [(i % 2 ? 1 : -1) * (${o.by}), 0, 0]` : ''} }; },
+      drag: { along: 'gap'${o.side ? ", side: 'side'" : ''} },
+    });`;
+  const rewrite = (o) => {
+    const f = join(root, 'index.html');
+    const html = readFileSync(f, 'utf8');
+    const next = html.replace(/codePlace\('lamp-row', \{[\s\S]*?\n    \}\);/, lampRule(o));
+    check(next !== html, 'the "AI" rewrote the codePlace');
+    writeFileSync(f, next);
+  };
+  try {
+    const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
+    const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `w-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
+    const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+    const place = async () => (await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === 'lamp-row');
+    const rows = () => page.eval(`JSON.stringify([...${GW}[Symbol.for('game-studio.codePlaces')].get('lamp-row').objs].map((o) => [o.position.x, o.position.y, o.position.z].map((v) => Math.round(v * 100) / 100 + 0)))`).then((x) => JSON.parse(x));
+    const xs = async () => (await rows()).map((q) => q[0]);
+    const card = () => page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && !f.open) f.open = true; return document.querySelector('[data-part=card]')?.innerText ?? ''; })()`);
+    const fold = async () => (await page.eval(`(() => { const f = document.querySelector('[data-part=card] details.fine'); if (f && f.open && ${PHONE}) f.open = false; return 1; })()`), await sleep(300));
+    const inUi = (cls) => page.eval(`(() => { const h = [...${GW}.document.querySelectorAll('[data-studio-ui]')].map((x) => x.shadowRoot?.querySelector(${JSON.stringify(cls)})).find((n) => n && n.style.display !== 'none'); return h ? h.textContent : ''; })()`);
+    const choices = () => page.eval(`(() => { const c = document.querySelector('[data-part=offset-choices]'); if (!c || c.hidden) return 'null'; return JSON.stringify({ text: c.innerText.replace(/\\s+/g, ' ') }); })()`).then((x) => JSON.parse(x));
+    const saveN = () => page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`);
+    // The line over the ask field: the toast, or the notice in the field itself when the field is free (newsInBar).
+    const toast = () => page.eval(`[...document.querySelectorAll('.ask-news:not([hidden]), .toast.on')].map((e) => e.textContent).join(' | ')`);
+    const fileNow = () => JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    const until = async (f, ms = 8000) => {
+      for (const end = Date.now() + ms; Date.now() < end; await sleep(200)) if (await f()) return true;
+      return !!(await f());
+    };
+    const scr = async (p) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect(); const s = ${DBG}.toScreen(${JSON.stringify(p)});
+      return s ? JSON.stringify({ x: f.left + s[0], y: f.top + s[1] }) : 'null'; })()`));
+    const footOf = async (key) => JSON.parse(await page.eval(`JSON.stringify(${DBG}.anchor(${JSON.stringify(key)}).pose.p)`));
+    const dragBy = async (key, dx, dz, keyMods = 0) => {
+      const f = await footOf(key);
+      const a = await scr([f[0], 1.1, f[2]]);
+      const s0 = await scr([f[0], 0, f[2]]), s1 = await scr([f[0] + dx, 0, f[2] + dz]);
+      const b = { x: a.x + s1.x - s0.x, y: a.y + s1.y - s0.y };
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y, modifiers: keyMods });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1, modifiers: keyMods });
+      for (let i = 1; i <= 16; i++) {
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x + ((b.x - a.x) * i) / 16, y: a.y + ((b.y - a.y) * i) / 16, button: 'left', buttons: 1, modifiers: keyMods });
+        await sleep(30);
+      }
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers: keyMods });
+      await sleep(700);
+    };
+    // As offsets(): drag until the chip says `target` m that way.
+    const dragUntil = async (key, dx, dz, target) => {
+      const f = await footOf(key);
+      const a = await scr([f[0], 1.1, f[2]]);
+      const s0 = await scr([f[0], 0, f[2]]), s1 = await scr([f[0] + dx, 0, f[2] + dz]);
+      const per = { x: s1.x - s0.x, y: s1.y - s0.y };
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1 });
+      let at = a, said = '';
+      for (let t = 0.05; t <= target * 3; t += 0.05) {
+        at = { x: a.x + per.x * t, y: a.y + per.y * t };
+        await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: at.x, y: at.y, button: 'left', buttons: 1 });
+        await sleep(25);
+        said = await inUi('.chip');
+        const m = said.match(/[+−-]\d+(\.\d+)?/);
+        if (m && Math.abs(parseFloat(m[0].replace('−', '-'))) >= target - 0.04) break;
+      }
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: at.x, y: at.y, button: 'left', buttons: 0, clickCount: 1 });
+      await sleep(700);
+      return said;
+    };
+    const pick = async (key) => {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+      await page.eval(`studioShell.actions.select(${JSON.stringify(key)})`);
+      await sleep(800);
+      await fold();
+    };
+    const key = async (k, modifiers = 0, code = k) => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+      await sleep(500);
+    };
+    const blurAsk = () => page.eval(`(() => { const i = document.querySelector('.ask-input'); if (i) { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); } document.activeElement?.blur?.(); return 1; })()`);
+    const near = (a, b, e = 0.06) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= e);
+    const want = (n, f) => Array.from({ length: n * 2 }, (_, i) => (i % 2 ? 1 : -1) * (5.6 + f(Math.floor(i / 2))));
+    const unsaved = async () => /\d/.test(await saveN());
+    // "Never the word knob on screen" (nor its Japanese) (the person who asked did not know what "make this way a knob" meant): the whole page,
+    // its tooltips and labels too, with the card and the four open.
+    const noKnobWord = async (when) => {
+      const html = await page.eval(`document.body.innerHTML`);
+      const bad = LANG === 'ja' ? html.includes('つまみ') : /\bknob/i.test(await page.eval(`document.body.innerText`)) || /(title|aria-label)="[^"]*\bknob/i.test(html);
+      check(!bad, `${when}: no ${LANG === 'ja' ? 'つまみ' : '"knob"'} on screen`);
+    };
+    const save = async () => {
+      await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+      await until(async () => !(await unsaved()), 6000);
+      await sleep(800);
+    };
+    // As an AI does before its first edit (SKILL.md §3.1): working on the newest request — the editor then waits for its
+    // done before it reads the game as the AI's change.
+    const working = () => {
+      const last = (() => { try { return readdirSync(join(root, '.studio/requests')).filter((f) => f.endsWith('.json')).sort().pop(); } catch { return null; } })();
+      if (last) spawnSync(process.execPath, [CLI, root, '--status', 'working', '--request', last.replace(/\.json$/, ''), '--note', 'writing it in'], { encoding: 'utf8' });
+    };
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug && !!${GW}[Symbol.for('game-studio.codePlaces')]?.get('lamp-row')?.objs?.length`, 90000);
+    await sleep(1500);
+    check(near(await xs(), want(5, () => 0)), 'the rule as written');
+
+    // ---- A. ✦ Write into the rule: a sideways drag (an offset), ✦, the chips, the request ----
+    await pick('lamp-row-5');
+    await dragUntil('lamp-row-5', -1, 0, 1.0);
+    let p = await place();
+    check(JSON.stringify(p?.offsets) === JSON.stringify([{ way: 'side', how: 'same', v: 1 }]), `the drag: an offset (${JSON.stringify(p?.offsets)})`);
+    const ch = await choices();
+    check(!!ch && ch.text.includes(`✦ ${B.ask}`), `the four with ✦ ${B.ask}: ${JSON.stringify(ch)}`);
+    await card();
+    await noKnobWord('the four and the card');
+    await shot('1-four');
+    await page.eval(`document.querySelector('[data-part=offset-ask]')?.click()`);
+    await sleep(500);
+    check((await page.eval(`document.querySelector('.ask-input')?.value ?? ''`)) === B.draft, `✦: the draft "${await page.eval(`document.querySelector('.ask-input')?.value ?? ''`)}"`);
+    const chips = await page.eval(`[...document.querySelectorAll('[data-part=ask] .ask-chip:not([hidden])')].map((e) => e.textContent).join(' + ')`);
+    check(chips.includes(B.chip) && chips.includes(B.tag), `the chips: "${chips}"`);
+    await shot('2-ask');
+    await page.eval(`document.querySelector('[data-part=ask]').requestSubmit()`);
+    const reqDir = join(root, '.studio/requests');
+    const reqs = () => { try { return readdirSync(reqDir).filter((f) => f.endsWith('.json')).sort().map((f) => JSON.parse(readFileSync(join(reqDir, f), 'utf8'))); } catch { return []; } };
+    await until(async () => reqs().some((r) => r.intent === 'to-knob'), 10000);
+    const req = reqs().find((r) => r.intent === 'to-knob');
+    const rp = req?.places?.[0];
+    check(rp?.id === 'lamp-row' && rp.way === 'side' && JSON.stringify(rp.offsets) === JSON.stringify([{ way: 'side', how: 'same', v: 1 }]), `the request: intent ${req?.intent}, ${JSON.stringify(rp && { id: rp.id, way: rp.way, offsets: rp.offsets })}`);
+    check(rp?.objects?.length === 10 && rp.objects[1].line === 1 && rp.objects[1].rank === 0 && rp.objects[4].rank === 2, `…each lamp's row and rank (${JSON.stringify(rp?.objects?.slice(0, 5))})`);
+    // The "AI": a knob "From the road" = the code's 5.6 + the offset 1.0, named in drag; then fold that way.
+    const before = await rows();
+    working();
+    rewrite({ side: 6.6 });
+    let r = await ai([{ do: 'place.code', id: 'lamp-row', fold: 'side' }]);
+    check(r.results?.[0]?.ok && /the look is the same/.test(r.results[0].said ?? ''), `place.code --fold side: ${r.results?.[0]?.said ?? r.results?.[0]?.error ?? JSON.stringify(r)}`);
+    p = await place();
+    check(!p?.offsets && p?.knobs?.side?.v === 6.6, `the offset is out of the file, the knob in the code (${JSON.stringify({ offsets: p?.offsets, side: p?.knobs?.side?.v })})`);
+    check(near((await rows()).flat(), before.flat()), `the look is the same: ${JSON.stringify(await xs())}`);
+    check(!(await unsaved()), `no Save count (the code has it: "${await saveN()}")`);
+    check((await toast()).includes(B.knobLine), `the line: "${await toast()}"`);
+    await pick('lamp-row-5');
+    const cA = await card();
+    check(cA.includes(B.side) && !cA.includes(LANG === 'ja' ? '横 · 全部同じ' : 'Sideways · All the same'), `the card: the knob "${B.side}", no offset row`);
+    await shot('3-knob');
+    // The next sideways drag turns the new knob.
+    await dragUntil('lamp-row-5', -1, 0, 0.6);
+    p = await place();
+    check(!p?.offsets && typeof p?.knobs?.side?.v === 'number' && p.knobs.side.v > 6.7, `the next sideways drag turns "${B.side}" (${JSON.stringify(p?.knobs?.side)})`);
+    check((await choices())?.text?.includes(B.first), `…its first choice says so: ${JSON.stringify(await choices())}`);
+    await key('Escape', 0, 'Escape');
+    await blurAsk();
+    await key('z', 4, 'KeyZ');
+    check(near((await rows()).flat(), before.flat()), '⌘Z: back');
+
+    // ---- Undo AI change: the code back, the offset back in the file — the same look again ----
+    spawnSync(process.execPath, [CLI, root, '--status', 'done', '--request', req.id, '--changed', '0', '--note', LANG === 'ja' ? '道からの距離をルールにしました' : 'Made the distance from the road part of the rule'], { encoding: 'utf8' });
+    const undoBtn = `document.querySelector('[data-action=ai-undo]')`;
+    const offered = await until(async () => {
+      if (!(await page.eval(`!!${undoBtn}`))) await page.eval(`(document.querySelector('.ask-input')?.focus(), true)`);
+      return page.eval(`!!${undoBtn}`);
+    }, 15000);
+    check(offered, 'Undo AI change offered after the AI\'s done');
+    if (offered) {
+      await page.eval(`${undoBtn}?.click()`);
+      check(await until(async () => !readFileSync(join(root, 'index.html'), 'utf8').includes(`label: ${JSON.stringify(B.side)}`), 10000), 'Undo AI change: the code is back');
+      await until(async () => (await place())?.offsets?.length === 1, 20000);
+      await sleep(1500);
+      p = await place();
+      check(JSON.stringify(p?.offsets) === JSON.stringify([{ way: 'side', how: 'same', v: 1 }]) && !p?.knobs?.side, `…and the offset is back in the file (${JSON.stringify(p?.offsets)})`);
+      check(near(await xs(), want(5, () => 1)), `…the same look (${JSON.stringify(await xs())})`);
+      check(await unsaved(), `…the drag is unsaved again, as before the AI ("${await saveN()}")`);
+      await blurAsk();
+    }
+
+    // ---- B. Save: a zigzag; the AI writes it into at() and folds it — nothing moves, nothing to save, ⌘Z no double ----
+    await save();
+    await pick('lamp-row-3');
+    await dragUntil('lamp-row-3', -1, 0, 1.5);
+    await key('2', 0, 'Digit2');
+    p = await place();
+    const zig = p?.offsets?.find((o) => o.how === 'zigzag');
+    check(!!zig && zig.odd === true, `a zigzag (${JSON.stringify(p?.offsets)})`);
+    await save();
+    const saved = fileNow().places?.['lamp-row'];
+    check(saved?.offsets?.length === 2, `saved: ${JSON.stringify(saved)}`);
+    const beforeB = await rows();
+    working();
+    // SKILL.md step 5: All the same into the number (p), the zigzag into `by` (the row stays a row).
+    rewrite({ extra: '1', by: `rank % 2 === 1 ? ${zig?.v ?? 1.5} : 0` });
+    r = await ai([{ do: 'place.code', id: 'lamp-row', fold: 'all' }]);
+    check(r.results?.[0]?.ok && /the look is the same/.test(r.results[0].said ?? ''), `fold all: ${r.results?.[0]?.said ?? r.results?.[0]?.error}`);
+    const lineB = await toast();
+    check(lineB.includes(B.fold) && !lineB.includes('⌘Z'), `the line: "${lineB}" (no ⌘Z: it is the code's now)`);
+    check(near((await rows()).flat(), beforeB.flat()), `the same look (${JSON.stringify(await xs())})`);
+    check((await place())?.kind === 'lines', `still two rows for the editor (the zigzag in \`by\`): kind ${(await place())?.kind}`);
+    check(!(await unsaved()), `no Save count ("${await saveN()}")`);
+    check(await until(async () => !fileNow().places?.['lamp-row']), 'placement.json no longer has the lamps (the draft written)');
+    await blurAsk();
+    await key('z', 4, 'KeyZ');
+    await sleep(500);
+    check(near((await rows()).flat(), beforeB.flat()), `⌘Z: nothing shifts twice (${JSON.stringify(await xs())})`);
+    await key('z', 12, 'KeyZ');
+    await sleep(500);
+    check(near((await rows()).flat(), beforeB.flat()), '⌘⇧Z: the same');
+    await shot('4-folded');
+
+    // ---- C. a lamp placed by hand, saved; the AI writes it as { p, hand: true } and folds the pins ----
+    await pick('lamp-row-5');
+    await dragBy('lamp-row-5', -1.2, 0.8, 1);
+    p = await place();
+    check(p?.pins?.length === 1 && p.pins[0] === 'lamp-row-5', `⌥: lamp 5 by hand (${JSON.stringify(p?.pins)})`);
+    await save();
+    const pin = fileNow().places?.['lamp-row']?.pins?.['lamp-row-5']?.p;
+    check(Array.isArray(pin), `saved pin ${JSON.stringify(pin)}`);
+    const beforeC = await rows();
+    working();
+    rewrite({ extra: '1', by: `rank % 2 === 1 ? ${zig?.v ?? 1.5} : 0`, exception: `if (i === 4) return { p: ${JSON.stringify(pin)}, hand: true };` });
+    r = await ai([{ do: 'place.code', id: 'lamp-row', fold: 'pins' }]);
+    check(r.results?.[0]?.ok && /the look is the same/.test(r.results[0].said ?? ''), `fold pins: ${r.results?.[0]?.said ?? r.results?.[0]?.error}`);
+    p = await place();
+    check(!p?.pins, `no pins in the file (${JSON.stringify(p?.pins)})`);
+    check(near((await rows()).flat(), beforeC.flat()), `lamp 5 where it was (${JSON.stringify((await rows())[4])})`);
+    check(!(await unsaved()), `no Save count ("${await saveN()}")`);
+    await pick('lamp-row-5');
+    check(!(await page.eval(`!!document.querySelector('[data-part=rule-hand-tag]')`)), 'lamp 5 is the rule\'s now (its card has no "placed by hand" tag)');
+    await shot('5-pin');
+
+    // ---- D. a write-back that is off: the farthest off said; place.code again after the fix ----
+    r = await ai([{ do: 'place.set', id: 'lamp-row', offsets: [{ way: 'up', how: 'same', v: 0.5 }] }]);
+    await save();
+    working();
+    const beforeD = await rows();
+    r = await ai([{ do: 'place.code', id: 'lamp-row', fold: 'up' }]);
+    check(r.results?.[0]?.ok && /the farthest off is lamp-row-\d+, 0\.5 m/.test(r.results[0].said ?? ''), `forgotten in the code: "${r.results?.[0]?.said}"`);
+    check((await toast()).includes(B.gap), `…the line says it: "${await toast()}"`);
+    // The fix: every lamp 0.5 m up, the hand's lamp 5 too (the file's up offset moved it: `up` needs no row).
+    const pinUp = [pin[0], Math.round((pin[1] + 0.5) * 1000) / 1000, pin[2]];
+    rewrite({ extra: '1', by: `rank % 2 === 1 ? ${zig?.v ?? 1.5} : 0`, exception: `if (i === 4) return { p: ${JSON.stringify(pinUp)}, hand: true };`, y: '0.5' });
+    r = await ai([{ do: 'place.code', id: 'lamp-row' }]);
+    check(r.results?.[0]?.ok && /the look is the same/.test(r.results[0].said ?? ''), `fixed, place.code again: "${r.results?.[0]?.said}"`);
+    check(near((await rows()).flat(), beforeD.flat()), `up 0.5 m again, as before the write-back (${JSON.stringify((await rows()).map((q) => q[1]))})`);
+
+    // ---- E. jitter from the card's ⋯: a little, a seed; Shuffle; ⌘Z ----
+    await pick('lamp-row-3');
+    const x0 = await xs();
+    if (!PHONE) {
+      await card();
+      const more = await page.eval(`(() => { const b = [...document.querySelectorAll('[data-action=card-more]')].find((x) => x.offsetParent); if (!b) return 'none'; b.click(); return b.title; })()`);
+      await sleep(500);
+      const label = await page.eval(`document.querySelector('[data-action=ctx-rule-jitter-side]')?.textContent ?? ''`);
+      check(label === B.jitter, `the card's ⋯ ("${more}"): "${label}" (the menu: "${await page.eval(`document.querySelector('[data-part=context-menu]')?.innerText?.replace(/\\s+/g, ' ') ?? ''`)}")`);
+      await page.eval(`document.querySelector('[data-action=ctx-rule-jitter-side]')?.click()`);
+      await sleep(900);
+      p = await place();
+      const jit = p?.offsets?.find((o) => o.how === 'jitter');
+      check(!!jit && jit.way === 'side' && jit.v === 0.3 && Number.isInteger(jit.seed), `a jitter row (${JSON.stringify(jit)})`);
+      const x1 = await xs();
+      const d1 = x1.map((v, i) => Math.abs(v - x0[i]));
+      check(d1.every((d) => d <= 0.31) && d1.some((d) => d > 0.02), `each lamp a little off, ≤ 0.3 m (${JSON.stringify(d1.map((d) => Math.round(d * 100) / 100))})`);
+      check((await card()).includes(B.jitterRow), 'the card: the jitter row');
+      check((await toast()).includes(B.jitterDone), `the line: "${await toast()}"`);
+      await noKnobWord('with a jitter row');
+      await shot('6-jitter');
+      const i = (p?.offsets ?? []).findIndex((o) => o.how === 'jitter');
+      await page.eval(`document.querySelector('[data-part=offset-row-${i}-more]')?.click()`);
+      await sleep(400);
+      check((await page.eval(`document.querySelector('[data-action=ctx-offset-reroll]')?.textContent ?? ''`)) === B.reroll, 'its ⋯: Shuffle');
+      await page.eval(`document.querySelector('[data-action=ctx-offset-reroll]')?.click()`);
+      await sleep(900);
+      const seed2 = (await place())?.offsets?.find((o) => o.how === 'jitter')?.seed;
+      check(seed2 !== jit?.seed && !near(await xs(), x1, 0.005), `Shuffle: another seed, other little shifts (${jit?.seed} → ${seed2})`);
+      await blurAsk();
+      await key('z', 4, 'KeyZ');
+      await key('z', 4, 'KeyZ');
+      check(near(await xs(), x0) && !(await place())?.offsets?.some((o) => o.how === 'jitter'), '⌘Z twice: no jitter');
+    }
+  } finally {
+    await browser.close();
+    await srv.close();
+  }
+}
+
 for (const [i, theme] of THEMES.entries()) {
   if (ONLY.includes('layout') || ONLY.includes('motion')) await run(theme, i === 0);
   if (i === 0 && ONLY.includes('plain')) await plain(theme);
@@ -1633,6 +1949,7 @@ for (const [i, theme] of THEMES.entries()) {
   if (i === 0 && ONLY.includes('coords')) await toCoords(theme);
   if (i === 0 && ONLY.includes('hands')) await handMarks(theme);
   if (i === 0 && ONLY.includes('offsets')) await offsets(theme);
+  if (i === 0 && ONLY.includes('writeback')) await writeback(theme);
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.57 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.58 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1631,8 +1631,13 @@ function isStudioMessage(x         )                     {
                        
  
 
-/** What an ask is for, when a button set it (StudioRequestInput.intent). */
-                                                
+/**
+ * What an ask is for, when a button set it (StudioRequestInput.intent). 'to-knob' (studio-writeback, 2026-10-24; the
+ * card's / the four choices' ✦ Write into the rule): the layout in `places` with `way` — the AI writes that way's offsets
+ * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
+ * --fold <way>`; the offset row becomes that knob on the card.
+ */
+                                                            
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -1641,6 +1646,12 @@ function isStudioMessage(x         )                     {
             
                                  
                                                                                                                                                                   
+                                                                                     
+                  
+                                                                                                     
+                          
+                                                                                                                 
+                                                                                    
  
 
 /** A Library motion named in an ask (StudioRequestInput.motions). */
@@ -2251,10 +2262,17 @@ const RESULT_FILES                         = {
  * rank; size 1 + (v − 1) × rank). `v` = the number the card shows.
  */
                                                                            
-                                                   
+/**
+ * 'jitter' (studio-writeback, 2026-10-24; a request that day: "a little, by a fixed random amount"): v × a random number from
+ * −1 to 1 per object, the same every load for the row's `seed` (size: 1 + (v − 1) × it; move: x and z each their own).
+ * Made from the card's ⋯ (Add jitter), never by a drag.
+ */
+                                                              
                          
-                                                                              
-                                                      
+                                                                                                 
+                                                                               
+                                                     
+                                                                      
                             
                                                                        
                                                                     
@@ -3266,12 +3284,15 @@ function readPlaces(v, dim, fail) {
 }
 
 const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+// A jitter row's seed (studio-writeback): a whole number, so the same objects shift the same way every load.
+const MAX_SEED = 999999;
 
 /**
- * A layout's offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): [{ way, how, v, odd? }], in order, ≤ 8.
- *   way  along · side · up · turn (°) · size (× a factor) · move (not a row: the ground [x, z], 2D [x, y]; only "same")
- *   how  same · zigzag (`odd: true` = the odd ranks) · ramp
+ * A layout's offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): [{ way, how, v, odd?, seed? }], in order, ≤ 8.
+ *   way  along · side · up · turn (°) · size (× a factor) · move (not a row: the ground [x, z], 2D [x, y]; "same" or "jitter")
+ *   how  same · zigzag (`odd: true` = the odd ranks) · ramp · jitter (studio-writeback: `seed`, 0–999999 — v × a fixed
+ *        random number from −1 to 1 per object)
  *   v    the card's number (m / px, °, a factor; move: two numbers)
  * Only which way, how and how much — never a place per object (those would not follow a count turned up, as pins don't).
  */
@@ -3282,21 +3303,25 @@ function readOffsets(v, dim, where, fail) {
   list.forEach((o, i) => {
     const w = `${where}[${i}]`;
     if (!isObject(o)) return fail(w, 'must be an object');
-    onlyFields(o, ['way', 'how', 'v', 'odd'], w, fail);
+    onlyFields(o, ['way', 'how', 'v', 'odd', 'seed'], w, fail);
     if (!OFFSET_WAYS.includes(o.way)) return fail(`${w}.way`, `must be one of ${OFFSET_WAYS.join(', ')}`);
     if (!OFFSET_HOWS.includes(o.how)) return fail(`${w}.how`, `must be one of ${OFFSET_HOWS.join(', ')}`);
+    const jit = o.how === 'jitter';
+    if (jit && !(Number.isInteger(o.seed) && o.seed >= 0 && o.seed <= MAX_SEED)) return fail(`${w}.seed`, `a jitter needs a seed: a whole number from 0 to ${MAX_SEED}`);
+    if (!jit && o.seed !== undefined) return fail(`${w}.seed`, 'only a jitter has a seed');
+    const seed = jit ? { seed: o.seed } : {};
     if (o.way === 'move') {
-      if (o.how !== 'same') return fail(`${w}.how`, 'a move (a layout that is not a row) is "same" only');
+      if (o.how !== 'same' && !jit) return fail(`${w}.how`, 'a move (a layout that is not a row) is "same" or "jitter" only');
       if (!Array.isArray(o.v) || o.v.length !== 2) return fail(`${w}.v`, `must be [x, ${dim === '3d' ? 'z' : 'y'}] (the ground)`);
       const xy = o.v.map((x, k) => readNumber(x, -bound, bound, `${w}.v[${k}]`, fail));
       if (xy.some((x) => x === null)) return;
-      out.push({ way: 'move', how: 'same', v: xy.map((x) => round(x, LIMITS.stepKnob)) });
+      out.push({ way: 'move', how: o.how, v: xy.map((x) => round(x, LIMITS.stepKnob)), ...seed });
       return;
     }
     const [lo, hi] = o.way === 'turn' ? [-LIMITS.maxOffsetTurn, LIMITS.maxOffsetTurn] : o.way === 'size' ? [LIMITS.minScale, LIMITS.maxScale] : [-bound, bound];
     const n = readNumber(o.v, lo, hi, `${w}.v`, fail);
     if (n === null) return;
-    const e = { way: o.way, how: o.how, v: round(n, LIMITS.stepKnob) };
+    const e = { way: o.way, how: o.how, v: round(n, LIMITS.stepKnob), ...seed };
     if (o.odd !== undefined) {
       if (o.odd !== true) fail(`${w}.odd`, 'must be true when present (leave it out: the even ranks)');
       else if (o.how !== 'zigzag') fail(`${w}.odd`, 'only a zigzag has odd');
@@ -10153,7 +10178,12 @@ function codeMotion(id, def) {
  *   make(i)  a new object for number i (three: an Object3D; PixiJS: a display object)
  *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
  *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
- *          scatter stays where it was); try counts the places refused by a keep-out area
+ *          scatter stays where it was); try counts the places refused by a keep-out area. `by` (studio-writeback): a
+ *          shift added after the row's frame is read from `p` — the person's zigzag / ramp / jitter written in on Save,
+ *          so the row stays a row for the editor. `hand: true` in the answer
+ *          (studio-writeback, 2026-10-24: one the person placed by hand, written into the rule on Save — "the code is the
+ *          truth"): no keep-out area moves it and it is not part of a row's frame (an offset that needs a row — along,
+ *          side, zigzag, ramp — passes it by), as a pin in the file did
  *   drag   the knob a drag of one of its objects turns: a name (moving it: "moving it changes Gap · ⌥ just this one"),
  *          or one per way a person may drag it (studio-to-coords, 2026-10-24 — a lamp row dragged away from the road did
  *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
@@ -10346,6 +10376,18 @@ function codePlaceAt(p, i, k, tr, level, n, seen) {
   return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
 }
 
+/**
+ * at()'s answer with its `by` added to `p` (studio-writeback, 2026-10-24): `by` is the person's shift written into the
+ * rule on Save (a zigzag, a ramp, a jitter — what `offsets` did in the file), added AFTER the row's frame is read from `p`.
+ * WHY: written straight into `p`, every other lamp 1.5 m out is no straight row any more — the editor would stop seeing
+ * a row (no "sideways", no zigzag / ramp, a side drag of the right row toward the road). `p` stays the row's own place.
+ */
+function placeOf(a, n) {
+  if (!a) return a;
+  const by = vecOf(a.by, n, false);
+  return by ? { ...a, p: vecOf(a.p, n, false).map((v, j) => v + by[j]) } : a;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets", §4.1 `places[id].offsets`). The CRYSTAL FIELD try of
 // CRYSTAL FIELD that day: a lamp of a row dragged away from the road "did nothing and said nothing" (the code had no knob
@@ -10357,12 +10399,24 @@ function codePlaceAt(p, i, k, tr, level, n, seen) {
 //   way  along · side (a row: along it / away from the middle line of its two rows) · up · turn (degrees; the second row
 //        mirrored) · size (× a factor) · move (the ground [x, z] — 2D [x, y] — for a layout that is not a row)
 //   how  same (every object v) · zigzag (every other one: the ones whose rank is odd when `odd`, else even) · ramp
-//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank)
-// Only `same` works without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file until it is
-// a row again (decision 13: a count of 2 has no row).
+//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank) · jitter (studio-writeback, 2026-10-24 — the
+//        request of that day, "a little, by a fixed random amount": v × a number from −1 to 1 that is the same every load for the
+//        row's `seed` and the object's number — size: 1 + (v − 1) × it; move: each of x and z its own)
+// Only `same` and `jitter` work without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file
+// until it is a row again (decision 13: a count of 2 has no row).
 
 const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+/** A jitter row's number for object i (−1 … 1), the same every load: the row's seed, the number, the axis (move: 0 / 1). */
+const jitterAt = (seed, i, axis) => randOf(`jitter:${isNum(seed) ? seed : 0}:${i}:${axis}`)() * 2 - 1;
+/**
+ * The same number for the game's code (studio-writeback, 2026-10-24: on Save the AI writes a jitter row into at() — "the
+ * code is the truth" — as `+ jitter(seed, i) * 0.3`, so the look stays exactly what the person saw): −1 … 1 for the
+ * row's `seed` and number `i` (0 = the first); `axis` 1 = a move's second number (z, or 2D y).
+ */
+function jitter(seed, i, axis = 0) {
+  return jitterAt(seed, i, axis);
+}
 // A rule's rows of offsets at most (decision 6: the card's rows; beyond, ✦ folds them into the rule).
 const MAX_OFFSETS = 8;
 
@@ -10371,7 +10425,7 @@ function offsetsOf(v, where) {
   if (!Array.isArray(v)) return [];
   const out = [];
   for (const o of v.slice(0, MAX_OFFSETS)) {
-    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how) && (o.way !== 'move' || o.how === 'same' || o.how === 'jitter')
       && (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
     if (ok) out.push(o);
     else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
@@ -10451,13 +10505,14 @@ function offsetAt(offs, frame, i, n) {
   const z = n === 3 ? 2 : 1;
   let r = 0, s = 1;
   for (const o of offs) {
-    if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
-    const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
-    if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+    const jit = o.how === 'jitter';
+    if (!f && ((o.how !== 'same' && !jit) || o.way === 'along' || o.way === 'side')) continue;
+    const k = jit ? jitterAt(o.seed, i, 0) : o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+    if (o.way === 'size') s *= o.how === 'ramp' || jit ? 1 + (o.v - 1) * k : k ? o.v : 1;
     else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
     else if (o.way === 'up') {
       if (n === 3) p[1] += o.v * k;
-    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * (jit ? jitterAt(o.seed, i, 1) : k));
     else {
       const u = o.way === 'along' ? f.a : f.s;
       p[0] += u[0] * o.v * k;
@@ -10557,7 +10612,9 @@ function layOut(p, f) {
   const seen = { rand: false };
   const first = [];
   for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
-  p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+  // A place at() answers with `hand: true` (studio-writeback: one placed by hand, written into the rule by the AI on
+  // Save) is not in the row's frame — a lamp moved off its row must not make the row "not a row" for the others.
+  p.base = first.map((a) => (a && a.hand !== true ? vecOf(a.p, n, false) : null));
   p.frame = offsetFrame(p.base, n, seen.rand);
   p.random = seen.rand;
   p.fk = { sig: JSON.stringify(k), frame: p.frame };
@@ -10570,11 +10627,12 @@ function layOut(p, f) {
     // The same offset on every try (its frame is the rule's first places): a scatter tried again keeps its shift.
     const off = offsetAt(offs, p.frame, i, n);
     let at = null;
-    if (pin || !tests.length) at = shiftAt(first[i], off, n);
+    // A hand's place in the code (`hand: true`) is kept out of the keep-out areas' reach, as a pin is (decision 11).
+    if (pin || !tests.length || (first[i] && first[i].hand === true)) at = shiftAt(placeOf(first[i], n), off, n);
     else {
       let prev = null;
       for (let tr = 0; tr < MAX_TRIES; tr++) {
-        const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
+        const a = shiftAt(placeOf(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], n), off, n);
         if (!a) break;
         const q = vecOf(a.p, n, false);
         if (!tests.some((t) => t(q))) {
@@ -10644,7 +10702,7 @@ function ruleAt(id, i, k) {
   if (!p) return null;
   const n = p.home && p.home.three ? 3 : 2;
   const level = (p.home && p.home.opts && p.home.opts.level) || null;
-  const a = codePlaceAt(p, i, k, 0, level, n);
+  const a = placeOf(codePlaceAt(p, i, k, 0, level, n), n);
   if (!a) return null;
   let off = null;
   if (p.offs && p.offs.length) {
@@ -10656,7 +10714,7 @@ function ruleAt(id, i, k) {
       const spots = [];
       for (let j = 0; j < countOf(p, k); j++) {
         const b = codePlaceAt(p, j, k, 0, level, n, seen);
-        spots.push(b ? vecOf(b.p, n, false) : null);
+        spots.push(b && b.hand !== true ? vecOf(b.p, n, false) : null);
       }
       p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
     }
@@ -11033,6 +11091,7 @@ __def(__exports, "codeMotion", () => codeMotion);
 __def(__exports, "codePlace", () => codePlace);
 __def(__exports, "codeAvoid", () => codeAvoid);
 __def(__exports, "codeRound", () => codeRound);
+__def(__exports, "jitter", () => jitter);
 __def(__exports, "offsetFrame", () => offsetFrame);
 __def(__exports, "offsetAt", () => offsetAt);
 __def(__exports, "relayCodePlace", () => relayCodePlace);
@@ -14359,6 +14418,1012 @@ __def(__exports, "layerBlocks", () => layerBlocks);
 };
 __defs[33] = function (__exports) {
 'use strict';
+// ../schema/hands.mjs
+
+// The AI's hands in the editor (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6): what `studio.mjs <game> --do …` asks
+// the editor to do — take a motion off an object, make a motion from points, move / rename / duplicate an object, add a
+// level, Save — and the same change written into placement.json when no editor is open.
+//
+// WHY (a request, 2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst
+// experience." Claude answered with a numbered list (1. select the blue pillar 2. right-click the card's Motion row 3.
+// "Remove from this object" 4. Save), because SKILL.md said "Do not write motions / motion in placement.json: they are
+// the editor's". The same day it made a spiral by writing it into index.html, so the spiral was not on the timeline,
+// fought the editor's own motion, and the person was asked to press Reload. Now the AI does editor work through the
+// editor: a running editor changes on screen (one ⌘Z undoes it, it counts on Save · n), and with no editor open the
+// same op is written into placement.json in the shape the editor itself writes.
+//
+// One module for both sides, so they agree on what an op means: the CLI (src/server/hands-cli.mjs) reads the ops and
+// writes the file with applyHandsToFile(); the editor (src/shell/ai-hands.ts) reads the same ops, makes the same motion
+// from points (handsMotion), the same pose (handsPose), picks the same clip (handsClip) and the same default start
+// (handsDefaultWhen), and words its result with the same sentence (handsSaid) for the AI's stdout line.
+// No imports but the validator (the bundled CLI and the shell bundle both take this file as it is).
+const { CODE_ID_RE, CUE_RE, KEY_RE, KNOB_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } = __require(2);
+
+/**
+ * Every op, with the fields it needs and the fields it may have. A field not listed is an error (an AI's typo —
+ * `"clip"` for `"name"` — should fail loudly, not be ignored). `level`: the level the op is about (a game with levels;
+ * the editor opens it first, the file writes into it).
+ */
+const HANDS_OPS = Object.freeze({
+  'motion.make': { need: ['name'], may: ['len', 'repeat', 'points', 'keys', 'ease', 'key', 'when', 'until', 'replace', 'level'] },
+  'motion.attach': { need: ['key', 'name'], may: ['when', 'until', 'level'] },
+  'motion.detach': { need: ['key'], may: ['name', 'all', 'level'] },
+  'motion.delete': { need: ['name'], may: [] },
+  'motion.rename': { need: ['name', 'to'], may: [] },
+  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'knobs', 'off', 'level'] },
+  // Code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12): the AI writes the formula
+  // in the game's code (codeMotion / codePlace / codeAvoid) and puts it in the editor with these — it is then on the
+  // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
+  'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
+  // `fold` (studio-writeback, 2026-10-24 — a request that day: "the code must be the truth"): the parts of the layout's entry the
+  // AI has just written into the code (its offsets of a way, all its offsets, its pins, its keep-out areas, its knobs,
+  // what it replaced, or all) — the editor reads the game again and takes them out of the file without counting a change.
+  'place.code': { need: ['id'], may: ['replace', 'fold', 'level'] },
+  // `offsets` (studio-offsets, 2026-10-24): the rule's shifts as the person's drags make them ([] takes them off) — "move
+  // every lamp 1 m further from the road" without writing code; on Save the AI writes them into the rule and sends [].
+  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'offsets', 'level'] },
+  'place.avoid': { need: ['id'], may: ['code', 'box', 'name', 'knobs', 'off', 'remove', 'level'] },
+  'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
+  'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
+  'object.scale': { need: ['key'], may: ['to', 'by', 'level'] },
+  'object.rename': { need: ['key', 'to'], may: ['level'] },
+  'object.duplicate': { need: ['key'], may: ['to', 'by', 'level'] },
+  'object.delete': { need: ['key'], may: ['level'] },
+  'object.ground': { need: ['key'], may: ['level'] },
+  'level.new': { need: [], may: ['name'] },
+  'level.duplicate': { need: [], may: ['id', 'name'] },
+  'level.rename': { need: ['to'], may: ['id'] },
+  'level.switch': { need: ['id'], may: [] },
+  save: { need: [], may: [] },
+  'editor.reload': { need: [], may: ['editor'] },
+  // Read only: the objects as the person calls them ("Blue pillar (1st)"), their keys and motions, the Library's
+  // motions and the levels — so "the blue pillar's old motion" can be found without asking the person.
+  list: { need: [], may: [] },
+});
+const HANDS_OP_NAMES = Object.freeze(Object.keys(HANDS_OPS));
+/** At most this many ops in one --do (a spiral is one op; 50 is a whole re-layout). */
+const HANDS_MAX_OPS = 50;
+/** A level id, as studio.levels() gives them (letters, digits, - and _). */
+const HANDS_LEVEL_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const HANDS_CTRL_RE = /[\u0000-\u001f\u007f]/;
+
+const handsNum = (x) => typeof x === 'number' && Number.isFinite(x);
+const handsVec = (x, n) => Array.isArray(x) && (n ? x.length === n : x.length === 2 || x.length === 3) && x.every(handsNum);
+const handsText = (x, max) => typeof x === 'string' && !!x.trim() && x.length <= max && !HANDS_CTRL_RE.test(x);
+
+/**
+ * Read the AI's ops: a JSON text, one op object, or a list of them. Each is `{ "do": "motion.detach", "key": … }`.
+ * Returns { ok: true, ops } (copies, `when` / `until` in the file's shape) or { ok: false, errors }.
+ */
+function readHandsInput(input) {
+  let v = input;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch (e) {
+      return { ok: false, errors: [`not JSON: ${String(e && e.message).slice(0, 120)}`] };
+    }
+  }
+  const list = Array.isArray(v) ? v : [v];
+  if (!list.length) return { ok: false, errors: ['no ops'] };
+  if (list.length > HANDS_MAX_OPS) return { ok: false, errors: [`at most ${HANDS_MAX_OPS} ops at once`] };
+  const errors = [];
+  const ops = list.map((op, i) => readHandsOp(op, list.length > 1 ? `op ${i + 1}` : 'op', errors));
+  return errors.length ? { ok: false, errors: errors.slice(0, 20) } : { ok: true, ops };
+}
+
+function readHandsOp(op, at, errors) {
+  const fail = (what) => (errors.push(`${at}: ${what}`), null);
+  if (!op || typeof op !== 'object' || Array.isArray(op)) return fail('must be an object like {"do":"motion.detach","key":"pillar-1","name":"Row"}');
+  const spec = HANDS_OPS[op.do];
+  if (!spec) return fail(`"do" must be one of ${HANDS_OP_NAMES.join(', ')}`);
+  at = `${at} (${op.do})`;
+  const out = { do: op.do };
+  for (const f of Object.keys(op)) if (f !== 'do' && !spec.need.includes(f) && !spec.may.includes(f)) fail(`unknown field "${f}" (it takes ${[...spec.need, ...spec.may].join(', ') || 'nothing'})`);
+  for (const f of spec.need) if (op[f] === undefined) fail(`needs "${f}"`);
+  const has = (f) => op[f] !== undefined;
+  if (has('key') && (typeof op.key !== 'string' || !KEY_RE.test(op.key))) fail('"key" must be an object key (letters, digits, _ : # . - /)');
+  else if (has('key')) out.key = op.key;
+  if (has('name')) {
+    // A level's name may be longer than a motion's (it is shown in the level's head, up to 60 characters).
+    const max = op.do.startsWith('level.') ? 60 : LIMITS.maxClipName;
+    if (!handsText(op.name, max)) fail(`"name" must be 1 to ${max} characters`);
+    else out.name = op.name.trim();
+  }
+  const place = op.do.startsWith('place.');
+  for (const f of ['id', 'level']) {
+    if (!has(f)) continue;
+    // A layout's id is a codePlace id (place.*); every other id is a level's.
+    if (f === 'id' && place) {
+      if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
+      else out.id = op.id;
+    } else if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
+    else out[f] = op[f];
+  }
+  if (has('code')) {
+    if (typeof op.code !== 'string' || !CODE_ID_RE.test(op.code)) fail(`"code" must be the ${place ? 'codeAvoid' : 'codeMotion'} id in the game's code (lower case letters, digits and -, like "${place ? 'near-player' : 'spiral'}")`);
+    else out.code = op.code;
+  }
+  // place.code's `replace` is the hand-placed objects it takes the place of; elsewhere it is true / false.
+  if (has('replace') && op.do === 'place.code') {
+    const ok = Array.isArray(op.replace) && op.replace.length > 0 && op.replace.length <= LIMITS.maxObjects && op.replace.every((k) => typeof k === 'string' && KEY_RE.test(k)) && new Set(op.replace).size === op.replace.length;
+    if (!ok) fail('"replace" must be the keys of the hand-placed objects this layout takes the place of, each once (["lamp-1", "lamp-2"])');
+    else out.replace = op.replace.slice();
+  }
+  if (has('fold')) {
+    const f = readHandsFold(op.fold);
+    if (f.error) fail(`"fold": ${f.error}`);
+    else out.fold = f.parts;
+  }
+  for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
+    if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
+    if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
+    else out[f] = op[f];
+  }
+  if (has('knobs')) {
+    const ks = op.knobs && typeof op.knobs === 'object' && !Array.isArray(op.knobs) ? Object.entries(op.knobs) : null;
+    if (!ks || !ks.length || ks.length > LIMITS.maxKnobs || !ks.every(([n, v]) => KNOB_RE.test(n) && handsNum(v) && Math.abs(v) <= LIMITS.maxKnob)) fail(`"knobs" must be 1 to ${LIMITS.maxKnobs} knob names with their numbers ({ "gap": 4 }), each within ±${LIMITS.maxKnob}`);
+    else out.knobs = Object.fromEntries(ks);
+  }
+  if (has('pin')) {
+    const pn = op.pin;
+    const ok = pn && typeof pn === 'object' && !Array.isArray(pn) && typeof pn.key === 'string' && KEY_RE.test(pn.key) && handsVec(pn.p)
+      && (pn.r === undefined || handsNum(pn.r)) && (pn.s === undefined || (handsNum(pn.s) && pn.s !== 0) || handsVec(pn.s)) && Object.keys(pn).every((k) => ['key', 'p', 'r', 's'].includes(k));
+    if (!ok) fail('"pin" must be { "key": "hex-3", "p": [x, y, z], "r"?: angle, "s"?: size } (one of the layout\'s objects, put by hand)');
+    else out.pin = structuredClone(pn);
+  }
+  // "*" (studio-hand-marks, 2026-10-24): every one of the layout's objects placed by hand, back on the rule — the card's
+  // "All back to rule".
+  if (has('unpin')) {
+    if (typeof op.unpin !== 'string' || (op.unpin !== '*' && !KEY_RE.test(op.unpin))) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3"), or "*" for all of them');
+    else out.unpin = op.unpin;
+  }
+  if (has('offsets')) {
+    const o = readHandsOffsets(op.offsets);
+    if (o.error) fail(`"offsets": ${o.error}`);
+    else out.offsets = o.offsets;
+  }
+  if (has('box')) {
+    const b = op.box;
+    const ok = b && typeof b === 'object' && handsVec(b.p) && handsVec(b.size, b.p.length) && b.size.every((x) => x >= 0) && Object.keys(b).every((k) => k === 'p' || k === 'size');
+    if (!ok) fail('"box" must be { "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] } (2D: [x, y] / [w, h] px)');
+    else out.box = { p: b.p.slice(), size: b.size.slice() };
+  }
+  if (has('remove')) {
+    if (!(Number.isInteger(op.remove) && op.remove >= 0) && !(typeof op.remove === 'string' && CODE_ID_RE.test(op.remove))) fail('"remove" must be which keep-out area: its place in the list (0 = the first) or its codeAvoid id');
+    else out.remove = op.remove;
+  }
+  if (has('to') || has('by')) readHandsAmounts(op, out, fail);
+  if (has('len')) {
+    if (!handsNum(op.len) || op.len < LIMITS.minClipLen || op.len > LIMITS.maxClipLen) fail(`"len" must be ${LIMITS.minClipLen} to ${LIMITS.maxClipLen} seconds`);
+    else out.len = op.len;
+  }
+  if (has('repeat')) {
+    if (!MOTION_REPEATS.includes(op.repeat)) fail(`"repeat" must be one of ${MOTION_REPEATS.join(', ')}`);
+    else out.repeat = op.repeat;
+  }
+  if (has('ease')) {
+    if (!MOTION_EASES.includes(op.ease)) fail(`"ease" must be one of ${MOTION_EASES.join(', ')}`);
+    else out.ease = op.ease;
+  }
+  if (has('points')) {
+    const ok = Array.isArray(op.points) && op.points.length >= 2 && op.points.length <= LIMITS.maxClipKeys && op.points.every((p) => handsVec(p))
+      && op.points.every((p) => p.length === op.points[0].length);
+    if (!ok) fail(`"points" must be 2 to ${LIMITS.maxClipKeys} positions, each [x, y, z] (3D) or [x, y] (2D), offsets from where the object stands`);
+    else out.points = op.points.map((p) => p.slice());
+  }
+  if (has('keys')) {
+    if (!op.keys || typeof op.keys !== 'object' || Array.isArray(op.keys)) fail('"keys" must be { "p": [{ "t": 0, "v": [0, 0, 0] }, …], "r": …, "s": … }');
+    else out.keys = structuredClone(op.keys);
+  }
+  if (op.do === 'motion.make' && !has('points') && !has('keys')) fail('needs "points" (positions to go through) or "keys"');
+  if (op.do === 'motion.make' && has('points') && has('keys')) fail('"points" or "keys", not both');
+  if (has('when')) {
+    const w = readHandsWhen(op.when);
+    if (w.error) fail(`"when": ${w.error}`);
+    else out.when = w.when;
+  }
+  if (has('until')) {
+    const u = readHandsUntil(op.until);
+    if (u.error) fail(`"until": ${u.error}`);
+    else out.until = u.until;
+  }
+  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
+  if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
+  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand', 'offsets'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand", "offsets"');
+  if (op.do === 'place.code' && has('fold') && has('replace')) fail('"replace" (a new rule in place of hand-placed objects) or "fold" (what you wrote into an existing rule), one at a time');
+  if (op.do === 'place.avoid') {
+    if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
+    else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
+    if (has('name') && !has('box')) fail('"name" is a box\'s (a condition is named in its codeAvoid())');
+    if (has('knobs') && !has('code')) fail('"knobs" are a code condition\'s');
+  }
+  if (op.do.startsWith('object.') && ['move', 'turn', 'scale'].includes(op.do.slice(7)) && !has('to') && !has('by')) fail('needs "to" or "by"');
+  return out;
+}
+
+/** `to` / `by` mean different things per op: a position, an angle, a size, or a new name. */
+function readHandsAmounts(op, out, fail) {
+  const kind = op.do;
+  for (const f of ['to', 'by']) {
+    if (op[f] === undefined) continue;
+    const v = op[f];
+    if (kind === 'object.rename' || kind === 'motion.rename' || kind === 'level.rename') {
+      if (f === 'by') fail('"by" is not for a rename');
+      else if (!handsText(v, kind === 'motion.rename' ? LIMITS.maxClipName : 120)) fail('"to" must be the new name');
+      else out.to = v.trim();
+    } else if (kind === 'object.move' || kind === 'object.duplicate') {
+      if (!handsVec(v)) fail(`"${f}" must be [x, y, z] (3D) or [x, y] (2D)`);
+      else out[f] = v.slice();
+    } else if (kind === 'object.turn') {
+      if (!handsNum(v)) fail(`"${f}" must be an angle (radians; "deg": true for degrees)`);
+      else out[f] = v;
+    } else if (kind === 'object.scale') {
+      if (f === 'by' ? !(handsNum(v) && v > 0) : !(handsNum(v) && v !== 0) && !handsVec(v)) fail(f === 'by' ? '"by" must be a number above 0 (2 = twice as big)' : '"to" must be a size (1 = as built) or [x, y, z]');
+      else out[f] = Array.isArray(v) ? v.slice() : v;
+    } else fail(`"${f}" is not for ${kind}`);
+  }
+  if (out.to !== undefined && out.by !== undefined) fail('"to" or "by", not both');
+}
+
+/**
+ * When a motion starts, the AI's way: the file's object ({ "on": "key", "key": "KeyE" }), a list of them, or a short
+ * word — "start", "click", "touch", "key:E" / "key:Space", "time:2", "after:Hop", "cue:chest-opened", "say:<words>".
+ */
+function readHandsWhen(v) {
+  if (Array.isArray(v)) {
+    if (v.length < 1 || v.length > LIMITS.maxWhens) return { error: `a list of 1 to ${LIMITS.maxWhens}` };
+    const xs = v.map(readHandsWhen);
+    const bad = xs.find((x) => x.error);
+    if (bad) return bad;
+    const ws = xs.map((x) => x.when);
+    return { when: ws.length === 1 ? ws[0] : ws };
+  }
+  let w = v;
+  if (typeof v === 'string') {
+    const i = v.indexOf(':');
+    const on = (i < 0 ? v : v.slice(0, i)).trim();
+    const arg = i < 0 ? '' : v.slice(i + 1).trim();
+    if (on === 'key') {
+      // "E" → "KeyE", "1" → "Digit1": the AI may write the key as people say it; the file wants KeyboardEvent.code.
+      const code = /^[A-Za-z]$/.test(arg) ? `Key${arg.toUpperCase()}` : /^[0-9]$/.test(arg) ? `Digit${arg}` : arg;
+      w = { on, key: code };
+    } else if (on === 'time') w = { on, after: Number(arg) };
+    else if (on === 'after') w = { on, use: arg };
+    else if (on === 'cue') w = { on, cue: arg };
+    else if (on === 'say') w = arg ? { on, say: arg } : { on };
+    else w = { on };
+  }
+  if (!w || typeof w !== 'object' || !MOTION_TRIGGERS.includes(w.on)) return { error: `"on" must be one of ${MOTION_TRIGGERS.join(', ')}` };
+  if (w.on === 'key' && !(typeof w.key === 'string' && /^[A-Za-z][A-Za-z0-9]{1,24}$/.test(w.key))) return { error: 'a key like "KeyE", "Space", "ArrowUp" (or "key:E")' };
+  if (w.on === 'time' && !(handsNum(w.after) && w.after >= 0 && w.after <= LIMITS.maxClipLen)) return { error: 'time needs "after": seconds' };
+  if (w.on === 'after' && !handsText(w.use, LIMITS.maxClipName)) return { error: 'after needs the motion it follows ("after:Hop")' };
+  if (w.on === 'cue' && !(typeof w.cue === 'string' && CUE_RE.test(w.cue))) return { error: 'a cue name like "chest-opened" (lower case, digits, -)' };
+  if (w.on === 'enter' && !(w.area && handsVec(w.area.p) && handsVec(w.area.size))) return { error: 'enter needs "area": { "p": [x, y, z], "size": [w, h, d] }' };
+  return { when: structuredClone(w) };
+}
+
+/** When it stops: { "times": 3 }, { "cue": "boss-down" }, { "then": "reset" }, or "times:3" / "cue:boss-down"; null = never. */
+function readHandsUntil(v) {
+  if (v === null || v === 'never') return { until: null };
+  let u = v;
+  if (typeof v === 'string') {
+    const [k, a] = v.split(':').map((s) => s.trim());
+    u = k === 'times' ? { times: Number(a) } : k === 'cue' ? { cue: a } : null;
+  }
+  if (!u || typeof u !== 'object' || Array.isArray(u)) return { error: '{ "times": 3 } or { "cue": "boss-down" } (null = never stops)' };
+  const out = {};
+  if (u.times !== undefined) {
+    if (!(Number.isInteger(u.times) && u.times >= 1 && u.times <= LIMITS.maxRounds)) return { error: `"times" must be 1 to ${LIMITS.maxRounds}` };
+    out.times = u.times;
+  }
+  if (u.cue !== undefined) {
+    if (!(typeof u.cue === 'string' && CUE_RE.test(u.cue))) return { error: '"cue" must be a cue name like "boss-down"' };
+    out.cue = u.cue;
+  }
+  if (u.then !== undefined) {
+    if (u.then !== 'stay' && u.then !== 'reset') return { error: '"then" must be stay or reset' };
+    out.then = u.then;
+  }
+  if (out.times === undefined && out.cue === undefined) return { error: 'needs "times" or "cue"' };
+  return { until: out };
+}
+
+/**
+ * The Library motion an op makes ({ name, len, repeat, keys } as the file writes it), or { error }.
+ * `points`: positions the object goes through, as offsets from where it stands, spread evenly over `len` (default 2 s),
+ * linear between them unless `ease` says otherwise — WHY linear: every key's default ease slows to a stop at the key,
+ * so a spiral of 48 points would stutter 48 times; the path is still the smooth curve through the points (the loader's
+ * trackAt). `keys`: the file's own keys (p / r / s), when the AI needs turns or sizes too.
+ * Checked with the file's own validator, so a motion the editor or the loader would refuse is refused here first.
+ */
+function handsMotion(op, dim) {
+  const n = dim === '2d' ? 2 : 3;
+  const len = op.len ?? 2;
+  let keys;
+  if (op.points) {
+    if (op.points[0].length !== n) return { error: `points must have ${n} numbers each in a ${dim.toUpperCase()} game` };
+    const ease = op.ease ?? 'linear';
+    const last = op.points.length - 1;
+    keys = { p: op.points.map((v, i) => ({ t: (len * i) / last, v: v.slice(), ...(i < last && ease !== 'ease' ? { ease } : {}) })) };
+  } else keys = structuredClone(op.keys);
+  const m = { name: op.name, len, ...(op.repeat && op.repeat !== 'once' ? { repeat: op.repeat } : {}), keys };
+  const r = validateStudioFile({ version: 1, tool: 'placement', dim, space: 'local', objects: {}, motions: [m] }, { tool: 'placement' });
+  if (!r.ok) return { error: r.errors.slice(0, 3).map((e) => e.replace(/^motions\[0\]\.?/, '')).join('; ') };
+  return { motion: r.value.motions[0] };
+}
+
+/** The clip of `clips` an op means: by its name or its Library motion's; none named = the only one. { clip } or { error }. */
+function handsClip(clips, name, key) {
+  const cs = clips || [];
+  const said = () => (cs.length ? `its motions: ${cs.map((c) => `"${c.name}"`).join(', ')}` : 'it has no motion');
+  if (!cs.length) return { error: `${key} has no motion` };
+  if (name === undefined) {
+    if (cs.length === 1) return { clip: cs[0] };
+    return { error: `${key} has ${cs.length ? `${cs.length} motions` : 'no motion'}: say which one with "name" (${said()})` };
+  }
+  const c = cs.find((x) => x.name === name) || cs.find((x) => x.use === name);
+  return c ? { clip: c } : { error: `${key} has no motion "${name}" (${said()})` };
+}
+
+/**
+ * How a motion the AI MAKES starts when the op does not say: with the game. WHY not the attach rule below ("after its
+ * last motion"): the person asked for it to move now ("make it spiral"), and after a motion that loops forever (Sway,
+ * pingpong) "after" never comes — a real AI's spiral would have waited for ever (found in the real-AI run, 2026-10-24).
+ */
+const HANDS_MAKE_WHEN = Object.freeze({ on: 'start' });
+
+/** How a motion put on an object starts when the op does not say: the editor's own rule (timeline-wire attach). */
+function handsDefaultWhen(clips) {
+  const cs = clips || [];
+  const last = cs[cs.length - 1];
+  const starts = cs.some((c) => (c.when && typeof c.when === 'object' && !Array.isArray(c.when) ? c.when.on === 'start' : c.start === true || c.when === undefined));
+  return starts && last ? { on: 'after', use: last.use ?? last.name } : { on: 'start' };
+}
+
+/** The pose after a move / turn / scale op, rounded like the file. { pose } or { error } (needs the pose for `by`). */
+function handsPose(op, pose, dim) {
+  const n = dim === '2d' ? 2 : 3;
+  const step = dim === '2d' ? 10 : 1000;
+  const rd = (v, s) => Math.round(v * s) / s;
+  const out = pose ? structuredClone(pose) : {};
+  if (op.do === 'object.move' || op.do === 'object.duplicate') {
+    const v = op.to ?? op.by;
+    if (!v) return { pose: out };
+    if (v.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
+    if (op.by && !pose?.p) return { error: `where ${op.key} stands now is not known here: give "to" (a place), or open the editor` };
+    out.p = v.map((x, i) => rd(op.by ? pose.p[i] + x : x, step));
+  } else if (op.do === 'object.turn') {
+    const a = (op.deg ? (op.to ?? op.by) * Math.PI / 180 : op.to ?? op.by);
+    if (op.by !== undefined && !pose) return { error: `how ${op.key} is turned now is not known here: give "to", or open the editor` };
+    let r = op.by !== undefined ? (pose.r ?? 0) + a : a;
+    // (-π, π], like the file.
+    r = Math.atan2(Math.sin(r), Math.cos(r));
+    if (r <= -Math.PI + 1e-9) r = Math.PI;
+    out.r = rd(r, 10000);
+  } else if (op.do === 'object.scale') {
+    if (op.by !== undefined) {
+      if (!pose) return { error: `the size of ${op.key} now is not known here: give "to", or open the editor` };
+      const s = pose.s ?? 1;
+      out.s = Array.isArray(s) ? s.map((x) => rd(x * op.by, 10000)) : rd(s * op.by, 10000);
+    } else {
+      if (Array.isArray(op.to) && op.to.length !== n) return { error: `a size has 1 or ${n} numbers in a ${dim.toUpperCase()} game` };
+      out.s = Array.isArray(op.to) ? op.to.map((x) => rd(x, 10000)) : rd(op.to, 10000);
+    }
+  }
+  return { pose: out };
+}
+
+/** "crate-1" → "crate-2" (the editor's copyKey rule, edit-ops.ts): a key nothing has. */
+function handsCopyKey(from, taken) {
+  let base = from.replace(/^path:.*$/, 'copy').replace(/#\d+$/, '').replace(/[-_ .]?\d+$/, '');
+  base = (base || 'copy').slice(0, 70);
+  for (let n = 2; n < 100000; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+  return `${base}-${Date.now()}`;
+}
+
+const handsQ = (s) => `"${s}"`;
+const handsKnobWords = (k) => Object.entries(k).map(([n, v]) => `${n} ${v}`).join(', ');
+const handsWhenWords = (w) => {
+  const one = (x) => (x.on === 'start' ? 'starts with the game' : x.on === 'time' ? `starts ${x.after} s after the start` : x.on === 'key' ? `starts when ${x.key} is pressed`
+    : x.on === 'click' ? 'starts when it is clicked' : x.on === 'after' ? `starts after "${x.use}" ends` : x.on === 'enter' ? 'starts when the player walks into its area'
+    : x.on === 'touch' ? 'starts when the player touches it (the game calls touch(key))' : x.on === 'cue' ? `starts on cue('${x.cue}') in the game's code`
+    : 'waits for the game\'s code to call playMotion(key, name)');
+  return Array.isArray(w) ? w.map(one).join(' or ') : one(w);
+};
+
+/**
+ * One English line of what an op did, for the AI (the `studio: did …` line). `x`: what only the doer knows — the motion
+ * made ({ motion }), the clip taken off ({ clip }), a copy's key, how many objects lost a deleted motion, a level's name.
+ */
+function handsSaid(op, x = {}) {
+  if (x.said) return x.said;
+  const on = op.key ? ` on ${op.key}` : '';
+  switch (op.do) {
+    case 'motion.make': {
+      const m = x.motion;
+      const pts = m?.keys?.p?.length;
+      return `made ${handsQ(m?.name ?? op.name)} (${pts ? `${pts} points, ` : ''}${m?.len ?? op.len ?? 2} s, ${m?.repeat ?? 'once'})${op.key ? ` and put it${on}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : ' in the Library'}`;
+    }
+    case 'motion.attach': return `put ${handsQ(op.name)}${on}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}`;
+    case 'motion.detach': return x.all ? `took every motion off ${op.key} (${x.all})` : `took ${handsQ(x.clip ?? op.name)} off ${op.key}`;
+    case 'motion.delete': return `deleted ${handsQ(op.name)} from the Library${x.from ? ` (it came off ${x.from} object${x.from === 1 ? '' : 's'})` : ''}`;
+    case 'motion.rename': return `renamed the motion ${handsQ(op.name)} to ${handsQ(x.to ?? op.to)}`;
+    case 'motion.set': {
+      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : '',
+        op.knobs ? handsKnobWords(op.knobs) : '', op.off !== undefined ? (op.off ? 'switched off' : 'switched on') : ''].filter(Boolean);
+      return `set ${handsQ(op.name)}${op.key ? on : ''}: ${parts.join(', ')}`;
+    }
+    case 'motion.code': {
+      const name = x.name ?? op.name;
+      return `${x.replaced ? `turned ${handsQ(name)} into` : 'put'} the code motion ${handsQ(name)} (codeMotion('${op.code}'))${op.key ? `${x.replaced ? ',' : ''} on ${op.key}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : x.replaced ? '' : ' in the Library'}`;
+    }
+    case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
+      : op.fold ? `read the game again and took ${handsFoldWords(op.fold)} of codePlace('${op.id}') out of placement.json — your code has them now${x.folded === false ? ' (the file had none of them)' : ''}${typeof x.measured === 'string' ? x.measured : ''}`
+      : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it${typeof x.measured === 'string' ? x.measured : ''}`;
+    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : '',
+      op.offsets ? (op.offsets.length ? `offsets ${op.offsets.map((o) => `${o.way} ${o.how} ${Array.isArray(o.v) ? `[${o.v.join(', ')}]` : o.v}${o.odd ? ' (odd)' : ''}${o.how === 'jitter' ? ` (seed ${o.seed})` : ''}`).join(', ')}` : 'no offsets (back on the formula)') : ''].filter(Boolean).join(', ')}`;
+    case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
+      : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
+    case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
+    case 'object.turn': return `turned ${op.key} to ${Math.round(((x.pose?.r ?? 0) * 180) / Math.PI)}°`;
+    case 'object.scale': return `resized ${op.key} to ${JSON.stringify(x.pose?.s ?? op.to)}`;
+    case 'object.rename': return `renamed ${op.key} to ${handsQ(op.to)} (the code's key stays until you rename it there: placement.json "names")`;
+    case 'object.duplicate': return `duplicated ${op.key} as ${x.copy ?? '?'}`;
+    case 'object.delete': return `deleted ${op.key}`;
+    case 'object.ground': return `put ${op.key} on the ground`;
+    case 'level.new': return `made a new level ${handsQ(x.label ?? op.name ?? '')} (${x.id ?? '?'}) and opened it`;
+    case 'level.duplicate': return `duplicated the level as ${handsQ(x.label ?? op.name ?? '')} (${x.id ?? '?'}) and opened it`;
+    case 'level.rename': return `renamed the level ${x.id ?? op.id ?? ''} to ${handsQ(op.to)}`;
+    case 'level.switch': return `opened the level ${op.id}`;
+    case 'save': return 'saved (as the person\'s Save: a saved request follows)';
+    case 'editor.reload': return op.editor ? 'reloaded the editor page' : 'reloaded the game in the editor';
+    case 'list': return 'listed the objects, motions, code layouts and levels';
+    default: return op.do;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The same ops on placement.json, for when no editor is open (the CLI writes the result after the file's validator).
+
+/**
+ * Apply `ops` to a placement file (its validated value, or null for none yet). Returns { file, results }: the new value
+ * (not yet validated: the caller runs validateStudioFile and writes nothing when it fails) and one { do, ok, said | error }
+ * per op. An op that fails changes nothing; the others still apply (each result says).
+ * What only the game knows is refused with a reason (the ground under an object, a blank level's objects): those need
+ * the editor open.
+ */
+function applyHandsToFile(file, ops, o = {}) {
+  const f = file ? structuredClone(file) : { version: 1, tool: 'placement', dim: o.dim || '3d', space: 'local', objects: {} };
+  const dim = f.dim;
+  const results = [];
+  for (const op of ops) {
+    try {
+      const r = handsFileOp(f, op, dim);
+      results.push(r.error ? { do: op.do, ok: false, error: r.error } : { do: op.do, ok: true, said: handsSaid(op, r), ...(r.list ? { list: r.list } : {}) });
+    } catch (e) {
+      results.push({ do: op.do, ok: false, error: String(e && e.message).slice(0, 200) });
+    }
+  }
+  return { file: handsTidy(f), results };
+}
+
+/** Empty parts out (the validator wants no empty `motion` / `added`…), and the top `objects` there with levels. */
+function handsTidy(f) {
+  for (const w of [f, ...(f.levels || [])]) {
+    for (const [id, e] of Object.entries(w.places || {})) if (!Object.keys(e).length) delete w.places[id];
+    for (const k of ['motion', 'names', 'places']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
+    for (const k of ['added', 'removed']) if (w[k] && !w[k].length) delete w[k];
+  }
+  if (f.motions && !f.motions.length) delete f.motions;
+  if (!f.objects) f.objects = {};
+  return f;
+}
+
+/** The world part an op is about: the top of a file without levels, else the level `op.level` names. */
+function handsWorld(f, op) {
+  if (!f.levels) {
+    if (op.level) return { error: `this game has no levels yet (no "level" needed)` };
+    return { w: f };
+  }
+  if (!op.level) return { error: `this game has levels: say which one with "level" (${f.levels.map((l) => l.id).join(', ')})` };
+  const w = f.levels.find((l) => l.id === op.level);
+  return w ? { w } : { error: `no level "${op.level}" (${f.levels.map((l) => l.id).join(', ')})` };
+}
+
+function handsFileOp(f, op, dim) {
+  const kind = op.do.split('.')[0];
+  // No editor open: there is no person's Save to press, and placement.json is written as it is.
+  if (op.do === 'save') return { said: 'nothing to save: no editor is open, and placement.json is written as it is' };
+  if (op.do === 'editor.reload') return { error: 'the editor is not open (nothing to reload)' };
+  if (op.do === 'list') return { list: handsFileList(f) };
+  if (op.do === 'object.ground') return { error: 'putting it on the ground needs the editor open (it measures what is under the object)' };
+  if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
+  if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
+  if (kind === 'level') return handsFileLevel(f, op);
+  // A knob's `was` is the number in the game's code, which only the game's page knows (decision 5: with no editor to
+  // show it, the AI changes the code's number itself).
+  if (op.knobs && op.do !== 'place.avoid') return { error: `no editor is open: change the number in ${op.do === 'motion.set' ? 'the codeMotion()' : `codePlace('${op.id}')`} in the game's code directly (knobs are turned in the editor)` };
+  if (op.knobs) return { error: `no editor is open: change the number in codeAvoid('${op.code}') in the game's code directly (knobs are turned in the editor)` };
+  if (op.do === 'place.set' && op.hand !== undefined) return { error: 'placing by hand needs the editor open (it reads where the code put each object)' };
+  if ((op.do === 'motion.code' && !op.key) || op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
+  const at = handsWorld(f, op);
+  if (at.error) return at;
+  const w = at.w;
+  if (kind === 'place') return handsFilePlace(w, op, dim);
+  if (kind === 'motion') return handsFileMotion(f, w, op, dim);
+  return handsFileObject(w, op, dim);
+}
+
+const handsLib = (f, name) => (f.motions || []).find((m) => m.name === name) || null;
+const handsWorlds = (f) => [f, ...(f.levels || [])];
+const handsFree = (f, base) => {
+  if (!handsLib(f, base)) return base;
+  for (let i = 2; ; i++) if (!handsLib(f, `${base} ${i}`)) return `${base} ${i}`;
+};
+
+/** Ops on the Library alone: delete, rename, set repeat / length for every object, make without an object. */
+function handsFileLibrary(f, op, dim) {
+  if (op.do === 'motion.make') return handsFileMake(f, op, dim);
+  if (op.do === 'motion.code') return handsFileCode(f, op);
+  const l = handsLib(f, op.name);
+  if (!l) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
+  if (op.do === 'motion.delete') {
+    let from = 0;
+    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) {
+      const cs = (w.motion[k].clips || []).filter((c) => c.use !== op.name);
+      if (cs.length === (w.motion[k].clips || []).length) continue;
+      from++;
+      if (cs.length) w.motion[k] = { clips: cs };
+      else delete w.motion[k];
+    }
+    f.motions = f.motions.filter((m) => m !== l);
+    return { from };
+  }
+  if (op.do === 'motion.rename') {
+    const to = handsFree(f, op.to);
+    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) {
+      w.motion[k] = { clips: w.motion[k].clips.map((c) => {
+        const fix = (x) => (x && x.on === 'after' && x.use === op.name ? { ...x, use: to } : x);
+        const when = Array.isArray(c.when) ? c.when.map(fix) : fix(c.when);
+        const out = { ...c, ...(when ? { when } : {}) };
+        if (c.use === op.name) {
+          out.use = to;
+          if (c.name === op.name) out.name = to;
+        }
+        if (out.name === out.use) delete out.name;
+        return out;
+      }) };
+    }
+    l.name = to;
+    return { to };
+  }
+  // motion.set without an object: the Library motion's repeat / length (every object that uses it plays it so).
+  if (l.code && (op.repeat || op.len)) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
+  if (op.when !== undefined || op.until !== undefined) {
+    let n = 0;
+    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) for (const c of w.motion[k].clips || []) if (c.use === op.name) (handsSetClip(c, op), n++);
+    if (!n) return { error: `"${op.name}" is on no object: put it on one first (motion.attach)` };
+  }
+  handsSetLib(l, op);
+  return {};
+}
+
+function handsSetLib(l, op) {
+  if (op.repeat) {
+    if (op.repeat === 'once') delete l.repeat;
+    else l.repeat = op.repeat;
+  }
+  if (op.len) {
+    // A new length stretches the keys with it (timeline-model stretchClip): "slower" / "faster" keep the same path.
+    const k = op.len / l.len;
+    for (const ch of ['p', 'r', 's']) for (const key of l.keys?.[ch] || []) key.t = Math.min(op.len, Math.round(key.t * k * 1000) / 1000);
+    for (const tr of Object.values(l.tracks || {})) for (const ch of ['p', 'r', 's']) for (const key of tr[ch] || []) key.t = Math.min(op.len, Math.round(key.t * k * 1000) / 1000);
+    l.len = op.len;
+  }
+}
+
+function handsSetClip(c, op) {
+  if (op.when !== undefined) {
+    c.when = structuredClone(op.when);
+    delete c.start;
+  }
+  if (op.until !== undefined) {
+    if (op.until) c.until = structuredClone(op.until);
+    else delete c.until;
+  }
+}
+
+/** motion.make: the Library motion (made from points or keys), and on the object when there is a key. */
+function handsFileMake(f, op, dim, w) {
+  const made = handsMotion(op, dim);
+  if (made.error) return made;
+  const m = made.motion;
+  const was = handsLib(f, m.name);
+  if (was && op.replace) {
+    // `replace`: the same name with new keys — every object that has it moves the new way (the AI fixing its spiral).
+    for (const k of Object.keys(was)) delete was[k];
+    Object.assign(was, m);
+  } else {
+    // Without it a name already taken gets "Spiral 2", as the editor's Library does: an AI never overwrites by accident.
+    if (was) m.name = handsFree(f, m.name);
+    (f.motions ||= []).push(m);
+  }
+  if (!w) return { motion: m };
+  const clips = w.motion?.[op.key]?.clips || [];
+  if (clips.some((c) => (c.use ?? c.name) === m.name)) {
+    const c = clips.find((x) => (x.use ?? x.name) === m.name);
+    handsSetClip(c, op);
+    return { motion: m, when: c.when };
+  }
+  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+  // A motion the AI makes starts with the game unless it says otherwise (HANDS_MAKE_WHEN).
+  const when = op.when ?? HANDS_MAKE_WHEN;
+  const clip = { use: m.name, when, ...(op.until ? { until: op.until } : {}) };
+  (w.motion ||= {})[op.key] = { clips: [...clips, clip] };
+  return { motion: m, when };
+}
+
+function handsFileMotion(f, w, op, dim) {
+  if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
+  if (op.do === 'motion.make') return handsFileMake(f, op, dim, w);
+  if (op.do === 'motion.code') return handsFileCode(f, op, w);
+  const clips = w.motion?.[op.key]?.clips || [];
+  if (op.do === 'motion.attach') {
+    if (!handsLib(f, op.name)) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
+    if (clips.some((c) => (c.use ?? c.name) === op.name)) return { error: `${op.key} has "${op.name}" already (motion.set changes when it starts)` };
+    if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+    const when = op.when ?? handsDefaultWhen(clips);
+    (w.motion ||= {})[op.key] = { clips: [...clips, { use: op.name, when, ...(op.until ? { until: op.until } : {}) }] };
+    return { when };
+  }
+  const named = clips.map((c) => ({ ...c, name: c.name ?? c.use }));
+  if (op.do === 'motion.detach') {
+    if (op.all) {
+      if (!clips.length) return { error: `${op.key} has no motion` };
+      delete w.motion[op.key];
+      return { all: named.map((c) => `"${c.name}"`).join(', ') };
+    }
+    const r = handsClip(named, op.name, op.key);
+    if (r.error) return r;
+    const rest = clips.filter((_, i) => named[i] !== r.clip);
+    if (rest.length) w.motion[op.key] = { clips: rest };
+    else delete w.motion[op.key];
+    return { clip: r.clip.name };
+  }
+  // motion.set with an object: when / until on its clip; repeat / length on the Library motion (they are the motion's).
+  const r = handsClip(named, op.name, op.key);
+  if (r.error) return r;
+  const c = clips[named.indexOf(r.clip)];
+  handsSetClip(c, op);
+  if (op.off === true) c.off = true;
+  else if (op.off === false) delete c.off;
+  const l = handsLib(f, r.clip.use ?? r.clip.name);
+  if (l && (op.repeat || op.len) && l.code) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
+  if (l) handsSetLib(l, op);
+  return {};
+}
+
+/**
+ * motion.code: the Library's code motion `{ name, code }` (the shape is codeMotion('<code>') in the game's code), and
+ * on the object when there is a key — as motion.make does with points. The same code already in the Library is that
+ * motion (the person may have renamed it); `replace` turns the motion of points named `name` into this code motion
+ * (✦ To code: every object that had it keeps it, now as code).
+ */
+function handsFileCode(f, op, w) {
+  const lib = f.motions || [];
+  let m = lib.find((x) => x.name === op.name);
+  let replaced = false;
+  if (m && m.code !== op.code) {
+    if (op.replace) {
+      for (const k of Object.keys(m)) delete m[k];
+      Object.assign(m, { name: op.name, code: op.code });
+      replaced = true;
+    } else m = null;
+  }
+  if (!m) m = lib.find((x) => x.code === op.code) || null;
+  if (!m) {
+    m = { name: handsFree(f, op.name), code: op.code };
+    (f.motions ||= []).push(m);
+  }
+  if (!w) return { name: m.name, replaced };
+  const clips = w.motion?.[op.key]?.clips || [];
+  const had = clips.find((c) => (c.use ?? c.name) === m.name);
+  if (had) {
+    handsSetClip(had, op);
+    return { name: m.name, replaced, when: had.when };
+  }
+  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+  const when = op.when ?? HANDS_MAKE_WHEN;
+  (w.motion ||= {})[op.key] = { clips: [...clips, { use: m.name, when, ...(op.until ? { until: op.until } : {}) }] };
+  return { name: m.name, replaced, when };
+}
+
+const HANDS_OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const HANDS_OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+/**
+ * place.set's `offsets` (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): the rule's whole list of shifts,
+ * ≤ 8 — [{ way, how, v, odd? }] as placement.json keeps them; [] = none. { offsets } or { error }.
+ */
+function readHandsOffsets(v) {
+  if (!Array.isArray(v) || v.length > 8) return { error: 'must be a list of at most 8 offsets ([] takes them off): [{ "way": "side", "how": "same", "v": 1 }]' };
+  const out = [];
+  for (const o of v) {
+    if (!o || typeof o !== 'object' || Array.isArray(o) || !Object.keys(o).every((k) => ['way', 'how', 'v', 'odd', 'seed'].includes(k))) return { error: 'each is { "way", "how", "v", "odd"?, "seed"? }' };
+    if (!HANDS_OFFSET_WAYS.includes(o.way)) return { error: `"way" is one of ${HANDS_OFFSET_WAYS.join(', ')} (along / side: a row's; move: [x, z] on the ground for a layout that is not a row)` };
+    if (!HANDS_OFFSET_HOWS.includes(o.how)) return { error: `"how" is one of ${HANDS_OFFSET_HOWS.join(', ')}` };
+    const jit = o.how === 'jitter';
+    if (o.way === 'move' ? !((o.how === 'same' || jit) && handsVec(o.v, 2)) : !handsNum(o.v) || (o.way === 'size' && o.v <= 0)) return { error: o.way === 'move' ? 'a move is "same" or "jitter" with v = [x, z] (2D [x, y])' : `"v" is a number (m / px; ° for turn; a factor above 0 for size)` };
+    if (o.odd !== undefined && (o.odd !== true || o.how !== 'zigzag')) return { error: '"odd": true is a zigzag\'s only (the odd ranks move; leave it out for the even)' };
+    // A jitter (studio-writeback) keeps its seed: the same objects shift the same way every load; none given = a new one.
+    if (o.seed !== undefined && (!jit || !Number.isInteger(o.seed) || o.seed < 0 || o.seed > 999999)) return { error: '"seed" is a jitter\'s only: a whole number from 0 to 999999' };
+    const r = (x) => Math.round(x * 10000) / 10000 + 0;
+    out.push({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map(r) : r(o.v), ...(o.odd ? { odd: true } : {}), ...(jit ? { seed: o.seed ?? Math.floor(Math.random() * 1e6) } : {}) });
+  }
+  return { offsets: out };
+}
+
+/**
+ * What `place.code --fold` takes out of a layout's entry (studio-writeback, 2026-10-24; CONTRACT.md §1.12 "Written into
+ * the code"). WHY: a request that day — "Is what the code says then hard-coded again by the JSON? The code has to be
+ * the truth." placement.json only holds a layout's changes until the AI writes them into its codePlace / codeAvoid; then
+ * they leave the file. A knob leaves by itself once the code says its number (shell/code-places.ts settledKnobs); the
+ * rest cannot be read off the code, so the AI says what it wrote:
+ *   along · side · up · turn · size · move   the offsets of that way      offsets  every offset
+ *   pins     every object placed by hand (and `hand`: the layout converted to coordinates)
+ *   avoid    the keep-out areas (boxes drawn by hand, conditions switched off or turned)
+ *   knobs    the turned knobs (they also leave on their own)    from   the hand-placed objects a rule replaced
+ *   all      the whole entry
+ */
+const HANDS_FOLD_PARTS = Object.freeze(['along', 'side', 'up', 'turn', 'size', 'move', 'offsets', 'pins', 'avoid', 'knobs', 'from', 'all']);
+
+/** `fold`: one part ("side"), a list (["side", "pins"]) or words with commas ("side,pins"). { parts } or { error }. */
+function readHandsFold(v) {
+  const list = Array.isArray(v) ? v : typeof v === 'string' ? v.split(',').map((x) => x.trim()) : null;
+  if (!list || !list.length || list.length > HANDS_FOLD_PARTS.length || !list.every((x) => HANDS_FOLD_PARTS.includes(x))) {
+    return { error: `the parts you wrote into the code: one or more of ${HANDS_FOLD_PARTS.join(', ')} ("side", "side,pins", ["offsets","pins"], or "all")` };
+  }
+  return { parts: [...new Set(list)] };
+}
+
+/** A layout's entry without the parts written into the code; null = nothing left (no entry). */
+function handsFoldEntry(e, parts) {
+  if (!e || parts.includes('all')) return null;
+  const o = structuredClone(e);
+  const ways = parts.filter((p) => HANDS_OFFSET_WAYS.includes(p));
+  if (parts.includes('offsets')) delete o.offsets;
+  else if (ways.length && Array.isArray(o.offsets)) o.offsets = o.offsets.filter((x) => !ways.includes(x.way));
+  if (parts.includes('pins')) (delete o.pins, delete o.hand);
+  for (const k of ['avoid', 'knobs', 'from']) if (parts.includes(k)) delete o[k];
+  for (const k of Object.keys(o)) {
+    const v = o[k];
+    if (v === undefined || (Array.isArray(v) && !v.length) || (v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length)) delete o[k];
+  }
+  return Object.keys(o).length ? o : null;
+}
+
+/** "the side offsets and the pins": the parts as the AI's line says them. */
+function handsFoldWords(parts) {
+  if (parts.includes('all')) return 'everything';
+  const ways = parts.filter((p) => HANDS_OFFSET_WAYS.includes(p));
+  const w = ways.length ? [`the ${ways.join(' / ')} offsets`] : [];
+  const rest = parts.filter((p) => !ways.includes(p)).map((p) => (p === 'offsets' ? 'the offsets' : p === 'pins' ? 'the objects placed by hand' : p === 'avoid' ? 'the keep-out areas' : p === 'knobs' ? 'the knobs' : 'the replaced objects (from)'));
+  return [...w, ...rest].join(' and ');
+}
+
+/** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
+const handsPlaceKey = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
+
+/**
+ * place.code / place.set / place.avoid on placement.json (no editor open): the layout's entry in `places`, only what
+ * the person (here the AI for them) changed. Knobs and "by hand" are refused before this (they need the game).
+ */
+function handsFilePlace(w, op, dim) {
+  const places = (w.places ||= {});
+  const e = (places[op.id] ||= {});
+  const n = dim === '2d' ? 2 : 3;
+  if (op.do === 'place.code') {
+    // Written into the code (studio-writeback): out of the file. No editor = nothing to measure against.
+    if (op.fold) {
+      const next = handsFoldEntry(e, op.fold);
+      const folded = Object.keys(e).length > 0 && JSON.stringify(next ?? {}) !== JSON.stringify(e);
+      if (next) places[op.id] = next;
+      else delete places[op.id];
+      return { folded, measured: '' };
+    }
+    if (!op.replace) return {};
+    // ✦ To code: the hand-placed objects are hidden (`from`) until the AI takes them out of the code; their moves and
+    // copies are no longer the person's to keep (the layout is now where they stand).
+    e.from = [...new Set([...(e.from || []), ...op.replace])];
+    for (const k of op.replace) if (w.objects) delete w.objects[k];
+    if (w.added) w.added = w.added.filter((a) => !op.replace.includes(a.key));
+    return {};
+  }
+  if (op.do === 'place.set') {
+    if (op.pin) {
+      if (!handsPlaceKey(op.id, op.pin.key)) return { error: `"${op.pin.key}" is not one of codePlace('${op.id}')'s objects (they are ${op.id}-1, ${op.id}-2 …)` };
+      if (op.pin.p.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
+      const r3 = (v) => Math.round(v * (n === 3 ? 1000 : 10)) / (n === 3 ? 1000 : 10);
+      (e.pins ||= {})[op.pin.key] = { p: op.pin.p.map(r3), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) };
+    }
+    if (op.unpin === '*') {
+      if (e.hand) return { error: `codePlace('${op.id}') is converted to coordinates (hand: true): --hand false puts it back on the formula` };
+      if (!e.pins || !Object.keys(e.pins).length) return { error: `codePlace('${op.id}') has nothing placed by hand (every object follows the formula already)` };
+      delete e.pins;
+    } else if (op.unpin) {
+      if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
+      delete e.pins[op.unpin];
+      if (!Object.keys(e.pins).length) delete e.pins;
+    }
+    if (op.offsets) {
+      if (op.offsets.length) e.offsets = structuredClone(op.offsets);
+      else delete e.offsets;
+    }
+    return {};
+  }
+  return handsAvoid(e, op, n);
+}
+
+/** place.avoid on a layout's entry (the file's and the editor's: one rule). { changed } or { error }. */
+function handsAvoid(e, op, n, knobsWas = {}) {
+  const list = (e.avoid ||= []);
+  if (op.remove !== undefined) {
+    const i = typeof op.remove === 'number' ? op.remove : list.findIndex((a) => a.code === op.remove);
+    if (!(i >= 0 && i < list.length)) return { error: `codePlace('${op.id}') has no keep-out area ${JSON.stringify(op.remove)} (${list.length ? list.map((a, j) => (a.code ? `${j}: ${a.code}` : `${j}: ${a.name ?? 'a box'}`)).join(', ') : 'it has none in the file'})` };
+    list.splice(i, 1);
+    if (!list.length) delete e.avoid;
+    return {};
+  }
+  if (op.box) {
+    if (op.box.p.length !== n) return { error: `a box has ${n} numbers in its p and size in a ${n === 3 ? '3D' : '2D'} game` };
+    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
+    const step = n === 3 ? 1000 : 10;
+    const r = (v) => Math.round(v * step) / step;
+    list.push({ box: { p: op.box.p.map(r), size: op.box.size.map(r) }, ...(op.name ? { name: op.name } : {}), ...(op.off ? { off: true } : {}) });
+    return { changed: false };
+  }
+  let a = list.find((x) => x.code === op.code);
+  const changed = !!a;
+  if (!a) {
+    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
+    a = { code: op.code };
+    list.push(a);
+  }
+  if (op.off === true) a.off = true;
+  else if (op.off === false) delete a.off;
+  if (op.knobs) {
+    // A knob back on the code's number is no change (the file keeps only what differs from the code).
+    const ks = { ...(a.knobs || {}) };
+    for (const [k, v] of Object.entries(op.knobs)) {
+      if (knobsWas[k] === v) delete ks[k];
+      else ks[k] = { v, ...(knobsWas[k] !== undefined ? { was: knobsWas[k] } : ks[k]?.was !== undefined ? { was: ks[k].was } : {}) };
+    }
+    if (Object.keys(ks).length) a.knobs = ks;
+    else delete a.knobs;
+  }
+  return { changed };
+}
+
+function handsFileObject(w, op, dim) {
+  const added = (w.added || []).find((a) => a.key === op.key);
+  if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
+  const entry = w.objects?.[op.key];
+  const now = added ? { p: added.p, r: added.r, s: added.s } : entry ? { p: entry.p, r: entry.r, s: entry.s, ...(entry.t ? { t: entry.t } : {}) } : null;
+  if (op.do === 'object.rename') {
+    (w.names ||= {})[op.key] = op.to;
+    return {};
+  }
+  if (op.do === 'object.delete') {
+    if (added) w.added = w.added.filter((a) => a !== added);
+    else (w.removed ||= []).push({ key: op.key, ...(entry?.label ? { label: entry.label } : {}), ...(entry?.was ? { was: entry.was } : {}) });
+    if (w.objects) delete w.objects[op.key];
+    if (w.motion) delete w.motion[op.key];
+    if (w.names) delete w.names[op.key];
+    if (w.removed) w.removed.sort((a, b) => (a.key < b.key ? -1 : 1));
+    return {};
+  }
+  if (op.do === 'object.duplicate') {
+    const base = handsPose({ ...op, do: 'object.move' }, now, dim);
+    if (!now?.p && !op.to) return { error: `where ${op.key} stands is not known here: give "to" (the copy's place), or open the editor` };
+    if (base.error) return base;
+    const taken = new Set([...Object.keys(w.objects || {}), ...(w.added || []).map((a) => a.key), ...(w.removed || []).map((r) => r.key)]);
+    const copy = handsCopyKey(op.key, taken);
+    const p = base.pose;
+    (w.added ||= []).push({ key: copy, from: op.key, p: p.p, r: p.r ?? 0, s: p.s ?? 1 });
+    return { copy };
+  }
+  const r = handsPose(op, now, dim);
+  if (r.error) return r;
+  if (added) Object.assign(added, { p: r.pose.p ?? added.p, r: r.pose.r ?? added.r, s: r.pose.s ?? added.s });
+  else {
+    const e = (w.objects ||= {})[op.key] || {};
+    if (r.pose.p) e.p = r.pose.p;
+    if (r.pose.r !== undefined) e.r = r.pose.r;
+    if (r.pose.s !== undefined) e.s = r.pose.s;
+    w.objects[op.key] = e;
+  }
+  return { pose: r.pose };
+}
+
+function handsFileLevel(f, op) {
+  if (!f.levels) return { error: 'this game has no levels in placement.json yet: open the editor (its levels come from the game)' };
+  const id = op.id ?? (op.do === 'level.rename' || op.do === 'level.duplicate' ? null : undefined);
+  if (op.do === 'level.rename' || op.do === 'level.duplicate') {
+    if (!id) return { error: `say which level with "id" (${f.levels.map((l) => l.id).join(', ')})` };
+  }
+  const l = f.levels.find((x) => x.id === id);
+  if (!l) return { error: `no level "${id}" (${f.levels.map((x) => x.id).join(', ')})` };
+  if (op.do === 'level.rename') {
+    // The code's name stays in labelWas (the AI renames it in the code); renamed back = nothing to do.
+    const code = l.labelWas ?? l.label ?? l.id;
+    if (op.to === code) delete l.labelWas;
+    else if (!l.from) l.labelWas = code;
+    l.label = op.to;
+    return { id: l.id };
+  }
+  // level.duplicate: a level made in the editor is `from` its code level, with this level's entries over it.
+  const ids = new Set(f.levels.map((x) => x.id));
+  let n = 2;
+  while (ids.has(`${l.from ?? l.id}-${n}`)) n++;
+  const nid = `${l.from ?? l.id}-${n}`;
+  const label = op.name ?? `${l.label ?? l.id} ${n}`;
+  const copy = { ...structuredClone(l), id: nid, label, from: l.from ?? l.id };
+  delete copy.labelWas;
+  f.levels.splice(f.levels.indexOf(l) + 1, 0, copy);
+  if (!f.levelsWas) f.levelsWas = f.levels.filter((x) => !x.from).map((x) => x.id);
+  return { id: nid, label };
+}
+
+/**
+ * `list` with no editor open: what placement.json knows (only objects it has an entry for — the editor's own `list`
+ * has every object of the game, with the names the person sees).
+ */
+function handsFileList(f) {
+  const world = (w) => {
+    const keys = new Set([...Object.keys(w.objects || {}), ...(w.added || []).map((a) => a.key), ...Object.keys(w.motion || {}), ...Object.keys(w.names || {})]);
+    return [...keys].sort().map((key) => {
+      const o = { key };
+      const label = w.names?.[key] ?? w.objects?.[key]?.label;
+      if (label) o.name = label;
+      const ms = (w.motion?.[key]?.clips || []).map((c) => c.name ?? c.use);
+      if (ms.length) o.motions = ms;
+      return o;
+    });
+  };
+  const out = { from: 'placement.json (no editor open: only the objects it has)', objects: f.levels ? [] : world(f) };
+  out.motions = (f.motions || []).map((m) => (m.code ? { name: m.name, code: m.code, ...(m.knobs ? { knobs: m.knobs } : {}) } : { name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
+  // The code layouts the file has changes for (the editor's list has every codePlace of the game, with its objects).
+  const places = (w) => Object.entries(w.places || {}).map(([id, e]) => ({ id, ...structuredClone(e) }));
+  if (!f.levels && f.places) out.places = places(f);
+  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l), ...(l.places ? { places: places(l) } : {}) }));
+  return out;
+}
+
+
+__def(__exports, "HANDS_OPS", () => HANDS_OPS);
+__def(__exports, "HANDS_OP_NAMES", () => HANDS_OP_NAMES);
+__def(__exports, "HANDS_MAX_OPS", () => HANDS_MAX_OPS);
+__def(__exports, "readHandsInput", () => readHandsInput);
+__def(__exports, "readHandsWhen", () => readHandsWhen);
+__def(__exports, "readHandsUntil", () => readHandsUntil);
+__def(__exports, "handsMotion", () => handsMotion);
+__def(__exports, "handsClip", () => handsClip);
+__def(__exports, "HANDS_MAKE_WHEN", () => HANDS_MAKE_WHEN);
+__def(__exports, "handsDefaultWhen", () => handsDefaultWhen);
+__def(__exports, "handsPose", () => handsPose);
+__def(__exports, "handsCopyKey", () => handsCopyKey);
+__def(__exports, "handsSaid", () => handsSaid);
+__def(__exports, "applyHandsToFile", () => applyHandsToFile);
+__def(__exports, "readHandsOffsets", () => readHandsOffsets);
+__def(__exports, "HANDS_FOLD_PARTS", () => HANDS_FOLD_PARTS);
+__def(__exports, "readHandsFold", () => readHandsFold);
+__def(__exports, "handsFoldEntry", () => handsFoldEntry);
+__def(__exports, "handsFoldWords", () => handsFoldWords);
+__def(__exports, "handsPlaceKey", () => handsPlaceKey);
+__def(__exports, "handsAvoid", () => handsAvoid);
+};
+__defs[34] = function (__exports) {
+'use strict';
 // code-places.ts
 
 // What the person changed of the game's code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1 `places`):
@@ -14372,6 +15437,7 @@ __defs[33] = function (__exports) {
 // (the file's v is now the code's v) or taken a knob out, that knob leaves the file without a word — not a change of
 // the person's (decision 3 of the plan). The same for a code motion's knobs (MotionLibrary.settle).
                                                                                          
+const { handsFoldEntry } = __require(33);
 
 const same = (a         , b         ) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** The file's rounding of a knob (1e-4), so a number typed back to the code's is no change. */
@@ -14414,6 +15480,42 @@ const tidy = (e                                   )                        => {
   }
   return Object.keys(o).length ? o : null;
 };
+
+/** What a fold took out of a layout's entry, as it was (now, and as saved); null = nothing there. */
+                         
+                             
+                               
+ 
+
+/** The parts of `e` that `t` (e folded) no longer has: rows, pins, knobs, areas, hand-placed objects replaced. */
+function gone(e                , t                       )                 {
+  const out                 = {};
+  const keep = t ?? {};
+  const offs = (e.offsets ?? []).filter((o) => !(keep.offsets ?? []).some((x) => same(x, o)));
+  if (offs.length) out.offsets = offs;
+  for (const k of ['knobs', 'pins']         ) {
+    const left = Object.fromEntries(Object.entries(e[k] ?? {}).filter(([n]) => !(keep[k] && n in keep[k] )));
+    if (Object.keys(left).length) (out                           )[k] = left;
+  }
+  if (e.hand && !keep.hand) out.hand = true;
+  const av = (e.avoid ?? []).filter((a) => !(keep.avoid ?? []).some((x) => same(x, a)));
+  if (av.length) out.avoid = av;
+  const fr = (e.from ?? []).filter((k) => !(keep.from ?? []).includes(k));
+  if (fr.length) out.from = fr;
+  return out;
+}
+
+/** `part` (what a fold took out) back into `cur`: what `cur` has of the same name stays (the person's since). */
+function mergeBack(cur                       , part                )                 {
+  const o                 = structuredClone(cur ?? {});
+  if (part.offsets?.length) o.offsets = [...(o.offsets ?? []), ...part.offsets.filter((x) => !(o.offsets ?? []).some((y) => same(x, y)))].slice(0, 8);
+  if (part.knobs) o.knobs = { ...part.knobs, ...(o.knobs ?? {}) };
+  if (part.pins) o.pins = { ...part.pins, ...(o.pins ?? {}) };
+  if (part.hand) o.hand = true;
+  if (part.avoid?.length) o.avoid = [...(o.avoid ?? []), ...part.avoid.filter((x) => !(o.avoid ?? []).some((y) => same(x, y)))];
+  if (part.from?.length) o.from = [...new Set([...(o.from ?? []), ...part.from])];
+  return o;
+}
 
 class PlaceStore {
           now = new Map                        ();
@@ -14458,19 +15560,60 @@ class PlaceStore {
   }
 
   /**
+   * What the AI wrote into the code leaves the file (studio-writeback, 2026-10-24; the AI's `place.code --fold`, schema
+   * hands.mjs handsFoldEntry): in what is saved too, like a settled knob, so it is no change of the person's (Save · n
+   * stays as it was). Returns what left each (`now`, `saved`: only the parts taken out), for "Undo AI change" to bring
+   * back, or null when neither had any of it.
+   */
+  fold(id        , parts          )                {
+    const out         = { now: null, saved: null };
+    let changed = false;
+    for (const [m, side] of [[this.now, 'now'], [this.saved, 'saved']]         ) {
+      const e = m.get(id);
+      if (!e) continue;
+      const t = tidy(handsFoldEntry(e, parts)                         );
+      if (same(t, e)) continue;
+      out[side] = gone(e, t);
+      if (t) m.set(id, t);
+      else m.delete(id);
+      changed = true;
+    }
+    return changed ? out : null;
+  }
+
+  /**
+   * "Undo AI change" after a write-back (studio-writeback): the code is back as it was, so what left the file comes
+   * back into it — merged with what the layout has now (a change the person made since stays), in what is saved too.
+   */
+  unfold(id        , back        )       {
+    for (const [m, part] of [[this.now, back.now], [this.saved, back.saved]]         ) {
+      if (!part) continue;
+      const t = tidy(mergeBack(m.get(id) ?? null, part));
+      if (t) m.set(id, t);
+      else m.delete(id);
+    }
+  }
+
+  /**
    * The game page's layouts (code-lists.ts): a knob the code has caught up with, or does not have any more, leaves
    * the file — in what is saved too, so it is not counted as the person's change. true = something left.
    */
-  settle(list                 )          {
+  settle(list                 , left                                  )          {
     let changed = false;
-    for (const p of list) for (const m of [this.now, this.saved]) {
-      const e = m.get(p.id);
-      const k = settledKnobs(e?.knobs, p.knobs);
-      if (!e || k === null) continue;
-      const t = tidy({ ...e, knobs: k });
-      if (t) m.set(p.id, t);
-      else m.delete(p.id);
-      changed = true;
+    for (const p of list) {
+      const f         = { now: null, saved: null };
+      for (const [m, side] of [[this.now, 'now'], [this.saved, 'saved']]         ) {
+        const e = m.get(p.id);
+        const k = settledKnobs(e?.knobs, p.knobs);
+        if (!e || k === null) continue;
+        const t = tidy({ ...e, knobs: k });
+        f[side] = gone(e, t);
+        if (t) m.set(p.id, t);
+        else m.delete(p.id);
+        changed = true;
+      }
+      // studio-writeback: the knobs that left, for "Undo AI change" (the code's old number comes back, so must they).
+      if (f.now || f.saved) left?.(p.id, f);
     }
     return changed;
   }
@@ -14479,9 +15622,11 @@ class PlaceStore {
 __def(__exports, "roundKnob", () => roundKnob);
 __def(__exports, "turnKnobs", () => turnKnobs);
 __def(__exports, "settledKnobs", () => settledKnobs);
+__def(__exports, "gone", () => gone);
+__def(__exports, "mergeBack", () => mergeBack);
 __def(__exports, "PlaceStore", () => PlaceStore);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // motion-library.ts
 
@@ -14502,7 +15647,7 @@ __defs[34] = function (__exports) {
 // a Library motion (adopt): a clip with the same name and the same keys as one already here is the same motion; the same
 // name with other keys becomes "Open 2". It is done for the saved copy too, so opening an old file is not a change.
                                                                                                        
-const { settledKnobs } = __require(33);
+const { settledKnobs } = __require(34);
 
 /**
  * A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). A scene motion
@@ -14647,7 +15792,7 @@ __def(__exports, "CODE_LEN", () => CODE_LEN);
 __def(__exports, "MotionLibrary", () => MotionLibrary);
 __def(__exports, "motionLibrary", () => motionLibrary);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -14668,7 +15813,7 @@ __defs[35] = function (__exports) {
 // turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
                                                                                                       
 const { whenOf } = __require(19);
-const { motionLibrary } = __require(34);
+const { motionLibrary } = __require(35);
 const { CHANNELS, toClips } = __require(24);
 
 /** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
@@ -14874,7 +16019,7 @@ __def(__exports, "attachAll", () => attachAll);
 __def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -14900,8 +16045,8 @@ __defs[36] = function (__exports) {
 __require(0);
 const { hasLayer, orderOfLayer } = __require(32);
 const { roundPose, samePose } = __require(31);
-const { MotionStore } = __require(35);
-const { PlaceStore } = __require(33);
+const { MotionStore } = __require(36);
+const { PlaceStore } = __require(34);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -15564,7 +16709,7 @@ __def(__exports, "roundPose", () => __require(31).roundPose);
 __def(__exports, "samePose", () => __require(31).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -16503,6 +17648,13 @@ const en = {
   'hands.place.avoidSet': '{Ai} changed “{what}” in {name}’s keep-out areas',
   'hands.place.avoidOff': '{Ai} turned off “{what}” in {name}’s keep-out areas',
   'hands.place.avoidRemove': '{Ai} took “{what}” off {name}’s keep-out areas',
+  // studio-writeback (2026-10-24, "the code is the truth"): the AI wrote a rule's changes into the rule itself — nothing
+  // moved (said only so the person knows who did it), or how far off it came / what went, or the knob it added.
+  'hands.place.fold': '{Ai} wrote your changes to “{name}” into its rule',
+  'hands.place.foldGap': '{Ai} wrote your changes to “{name}” into its rule · Farthest off: {obj} ({gap})',
+  'hands.place.foldGone': '{Ai} wrote your changes to “{name}” into its rule · {obj} is gone',
+  'hands.place.foldKnob': '{Ai} added “{knob}” to “{name}” (now {v})',
+  'hands.place.foldKnobGap': '{Ai} added “{knob}” to “{name}” (now {v}) · Farthest off: {obj} ({gap})',
   'place.boxName': 'Box {n}',
   // Keep-out areas on a rule layout's card (studio-code-keepout, 2026-10-24; the plan's step 3, Gemini's wording of that
   // day: "+ Draw a box", "✦ Describe with text"). "Keep-out areas" kept over Gemini's "No-spawn areas": the hands lines
@@ -16569,8 +17721,10 @@ const en = {
   'offset.ramp': 'Ramp',
   'offset.one': 'Just this one',
   'offset.knob': 'Change {knob}',
-  'offset.toKnob': 'Make this way a knob',
-  'offset.toKnobTip': 'Puts a request in the chat box: {ai} adds a knob for this way to the rule (nothing is sent)',
+  // studio-writeback (2026-10-24): "✦ Write into the rule" — it was "Make this way a knob", and the person who asked did not know
+  // what a "knob" was. The rule's numbers have no group name on screen (glossary: each by its own name).
+  'offset.toKnob': 'Write into the rule',
+  'offset.toKnobTip': 'Puts a request in the chat box: {ai} writes this offset into the rule as a number of its own (nothing is sent)',
   'offset.sameTip': 'Every object of the rule moves the same',
   'offset.zigzagTip': 'Every other one moves (the ones like this one); the others stay',
   'offset.rampTip': 'A little more each one, from the nearest',
@@ -16587,10 +17741,20 @@ const en = {
   'offset.more': 'More',
   'offset.removed': 'Removed {what} from {name}',
   'offset.limit': 'Up to 8 offsets · ✦ to fold them into the rule',
-  'offset.draft': 'Add a knob to the {name} rule for its {way} offset',
-  'offset.draftRow': 'Add a knob to the {name} rule for its {way} offset ({what})',
+  'offset.draft': 'Write the {way} offset of {name} into the rule',
+  'offset.draftRow': 'Write the {way} offset of {name} into the rule ({what})',
+  'offset.chipRule': '{name} (rule)',
+  'offset.askPh': 'e.g. as the distance from the road',
   'offset.saved': '{name} {what}',
   'offset.keys': '{name} moved, all of them (an offset of the rule)',
+  // studio-writeback (2026-10-24): jitter — "a little, by a fixed random amount" (the third pattern asked for that day), from the
+  // card's ⋯. The same every time the game opens; Shuffle gives other little shifts.
+  'offset.jitter': 'Jitter',
+  'offset.row.jitter': '{way} · Jitter, up to',
+  'offset.jitterAdd': 'Add jitter',
+  'offset.jitterAddWay': 'Add jitter ({way})',
+  'offset.jitterDone': 'Added {way} jitter to {name}',
+  'offset.reroll': 'Shuffle',
   'rule.nth': 'No. {n}',
   'rule.knobTip': 'Drag left or right · click to type',
   'rule.individually': 'Convert to coordinates',
@@ -17074,7 +18238,9 @@ const ja                               = {
   'placement.rot': '向き',
   'placement.scale': '大きさ',
   'placement.tilt': '傾き',
-  'placement.help': '物を選んで、つまみを引きます。ほかの所を引くと見回せます。ホイールかピンチで寄れます。',
+  // studio-writeback (2026-10-24): the word for "knob" is not on screen any more (the person who asked did not know what
+  // "make this way a knob" meant). The handles on an object are "handles"; a rule's numbers go by their own names.
+  'placement.help': '物を選んで、ハンドルを引きます。ほかの所を引くと見回せます。ホイールかピンチで寄れます。',
   'library.missing': 'この版にはライブラリが入っていません。',
   'next.title': 'AI への案',
   'next.intro': '選ぶと {ai}に送ります。{ai2}は始める前にあなたに確認します。',
@@ -17126,7 +18292,7 @@ const ja                               = {
   'ui.theme.light': '明るい',
   'ui.theme.auto': '端末に合わせる',
   'ui.fontSize': '文字の大きさ',
-  'ui.handleSize': 'つまみの大きさ',
+  'ui.handleSize': 'ハンドルの大きさ',
   'ui.show': '出すもの',
   'ui.show.thumbs': '一覧のサムネイル',
   'ui.show.numbers': '位置の数字',
@@ -17186,7 +18352,7 @@ const ja                               = {
   'ops.selectKind': '同じ種類を全部選ぶ（{n}）',
   'ops.selectKindShort': '全部 {n}',
   'ops.many': '{n} 個を選択',
-  'ops.groupHint': 'つまみで、まとめて動かす・回す（真ん中を軸に）・大きさを変えられます。',
+  'ops.groupHint': 'ハンドルで、まとめて動かす・回す（真ん中を軸に）・大きさを変えられます。',
   'ops.lockedSkipped': 'このゲームの設定で固定されている物は、そのまま動きません。',
   'ops.selectNone': '選択を外す',
   'ops.copyNote': '{from} の複製・保存で残ります',
@@ -17210,7 +18376,7 @@ const ja                               = {
   'check.keys-valid': '保存しても位置が残らない物があるかもしれません。',
   'check.pose-roundtrip': 'このゲームでは、まだ動かした位置が残らないことがあります。',
   'check.screen-changes': 'エディタで物を動かしても、ゲームの画面では動かないことがあります。',
-  'check.anchor-follows': 'このゲームでは、まだつまみが物に付いてこないことがあります。',
+  'check.anchor-follows': 'このゲームでは、まだハンドルが物に付いてこないことがあります。',
   'check.restored': 'エディタの確認で、物が少しずれたかもしれません。',
   'app.brand': 'Studio',
   'list.title': 'このシーンの物',
@@ -17471,6 +18637,11 @@ const ja                               = {
   'hands.place.avoidSet': '{ai}が「{name}」の置かない所「{what}」を変えました',
   'hands.place.avoidOff': '{ai}が「{name}」の置かない所「{what}」をオフにしました',
   'hands.place.avoidRemove': '{ai}が「{name}」の置かない所から「{what}」を外しました',
+  'hands.place.fold': '{ai}が「{name}」の変更をルールに書き込みました',
+  'hands.place.foldGap': '{ai}が「{name}」の変更をルールに書き込みました · いちばんずれた所: {obj}（{gap}）',
+  'hands.place.foldGone': '{ai}が「{name}」の変更をルールに書き込みました · {obj} が無くなりました',
+  'hands.place.foldKnob': '{ai}が「{name}」に「{knob}」を足しました（今は {v}）',
+  'hands.place.foldKnobGap': '{ai}が「{name}」に「{knob}」を足しました（今は {v}）· いちばんずれた所: {obj}（{gap}）',
   'place.boxName': '四角 {n}',
   'keepout.title': '置かない所',
   'keepout.titleTip': 'このルールの物を置かない所。ほかのルールと、手で置いた物には効きません',
@@ -17527,8 +18698,8 @@ const ja                               = {
   'offset.ramp': 'だんだん',
   'offset.one': 'この 1 個だけ',
   'offset.knob': '{knob}を変える',
-  'offset.toKnob': 'この向きをつまみに',
-  'offset.toKnobTip': '下の欄に頼みを入れます。{ai} がこの向きのつまみをルールに足します（送るのはあなた）',
+  'offset.toKnob': 'ルールに書き込む',
+  'offset.toKnobTip': '下の欄に頼みを入れます。{ai} がこのずらしを、ルールの数字としてルールに書き込みます（送るのはあなた）',
   'offset.sameTip': 'ルールの物が全部同じだけ動きます',
   'offset.zigzagTip': '1 個おきに動きます（この物と同じ側）。ほかはそのまま',
   'offset.rampTip': '手前から 1 個ごとに少しずつ',
@@ -17545,10 +18716,18 @@ const ja                               = {
   'offset.more': 'その他',
   'offset.removed': '{name}の{what}を消しました',
   'offset.limit': 'ずらしは 8 個まで · ✦ でルールにまとめる',
-  'offset.draft': '{name}の{way}を、ルールのつまみにして',
-  'offset.draftRow': '{name}の{way}（{what}）を、ルールのつまみにして',
+  'offset.draft': '{name}の{way}のずらしを、ルールに書き込んで',
+  'offset.draftRow': '{name}の{way}のずらし（{what}）を、ルールに書き込んで',
+  'offset.chipRule': '{name}（ルール）',
+  'offset.askPh': '例: 道からの距離として',
   'offset.saved': '{name} {what}',
   'offset.keys': '{name}を全部動かしました（ルールのずらし）',
+  'offset.jitter': 'ゆらぎ',
+  'offset.row.jitter': '{way} · ゆらぎ 最大',
+  'offset.jitterAdd': 'ゆらぎを足す',
+  'offset.jitterAddWay': 'ゆらぎを足す（{way}）',
+  'offset.jitterDone': '{name}に{way}のゆらぎを足しました',
+  'offset.reroll': 'ばらつきを変える',
   'rule.nth': '{n} 番目',
   'rule.knobTip': '左右にドラッグ · 押すと入力',
   'rule.individually': '座標にする',
@@ -17672,7 +18851,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -17782,7 +18961,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -17799,6 +18978,10 @@ __defs[39] = function (__exports) {
 // all normalise with this one module, like studio-files.mjs does for the result files.
 //
 // Plain JavaScript, no imports: runs in Node, in the browser and inside the bundled CLI.
+
+// The offsets' ways and hows (CONTRACT.md §1.12 "Offsets"; the same lists as studio-files.mjs — no imports here).
+const OFFSET_WAYS_H = ['along', 'side', 'up', 'turn', 'size', 'move'];
+const OFFSET_HOWS_H = ['same', 'zigzag', 'ramp', 'jitter'];
 
 const HANDOFF_LIMITS = Object.freeze({
   maxText: 500, // the person's words; a request is one sentence or two, not a document
@@ -17991,12 +19174,28 @@ function normalizeRequestInput(input) {
         const ak = nums(a.knobs);
         return [{ code: a.code, ...(typeof a.name === 'string' && a.name.trim() ? { name: oneLine(a.name, 80) } : {}), ...(Object.keys(ak).length ? { knobs: ak } : {}), ...off }];
       });
+      // ✦ Write into the rule (studio-writeback, 2026-10-24; `intent: "to-knob"`): the way the person wants in the rule,
+      // the layout's offsets as they are, and each object's row / rank / what the offsets add — so the AI writes the
+      // same shape into at() without counting ranks itself. Hints: a bad part is dropped.
+      if (OFFSET_WAYS_H.includes(p.way)) e.way = p.way;
+      const offs = (Array.isArray(p.offsets) ? p.offsets : []).slice(0, 8).filter((o) => o && OFFSET_WAYS_H.includes(o.way) && OFFSET_HOWS_H.includes(o.how)
+        && (Array.isArray(o.v) ? o.v.length === 2 && o.v.every(isFin) : isFin(o.v)));
+      if (offs.length) {
+        e.offsets = offs.map((o) => ({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map((x) => roundTo(x, 10000)) : roundTo(o.v, 10000),
+          ...(o.odd === true ? { odd: true } : {}), ...(Number.isInteger(o.seed) ? { seed: o.seed } : {}) }));
+      }
+      const objs = (Array.isArray(p.objects) ? p.objects : []).slice(0, 200).filter((x) => x && typeof x.key === 'string' && /^[a-z0-9][a-z0-9-]{0,39}-[1-9][0-9]{0,3}$/.test(x.key));
+      if (objs.length) {
+        e.objects = objs.map((x) => ({ key: x.key, ...(Number.isInteger(x.line) && Number.isInteger(x.rank) ? { line: x.line, rank: x.rank } : {}),
+          ...(Array.isArray(x.offset) && x.offset.length <= 3 && x.offset.every(isFin) ? { offset: x.offset.map((v) => roundTo(v, 10000)) } : {}) }));
+      }
       ps.push(e);
     }
     if (ps.length) out.places = ps;
   }
-  // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4).
-  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code')) out.intent = r.intent;
+  // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
+  // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob')) out.intent = r.intent;
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
@@ -18161,7 +19360,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -18189,7 +19388,7 @@ __defs[40] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(39);
+const { statusCovers } = __require(40);
 
                                                                                                                                                                          
 
@@ -18332,7 +19531,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ai-presence.ts
 
@@ -18375,7 +19574,7 @@ __defs[41] = function (__exports) {
 // - unsure   = everything else (never seen watching, a host that cannot tell, the grace after a heartbeat stops).
 // Pure, so test/ai-presence.test.ts reads the rules without a browser; main.ts keeps the clock and draws the words.
                                               
-const { aiBusy } = __require(40);
+const { aiBusy } = __require(41);
 
                                                                              
 
@@ -18440,7 +19639,7 @@ __def(__exports, "UNSEEN_MS", () => UNSEEN_MS);
 __def(__exports, "QUIET_WORK_MS", () => QUIET_WORK_MS);
 __def(__exports, "aiNameKey", () => aiNameKey);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -18486,7 +19685,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -18565,7 +19764,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -18578,7 +19777,7 @@ __defs[44] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(40);
+const { moreIn } = __require(41);
 
                                 
                  
@@ -18644,7 +19843,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -18707,7 +19906,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -18795,7 +19994,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -18805,7 +20004,7 @@ __defs[47] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(46);
+const { DEFAULT_UI, UI_LIMITS } = __require(47);
 
                                
                          
@@ -18888,7 +20087,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -18992,7 +20191,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -19157,7 +20356,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -19190,9 +20389,9 @@ __defs[50] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(32);
-const { groupLayerPossible, sameKind } = __require(48);
+const { groupLayerPossible, sameKind } = __require(49);
 const { icon, setButton } = __require(21);
-const { tipText } = __require(49);
+const { tipText } = __require(50);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -20497,7 +21696,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // rule-motion.ts
 
@@ -20567,7 +21766,7 @@ __def(__exports, "knobSaid", () => knobSaid);
 __def(__exports, "ruleWords", () => ruleWords);
 __def(__exports, "ruleKnobsAfter", () => ruleKnobsAfter);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // to-rule.ts
 
@@ -20773,7 +21972,7 @@ __def(__exports, "gapText", () => gapText);
 __def(__exports, "timeText", () => timeText);
 __def(__exports, "RuleCompare", () => RuleCompare);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -20901,7 +22100,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -21021,7 +22220,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -21183,7 +22382,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -21204,16 +22403,16 @@ __defs[56] = function (__exports) {
 // WHY its own file: main.ts is 3,900 lines and other members change it the same week; main.ts only routes moves,
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                                                       
-const { ruleKnobsAfter, ruleOf, ruleWords } = __require(51);
-const { handPath } = __require(52);
+const { ruleKnobsAfter, ruleOf, ruleWords } = __require(52);
+const { handPath } = __require(53);
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(53);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(54);
-const { libOf } = __require(34);
-const { motionCardRow } = __require(55);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(54);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(55);
+const { libOf } = __require(35);
+const { motionCardRow } = __require(56);
                                                    
                                                      
-const { sameMotion: sameFile } = __require(35);
+const { sameMotion: sameFile } = __require(36);
 
 /**
  * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
@@ -23147,7 +24346,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -23199,7 +24398,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -23211,6 +24410,8 @@ __defs[58] = function (__exports) {
 // already are) says it with the objects' own names:
 //   pressed       "Saved: moved gate · gate’s motion · ship’s motion"   + "Claude is putting it in the code…"
 //   AI finished   "✓ Saved: gate’s motion · In the game" [▶ Play]      + "Undo AI change · More in Claude"
+//                 (+ the AI's own line under it when it wrote a rule's changes into the rule — studio-writeback:
+//                  "Claude wrote your changes to “Street lamps” into its rule")
 //   no AI there   "Saved. Claude puts it in the code when it opens"     (a fact, not a promise; "How to open" stays the
 //                                                                         presence words under it — one, not two)
 // More than 3 names: the first 3 and "2 more" (the line is one line, on a phone too).
@@ -23270,6 +24471,13 @@ function savedList(things                       , total        , t   )         {
                                                                               
                                
        
+     
+                                                                                                                        
+                                                                                                                       
+                                                                                                                        
+                                                                                                             
+     
+                
  
 
 function receipt(i              )                 {
@@ -23291,7 +24499,8 @@ function receipt(i              )                 {
       // What the person saved (Save · N), by the same names as when it was pressed, and that it is in — not the AI's own
       // count of changed objects: "the 3 I saved are in". studio-motion-next (2026-10-24; a hands-on review: "show what Save means:
       // 'Saved: Street lamp 5's motion · In the game'"): it was "✓ In the game (3)", a count with no names.
-      return { head: t('save.in', { list: savedList(i.things, i.total, t) }), sub: '', play: true, short: t('save.inShort', { list: savedList(i.things, i.total, t) }) };
+      // studio-integrate-writeback (2026-10-24): the AI's write-back line (`note`) under it, or nothing as before.
+      return { head: t('save.in', { list: savedList(i.things, i.total, t) }), sub: i.note?.trim() ?? '', play: true, short: t('save.inShort', { list: savedList(i.things, i.total, t) }) };
     default:
       return null;
   }
@@ -23301,7 +24510,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -23357,10 +24566,23 @@ function movesRank(o             , rank        )          {
   return o.how !== 'ramp' || rank > 0;
 }
 
-/** The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). */
+/**
+ * The row of `way` chosen last (the end of the list), or null: a drag that way turns it next (decision 8). A jitter row
+ * is never one (studio-writeback: a drag says where, not how much to scatter — its number is the card's alone).
+ */
 function lastOf(offs                           , way           )                     {
-  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs [i] .way === way) return offs [i] ;
+  for (let i = (offs?.length ?? 0) - 1; i >= 0; i--) if (offs [i] .way === way && offs [i] .how !== 'jitter') return offs [i] ;
   return null;
+}
+
+/**
+ * A new jitter row of `way` (studio-writeback: the card's ⋯ → Add jitter): a little — 0.3 m / 10 px, 10°, ×1.1, the
+ * ground ±0.5 m / ±12 px — with its own seed (the same objects shift the same way every load; Shuffle gives another).
+ */
+function jitterRow(way           , three         , seed        )              {
+  const s = Math.max(0, Math.min(999999, Math.floor(seed)));
+  if (way === 'move') return { way, how: 'jitter', v: three ? [0.5, 0.5] : [12, 12], seed: s };
+  return { way, how: 'jitter', v: way === 'turn' ? 10 : way === 'size' ? 1.1 : three ? 0.3 : 10, seed: s };
 }
 
 /**
@@ -23369,7 +24591,7 @@ function lastOf(offs                           , way           )                
  * ramp from the nearest one: decision 5, "ramps start from the nearest"; move is "same" only).
  */
 function addOffset(offs                           , a              , how           , rank        )                       {
-  if (how === 'ramp' && rank < 1) return null;
+  if (how === 'jitter' || (how === 'ramp' && rank < 1)) return null;
   if (a.way === 'move' && how !== 'same') return null;
   const list = (offs ?? []).map((o) => structuredClone(o));
   const at = list.findIndex((o) => sameRow(o, a.way, how, rank));
@@ -23385,7 +24607,7 @@ function addOffset(offs                           , a              , how        
       // × a factor: the ramp's 1 + (v − 1) × rank for this one, times the drag's factor, then back to its v.
       v = how === 'ramp' ? 1 + ((1 + (was - 1) * rank) * a.d - 1) / rank : was * a.d;
     } else v = was + (how === 'ramp' ? a.d / rank : a.d);
-    row = { way: a.way, how, v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true          } : {}) };
+    row = { way: a.way, how: how                                , v: round4(v), ...(how === 'zigzag' && rank % 2 === 1 ? { odd: true          } : {}) };
   }
   // A ninth row would not save: the drag cannot make it (the line says "Up to 8 offsets · ✦ to fold them into the rule").
   if (!old && list.length >= MAX_OFFSETS) return null;
@@ -23432,7 +24654,7 @@ const noAmount = (a              ) => (a.way === 'move' ? Math.abs(a.d[0]) < 1e-
  * same → v; zigzag → v or 0; ramp → v × rank (size: 1 + (v − 1) × rank).
  */
 function rowAt(o             , rank        )                            {
-  if (o.way === 'move') return o.v;
+  if (o.way === 'move' || o.how === 'jitter') return o.v;
   if (o.how === 'zigzag') return movesRank(o, rank) ? o.v : o.way === 'size' ? 1 : 0;
   if (o.how === 'ramp') return o.way === 'size' ? 1 + (o.v - 1) * rank : o.v * rank;
   return o.v;
@@ -23443,6 +24665,7 @@ __def(__exports, "round4", () => round4);
 __def(__exports, "sameRow", () => sameRow);
 __def(__exports, "movesRank", () => movesRank);
 __def(__exports, "lastOf", () => lastOf);
+__def(__exports, "jitterRow", () => jitterRow);
 __def(__exports, "addOffset", () => addOffset);
 __def(__exports, "offsetsFull", () => offsetsFull);
 __def(__exports, "dragAmount", () => dragAmount);
@@ -23450,7 +24673,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -23460,7 +24683,8 @@ __defs[60] = function (__exports) {
 // WHY (the CRYSTAL FIELD try that day): "a lamp dragged away from the road did nothing" — now every lamp follows
 // from the drag's first step (bridge/code-place.ts), and when the finger lets go, the line where Studio always speaks
 // (over the ask field) offers how the rest should have followed: All the same (or the code knob's name) · Zigzag ·
-// Ramp · Just this one, and ✦ Make this way a knob. Nothing has to be pressed (the drag did the first); a pointer over
+// Ramp · Just this one, and ✦ Write into the rule (studio-writeback; it was "✦ Make this way a knob"). Nothing has to
+// be pressed (the drag did the first); a pointer over
 // one shows that shape in place; a press (or key 1–4) swaps it IN THE SAME ⌘Z (undo.ts retarget); Esc or the next
 // action closes them. Ramp is dim when the nearest one was dragged ("ramps start from the nearest"); a layout that is
 // not a row has All the same and Just this one only (zigzag and ramp need an order). NOT beside the object: there it
@@ -23472,7 +24696,7 @@ __defs[60] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(59);
+const { addOffset } = __require(60);
 
                                                                          
                                                        
@@ -23489,8 +24713,10 @@ function offsetPic(kind                   )                {
   svg.setAttribute('height', '12');
   svg.setAttribute('aria-hidden', 'true');
   svg.classList.add('off-pic');
+  // Jitter (studio-writeback): five dots a little up and down, no pattern a hand would draw.
+  const JIT = [7, 4, 9, 5, 8];
   for (let i = 0; i < 5; i++) {
-    const y = kind === 'same' ? 6 : kind === 'zigzag' ? (i % 2 ? 3 : 9) : kind === 'ramp' ? 10 - i * 2 : i === 2 ? 3 : 9;
+    const y = kind === 'same' ? 6 : kind === 'zigzag' ? (i % 2 ? 3 : 9) : kind === 'ramp' ? 10 - i * 2 : kind === 'jitter' ? JIT[i]  : i === 2 ? 3 : 9;
     const c = document.createElementNS(SVG, 'circle');
     c.setAttribute('cx', String(3 + i * 6));
     c.setAttribute('cy', String(y));
@@ -23528,8 +24754,11 @@ function offsetPic(kind                   )                {
                                                    
                                                                                               
                                                        
-                                                                                                     
-                            
+     
+                                                                                                                               
+                                                                                                                   
+     
+                                                        
                                                                                                                     
                             
                                                                                           
@@ -23633,14 +24862,18 @@ function createOffsetChoices(d                   )                {
       }, offsetPic(c.pic), h('span', { text: c.label }), h('kbd', { text: String(KEY_OF[c.id]) }));
       el.append(b);
     });
-    if (d.ask) {
+    // ✦ only when the choice made left an offset that way (a drag that turned the code's own knob, or Just this one,
+    // has nothing to write into the rule).
+    const chosen = s.list[s.on]?.entry;
+    if (d.ask && (chosen?.offsets ?? []).some((o) => o.way === s.m.way)) {
       const p = d.place(s.m.id);
       el.append(h('button', { type: 'button', class: 'oc-ask', title: t('offset.toKnobTip'), dataset: { part: 'offset-ask' },
         onclick: () => {
           const name = p?.name ?? s.m.id;
           const draft = t('offset.draft', { name, way: t(`offset.way.${s.m.way}`) });
+          const { id, way } = s.m;
           close();
-          d.ask (draft);
+          d.ask (id, way, draft);
         } }, `✦ ${t('offset.toKnob')}`));
     }
   }
@@ -23714,8 +24947,15 @@ const offsetRowWords = (t   , o             ) => t(`offset.row.${o.how}`, { way:
                                                                   
                                                               
                         
-                                            
+                                                                                    
                                                                                         
+     
+                                                                                                                          
+                                                                               
+     
+                           
+                                                                                                            
+                  
  
 
 /**
@@ -23726,11 +24966,14 @@ function offsetRowsEl(o                )                     {
   if (!o.offs.length) return null;
   const t = o.t;
   const u = (w           ) => (w === 'turn' ? '°' : w === 'size' ? '×' : t(`hands.unit.${o.dim === '3d' ? 'm' : 'px'}`));
-  const span = (w           , how           ) => (w === 'turn' ? 90 : w === 'size' ? 1 : o.dim === '3d' ? (how === 'ramp' ? 1 : 5) : 200);
+  const span = (w           , how           ) => (w === 'turn' ? 90 : w === 'size' ? 1 : o.dim === '3d' ? (how === 'ramp' ? 1 : how === 'jitter' ? 2 : 5) : 200);
+  // A jitter's number is how far at most (never below 0; a size's spread never below ×1).
+  const lowest = (r             , v        ) => (r.how === 'jitter' ? (r.way === 'size' ? Math.max(1, v - span(r.way, r.how)) : Math.max(0, v - span(r.way, r.how))) : null);
+  const newSeed = () => (o.seed ? o.seed() : Math.floor(Math.random() * 1e6));
   const rows = o.offs.map((r, i) => {
     const boxes = r.way === 'move'
       ? (['X', o.dim === '3d' ? 'Z' : 'Y']         ).map((ax, j) => knobEl({
-        label: ax, unit: u('move'), v: r.v[j] , min: r.v[j]  - span('move', 'same'), max: r.v[j]  + span('move', 'same'), tip: t('rule.knobTip'), part: `offset-row-${i}-${j}`,
+        label: ax, unit: u('move'), v: r.v[j] , min: lowest(r, r.v[j] ) ?? r.v[j]  - span('move', 'same'), max: r.v[j]  + span('move', 'same'), tip: t('rule.knobTip'), part: `offset-row-${i}-${j}`,
         set: (v, end) => {
           const nv                   = [r.v[0], r.v[1]];
           nv[j] = Math.round(v * 10000) / 10000;
@@ -23739,12 +24982,17 @@ function offsetRowsEl(o                )                     {
       }))
       : [knobEl({
         label: offsetRowWords(t, r), unit: u(r.way), v: r.v,
-        min: r.way === 'size' ? Math.max(0.01, r.v - span(r.way, r.how)) : r.v - span(r.way, r.how), max: r.v + span(r.way, r.how),
+        min: lowest(r, r.v) ?? (r.way === 'size' ? Math.max(0.01, r.v - span(r.way, r.how)) : r.v - span(r.way, r.how)), max: r.v + span(r.way, r.how),
         tip: t('rule.knobTip'), part: `offset-row-${i}`,
         set: (v, end) => o.set(i, { ...r, v: Math.round(v * 10000) / 10000 }               , end),
       })];
+    // ⋯: a jitter row can be shuffled (a new seed: other little shifts); another row can get a jitter of its way
+    // (studio-writeback: "a little, by a fixed random amount" — the third pattern asked for that day); every row can go.
+    const extra = r.how === 'jitter'
+      ? [{ id: 'offset-reroll', label: t('offset.reroll'), run: () => o.set(i, { ...r, seed: newSeed() }               , true) }]
+      : o.jitter && !o.offs.some((x) => x.how === 'jitter' && x.way === r.way) && o.offs.length < 8 ? [{ id: 'offset-jitter', label: t('offset.jitterAdd'), run: () => o.jitter (i) }] : [];
     const more = h('button', { type: 'button', class: 'icon-btn off-more', title: t('offset.more'), 'aria-label': t('offset.more'), dataset: { part: `offset-row-${i}-more` },
-      onclick: (e       ) => o.menu?.(e.currentTarget               , [{ id: 'offset-remove', label: t('offset.remove'), run: () => o.set(i, null, true) }]) }, '⋯');
+      onclick: (e       ) => o.menu?.(e.currentTarget               , [...extra, { id: 'offset-remove', label: t('offset.remove'), run: () => o.set(i, null, true) }]) }, '⋯');
     return h('div', { class: `off-row${i === o.lit ? ' lit' : ''}`, title: t('offset.rowTip'), dataset: { part: 'offset-row', way: r.way, how: r.how } },
       offsetPic(r.how), h('span', { class: 'off-words', text: offsetRowWords(t, r) }), h('span', { class: 'off-boxes' }, ...boxes),
       o.ask ? h('button', { type: 'button', class: 'icon-btn off-ask', title: t('offset.toKnob'), 'aria-label': t('offset.toKnob'), dataset: { part: `offset-row-${i}-ask` }, onclick: () => o.ask (i) }, '✦') : null,
@@ -23759,7 +25007,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -23805,14 +25053,14 @@ __defs[61] = function (__exports) {
 //   - the list: [✋ 2] on the rule's heading, [✋ Placed by hand] on a row (picked: [✋] and Back to rule)
 //   - the moment one leaves: "✋ Placed Crystal 9 by hand (the rest stay on the rule) · Back to rule · ⌘Z" (`told`'s
 //     hand form) while its ring spreads violet → sand in the game (bridge/code-place.ts)
-                                                                                                                                        
+                                                                                                                                                                 
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
-const { turnKnobs } = __require(33);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(60);
-const { addOffset, dragAmount, lastOf, movesRank, noAmount } = __require(59);
+const { turnKnobs } = __require(34);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(61);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(60);
 const { roundPose } = __require(31);
-const { gapText, placeGaps } = __require(52);
+const { gapText, placeGaps } = __require(53);
 
                                                                          
 
@@ -23836,6 +25084,8 @@ const { gapText, placeGaps } = __require(52);
                                                             
                                                                               
                                                                                         
+                                                                                                                        
+                  
      
                                                                                                                          
                                                                                
@@ -23860,6 +25110,11 @@ const { gapText, placeGaps } = __require(52);
                                
                                                                                  
                             
+     
+                                                                                                                         
+                                                                                                                      
+     
+                                                            
                                                                     
                     
                             
@@ -23931,6 +25186,17 @@ const { gapText, placeGaps } = __require(52);
                                                                                      
                          
      
+                                                                                                                          
+                                                                                                                            
+                                                           
+     
+                                                                                                                                      
+     
+                                                                                                                          
+                                                                                            
+     
+                                                
+     
                                                                                                                           
                                                                     
      
@@ -23982,6 +25248,8 @@ function createCodePlaceWire(d                   )                {
   // made just now (it lights once on the card: decision 6, "a new row glows violet once").
   let lastDrag                                                                                = null;
   let lit                                   = null;
+  // studio-writeback: the knobs the AI added (✦ Write into the rule), lit once on the card like a new offset row.
+  let litKnobs                                         = null;
   /** A row more than before: that one lights (the last: a new or turned row goes last, offset-model.ts). */
   function litNew(id        , from                       ) {
     const now = d.store().get(id)?.offsets ?? [];
@@ -24107,7 +25375,7 @@ function createCodePlaceWire(d                   )                {
       lastDrag = { id, from, to: d.store().get(id) };
       litNew(id, from);
     },
-    ask: d.ask ? (draft) => d.ask (draft) : undefined,
+    ask: d.askRule ? (id, way, draft) => d.askRule (id, way, draft) : d.ask ? (_id, _way, draft) => d.ask (draft) : undefined,
     opened: (on) => d.send({ type: 'studio:place/choices', on }),
     // Just this one: the choices' own line says "Placed Street lamps 5 by hand" (the plan's picture 4) — no second line.
   });
@@ -24141,12 +25409,47 @@ function createCodePlaceWire(d                   )                {
           layout([p.id]);
         } else endLive(p.id, next);
       },
-      ask: d.ask ? (i) => {
+      ask: d.ask || d.askRule ? (i) => {
         const r = entry(p.id).offsets?.[i];
-        if (r) d.ask (t('offset.draftRow', { name: p.name, way: t(`offset.way.${r.way}`), what: r.way === 'move' ? r.v.join(', ') : `${offsetRowWords(t, r)} ${r.v}` }));
+        if (!r) return;
+        // "…the sideways offset of Street lamps (All the same 1 m)": the way once, then how and how much.
+        const what = r.way === 'move' ? amountWords(t, 'move', r.v, d.dim()) : `${t(`offset.${r.how}`)} ${rowText(r).split(' ').slice(-1)[0]}`;
+        const draft = t('offset.draftRow', { name: p.name, way: t(`offset.way.${r.way}`), what });
+        if (d.askRule) d.askRule(p.id, r.way, draft);
+        else d.ask (draft);
       } : undefined,
       menu: d.menu ? (at, rows) => d.menu (at, rows) : undefined,
+      jitter: (i) => {
+        const r = entry(p.id).offsets?.[i];
+        if (r) addJitter(p, r.way);
+      },
+      seed: () => newSeed(),
     });
+  }
+
+  const newSeed = () => Math.max(0, Math.min(999999, Math.floor(d.seed ? d.seed() : Math.random() * 1e6)));
+  /** The ways a jitter can be added to layout `p` from the card's ⋯ (a row: sideways; not a row: on the ground). */
+  const jitterWays = (p               , key        )              => [rowOf(p, key) ? 'side' : 'move', 'turn', 'size'];
+  /**
+   * "Add jitter" (studio-writeback, 2026-10-24; the third pattern asked for that day, "a little, by a fixed random amount"): a
+   * jitter row of `way` on the rule — every object a little off, the same every load (its seed). One ⌘Z, Save · 1; the new
+   * row lights once; the line says it. None when that way has one already or eight rows are there.
+   */
+  function addJitter(p               , way           )          {
+    const e = entry(p.id);
+    const offs = e.offsets ?? [];
+    if (offs.length >= MAX_OFFSETS || offs.some((o) => o.how === 'jitter' && o.way === way)) return false;
+    const from = d.store().get(p.id);
+    d.commit(p.id, from, { ...e, offsets: [...offs, jitterRow(way, d.dim() === '3d', newSeed())] });
+    litNew(p.id, from);
+    d.told(t('offset.jitterDone', { name: p.name, way: t(`offset.way.${way}`) }));
+    return true;
+  }
+
+  /** An offset row as the line and the chips say it: "Sideways · All the same 1 m", "Position 1.2, −0.5 m". */
+  function rowText(o             )         {
+    if (o.way === 'move') return amountWords(t, 'move', o.v, d.dim());
+    return `${offsetRowWords(t, o)} ${knobNumber(o.v)}${o.way === 'turn' ? '°' : o.way === 'size' ? '×' : unit(d.dim() === '3d' ? 'm' : 'px')}`;
   }
 
   function guide(force = false) {
@@ -24216,6 +25519,8 @@ function createCodePlaceWire(d                   )                {
     const head = h('div', { class: 'rule-head', title: t('rule.tagTip') },
       h('span', { class: 'f-l', text: t('rule.layout') }),
       h('strong', { class: 'rule-what', title: p.name, text: t('rule.layoutWhat', { kind, n: p.keys.length }) }));
+    const shine = litKnobs && litKnobs.id === p.id ? litKnobs.names : [];
+    if (shine.length) litKnobs = null;
     const knobs = Object.entries(p.knobs).map(([name, k]) => knobEl({
       label: k.label, unit: unit(k.unit), v: knobNow(p, name), min: k.min, max: k.max, step: k.step, tip: t('rule.knobTip'), part: `rule-knob-${name}`,
       set: (v, end) => {
@@ -24225,7 +25530,7 @@ function createCodePlaceWire(d                   )                {
           layout([p.id]);
         } else endLive(p.id, next);
       },
-    }));
+    })).map((el, j) => (shine.includes(Object.keys(p.knobs)[j] ) ? (el.classList.add('lit'), el) : el));
     // Pins of numbers the rule no longer has (the count turned down): kept, not used (the plan's decision 16).
     const unused = Object.keys(entry(p.id).pins ?? {}).filter((k) => !p.keys.includes(k) && !p.skipped.includes(k)).length;
     const foot = h('div', { class: 'rule-foot' },
@@ -24371,7 +25676,11 @@ function createCodePlaceWire(d                   )                {
       const e = p ? entry(p.id) : null;
       if (!p || !e || e.hand) return [];
       if (e.pins?.[key]) return [{ id: 'rule-reset', label: t('rule.reset'), run: () => unpin(p, key) }];
-      return [{ id: 'rule-individually', label: t('rule.individually'), run: () => individually(p) }];
+      // studio-writeback: "Add jitter (Sideways / Turn / Size)" — the ways without one yet, while there is room.
+      const offs = e.offsets ?? [];
+      const jit = offs.length >= MAX_OFFSETS ? [] : jitterWays(p, key).filter((w) => !offs.some((o) => o.how === 'jitter' && o.way === w))
+        .map((w) => ({ id: `rule-jitter-${w}`, label: t('offset.jitterAddWay', { way: t(`offset.way.${w}`) }), run: () => void addJitter(p, w) }));
+      return [...jit, { id: 'rule-individually', label: t('rule.individually'), run: () => individually(p) }];
     },
     individually(id) {
       const p = d.list().find((x) => x.id === id);
@@ -24389,6 +25698,22 @@ function createCodePlaceWire(d                   )                {
       hovered = keys.slice(0, 50);
       guide();
     },
+    ruleAsk(id, way) {
+      const p = d.list().find((x) => x.id === id);
+      if (!p) return null;
+      const offs = entry(id).offsets ?? [];
+      // Each object's row / rank / what the offsets add (the same as `--do list`'s objects): the AI never counts ranks.
+      const objects = p.rows?.some(Boolean) ? p.keys.map((k) => {
+        const r = p.rows [nth(p, k) - 1];
+        return r ? { key: k, line: r.line, rank: r.rank, ...(r.offset ? { offset: r.offset } : {}) } : { key: k };
+      }) : undefined;
+      const mine = offs.filter((o) => o.way === way);
+      return { place: { way, ...(offs.length ? { offsets: structuredClone(offs) } : {}), ...(objects ? { objects } : {}) },
+        chip: t('offset.chipRule', { name: p.name }), tag: mine.length ? mine.map(rowText).join(' · ') : t(`offset.way.${way}`) };
+    },
+    lightKnobs(id, names) {
+      litKnobs = { id, names: names.slice() };
+    },
     savedWords() {
       const out           = [];
       for (const id of d.store().changedIds()) {
@@ -24404,7 +25729,7 @@ function createCodePlaceWire(d                   )                {
         }
         // studio-offsets: "Street lamps Sideways · Zigzag width 1.5 m".
         for (const o of e.offsets ?? []) {
-          out.push(t('offset.saved', { name: p.name, what: o.way === 'move' ? amountWords(t, 'move', o.v, d.dim()) : `${offsetRowWords(t, o)} ${knobNumber(o.v)}${o.way === 'turn' ? '°' : o.way === 'size' ? '×' : unit(d.dim() === '3d' ? 'm' : 'px')}` }));
+          out.push(t('offset.saved', { name: p.name, what: rowText(o) }));
           said = true;
         }
         if (!said) out.push(p.name);
@@ -24499,7 +25824,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -24708,7 +26033,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -24739,7 +26064,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(62);
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(63);
 
                                                                          
                                    
@@ -25033,7 +26358,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -25339,7 +26664,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -25440,7 +26765,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -25575,6 +26900,22 @@ class UndoStack {
     return true;
   }
 
+  /**
+   * Every step's change of code layout `key`, both ways, through `fn` (studio-writeback, 2026-10-24): what the AI wrote
+   * into the code left the file (`place.code --fold`), so it leaves the history too — an offset is added on top of the
+   * rule, and a ⌘Z / ⇧⌘Z that put it back in the file would shift the rule twice (the code has it now). A step left with
+   * nothing to change stays (its ⌘Z just changes nothing): the steps around it keep their places.
+   */
+  rebase(key        , fn                                                     )       {
+    for (const e of [...this.done, ...this.undone, ...(this.group ? [this.group.entry] : [])]) {
+      for (const c of e.changes) {
+        if (c.kind !== 'code-place' || c.key !== key) continue;
+        c.from = fn(c.from);
+        c.to = fn(c.to);
+      }
+    }
+  }
+
   /** What Undo / Redo would change next, without changing it (their tooltips name it). */
   peekUndo()                   {
     return this.done[this.done.length - 1] ?? null;
@@ -25638,940 +26979,100 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[67] = function (__exports) {
-'use strict';
-// ../schema/hands.mjs
-
-// The AI's hands in the editor (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6): what `studio.mjs <game> --do …` asks
-// the editor to do — take a motion off an object, make a motion from points, move / rename / duplicate an object, add a
-// level, Save — and the same change written into placement.json when no editor is open.
-//
-// WHY (a request, 2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst
-// experience." Claude answered with a numbered list (1. select the blue pillar 2. right-click the card's Motion row 3.
-// "Remove from this object" 4. Save), because SKILL.md said "Do not write motions / motion in placement.json: they are
-// the editor's". The same day it made a spiral by writing it into index.html, so the spiral was not on the timeline,
-// fought the editor's own motion, and the person was asked to press Reload. Now the AI does editor work through the
-// editor: a running editor changes on screen (one ⌘Z undoes it, it counts on Save · n), and with no editor open the
-// same op is written into placement.json in the shape the editor itself writes.
-//
-// One module for both sides, so they agree on what an op means: the CLI (src/server/hands-cli.mjs) reads the ops and
-// writes the file with applyHandsToFile(); the editor (src/shell/ai-hands.ts) reads the same ops, makes the same motion
-// from points (handsMotion), the same pose (handsPose), picks the same clip (handsClip) and the same default start
-// (handsDefaultWhen), and words its result with the same sentence (handsSaid) for the AI's stdout line.
-// No imports but the validator (the bundled CLI and the shell bundle both take this file as it is).
-const { CODE_ID_RE, CUE_RE, KEY_RE, KNOB_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } = __require(2);
-
-/**
- * Every op, with the fields it needs and the fields it may have. A field not listed is an error (an AI's typo —
- * `"clip"` for `"name"` — should fail loudly, not be ignored). `level`: the level the op is about (a game with levels;
- * the editor opens it first, the file writes into it).
- */
-const HANDS_OPS = Object.freeze({
-  'motion.make': { need: ['name'], may: ['len', 'repeat', 'points', 'keys', 'ease', 'key', 'when', 'until', 'replace', 'level'] },
-  'motion.attach': { need: ['key', 'name'], may: ['when', 'until', 'level'] },
-  'motion.detach': { need: ['key'], may: ['name', 'all', 'level'] },
-  'motion.delete': { need: ['name'], may: [] },
-  'motion.rename': { need: ['name', 'to'], may: [] },
-  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'knobs', 'off', 'level'] },
-  // Code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12): the AI writes the formula
-  // in the game's code (codeMotion / codePlace / codeAvoid) and puts it in the editor with these — it is then on the
-  // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
-  'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
-  'place.code': { need: ['id'], may: ['replace', 'level'] },
-  // `offsets` (studio-offsets, 2026-10-24): the rule's shifts as the person's drags make them ([] takes them off) — "move
-  // every lamp 1 m further from the road" without writing code; on Save the AI writes them into the rule and sends [].
-  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'offsets', 'level'] },
-  'place.avoid': { need: ['id'], may: ['code', 'box', 'name', 'knobs', 'off', 'remove', 'level'] },
-  'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
-  'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
-  'object.scale': { need: ['key'], may: ['to', 'by', 'level'] },
-  'object.rename': { need: ['key', 'to'], may: ['level'] },
-  'object.duplicate': { need: ['key'], may: ['to', 'by', 'level'] },
-  'object.delete': { need: ['key'], may: ['level'] },
-  'object.ground': { need: ['key'], may: ['level'] },
-  'level.new': { need: [], may: ['name'] },
-  'level.duplicate': { need: [], may: ['id', 'name'] },
-  'level.rename': { need: ['to'], may: ['id'] },
-  'level.switch': { need: ['id'], may: [] },
-  save: { need: [], may: [] },
-  'editor.reload': { need: [], may: ['editor'] },
-  // Read only: the objects as the person calls them ("Blue pillar (1st)"), their keys and motions, the Library's
-  // motions and the levels — so "the blue pillar's old motion" can be found without asking the person.
-  list: { need: [], may: [] },
-});
-const HANDS_OP_NAMES = Object.freeze(Object.keys(HANDS_OPS));
-/** At most this many ops in one --do (a spiral is one op; 50 is a whole re-layout). */
-const HANDS_MAX_OPS = 50;
-/** A level id, as studio.levels() gives them (letters, digits, - and _). */
-const HANDS_LEVEL_RE = /^[A-Za-z0-9_-]{1,40}$/;
-const HANDS_CTRL_RE = /[\u0000-\u001f\u007f]/;
-
-const handsNum = (x) => typeof x === 'number' && Number.isFinite(x);
-const handsVec = (x, n) => Array.isArray(x) && (n ? x.length === n : x.length === 2 || x.length === 3) && x.every(handsNum);
-const handsText = (x, max) => typeof x === 'string' && !!x.trim() && x.length <= max && !HANDS_CTRL_RE.test(x);
-
-/**
- * Read the AI's ops: a JSON text, one op object, or a list of them. Each is `{ "do": "motion.detach", "key": … }`.
- * Returns { ok: true, ops } (copies, `when` / `until` in the file's shape) or { ok: false, errors }.
- */
-function readHandsInput(input) {
-  let v = input;
-  if (typeof v === 'string') {
-    try {
-      v = JSON.parse(v);
-    } catch (e) {
-      return { ok: false, errors: [`not JSON: ${String(e && e.message).slice(0, 120)}`] };
-    }
-  }
-  const list = Array.isArray(v) ? v : [v];
-  if (!list.length) return { ok: false, errors: ['no ops'] };
-  if (list.length > HANDS_MAX_OPS) return { ok: false, errors: [`at most ${HANDS_MAX_OPS} ops at once`] };
-  const errors = [];
-  const ops = list.map((op, i) => readHandsOp(op, list.length > 1 ? `op ${i + 1}` : 'op', errors));
-  return errors.length ? { ok: false, errors: errors.slice(0, 20) } : { ok: true, ops };
-}
-
-function readHandsOp(op, at, errors) {
-  const fail = (what) => (errors.push(`${at}: ${what}`), null);
-  if (!op || typeof op !== 'object' || Array.isArray(op)) return fail('must be an object like {"do":"motion.detach","key":"pillar-1","name":"Row"}');
-  const spec = HANDS_OPS[op.do];
-  if (!spec) return fail(`"do" must be one of ${HANDS_OP_NAMES.join(', ')}`);
-  at = `${at} (${op.do})`;
-  const out = { do: op.do };
-  for (const f of Object.keys(op)) if (f !== 'do' && !spec.need.includes(f) && !spec.may.includes(f)) fail(`unknown field "${f}" (it takes ${[...spec.need, ...spec.may].join(', ') || 'nothing'})`);
-  for (const f of spec.need) if (op[f] === undefined) fail(`needs "${f}"`);
-  const has = (f) => op[f] !== undefined;
-  if (has('key') && (typeof op.key !== 'string' || !KEY_RE.test(op.key))) fail('"key" must be an object key (letters, digits, _ : # . - /)');
-  else if (has('key')) out.key = op.key;
-  if (has('name')) {
-    // A level's name may be longer than a motion's (it is shown in the level's head, up to 60 characters).
-    const max = op.do.startsWith('level.') ? 60 : LIMITS.maxClipName;
-    if (!handsText(op.name, max)) fail(`"name" must be 1 to ${max} characters`);
-    else out.name = op.name.trim();
-  }
-  const place = op.do.startsWith('place.');
-  for (const f of ['id', 'level']) {
-    if (!has(f)) continue;
-    // A layout's id is a codePlace id (place.*); every other id is a level's.
-    if (f === 'id' && place) {
-      if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
-      else out.id = op.id;
-    } else if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
-    else out[f] = op[f];
-  }
-  if (has('code')) {
-    if (typeof op.code !== 'string' || !CODE_ID_RE.test(op.code)) fail(`"code" must be the ${place ? 'codeAvoid' : 'codeMotion'} id in the game's code (lower case letters, digits and -, like "${place ? 'near-player' : 'spiral'}")`);
-    else out.code = op.code;
-  }
-  // place.code's `replace` is the hand-placed objects it takes the place of; elsewhere it is true / false.
-  if (has('replace') && op.do === 'place.code') {
-    const ok = Array.isArray(op.replace) && op.replace.length > 0 && op.replace.length <= LIMITS.maxObjects && op.replace.every((k) => typeof k === 'string' && KEY_RE.test(k)) && new Set(op.replace).size === op.replace.length;
-    if (!ok) fail('"replace" must be the keys of the hand-placed objects this layout takes the place of, each once (["lamp-1", "lamp-2"])');
-    else out.replace = op.replace.slice();
-  }
-  for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
-    if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
-    if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
-    else out[f] = op[f];
-  }
-  if (has('knobs')) {
-    const ks = op.knobs && typeof op.knobs === 'object' && !Array.isArray(op.knobs) ? Object.entries(op.knobs) : null;
-    if (!ks || !ks.length || ks.length > LIMITS.maxKnobs || !ks.every(([n, v]) => KNOB_RE.test(n) && handsNum(v) && Math.abs(v) <= LIMITS.maxKnob)) fail(`"knobs" must be 1 to ${LIMITS.maxKnobs} knob names with their numbers ({ "gap": 4 }), each within ±${LIMITS.maxKnob}`);
-    else out.knobs = Object.fromEntries(ks);
-  }
-  if (has('pin')) {
-    const pn = op.pin;
-    const ok = pn && typeof pn === 'object' && !Array.isArray(pn) && typeof pn.key === 'string' && KEY_RE.test(pn.key) && handsVec(pn.p)
-      && (pn.r === undefined || handsNum(pn.r)) && (pn.s === undefined || (handsNum(pn.s) && pn.s !== 0) || handsVec(pn.s)) && Object.keys(pn).every((k) => ['key', 'p', 'r', 's'].includes(k));
-    if (!ok) fail('"pin" must be { "key": "hex-3", "p": [x, y, z], "r"?: angle, "s"?: size } (one of the layout\'s objects, put by hand)');
-    else out.pin = structuredClone(pn);
-  }
-  // "*" (studio-hand-marks, 2026-10-24): every one of the layout's objects placed by hand, back on the rule — the card's
-  // "All back to rule".
-  if (has('unpin')) {
-    if (typeof op.unpin !== 'string' || (op.unpin !== '*' && !KEY_RE.test(op.unpin))) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3"), or "*" for all of them');
-    else out.unpin = op.unpin;
-  }
-  if (has('offsets')) {
-    const o = readHandsOffsets(op.offsets);
-    if (o.error) fail(`"offsets": ${o.error}`);
-    else out.offsets = o.offsets;
-  }
-  if (has('box')) {
-    const b = op.box;
-    const ok = b && typeof b === 'object' && handsVec(b.p) && handsVec(b.size, b.p.length) && b.size.every((x) => x >= 0) && Object.keys(b).every((k) => k === 'p' || k === 'size');
-    if (!ok) fail('"box" must be { "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] } (2D: [x, y] / [w, h] px)');
-    else out.box = { p: b.p.slice(), size: b.size.slice() };
-  }
-  if (has('remove')) {
-    if (!(Number.isInteger(op.remove) && op.remove >= 0) && !(typeof op.remove === 'string' && CODE_ID_RE.test(op.remove))) fail('"remove" must be which keep-out area: its place in the list (0 = the first) or its codeAvoid id');
-    else out.remove = op.remove;
-  }
-  if (has('to') || has('by')) readHandsAmounts(op, out, fail);
-  if (has('len')) {
-    if (!handsNum(op.len) || op.len < LIMITS.minClipLen || op.len > LIMITS.maxClipLen) fail(`"len" must be ${LIMITS.minClipLen} to ${LIMITS.maxClipLen} seconds`);
-    else out.len = op.len;
-  }
-  if (has('repeat')) {
-    if (!MOTION_REPEATS.includes(op.repeat)) fail(`"repeat" must be one of ${MOTION_REPEATS.join(', ')}`);
-    else out.repeat = op.repeat;
-  }
-  if (has('ease')) {
-    if (!MOTION_EASES.includes(op.ease)) fail(`"ease" must be one of ${MOTION_EASES.join(', ')}`);
-    else out.ease = op.ease;
-  }
-  if (has('points')) {
-    const ok = Array.isArray(op.points) && op.points.length >= 2 && op.points.length <= LIMITS.maxClipKeys && op.points.every((p) => handsVec(p))
-      && op.points.every((p) => p.length === op.points[0].length);
-    if (!ok) fail(`"points" must be 2 to ${LIMITS.maxClipKeys} positions, each [x, y, z] (3D) or [x, y] (2D), offsets from where the object stands`);
-    else out.points = op.points.map((p) => p.slice());
-  }
-  if (has('keys')) {
-    if (!op.keys || typeof op.keys !== 'object' || Array.isArray(op.keys)) fail('"keys" must be { "p": [{ "t": 0, "v": [0, 0, 0] }, …], "r": …, "s": … }');
-    else out.keys = structuredClone(op.keys);
-  }
-  if (op.do === 'motion.make' && !has('points') && !has('keys')) fail('needs "points" (positions to go through) or "keys"');
-  if (op.do === 'motion.make' && has('points') && has('keys')) fail('"points" or "keys", not both');
-  if (has('when')) {
-    const w = readHandsWhen(op.when);
-    if (w.error) fail(`"when": ${w.error}`);
-    else out.when = w.when;
-  }
-  if (has('until')) {
-    const u = readHandsUntil(op.until);
-    if (u.error) fail(`"until": ${u.error}`);
-    else out.until = u.until;
-  }
-  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
-  if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
-  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand', 'offsets'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand", "offsets"');
-  if (op.do === 'place.avoid') {
-    if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
-    else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
-    if (has('name') && !has('box')) fail('"name" is a box\'s (a condition is named in its codeAvoid())');
-    if (has('knobs') && !has('code')) fail('"knobs" are a code condition\'s');
-  }
-  if (op.do.startsWith('object.') && ['move', 'turn', 'scale'].includes(op.do.slice(7)) && !has('to') && !has('by')) fail('needs "to" or "by"');
-  return out;
-}
-
-/** `to` / `by` mean different things per op: a position, an angle, a size, or a new name. */
-function readHandsAmounts(op, out, fail) {
-  const kind = op.do;
-  for (const f of ['to', 'by']) {
-    if (op[f] === undefined) continue;
-    const v = op[f];
-    if (kind === 'object.rename' || kind === 'motion.rename' || kind === 'level.rename') {
-      if (f === 'by') fail('"by" is not for a rename');
-      else if (!handsText(v, kind === 'motion.rename' ? LIMITS.maxClipName : 120)) fail('"to" must be the new name');
-      else out.to = v.trim();
-    } else if (kind === 'object.move' || kind === 'object.duplicate') {
-      if (!handsVec(v)) fail(`"${f}" must be [x, y, z] (3D) or [x, y] (2D)`);
-      else out[f] = v.slice();
-    } else if (kind === 'object.turn') {
-      if (!handsNum(v)) fail(`"${f}" must be an angle (radians; "deg": true for degrees)`);
-      else out[f] = v;
-    } else if (kind === 'object.scale') {
-      if (f === 'by' ? !(handsNum(v) && v > 0) : !(handsNum(v) && v !== 0) && !handsVec(v)) fail(f === 'by' ? '"by" must be a number above 0 (2 = twice as big)' : '"to" must be a size (1 = as built) or [x, y, z]');
-      else out[f] = Array.isArray(v) ? v.slice() : v;
-    } else fail(`"${f}" is not for ${kind}`);
-  }
-  if (out.to !== undefined && out.by !== undefined) fail('"to" or "by", not both');
-}
-
-/**
- * When a motion starts, the AI's way: the file's object ({ "on": "key", "key": "KeyE" }), a list of them, or a short
- * word — "start", "click", "touch", "key:E" / "key:Space", "time:2", "after:Hop", "cue:chest-opened", "say:<words>".
- */
-function readHandsWhen(v) {
-  if (Array.isArray(v)) {
-    if (v.length < 1 || v.length > LIMITS.maxWhens) return { error: `a list of 1 to ${LIMITS.maxWhens}` };
-    const xs = v.map(readHandsWhen);
-    const bad = xs.find((x) => x.error);
-    if (bad) return bad;
-    const ws = xs.map((x) => x.when);
-    return { when: ws.length === 1 ? ws[0] : ws };
-  }
-  let w = v;
-  if (typeof v === 'string') {
-    const i = v.indexOf(':');
-    const on = (i < 0 ? v : v.slice(0, i)).trim();
-    const arg = i < 0 ? '' : v.slice(i + 1).trim();
-    if (on === 'key') {
-      // "E" → "KeyE", "1" → "Digit1": the AI may write the key as people say it; the file wants KeyboardEvent.code.
-      const code = /^[A-Za-z]$/.test(arg) ? `Key${arg.toUpperCase()}` : /^[0-9]$/.test(arg) ? `Digit${arg}` : arg;
-      w = { on, key: code };
-    } else if (on === 'time') w = { on, after: Number(arg) };
-    else if (on === 'after') w = { on, use: arg };
-    else if (on === 'cue') w = { on, cue: arg };
-    else if (on === 'say') w = arg ? { on, say: arg } : { on };
-    else w = { on };
-  }
-  if (!w || typeof w !== 'object' || !MOTION_TRIGGERS.includes(w.on)) return { error: `"on" must be one of ${MOTION_TRIGGERS.join(', ')}` };
-  if (w.on === 'key' && !(typeof w.key === 'string' && /^[A-Za-z][A-Za-z0-9]{1,24}$/.test(w.key))) return { error: 'a key like "KeyE", "Space", "ArrowUp" (or "key:E")' };
-  if (w.on === 'time' && !(handsNum(w.after) && w.after >= 0 && w.after <= LIMITS.maxClipLen)) return { error: 'time needs "after": seconds' };
-  if (w.on === 'after' && !handsText(w.use, LIMITS.maxClipName)) return { error: 'after needs the motion it follows ("after:Hop")' };
-  if (w.on === 'cue' && !(typeof w.cue === 'string' && CUE_RE.test(w.cue))) return { error: 'a cue name like "chest-opened" (lower case, digits, -)' };
-  if (w.on === 'enter' && !(w.area && handsVec(w.area.p) && handsVec(w.area.size))) return { error: 'enter needs "area": { "p": [x, y, z], "size": [w, h, d] }' };
-  return { when: structuredClone(w) };
-}
-
-/** When it stops: { "times": 3 }, { "cue": "boss-down" }, { "then": "reset" }, or "times:3" / "cue:boss-down"; null = never. */
-function readHandsUntil(v) {
-  if (v === null || v === 'never') return { until: null };
-  let u = v;
-  if (typeof v === 'string') {
-    const [k, a] = v.split(':').map((s) => s.trim());
-    u = k === 'times' ? { times: Number(a) } : k === 'cue' ? { cue: a } : null;
-  }
-  if (!u || typeof u !== 'object' || Array.isArray(u)) return { error: '{ "times": 3 } or { "cue": "boss-down" } (null = never stops)' };
-  const out = {};
-  if (u.times !== undefined) {
-    if (!(Number.isInteger(u.times) && u.times >= 1 && u.times <= LIMITS.maxRounds)) return { error: `"times" must be 1 to ${LIMITS.maxRounds}` };
-    out.times = u.times;
-  }
-  if (u.cue !== undefined) {
-    if (!(typeof u.cue === 'string' && CUE_RE.test(u.cue))) return { error: '"cue" must be a cue name like "boss-down"' };
-    out.cue = u.cue;
-  }
-  if (u.then !== undefined) {
-    if (u.then !== 'stay' && u.then !== 'reset') return { error: '"then" must be stay or reset' };
-    out.then = u.then;
-  }
-  if (out.times === undefined && out.cue === undefined) return { error: 'needs "times" or "cue"' };
-  return { until: out };
-}
-
-/**
- * The Library motion an op makes ({ name, len, repeat, keys } as the file writes it), or { error }.
- * `points`: positions the object goes through, as offsets from where it stands, spread evenly over `len` (default 2 s),
- * linear between them unless `ease` says otherwise — WHY linear: every key's default ease slows to a stop at the key,
- * so a spiral of 48 points would stutter 48 times; the path is still the smooth curve through the points (the loader's
- * trackAt). `keys`: the file's own keys (p / r / s), when the AI needs turns or sizes too.
- * Checked with the file's own validator, so a motion the editor or the loader would refuse is refused here first.
- */
-function handsMotion(op, dim) {
-  const n = dim === '2d' ? 2 : 3;
-  const len = op.len ?? 2;
-  let keys;
-  if (op.points) {
-    if (op.points[0].length !== n) return { error: `points must have ${n} numbers each in a ${dim.toUpperCase()} game` };
-    const ease = op.ease ?? 'linear';
-    const last = op.points.length - 1;
-    keys = { p: op.points.map((v, i) => ({ t: (len * i) / last, v: v.slice(), ...(i < last && ease !== 'ease' ? { ease } : {}) })) };
-  } else keys = structuredClone(op.keys);
-  const m = { name: op.name, len, ...(op.repeat && op.repeat !== 'once' ? { repeat: op.repeat } : {}), keys };
-  const r = validateStudioFile({ version: 1, tool: 'placement', dim, space: 'local', objects: {}, motions: [m] }, { tool: 'placement' });
-  if (!r.ok) return { error: r.errors.slice(0, 3).map((e) => e.replace(/^motions\[0\]\.?/, '')).join('; ') };
-  return { motion: r.value.motions[0] };
-}
-
-/** The clip of `clips` an op means: by its name or its Library motion's; none named = the only one. { clip } or { error }. */
-function handsClip(clips, name, key) {
-  const cs = clips || [];
-  const said = () => (cs.length ? `its motions: ${cs.map((c) => `"${c.name}"`).join(', ')}` : 'it has no motion');
-  if (!cs.length) return { error: `${key} has no motion` };
-  if (name === undefined) {
-    if (cs.length === 1) return { clip: cs[0] };
-    return { error: `${key} has ${cs.length ? `${cs.length} motions` : 'no motion'}: say which one with "name" (${said()})` };
-  }
-  const c = cs.find((x) => x.name === name) || cs.find((x) => x.use === name);
-  return c ? { clip: c } : { error: `${key} has no motion "${name}" (${said()})` };
-}
-
-/**
- * How a motion the AI MAKES starts when the op does not say: with the game. WHY not the attach rule below ("after its
- * last motion"): the person asked for it to move now ("make it spiral"), and after a motion that loops forever (Sway,
- * pingpong) "after" never comes — a real AI's spiral would have waited for ever (found in the real-AI run, 2026-10-24).
- */
-const HANDS_MAKE_WHEN = Object.freeze({ on: 'start' });
-
-/** How a motion put on an object starts when the op does not say: the editor's own rule (timeline-wire attach). */
-function handsDefaultWhen(clips) {
-  const cs = clips || [];
-  const last = cs[cs.length - 1];
-  const starts = cs.some((c) => (c.when && typeof c.when === 'object' && !Array.isArray(c.when) ? c.when.on === 'start' : c.start === true || c.when === undefined));
-  return starts && last ? { on: 'after', use: last.use ?? last.name } : { on: 'start' };
-}
-
-/** The pose after a move / turn / scale op, rounded like the file. { pose } or { error } (needs the pose for `by`). */
-function handsPose(op, pose, dim) {
-  const n = dim === '2d' ? 2 : 3;
-  const step = dim === '2d' ? 10 : 1000;
-  const rd = (v, s) => Math.round(v * s) / s;
-  const out = pose ? structuredClone(pose) : {};
-  if (op.do === 'object.move' || op.do === 'object.duplicate') {
-    const v = op.to ?? op.by;
-    if (!v) return { pose: out };
-    if (v.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
-    if (op.by && !pose?.p) return { error: `where ${op.key} stands now is not known here: give "to" (a place), or open the editor` };
-    out.p = v.map((x, i) => rd(op.by ? pose.p[i] + x : x, step));
-  } else if (op.do === 'object.turn') {
-    const a = (op.deg ? (op.to ?? op.by) * Math.PI / 180 : op.to ?? op.by);
-    if (op.by !== undefined && !pose) return { error: `how ${op.key} is turned now is not known here: give "to", or open the editor` };
-    let r = op.by !== undefined ? (pose.r ?? 0) + a : a;
-    // (-π, π], like the file.
-    r = Math.atan2(Math.sin(r), Math.cos(r));
-    if (r <= -Math.PI + 1e-9) r = Math.PI;
-    out.r = rd(r, 10000);
-  } else if (op.do === 'object.scale') {
-    if (op.by !== undefined) {
-      if (!pose) return { error: `the size of ${op.key} now is not known here: give "to", or open the editor` };
-      const s = pose.s ?? 1;
-      out.s = Array.isArray(s) ? s.map((x) => rd(x * op.by, 10000)) : rd(s * op.by, 10000);
-    } else {
-      if (Array.isArray(op.to) && op.to.length !== n) return { error: `a size has 1 or ${n} numbers in a ${dim.toUpperCase()} game` };
-      out.s = Array.isArray(op.to) ? op.to.map((x) => rd(x, 10000)) : rd(op.to, 10000);
-    }
-  }
-  return { pose: out };
-}
-
-/** "crate-1" → "crate-2" (the editor's copyKey rule, edit-ops.ts): a key nothing has. */
-function handsCopyKey(from, taken) {
-  let base = from.replace(/^path:.*$/, 'copy').replace(/#\d+$/, '').replace(/[-_ .]?\d+$/, '');
-  base = (base || 'copy').slice(0, 70);
-  for (let n = 2; n < 100000; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
-  return `${base}-${Date.now()}`;
-}
-
-const handsQ = (s) => `"${s}"`;
-const handsKnobWords = (k) => Object.entries(k).map(([n, v]) => `${n} ${v}`).join(', ');
-const handsWhenWords = (w) => {
-  const one = (x) => (x.on === 'start' ? 'starts with the game' : x.on === 'time' ? `starts ${x.after} s after the start` : x.on === 'key' ? `starts when ${x.key} is pressed`
-    : x.on === 'click' ? 'starts when it is clicked' : x.on === 'after' ? `starts after "${x.use}" ends` : x.on === 'enter' ? 'starts when the player walks into its area'
-    : x.on === 'touch' ? 'starts when the player touches it (the game calls touch(key))' : x.on === 'cue' ? `starts on cue('${x.cue}') in the game's code`
-    : 'waits for the game\'s code to call playMotion(key, name)');
-  return Array.isArray(w) ? w.map(one).join(' or ') : one(w);
-};
-
-/**
- * One English line of what an op did, for the AI (the `studio: did …` line). `x`: what only the doer knows — the motion
- * made ({ motion }), the clip taken off ({ clip }), a copy's key, how many objects lost a deleted motion, a level's name.
- */
-function handsSaid(op, x = {}) {
-  if (x.said) return x.said;
-  const on = op.key ? ` on ${op.key}` : '';
-  switch (op.do) {
-    case 'motion.make': {
-      const m = x.motion;
-      const pts = m?.keys?.p?.length;
-      return `made ${handsQ(m?.name ?? op.name)} (${pts ? `${pts} points, ` : ''}${m?.len ?? op.len ?? 2} s, ${m?.repeat ?? 'once'})${op.key ? ` and put it${on}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : ' in the Library'}`;
-    }
-    case 'motion.attach': return `put ${handsQ(op.name)}${on}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}`;
-    case 'motion.detach': return x.all ? `took every motion off ${op.key} (${x.all})` : `took ${handsQ(x.clip ?? op.name)} off ${op.key}`;
-    case 'motion.delete': return `deleted ${handsQ(op.name)} from the Library${x.from ? ` (it came off ${x.from} object${x.from === 1 ? '' : 's'})` : ''}`;
-    case 'motion.rename': return `renamed the motion ${handsQ(op.name)} to ${handsQ(x.to ?? op.to)}`;
-    case 'motion.set': {
-      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : '',
-        op.knobs ? handsKnobWords(op.knobs) : '', op.off !== undefined ? (op.off ? 'switched off' : 'switched on') : ''].filter(Boolean);
-      return `set ${handsQ(op.name)}${op.key ? on : ''}: ${parts.join(', ')}`;
-    }
-    case 'motion.code': {
-      const name = x.name ?? op.name;
-      return `${x.replaced ? `turned ${handsQ(name)} into` : 'put'} the code motion ${handsQ(name)} (codeMotion('${op.code}'))${op.key ? `${x.replaced ? ',' : ''} on ${op.key}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : x.replaced ? '' : ' in the Library'}`;
-    }
-    case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
-      : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
-    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : '',
-      op.offsets ? (op.offsets.length ? `offsets ${op.offsets.map((o) => `${o.way} ${o.how} ${Array.isArray(o.v) ? `[${o.v.join(', ')}]` : o.v}${o.odd ? ' (odd)' : ''}`).join(', ')}` : 'no offsets (back on the formula)') : ''].filter(Boolean).join(', ')}`;
-    case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
-      : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
-    case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
-    case 'object.turn': return `turned ${op.key} to ${Math.round(((x.pose?.r ?? 0) * 180) / Math.PI)}°`;
-    case 'object.scale': return `resized ${op.key} to ${JSON.stringify(x.pose?.s ?? op.to)}`;
-    case 'object.rename': return `renamed ${op.key} to ${handsQ(op.to)} (the code's key stays until you rename it there: placement.json "names")`;
-    case 'object.duplicate': return `duplicated ${op.key} as ${x.copy ?? '?'}`;
-    case 'object.delete': return `deleted ${op.key}`;
-    case 'object.ground': return `put ${op.key} on the ground`;
-    case 'level.new': return `made a new level ${handsQ(x.label ?? op.name ?? '')} (${x.id ?? '?'}) and opened it`;
-    case 'level.duplicate': return `duplicated the level as ${handsQ(x.label ?? op.name ?? '')} (${x.id ?? '?'}) and opened it`;
-    case 'level.rename': return `renamed the level ${x.id ?? op.id ?? ''} to ${handsQ(op.to)}`;
-    case 'level.switch': return `opened the level ${op.id}`;
-    case 'save': return 'saved (as the person\'s Save: a saved request follows)';
-    case 'editor.reload': return op.editor ? 'reloaded the editor page' : 'reloaded the game in the editor';
-    case 'list': return 'listed the objects, motions, code layouts and levels';
-    default: return op.do;
-  }
-}
-
-// ---------------------------------------------------------------------------------------------
-// The same ops on placement.json, for when no editor is open (the CLI writes the result after the file's validator).
-
-/**
- * Apply `ops` to a placement file (its validated value, or null for none yet). Returns { file, results }: the new value
- * (not yet validated: the caller runs validateStudioFile and writes nothing when it fails) and one { do, ok, said | error }
- * per op. An op that fails changes nothing; the others still apply (each result says).
- * What only the game knows is refused with a reason (the ground under an object, a blank level's objects): those need
- * the editor open.
- */
-function applyHandsToFile(file, ops, o = {}) {
-  const f = file ? structuredClone(file) : { version: 1, tool: 'placement', dim: o.dim || '3d', space: 'local', objects: {} };
-  const dim = f.dim;
-  const results = [];
-  for (const op of ops) {
-    try {
-      const r = handsFileOp(f, op, dim);
-      results.push(r.error ? { do: op.do, ok: false, error: r.error } : { do: op.do, ok: true, said: handsSaid(op, r), ...(r.list ? { list: r.list } : {}) });
-    } catch (e) {
-      results.push({ do: op.do, ok: false, error: String(e && e.message).slice(0, 200) });
-    }
-  }
-  return { file: handsTidy(f), results };
-}
-
-/** Empty parts out (the validator wants no empty `motion` / `added`…), and the top `objects` there with levels. */
-function handsTidy(f) {
-  for (const w of [f, ...(f.levels || [])]) {
-    for (const [id, e] of Object.entries(w.places || {})) if (!Object.keys(e).length) delete w.places[id];
-    for (const k of ['motion', 'names', 'places']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
-    for (const k of ['added', 'removed']) if (w[k] && !w[k].length) delete w[k];
-  }
-  if (f.motions && !f.motions.length) delete f.motions;
-  if (!f.objects) f.objects = {};
-  return f;
-}
-
-/** The world part an op is about: the top of a file without levels, else the level `op.level` names. */
-function handsWorld(f, op) {
-  if (!f.levels) {
-    if (op.level) return { error: `this game has no levels yet (no "level" needed)` };
-    return { w: f };
-  }
-  if (!op.level) return { error: `this game has levels: say which one with "level" (${f.levels.map((l) => l.id).join(', ')})` };
-  const w = f.levels.find((l) => l.id === op.level);
-  return w ? { w } : { error: `no level "${op.level}" (${f.levels.map((l) => l.id).join(', ')})` };
-}
-
-function handsFileOp(f, op, dim) {
-  const kind = op.do.split('.')[0];
-  // No editor open: there is no person's Save to press, and placement.json is written as it is.
-  if (op.do === 'save') return { said: 'nothing to save: no editor is open, and placement.json is written as it is' };
-  if (op.do === 'editor.reload') return { error: 'the editor is not open (nothing to reload)' };
-  if (op.do === 'list') return { list: handsFileList(f) };
-  if (op.do === 'object.ground') return { error: 'putting it on the ground needs the editor open (it measures what is under the object)' };
-  if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
-  if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
-  if (kind === 'level') return handsFileLevel(f, op);
-  // A knob's `was` is the number in the game's code, which only the game's page knows (decision 5: with no editor to
-  // show it, the AI changes the code's number itself).
-  if (op.knobs && op.do !== 'place.avoid') return { error: `no editor is open: change the number in ${op.do === 'motion.set' ? 'the codeMotion()' : `codePlace('${op.id}')`} in the game's code directly (knobs are turned in the editor)` };
-  if (op.knobs) return { error: `no editor is open: change the number in codeAvoid('${op.code}') in the game's code directly (knobs are turned in the editor)` };
-  if (op.do === 'place.set' && op.hand !== undefined) return { error: 'placing by hand needs the editor open (it reads where the code put each object)' };
-  if ((op.do === 'motion.code' && !op.key) || op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
-  const at = handsWorld(f, op);
-  if (at.error) return at;
-  const w = at.w;
-  if (kind === 'place') return handsFilePlace(w, op, dim);
-  if (kind === 'motion') return handsFileMotion(f, w, op, dim);
-  return handsFileObject(w, op, dim);
-}
-
-const handsLib = (f, name) => (f.motions || []).find((m) => m.name === name) || null;
-const handsWorlds = (f) => [f, ...(f.levels || [])];
-const handsFree = (f, base) => {
-  if (!handsLib(f, base)) return base;
-  for (let i = 2; ; i++) if (!handsLib(f, `${base} ${i}`)) return `${base} ${i}`;
-};
-
-/** Ops on the Library alone: delete, rename, set repeat / length for every object, make without an object. */
-function handsFileLibrary(f, op, dim) {
-  if (op.do === 'motion.make') return handsFileMake(f, op, dim);
-  if (op.do === 'motion.code') return handsFileCode(f, op);
-  const l = handsLib(f, op.name);
-  if (!l) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
-  if (op.do === 'motion.delete') {
-    let from = 0;
-    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) {
-      const cs = (w.motion[k].clips || []).filter((c) => c.use !== op.name);
-      if (cs.length === (w.motion[k].clips || []).length) continue;
-      from++;
-      if (cs.length) w.motion[k] = { clips: cs };
-      else delete w.motion[k];
-    }
-    f.motions = f.motions.filter((m) => m !== l);
-    return { from };
-  }
-  if (op.do === 'motion.rename') {
-    const to = handsFree(f, op.to);
-    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) {
-      w.motion[k] = { clips: w.motion[k].clips.map((c) => {
-        const fix = (x) => (x && x.on === 'after' && x.use === op.name ? { ...x, use: to } : x);
-        const when = Array.isArray(c.when) ? c.when.map(fix) : fix(c.when);
-        const out = { ...c, ...(when ? { when } : {}) };
-        if (c.use === op.name) {
-          out.use = to;
-          if (c.name === op.name) out.name = to;
-        }
-        if (out.name === out.use) delete out.name;
-        return out;
-      }) };
-    }
-    l.name = to;
-    return { to };
-  }
-  // motion.set without an object: the Library motion's repeat / length (every object that uses it plays it so).
-  if (l.code && (op.repeat || op.len)) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
-  if (op.when !== undefined || op.until !== undefined) {
-    let n = 0;
-    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) for (const c of w.motion[k].clips || []) if (c.use === op.name) (handsSetClip(c, op), n++);
-    if (!n) return { error: `"${op.name}" is on no object: put it on one first (motion.attach)` };
-  }
-  handsSetLib(l, op);
-  return {};
-}
-
-function handsSetLib(l, op) {
-  if (op.repeat) {
-    if (op.repeat === 'once') delete l.repeat;
-    else l.repeat = op.repeat;
-  }
-  if (op.len) {
-    // A new length stretches the keys with it (timeline-model stretchClip): "slower" / "faster" keep the same path.
-    const k = op.len / l.len;
-    for (const ch of ['p', 'r', 's']) for (const key of l.keys?.[ch] || []) key.t = Math.min(op.len, Math.round(key.t * k * 1000) / 1000);
-    for (const tr of Object.values(l.tracks || {})) for (const ch of ['p', 'r', 's']) for (const key of tr[ch] || []) key.t = Math.min(op.len, Math.round(key.t * k * 1000) / 1000);
-    l.len = op.len;
-  }
-}
-
-function handsSetClip(c, op) {
-  if (op.when !== undefined) {
-    c.when = structuredClone(op.when);
-    delete c.start;
-  }
-  if (op.until !== undefined) {
-    if (op.until) c.until = structuredClone(op.until);
-    else delete c.until;
-  }
-}
-
-/** motion.make: the Library motion (made from points or keys), and on the object when there is a key. */
-function handsFileMake(f, op, dim, w) {
-  const made = handsMotion(op, dim);
-  if (made.error) return made;
-  const m = made.motion;
-  const was = handsLib(f, m.name);
-  if (was && op.replace) {
-    // `replace`: the same name with new keys — every object that has it moves the new way (the AI fixing its spiral).
-    for (const k of Object.keys(was)) delete was[k];
-    Object.assign(was, m);
-  } else {
-    // Without it a name already taken gets "Spiral 2", as the editor's Library does: an AI never overwrites by accident.
-    if (was) m.name = handsFree(f, m.name);
-    (f.motions ||= []).push(m);
-  }
-  if (!w) return { motion: m };
-  const clips = w.motion?.[op.key]?.clips || [];
-  if (clips.some((c) => (c.use ?? c.name) === m.name)) {
-    const c = clips.find((x) => (x.use ?? x.name) === m.name);
-    handsSetClip(c, op);
-    return { motion: m, when: c.when };
-  }
-  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
-  // A motion the AI makes starts with the game unless it says otherwise (HANDS_MAKE_WHEN).
-  const when = op.when ?? HANDS_MAKE_WHEN;
-  const clip = { use: m.name, when, ...(op.until ? { until: op.until } : {}) };
-  (w.motion ||= {})[op.key] = { clips: [...clips, clip] };
-  return { motion: m, when };
-}
-
-function handsFileMotion(f, w, op, dim) {
-  if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
-  if (op.do === 'motion.make') return handsFileMake(f, op, dim, w);
-  if (op.do === 'motion.code') return handsFileCode(f, op, w);
-  const clips = w.motion?.[op.key]?.clips || [];
-  if (op.do === 'motion.attach') {
-    if (!handsLib(f, op.name)) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
-    if (clips.some((c) => (c.use ?? c.name) === op.name)) return { error: `${op.key} has "${op.name}" already (motion.set changes when it starts)` };
-    if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
-    const when = op.when ?? handsDefaultWhen(clips);
-    (w.motion ||= {})[op.key] = { clips: [...clips, { use: op.name, when, ...(op.until ? { until: op.until } : {}) }] };
-    return { when };
-  }
-  const named = clips.map((c) => ({ ...c, name: c.name ?? c.use }));
-  if (op.do === 'motion.detach') {
-    if (op.all) {
-      if (!clips.length) return { error: `${op.key} has no motion` };
-      delete w.motion[op.key];
-      return { all: named.map((c) => `"${c.name}"`).join(', ') };
-    }
-    const r = handsClip(named, op.name, op.key);
-    if (r.error) return r;
-    const rest = clips.filter((_, i) => named[i] !== r.clip);
-    if (rest.length) w.motion[op.key] = { clips: rest };
-    else delete w.motion[op.key];
-    return { clip: r.clip.name };
-  }
-  // motion.set with an object: when / until on its clip; repeat / length on the Library motion (they are the motion's).
-  const r = handsClip(named, op.name, op.key);
-  if (r.error) return r;
-  const c = clips[named.indexOf(r.clip)];
-  handsSetClip(c, op);
-  if (op.off === true) c.off = true;
-  else if (op.off === false) delete c.off;
-  const l = handsLib(f, r.clip.use ?? r.clip.name);
-  if (l && (op.repeat || op.len) && l.code) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
-  if (l) handsSetLib(l, op);
-  return {};
-}
-
-/**
- * motion.code: the Library's code motion `{ name, code }` (the shape is codeMotion('<code>') in the game's code), and
- * on the object when there is a key — as motion.make does with points. The same code already in the Library is that
- * motion (the person may have renamed it); `replace` turns the motion of points named `name` into this code motion
- * (✦ To code: every object that had it keeps it, now as code).
- */
-function handsFileCode(f, op, w) {
-  const lib = f.motions || [];
-  let m = lib.find((x) => x.name === op.name);
-  let replaced = false;
-  if (m && m.code !== op.code) {
-    if (op.replace) {
-      for (const k of Object.keys(m)) delete m[k];
-      Object.assign(m, { name: op.name, code: op.code });
-      replaced = true;
-    } else m = null;
-  }
-  if (!m) m = lib.find((x) => x.code === op.code) || null;
-  if (!m) {
-    m = { name: handsFree(f, op.name), code: op.code };
-    (f.motions ||= []).push(m);
-  }
-  if (!w) return { name: m.name, replaced };
-  const clips = w.motion?.[op.key]?.clips || [];
-  const had = clips.find((c) => (c.use ?? c.name) === m.name);
-  if (had) {
-    handsSetClip(had, op);
-    return { name: m.name, replaced, when: had.when };
-  }
-  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
-  const when = op.when ?? HANDS_MAKE_WHEN;
-  (w.motion ||= {})[op.key] = { clips: [...clips, { use: m.name, when, ...(op.until ? { until: op.until } : {}) }] };
-  return { name: m.name, replaced, when };
-}
-
-const HANDS_OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const HANDS_OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
-/**
- * place.set's `offsets` (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): the rule's whole list of shifts,
- * ≤ 8 — [{ way, how, v, odd? }] as placement.json keeps them; [] = none. { offsets } or { error }.
- */
-function readHandsOffsets(v) {
-  if (!Array.isArray(v) || v.length > 8) return { error: 'must be a list of at most 8 offsets ([] takes them off): [{ "way": "side", "how": "same", "v": 1 }]' };
-  const out = [];
-  for (const o of v) {
-    if (!o || typeof o !== 'object' || Array.isArray(o) || !Object.keys(o).every((k) => ['way', 'how', 'v', 'odd'].includes(k))) return { error: 'each is { "way", "how", "v", "odd"? }' };
-    if (!HANDS_OFFSET_WAYS.includes(o.way)) return { error: `"way" is one of ${HANDS_OFFSET_WAYS.join(', ')} (along / side: a row's; move: [x, z] on the ground for a layout that is not a row)` };
-    if (!HANDS_OFFSET_HOWS.includes(o.how)) return { error: `"how" is one of ${HANDS_OFFSET_HOWS.join(', ')}` };
-    if (o.way === 'move' ? !(o.how === 'same' && handsVec(o.v, 2)) : !handsNum(o.v) || (o.way === 'size' && o.v <= 0)) return { error: o.way === 'move' ? 'a move is "same" with v = [x, z] (2D [x, y])' : `"v" is a number (m / px; ° for turn; a factor above 0 for size)` };
-    if (o.odd !== undefined && (o.odd !== true || o.how !== 'zigzag')) return { error: '"odd": true is a zigzag\'s only (the odd ranks move; leave it out for the even)' };
-    const r = (x) => Math.round(x * 10000) / 10000 + 0;
-    out.push({ way: o.way, how: o.how, v: Array.isArray(o.v) ? o.v.map(r) : r(o.v), ...(o.odd ? { odd: true } : {}) });
-  }
-  return { offsets: out };
-}
-
-/** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
-const handsPlaceKey = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
-
-/**
- * place.code / place.set / place.avoid on placement.json (no editor open): the layout's entry in `places`, only what
- * the person (here the AI for them) changed. Knobs and "by hand" are refused before this (they need the game).
- */
-function handsFilePlace(w, op, dim) {
-  const places = (w.places ||= {});
-  const e = (places[op.id] ||= {});
-  const n = dim === '2d' ? 2 : 3;
-  if (op.do === 'place.code') {
-    if (!op.replace) return {};
-    // ✦ To code: the hand-placed objects are hidden (`from`) until the AI takes them out of the code; their moves and
-    // copies are no longer the person's to keep (the layout is now where they stand).
-    e.from = [...new Set([...(e.from || []), ...op.replace])];
-    for (const k of op.replace) if (w.objects) delete w.objects[k];
-    if (w.added) w.added = w.added.filter((a) => !op.replace.includes(a.key));
-    return {};
-  }
-  if (op.do === 'place.set') {
-    if (op.pin) {
-      if (!handsPlaceKey(op.id, op.pin.key)) return { error: `"${op.pin.key}" is not one of codePlace('${op.id}')'s objects (they are ${op.id}-1, ${op.id}-2 …)` };
-      if (op.pin.p.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
-      const r3 = (v) => Math.round(v * (n === 3 ? 1000 : 10)) / (n === 3 ? 1000 : 10);
-      (e.pins ||= {})[op.pin.key] = { p: op.pin.p.map(r3), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) };
-    }
-    if (op.unpin === '*') {
-      if (e.hand) return { error: `codePlace('${op.id}') is converted to coordinates (hand: true): --hand false puts it back on the formula` };
-      if (!e.pins || !Object.keys(e.pins).length) return { error: `codePlace('${op.id}') has nothing placed by hand (every object follows the formula already)` };
-      delete e.pins;
-    } else if (op.unpin) {
-      if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
-      delete e.pins[op.unpin];
-      if (!Object.keys(e.pins).length) delete e.pins;
-    }
-    if (op.offsets) {
-      if (op.offsets.length) e.offsets = structuredClone(op.offsets);
-      else delete e.offsets;
-    }
-    return {};
-  }
-  return handsAvoid(e, op, n);
-}
-
-/** place.avoid on a layout's entry (the file's and the editor's: one rule). { changed } or { error }. */
-function handsAvoid(e, op, n, knobsWas = {}) {
-  const list = (e.avoid ||= []);
-  if (op.remove !== undefined) {
-    const i = typeof op.remove === 'number' ? op.remove : list.findIndex((a) => a.code === op.remove);
-    if (!(i >= 0 && i < list.length)) return { error: `codePlace('${op.id}') has no keep-out area ${JSON.stringify(op.remove)} (${list.length ? list.map((a, j) => (a.code ? `${j}: ${a.code}` : `${j}: ${a.name ?? 'a box'}`)).join(', ') : 'it has none in the file'})` };
-    list.splice(i, 1);
-    if (!list.length) delete e.avoid;
-    return {};
-  }
-  if (op.box) {
-    if (op.box.p.length !== n) return { error: `a box has ${n} numbers in its p and size in a ${n === 3 ? '3D' : '2D'} game` };
-    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
-    const step = n === 3 ? 1000 : 10;
-    const r = (v) => Math.round(v * step) / step;
-    list.push({ box: { p: op.box.p.map(r), size: op.box.size.map(r) }, ...(op.name ? { name: op.name } : {}), ...(op.off ? { off: true } : {}) });
-    return { changed: false };
-  }
-  let a = list.find((x) => x.code === op.code);
-  const changed = !!a;
-  if (!a) {
-    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
-    a = { code: op.code };
-    list.push(a);
-  }
-  if (op.off === true) a.off = true;
-  else if (op.off === false) delete a.off;
-  if (op.knobs) {
-    // A knob back on the code's number is no change (the file keeps only what differs from the code).
-    const ks = { ...(a.knobs || {}) };
-    for (const [k, v] of Object.entries(op.knobs)) {
-      if (knobsWas[k] === v) delete ks[k];
-      else ks[k] = { v, ...(knobsWas[k] !== undefined ? { was: knobsWas[k] } : ks[k]?.was !== undefined ? { was: ks[k].was } : {}) };
-    }
-    if (Object.keys(ks).length) a.knobs = ks;
-    else delete a.knobs;
-  }
-  return { changed };
-}
-
-function handsFileObject(w, op, dim) {
-  const added = (w.added || []).find((a) => a.key === op.key);
-  if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
-  const entry = w.objects?.[op.key];
-  const now = added ? { p: added.p, r: added.r, s: added.s } : entry ? { p: entry.p, r: entry.r, s: entry.s, ...(entry.t ? { t: entry.t } : {}) } : null;
-  if (op.do === 'object.rename') {
-    (w.names ||= {})[op.key] = op.to;
-    return {};
-  }
-  if (op.do === 'object.delete') {
-    if (added) w.added = w.added.filter((a) => a !== added);
-    else (w.removed ||= []).push({ key: op.key, ...(entry?.label ? { label: entry.label } : {}), ...(entry?.was ? { was: entry.was } : {}) });
-    if (w.objects) delete w.objects[op.key];
-    if (w.motion) delete w.motion[op.key];
-    if (w.names) delete w.names[op.key];
-    if (w.removed) w.removed.sort((a, b) => (a.key < b.key ? -1 : 1));
-    return {};
-  }
-  if (op.do === 'object.duplicate') {
-    const base = handsPose({ ...op, do: 'object.move' }, now, dim);
-    if (!now?.p && !op.to) return { error: `where ${op.key} stands is not known here: give "to" (the copy's place), or open the editor` };
-    if (base.error) return base;
-    const taken = new Set([...Object.keys(w.objects || {}), ...(w.added || []).map((a) => a.key), ...(w.removed || []).map((r) => r.key)]);
-    const copy = handsCopyKey(op.key, taken);
-    const p = base.pose;
-    (w.added ||= []).push({ key: copy, from: op.key, p: p.p, r: p.r ?? 0, s: p.s ?? 1 });
-    return { copy };
-  }
-  const r = handsPose(op, now, dim);
-  if (r.error) return r;
-  if (added) Object.assign(added, { p: r.pose.p ?? added.p, r: r.pose.r ?? added.r, s: r.pose.s ?? added.s });
-  else {
-    const e = (w.objects ||= {})[op.key] || {};
-    if (r.pose.p) e.p = r.pose.p;
-    if (r.pose.r !== undefined) e.r = r.pose.r;
-    if (r.pose.s !== undefined) e.s = r.pose.s;
-    w.objects[op.key] = e;
-  }
-  return { pose: r.pose };
-}
-
-function handsFileLevel(f, op) {
-  if (!f.levels) return { error: 'this game has no levels in placement.json yet: open the editor (its levels come from the game)' };
-  const id = op.id ?? (op.do === 'level.rename' || op.do === 'level.duplicate' ? null : undefined);
-  if (op.do === 'level.rename' || op.do === 'level.duplicate') {
-    if (!id) return { error: `say which level with "id" (${f.levels.map((l) => l.id).join(', ')})` };
-  }
-  const l = f.levels.find((x) => x.id === id);
-  if (!l) return { error: `no level "${id}" (${f.levels.map((x) => x.id).join(', ')})` };
-  if (op.do === 'level.rename') {
-    // The code's name stays in labelWas (the AI renames it in the code); renamed back = nothing to do.
-    const code = l.labelWas ?? l.label ?? l.id;
-    if (op.to === code) delete l.labelWas;
-    else if (!l.from) l.labelWas = code;
-    l.label = op.to;
-    return { id: l.id };
-  }
-  // level.duplicate: a level made in the editor is `from` its code level, with this level's entries over it.
-  const ids = new Set(f.levels.map((x) => x.id));
-  let n = 2;
-  while (ids.has(`${l.from ?? l.id}-${n}`)) n++;
-  const nid = `${l.from ?? l.id}-${n}`;
-  const label = op.name ?? `${l.label ?? l.id} ${n}`;
-  const copy = { ...structuredClone(l), id: nid, label, from: l.from ?? l.id };
-  delete copy.labelWas;
-  f.levels.splice(f.levels.indexOf(l) + 1, 0, copy);
-  if (!f.levelsWas) f.levelsWas = f.levels.filter((x) => !x.from).map((x) => x.id);
-  return { id: nid, label };
-}
-
-/**
- * `list` with no editor open: what placement.json knows (only objects it has an entry for — the editor's own `list`
- * has every object of the game, with the names the person sees).
- */
-function handsFileList(f) {
-  const world = (w) => {
-    const keys = new Set([...Object.keys(w.objects || {}), ...(w.added || []).map((a) => a.key), ...Object.keys(w.motion || {}), ...Object.keys(w.names || {})]);
-    return [...keys].sort().map((key) => {
-      const o = { key };
-      const label = w.names?.[key] ?? w.objects?.[key]?.label;
-      if (label) o.name = label;
-      const ms = (w.motion?.[key]?.clips || []).map((c) => c.name ?? c.use);
-      if (ms.length) o.motions = ms;
-      return o;
-    });
-  };
-  const out = { from: 'placement.json (no editor open: only the objects it has)', objects: f.levels ? [] : world(f) };
-  out.motions = (f.motions || []).map((m) => (m.code ? { name: m.name, code: m.code, ...(m.knobs ? { knobs: m.knobs } : {}) } : { name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
-  // The code layouts the file has changes for (the editor's list has every codePlace of the game, with its objects).
-  const places = (w) => Object.entries(w.places || {}).map(([id, e]) => ({ id, ...structuredClone(e) }));
-  if (!f.levels && f.places) out.places = places(f);
-  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l), ...(l.places ? { places: places(l) } : {}) }));
-  return out;
-}
-
-
-__def(__exports, "HANDS_OPS", () => HANDS_OPS);
-__def(__exports, "HANDS_OP_NAMES", () => HANDS_OP_NAMES);
-__def(__exports, "HANDS_MAX_OPS", () => HANDS_MAX_OPS);
-__def(__exports, "readHandsInput", () => readHandsInput);
-__def(__exports, "readHandsWhen", () => readHandsWhen);
-__def(__exports, "readHandsUntil", () => readHandsUntil);
-__def(__exports, "handsMotion", () => handsMotion);
-__def(__exports, "handsClip", () => handsClip);
-__def(__exports, "HANDS_MAKE_WHEN", () => HANDS_MAKE_WHEN);
-__def(__exports, "handsDefaultWhen", () => handsDefaultWhen);
-__def(__exports, "handsPose", () => handsPose);
-__def(__exports, "handsCopyKey", () => handsCopyKey);
-__def(__exports, "handsSaid", () => handsSaid);
-__def(__exports, "applyHandsToFile", () => applyHandsToFile);
-__def(__exports, "readHandsOffsets", () => readHandsOffsets);
-__def(__exports, "handsPlaceKey", () => handsPlaceKey);
-__def(__exports, "handsAvoid", () => handsAvoid);
-};
 __defs[68] = function (__exports) {
+'use strict';
+// write-back.ts
+
+// "Did the write-back keep the look?" (studio-writeback, 2026-10-24; CONTRACT.md §1.12 "Written into the code").
+// Pure logic, no DOM (test/write-back.test.ts).
+//
+// WHY (a request, that day): "Is what the code says then hard-coded again by the JSON? The code has to be the truth."
+// On Save the AI writes a layout's changes — its offsets, the objects placed by hand, the boxes drawn by hand — into the
+// game's code, and `place.code --fold` takes them out of placement.json. The person must see nothing move: the editor
+// measures every object of the layout before (old code + the file's changes) and after (the new code alone), and only
+// a gap over a hand's width of nothing (1 cm, 1 px, half a degree, 1 % of the size) is said — to the AI, with the
+// numbers to fix its rule, and to the person in one line ("Farthest off: Street lamps 3, 0.4 m"). The same measure as ✦
+// Turn into a rule (to-rule.ts placeGaps), by key instead of by number: the keys are the same rule's.
+                                                
+
+/** One object of the layout before the write-back: its key, the name the person sees, where it stood. */
+                           
+              
+                
+             
+ 
+/** The farthest off: in place (`p`, m / px), turn (`r`, degrees) or size (`s`, the factor now ÷ before). */
+                          
+              
+                
+                        
+            
+            
+            
+ 
+
+/** What counts as the same look: 1 cm (3D) / 1 px (2D), half a degree, 1 % of the size. */
+const FOLD_TOL = { p3: 0.01, p2: 1, r: (0.5 * Math.PI) / 180, s: 0.01 };
+
+const wrap = (a        ) => Math.atan2(Math.sin(a), Math.cos(a));
+const sizeOf = (s           ) => (typeof s === 'number' ? Math.abs(s) || 1 : Array.isArray(s) && s.length ? s.reduce((a, b) => a + Math.abs(b), 0) / s.length || 1 : 1);
+const dist = (a          , b          ) => Math.hypot(...a.map((v, i) => v - (b[i] ?? 0)));
+
+/**
+ * Each object before against itself after (`after(key)`; undefined = the layout no longer has it). One that left the
+ * layout but stands where it stood as another object (`elsewhere`: the AI took a hand-placed one out of the rule into an
+ * object of its own) is not gone. `max` = the farthest off over the tolerance (place first, then turn, then size), null
+ * = the same look; `gone` = those no longer there.
+ */
+function foldGaps(before            , after                                   , dim     , elsewhere         = [])                                            {
+  const tolP = dim === '3d' ? FOLD_TOL.p3 : FOLD_TOL.p2;
+  const gone             = [];
+  let p                 = null, r                 = null, s                 = null;
+  for (const b of before) {
+    const now = after(b.key);
+    if (!now) {
+      if (!elsewhere.some((q) => dist(q.p, b.pose.p) <= tolP)) gone.push(b);
+      continue;
+    }
+    const dp = dist(now.p, b.pose.p);
+    if (dp > tolP && (!p || dp > p.d)) p = { key: b.key, label: b.label, what: 'p', d: dp, was: b.pose, now };
+    const dr = Math.abs(wrap((now.r ?? 0) - (b.pose.r ?? 0)));
+    if (dr > FOLD_TOL.r && (!r || dr > (r.d * Math.PI) / 180)) r = { key: b.key, label: b.label, what: 'r', d: (dr * 180) / Math.PI, was: b.pose, now };
+    const ds = sizeOf(now.s) / sizeOf(b.pose.s);
+    if (Math.abs(ds - 1) > FOLD_TOL.s && (!s || Math.abs(ds - 1) > Math.abs(s.d - 1))) s = { key: b.key, label: b.label, what: 's', d: ds, was: b.pose, now };
+  }
+  return { max: p ?? r ?? s, gone };
+}
+
+/** A place for the AI's line: centimetres (3D) or whole pixels (2D). */
+const at = (q          , dim     ) => `[${q.map((v) => (dim === '2d' ? Math.round(v) : Math.round(v * 100) / 100)).join(', ')}]`;
+
+/**
+ * The editor's measure for the AI's `studio: did …` line (English, exact enough to act on): the same look, or the
+ * farthest off with where it stood and stands, and what to do — fix the rule, then `place.code` again (no --fold: the
+ * editor measures against the same before).
+ */
+function foldSaid(id        , g                                           , dim     )         {
+  const unit = (x        ) => (dim === '2d' ? `${Math.round(x)} px` : `${Math.round(x * 100) / 100} m`);
+  const parts           = [];
+  const m = g.max;
+  if (m) {
+    parts.push(m.what === 'p' ? `the farthest off is ${m.key}, ${unit(m.d)} (it stood at ${at(m.was.p, dim)}, now ${at(m.now.p, dim)})`
+      : m.what === 'r' ? `${m.key} is turned ${Math.round(m.d)}° from where it was`
+      : `${m.key} is ${Math.round(Math.abs(m.d - 1) * 100)} % ${m.d > 1 ? 'bigger' : 'smaller'} than it was`);
+  }
+  if (g.gone.length) {
+    parts.push(`${g.gone.slice(0, 4).map((x) => x.key).join(', ')}${g.gone.length > 4 ? ` +${g.gone.length - 4}` : ''} ${g.gone.length > 1 ? 'are' : 'is'} gone (the rule no longer puts ${g.gone.length > 1 ? 'them' : 'it'}: the count, or a keep-out area — a place written from a pin answers { p, hand: true })`);
+  }
+  if (!parts.length) return `; the editor measured every object before and after: all within ${dim === '2d' ? '1 px' : '1 cm'} — the look is the same`;
+  return `; the editor measured every object before and after: ${parts.join('; ')} — fix codePlace('${id}') so the look is as before, then send place.code --id ${id} (no --fold: it measures against the same before)`;
+}
+
+__def(__exports, "FOLD_TOL", () => FOLD_TOL);
+__def(__exports, "foldGaps", () => foldGaps);
+__def(__exports, "foldSaid", () => foldSaid);
+};
+__defs[69] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -26590,10 +27091,11 @@ __defs[68] = function (__exports) {
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
                                                                                                                                                                                                                                            
-const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(67);
-const { roundKnob, turnKnobs } = __require(33);
-const { CODE_LEN } = __require(34);
-const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(52);
+const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(33);
+const { roundKnob, turnKnobs } = __require(34);
+const { CODE_LEN } = __require(35);
+const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(53);
+const { foldGaps, foldSaid } = __require(68);
 
                            
              
@@ -26667,6 +27169,14 @@ const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(52
                                                                                                                         
                                                        
      
+                                                                                                                  
+                                                                                                                         
+                                                                                                                    
+     
+                                              
+                                                                                                                  
+                                                
+     
                                                                                                                       
                                                                                                                          
      
@@ -26730,6 +27240,11 @@ function createAiHands(d           ) {
     const ns = d.libNames();
     return ns.length ? ns.map((n) => `"${n}"`).join(', ') : 'it has none';
   };
+
+  // studio-writeback: where each object of a layout stood before the AI's write-back, while its rule is still off (the
+  // AI fixes it and sends place.code again: measured against the same before). `entry` = the layout's entry then: a
+  // change of the person's since makes the before stale (dropped, not measured).
+  const foldBase = new Map                                               ();
 
   // ----- code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12) -----
   // The AI has just written codeMotion / codePlace / codeAvoid into the game's code when it sends these: a page that does
@@ -26911,11 +27426,23 @@ function createAiHands(d           ) {
           const ps = d.item(k) ? d.pose(k) : undefined;
           return ps ? [{ key: k, label: name(k), p: ps.p.slice(), n: i + 1 }] : [];
         });
+        if (op.fold) return foldInto(op);
         const info = await findCode(d.codePlaces, (p) => p.id, op.id);
         if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
         const e = d.place(op.id) ?? {};
         const what = [d.t('hands.place.count', { n: info.keys.length }), knobWords(info.knobs, knobsNow(info.knobs, e.knobs))].filter(Boolean).join(' · ');
-        if (!op.replace) return { keys: info.keys.length, words: { name: info.name, what }, wordsKey: 'hands.place.code' };
+        if (!op.replace) {
+          // The AI fixed its rule after a write-back that was off (studio-writeback): measured against the same before.
+          const base = foldBase.get(op.id);
+          if (base && base.entry === JSON.stringify(d.place(op.id))) {
+            // The fixed code is on disk, not yet in the page (the id is listed, so findCode did not read it again).
+            if (!(await d.reloadGame())) return { error: `the game did not come back after reading it again (an error in the code?): look at the game (§3.3), fix it and send place.code --id ${op.id}` };
+            const now = d.codePlaces().find((p) => p.id === op.id) ?? info;
+            return { keys: now.keys.length, ...measureFold(op.id, now, base.before) };
+          }
+          foldBase.delete(op.id);
+          return { keys: info.keys.length, words: { name: info.name, what }, wordsKey: 'hands.place.code' };
+        }
         // ✦ To code: the hand-placed objects are hidden until the AI takes them out of the code (one ⌘Z brings them back).
         const gone = op.replace.filter((k        ) => !d.item(k) && !(e.from ?? []).includes(k));
         if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
@@ -27096,6 +27623,49 @@ function createAiHands(d           ) {
   }
 
   /**
+   * `place.code --fold` (studio-writeback, 2026-10-24; CONTRACT.md §1.12 "Written into the code"): the AI has written
+   * these parts of the layout's entry into its codePlace / codeAvoid — "the code must be the truth" (a request that day). The
+   * editor notes where every object stands, takes the parts out of the file (fold: not a change of the person's), reads
+   * the game again (the new code, the file without them) and measures each object against where it stood. The same look
+   * is said to nobody but the AI; a gap goes in the person's line too ("Farthest off: Street lamps 3, 0.4 m").
+   */
+  async function foldInto(op    )               {
+    const first = await findCode(d.codePlaces, (p) => p.id, op.id);
+    if (!first) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+    const before             = first.keys.flatMap((k) => {
+      const ps = d.pose(k);
+      return ps ? [{ key: k, label: name(k), pose: structuredClone(ps) }] : [];
+    });
+    const knobs0 = Object.keys(first.knobs);
+    const folded = d.fold?.(op.id, op.fold) ?? false;
+    // Always read again: the code changed (the page may still run the old one), and the file no longer has the parts.
+    if (!(await d.reloadGame())) return { error: `the game did not come back after reading it again (an error in the code?): look at the game (§3.3), fix it and send place.code --id ${op.id}` };
+    const info = d.codePlaces().find((p) => p.id === op.id) ?? null;
+    if (!info) return { error: `after reading the game again it has no codePlace('${op.id}') (it has: ${d.codePlaces().map((p) => `'${p.id}'`).join(', ') || 'none'}): fix the code and send place.code --id ${op.id}` };
+    // ✦ Write into the rule (`intent: "to-knob"`): the knob the AI added for that way lights on the card, and the line names it.
+    const added = Object.keys(info.knobs).filter((n) => !knobs0.includes(n));
+    if (added.length) d.knobAdded?.(op.id, added);
+    const m = measureFold(op.id, info, before, added);
+    return { folded, ...m };
+  }
+
+  /** The measure of a write-back (foldInto, and place.code again after a fix): words for the person and the AI. */
+  function measureFold(id        , info               , before            , added           = [])      {
+    const others = d.keys().filter((k) => !info.keys.includes(k) && !before.some((b) => b.key === k)).flatMap((k) => (d.pose(k) ? [d.pose(k) ] : []));
+    const g = foldGaps(before, (k) => (info.keys.includes(k) ? d.pose(k) : undefined), d.dim(), others);
+    if (g.max || g.gone.length) foldBase.set(id, { before, entry: JSON.stringify(d.place(id)) });
+    else foldBase.delete(id);
+    const e = d.place(id) ?? {};
+    const knob = added[0] ? info.knobs[added[0]] : undefined;
+    const gap = g.max ? (g.max.what === 'p' ? gapText(g.max.d, d.dim(), unit) : g.max.what === 'r' ? `${Math.round(g.max.d)}°` : `×${Math.round(g.max.d * 100) / 100}`) : '';
+    const words                                  = { name: info.name,
+      ...(knob ? { knob: knob.label, v: `${roundKnob(e.knobs?.[added[0] ]?.v ?? knob.v)}${unit(knob.unit)}` } : {}),
+      ...(g.max ? { obj: g.max.label, gap } : g.gone.length ? { obj: g.gone[0] .label } : {}) };
+    const wordsKey = g.max ? (knob ? 'hands.place.foldKnobGap' : 'hands.place.foldGap') : g.gone.length ? 'hands.place.foldGone' : knob ? 'hands.place.foldKnob' : 'hands.place.fold';
+    return { words, wordsKey, measured: foldSaid(id, g, d.dim()) };
+  }
+
+  /**
    * `list` with the game's code: each code motion with its code id and knobs (the file's numbers over the code's,
    * `missing` when the game has no such codeMotion), and every code layout with its objects, knobs, pins and keep-out
    * areas — so "make the gap smaller" or "keep them off the road" can be done without asking the person.
@@ -27196,7 +27766,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -27316,7 +27886,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -27330,7 +27900,7 @@ __defs[70] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
 const { icon } = __require(21);
-const { KEYMAP, keysOf } = __require(49);
+const { KEYMAP, keysOf } = __require(50);
 
                                     
                          
@@ -27399,7 +27969,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -27662,7 +28232,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -28082,7 +28652,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -28121,7 +28691,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -28295,7 +28865,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -28493,7 +29063,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -28604,7 +29174,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -28761,7 +29331,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -28831,7 +29401,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -28920,7 +29490,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -29069,7 +29639,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -29132,7 +29702,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -29345,7 +29915,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -29435,7 +30005,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[84] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -29451,11 +30021,11 @@ __defs[84] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(80);
-const { withLooks } = __require(79);
-const { createUiScreens } = __require(81);
-const { UiStyleModel, validLook, validTheme } = __require(82);
-const { createUiTheme } = __require(83);
+const { createUiCard } = __require(81);
+const { withLooks } = __require(80);
+const { createUiScreens } = __require(82);
+const { UiStyleModel, validLook, validTheme } = __require(83);
+const { createUiTheme } = __require(84);
                                                    
 
                              
@@ -29650,7 +30220,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[85] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -29727,7 +30297,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[86] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -29754,52 +30324,54 @@ const { createLibraryMotions } = __require(27);
 const { createMotionDrag } = __require(28);
 const { createMotionTool } = __require(29);
 const { rulesFor } = __require(30);
-const { samePose } = __require(36);
+const { samePose } = __require(37);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setAiName, setExtraText, translate } = __require(37);
-const { NEXT_STEPS, renderNextSteps } = __require(38);
-const { statusCovers } = __require(39);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(40);
-const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(41);
-const { bounces, saveLoud } = __require(42);
-const { askView: questionView } = __require(43);
-const { playLine, playWords } = __require(44);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(45);
-const { renderSettings } = __require(47);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(46);
+const { detectLang, setAiName, setExtraText, translate } = __require(38);
+const { NEXT_STEPS, renderNextSteps } = __require(39);
+const { statusCovers } = __require(40);
+const { handsFoldEntry } = __require(33);
+                                               
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(41);
+const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(42);
+const { bounces, saveLoud } = __require(43);
+const { askView: questionView } = __require(44);
+const { playLine, playWords } = __require(45);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(46);
+const { renderSettings } = __require(48);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(47);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
-const { createPlacementPanel } = __require(50);
-const { createTimeline } = __require(56);
+const { createPlacementPanel } = __require(51);
+const { createTimeline } = __require(57);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(57);
-const { CODE_LEN, motionLibrary } = __require(34);
-const { attachWorld, roundLib } = __require(35);
+const { createMotionAsk } = __require(58);
+const { CODE_LEN, motionLibrary } = __require(35);
+const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(58);
-const { createCodePlaceWire } = __require(61);
-const { createKeepOutWire } = __require(63);
-const { createPalette } = __require(64);
-const { fitPicture } = __require(65);
-const { PlacementModel } = __require(36);
-const { UndoStack, poseChange, sharedMotion } = __require(66);
-const { createAiHands } = __require(68);
-const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(52);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(48);
+const { receipt } = __require(59);
+const { createCodePlaceWire } = __require(62);
+const { createKeepOutWire } = __require(64);
+const { createPalette } = __require(65);
+const { fitPicture } = __require(66);
+const { PlacementModel } = __require(37);
+const { UndoStack, poseChange, sharedMotion } = __require(67);
+const { createAiHands } = __require(69);
+const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(53);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(49);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(49);
-const { installTooltips } = __require(69);
-const { createShortcutSheet } = __require(70);
-const { createContextMenu } = __require(71);
-const { Levels, worldOf } = __require(72);
-const { checkNoteId } = __require(73);
-const { createLevelSwitch, makeRows } = __require(74);
-const { contextRows } = __require(75);
-const { bigChanges, createSafeSave } = __require(76);
-const { createUnsavedGuard, lostBy, playAsks } = __require(77);
-const { createLayerSwitch } = __require(78);
-const { uiAsPlacement, uiEntries, withUi } = __require(79);
-const { createUiWire } = __require(84);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(85);
+const { keyOf, tipText } = __require(50);
+const { installTooltips } = __require(70);
+const { createShortcutSheet } = __require(71);
+const { createContextMenu } = __require(72);
+const { Levels, worldOf } = __require(73);
+const { checkNoteId } = __require(74);
+const { createLevelSwitch, makeRows } = __require(75);
+const { contextRows } = __require(76);
+const { bigChanges, createSafeSave } = __require(77);
+const { createUnsavedGuard, lostBy, playAsks } = __require(78);
+const { createLayerSwitch } = __require(79);
+const { uiAsPlacement, uiEntries, withUi } = __require(80);
+const { createUiWire } = __require(85);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(86);
 
                                                                         
 
@@ -30203,7 +30775,13 @@ function start(host            ) {
   // snapshot of the AI's version, made by the host when undoing). `aiAfter`:
   // the line says "back to before" / "your AI's change is back".
   let changeFrom                = null;
-  let lastChange                                               = null;
+  let lastChange                                                                 = null;
+  // studio-writeback (2026-10-24, "the code is the truth"): what left the file because the AI wrote it into the code
+  // since the last request (its place.code --fold, and knobs the code caught up with). "Undo AI change" puts the code
+  // back, so these come back into the file with it (else the rule would lose the person's offsets / pins / knobs);
+  // Redo takes them out again. `level` = the level they were on ('' = a game without levels).
+                                                                                    
+  let aiFolds           = [];
   let aiAfter                             = null;
   // Undo / Redo presses, so the same "Back to before" after Undo → Redo → Undo is a new line (line-fade.ts lineKey).
   let aiAfterTurn = 0;
@@ -31026,6 +31604,14 @@ function start(host            ) {
     },
     icon: (name) => icon(name),
     ask: (draft) => focusAsk(draft),
+    // ✦ Write into the rule (studio-writeback): the draft, and `intent: "to-knob"` for that layout's way while the same
+    // object stays picked (the chips say so: "Street lamps (rule)" "Sideways · All the same 1 m").
+    askRule: (id, way, draft) => {
+      if (host.offline) return;
+      toKnobAsk = selected ? { id, key: selected, way } : null;
+      keepOutAsk = null;
+      focusAsk(draft);
+    },
     touch: () => phone() || !!window.matchMedia?.('(pointer: coarse)').matches,
     selected: () => (editLayer === 'world' ? selected : null),
     group: () => (editLayer === 'world' ? group : []),
@@ -31060,6 +31646,7 @@ function start(host            ) {
     editing: () => editing && !playing && editLayer === 'world',
     ask: host.offline ? undefined : (id) => {
       keepOutAsk = selected ? { id, key: selected } : null;
+      toKnobAsk = null;
       focusAsk();
     },
     menu: (at, rows) => {
@@ -31075,6 +31662,13 @@ function start(host            ) {
   const keepOutAskNow = () => {
     if (keepOutAsk && (editLayer !== 'world' || selected !== keepOutAsk.key || !codePlaces.layoutOf(keepOutAsk.key))) keepOutAsk = null;
     return keepOutAsk;
+  };
+  // ✦ Write into the rule was pressed for this layout's way while this object was picked (studio-writeback): the ask is
+  // `intent: "to-knob"` with that way until the pick moves on (as "✦ Describe with text" under keep-out areas).
+  let toKnobAsk                                                     = null;
+  const toKnobAskNow = () => {
+    if (toKnobAsk && (editLayer !== 'world' || selected !== toKnobAsk.key || codePlaces.layoutOf(toKnobAsk.key)?.id !== toKnobAsk.id)) toKnobAsk = null;
+    return toKnobAsk;
   };
   /**
    * The card's rule block for `k`: the layout's (code-place-wire.ts), then its keep-out areas / "Inside a keep-out area";
@@ -31198,6 +31792,10 @@ function start(host            ) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now() .name] : []),
     // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
     askTopic: () => {
+      // ✦ Write into the rule: "Street lamps (rule)" "Sideways · All the same 1 m" (studio-writeback).
+      const rk = libraryShown() ? null : toKnobAskNow();
+      const ra = rk ? codePlaces.ruleAsk(rk.id, rk.way) : null;
+      if (ra) return { chip: ra.chip, tag: ra.tag, ph: t('offset.askPh') };
       const at = libraryShown() ? null : keepOutAskNow();
       return at ? { chip: keepOut.chip(at.id), tag: t('keepout.chip'), ph: t('keepout.askPh') } : null;
     },
@@ -31392,7 +31990,15 @@ function start(host            ) {
    * "✦ Describe with text" under a layout's keep-out areas (studio-code-keepout): the layout and its areas, and what the
    * words are for — so "not within 5 m of the player" reaches the AI as a keep-out condition of THAT layout.
    */
-  function requestPlaces()                                                {
+  function requestPlaces()                                                            {
+    // ✦ Write into the rule (studio-writeback): the layout with its way, its offsets and each object's row / rank.
+    const rk = libraryShown() ? null : toKnobAskNow();
+    const base = rk ? keepOut.request(rk.id) : null;
+    const ra = rk ? codePlaces.ruleAsk(rk.id, rk.way) : null;
+    if (rk && base && ra) {
+      toKnobAsk = null;
+      return { places: [{ ...base, ...ra.place }], intent: 'to-knob' };
+    }
     const at = libraryShown() ? null : keepOutAskNow();
     const p = at ? keepOut.request(at.id) : null;
     return p ? { places: [p], intent: 'avoid' } : {};
@@ -31795,6 +32401,8 @@ function start(host            ) {
       renderAll(true);
     }
     placementPanel.renderAsk();
+    // Its chips may have changed (a topic's two): the presence words find their place again (renderPresence).
+    renderPresence();
     if (text !== undefined) {
       askInput.value = text;
       askInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -32489,7 +33097,10 @@ function start(host            ) {
     // press on it opens the same line of what is true). English fits beside the field and keeps its words.
     const box = placementPanel.askEl;
     const w = box.offsetWidth;
-    if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM;
+    // The chips in the field take its room too (studio-writeback: ✦ Write into the rule's two chips "Street lamps
+    // (rule)" "Sideways · All the same 1 m" beside the English words left the draft no room to show at 1280).
+    const chips = [...box.querySelectorAll             ('.ask-chip:not([hidden])')].reduce((a, e) => a + e.offsetWidth, 0);
+    if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM + chips;
     const tlOpen = !phone() && app.dataset.timeline === 'open';
     const dotOnly = phone() || (tlOpen && wordsNarrow);
     const narrow = !dotOnly && wordsNarrow;
@@ -32601,10 +33212,13 @@ function start(host            ) {
     const note = aiStatus?.note;
     const link = (action        , ic        , label        , run            , title         ) =>
       aiLine.append(h('button', { type: 'button', class: 'link', dataset: { action }, title: title || label, disabled: undoBusy, onclick: run }, icon(ic), h('span', { text: label })));
-    // A Save (plan step 6, save-receipt.ts): what was kept by name → "Claude is putting it in the code…" → "✓ In the
-    // game (3) ▶ Play" + Undo AI change. A `sent` with no sign of the AI after UNSEEN_MS is the "no AI" fact, as below.
+    // A Save (plan step 6, save-receipt.ts): what was kept by name → "Claude is putting it in the code…" → "✓ Saved:
+    // gate’s motion · In the game ▶ Play" + Undo AI change (studio-motion-next: by name, it was "In the game (3)"), and
+    // under it the AI's own line when it wrote a rule's changes into the rule (studio-writeback: "the code is the truth" —
+    // "Claude wrote your changes to “Street lamps” into its rule"). A `sent` with no sign of the AI after UNSEEN_MS is
+    // the "no AI" fact, as below.
     const rc = pending?.kind === 'saved' && pending.saved
-      ? receipt({ phase: ph === 'sent' && Date.now() - (pending.sent ?? 0) >= UNSEEN_MS ? 'away' : ph, things: pending.saved, total: pending.savedTotal ?? 0, vars: aiVars(), t })
+      ? receipt({ phase: ph === 'sent' && Date.now() - (pending.sent ?? 0) >= UNSEEN_MS ? 'away' : ph, things: pending.saved, total: pending.savedTotal ?? 0, vars: aiVars(), t, ...(ph === 'done' && note ? { note } : {}) })
       : null;
     if (rc) {
       if (ph === 'done') aiLine.classList.add('saved-in');
@@ -32897,6 +33511,14 @@ function start(host            ) {
       return;
     }
     if (!redo) lastChange.redo = res.redo ?? null;
+    // What the AI's write-back took out of the file comes back with its old code (Redo: out again), before the game
+    // reads the draft — not a change of the person's either way (studio-writeback).
+    for (const f of lastChange.folds ?? []) {
+      if (f.level !== levelNow()) continue;
+      if (!redo) worldModel.places.unfold(f.id, f.back);
+      else worldModel.places.fold(f.id, f.parts ?? ['knobs']);
+    }
+    if (lastChange.folds?.length) renderAll();
     aiAfter = redo ? 'redone' : 'undone';
     aiAfterTurn++;
     // The files' new signature first, so the reload below does not trigger a second one.
@@ -33284,7 +33906,8 @@ function start(host            ) {
       case 'studio:code-places':
         codePlaceList = m.list;
         codeAvoidList = m.avoids;
-        if (worldModel.places.settle(m.list)) keepSoon();
+        // studio-writeback: knobs the AI wrote into the code are noted for "Undo AI change" (they come back with it).
+        if (worldModel.places.settle(m.list, (id, back) => aiFolds.push({ level: levelNow(), id, parts: null, back }))) keepSoon();
         // Where the rule put them is the code's place, not a move (studio-code-knobs: placement-model.ts codePoses).
         codePlaces.poses(worldItems.map((i) => ({ key: i.key, pose: i.pose })));
         renderAll();
@@ -34102,7 +34725,8 @@ function start(host            ) {
       aiBaseCode = busy ? aiBeforeCode : null;
     }
     if (why === 'ai' && changeFrom) {
-      lastChange = { from: changeFrom, redo: null };
+      lastChange = { from: changeFrom, redo: null, ...(aiFolds.length ? { folds: aiFolds } : {}) };
+      aiFolds = [];
       changeFrom = null;
     }
     keepSel = { selected, group: group.slice() };
@@ -35144,7 +35768,13 @@ function start(host            ) {
     codeAvoids: () => codeAvoidList,
     reloadGame: async () => {
       clearTimeout(placesTimer);
+      // studio-writeback: while a request of the person's is being worked on (`changeFrom`), the game read here is not
+      // "the AI's change shown" — its done still reads the game once more as that change (softReload('ai'): the marks,
+      // "Undo AI change", the write-back's folded parts kept for it). So what the frame was built from stays the old
+      // signature for the status poll; without it, a poll that saw the new code first made the done reload nothing.
+      const was = loadedCode;
       await softReload('draft');
+      if (changeFrom && was !== undefined) loadedCode = was;
       for (const end = Date.now() + 15_000; Date.now() < end;) {
         await new Promise((r) => setTimeout(r, 150));
         // The code's lists come right after the page's first list (their own messages): one more beat for them.
@@ -35160,6 +35790,18 @@ function start(host            ) {
       // A keep-out area the AI added or changed (place.avoid): its row glows violet on the card (studio-code-keepout).
       keepOut.aiChanged(id, before, worldModel.places.get(id));
     },
+    // studio-writeback: what the AI wrote into the code leaves the file and the history (a ⌘Z must not put an offset
+    // back on top of the code's), kept for "Undo AI change". The draft is written before the game reads it again.
+    fold: (id, parts) => {
+      const back = worldModel.places.fold(id, parts);
+      if (!back) return false;
+      undo.rebase(id, (e) => (e ? ((handsFoldEntry(e, parts)                         ) ?? null) : null));
+      aiFolds.push({ level: levelNow(), id, parts, back });
+      renderAll();
+      renderButtons();
+      return true;
+    },
+    knobAdded: (id, names) => codePlaces.lightKnobs(id, names),
     // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
     ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
     swapped: (x) => {
@@ -35400,7 +36042,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[87] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -35600,19 +36242,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(86);
-const { createLocalHost } = __require(87);
+const { start } = __require(87);
+const { createLocalHost } = __require(88);
 
 start(createLocalHost());
 
 
 };
-__require(88);
+__require(89);
 })();

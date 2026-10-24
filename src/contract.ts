@@ -1615,8 +1615,13 @@ export interface StudioRequestInput {
   history?: ChatLine[];
 }
 
-/** What an ask is for, when a button set it (StudioRequestInput.intent). */
-export type RequestIntent = 'avoid' | 'to-code';
+/**
+ * What an ask is for, when a button set it (StudioRequestInput.intent). 'to-knob' (studio-writeback, 2026-10-24; the
+ * card's / the four choices' ✦ Write into the rule): the layout in `places` with `way` — the AI writes that way's offsets
+ * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
+ * --fold <way>`; the offset row becomes that knob on the card.
+ */
+export type RequestIntent = 'avoid' | 'to-code' | 'to-knob';
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
 export interface RequestPlace {
   id: string;
@@ -1625,6 +1630,12 @@ export interface RequestPlace {
   n: number;
   knobs?: Record<string, number>;
   avoid: Array<{ box: { p: number[]; size: number[] }; name?: string; off?: true } | { code: string; name?: string; knobs?: Record<string, number>; off?: true }>;
+  /** `intent: 'to-knob'` only (studio-writeback): the way to write into the rule. */
+  way?: OffsetWay;
+  /** `intent: 'to-knob'` only: the layout's offsets as they are now (that way's and the others'). */
+  offsets?: PlaceOffset[];
+  /** `intent: 'to-knob'` only: each object's row and rank in the offsets' frame and what the offsets add now. */
+  objects?: Array<{ key: string; line?: number; rank?: number; offset?: number[] }>;
 }
 
 /** A Library motion named in an ask (StudioRequestInput.motions). */
@@ -2235,10 +2246,17 @@ export interface PlacementPlace {
  * rank; size 1 + (v − 1) × rank). `v` = the number the card shows.
  */
 export type OffsetWay = 'along' | 'side' | 'up' | 'turn' | 'size' | 'move';
-export type OffsetHow = 'same' | 'zigzag' | 'ramp';
+/**
+ * 'jitter' (studio-writeback, 2026-10-24; a request that day: "a little, by a fixed random amount"): v × a random number from
+ * −1 to 1 per object, the same every load for the row's `seed` (size: 1 + (v − 1) × it; move: x and z each their own).
+ * Made from the card's ⋯ (Add jitter), never by a drag.
+ */
+export type OffsetHow = 'same' | 'zigzag' | 'ramp' | 'jitter';
 export type PlaceOffset =
-  | { way: Exclude<OffsetWay, 'move'>; how: OffsetHow; v: number; odd?: true }
-  | { way: 'move'; how: 'same'; v: [number, number] };
+  | { way: Exclude<OffsetWay, 'move'>; how: Exclude<OffsetHow, 'jitter'>; v: number; odd?: true }
+  | { way: Exclude<OffsetWay, 'move'>; how: 'jitter'; v: number; seed: number }
+  | { way: 'move'; how: 'same'; v: [number, number] }
+  | { way: 'move'; how: 'jitter'; v: [number, number]; seed: number };
 export type PlacementAvoid =
   | { box: { p: number[]; size: number[] }; name?: string; off?: true }
   | { code: string; knobs?: Record<string, KnobValue>; off?: true };

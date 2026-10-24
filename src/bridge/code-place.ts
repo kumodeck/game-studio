@@ -1006,8 +1006,13 @@ text.hand { fill: ${SAND_TEXT}; }
       if (keep && changed && p && pose && dr.start && dr.way) {
         const n = d.adapter().dim === '3d' ? 3 : 2;
         const amt = dr.mode === 'offset' && dr.amount ? dr.amount : dragAmount(dr.tool, dr.row, dr.start, pose, n, dr.knobs.length > 1 ? undefined : dr.way);
+        // The knob the four's first choice names: the one for the way the object went (studio-writeback: after ✦ Write
+        // into the rule added "From the road", a sideways drag said "Change Gap" — Move turns along and side together,
+        // and the first of them was named), else the one that turned, else the first.
+        const wayKnob = dragKnobs(p)[amt.way as KnobWay];
+        const knob = wayKnob && dr.knobs.includes(wayKnob) ? wayKnob : dr.knobs.find((nm) => dr.v[nm] !== dr.from[nm]) ?? dr.knobs[0]!;
         d.post({ type: 'studio:place/dragged', id: dr.id, key, way: amt.way, d: amt.d, rank: dr.row?.rank ?? 0, row: !!dr.row,
-          did: dr.mode === 'knob' ? 'knob' : dr.how, ...(dr.mode === 'knob' ? { knob: dr.knobs[0]! } : {}), pose,
+          did: dr.mode === 'knob' ? 'knob' : dr.how, ...(dr.mode === 'knob' ? { knob } : {}), pose,
           ...((p.skipped?.length ?? 0) > dr.skip0 ? { skipped: (p.skipped?.length ?? 0) - dr.skip0 } : {}) });
       }
       d.markDirty();

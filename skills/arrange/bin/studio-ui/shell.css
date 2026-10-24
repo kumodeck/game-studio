@@ -2022,8 +2022,10 @@ li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
 .off-row .off-ask { color: var(--ai-text); }
 .off-row .off-ask, .off-row .off-more { width: 18px; height: 22px; min-height: 22px; padding: 0; }
 .off-row.lit { animation: off-lit 1.2s var(--ease) 1; }
+/* studio-writeback: a knob the AI just added to the rule (✦ Write into the rule) lights once, as a new offset row does. */
+.rule-knobs > .lit { animation: off-lit 1.2s var(--ease) 1; border-radius: 6px; }
 @keyframes off-lit { 0% { background: var(--ai-soft); box-shadow: inset 0 0 0 1.5px var(--ai); } 100% { background: transparent; box-shadow: none; } }
-@media (prefers-reduced-motion: reduce) { .off-row.lit { animation: none; background: var(--ai-soft); } }
+@media (prefers-reduced-motion: reduce) { .off-row.lit, .rule-knobs > .lit { animation: none; background: var(--ai-soft); } }
 .shell[data-layout="phone"][data-fold="min"] .ai-caption > .offset-choices:not([hidden]) { display: flex; }
 /* Phone: the same, the four may take two lines (no ⌥ there: Just this one is the way in). */
 /* Phone / side window: the same parts in the sheet; the knobs' names a little wider (as the numbers' labels, .fields). */

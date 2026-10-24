@@ -341,7 +341,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). `intent: "to-code"` = they pressed **✦ Turn into a rule** on these hand-placed objects or this motion (its points in `motions[].keys`): "Turn into a rule" in §4. A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). `intent: "to-code"` = they pressed **✦ Turn into a rule** on these hand-placed objects or this motion (its points in `motions[].keys`): "Turn into a rule" in §4. `intent: "to-knob"` = they pressed **✦ Write into the rule** on a rule's offset: `places[0]` is the layout with `way`, its `offsets` and each object's `line` / `rank` / `offset` — "Code layouts" step 8. A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
@@ -523,8 +523,8 @@ and `hand` are refused (they need the game's numbers): change the number in the 
 | `motion.rename` | `name`, `to` | Rename it everywhere |
 | `motion.set` | `name`, `repeat`, `len` (stretches its keys), `key` + `when` / `until`, `knobs`, `key` + `off` | Change how it repeats, how long it takes, when it starts / stops (`key` = on that object; without it, on every object that has it). `knobs` (`{ "radius": 3 }`): a code motion's numbers, turned on screen (needs the editor open). `off: true` / `false`: switched off on that object (it stays there and does not play) / on again |
 | `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | Put the code motion you wrote (`codeMotion('<code>', …)` in the game's code, "Motion" below) on the timeline: a Library motion with the knobs, played by the loader, and on `key` (starting with the game unless `when` says). The same `code` already in the Library is that motion (the person may have renamed it). `replace: true`: the motion of points called `name` becomes this code motion (every object that has it keeps it); the line then ends with the editor's measure of how close it is (the largest gap over one round, and when) |
-| `place.code` | `id`, `replace` (keys) | Show the code layout you wrote (`codePlace('<id>', …)`, "Code layouts" below) in the editor: its objects, listed under the layout's name. `replace`: the hand-placed objects it takes the place of (`["lamp-1", …]`, in the layout's own order: its number 1 takes the first one's place) — hidden at once (one ⌘Z brings them back), gone from the code by you on Save; the line then ends with the editor's measure of how close it is (the largest gap, which object) |
-| `place.set` | `id`, `knobs`, `pin`, `unpin`, `hand`, `offsets` | `knobs` (`{ "gap": 4 }`): the layout's numbers, on screen (needs the editor open). `pin` (`{ "key": "lamp-3", "p": [x, y, z] }`): just that one put by hand; `unpin`: that one back on the formula (`"*"`: every one placed by hand, the card's "All back to rule"). `hand: true`: every object placed by hand where it stands now (needs the editor open); `false`: back on the code. `offsets` (`[{ "way": "side", "how": "same", "v": 1 }]`, ≤ 8; `[]` takes them off): the whole rule shifted, as the person's drags do ("Code layouts" step 5) |
+| `place.code` | `id`, `replace` (keys) or `fold` | Show the code layout you wrote (`codePlace('<id>', …)`, "Code layouts" below) in the editor: its objects, listed under the layout's name. `replace`: the hand-placed objects it takes the place of (`["lamp-1", …]`, in the layout's own order: its number 1 takes the first one's place) — hidden at once (one ⌘Z brings them back), gone from the code by you on Save; the line then ends with the editor's measure of how close it is (the largest gap, which object). `fold`: what of the layout's `places` entry you have just written into the code — `side` (or another way: that way's offsets), `offsets`, `pins`, `avoid`, `knobs`, `from`, or `all` (`"side,pins"` for two): the editor reads the game again, takes them out of `placement.json` (not a change of the person's: no ⌘Z, no Save count) and measures every object before and after — the line ends with "the look is the same", or the farthest off and where it stood ("Code layouts" step 5) |
+| `place.set` | `id`, `knobs`, `pin`, `unpin`, `hand`, `offsets` | `knobs` (`{ "gap": 4 }`): the layout's numbers, on screen (needs the editor open). `pin` (`{ "key": "lamp-3", "p": [x, y, z] }`): just that one put by hand; `unpin`: that one back on the formula (`"*"`: every one placed by hand, the card's "All back to rule"). `hand: true`: every object placed by hand where it stands now (needs the editor open); `false`: back on the code. `offsets` (`[{ "way": "side", "how": "same", "v": 1 }]`, ≤ 8; `[]` takes them off): the whole rule shifted, as the person's drags do ("Code layouts" step 5); `{ "how": "jitter", "v": 0.3 }` = every object a little off by a fixed random amount (a `seed` is added) |
 | `place.avoid` | `id`, `code` (+ `knobs`, `off`) or `box` (+ `name`), or `remove` | A keep-out area of that layout only: your `codeAvoid('<code>', …)` added, switched `off` / on, its `knobs` turned; or a box `{ "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] }` (2D: `[x, y]` middle / `[w, h]` px); or `remove`: which one (its place in the list, 0 = the first, or its code id) |
 | `object.move` / `object.turn` / `object.scale` | `key`, `to` or `by` (turn: radians, `deg: true` for degrees; scale `by` = times) | Move, turn, resize (its place; its motion comes along) |
 | `object.rename` / `object.duplicate` / `object.delete` | `key` (+ `to`: the name; duplicate: the copy's place) | As Rename (F2), Duplicate (⌘D), Delete; the copy's key is in the line |
@@ -593,7 +593,9 @@ or the marks in the code (§5).
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
 loads. Do not ask; look at the game (§3.3), set `done` and say so in one line ("Your layout is in. ▶ Play in the editor
 plays it."). Copies and deletions (`added`, `removed`) still need you: the loader only shows them until the code has
-them (a look-alike copy, a hidden deletion), see "Copies and deletions".
+them (a look-alike copy, a hidden deletion), see "Copies and deletions". **`places` (your code layouts) always need
+you: the code is the truth** — write every change in it into your `codePlace` / `codeAvoid` on each Save and fold it
+out of the file ("Code layouts" step 5); the file only holds them until you do.
 
 **Otherwise (the first save of a game without the loader): add the loader (Way 1) without asking**, then tell them,
 in this order:
@@ -986,35 +988,61 @@ later", "scatter crystals on the field", "not on the road", "not within 5 m of t
 4. **Write new layouts this way from the start.** A game that places them in a loop of its own shows each object as a
    hand-placed one (the person moves one at a time, the loop is lost); rewrite that loop as a `codePlace` when they ask
    to change the layout as a whole ("closer together", "keep the formula").
-5. **On Save** (a `saved` request), per layout in `places`: `knobs` → write each `v` where its `was` is, in that
-   `codePlace` / `codeAvoid` (`gap: { v: 6 …` → `v: 4`); `pins` and boxes stay in the file (the loader places them; the
-   person put them there by hand); `hand: true` → write the layout out as a list of coordinates (the pins) in the code
-   and take its entry out of `places`; `from` → take those hand-placed objects out of the code (the layout is in their
-   place) and take `from` out. The editor takes a knob out of the file once the code says the same.
-   `offsets` (studio-offsets, 2026-10-24: the person dragged the rule a way it had no knob for, then chose All the same /
-   Zigzag / Ramp) — **the code is the truth** (the file only holds them until you write them): each row
-   is `{ way, how, v, odd? }` over `at()` — `way` along / side (a row's: along it, or away from the middle line of its
-   two rows, so both sides of a road leave it) / up / turn (°, mirrored on the second row) / size (× a factor) / move
-   (the ground `[x, z]`, a layout that is not a row); `how` same (every object `v`) / zigzag (every other one: the
-   objects whose **rank** is odd when `odd`, else the even) / ramp (`v × rank`; size `1 + (v − 1) × rank`). The rank is
-   an object's place in its own row from the end of number 1's row — read it from `--do list` (`places[].objects`:
-   `{ key, line, rank, offset }`, with what the offsets add now), don't count it yourself. Write them into `at()`
-   (same → the number for that way, e.g. the distance from the road `5.6` → `6.6`; zigzag → `+ (rank % 2 === 1 ? 1.5 : 0)`;
-   ramp → `+ rank * 0.8`; a number the person may turn again → a knob with that name in the game's words: "Zigzag width",
-   "Fan"), then in **one** `--do`: `[{"do":"place.code","id":"lamp-row"},{"do":"place.set","id":"lamp-row","offsets":[]}]`
-   — the shape stays where the person saw it, and the file no longer shifts it twice.
+5. **On Save** (a `saved` request) — **the code is the truth** (studio-writeback, 2026-10-24: "Is what the code says then
+   hard-coded again by the JSON? The code has to be the truth"): `placement.json` only holds a layout's changes until
+   you write them. Per layout in `places`, write **every** part into the game's code, then fold it out of the file. Read
+   `--do list` first (`places[]`: `knobs`, `offsets`, `pins`, `avoid`, and `objects` — each object's `line` / `rank` /
+   `offset`, what the offsets add now; never count ranks yourself).
+   - `knobs` → each `v` where its `was` is, in that `codePlace` / `codeAvoid` (`gap: { v: 6 …` → `v: 4`). A knob leaves
+     the file by itself once the code says its number.
+   - `offsets` (the person's drags kept as a rule, `{ way, how, v, odd?, seed? }` over at()'s place) → into `at()`.
+     `way`: along / side (a row's: along it, or away from the middle line of its two rows, so both sides of a road leave
+     it — `objects[].line` says the row) / up / turn (°, mirrored on the second row: `(line ? -1 : 1) * 15`) / size (× a
+     factor) / move (the ground `[x, z]`, a layout that is not a row). `how`: **same** (every object `v`) → the number for
+     that way in `p`, e.g. the distance from the road `5.6` → `6.6` (the row stays a straight row); **zigzag** (the
+     objects whose **rank** is odd when `odd`, else the even), **ramp** (`v × rank`; size `1 + (v − 1) * rank`) and
+     **jitter** (`v × jitter(seed, i)`, `import { jitter } from './studio-placement.js'`: the same numbers the person saw;
+     a move's z: `jitter(seed, i, 1)`) → **`by`** in at()'s answer, not `p`: `{ p: [side * k.side, 0, z], by: [side *
+     (rank % 2 === 1 ? 1.5 : 0), 0, 0] }` — `p` stays the row's own place, so the editor still sees a row (its sideways,
+     zigzag and ramp keep working after Save); turn and size into `r` / `s`. The rank is the object's place in its own
+     row (`objects`; for `(i % 2 ? 1 : -1)` sides it is `Math.floor(i / 2)`). A number the person may turn again → a knob
+     with that name in the game's words ("From the road", "Zigzag width", "Fan"; at most 3), named in `drag` for that way.
+   - `pins` (one placed by hand) → **an exception of the rule** by its number (`lamp-row-5` is `i === 4`): at() answers
+     `{ p: [-7.6, 0, -23], hand: true }` (and its `r` / `s`, if the pin has them) before the formula — `hand: true` keeps
+     the keep-out areas and the row's offsets off it, as the pin did. **Its own object** in the code instead (a mark of
+     its own, §5, at that place; the rule's count one less) only when it is plainly not one of the rule's any more (the
+     person took it somewhere else entirely) and it is the rule's last number (no other key changes). `hand: true` on the
+     entry (Convert to coordinates) → at() reads a list of the pins' places (`const SPOTS = [[x, y, z], …]; at: (i) =>
+     ({ p: SPOTS[i], hand: true })`, the count its length).
+   - `avoid` → a box drawn by hand becomes a `codeAvoid()` of that layout (`p` = the middle of its bottom, `size` = [w,
+     h, d]: `test: (q) => Math.abs(q[0] - p[0]) <= w / 2 && q[1] >= p[1] && q[1] <= p[1] + h && Math.abs(q[2] - p[2]) <= d
+     / 2`, `show: { box: { p, size } }` so the editor still paints it), named in the codePlace's `avoid`; a condition
+     with `off: true` → out of the codePlace's `avoid`; a condition's knobs → its `v` in the codeAvoid.
+   - `from` → take those hand-placed objects out of the code (the layout is in their place).
+   Then one `--do` for all of them, one op per layout (`"level"` for a level's): `--do
+   '[{"do":"place.code","id":"lamp-row","fold":"all"}]'` (or only the parts you wrote: `"fold":"offsets,pins"`). The
+   editor reads the game again, takes them out of the file — no ⌘Z, no Save count — and measures every object against
+   where it stood: `the look is the same`, or `the farthest off is lamp-row-3, 0.4 m (it stood at […], now […])` / `…
+   is gone`: then your code is not what the file did — fix it and send `place.code --id lamp-row` (no `fold`: it
+   measures against the same before) until the look is the same. Never `place.set --offsets []` / `--unpin` / `--hand
+   false` for this: those are changes of the person's (Save counts them, and they move the rule until your code is
+   read). No editor open: the same `fold` takes them out of `placement.json` (nothing to measure: look at the game,
+   §3.3). The `done` note is one line in the game's words ("Wrote the lamps' new spacing into the game"); don't explain
+   folding.
 6. **No loader, or bodies that place themselves** (a physics engine owns the positions): keep the layout in the game's
    code and say in one line: "This layout is in the game's code, so the editor shows each object on its own."
 7. **"Turn these into a rule"** (hand-placed objects → a code layout; a motion of points → a code motion): "Turn into a
    rule" below.
-8. **"Add a knob to the Street lamps rule for its Sideways offset"** (the editor's
-   ✦ Make this way a knob, after the person dragged one object a way its rule has no knob for — the rule took it as an
-   offset): add that knob to the `codePlace` (its number = the code's + that way's offset: 5.6 + 1.0 → "From the road
-   6.6 m"; a zigzag or ramp row becomes its own knob: "Zigzag width", "Fan") and name it in `drag` for that way (at
-   most 3 knobs: take out the one least likely to be changed, or say in one line which one you dropped), then in one
-   `--do`: `place.code --id lamp-row` and `place.set --id lamp-row --offsets '[…]'` without that way's rows — the
-   person's other changes stay. Reply in one line in the game's words ("The lamps' distance from the road is a knob now
-   (6.6 m)"). Never a `place.set --pin` for it: that takes the object out of its rule.
+8. **✦ Write into the rule** (an `ask` with `intent: "to-knob"`; it was "Make this way a knob"): the person dragged a
+   rule's object a way its rule had no knob for — the editor kept it as an offset — and wants it in the rule as a number
+   of its own. `places[0]` is the layout with `way`, its `offsets` and each object's `line` / `rank` / `offset`; their
+   words may name it ("as the distance from the road"). Add that knob to the `codePlace` (its number = the code's + that
+   way's offset: 5.6 + 1.0 → "From the road 6.6 m"; a zigzag, ramp or jitter row is its own knob: "Zigzag width", "Fan",
+   "Wobble") and name it in `drag` for that way (at most 3 knobs: take out the one least likely to be changed, or say in
+   one line which one you dropped), then `--do place.code --id lamp-row --fold side` — that way only, the person's other
+   changes stay in the file. The editor's line ends with its measure (the same look, or the farthest off: fix it as in
+   step 5) and the knob lights on the card. Reply in one line in the game's words ("The lamps' distance from the road is
+   part of the rule now (6.6 m)"). Never a `place.set --pin` for it: that takes the object out of its rule.
 
 A row and a scatter, and two keep-out conditions (the loader is in the game, §4 Way 1; refresh an older copy):
 
@@ -1060,8 +1088,11 @@ node <…>/bin/studio.mjs <game folder> --do '[{"do":"place.code","id":"crystals
   rule (the editor's offset, `places[id].offsets`; only ⌥ moves one object by hand, as a pin). `make(i)` returns a new object (three.js: an
   Object3D; PixiJS: a display object); the loader names it `<id>-<i+1>` and adds it to the root you pass to
   `applyPlacement`. `at(i, k, g)`: `p` in the root's space (3D `[x, y, z]`, 2D `[x, y]` px), `r` (3D `[x, y, z]` or one
-  number = the turn round the up axis; 2D the angle), `s`; `g.rand()` = a random number that is the same every load for
-  the same id, number and try; `g.try` = how many places a keep-out area refused; `g.level` = the level being built.
+  number = the turn round the up axis; 2D the angle), `s`, `by` (a shift added after the editor reads the row from `p`:
+  the person's zigzag / ramp / jitter written in on Save), `hand: true` (one the person placed by hand, written in on
+  Save: keep-out areas and a row's offsets leave it where it is); `g.rand()` = a random number that is the same every
+  load for the same id, number and try; `g.try` = how many places a keep-out area refused; `g.level` = the level being
+  built. `jitter(seed, i, axis?)` (exported by the loader) = the editor's jitter number (−1 … 1).
   `count` at most 200. Physics bodies: make them after `applyPlacement`, from `report.places[id].keys`.
 - `codeAvoid(id, { name, after, knobs, test, show })`: `test(p, k, g)` true = nothing goes at `p`; `g.player` = where
   the player is when the level starts (`setPlayer(player)` before `applyPlacement`, or an object keyed `player`, or
@@ -1076,15 +1107,17 @@ node <…>/bin/studio.mjs <game folder> --do '[{"do":"place.code","id":"crystals
                              { "code": "road", "off": true },
                              { "code": "near-player", "knobs": { "r": { "v": 6, "was": 5 } } } ] },
     "lamps": { "from": ["lamp-1", "lamp-2", "lamp-3"] },
-    "street": { "offsets": [ { "way": "side", "how": "same", "v": 1 }, { "way": "side", "how": "zigzag", "v": 1.5, "odd": true } ] }
+    "street": { "offsets": [ { "way": "side", "how": "same", "v": 1 }, { "way": "side", "how": "zigzag", "v": 1.5, "odd": true },
+                             { "way": "turn", "how": "jitter", "v": 10, "seed": 4242 } ] }
   }
   ```
 
-  Only what the person changed: `knobs` (`v` now, `was` = your number), `pins` (just that one by hand), `hand: true`
-  (all by hand), `avoid` (in order: a box drawn by hand — `p` = the middle of its bottom, `size` = [w, h, d] —, or one
-  of your conditions with its knobs; `off: true` = switched off), `from` (hand-placed objects it replaced), `offsets`
-  (≤ 8: the rule shifted by the person's drags — step 5). Change them
-  through `--do place.*`, never by hand while the editor is open.
+  Only what the person changed since your code: `knobs` (`v` now, `was` = your number), `pins` (just that one by hand),
+  `hand: true` (all by hand), `avoid` (in order: a box drawn by hand — `p` = the middle of its bottom, `size` = [w, h,
+  d] —, or one of your conditions with its knobs; `off: true` = switched off), `from` (hand-placed objects it
+  replaced), `offsets` (≤ 8: the rule shifted by the person's drags; `jitter` with its `seed` — step 5). Until Save:
+  on Save you write them into the code and fold them out (step 5). Change them through `--do place.*`, never by hand
+  while the editor is open.
 
 ### Turn into a rule (`intent: "to-code"`)
 
@@ -1115,8 +1148,8 @@ yourself, in this order — never answer with steps for them:
    you checked: "Turned the 6 street lamps into a row 6 m apart. The farthest off is the 3rd lamp, 0.6 m." The editor
    shows the original beside the rule (orange dots, "Max deviation") until Save, ⌘Z puts the hand's shape back, and Save
    is yours to tidy up after: don't explain any of them.
-5. **On Save**: `from` → take those hand-placed objects out of the code and `from` out of `places` (Code layouts, step
-   5). A motion needs nothing more: the file has `{ "name", "code" }` in place of its points now.
+5. **On Save**: `from` → take those hand-placed objects out of the code, then `place.code --id lamp-row --fold from`
+   (Code layouts, step 5). A motion needs nothing more: the file has `{ "name", "code" }` in place of its points now.
 
 ### Levels (`levels`)
 

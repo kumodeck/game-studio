@@ -23,6 +23,16 @@
 // a lamp dragged away from the road did nothing): the plaza gets a road, then "line the street lamps along both sides of
 // the road" (in Japanese) → a codePlace() with a knob for each way a person would drag one (SKILL.md: `drag` by way —
 // along the road and away from it at least), shown with --do place.code. One conversation.
+// `--steps writeback` (studio-writeback, 2026-10-24 — "the code is the truth": what the person changed of a rule is
+// written into the code on Save and leaves placement.json): the plaza gets a road and the street lamps on both sides as
+// ONE codePlace (CRYSTAL FIELD's: Count and Gap, the distance from the road fixed in the code); each in a new
+// conversation, the person (this test, through the editor) changes the rule and presses Save, then says "saved":
+//   1. every lamp 1 m further from the road (an offset, as their sideways drag makes) → the AI writes it into the
+//      codePlace and sends `place.code --fold`: the file's offsets are gone, every lamp stands where it stood, nothing
+//      left to save;
+//   2. lamp 5 put by hand (a pin, as ⌥-drag makes) → the AI writes it into the code (an exception of the rule, or its
+//      own object) and folds the pins: the pin is gone from the file, lamp 5 where the person put it, the others as
+//      they were.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -58,7 +68,11 @@ if (spawnSync('claude', ['--version'], { encoding: 'utf8' }).status !== 0) {
 
 const TO_RULE = take('--steps') === 'to-rule';
 const TO_COORDS = take('--steps') === 'to-coords';
-const STEPS = TO_COORDS ? [
+const WRITEBACK = take('--steps') === 'writeback';
+const STEPS = WRITEBACK ? [
+  { say: '保存した', first: true, kind: 'wb-offset' },
+  { say: '保存した', first: true, kind: 'wb-pin' },
+] : TO_COORDS ? [
   { say: '街灯を道の両側に並べて', first: true, kind: 'by-way' },
 ] : TO_RULE ? [
   { say: '街灯をルールにして', first: true, kind: 'to-rule-place' },
@@ -150,6 +164,42 @@ scene.add(road);
 await applyPlacement(scene, './placement.json');`);
   writeFileSync(join(game, 'main.js'), main);
 }
+// The writeback set's road and street lamps: both sides of the road as ONE codePlace (as CRYSTAL FIELD and the real AI
+// write it), Count (each side) and Gap its knobs, the distance from the road (5.6 m) fixed in the code — the shape the
+// person's sideways drag becomes an offset of.
+if (WRITEBACK) {
+  const main = readFileSync(join(game, 'main.js'), 'utf8')
+    .replace("import { applyPlacement } from './studio-placement.js';", "import { applyPlacement, codePlace } from './studio-placement.js';")
+    .replace("await applyPlacement(scene, './placement.json');", `// A road down the middle of the plaza, from the front to the back (5 m wide).
+const road = new THREE.Mesh(new THREE.PlaneGeometry(5, 30), new THREE.MeshStandardMaterial({ color: '#2b2d33' }));
+road.rotation.x = -Math.PI / 2;
+road.position.y = 0.01;
+road.userData.studioKey = 'road';
+scene.add(road);
+// Street lamps on both sides of the road: Count (each side) and Gap are its knobs.
+function makeLamp() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 3.2, 8), new THREE.MeshStandardMaterial({ color: '#3a3f4c' }));
+  pole.position.y = 1.6;
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshStandardMaterial({ color: '#fff1b8', emissive: '#ffd36b' }));
+  bulb.position.y = 3.3;
+  g.add(pole, bulb);
+  return g;
+}
+codePlace('lamp-row', {
+  name: '街灯',
+  knobs: { n: { v: 5, label: '本数（片側）', unit: '', min: 1, max: 10, step: 1 }, gap: { v: 6, label: '間', unit: 'm', min: 2, max: 15 } },
+  count: (k) => k.n * 2,
+  make: () => makeLamp(),
+  at: (i, k) => ({ p: [(i % 2 ? 1 : -1) * 5.6, 0, 6 - Math.floor(i / 2) * k.gap] }),
+  drag: { along: 'gap' },
+});
+
+await applyPlacement(scene, './placement.json');`);
+  writeFileSync(join(game, 'main.js'), main);
+  // The editor's own loader (with codePlace, offsets and jitter), as the AI copies it in (SKILL.md §4 Way 1).
+  cpSync(join(PKG, 'skills/arrange/bin/studio-placement.js'), join(game, 'studio-placement.js'));
+}
 mkdirSync(join(game, '.studio/ui'), { recursive: true });
 writeFileSync(join(game, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'ja', theme: 'dark', seen: ['timeline-steps', 'open-line'] }));
 const code0 = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
@@ -185,6 +235,23 @@ const listNow = () => {
     return null;
   }
 };
+// The writeback set: every lamp's place in the game the editor shows (x, y, z, rounded to the centimetre).
+const GW = `document.querySelector('iframe.game:not(.leaving)')?.contentWindow`;
+const lampsNow = async () => JSON.parse((await page.eval(`(() => { const p = ${GW}?.[Symbol.for('game-studio.codePlaces')]?.get('lamp-row');
+  return JSON.stringify(p ? p.keys.map((k, i) => [k, ...[p.objs[i].position.x, p.objs[i].position.y, p.objs[i].position.z].map((v) => Math.round(v * 100) / 100 + 0)]) : []); })()`)) || '[]');
+const sameLamps = (a, b) => a.length === b.length && a.every((q, i) => q[0] === b[i][0] && q.slice(1).every((v, j) => Math.abs(v - b[i][j + 1]) <= 0.011));
+const unsavedNow = async () => /\d/.test(await page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`));
+const fileNow = () => JSON.parse(readFileSync(join(game, 'placement.json'), 'utf8'));
+const doEditor = (...a) => spawnSync(process.execPath, [CLI, game, '--do', ...a], { encoding: 'utf8', env: editorEnv }).stdout;
+const waitFor = async (f, ms) => {
+  for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) if (await f()) return true;
+  return !!(await f());
+};
+// The person's change before each writeback step (through the editor, as their drag would), then their Save.
+const PERSON = {
+  'wb-offset': () => doEditor('place.set', '--id', 'lamp-row', '--offsets', '[{"way":"side","how":"same","v":1}]'),
+  'wb-pin': () => doEditor('place.set', '--id', 'lamp-row', '--pin', '{"key":"lamp-row-5","p":[-9.4,0,-0.8]}'),
+};
 try {
   await page.goto(url);
   await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
@@ -198,6 +265,17 @@ try {
       const sd = spawnSync(process.execPath, [CLI, game, '--do', 'motion.attach', '--key', 'blue-pillar', '--name', 'Sway', '--when', 'start'], { encoding: 'utf8', env: editorEnv });
       await sleep(800);
       console.log(`  (before: ${sd.stdout.split('\n')[0]}; blue-pillar: ${JSON.stringify((await motions()).map((c) => c.name))})`);
+    }
+    let lamps0 = null;
+    if (PERSON[step.kind]) {
+      console.log(`  (the person: ${PERSON[step.kind]().split('\n')[0].replace(/ - in the editor.*/, '')})`);
+      await sleep(1200);
+      await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+      await waitFor(async () => !(await unsavedNow()), 10000);
+      await sleep(1500);
+      lamps0 = await lampsNow();
+      console.log(`  (saved: places ${JSON.stringify(fileNow().places ?? {})}; lamps ${JSON.stringify(lamps0.map((q) => q.slice(1)))})`);
+      writeFileSync(join(out, `step${i + 1}-before.png`), await page.screenshot());
     }
     const cargs = ['-p', step.say, '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--setting-sources', 'project',
       '--permission-mode', 'bypassPermissions', ...(step.first ? [] : ['--continue']), ...(MODEL ? ['--model', MODEL] : [])];
@@ -289,6 +367,32 @@ try {
       check(!!row && Object.keys(row.knobs ?? {}).length <= 3, `the lamps in the editor under the layout's name, 1–3 knobs (${row ? `${row.name} ×${row.keys.length}` : 'none'})`);
       check(ways.includes('side') && (ways.includes('along') || ways.includes('move')), `a knob for each way a person drags one: along the road and away from it (drag ${JSON.stringify(row?.drag ?? null)})`);
       writeFileSync(join(out, 'by-way.png'), await page.screenshot());
+    } else if (step.kind === 'wb-offset' || step.kind === 'wb-pin') {
+      // The AI's done reads the game again (its change): wait for the page, then look.
+      await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)) && (await lampsNow()).length === 10, 30000);
+      await sleep(3000);
+      const lamps1 = await lampsNow();
+      const l = listNow();
+      const lp = (l?.places ?? []).find((p) => p.id === 'lamp-row');
+      const fileLp = await waitFor(() => !fileNow().places?.['lamp-row']?.[step.kind === 'wb-offset' ? 'offsets' : 'pins'], 15000) ? null : fileNow().places?.['lamp-row'];
+      const codeHas = readFileSync(join(game, 'main.js'), 'utf8') + readGameJs();
+      console.log(`  editor's list: lamp-row ${JSON.stringify(lp && { offsets: lp.offsets, pins: lp.pins, knobs: Object.fromEntries(Object.entries(lp.knobs ?? {}).map(([k, v]) => [k, v.v])) })}; placement.json lamp-row ${JSON.stringify(fileNow().places?.['lamp-row'] ?? null)}`);
+      console.log(`  lamps now ${JSON.stringify(lamps1.map((q) => q.slice(1)))}`);
+      check(edits.some((f) => /main\.js$|\.js$/.test(String(f))) || codeHas !== code0.main, 'it wrote the change into the game\'s code');
+      check(dos.some((c) => /place\.code/.test(c) && /fold/.test(c)), 'it folded what it wrote out of the file itself (--do place.code --fold)');
+      check(!dos.some((c) => /place\.set/.test(c) && /(offsets|unpin|hand)/.test(c)), 'no place.set --offsets [] / --unpin / --hand for the write-back (those are the person\'s changes)');
+      if (step.kind === 'wb-offset') {
+        check(!lp?.offsets && fileLp === null, `the offsets are out of the editor and of placement.json (${JSON.stringify(lp?.offsets ?? null)})`);
+        check(/6\.6|\+ ?1\b|1 ?\+|side/.test(codeHas), 'the code has the 1 m (6.6 m from the road, or + 1)');
+      } else {
+        check(!lp?.pins && fileLp === null, `the pin is out of the editor and of placement.json (${JSON.stringify(lp?.pins ?? null)})`);
+        check(/-9\.4/.test(codeHas), 'the code has lamp 5\'s place (-9.4 …)');
+      }
+      check(sameLamps(lamps1, lamps0 ?? []), `every lamp where the person saw it (within 1 cm): ${sameLamps(lamps1, lamps0 ?? []) ? 'yes' : JSON.stringify(lamps1.map((q, j) => q.slice(1).map((v, k) => Math.round((v - (lamps0?.[j]?.[k + 1] ?? 0)) * 100) / 100)))}`);
+      check(!(await unsavedNow()), `nothing left to save in the editor ("${await page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`)}")`);
+      const measuredSame = /the look is the same/.test(r.s);
+      check(measuredSame, 'the editor\'s measure the AI got back: the look is the same');
+      writeFileSync(join(out, `${step.kind}.png`), await page.screenshot());
     } else if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);

@@ -6,6 +6,8 @@
 // already are) says it with the objects' own names:
 //   pressed       "Saved: moved gate · gate’s motion · ship’s motion"   + "Claude is putting it in the code…"
 //   AI finished   "✓ Saved: gate’s motion · In the game" [▶ Play]      + "Undo AI change · More in Claude"
+//                 (+ the AI's own line under it when it wrote a rule's changes into the rule — studio-writeback:
+//                  "Claude wrote your changes to “Street lamps” into its rule")
 //   no AI there   "Saved. Claude puts it in the code when it opens"     (a fact, not a promise; "How to open" stays the
 //                                                                         presence words under it — one, not two)
 // More than 3 names: the first 3 and "2 more" (the line is one line, on a phone too).
@@ -65,6 +67,13 @@ export interface ReceiptInput {
   /** aiVars() of main.ts ({ai}, {Ai}…), so the line names the person's AI. */
   vars: Record<string, string>;
   t: T;
+  /**
+   * The AI's own line once it is done (aiStatus.note), e.g. its write-back "Claude wrote your changes to “Street lamps”
+   * into its rule" (studio-writeback, "the code is the truth": on Save the AI writes a rule's offsets / pins / numbers
+   * into the code and they leave placement.json). Shown under "Saved: … · In the game" so both are said: what was kept,
+   * and where it went (the rule itself, not a list beside it). Absent / empty = no line under it, as before.
+   */
+  note?: string;
 }
 
 export function receipt(i: ReceiptInput): Receipt | null {
@@ -86,7 +95,8 @@ export function receipt(i: ReceiptInput): Receipt | null {
       // What the person saved (Save · N), by the same names as when it was pressed, and that it is in — not the AI's own
       // count of changed objects: "the 3 I saved are in". studio-motion-next (2026-10-24; a hands-on review: "show what Save means:
       // 'Saved: Street lamp 5's motion · In the game'"): it was "✓ In the game (3)", a count with no names.
-      return { head: t('save.in', { list: savedList(i.things, i.total, t) }), sub: '', play: true, short: t('save.inShort', { list: savedList(i.things, i.total, t) }) };
+      // studio-integrate-writeback (2026-10-24): the AI's write-back line (`note`) under it, or nothing as before.
+      return { head: t('save.in', { list: savedList(i.things, i.total, t) }), sub: i.note?.trim() ?? '', play: true, short: t('save.inShort', { list: savedList(i.things, i.total, t) }) };
     default:
       return null;
   }

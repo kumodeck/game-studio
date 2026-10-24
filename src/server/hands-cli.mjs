@@ -28,7 +28,9 @@ export const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len'
   // --unpin hex-3, --box '{"p":[…],"size":[…]}', --remove 0 | road.
   'code', 'knobs', 'pin', 'unpin', 'box', 'remove',
   // studio-offsets: --offsets '[{"way":"side","how":"same","v":1}]' (a rule's shifts; '[]' takes them off).
-  'offsets']);
+  'offsets',
+  // studio-writeback: place.code --fold side | all | side,pins (what the AI wrote into the code leaves the file).
+  'fold']);
 // A flag of these alone is true; one followed by true / false / a [list] takes it (--hand false, place.code's
 // --replace '["lamp-1","lamp-2"]': the hand-placed objects it takes the place of).
 export const HANDS_FLAG_BOOLS = Object.freeze(['all', 'replace', 'deg', 'editor', 'hand', 'off']);

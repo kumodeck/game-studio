@@ -28,6 +28,7 @@ import {
   type CodeMotionInfo,
   type CodePlaceInfo,
   type PlacementPlace,
+  type OffsetWay,
   type Lang,
   type PlacementFile,
   type Pose,
@@ -63,6 +64,8 @@ import { h, safeImageSrc } from './dom.ts';
 import { detectLang, setAiName, setExtraText, translate } from './i18n.ts';
 import { NEXT_STEPS, renderNextSteps, type StepId } from './next-steps.ts';
 import { statusCovers } from '../schema/handoff.mjs';
+import { handsFoldEntry } from '../schema/hands.mjs';
+import type { Folded } from './code-places.ts';
 import { aiBusy, aiPhase, moreIn, reloadDecision, type AiPhase } from './ai-flow.ts';
 import { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS, type AiPresence } from './ai-presence.ts';
 import { bounces, saveLoud } from './save-loud.ts';
@@ -507,7 +510,13 @@ export function start(host: StudioHost) {
   // snapshot of the AI's version, made by the host when undoing). `aiAfter`:
   // the line says "back to before" / "your AI's change is back".
   let changeFrom: string | null = null;
-  let lastChange: { from: string; redo: string | null } | null = null;
+  let lastChange: { from: string; redo: string | null; folds?: AiFold[] } | null = null;
+  // studio-writeback (2026-10-24, "the code is the truth"): what left the file because the AI wrote it into the code
+  // since the last request (its place.code --fold, and knobs the code caught up with). "Undo AI change" puts the code
+  // back, so these come back into the file with it (else the rule would lose the person's offsets / pins / knobs);
+  // Redo takes them out again. `level` = the level they were on ('' = a game without levels).
+  type AiFold = { level: string; id: string; parts: string[] | null; back: Folded };
+  let aiFolds: AiFold[] = [];
   let aiAfter: 'undone' | 'redone' | null = null;
   // Undo / Redo presses, so the same "Back to before" after Undo → Redo → Undo is a new line (line-fade.ts lineKey).
   let aiAfterTurn = 0;
@@ -1330,6 +1339,14 @@ export function start(host: StudioHost) {
     },
     icon: (name) => icon(name),
     ask: (draft) => focusAsk(draft),
+    // ✦ Write into the rule (studio-writeback): the draft, and `intent: "to-knob"` for that layout's way while the same
+    // object stays picked (the chips say so: "Street lamps (rule)" "Sideways · All the same 1 m").
+    askRule: (id, way, draft) => {
+      if (host.offline) return;
+      toKnobAsk = selected ? { id, key: selected, way } : null;
+      keepOutAsk = null;
+      focusAsk(draft);
+    },
     touch: () => phone() || !!window.matchMedia?.('(pointer: coarse)').matches,
     selected: () => (editLayer === 'world' ? selected : null),
     group: () => (editLayer === 'world' ? group : []),
@@ -1364,6 +1381,7 @@ export function start(host: StudioHost) {
     editing: () => editing && !playing && editLayer === 'world',
     ask: host.offline ? undefined : (id) => {
       keepOutAsk = selected ? { id, key: selected } : null;
+      toKnobAsk = null;
       focusAsk();
     },
     menu: (at, rows) => {
@@ -1379,6 +1397,13 @@ export function start(host: StudioHost) {
   const keepOutAskNow = () => {
     if (keepOutAsk && (editLayer !== 'world' || selected !== keepOutAsk.key || !codePlaces.layoutOf(keepOutAsk.key))) keepOutAsk = null;
     return keepOutAsk;
+  };
+  // ✦ Write into the rule was pressed for this layout's way while this object was picked (studio-writeback): the ask is
+  // `intent: "to-knob"` with that way until the pick moves on (as "✦ Describe with text" under keep-out areas).
+  let toKnobAsk: { id: string; key: string; way: OffsetWay } | null = null;
+  const toKnobAskNow = () => {
+    if (toKnobAsk && (editLayer !== 'world' || selected !== toKnobAsk.key || codePlaces.layoutOf(toKnobAsk.key)?.id !== toKnobAsk.id)) toKnobAsk = null;
+    return toKnobAsk;
   };
   /**
    * The card's rule block for `k`: the layout's (code-place-wire.ts), then its keep-out areas / "Inside a keep-out area";
@@ -1502,6 +1527,10 @@ export function start(host: StudioHost) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now()!.name] : []),
     // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
     askTopic: () => {
+      // ✦ Write into the rule: "Street lamps (rule)" "Sideways · All the same 1 m" (studio-writeback).
+      const rk = libraryShown() ? null : toKnobAskNow();
+      const ra = rk ? codePlaces.ruleAsk(rk.id, rk.way) : null;
+      if (ra) return { chip: ra.chip, tag: ra.tag, ph: t('offset.askPh') };
       const at = libraryShown() ? null : keepOutAskNow();
       return at ? { chip: keepOut.chip(at.id), tag: t('keepout.chip'), ph: t('keepout.askPh') } : null;
     },
@@ -1696,7 +1725,15 @@ export function start(host: StudioHost) {
    * "✦ Describe with text" under a layout's keep-out areas (studio-code-keepout): the layout and its areas, and what the
    * words are for — so "not within 5 m of the player" reaches the AI as a keep-out condition of THAT layout.
    */
-  function requestPlaces(): { places?: RequestPlace[]; intent?: 'avoid' } {
+  function requestPlaces(): { places?: RequestPlace[]; intent?: 'avoid' | 'to-knob' } {
+    // ✦ Write into the rule (studio-writeback): the layout with its way, its offsets and each object's row / rank.
+    const rk = libraryShown() ? null : toKnobAskNow();
+    const base = rk ? keepOut.request(rk.id) : null;
+    const ra = rk ? codePlaces.ruleAsk(rk.id, rk.way) : null;
+    if (rk && base && ra) {
+      toKnobAsk = null;
+      return { places: [{ ...base, ...ra.place }], intent: 'to-knob' };
+    }
     const at = libraryShown() ? null : keepOutAskNow();
     const p = at ? keepOut.request(at.id) : null;
     return p ? { places: [p], intent: 'avoid' } : {};
@@ -2099,6 +2136,8 @@ export function start(host: StudioHost) {
       renderAll(true);
     }
     placementPanel.renderAsk();
+    // Its chips may have changed (a topic's two): the presence words find their place again (renderPresence).
+    renderPresence();
     if (text !== undefined) {
       askInput.value = text;
       askInput.dispatchEvent(new Event('input', { bubbles: true }));
@@ -2793,7 +2832,10 @@ export function start(host: StudioHost) {
     // press on it opens the same line of what is true). English fits beside the field and keeps its words.
     const box = placementPanel.askEl;
     const w = box.offsetWidth;
-    if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM;
+    // The chips in the field take its room too (studio-writeback: ✦ Write into the rule's two chips "Street lamps
+    // (rule)" "Sideways · All the same 1 m" beside the English words left the draft no room to show at 1280).
+    const chips = [...box.querySelectorAll<HTMLElement>('.ask-chip:not([hidden])')].reduce((a, e) => a + e.offsetWidth, 0);
+    if (!presence.classList.contains('dot-only') && w > 0) wordsNarrow = w < presence.offsetWidth + PRESENCE_ROOM + chips;
     const tlOpen = !phone() && app.dataset.timeline === 'open';
     const dotOnly = phone() || (tlOpen && wordsNarrow);
     const narrow = !dotOnly && wordsNarrow;
@@ -2905,10 +2947,13 @@ export function start(host: StudioHost) {
     const note = aiStatus?.note;
     const link = (action: string, ic: string, label: string, run: () => void, title?: string) =>
       aiLine.append(h('button', { type: 'button', class: 'link', dataset: { action }, title: title || label, disabled: undoBusy, onclick: run }, icon(ic), h('span', { text: label })));
-    // A Save (plan step 6, save-receipt.ts): what was kept by name → "Claude is putting it in the code…" → "✓ In the
-    // game (3) ▶ Play" + Undo AI change. A `sent` with no sign of the AI after UNSEEN_MS is the "no AI" fact, as below.
+    // A Save (plan step 6, save-receipt.ts): what was kept by name → "Claude is putting it in the code…" → "✓ Saved:
+    // gate’s motion · In the game ▶ Play" + Undo AI change (studio-motion-next: by name, it was "In the game (3)"), and
+    // under it the AI's own line when it wrote a rule's changes into the rule (studio-writeback: "the code is the truth" —
+    // "Claude wrote your changes to “Street lamps” into its rule"). A `sent` with no sign of the AI after UNSEEN_MS is
+    // the "no AI" fact, as below.
     const rc = pending?.kind === 'saved' && pending.saved
-      ? receipt({ phase: ph === 'sent' && Date.now() - (pending.sent ?? 0) >= UNSEEN_MS ? 'away' : ph, things: pending.saved, total: pending.savedTotal ?? 0, vars: aiVars(), t })
+      ? receipt({ phase: ph === 'sent' && Date.now() - (pending.sent ?? 0) >= UNSEEN_MS ? 'away' : ph, things: pending.saved, total: pending.savedTotal ?? 0, vars: aiVars(), t, ...(ph === 'done' && note ? { note } : {}) })
       : null;
     if (rc) {
       if (ph === 'done') aiLine.classList.add('saved-in');
@@ -3201,6 +3246,14 @@ export function start(host: StudioHost) {
       return;
     }
     if (!redo) lastChange.redo = res.redo ?? null;
+    // What the AI's write-back took out of the file comes back with its old code (Redo: out again), before the game
+    // reads the draft — not a change of the person's either way (studio-writeback).
+    for (const f of lastChange.folds ?? []) {
+      if (f.level !== levelNow()) continue;
+      if (!redo) worldModel.places.unfold(f.id, f.back);
+      else worldModel.places.fold(f.id, f.parts ?? ['knobs']);
+    }
+    if (lastChange.folds?.length) renderAll();
     aiAfter = redo ? 'redone' : 'undone';
     aiAfterTurn++;
     // The files' new signature first, so the reload below does not trigger a second one.
@@ -3588,7 +3641,8 @@ export function start(host: StudioHost) {
       case 'studio:code-places':
         codePlaceList = m.list;
         codeAvoidList = m.avoids;
-        if (worldModel.places.settle(m.list)) keepSoon();
+        // studio-writeback: knobs the AI wrote into the code are noted for "Undo AI change" (they come back with it).
+        if (worldModel.places.settle(m.list, (id, back) => aiFolds.push({ level: levelNow(), id, parts: null, back }))) keepSoon();
         // Where the rule put them is the code's place, not a move (studio-code-knobs: placement-model.ts codePoses).
         codePlaces.poses(worldItems.map((i) => ({ key: i.key, pose: i.pose })));
         renderAll();
@@ -4406,7 +4460,8 @@ export function start(host: StudioHost) {
       aiBaseCode = busy ? aiBeforeCode : null;
     }
     if (why === 'ai' && changeFrom) {
-      lastChange = { from: changeFrom, redo: null };
+      lastChange = { from: changeFrom, redo: null, ...(aiFolds.length ? { folds: aiFolds } : {}) };
+      aiFolds = [];
       changeFrom = null;
     }
     keepSel = { selected, group: group.slice() };
@@ -5448,7 +5503,13 @@ export function start(host: StudioHost) {
     codeAvoids: () => codeAvoidList,
     reloadGame: async () => {
       clearTimeout(placesTimer);
+      // studio-writeback: while a request of the person's is being worked on (`changeFrom`), the game read here is not
+      // "the AI's change shown" — its done still reads the game once more as that change (softReload('ai'): the marks,
+      // "Undo AI change", the write-back's folded parts kept for it). So what the frame was built from stays the old
+      // signature for the status poll; without it, a poll that saw the new code first made the done reload nothing.
+      const was = loadedCode;
       await softReload('draft');
+      if (changeFrom && was !== undefined) loadedCode = was;
       for (const end = Date.now() + 15_000; Date.now() < end;) {
         await new Promise((r) => setTimeout(r, 150));
         // The code's lists come right after the page's first list (their own messages): one more beat for them.
@@ -5464,6 +5525,18 @@ export function start(host: StudioHost) {
       // A keep-out area the AI added or changed (place.avoid): its row glows violet on the card (studio-code-keepout).
       keepOut.aiChanged(id, before, worldModel.places.get(id));
     },
+    // studio-writeback: what the AI wrote into the code leaves the file and the history (a ⌘Z must not put an offset
+    // back on top of the code's), kept for "Undo AI change". The draft is written before the game reads it again.
+    fold: (id, parts) => {
+      const back = worldModel.places.fold(id, parts);
+      if (!back) return false;
+      undo.rebase(id, (e) => (e ? ((handsFoldEntry(e, parts) as PlacementPlace | null) ?? null) : null));
+      aiFolds.push({ level: levelNow(), id, parts, back });
+      renderAll();
+      renderButtons();
+      return true;
+    },
+    knobAdded: (id, names) => codePlaces.lightKnobs(id, names),
     // ✦ Turn into a rule (studio-code-torule): the rule's shape from the game page, and what the swap replaced.
     ruleSamples: (code, knobs, len, per) => ruleSamples(code, knobs, len, per),
     swapped: (x) => {

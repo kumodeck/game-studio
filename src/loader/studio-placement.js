@@ -855,7 +855,12 @@ export function codeMotion(id, def) {
  *   make(i)  a new object for number i (three: an Object3D; PixiJS: a display object)
  *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
  *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
- *          scatter stays where it was); try counts the places refused by a keep-out area
+ *          scatter stays where it was); try counts the places refused by a keep-out area. `by` (studio-writeback): a
+ *          shift added after the row's frame is read from `p` — the person's zigzag / ramp / jitter written in on Save,
+ *          so the row stays a row for the editor. `hand: true` in the answer
+ *          (studio-writeback, 2026-10-24: one the person placed by hand, written into the rule on Save — "the code is the
+ *          truth"): no keep-out area moves it and it is not part of a row's frame (an offset that needs a row — along,
+ *          side, zigzag, ramp — passes it by), as a pin in the file did
  *   drag   the knob a drag of one of its objects turns: a name (moving it: "moving it changes Gap · ⌥ just this one"),
  *          or one per way a person may drag it (studio-to-coords, 2026-10-24 — a lamp row dragged away from the road did
  *          nothing and said nothing, and lifted it left the rule): { along: 'gap', side: 'offset', up: 'height',
@@ -1048,6 +1053,18 @@ function codePlaceAt(p, i, k, tr, level, n, seen) {
   return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
 }
 
+/**
+ * at()'s answer with its `by` added to `p` (studio-writeback, 2026-10-24): `by` is the person's shift written into the
+ * rule on Save (a zigzag, a ramp, a jitter — what `offsets` did in the file), added AFTER the row's frame is read from `p`.
+ * WHY: written straight into `p`, every other lamp 1.5 m out is no straight row any more — the editor would stop seeing
+ * a row (no "sideways", no zigzag / ramp, a side drag of the right row toward the road). `p` stays the row's own place.
+ */
+function placeOf(a, n) {
+  if (!a) return a;
+  const by = vecOf(a.by, n, false);
+  return by ? { ...a, p: vecOf(a.p, n, false).map((v, j) => v + by[j]) } : a;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets", §4.1 `places[id].offsets`). The CRYSTAL FIELD try of
 // CRYSTAL FIELD that day: a lamp of a row dragged away from the road "did nothing and said nothing" (the code had no knob
@@ -1059,12 +1076,24 @@ function codePlaceAt(p, i, k, tr, level, n, seen) {
 //   way  along · side (a row: along it / away from the middle line of its two rows) · up · turn (degrees; the second row
 //        mirrored) · size (× a factor) · move (the ground [x, z] — 2D [x, y] — for a layout that is not a row)
 //   how  same (every object v) · zigzag (every other one: the ones whose rank is odd when `odd`, else even) · ramp
-//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank)
-// Only `same` works without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file until it is
-// a row again (decision 13: a count of 2 has no row).
+//        (v × its rank: "further each one" — size: 1 + (v − 1) × rank) · jitter (studio-writeback, 2026-10-24 — the
+//        request of that day, "a little, by a fixed random amount": v × a number from −1 to 1 that is the same every load for the
+//        row's `seed` and the object's number — size: 1 + (v − 1) × it; move: each of x and z its own)
+// Only `same` and `jitter` work without a row (a scatter, a ring, a grid): along / side / zigzag / ramp wait in the file
+// until it is a row again (decision 13: a count of 2 has no row).
 
 const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+/** A jitter row's number for object i (−1 … 1), the same every load: the row's seed, the number, the axis (move: 0 / 1). */
+const jitterAt = (seed, i, axis) => randOf(`jitter:${isNum(seed) ? seed : 0}:${i}:${axis}`)() * 2 - 1;
+/**
+ * The same number for the game's code (studio-writeback, 2026-10-24: on Save the AI writes a jitter row into at() — "the
+ * code is the truth" — as `+ jitter(seed, i) * 0.3`, so the look stays exactly what the person saw): −1 … 1 for the
+ * row's `seed` and number `i` (0 = the first); `axis` 1 = a move's second number (z, or 2D y).
+ */
+export function jitter(seed, i, axis = 0) {
+  return jitterAt(seed, i, axis);
+}
 // A rule's rows of offsets at most (decision 6: the card's rows; beyond, ✦ folds them into the rule).
 const MAX_OFFSETS = 8;
 
@@ -1073,7 +1102,7 @@ function offsetsOf(v, where) {
   if (!Array.isArray(v)) return [];
   const out = [];
   for (const o of v.slice(0, MAX_OFFSETS)) {
-    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how)
+    const ok = o && OFFSET_WAYS.includes(o.way) && OFFSET_HOWS.includes(o.how) && (o.way !== 'move' || o.how === 'same' || o.how === 'jitter')
       && (o.way === 'move' ? Array.isArray(o.v) && o.v.length === 2 && o.v.every(isNum) : isNum(o.v));
     if (ok) out.push(o);
     else warnOnce(`${where}: an offset needs a way (${OFFSET_WAYS.join(', ')}), a how (${OFFSET_HOWS.join(', ')}) and a number v`);
@@ -1153,13 +1182,14 @@ export function offsetAt(offs, frame, i, n) {
   const z = n === 3 ? 2 : 1;
   let r = 0, s = 1;
   for (const o of offs) {
-    if (!f && (o.how !== 'same' || o.way === 'along' || o.way === 'side')) continue;
-    const k = o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
-    if (o.way === 'size') s *= o.how === 'ramp' ? 1 + (o.v - 1) * k : k ? o.v : 1;
+    const jit = o.how === 'jitter';
+    if (!f && ((o.how !== 'same' && !jit) || o.way === 'along' || o.way === 'side')) continue;
+    const k = jit ? jitterAt(o.seed, i, 0) : o.how === 'zigzag' ? ((f.r % 2 === 1) === !!o.odd ? 1 : 0) : o.how === 'ramp' ? f.r : 1;
+    if (o.way === 'size') s *= o.how === 'ramp' || jit ? 1 + (o.v - 1) * k : k ? o.v : 1;
     else if (o.way === 'turn') r += (((f && f.m ? -1 : 1) * o.v * k) * Math.PI) / 180;
     else if (o.way === 'up') {
       if (n === 3) p[1] += o.v * k;
-    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * k);
+    } else if (o.way === 'move') (p[0] += o.v[0] * k), (p[z] += o.v[1] * (jit ? jitterAt(o.seed, i, 1) : k));
     else {
       const u = o.way === 'along' ? f.a : f.s;
       p[0] += u[0] * o.v * k;
@@ -1259,7 +1289,9 @@ function layOut(p, f) {
   const seen = { rand: false };
   const first = [];
   for (let i = 0; i < count; i++) first.push(codePlaceAt(p, i, k, 0, level, n, seen));
-  p.base = first.map((a) => (a ? vecOf(a.p, n, false) : null));
+  // A place at() answers with `hand: true` (studio-writeback: one placed by hand, written into the rule by the AI on
+  // Save) is not in the row's frame — a lamp moved off its row must not make the row "not a row" for the others.
+  p.base = first.map((a) => (a && a.hand !== true ? vecOf(a.p, n, false) : null));
   p.frame = offsetFrame(p.base, n, seen.rand);
   p.random = seen.rand;
   p.fk = { sig: JSON.stringify(k), frame: p.frame };
@@ -1272,11 +1304,12 @@ function layOut(p, f) {
     // The same offset on every try (its frame is the rule's first places): a scatter tried again keeps its shift.
     const off = offsetAt(offs, p.frame, i, n);
     let at = null;
-    if (pin || !tests.length) at = shiftAt(first[i], off, n);
+    // A hand's place in the code (`hand: true`) is kept out of the keep-out areas' reach, as a pin is (decision 11).
+    if (pin || !tests.length || (first[i] && first[i].hand === true)) at = shiftAt(placeOf(first[i], n), off, n);
     else {
       let prev = null;
       for (let tr = 0; tr < MAX_TRIES; tr++) {
-        const a = shiftAt(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], off, n);
+        const a = shiftAt(placeOf(tr ? codePlaceAt(p, i, k, tr, level, n) : first[i], n), off, n);
         if (!a) break;
         const q = vecOf(a.p, n, false);
         if (!tests.some((t) => t(q))) {
@@ -1346,7 +1379,7 @@ function ruleAt(id, i, k) {
   if (!p) return null;
   const n = p.home && p.home.three ? 3 : 2;
   const level = (p.home && p.home.opts && p.home.opts.level) || null;
-  const a = codePlaceAt(p, i, k, 0, level, n);
+  const a = placeOf(codePlaceAt(p, i, k, 0, level, n), n);
   if (!a) return null;
   let off = null;
   if (p.offs && p.offs.length) {
@@ -1358,7 +1391,7 @@ function ruleAt(id, i, k) {
       const spots = [];
       for (let j = 0; j < countOf(p, k); j++) {
         const b = codePlaceAt(p, j, k, 0, level, n, seen);
-        spots.push(b ? vecOf(b.p, n, false) : null);
+        spots.push(b && b.hand !== true ? vecOf(b.p, n, false) : null);
       }
       p.fk = { sig, frame: offsetFrame(spots, n, seen.rand) };
     }

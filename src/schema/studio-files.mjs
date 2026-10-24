@@ -475,12 +475,15 @@ function readPlaces(v, dim, fail) {
 }
 
 const OFFSET_WAYS = ['along', 'side', 'up', 'turn', 'size', 'move'];
-const OFFSET_HOWS = ['same', 'zigzag', 'ramp'];
+const OFFSET_HOWS = ['same', 'zigzag', 'ramp', 'jitter'];
+// A jitter row's seed (studio-writeback): a whole number, so the same objects shift the same way every load.
+const MAX_SEED = 999999;
 
 /**
- * A layout's offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): [{ way, how, v, odd? }], in order, ≤ 8.
- *   way  along · side · up · turn (°) · size (× a factor) · move (not a row: the ground [x, z], 2D [x, y]; only "same")
- *   how  same · zigzag (`odd: true` = the odd ranks) · ramp
+ * A layout's offsets (studio-offsets, 2026-10-24; CONTRACT.md §1.12 "Offsets"): [{ way, how, v, odd?, seed? }], in order, ≤ 8.
+ *   way  along · side · up · turn (°) · size (× a factor) · move (not a row: the ground [x, z], 2D [x, y]; "same" or "jitter")
+ *   how  same · zigzag (`odd: true` = the odd ranks) · ramp · jitter (studio-writeback: `seed`, 0–999999 — v × a fixed
+ *        random number from −1 to 1 per object)
  *   v    the card's number (m / px, °, a factor; move: two numbers)
  * Only which way, how and how much — never a place per object (those would not follow a count turned up, as pins don't).
  */
@@ -491,21 +494,25 @@ function readOffsets(v, dim, where, fail) {
   list.forEach((o, i) => {
     const w = `${where}[${i}]`;
     if (!isObject(o)) return fail(w, 'must be an object');
-    onlyFields(o, ['way', 'how', 'v', 'odd'], w, fail);
+    onlyFields(o, ['way', 'how', 'v', 'odd', 'seed'], w, fail);
     if (!OFFSET_WAYS.includes(o.way)) return fail(`${w}.way`, `must be one of ${OFFSET_WAYS.join(', ')}`);
     if (!OFFSET_HOWS.includes(o.how)) return fail(`${w}.how`, `must be one of ${OFFSET_HOWS.join(', ')}`);
+    const jit = o.how === 'jitter';
+    if (jit && !(Number.isInteger(o.seed) && o.seed >= 0 && o.seed <= MAX_SEED)) return fail(`${w}.seed`, `a jitter needs a seed: a whole number from 0 to ${MAX_SEED}`);
+    if (!jit && o.seed !== undefined) return fail(`${w}.seed`, 'only a jitter has a seed');
+    const seed = jit ? { seed: o.seed } : {};
     if (o.way === 'move') {
-      if (o.how !== 'same') return fail(`${w}.how`, 'a move (a layout that is not a row) is "same" only');
+      if (o.how !== 'same' && !jit) return fail(`${w}.how`, 'a move (a layout that is not a row) is "same" or "jitter" only');
       if (!Array.isArray(o.v) || o.v.length !== 2) return fail(`${w}.v`, `must be [x, ${dim === '3d' ? 'z' : 'y'}] (the ground)`);
       const xy = o.v.map((x, k) => readNumber(x, -bound, bound, `${w}.v[${k}]`, fail));
       if (xy.some((x) => x === null)) return;
-      out.push({ way: 'move', how: 'same', v: xy.map((x) => round(x, LIMITS.stepKnob)) });
+      out.push({ way: 'move', how: o.how, v: xy.map((x) => round(x, LIMITS.stepKnob)), ...seed });
       return;
     }
     const [lo, hi] = o.way === 'turn' ? [-LIMITS.maxOffsetTurn, LIMITS.maxOffsetTurn] : o.way === 'size' ? [LIMITS.minScale, LIMITS.maxScale] : [-bound, bound];
     const n = readNumber(o.v, lo, hi, `${w}.v`, fail);
     if (n === null) return;
-    const e = { way: o.way, how: o.how, v: round(n, LIMITS.stepKnob) };
+    const e = { way: o.way, how: o.how, v: round(n, LIMITS.stepKnob), ...seed };
     if (o.odd !== undefined) {
       if (o.odd !== true) fail(`${w}.odd`, 'must be true when present (leave it out: the even ranks)');
       else if (o.how !== 'zigzag') fail(`${w}.odd`, 'only a zigzag has odd');

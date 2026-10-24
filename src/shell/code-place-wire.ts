@@ -40,12 +40,12 @@
 //   - the list: [✋ 2] on the rule's heading, [✋ Placed by hand] on a row (picked: [✋] and Back to rule)
 //   - the moment one leaves: "✋ Placed Crystal 9 by hand (the rest stay on the rule) · Back to rule · ⌘Z" (`told`'s
 //     hand form) while its ring spreads violet → sand in the game (bridge/code-place.ts)
-import type { CodePlaceInfo, Dim, PlaceCompareMarks, PlacementPlace, PlaceOffset, PlaceWay, Pose, ShellToBridge } from '../contract.ts';
+import type { CodePlaceInfo, Dim, OffsetWay, PlaceCompareMarks, PlacementPlace, PlaceOffset, PlaceWay, Pose, RequestPlace, ShellToBridge } from '../contract.ts';
 import { h } from './dom.ts';
 import { knobEl, knobNumber } from './knob.ts';
 import { turnKnobs, type PlaceStore } from './code-places.ts';
 import { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl, type Dragged, type OffsetChoices } from './offset-choices.ts';
-import { addOffset, dragAmount, lastOf, movesRank, noAmount, type FrameRow, type OffsetAmount } from './offset-model.ts';
+import { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS, type FrameRow, type OffsetAmount } from './offset-model.ts';
 import { roundPose } from './pose-compare.ts';
 import { gapText, placeGaps, type HandSpot } from './to-rule.ts';
 
@@ -71,6 +71,8 @@ export interface CodePlaceWireDeps {
   retarget?(id: string, to: PlacementPlace | null): boolean;
   /** A small menu at a button (an offset row's ⋯ → Remove). Absent = no ⋯. */
   menu?(at: HTMLElement, rows: Array<{ id: string; label: string; run(): void }>): void;
+  /** A jitter row's seed (studio-writeback): any whole number 0–999999. Default: Math.random (tests give their own). */
+  seed?(): number;
   /**
    * A live change shown (a knob being turned): the Save count — and the card when `card` (a drag in the game; the card's
    * own knob is not drawn again under the pointer, which would drop its drag).
@@ -95,6 +97,11 @@ export interface CodePlaceWireDeps {
   icon?(name: 'hand'): Element;
   /** ✦: put these words in the chat box for what is picked (nothing is sent). */
   ask?(draft: string): void;
+  /**
+   * ✦ Write into the rule (studio-writeback, 2026-10-24): these words in the chat box, and the request that follows says
+   * `intent: "to-knob"` with layout `id`'s `way` (main.ts: while the same object stays picked). Absent = ask() alone.
+   */
+  askRule?(id: string, way: OffsetWay, draft: string): void;
   /** A finger is the pointer (no ⌥ key: the words leave it out). */
   touch?(): boolean;
   selected(): string | null;
@@ -166,6 +173,17 @@ export interface CodePlaceWire {
   /** "hex Gap → 4 m" for each knob turned since the last Save (the Save receipt). */
   savedWords(): string[];
   /**
+   * ✦ Write into the rule (studio-writeback): what the request carries for layout `id`'s `way` — the way, its offsets now
+   * and each object's row / rank / offset (RequestPlace's to-knob part) — and the ask field's chips ("Street lamps (rule)",
+   * "Sideways · All the same 1 m"). null = no such layout.
+   */
+  ruleAsk(id: string, way: OffsetWay): { place: Pick<RequestPlace, 'way' | 'offsets' | 'objects'>; chip: string; tag: string } | null;
+  /**
+   * Knobs the AI just added to layout `id` (studio-writeback: ✦ Write into the rule — the offset row became a knob of the
+   * rule): they light once on the card the next time it is drawn, as a new offset row does.
+   */
+  lightKnobs(id: string, names: string[]): void;
+  /**
    * The list's heading tag for a layout's objects ("Rule"), and the group they share; `hand` = this one is placed by hand
    * outside its rule (its tag "Placed by hand" and "Back to rule").
    */
@@ -217,6 +235,8 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
   // made just now (it lights once on the card: decision 6, "a new row glows violet once").
   let lastDrag: { id: string; from: PlacementPlace | null; to: PlacementPlace | null } | null = null;
   let lit: { id: string; i: number } | null = null;
+  // studio-writeback: the knobs the AI added (✦ Write into the rule), lit once on the card like a new offset row.
+  let litKnobs: { id: string; names: string[] } | null = null;
   /** A row more than before: that one lights (the last: a new or turned row goes last, offset-model.ts). */
   function litNew(id: string, from: PlacementPlace | null) {
     const now = d.store().get(id)?.offsets ?? [];
@@ -342,7 +362,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       lastDrag = { id, from, to: d.store().get(id) };
       litNew(id, from);
     },
-    ask: d.ask ? (draft) => d.ask!(draft) : undefined,
+    ask: d.askRule ? (id, way, draft) => d.askRule!(id, way, draft) : d.ask ? (_id, _way, draft) => d.ask!(draft) : undefined,
     opened: (on) => d.send({ type: 'studio:place/choices', on }),
     // Just this one: the choices' own line says "Placed Street lamps 5 by hand" (the plan's picture 4) — no second line.
   });
@@ -376,12 +396,47 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
           layout([p.id]);
         } else endLive(p.id, next);
       },
-      ask: d.ask ? (i) => {
+      ask: d.ask || d.askRule ? (i) => {
         const r = entry(p.id).offsets?.[i];
-        if (r) d.ask!(t('offset.draftRow', { name: p.name, way: t(`offset.way.${r.way}`), what: r.way === 'move' ? r.v.join(', ') : `${offsetRowWords(t, r)} ${r.v}` }));
+        if (!r) return;
+        // "…the sideways offset of Street lamps (All the same 1 m)": the way once, then how and how much.
+        const what = r.way === 'move' ? amountWords(t, 'move', r.v, d.dim()) : `${t(`offset.${r.how}`)} ${rowText(r).split(' ').slice(-1)[0]}`;
+        const draft = t('offset.draftRow', { name: p.name, way: t(`offset.way.${r.way}`), what });
+        if (d.askRule) d.askRule(p.id, r.way, draft);
+        else d.ask!(draft);
       } : undefined,
       menu: d.menu ? (at, rows) => d.menu!(at, rows) : undefined,
+      jitter: (i) => {
+        const r = entry(p.id).offsets?.[i];
+        if (r) addJitter(p, r.way);
+      },
+      seed: () => newSeed(),
     });
+  }
+
+  const newSeed = () => Math.max(0, Math.min(999999, Math.floor(d.seed ? d.seed() : Math.random() * 1e6)));
+  /** The ways a jitter can be added to layout `p` from the card's ⋯ (a row: sideways; not a row: on the ground). */
+  const jitterWays = (p: CodePlaceInfo, key: string): OffsetWay[] => [rowOf(p, key) ? 'side' : 'move', 'turn', 'size'];
+  /**
+   * "Add jitter" (studio-writeback, 2026-10-24; the third pattern asked for that day, "a little, by a fixed random amount"): a
+   * jitter row of `way` on the rule — every object a little off, the same every load (its seed). One ⌘Z, Save · 1; the new
+   * row lights once; the line says it. None when that way has one already or eight rows are there.
+   */
+  function addJitter(p: CodePlaceInfo, way: OffsetWay): boolean {
+    const e = entry(p.id);
+    const offs = e.offsets ?? [];
+    if (offs.length >= MAX_OFFSETS || offs.some((o) => o.how === 'jitter' && o.way === way)) return false;
+    const from = d.store().get(p.id);
+    d.commit(p.id, from, { ...e, offsets: [...offs, jitterRow(way, d.dim() === '3d', newSeed())] });
+    litNew(p.id, from);
+    d.told(t('offset.jitterDone', { name: p.name, way: t(`offset.way.${way}`) }));
+    return true;
+  }
+
+  /** An offset row as the line and the chips say it: "Sideways · All the same 1 m", "Position 1.2, −0.5 m". */
+  function rowText(o: PlaceOffset): string {
+    if (o.way === 'move') return amountWords(t, 'move', o.v, d.dim());
+    return `${offsetRowWords(t, o)} ${knobNumber(o.v)}${o.way === 'turn' ? '°' : o.way === 'size' ? '×' : unit(d.dim() === '3d' ? 'm' : 'px')}`;
   }
 
   function guide(force = false) {
@@ -451,6 +506,8 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     const head = h('div', { class: 'rule-head', title: t('rule.tagTip') },
       h('span', { class: 'f-l', text: t('rule.layout') }),
       h('strong', { class: 'rule-what', title: p.name, text: t('rule.layoutWhat', { kind, n: p.keys.length }) }));
+    const shine = litKnobs && litKnobs.id === p.id ? litKnobs.names : [];
+    if (shine.length) litKnobs = null;
     const knobs = Object.entries(p.knobs).map(([name, k]) => knobEl({
       label: k.label, unit: unit(k.unit), v: knobNow(p, name), min: k.min, max: k.max, step: k.step, tip: t('rule.knobTip'), part: `rule-knob-${name}`,
       set: (v, end) => {
@@ -460,7 +517,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
           layout([p.id]);
         } else endLive(p.id, next);
       },
-    }));
+    })).map((el, j) => (shine.includes(Object.keys(p.knobs)[j]!) ? (el.classList.add('lit'), el) : el));
     // Pins of numbers the rule no longer has (the count turned down): kept, not used (the plan's decision 16).
     const unused = Object.keys(entry(p.id).pins ?? {}).filter((k) => !p.keys.includes(k) && !p.skipped.includes(k)).length;
     const foot = h('div', { class: 'rule-foot' },
@@ -606,7 +663,11 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const e = p ? entry(p.id) : null;
       if (!p || !e || e.hand) return [];
       if (e.pins?.[key]) return [{ id: 'rule-reset', label: t('rule.reset'), run: () => unpin(p, key) }];
-      return [{ id: 'rule-individually', label: t('rule.individually'), run: () => individually(p) }];
+      // studio-writeback: "Add jitter (Sideways / Turn / Size)" — the ways without one yet, while there is room.
+      const offs = e.offsets ?? [];
+      const jit = offs.length >= MAX_OFFSETS ? [] : jitterWays(p, key).filter((w) => !offs.some((o) => o.how === 'jitter' && o.way === w))
+        .map((w) => ({ id: `rule-jitter-${w}`, label: t('offset.jitterAddWay', { way: t(`offset.way.${w}`) }), run: () => void addJitter(p, w) }));
+      return [...jit, { id: 'rule-individually', label: t('rule.individually'), run: () => individually(p) }];
     },
     individually(id) {
       const p = d.list().find((x) => x.id === id);
@@ -624,6 +685,22 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       hovered = keys.slice(0, 50);
       guide();
     },
+    ruleAsk(id, way) {
+      const p = d.list().find((x) => x.id === id);
+      if (!p) return null;
+      const offs = entry(id).offsets ?? [];
+      // Each object's row / rank / what the offsets add (the same as `--do list`'s objects): the AI never counts ranks.
+      const objects = p.rows?.some(Boolean) ? p.keys.map((k) => {
+        const r = p.rows![nth(p, k) - 1];
+        return r ? { key: k, line: r.line, rank: r.rank, ...(r.offset ? { offset: r.offset } : {}) } : { key: k };
+      }) : undefined;
+      const mine = offs.filter((o) => o.way === way);
+      return { place: { way, ...(offs.length ? { offsets: structuredClone(offs) } : {}), ...(objects ? { objects } : {}) },
+        chip: t('offset.chipRule', { name: p.name }), tag: mine.length ? mine.map(rowText).join(' · ') : t(`offset.way.${way}`) };
+    },
+    lightKnobs(id, names) {
+      litKnobs = { id, names: names.slice() };
+    },
     savedWords() {
       const out: string[] = [];
       for (const id of d.store().changedIds()) {
@@ -639,7 +716,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
         }
         // studio-offsets: "Street lamps Sideways · Zigzag width 1.5 m".
         for (const o of e.offsets ?? []) {
-          out.push(t('offset.saved', { name: p.name, what: o.way === 'move' ? amountWords(t, 'move', o.v, d.dim()) : `${offsetRowWords(t, o)} ${knobNumber(o.v)}${o.way === 'turn' ? '°' : o.way === 'size' ? '×' : unit(d.dim() === '3d' ? 'm' : 'px')}` }));
+          out.push(t('offset.saved', { name: p.name, what: rowText(o) }));
           said = true;
         }
         if (!said) out.push(p.name);
