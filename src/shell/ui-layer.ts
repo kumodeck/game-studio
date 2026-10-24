@@ -6,7 +6,7 @@
 // world writes `objects` (with `was`, the numbers the AI searches the code for), the UI writes `ui` (offsets from
 // where the game's CSS puts the element: the original is always p [0, 0], s 1, and the key finds the element). So
 // the UI model is given its entries as `objects` with that `was`, and its result is turned back into `ui` here.
-import type { PlacementFile, PlacementThemeEntry, PlacementUiEntry, UiStyleSet } from '../contract.ts';
+import type { CodeUiInfo, PlacementFile, PlacementThemeEntry, PlacementUiEntry, UiStyleSet } from '../contract.ts';
 
 /** The original of every UI element: where the game's own CSS puts it. */
 const ORIGIN = { p: [0, 0], r: 0, s: 1 };
@@ -43,7 +43,7 @@ export function uiEntries(result: PlacementFile): Record<string, PlacementUiEntr
  * entry whose element sits in a data-studio-screen container; `label` for a look-only entry from the list.
  */
 export function withLooks(moves: Record<string, PlacementUiEntry>, looks: Record<string, { set: UiStyleSet; setWas?: UiStyleSet }>,
-  screens: Map<string, string>, labels: Map<string, string>): Record<string, PlacementUiEntry> {
+  screens: Map<string, string>, labels: Map<string, string>, codes?: Map<string, CodeUiInfo>): Record<string, PlacementUiEntry> {
   const out: Record<string, PlacementUiEntry> = {};
   for (const [k, e] of Object.entries(moves)) out[k] = { ...e };
   for (const [k, l] of Object.entries(looks)) {
@@ -56,6 +56,14 @@ export function withLooks(moves: Record<string, PlacementUiEntry>, looks: Record
   for (const [k, e] of Object.entries(out)) {
     const sc = screens.get(k);
     if (sc) e.screen = sc;
+    // studio-canvas-ui (2026-10-24): a UI the game draws in its canvas — its codeUi id, and when it moved or grew, where it
+    // is measured from now (the nearest of the 9 places) and its at() numbers from there: what the AI writes on Save,
+    // and what the game places it by before that on any window size (Q2 = a). A look alone keeps the code's place.
+    const c = codes?.get(k);
+    if (c) {
+      e.code = k;
+      if (e.p[0] || e.p[1] || (e.s !== undefined && e.s !== 1)) (e.from = c.from), (e.at = [c.at[0], c.at[1]]);
+    }
   }
   return out;
 }

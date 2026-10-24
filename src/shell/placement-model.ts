@@ -541,6 +541,19 @@ export class PlacementModel {
     return this.current.get(key);
   }
 
+  /**
+   * studio-canvas-ui (2026-10-24): the AI wrote this object's place into the game's code and took it out of the file
+   * (`ui.set --clear`): `pose` is now the game's own — current, saved and `was` alike, so it is no change (no Save count).
+   */
+  settle(key: string, pose: Pose): void {
+    this.current.set(key, structuredClone(pose));
+    this.saved.set(key, structuredClone(pose));
+    this.was.set(key, structuredClone(pose));
+    this.fileEntries.delete(key);
+    const it = this.items.find((i) => i.key === key);
+    if (it) it.pose = this.current.get(key)!;
+  }
+
   /** The pose of the last save (else the game's own): what "check before saving" compares with (safe-save.ts). */
   savedPose(key: string): Pose | undefined {
     return this.saved.get(key);

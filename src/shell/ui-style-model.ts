@@ -128,6 +128,16 @@ export class UiStyleModel {
     else this.cur.delete(key);
   }
 
+  /**
+   * studio-canvas-ui (2026-10-24): the AI wrote this element's look into the game's code (`ui.set --clear`): nothing of it
+   * stays here — not current, not saved (no Save count), not the old `was` (the game's own is the new code now).
+   */
+  forget(key: string): void {
+    this.cur.delete(key);
+    this.saved.delete(key);
+    this.was.delete(key);
+  }
+
   theme(name: string): string | undefined {
     return this.themeCur.get(name);
   }

@@ -30,12 +30,14 @@ export const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len'
   // studio-offsets: --offsets '[{"way":"side","how":"same","v":1}]' (a rule's shifts; '[]' takes them off).
   'offsets',
   // studio-writeback: place.code --fold side | all | side,pins (what the AI wrote into the code leaves the file).
-  'fold']);
+  'fold',
+  // studio-canvas-ui: ui.set --p '[0,20]' --from top --s 1.4 --set '{"@active":{"background":"#ff8fb1"}}'.
+  'p', 's', 'from', 'set']);
 // A flag of these alone is true; one followed by true / false / a [list] takes it (--hand false, place.code's
 // --replace '["lamp-1","lamp-2"]': the hand-placed objects it takes the place of).
-export const HANDS_FLAG_BOOLS = Object.freeze(['all', 'replace', 'deg', 'editor', 'hand', 'off']);
+export const HANDS_FLAG_BOOLS = Object.freeze(['all', 'replace', 'deg', 'editor', 'hand', 'off', 'clear']);
 /** Fields that are always words (a key "2" stays the text "2"); the others are JSON when they read as JSON. */
-const HANDS_TEXT_FIELDS = new Set(['key', 'name', 'id', 'level', 'repeat', 'ease', 'code', 'unpin']);
+const HANDS_TEXT_FIELDS = new Set(['key', 'name', 'id', 'level', 'repeat', 'ease', 'code', 'unpin', 'from']);
 
 /** A true / false flag's value: the next word when it is true, false or a [list] (then `used`), else true. */
 export function handsBoolValue(next) {

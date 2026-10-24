@@ -18,7 +18,7 @@
 // The studio's own drawing uses raf(), which always reaches the real browser
 // function, so the editor keeps animating handles while the game is frozen.
 import type { TimeControl } from '../contract.ts';
-import { nativeCancelRaf, nativeRaf, nativeSetTimeout } from './native.ts';
+import { nativeCancelRaf, nativeNow, nativeRaf, nativeSetTimeout } from './native.ts';
 
 type FrameCb = (t: number) => void;
 
@@ -52,6 +52,13 @@ export interface TimeControlImpl extends TimeControl {
   readonly timedOut: boolean;
   /** true once the game called studio.ready(). */
   readonly readyCalled: boolean;
+  /**
+   * While frozen: run the game's waiting frame callbacks ONCE, with time stopped (studio-canvas-ui, 2026-10-24). The UI
+   * the game draws in its canvas (codeUi) is drawn by the game's own frame, so a change on the card must make the game
+   * draw one frame — without time going on (the edit page's clock is stopped while frozen: the frame sees no time pass,
+   * as at the switch between Play and Edit). Callbacks the frame asks for again wait as before. false = nothing waited.
+   */
+  step(): boolean;
 }
 
 export function installTime(opts: TimeOptions): TimeControlImpl {
@@ -176,6 +183,22 @@ export function installTime(opts: TimeOptions): TimeControlImpl {
     raf: (cb) => ownRaf(cb),
     cancelRaf: (id) => ownCancel(id),
     firstFrame: () => first,
+    step() {
+      if (!frozen || !pending.size) return false;
+      const now = isMainWindow ? nativeNow() : win.performance.now();
+      const t = opts.stamp ? opts.stamp(now) : now;
+      const due = [...pending.entries()];
+      for (const [id] of due) pending.delete(id);
+      for (const [, e] of due) {
+        try {
+          e.cb(t);
+        } catch (err) {
+          // The game's own error, reported by the page as usual; the editor's frame goes on.
+          console.warn('[studio] the game failed drawing one frame:', err);
+        }
+      }
+      return true;
+    },
     ready() {
       readyCalled = true;
       markFirst();

@@ -48,6 +48,12 @@ export const HANDS_OPS = Object.freeze({
   'object.duplicate': { need: ['key'], may: ['to', 'by', 'level'] },
   'object.delete': { need: ['key'], may: ['level'] },
   'object.ground': { need: ['key'], may: ['level'] },
+  // The UI the game draws in its canvas (studio-canvas-ui, 2026-10-24; CONTRACT.md §1.13): `ui.code` after the AI rewrote
+  // the drawing with codeUi() — the editor reads the game again, lists them with the HTML UI and checks each box (moved
+  // 40 px and drawn once: did the picture follow?); `ui.set` = what the card does (an offset, a size, a look), or `clear`
+  // after Save: the AI wrote the entry into the code, so it leaves placement.json (HTML elements too: "the code is the truth").
+  'ui.code': { need: ['id'], may: [] },
+  'ui.set': { need: ['id'], may: ['p', 's', 'from', 'set', 'clear'] },
   'level.new': { need: [], may: ['name'] },
   'level.duplicate': { need: [], may: ['id', 'name'] },
   'level.rename': { need: ['to'], may: ['id'] },
@@ -63,6 +69,9 @@ export const HANDS_OP_NAMES = Object.freeze(Object.keys(HANDS_OPS));
 export const HANDS_MAX_OPS = 50;
 /** A level id, as studio.levels() gives them (letters, digits, - and _). */
 const HANDS_LEVEL_RE = /^[A-Za-z0-9_-]{1,40}$/;
+/** The 9 places a codeUi is measured from (the loader's UI_FROMS). */
+export const HANDS_UI_FROMS = Object.freeze(['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right']);
+const HANDS_UI_COLOR_RE = /^(#[0-9a-fA-F]{3,8}|(rgb|rgba|hsl|hsla)\([0-9.,%\s/+-]{1,60}\)|[a-zA-Z]{3,30})$/;
 const HANDS_CTRL_RE = /[\u0000-\u001f\u007f]/;
 
 const handsNum = (x) => typeof x === 'number' && Number.isFinite(x);
@@ -109,8 +118,16 @@ function readHandsOp(op, at, errors) {
     else out.name = op.name.trim();
   }
   const place = op.do.startsWith('place.');
+  // ui.code: one codeUi id or several ("score,hp-bar"); ui.set: one UI key (a codeUi id or an HTML data-studio-key).
+  if (op.do.startsWith('ui.') && has('id')) {
+    const ids = typeof op.id === 'string' ? op.id.split(',').map((x) => x.trim()).filter(Boolean) : [];
+    if (op.do === 'ui.code') {
+      if (!ids.length || ids.length > LIMITS.maxUi || !ids.every((x) => CODE_ID_RE.test(x)) || new Set(ids).size !== ids.length) fail('"id" must be the codeUi ids in the game\'s code, each once ("score" or "score,hp-bar,jump-button")');
+    } else if (typeof op.id !== 'string' || !KEY_RE.test(op.id)) fail('"id" must be one UI key (a codeUi id, or an HTML element\'s data-studio-key)');
+    out.id = typeof op.id === 'string' ? op.id : '';
+  }
   for (const f of ['id', 'level']) {
-    if (!has(f)) continue;
+    if (!has(f) || (f === 'id' && op.do.startsWith('ui.'))) continue;
     // A layout's id is a codePlace id (place.*); every other id is a level's.
     if (f === 'id' && place) {
       if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
@@ -133,6 +150,7 @@ function readHandsOp(op, at, errors) {
     if (f.error) fail(`"fold": ${f.error}`);
     else out.fold = f.parts;
   }
+  if (op.do === 'ui.set') readHandsUiSet(op, out, fail);
   for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
     if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
     if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
@@ -218,6 +236,45 @@ function readHandsOp(op, at, errors) {
   }
   if (op.do.startsWith('object.') && ['move', 'turn', 'scale'].includes(op.do.slice(7)) && !has('to') && !has('by')) fail('needs "to" or "by"');
   return out;
+}
+
+/** ui.code's ids: "score,hp-bar" → ['score', 'hp-bar']. */
+export function handsUiIds(op) {
+  return typeof op.id === 'string' ? op.id.split(',').map((x) => x.trim()).filter(Boolean) : [];
+}
+
+/** ui.set's fields: an offset (CSS px) or at() numbers from a place, a size, a look, or `clear` alone. */
+function readHandsUiSet(op, out, fail) {
+  const has = (f) => op[f] !== undefined;
+  if (has('clear')) {
+    if (op.clear !== true) fail('"clear" must be true (the entry leaves placement.json: your code has it now)');
+    else if (['p', 's', 'from', 'set'].some(has)) fail('"clear" alone (after Save: you wrote it into the code)');
+    else out.clear = true;
+    return;
+  }
+  if (!['p', 's', 'from', 'set'].some(has)) fail('needs one of "p", "s", "from", "set", "clear"');
+  if (has('from') && !has('p')) fail('"from" goes with "p": the at() numbers from that place ({"from":"top","p":[0,20]} = 20 px under the top middle)');
+  if (has('p')) {
+    if (!handsVec(op.p, 2) || op.p.some((v) => Math.abs(v) > LIMITS.maxUiCoord)) fail(`"p" must be [x, y] CSS px (within ±${LIMITS.maxUiCoord}): the offset from where the game puts it, or with "from" the at() numbers from that place`);
+    else out.p = op.p.slice();
+  }
+  if (has('from')) {
+    if (!HANDS_UI_FROMS.includes(op.from)) fail(`"from" must be one of ${HANDS_UI_FROMS.join(', ')}`);
+    else out.from = op.from;
+  }
+  if (has('s')) {
+    if (!handsNum(op.s) || op.s < LIMITS.minUiScale || op.s > LIMITS.maxUiScale) fail(`"s" must be a size ${LIMITS.minUiScale} to ${LIMITS.maxUiScale} (1 = as the game draws it)`);
+    else out.s = op.s;
+  }
+  if (has('set')) {
+    const v = op.set;
+    const look = (o, states) => o && typeof o === 'object' && !Array.isArray(o) && Object.entries(o).every(([k, x]) => (k === 'text' && !states ? typeof x === 'string' && x.length <= LIMITS.maxUiText
+      : k === 'fontSize' && !states ? handsNum(x) && x >= LIMITS.minUiFont && x <= LIMITS.maxUiFont
+      : k === 'color' || k === 'background' ? typeof x === 'string' && HANDS_UI_COLOR_RE.test(x.trim())
+      : !states && ['@hover', '@active', '@disabled'].includes(k) ? look(x, true) : false));
+    if (!look(v, false) || !Object.keys(v).length) fail('"set" must be the card\'s look: { "text", "fontSize", "color", "background", "@hover" | "@active" | "@disabled": { "color", "background" } }');
+    else out.set = structuredClone(v);
+  }
 }
 
 /** `to` / `by` mean different things per op: a position, an angle, a size, or a new name. */
@@ -456,7 +513,10 @@ export function handsSaid(op, x = {}) {
     case 'level.switch': return `opened the level ${op.id}`;
     case 'save': return 'saved (as the person\'s Save: a saved request follows)';
     case 'editor.reload': return op.editor ? 'reloaded the editor page' : 'reloaded the game in the editor';
-    case 'list': return 'listed the objects, motions, code layouts and levels';
+    case 'ui.code': return `showed ${handsUiIds(op).map((id) => `codeUi('${id}')`).join(', ')} in the editor's UI list${x.checked ? ' — each box moved 40 px and drawn once: its picture follows it' : ''}${typeof x.note === 'string' ? x.note : ''}`;
+    case 'ui.set': return op.clear ? `took ${op.id} out of placement.json${x.cleared === false ? ' (it had nothing for it)' : ''} — your code has it now`
+      : `set the UI ${op.id}: ${[op.p ? (op.from ? `at [${op.p.join(', ')}] from ${op.from}` : `offset [${op.p.join(', ')}]`) : '', op.s !== undefined ? `size ${op.s}` : '', op.set ? `look ${JSON.stringify(op.set)}` : ''].filter(Boolean).join(', ')}`;
+    case 'list': return 'listed the objects, motions, code layouts, levels and the UI';
     default: return op.do;
   }
 }
@@ -486,8 +546,24 @@ export function applyHandsToFile(file, ops, o = {}) {
   return { file: handsTidy(f), results };
 }
 
+/**
+ * ui.code / ui.set with no editor open: the editor is the one that reads the game's codeUis and measures them, so ui.code
+ * only says so; `clear` takes the entry out of the file (after Save the AI wrote it into the code — the usual case with
+ * the editor closed); anything else needs the editor (an offset means "from where the game draws it now").
+ */
+function handsFileUi(f, op) {
+  if (op.do === 'ui.code') return { note: ' — no editor is open: it lists them when it opens (nothing to write)' };
+  if (op.clear) {
+    const had = !!(f.ui && Object.hasOwn(f.ui, op.id));
+    if (had) delete f.ui[op.id];
+    return { cleared: had };
+  }
+  return { error: `no editor is open: change ${op.id} in the game's code directly (codeUi('${op.id}') or its CSS) — the editor's offsets are measured on screen` };
+}
+
 /** Empty parts out (the validator wants no empty `motion` / `added`…), and the top `objects` there with levels. */
 function handsTidy(f) {
+  if (f.ui && !Object.keys(f.ui).length) (delete f.ui, delete f.uiView);
   for (const w of [f, ...(f.levels || [])]) {
     for (const [id, e] of Object.entries(w.places || {})) if (!Object.keys(e).length) delete w.places[id];
     for (const k of ['motion', 'names', 'places']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
@@ -515,6 +591,7 @@ function handsFileOp(f, op, dim) {
   if (op.do === 'save') return { said: 'nothing to save: no editor is open, and placement.json is written as it is' };
   if (op.do === 'editor.reload') return { error: 'the editor is not open (nothing to reload)' };
   if (op.do === 'list') return { list: handsFileList(f) };
+  if (kind === 'ui') return handsFileUi(f, op);
   if (op.do === 'object.ground') return { error: 'putting it on the ground needs the editor open (it measures what is under the object)' };
   if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
   if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
@@ -974,6 +1051,8 @@ function handsFileList(f) {
   const places = (w) => Object.entries(w.places || {}).map(([id, e]) => ({ id, ...structuredClone(e) }));
   if (!f.levels && f.places) out.places = places(f);
   if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l), ...(l.places ? { places: places(l) } : {}) }));
+  // The UI's changes the file holds (studio-canvas-ui: a codeUi's with `code`, `from`, `at`).
+  if (f.ui) out.ui = Object.entries(f.ui).map(([key, e]) => ({ key, ...structuredClone(e) }));
   return out;
 }
 

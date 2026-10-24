@@ -83,8 +83,12 @@
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
-// The lists are on globalThis (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids')), so the editor's
-// copy in the same page finds what the game's copy was told.
+// The lists are on globalThis (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids' / 'codeUis')), so the
+// editor's copy in the same page finds what the game's copy was told.
+//
+// UI drawn in the canvas (studio-canvas-ui, 2026-10-24): codeUi('score', { name, kind, at, size, look, … }) — a score, a
+// health bar, a button the game paints in a canvas, made editable like an HTML element: the game draws it where box()
+// says, with look(); the editor moves / resizes / recolours it and the game draws one frame. See "UI drawn in the canvas".
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -122,6 +126,8 @@ export async function applyPlacement(root, source = './placement.json', opts = {
     return codeOnly();
   }
   if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
+  // The UI drawn in the canvas (codeUi): its entries are read by the game's own drawing, from here on (none = the code's).
+  codeUiFile(data.ui);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
@@ -1439,18 +1445,273 @@ function handObject(root, key, three, made) {
   return found;
 }
 
+// ---------------------------------------------------------------------------------------------
+// UI drawn in the canvas (studio-canvas-ui, 2026-10-24; CONTRACT.md §1.13). A request that day: "I want to edit the UI
+// drawn INSIDE the canvas, not only the HTML UI, as UI." A score, a health bar, a button painted with fillText / fillRect
+// is part of the picture: the editor cannot know where it is. So the AI rewrites the drawing ONCE so it reads its place
+// and look from here (the same split as codePlace: the AI writes the code once, the editor is the hands):
+//
+//   const scoreUi = codeUi('score', { name: 'Score', kind: 'text', at: { from: 'top-left', x: 24, y: 18 },
+//     size: [232, 34], look: { text: 'SCORE', fontSize: 24, color: '#ffffff' }, sample: '999,999' });
+//   // every frame, where it draws:
+//   const b = scoreUi.box(), L = scoreUi.look();
+//   ctx.font = `bold ${L.fontSize * b.s}px monospace`; ctx.fillStyle = L.color;
+//   ctx.fillText(`${L.text} ${scoreUi.value(score)}`, b.x, b.y + 26 * b.s);
+//
+//   name     the person's word for it (the list, the card's head)
+//   kind     text | bar | button | image | box — WHAT it is (the list's icon, the sample values), not how it is drawn
+//   screen   the screen it is on (the same ids as HTML's data-studio-screen; none = always)
+//   at       { from, x, y }: from one of 9 places of the canvas (top-left top top-right left center right bottom-left
+//            bottom bottom-right), x / y inward (+ = into the canvas; for the middle ones + = right / down)
+//   size     [w, h], one number (a square), or () => [w, h] (a text whose width changes: measure it with measureText)
+//   scale    its size (1 = as drawn); the AI writes the person's size here on Save
+//   look     what the card may change: text · fontSize · color · background (only these keys are rows on the card)
+//   states   a button's looks: { hover: { background, color }, active: {…}, disabled: {…} }
+//   sample   the first sample value the card offers ('999,999'); a bar's are full · half · empty
+//   round    true = a round button (the editor's light and outline follow a circle)
+//   canvas   the canvas it is drawn in (an element or () => element); none = the last canvas of the page
+//   units    css (the game draws after ctx.scale(devicePixelRatio): CSS px, the default) | canvas (the canvas's own px)
+//
+// The handle answers, every frame, with the editor or without it:
+//   box()        { x, y, w, h, s } — where to draw, in `units`, measured from the canvas's size now; s = the size
+//   look(state?) { text, fontSize, color, background } — the card's changes over `look` (and over states[state]);
+//                with no state: the one the editor shows (hover / pressed / disabled), else the normal look
+//   value(v)     the sample the editor shows now, else v (a bar's sample: 1, 0.5 or 0)
+//   hit(x, y)    true inside the box (a circle for `round`): the game's press test, so a moved button is pressed where
+//                it is drawn — an HTML button does that by itself; a canvas button only through this
+//   state()      the look the editor shows ('hover' | 'active' | 'disabled'), null in the game
+//
+// placement.json `ui.<id>` with `code: id` holds what the person changed until Save (the same entry as an HTML element's,
+// with `from` and `at`: where it is measured from, and the at() numbers from there — so a bar moved to the top middle
+// stays in the top middle on any window size). On Save the AI writes `at` / `scale` / `look` / `states` into the code and
+// takes the entry out of the file ("the code is the truth", 2026-10-24).
+
+const CODE_UIS = Symbol.for('game-studio.codeUis');
+const CODE_UI_FILE = Symbol.for('game-studio.codeUiFile');
+/** The 9 places a codeUi is measured from (Q2 = a, 2026-10-24: a moved UI keeps to the nearest of them). */
+export const UI_FROMS = ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+const UI_KINDS = ['text', 'bar', 'button', 'image', 'box'];
+const UI_LOOK = ['text', 'fontSize', 'color', 'background'];
+const UI_STATE_NAMES = ['hover', 'active', 'disabled'];
+
+/**
+ * The file's `ui` entries that name a codeUi, by id — on globalThis, so the game's applyPlacement and the editor's ▶ Play
+ * (each its own copy of this file) fill the one map every handle reads at draw time: the order of codeUi() and
+ * applyPlacement() in the game's code does not matter.
+ */
+function codeUiFile(ui) {
+  const m = new Map();
+  if (ui && typeof ui === 'object') {
+    for (const [k, e] of Object.entries(ui)) {
+      if (!e || e.code !== k || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum)) continue;
+      const o = { p: e.p.slice(), s: isNum(e.s) && e.s > 0 ? e.s : 1 };
+      if (UI_FROMS.includes(e.from) && Array.isArray(e.at) && e.at.length === 2 && e.at.every(isNum)) (o.from = e.from), (o.at = e.at.slice());
+      if (e.set && typeof e.set === 'object') o.set = e.set;
+      m.set(k, o);
+    }
+  }
+  globalThis[CODE_UI_FILE] = m;
+}
+const codeUiFileOf = (id) => (globalThis[CODE_UI_FILE] instanceof Map ? globalThis[CODE_UI_FILE].get(id) : undefined) || null;
+
+/** [left / middle / right, top / middle / bottom] of a place. */
+function uiSides(from) {
+  const [v, h] = from === 'center' ? ['middle', 'middle'] : from === 'left' || from === 'right' ? ['middle', from] : from.includes('-') ? from.split('-') : [from, 'middle'];
+  return [h, v];
+}
+
+/** The box's top-left corner for at() numbers measured from `from` (W × H: the canvas, in units). */
+export function uiBoxAt(from, x, y, w, h, W, H) {
+  const [hz, v] = uiSides(UI_FROMS.includes(from) ? from : 'top-left');
+  return [hz === 'left' ? x : hz === 'right' ? W - x - w : W / 2 + x - w / 2, v === 'top' ? y : v === 'bottom' ? H - y - h : H / 2 + y - h / 2];
+}
+
+/** The at() numbers of a box measured from `from` (the inverse of uiBoxAt). */
+export function uiAtOf(from, bx, by, w, h, W, H) {
+  const [hz, v] = uiSides(from);
+  return [hz === 'left' ? bx : hz === 'right' ? W - bx - w : bx + w / 2 - W / 2, v === 'top' ? by : v === 'bottom' ? H - by - h : by + h / 2 - H / 2];
+}
+
+/** The nearest of the 9 places to a box (its edges to the canvas's edges, its middle to the canvas's middle). */
+export function uiNearest(bx, by, w, h, W, H) {
+  const col = [Math.abs(bx), Math.abs(bx + w / 2 - W / 2), Math.abs(W - bx - w)];
+  const row = [Math.abs(by), Math.abs(by + h / 2 - H / 2), Math.abs(H - by - h)];
+  const c = col.indexOf(Math.min(...col)), r = row.indexOf(Math.min(...row));
+  return UI_FROMS[r * 3 + c];
+}
+
+const uiColorOk = (c) => typeof c === 'string' && UI_COLOR.test(c);
+function uiLookOf(v) {
+  const o = {};
+  if (!v || typeof v !== 'object') return o;
+  if (typeof v.text === 'string') o.text = v.text.slice(0, 200);
+  if (isNum(v.fontSize) && v.fontSize > 0) o.fontSize = v.fontSize;
+  for (const k of ['color', 'background']) if (uiColorOk(v[k])) o[k] = v[k];
+  return o;
+}
+
+/** Register a UI drawn in the canvas; returns its handle (see above). A bad id is said once and the handle still draws. */
+export function codeUi(id, def) {
+  const ok = typeof id === 'string' && CODE_ID.test(id) && def && typeof def === 'object';
+  if (!ok) warnOnce(`codeUi(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and { at, size }`);
+  const d = def && typeof def === 'object' ? def : {};
+  const at = d.at && typeof d.at === 'object' ? d.at : {};
+  const states = {};
+  if (d.states && typeof d.states === 'object') for (const s of UI_STATE_NAMES) if (d.states[s]) states[s] = uiLookOf(d.states[s]);
+  const list = codeList(CODE_UIS);
+  const was = ok ? list.get(id) : null;
+  const e = {
+    id: ok ? id : 'ui', name: text(d.name, 40) || (ok ? id : 'UI'), kind: UI_KINDS.includes(d.kind) ? d.kind : 'box',
+    screen: typeof d.screen === 'string' && /^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(d.screen) ? d.screen : null,
+    at: { from: UI_FROMS.includes(at.from) ? at.from : 'top-left', x: isNum(at.x) ? at.x : 0, y: isNum(at.y) ? at.y : 0 },
+    size: d.size, scale: isNum(d.scale) && d.scale > 0 ? d.scale : 1, look: uiLookOf(d.look), states,
+    sample: typeof d.sample === 'string' || isNum(d.sample) ? String(d.sample).slice(0, 200) : null, round: d.round === true,
+    canvasOf: d.canvas, units: d.units === 'canvas' ? 'canvas' : 'css',
+    // The editor's values while it edits (the bridge's src/bridge/code-ui.ts): { p, s, set, state, sample } — null in the
+    // game. Kept when the game calls codeUi() again for the same id (a new round), like a code layout's objects.
+    live: was ? was.live : null,
+  };
+  e.canvas = () => uiCanvas(e);
+  e.frame = () => uiFrame(e);
+  e.box = () => uiBox(e);
+  e.lookNow = (st) => uiLookNow(e, st);
+  e.atNow = () => uiAtNow(e);
+  if (ok) list.set(id, e);
+  return {
+    id: e.id,
+    box: () => {
+      const b = uiBox(e);
+      return { x: b.x, y: b.y, w: b.w, h: b.h, s: b.s };
+    },
+    look: (st) => uiLookNow(e, st),
+    value: (v) => {
+      const sm = e.live && e.live.sample;
+      if (typeof sm !== 'string') return v;
+      return e.kind === 'bar' ? (isNum(Number(sm)) && sm !== '' ? Number(sm) : 0) : sm;
+    },
+    hit: (x, y) => {
+      if (!isNum(x) || !isNum(y)) return false;
+      const b = uiBox(e);
+      if (e.round) {
+        const rx = b.w / 2, ry = b.h / 2;
+        return rx > 0 && ry > 0 && ((x - b.x - rx) / rx) ** 2 + ((y - b.y - ry) / ry) ** 2 <= 1;
+      }
+      return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    },
+    state: () => (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null),
+  };
+}
+
+/** The canvas a codeUi is drawn in: its own `canvas`, else the last canvas of the page (an overlay is added after the game's). */
+function uiCanvas(e) {
+  let c = e.canvasOf;
+  if (typeof c === 'function') {
+    try {
+      c = c();
+    } catch (err) {
+      c = null;
+    }
+  }
+  if (c && typeof c.getBoundingClientRect === 'function') return c;
+  if (typeof document === 'undefined') return null;
+  const all = document.getElementsByTagName('canvas');
+  return all.length ? all[all.length - 1] : null;
+}
+
+/** The canvas's size in the codeUi's units, and k = units per CSS px (the editor's offsets are CSS px, like HTML's). */
+function uiFrame(e) {
+  const c = uiCanvas(e);
+  const cw = c ? c.clientWidth || (c.getBoundingClientRect && c.getBoundingClientRect().width) || c.width || 0 : typeof innerWidth === 'number' ? innerWidth : 0;
+  const ch = c ? c.clientHeight || (c.getBoundingClientRect && c.getBoundingClientRect().height) || c.height || 0 : typeof innerHeight === 'number' ? innerHeight : 0;
+  if (e.units === 'canvas' && c && cw > 0) return { W: c.width, H: c.height, k: c.width / cw, ky: ch > 0 ? c.height / ch : c.width / cw };
+  return { W: cw, H: ch, k: 1, ky: 1 };
+}
+
+/** size as [w, h] in units (unscaled): [w, h], one number, or a function of nothing. */
+function uiSize(e) {
+  let s = e.size;
+  if (typeof s === 'function') {
+    try {
+      s = s();
+    } catch (err) {
+      warnOnce(`codeUi('${e.id}'): size() failed (${err && err.message})`);
+      s = null;
+    }
+  }
+  if (isNum(s)) return [Math.max(0, s), Math.max(0, s)];
+  return Array.isArray(s) && s.length >= 2 && isNum(s[0]) && isNum(s[1]) ? [Math.max(0, s[0]), Math.max(0, s[1])] : [0, 0];
+}
+
+/**
+ * Where it is drawn now, in units. The middle stays where it is when its size changes (the same as an HTML element's).
+ * - the editor's live values: the place it had when editing began (the file's, else the code's) + the offset since then
+ * - the file's `from` / `at` (moved, not saved yet): measured from that place on the canvas's size now
+ * - the file's offset with no `from` (a file written by hand): the code's place + the offset
+ * - else the code's at()
+ */
+function uiBox(e) {
+  const { W, H, k, ky } = uiFrame(e);
+  const [w0, h0] = uiSize(e);
+  const wc = w0 * e.scale, hc = h0 * e.scale;
+  const f = codeUiFileOf(e.id);
+  const live = e.live;
+  let cx, cy, p0;
+  if (f && f.from) {
+    const [bx, by] = uiBoxAt(f.from, f.at[0], f.at[1], wc * f.s, hc * f.s, W, H);
+    cx = bx + (wc * f.s) / 2;
+    cy = by + (hc * f.s) / 2;
+    p0 = f.p;
+  } else {
+    const [bx, by] = uiBoxAt(e.at.from, e.at.x, e.at.y, wc, hc, W, H);
+    cx = bx + wc / 2;
+    cy = by + hc / 2;
+    p0 = [0, 0];
+    if (f && !live) (cx += f.p[0] * k), (cy += f.p[1] * ky);
+  }
+  if (live && Array.isArray(live.p)) (cx += (live.p[0] - p0[0]) * k), (cy += (live.p[1] - p0[1]) * ky);
+  const s = live && isNum(live.s) ? live.s : f ? f.s : 1;
+  const w = wc * s, h = hc * s;
+  return { x: cx - w / 2, y: cy - h / 2, w, h, s: e.scale * s, W, H, k, ky };
+}
+
+/** The nearest place and the at() numbers from it, for where it is now (the file's `from` / `at`; the AI's numbers on Save). */
+function uiAtNow(e) {
+  const b = uiBox(e);
+  const from = uiNearest(b.x, b.y, b.w, b.h, b.W, b.H);
+  const at = uiAtOf(from, b.x, b.y, b.w, b.h, b.W, b.H);
+  return { from, at: at.map((v) => Math.round(v * 10) / 10), scale: Math.round(b.s * 1000) / 1000 };
+}
+
+/** The look now: `look` ← the person's (editor or file) ← the state's (`states` ← the person's for that state). */
+function uiLookNow(e, st) {
+  const out = Object.assign({}, e.look);
+  const f = codeUiFileOf(e.id);
+  const set = e.live && e.live.set ? e.live.set : f && f.set ? f.set : null;
+  if (set) Object.assign(out, uiLookOf(set));
+  const s = st === undefined ? (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null) : UI_STATE_NAMES.includes(st) ? st : null;
+  if (s) {
+    if (e.states[s]) Object.assign(out, e.states[s]);
+    if (set && set['@' + s]) {
+      const o = uiLookOf(set['@' + s]);
+      for (const k of ['color', 'background']) if (o[k]) out[k] = o[k];
+    }
+  }
+  return out;
+}
+
 function applyUi(doc, ui) {
   const out = { applied: [], missing: [] };
   const put = (el) => {
     const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
-    if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
+    // An entry with `code` is a codeUi's (drawn by the game in its canvas: codeUiFile), never an HTML element's.
+    if (!e || e.code || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
     if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
     if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
   };
   // Only for a file whose card changed something (a file of moves alone adds nothing to the page, as before).
   const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
   doc.querySelectorAll('[data-studio-key]').forEach(put);
-  for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
+  for (const k of Object.keys(ui)) if (!out.applied.includes(k) && !(ui[k] && ui[k].code)) out.missing.push(k);
   // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
   if (typeof MutationObserver === 'function') {
     new MutationObserver((list) => {

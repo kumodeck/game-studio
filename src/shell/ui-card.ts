@@ -110,11 +110,13 @@ export function createUiCard(d: UiCardDeps) {
     if (!st && p.sample) {
       const s = p.sample;
       // A value the game writes (a score, a timer) gets numbers; words get a long name. Both get Empty.
-      const picks = [s.hint, s.value ? '999,999' : d.t('uiLook.sample.long'), ''].filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i) as string[];
+      // A bar (a UI drawn in the canvas with kind 'bar', studio-canvas-ui 2026-10-24): full, half, empty — said in words.
+      const picks = s.bar ? ['1', '0.5', '0'] : [s.hint, s.value ? '999,999' : d.t('uiLook.sample.long'), ''].filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i) as string[];
+      const word = (v: string) => (s.bar ? d.t(v === '1' ? 'uiLook.sample.full' : v === '0.5' ? 'uiLook.sample.half' : 'uiLook.sample.empty') : v === '' ? d.t('uiLook.sample.empty') : v);
       const chips = picks.map((v) => h('button', { type: 'button', class: 'pill ui-sample', 'aria-pressed': String(s.now === v), dataset: { sample: v || 'empty' },
-        text: v === '' ? d.t('uiLook.sample.empty') : v, onclick: () => d.sample(key, s.now === v ? null : v) }));
-      const own = textField(s.now !== null && !picks.includes(s.now) ? s.now : '', d.t('uiLook.sample.own'), (v) => d.sample(key, v === '' ? null : v), { part: 'ui-sample-own' });
-      (own.querySelector('input') as HTMLInputElement).placeholder = d.t('uiLook.sample.ownHint');
+        text: word(v), onclick: () => d.sample(key, s.now === v ? null : v) }));
+      const own = s.bar ? null : textField(s.now !== null && !picks.includes(s.now) ? s.now : '', d.t('uiLook.sample.own'), (v) => d.sample(key, v === '' ? null : v), { part: 'ui-sample-own' });
+      if (own) (own.querySelector('input') as HTMLInputElement).placeholder = d.t('uiLook.sample.ownHint');
       const off = s.now !== null ? h('button', { type: 'button', class: 'icon-btn ui-back', dataset: { action: 'ui-sample-off' }, title: d.t('uiLook.sample.off'), 'aria-label': d.t('uiLook.sample.off'), onclick: () => d.sample(key, null) }, icon('close')) : null;
       parts.push(...row(d.t('uiLook.sample'), 'ui-sample-row', h('div', { class: 'ui-samples' }, ...chips, own), off));
       parts.push(h('p', { class: 'muted note-line ui-sample-note', dataset: { part: 'ui-sample-note' }, text: d.t('uiLook.sample.note') }));

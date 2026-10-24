@@ -126,7 +126,8 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
                    radians, --deg for degrees), object.rename (key, to), object.duplicate (key, to | by),
                    object.delete (key), object.ground (key), level.new (name), level.duplicate (id,
                    name), level.rename (id, to), level.switch (id), save (only when the person says
-                   so), editor.reload (--editor: the editor page itself). Fields as --<field> <value>
+                   so), editor.reload (--editor: the editor page itself), ui.code (id: codeUi ids,
+                   a,b), ui.set (id, p, s, from, set | --clear). Fields as --<field> <value>
                    (numbers and lists as JSON: --to "[1,0,2]"); when: start | click | touch | key:E |
                    time:2 | after:Hop | cue:<name>. Prints "studio: did …" per op. CONTRACT.md §3.6
   -h, --help       show this help

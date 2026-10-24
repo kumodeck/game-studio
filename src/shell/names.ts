@@ -290,7 +290,9 @@ export function useGivenNames(fn: (key: string) => string | undefined): void {
 }
 
 export function displayName(it: Pick<Item, 'key' | 'label' | 'kinds' | 'group' | 'unstable'>, t: (k: string) => string): string {
-  if (it.kinds && it.kinds.includes('ui')) return uiName(it.key);
+  // A UI drawn in the canvas (codeUi, studio-canvas-ui 2026-10-24): the name the AI gave it in the person's words
+  // ("Health bar"), kind 'named'; an HTML element: its key in words.
+  if (it.kinds && it.kinds.includes('ui')) return it.kinds.includes('named') && it.label ? it.label : uiName(it.key);
   // A name the person gave in the editor (Rename, F2) wins until the AI has put it in the code (useGivenNames).
   const given = givenName(it.key);
   if (given) return given;

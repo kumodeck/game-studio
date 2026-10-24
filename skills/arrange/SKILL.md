@@ -117,6 +117,12 @@ marks (§5) go into that same file.
 
 - When the game mixes several, pick the one that **owns the objects the user wants to move** (a three.js world with a
   DOM menu is three.js).
+- **A UI drawn in the canvas** (a score, a health bar, a button, a minimap painted with `fillText` / `fillRect` /
+  `drawImage` over the game — often in a second 2D canvas on top of a three.js one, and no `data-studio-key`): make it
+  editable the first time you look at the game, **without asking** — all of it at once — and say so in one line in
+  the game's words ("I made the score, the health bar and the JUMP button movable in the editor; they look the same").
+  How: "UI drawn in the canvas" (§4). Decided on 2026-10-24: it is a rewrite of the drawing, but its
+  picture stays the same to the pixel, and a UI the person cannot pick is a dead end in the editor.
 - `adapters/` is in the same folder as this `SKILL.md`. Each example is short and commented; you copy one and fit it
   to the game. Details in [`references/adapters.md`](references/adapters.md).
 - If the game is built by a bundler, open the folder the bundler writes (`npm run build`; started on the project
@@ -515,7 +521,7 @@ and `hand` are refused (they need the game's numbers): change the number in the 
 
 | Op | Fields | Does |
 |---|---|---|
-| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)"), `p` (where it stands in the editor now, saved or not) and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`; a motion of points with its `keys.p`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`, `from`, `offsets` and `objects`: each object's `line` / `rank` / `offset`); the levels. Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
+| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)"), `p` (where it stands in the editor now, saved or not) and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`; a motion of points with its `keys.p`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`, `from`, `offsets` and `objects`: each object's `line` / `rank` / `offset`); the levels; the UI (`ui`: every element of the UI layer — HTML ones `html: true`, canvas ones with `code`, `kind`, `box` on screen, `codeAt` (the code's at() and scale now) and `write` (the `at` and `scale` to write on Save), each with `p` / `s` / `set` as the editor has them). Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
 | `motion.make` | `name`, `points` or `keys`, `len` (s, default 2), `repeat` (once / loop / pingpong), `ease`, `key`, `when`, `until`, `replace` | A Library motion — on the timeline, played by the loader — and, with `key`, put on that object. `points` = positions it goes through, offsets from where it stands, spread evenly over `len` (linear between them); `keys` = the file's own keys (`p` / `r` / `s`) for turns and sizes. A taken name becomes "Spiral 2" unless `replace: true` (the same motion with new keys) |
 | `motion.attach` | `key`, `name`, `when`, `until` | Put a Library motion on an object |
 | `motion.detach` | `key`, `name` (or `all: true`) | Take a motion off that object (the "Remove from this object" of its card); the motion stays in the Library |
@@ -532,6 +538,8 @@ and `hand` are refused (they need the game's numbers): change the number in the 
 | `level.new` / `level.duplicate` / `level.rename` / `level.switch` | `name`; `id`; `id` + `to`; `id` | New (blank) level, Duplicate, rename, open one (`level` on any object op = do it on that level) |
 | `save` | — | The person's Save. **Only when they say "save"** — otherwise Save stays theirs |
 | `editor.reload` | `editor: true` = the editor page itself | Reload the game in the editor (or the page: after a change to `.studio/adapter.js`, `studio.json`, `tools.js`, `.studio/ui/`) |
+| `ui.code` | `id` (`"score"`, or several: `"score,hp-bar,jump"`) | After you rewrote the drawing with `codeUi()` ("UI drawn in the canvas", §4): the editor reads the game again, lists them in its UI layer with the HTML UI, and **checks each box**: it moves it 40 px, draws one frame and looks whether the picture moved with it. `studio: do failed ui.code hp-bar - moving it 40 px changed nothing on screen: the drawing does not read codeUi('hp-bar').box()` / `- the box is smaller than what is drawn (232×34, drawn 260×36)` = your rewrite is off: fix it and send it again (the person sees nothing of it). With no editor open: nothing to do (the editor lists them when it opens) |
+| `ui.set` | `id` + `p` (`[dx, dy]` CSS px from where the game draws it; with `from`: the `at()` numbers from that place, `{"from":"top","p":[0,20]}`), `s`, `set` (the card's look: `text`, `fontSize`, `color`, `background`, `"@hover"` / `"@active"` / `"@disabled"`: `{ color, background }`); or `clear: true` alone | What the UI card does, on screen, one ⌘Z. `clear`: **after Save, once you wrote that entry into the code**: it leaves `placement.json` (not a change of the person's: no ⌘Z, no Save count) and the editor draws it where your code now puts it. With no editor open only `clear` works (change the code itself otherwise) |
 
 `when`: `"start"`, `"click"`, `"touch"`, `"key:E"` (any `KeyboardEvent.code`: `"key:Space"`), `"time:2"`,
 `"after:Hop"`, `"cue:chest-opened"`, `"say:<their words>"`, the file's object (`{"on":"enter","area":{…}}`), or a list
@@ -737,11 +745,16 @@ What the user moved there is saved by that key:
   (48 px of an 800 px high game = 6vh).
 - No `was`: the original is always `[0, 0]`, scale 1.
 
-**With the loader (Way 1)** there is nothing to do: `applyPlacement(scene, …)` applies `ui` too (before the world,
-also to marked elements the game adds later, such as a game-over screen). A game with **no world** (HTML only) calls
-`await applyPlacement(document, './placement.json')`. Without the loader yet, add it (Way 1) as for objects.
+**On Save, write it into the code and take it out of `ui`** ("the code is the truth", 2026-10-24: `placement.json` is
+where the person's changes wait until Save, not where the game keeps its layout). Until you have, the loader shows it
+(`applyPlacement(scene, …)` applies `ui` too, before the world, also to marked elements the game adds later; a game
+with **no world** calls `await applyPlacement(document, './placement.json')`), so the game is right in the meantime.
+Then, for each entry you wrote, **one `--do`** takes it out of the file without a change of the person's:
+`--do '[{"do":"ui.set","id":"title-card","clear":true},{"do":"ui.set","id":"score","clear":true}]'` (the editor shows the
+element where your CSS now puts it; no Save count comes back). An entry with `"code"` is a UI drawn in the canvas: see
+"UI drawn in the canvas" below.
 
-**Writing it into the code (Way 2)**, per key:
+**Writing it into the code**, per key:
 
 1. Find the element with `data-studio-key="<key>"` and the CSS rule that places it.
 2. Add `translate: <dx>px <dy>px;` (and `scale: <s>;`) to that rule — or add `dx` / `dy` to its `left` / `top`
@@ -753,8 +766,9 @@ also to marked elements the game adds later, such as a game-over screen). A game
    `transform-origin`, so: no `transform` on it → `scale: <s>;` alone is right; centred with
    `transform: translate(-50%, -50%)` → also add `transform-origin: 0 0;` (that point is its middle then); any other
    transform → keep this key on the loader, or check the result in the game (§3.3) before you report.
-5. Remove that key from `ui` (and `uiView` when `ui` is empty). The loader would otherwise apply the offset a second
-   time on top of `left` / `top` numbers you changed.
+5. Take that key out of `ui` with `--do ui.set --id <key> --clear` (the editor open), or remove it from the file (no
+   editor open; `uiView` too when `ui` is empty). The loader would otherwise apply the offset a second time on top of
+   `left` / `top` numbers you changed.
 
 Check after applying: shoot the game **without the editor** (`--shot`, §3.3) and compare with what the user saw; the
 editor reloads the game by itself, and Save then shows no unsaved count.
@@ -788,9 +802,101 @@ The loader (Way 1) shows all of it already (the text, the colours through one st
 colour in the CSS rule of that text (`font-size`, `color`), the fill in the element's rule (`background`), a state's
 colours in its `:hover` / `:active` / `:disabled` rule (add one when there is none); a theme variable where `:root`
 declares it. Prefer a theme variable when the colour is one (change `--glow`, not every rule that uses it). Then take
-`set` / `setWas` out of that entry (the whole entry when `p` is `[0, 0]` and there is no `s`), and `theme` when it is
+the entry out (`ui.set --clear`, as above) once its place and look are both in the code, and `theme` when it is
 done. **Sample values** (the card's "999,999", "a long name") are never in the file: they are the user checking that
 text fits. If they say a long one overflows, fix the CSS (a `max-width`, `text-overflow`, a smaller size) when asked.
+
+### UI drawn in the canvas (`codeUi`, `ui.<id>.code`)
+
+A score, a health bar, a button or a minimap the game **paints in a canvas** is part of the picture: the editor cannot
+know where it is. You make it editable by rewriting the drawing **once** so it reads its place and look from the
+loader's `codeUi()`; the editor then lists it in the UI layer with the HTML UI (one list, top of the screen first), with
+the same frame, strip and card — the person sees no difference between the two (do not tell them "canvas" or "HTML").
+
+**Deliver it** (the first time you look at a game with such a UI, without asking — §1 — or when asked "make this UI
+editable"):
+
+1. **Find every one** the game draws fixed on the screen: `fillText` / `fillRect` / `arc` / `drawImage` of a score, a
+   bar, a button, a minimap; Phaser's `setScrollFactor(0)` texts, a Pixi HUD container (those engines: later — tell
+   the person in one line). **All of them in one go**, never one per request.
+2. **Shoot the game before** (`--shot`, §3.3) and keep `.studio/shot/game.png`.
+3. Rewrite the drawing, one `codeUi()` per part. Import it from the loader (copy `bin/studio-placement.js` in first,
+   Way 1, when the game does not have it):
+
+   ```js
+   import { codeUi } from './studio-placement.js';
+   // Once, at the top: the numbers that were in the drawing move here (the drawing reads them back).
+   const scoreUi = codeUi('score', { name: 'Score', kind: 'text', at: { from: 'top-left', x: 16, y: 12 }, size: [232, 40],
+     look: { text: 'SCORE', fontSize: 24, color: '#ffffff', background: 'rgba(10, 6, 24, 0.55)' }, sample: '999,999' });
+   const jumpUi = codeUi('jump', { name: 'Jump', kind: 'button', round: true, at: { from: 'bottom-right', x: 24, y: 24 },
+     size: 72, look: { text: 'JUMP', fontSize: 18, color: '#0b0b1a', background: '#56e3f5' },
+     states: { hover: { background: '#8af3ff' }, active: { background: '#2fb8d0' } } });
+   // Every frame, where it drew with fixed numbers:
+   let b = scoreUi.box(), L = scoreUi.look();
+   ctx.fillStyle = L.background; ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 8 * b.s); ctx.fill();
+   ctx.font = `bold ${L.fontSize * b.s}px "Courier New", monospace`; ctx.fillStyle = L.color;
+   ctx.fillText(`${L.text} ${scoreUi.value(score.toLocaleString())}`, b.x + 10 * b.s, b.y + 28 * b.s);
+   b = jumpUi.box(); L = jumpUi.look(jumpUi.state() || (pressed ? 'active' : hover ? 'hover' : null));
+   // …and the press test: if (jumpUi.hit(e.offsetX, e.offsetY)) jump();
+   ```
+
+   - `id`: lower case and `-` (`hp-bar`). `name`: the person's word for it, **in their language** (the list and the
+     card show it). `kind`: `text` | `bar` | `button` | `image` | `box` — what it is (a bar's samples are full / half /
+     empty).
+   - `at: { from, x, y }`: measured from one of 9 places of the canvas — `top-left`, `top`, `top-right`, `left`,
+     `center`, `right`, `bottom-left`, `bottom`, `bottom-right` — inward (+ = into the canvas; for `top` / `bottom` /
+     `center` x is across from the middle, for `left` / `right` / `center` y is down from the middle). Pick the place
+     the drawing is measured from now (`w - 24 - 36` → `bottom-right`, x 24 for a 72 px button).
+   - `size`: `[w, h]` (one number = a square), or `() => [w, h]` for a text whose width changes (`ctx.measureText`). It
+     must **cover the whole drawing** (the frame, the light around it and the press test use it).
+   - `look`: only what the card may change (`text`, `fontSize`, `color`, `background`): each key you give is a row on
+     the card, nothing else is. `states`: a button's hover / pressed / disabled looks. `sample`: the first sample value.
+     `round: true`: a round button. `canvas`: the canvas it is in when the page has several and it is not the last
+     one. `units: 'canvas'` when the game draws in the canvas's own pixels (no `ctx.scale(devicePixelRatio)`).
+   - The drawing: every number of that part comes from `box()` (`x`, `y`, `w`, `h` in your units; `s` = its size: multiply
+     inner offsets, radii and font sizes by it), its colours and words from `look()`, the game's value through
+     `value(v)` (the editor's sample value while one is shown). **A bar's value is its fill from 0 to 1**:
+     `const fill = hpUi.value(hp / maxHp)` (the editor's samples for a bar are 1, 0.5 and 0 — full, half, empty), then
+     draw `Math.round(fill * cells)` cells; a bar needs no `sample`. A text's value is the words or number it shows. A button's press test: `hit(x, y)` — **a moved button
+     must be pressed where it is drawn**. `state()` = the look the editor shows (mix it with the game's own hover /
+     pressed as above).
+   - The game draws from `requestAnimationFrame` (the editor draws ONE frame of it, with time stopped, after each
+     change). A game that does not: `window.studio?.redraw?.(() => drawHud())` once.
+4. **The picture must not change by one pixel**: shoot again (`--shot`) and compare with step 2. Different → fix the
+   drawing (a rounding, a missing `* b.s`) and shoot again.
+5. `--do ui.code --id score,hp-bar,jump,minimap` (all of them). The editor checks each box (§3.4); `do failed` → fix and
+   send again. Then **one line** in the game's words, no editor steps: "I made the score, the health bar and the JUMP
+   button movable in the editor (they look the same)". Nothing about pressing Save, picking or dragging: the editor
+   says that itself, and the person already knows Save is how they hand it to you.
+
+**Leave out** (say it in one line if asked): a name over a character's head and anything else that follows the world
+(it is a scene object, not UI); a part whose place the game changes every frame (a bouncing score: deliver its resting
+place and add the bounce on top of `box()`).
+
+**What the file says until Save** — the same `ui` entry as an HTML element's, with `code`:
+
+```json
+"ui": {
+  "hp-bar": { "code": "hp-bar", "p": [389, -40], "s": 1.4, "from": "top", "at": [0, 16], "label": "Health bar" },
+  "jump":   { "code": "jump", "p": [0, 0],
+              "set": { "@active": { "background": "#ff8fb1" } }, "setWas": { "@active": { "background": "#2fb8d0" } } }
+}
+```
+
+- `from` / `at`: where it is measured from now — the nearest of the 9 places to where the person left it — and the
+  `at()` numbers from there (your units). The loader places it by them, so a bar moved to the top middle stays there on
+  any window size. `s` = its size over the code's `scale` (1.4 × `scale: 1` → write `scale: 1.4`). `p` = how far the
+  editor moved it (only the editor uses it). `set` / `setWas` as for HTML (`setWas` = the code's `look` / `states` now).
+
+**On Save** (a `saved` request with `ui` entries that have `code`) — the code is the truth:
+
+1. In `codeUi('<id>', …)`: `at: { from: '<from>', x: <at[0]>, y: <at[1]> }` and `scale: <code scale × s>` (or take
+   them from `--do list`: each canvas UI's `write` says exactly what to write), the `set` values into `look` and a
+   state's into `states` (`"@active"` → `states.active`).
+2. **One `--do`** reads the game again and takes the entries out of the file:
+   `--do '[{"do":"ui.code","id":"hp-bar,jump"},{"do":"ui.set","id":"hp-bar","clear":true},{"do":"ui.set","id":"jump","clear":true}]'`.
+   The editor shows them where your code now puts them (the same place: no jump, no Save count).
+3. One line: "I wrote the health bar's place and size into the game".
 
 ### Motion (`motions`, `motion`)
 
@@ -1259,6 +1365,10 @@ Never ask the person to save again for it.
   guess.
 
 ### The UI's marks (`data-studio-key` on HTML)
+
+(A UI the game **draws in a canvas** has no element to mark: it is named in the code with `codeUi()` instead — "UI
+drawn in the canvas", §4.)
+
 
 In a three.js or canvas game, HTML over the game (a title card, the score, a Start button) becomes movable in the
 editor's **UI** layer when it carries `data-studio-key`:

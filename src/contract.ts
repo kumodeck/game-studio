@@ -85,7 +85,36 @@ export interface UiProps {
    * Sample values ("999,999", a long name: does the text still fit?): null = nothing to put one in. `now` = the sample shown, `hint` = the game's
    * data-studio-sample, `value` = the target is a value the game writes (data-studio-value: a score), not words.
    */
-  sample: { now: string | null; hint?: string; value: boolean } | null;
+  sample: { now: string | null; hint?: string; value: boolean; bar?: boolean } | null;
+}
+
+/**
+ * A UI the game draws in its canvas (codeUi, studio-canvas-ui 2026-10-24; CONTRACT.md §1.13), as the bridge lists it to
+ * the shell (studio:ui/codes): what the file needs beside its offset (`from` / `at`) and what the AI's `list` shows.
+ */
+export interface CodeUiInfo {
+  /** Its codeUi id (the UI list's key, and `ui.<key>.code`). */
+  key: string;
+  /** The code's name ("Score"). */
+  name: string;
+  /** text | bar | button | image | box. */
+  kind: string;
+  /** Where it is now, from the nearest of the 9 places (top-left … bottom-right): the file's `from`, the AI's at() on Save. */
+  from: string;
+  /** The at() numbers from `from` (the code's units). */
+  at: [number, number];
+  /** Its size now: the code's scale × the editor's (the AI's `scale` on Save). */
+  scale: number;
+  /** The code's own at() and scale. */
+  code: { from: string; x: number; y: number; scale: number };
+  /** The look keys the code gave (only these are rows on the card). */
+  look: string[];
+  /** Where it is on the game's screen now, CSS px [x, y, w, h]. */
+  box: [number, number, number, number];
+  /** Its box now in the code's units [w, h] (the size × scale). */
+  size: [number, number];
+  /** The canvas in the code's units [W, H], and units per CSS px across / down. */
+  frame: [number, number, number, number];
 }
 /** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
 export interface UiThemeVar {
@@ -617,6 +646,12 @@ export interface StudioGlobal {
    * first that answers wins (merging several seats into one list is a later stage).
    */
   registerUI(port: Port2D | (() => Port2D | null)): void;
+  /**
+   * Optional (studio-canvas-ui, 2026-10-24): how the game draws ONE frame of its picture when the editor changed a UI it
+   * draws in its canvas (codeUi), for a game that does not draw from requestAnimationFrame. Without it the editor runs
+   * the game's waiting frame once, with time stopped.
+   */
+  redraw?(fn: (() => void) | null): void;
   /** Shared services, for adapters that want the load log or the real rAF. */
   core: CoreContext;
   /**
@@ -1172,6 +1207,13 @@ export type ShellToBridge =
   | { type: 'studio:ui/theme-set'; name: string; value: string | null; quiet?: boolean }
   | { type: 'studio:ui/props-get'; key: string }
   /**
+   * studio-canvas-ui (2026-10-24): measure codeUi boxes (the AI's `ui.code`: each box moved 40 px and drawn once — did the
+   * picture move with it?) → studio:ui/code-checked. `clear`: the AI wrote the entry into the code (`ui.set --clear`) —
+   * the page forgets the file's numbers for it and draws it where the code puts it.
+   */
+  | { type: 'studio:ui/code-check'; id: number; keys: string[] }
+  | { type: 'studio:ui/code-clear'; key: string }
+  /**
    * While the world is edited, the game's UI (data-studio-key) is hidden — off the picture and out of the pointer's
    * way — unless `on` (the shell's eye button / ⇧U, a try of the editor, 2026-10-20: "the UI is always there, in the way"). On: shown
    * faded, still not in the pointer's way. Only the editing look: nothing is saved and the game's code is untouched.
@@ -1307,6 +1349,13 @@ export type BridgeToShell =
   | { type: 'studio:ui/props'; props: UiProps }
   /** UI stage 3: the game's theme variables (when editing starts and after ui/theme-set); [] = none. */
   | { type: 'studio:ui/theme'; vars: UiThemeVar[] }
+  /**
+   * studio-canvas-ui (2026-10-24): the game's codeUi list (when editing starts, after a change of one of them). `clash`:
+   * codeUi ids an HTML element's data-studio-key already uses (the HTML one is listed, the codeUi is not).
+   */
+  | { type: 'studio:ui/codes'; list: CodeUiInfo[]; clash: string[] }
+  /** The answer to studio:ui/code-check: per key, did its picture follow the box (`why` when not). */
+  | { type: 'studio:ui/code-checked'; id: number; results: Array<{ key: string; ok: boolean; why?: string; note?: string }> }
   | { type: 'studio:placement/selected'; key: string | null; item?: Item; keys?: string[] }
   /**
    * A pose changed by direct manipulation. One gesture ("one move" = from
@@ -2384,6 +2433,15 @@ export interface PlacementUiEntry {
   set?: UiStyleSet;
   /** With `set`: the game's own values of the same fields (what the AI looks for in the code). */
   setWas?: UiStyleSet;
+  /**
+   * studio-canvas-ui (2026-10-24): a UI the game draws in its canvas — its codeUi id (the same as the entry's key). Then
+   * `p` is the offset from where the code put it when the editor last wrote the file, and, when it moved or grew:
+   */
+  code?: string;
+  /** The nearest of the 9 places it is measured from (top-left top top-right left center right bottom-left bottom bottom-right). */
+  from?: string;
+  /** With `from`: the at() numbers from there (the code's units): what the AI writes on Save, what the loader places by. */
+  at?: [number, number];
 }
 
 /** placement.json `theme` (UI stage 3): one CSS variable of the game's theme, changed in the editor. */

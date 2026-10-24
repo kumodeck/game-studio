@@ -5484,6 +5484,47 @@ export function start(host: StudioHost) {
     toWorld: () => {
       if (editLayers && editLayer !== 'world') setEditLayer('world');
     },
+    // The UI layer (studio-canvas-ui, 2026-10-24): ui.code / ui.set / list's `ui` — the same model, undo and file as the
+    // person's card (ui-layer.ts, ui-wire.ts).
+    ui: {
+      show: () => {
+        if (!editLayers || !editLayers.includes('ui')) return false;
+        if (editLayer !== 'ui') setEditLayer('ui');
+        return true;
+      },
+      items: () => uiItems,
+      codes: () => uiWire.codes(),
+      clash: () => uiWire.clash(),
+      resetCodes: () => uiWire.resetCodes(),
+      pose: (k) => uiModel.pose(k),
+      setPose: (k, pose) => {
+        const from = uiModel.pose(k);
+        if (!from || !undo.push({ ...poseChange(k, from, pose), layer: 'ui' })) return;
+        uiModel.moved(k, pose);
+        send({ type: 'studio:placement/pose', key: k, pose, layer: 'ui' });
+        placementPanel.updateNumbers();
+        renderButtons();
+      },
+      setLook: (k, path, v) => uiWire.setLookFor(k, path, v),
+      check: (keys) => uiWire.check(keys),
+      clear: (k) => {
+        // As place.code --fold: the AI wrote it into the code, so it leaves the file without a change of the person's.
+        const had = !!uiWire.entries(uiSeen ? uiEntries(uiModel.result()) : fileUi ?? {})[k];
+        const origin = { p: [0, 0], r: 0, s: 1 };
+        uiModel.settle(k, origin);
+        uiWire.forgetLook(k);
+        if (fileUi && fileUi[k]) {
+          const { [k]: _gone, ...rest } = fileUi;
+          fileUi = rest;
+        }
+        if (uiWire.codes().some((c) => c.key === k)) send({ type: 'studio:ui/code-clear', key: k });
+        else send({ type: 'studio:placement/pose', key: k, pose: origin, layer: 'ui' });
+        keepSoon();
+        renderAll();
+        return had;
+      },
+      entries: () => uiWire.entries(uiSeen ? uiEntries(uiModel.result()) : fileUi ?? {}),
+    },
     dim: () => worldDim,
     item: (k) => worldItems.find((i) => i.key === k),
     label: (k) => {
@@ -5540,6 +5581,14 @@ export function start(host: StudioHost) {
       // "Undo AI change", the write-back's folded parts kept for it). So what the frame was built from stays the old
       // signature for the status poll; without it, a poll that saw the new code first made the done reload nothing.
       const was = loadedCode;
+      // The files' signature as they are NOW (studio-canvas-ui, 2026-10-24): the AI has just written the code, and the
+      // last poll may be from before that — the page read here would then be taken for an old one, and the next poll
+      // read the game a second time a few seconds later (a new page starts on the Scene layer: a drag on the UI was cut off).
+      const st = await host.status().catch(() => null);
+      if (st && st.code !== code) {
+        code = st.code;
+        codeSince = Date.now();
+      }
       await softReload('draft');
       if (changeFrom && was !== undefined) loadedCode = was;
       for (const end = Date.now() + 15_000; Date.now() < end;) {

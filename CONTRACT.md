@@ -93,8 +93,14 @@ with `p` = **CSS px offsets on screen** and no turning (`rotatable: false`):
 
 | UI seat | Who writes it | Answers when |
 |---|---|---|
-| `studio.registerUI(port)` | The AI, per game (later stages: a Phaser HUD scene, a Pixi UI container, a three.js orthographic HUD) | Asked first; the first that answers wins (merging several seats into one list is a later stage) |
+| `studio.registerUI(port)` | The AI, per game (later stages: a Phaser HUD scene, a Pixi UI container, a three.js orthographic HUD) | Asked first; the first that answers wins |
 | DOM UI (`src/adapters/ui/`, built in) | — | The page has an element marked `data-studio-key` that the world does not already list |
+| UI drawn in the canvas (`codeUi()`, §1.13; `src/bridge/code-ui.ts`, built in) | The AI, in the game's code (the loader's `codeUi`) | The page registered a `codeUi` that no HTML element's key already names |
+
+**One list** (studio-canvas-ui, 2026-10-24): the DOM UI and the `codeUi`s are one UI seat — one `Port2D`
+(`mergeUiPorts`), listed top of the screen first (then left first); each key goes to the port that lists it. A
+`codeUi` id that an element's `data-studio-key` also uses is not listed (the HTML one is; said once in the console and
+to the AI's `ui.code`). A game with HTML UI only keeps its page order and everything as before.
 
 The DOM UI adapter lists only elements marked `data-studio-key="title-logo"`
 (never "every element"); leaves out `data-studio="false"` (on it or a parent),
@@ -107,7 +113,7 @@ never saved). The maths is the loader's `placeUi()`, shared with the game.
 A game whose world IS the DOM (a port named `dom`, `examples/dom-board`) gets
 no UI adapter: its pieces carry `data-studio-key` as world objects.
 
-**A game with no `data-studio-key` (and no `registerUI`) has no UI seat**: no
+**A game with no `data-studio-key` (and no `registerUI`, no `codeUi`) has no UI seat**: no
 `layers` in `core/ready`, no switch, no `ui` in `placement.json` — the editor
 and the saved bytes are exactly what they were before UI stage 1.
 
@@ -720,6 +726,58 @@ keep-out area belongs to the layout it is drawn for, not to the whole level.
   `studio:place/avoid-inside { id, keys }` (objects put by hand that stand in an area: the card says so, they never
   move), `studio:place/avoid-draw { id, on: false }` (Esc in the game). Each change: one undo step, one Save count.
 
+### 1.13 The UI drawn in the canvas (2026-10-24, studio-canvas-ui stage 1)
+
+A request that day: "I want to edit the UI drawn INSIDE the canvas, not only the HTML UI, as UI." A score, a health
+bar, a button painted with `fillText` / `fillRect` is part of the game's picture: the editor cannot know where it is,
+and does not guess (a "UI-looking" area that is picked but does not move would be worse than none). So the AI names it
+**once in the game's code** with the loader's `codeUi()` — the same split as `codePlace` (§1.12): the AI writes the
+code, the editor is the hands — and the editor lists it in the UI seat with the HTML UI (§1.1, one list).
+
+```js
+const scoreUi = codeUi('score', { name: 'Score', kind: 'text', at: { from: 'top-left', x: 16, y: 12 }, size: [232, 40],
+  look: { text: 'SCORE', fontSize: 24, color: '#ffffff' }, sample: '999,999' });
+const b = scoreUi.box(), L = scoreUi.look();   // every frame, where it is drawn
+```
+
+- **The definition**: `name` (the person's word), `kind` (`text` | `bar` | `button` | `image` | `box`: the list's icon,
+  the samples), `screen`, `at: { from, x, y }` (from one of 9 places of the canvas — `top-left` `top` `top-right` `left`
+  `center` `right` `bottom-left` `bottom` `bottom-right` — inward; the middle ones' x / y across / down from the
+  middle), `size` (`[w, h]`, a number, or `() => [w, h]`), `scale`, `look` (`text` · `fontSize` · `color` ·
+  `background`: only these keys are the card's rows), `states` (`hover` / `active` / `disabled`: `{ color, background }`),
+  `sample`, `round`, `canvas` (default: the page's last canvas), `units` (`css` default — the game draws after
+  `ctx.scale(devicePixelRatio)` — or `canvas`). The list is `globalThis[Symbol.for('game-studio.codeUis')]`, shared by
+  the game's copy of the loader and the editor's.
+- **The handle**: `box()` → `{ x, y, w, h, s }` in its units, from the canvas's size now; `look(state?)` → the look
+  (the editor's state shown when none is asked); `value(v)` → the editor's sample (a bar's: 1 / 0.5 / 0) else `v`;
+  `hit(x, y)` → inside the box (a circle for `round`) — the game's press test, so **a moved button is pressed where it
+  is drawn**; `state()` → `'hover' | 'active' | 'disabled'` shown by the editor, null in the game. Without the editor
+  the same functions answer from `placement.json` (`ui.<id>` with `code`), so the game draws the person's layout
+  before Save, as for HTML UI.
+- **In the editor** (`src/bridge/code-ui.ts`): a `Port2D` (`p` = CSS px offset from where the code put it when editing
+  began, `s` = the size over the code's `scale`, no turning), merged with the DOM UI's. **Its picture is the game's**:
+  every change makes the game draw ONE frame with time stopped (`core.time.step()`: the game's waiting
+  `requestAnimationFrame` callbacks run once with the stopped clock; or the game's `studio.redraw(fn)`), so the card's
+  change is seen at once and the game's own state does not move. The card's rows are `look`'s keys only (the HTML UI's
+  rows, `ui-card.ts`); a `button` with `states` gets the State row; a `bar` gets the samples full / half / empty.
+  **The world darker around the boxes only**: a board (SVG, `data-studio-ui-board`) right over the UI's canvas with a
+  hole the shape of each box (a circle for `round`) — the UI is drawn in the world's canvas or in one over it, so no
+  layer can go between them; the canvases under the board are not dimmed twice. On the world layer a canvas that holds
+  `codeUi`s over another canvas (a HUD canvas) is hidden like the HTML UI (`data-studio-ui-layer`, faded with the eye;
+  the three.js adapter no longer hides it as an overlay). **While one is dragged**: where it was (dotted) and how far
+  it is from the nearest of the 9 places, "20 px from the top centre" (in the person's language; `data-studio-ui-line`).
+- **Measured for the AI** (decision 8): `ui.code` moves each box 40 px right, draws one frame, reads the canvas and puts
+  it back (no ⌘Z, no Save count): the picture not following → `the drawing does not read codeUi('x').box()`; the
+  changed pixels wider / taller than the box → `the box is smaller than what is drawn (232×34, drawn 260×36)`. Only to
+  the AI (`do failed`); the person sees nothing. Waits for the editor's first moments (time runs while it watches the game).
+- **The file** (§4.1): `ui.<id>` with `code: <id>`, and when it moved or grew `from` (the nearest of the 9 places to where
+  it was left — Q2 = a, 2026-10-24) and `at` (the at() numbers from there): the loader places it by `from` / `at`, so
+  it keeps to that place on any window size. **On Save** the AI writes `at` / `scale` / `look` / `states` into the
+  `codeUi()` and sends `[ui.code, ui.set --clear]` in one `--do` (§3.6): the entry leaves the file (no Save count), the
+  editor draws it where the code now puts it. HTML UI the same way: the AI writes the CSS and clears the entry.
+- **Not yet** (stage 2–3): UI not delivered yet shown dotted ("Not selectable yet") with ✦ to ask; `codeUi` screens; Phaser /
+  Pixi (`onChange`); a `codeTheme`. Tests: `test/code-ui.test.mjs`, `test/studio-canvas-ui.browser.mjs`.
+
 ## 2. Messages (bridge ⇄ shell)
 
 `window.postMessage` with `{ type: 'studio:<tool>/<verb>', … }`. Receivers check
@@ -1294,7 +1352,7 @@ game's code (not on the timeline, fighting the editor's motion, "press Reload").
   `end`, the entry's `ai` = its words for the Undo tooltip), counted on Save · n, its draft written as for any edit,
   and one line over the ask bar with the AI's name: "Claude took “Row” off Blue pillar · ⌘Z undoes it" (`by` = the
   CLI's environment, `src/server/which-ai.mjs`). A page that is playing goes back to Edit first; the UI layer goes to
-  the world. Jobs run one at a time, in order. A page whose stream just dropped (a reload) is waited for 6 s.
+  the world — except a job of `ui.*` ops (with `list` / `save`), done on the UI layer. Jobs run one at a time, in order. A page whose stream just dropped (a reload) is waited for 6 s.
 - **No page open** (not started, or started with no page): the CLI applies the same ops to `placement.json`
   (`src/schema/hands.mjs` applyHandsToFile), checks the result with the file's validator, and writes it (nothing when
   it would not be valid). What only the game knows is refused with the reason (Drop to floor, a blank New level,
@@ -1308,7 +1366,7 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 
 | Op | Fields | Editor | No editor (placement.json) |
 |---|---|---|---|
-| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `p` (where it stands in the editor now, saved or not: cm / whole px; studio-code-torule), `motions`, `unstable`, `ground`; the Library's motions with `on` (a motion of points: its `keys.p`; a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels |
+| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `p` (where it stands in the editor now, saved or not: cm / whole px; studio-code-torule), `motions`, `unstable`, `ground`; the Library's motions with `on` (a motion of points: its `keys.p`; a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels; the UI (`ui`: each element of the UI layer with `p`, `s`, `set`; a codeUi with `code`, `kind`, `box`, `codeAt` and `write`: the `at` / `scale` to write on Save; `uiClash`) | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels, the file's `ui` |
 | `motion.make` | `name`, `points` \| `keys`, `len` (default 2), `repeat`, `ease` (default linear for points), `key`, `when`, `until`, `replace` | A Library motion (`hands.mjs` handsMotion: points spread evenly over `len`, checked with the validator) and, with `key`, the object's clip (`timeline-wire` handsMake); one undo step | `motions` + `motion.<key>.clips` |
 | `motion.attach` | `key`, `name`, `when`, `until` | `timeline.attach` (+ when / until) | a clip `{ use, when }` |
 | `motion.detach` | `key`, `name` \| `all` | `timeline.detach` ("Remove from this object") | the clip out |
@@ -1328,6 +1386,8 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 | `level.rename` / `level.switch` | `id`, `to`; `id` | the levels' menu | rename: `label` / `labelWas`; switch: refused |
 | `save` | — | the person's Save (only when they ask the AI for it) | nothing to do |
 | `editor.reload` | `editor` | the game page (`softReload`), or the editor page itself | refused |
+| `ui.code` | `id` (`"a"` or `"a,b,c"`: codeUi ids) | The game read again (always: the code changed), the UI layer shown, each id in the page's `studio:ui/codes` (`the game has no codeUi('x') (it has: …)`; an id an HTML key takes: said so), then each box measured (§1.13): `do failed ui.code hp-bar - moving it 40 px changed nothing on screen: …`. No undo step | nothing (said in the line) |
+| `ui.set` | `id` (a UI key), `p` (CSS px offset; with `from`: the at() numbers from that place), `s`, `set` (the card's look); or `clear` alone | the UI layer: the pose (one undo step on the UI layer) and each look path as the card's row; `clear` = the entry out of the file and of what is saved (`PlacementModel.settle`, `UiStyleModel.forget`: no Save count, no ⌘Z), the page drawing it as its code does (`studio:ui/code-clear`) | `clear`: the entry out of `ui` (`uiView` too when empty); anything else refused |
 
 A motion `motion.make` puts on an object starts with the game unless `when` says otherwise (`HANDS_MAKE_WHEN`: the
 person asked for it to move now; the editor's attach rule, "after its last motion", never comes after a motion that
@@ -1406,6 +1466,10 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   whatever the world's `dim`, also to marked elements the game adds later
   (`applyPlacement(document, url)` = the UI only); `report.ui = { applied,
   missing }`.
+- Optional (studio-canvas-ui, 2026-10-24; §1.13): a UI drawn in the canvas has `code` (its codeUi id = the entry's key)
+  and, when it moved or grew, `from` (one of the 9 places) with `at` (2 numbers, the code's units, ±10 000): the loader
+  places it by them (`p` = the editor's offset, read by the editor only). `"hp-bar": { "code": "hp-bar", "p": [389,
+  -40], "s": 1.4, "from": "top", "at": [0, 16] }`. Absent for HTML UI: such files keep their bytes.
 - Optional (UI stages 2–3, 2026-10-22; §1.11): per `ui` entry, `screen` (the
   element's `data-studio-screen`), `set` (what the card changed: `text` ≤ 200
   characters, `fontSize` 1–500 px, `color`, `background`, and per state

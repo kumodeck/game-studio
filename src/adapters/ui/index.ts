@@ -21,8 +21,16 @@ export function uiAdapterFromPort(port: Port2D, core: Core, win: Window): Studio
  * behave exactly as before UI stage 1). `skip`: keys the world adapter already lists (a DOM board game's pieces).
  */
 export function findDomUi(core: Core, win: Window, skip?: () => Set<string>): StudioAdapter | null {
+  const port = findDomUiPort(win, skip);
+  return port ? uiAdapterFromPort(port, core, win) : null;
+}
+
+/**
+ * The built-in DOM UI port itself, or null (as findDomUi). studio-canvas-ui (2026-10-24): the bridge merges it with the
+ * codeUi port (src/bridge/code-ui.ts mergeUiPorts) into the UI seat's one list.
+ */
+export function findDomUiPort(win: Window, skip?: () => Set<string>): Port2D | null {
   if (!win.document.querySelector('[data-studio-key]')) return null;
   const port = createUiPort(win, { skip }) as Port2D;
-  if (!port.objects().length) return null;
-  return uiAdapterFromPort(port, core, win);
+  return port.objects().length ? port : null;
 }

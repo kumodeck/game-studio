@@ -24,6 +24,7 @@ warn('not a placement file');
 return codeOnly();
 }
 if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
+codeUiFile(data.ui);
 if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
 if (root && root.nodeType === 9) return report;
 if (data.dim !== dim) {
@@ -963,17 +964,191 @@ return !found;
 });
 return found;
 }
+const CODE_UIS = Symbol.for('game-studio.codeUis');
+const CODE_UI_FILE = Symbol.for('game-studio.codeUiFile');
+export const UI_FROMS = ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+const UI_KINDS = ['text', 'bar', 'button', 'image', 'box'];
+const UI_LOOK = ['text', 'fontSize', 'color', 'background'];
+const UI_STATE_NAMES = ['hover', 'active', 'disabled'];
+function codeUiFile(ui) {
+const m = new Map();
+if (ui && typeof ui === 'object') {
+for (const [k, e] of Object.entries(ui)) {
+if (!e || e.code !== k || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum)) continue;
+const o = { p: e.p.slice(), s: isNum(e.s) && e.s > 0 ? e.s : 1 };
+if (UI_FROMS.includes(e.from) && Array.isArray(e.at) && e.at.length === 2 && e.at.every(isNum)) (o.from = e.from), (o.at = e.at.slice());
+if (e.set && typeof e.set === 'object') o.set = e.set;
+m.set(k, o);
+}
+}
+globalThis[CODE_UI_FILE] = m;
+}
+const codeUiFileOf = (id) => (globalThis[CODE_UI_FILE] instanceof Map ? globalThis[CODE_UI_FILE].get(id) : undefined) || null;
+function uiSides(from) {
+const [v, h] = from === 'center' ? ['middle', 'middle'] : from === 'left' || from === 'right' ? ['middle', from] : from.includes('-') ? from.split('-') : [from, 'middle'];
+return [h, v];
+}
+export function uiBoxAt(from, x, y, w, h, W, H) {
+const [hz, v] = uiSides(UI_FROMS.includes(from) ? from : 'top-left');
+return [hz === 'left' ? x : hz === 'right' ? W - x - w : W / 2 + x - w / 2, v === 'top' ? y : v === 'bottom' ? H - y - h : H / 2 + y - h / 2];
+}
+export function uiAtOf(from, bx, by, w, h, W, H) {
+const [hz, v] = uiSides(from);
+return [hz === 'left' ? bx : hz === 'right' ? W - bx - w : bx + w / 2 - W / 2, v === 'top' ? by : v === 'bottom' ? H - by - h : by + h / 2 - H / 2];
+}
+export function uiNearest(bx, by, w, h, W, H) {
+const col = [Math.abs(bx), Math.abs(bx + w / 2 - W / 2), Math.abs(W - bx - w)];
+const row = [Math.abs(by), Math.abs(by + h / 2 - H / 2), Math.abs(H - by - h)];
+const c = col.indexOf(Math.min(...col)), r = row.indexOf(Math.min(...row));
+return UI_FROMS[r * 3 + c];
+}
+const uiColorOk = (c) => typeof c === 'string' && UI_COLOR.test(c);
+function uiLookOf(v) {
+const o = {};
+if (!v || typeof v !== 'object') return o;
+if (typeof v.text === 'string') o.text = v.text.slice(0, 200);
+if (isNum(v.fontSize) && v.fontSize > 0) o.fontSize = v.fontSize;
+for (const k of ['color', 'background']) if (uiColorOk(v[k])) o[k] = v[k];
+return o;
+}
+export function codeUi(id, def) {
+const ok = typeof id === 'string' && CODE_ID.test(id) && def && typeof def === 'object';
+if (!ok) warnOnce(`codeUi(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and { at, size }`);
+const d = def && typeof def === 'object' ? def : {};
+const at = d.at && typeof d.at === 'object' ? d.at : {};
+const states = {};
+if (d.states && typeof d.states === 'object') for (const s of UI_STATE_NAMES) if (d.states[s]) states[s] = uiLookOf(d.states[s]);
+const list = codeList(CODE_UIS);
+const was = ok ? list.get(id) : null;
+const e = {
+id: ok ? id : 'ui', name: text(d.name, 40) || (ok ? id : 'UI'), kind: UI_KINDS.includes(d.kind) ? d.kind : 'box',
+screen: typeof d.screen === 'string' && /^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(d.screen) ? d.screen : null,
+at: { from: UI_FROMS.includes(at.from) ? at.from : 'top-left', x: isNum(at.x) ? at.x : 0, y: isNum(at.y) ? at.y : 0 },
+size: d.size, scale: isNum(d.scale) && d.scale > 0 ? d.scale : 1, look: uiLookOf(d.look), states,
+sample: typeof d.sample === 'string' || isNum(d.sample) ? String(d.sample).slice(0, 200) : null, round: d.round === true,
+canvasOf: d.canvas, units: d.units === 'canvas' ? 'canvas' : 'css',
+live: was ? was.live : null,
+};
+e.canvas = () => uiCanvas(e);
+e.frame = () => uiFrame(e);
+e.box = () => uiBox(e);
+e.lookNow = (st) => uiLookNow(e, st);
+e.atNow = () => uiAtNow(e);
+if (ok) list.set(id, e);
+return {
+id: e.id,
+box: () => {
+const b = uiBox(e);
+return { x: b.x, y: b.y, w: b.w, h: b.h, s: b.s };
+},
+look: (st) => uiLookNow(e, st),
+value: (v) => {
+const sm = e.live && e.live.sample;
+if (typeof sm !== 'string') return v;
+return e.kind === 'bar' ? (isNum(Number(sm)) && sm !== '' ? Number(sm) : 0) : sm;
+},
+hit: (x, y) => {
+if (!isNum(x) || !isNum(y)) return false;
+const b = uiBox(e);
+if (e.round) {
+const rx = b.w / 2, ry = b.h / 2;
+return rx > 0 && ry > 0 && ((x - b.x - rx) / rx) ** 2 + ((y - b.y - ry) / ry) ** 2 <= 1;
+}
+return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+},
+state: () => (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null),
+};
+}
+function uiCanvas(e) {
+let c = e.canvasOf;
+if (typeof c === 'function') {
+try {
+c = c();
+} catch (err) {
+c = null;
+}
+}
+if (c && typeof c.getBoundingClientRect === 'function') return c;
+if (typeof document === 'undefined') return null;
+const all = document.getElementsByTagName('canvas');
+return all.length ? all[all.length - 1] : null;
+}
+function uiFrame(e) {
+const c = uiCanvas(e);
+const cw = c ? c.clientWidth || (c.getBoundingClientRect && c.getBoundingClientRect().width) || c.width || 0 : typeof innerWidth === 'number' ? innerWidth : 0;
+const ch = c ? c.clientHeight || (c.getBoundingClientRect && c.getBoundingClientRect().height) || c.height || 0 : typeof innerHeight === 'number' ? innerHeight : 0;
+if (e.units === 'canvas' && c && cw > 0) return { W: c.width, H: c.height, k: c.width / cw, ky: ch > 0 ? c.height / ch : c.width / cw };
+return { W: cw, H: ch, k: 1, ky: 1 };
+}
+function uiSize(e) {
+let s = e.size;
+if (typeof s === 'function') {
+try {
+s = s();
+} catch (err) {
+warnOnce(`codeUi('${e.id}'): size() failed (${err && err.message})`);
+s = null;
+}
+}
+if (isNum(s)) return [Math.max(0, s), Math.max(0, s)];
+return Array.isArray(s) && s.length >= 2 && isNum(s[0]) && isNum(s[1]) ? [Math.max(0, s[0]), Math.max(0, s[1])] : [0, 0];
+}
+function uiBox(e) {
+const { W, H, k, ky } = uiFrame(e);
+const [w0, h0] = uiSize(e);
+const wc = w0 * e.scale, hc = h0 * e.scale;
+const f = codeUiFileOf(e.id);
+const live = e.live;
+let cx, cy, p0;
+if (f && f.from) {
+const [bx, by] = uiBoxAt(f.from, f.at[0], f.at[1], wc * f.s, hc * f.s, W, H);
+cx = bx + (wc * f.s) / 2;
+cy = by + (hc * f.s) / 2;
+p0 = f.p;
+} else {
+const [bx, by] = uiBoxAt(e.at.from, e.at.x, e.at.y, wc, hc, W, H);
+cx = bx + wc / 2;
+cy = by + hc / 2;
+p0 = [0, 0];
+if (f && !live) (cx += f.p[0] * k), (cy += f.p[1] * ky);
+}
+if (live && Array.isArray(live.p)) (cx += (live.p[0] - p0[0]) * k), (cy += (live.p[1] - p0[1]) * ky);
+const s = live && isNum(live.s) ? live.s : f ? f.s : 1;
+const w = wc * s, h = hc * s;
+return { x: cx - w / 2, y: cy - h / 2, w, h, s: e.scale * s, W, H, k, ky };
+}
+function uiAtNow(e) {
+const b = uiBox(e);
+const from = uiNearest(b.x, b.y, b.w, b.h, b.W, b.H);
+const at = uiAtOf(from, b.x, b.y, b.w, b.h, b.W, b.H);
+return { from, at: at.map((v) => Math.round(v * 10) / 10), scale: Math.round(b.s * 1000) / 1000 };
+}
+function uiLookNow(e, st) {
+const out = Object.assign({}, e.look);
+const f = codeUiFileOf(e.id);
+const set = e.live && e.live.set ? e.live.set : f && f.set ? f.set : null;
+if (set) Object.assign(out, uiLookOf(set));
+const s = st === undefined ? (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null) : UI_STATE_NAMES.includes(st) ? st : null;
+if (s) {
+if (e.states[s]) Object.assign(out, e.states[s]);
+if (set && set['@' + s]) {
+const o = uiLookOf(set['@' + s]);
+for (const k of ['color', 'background']) if (o[k]) out[k] = o[k];
+}
+}
+return out;
+}
 function applyUi(doc, ui) {
 const out = { applied: [], missing: [] };
 const put = (el) => {
 const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
-if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
+if (!e || e.code || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
 if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
 if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
 };
 const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
 doc.querySelectorAll('[data-studio-key]').forEach(put);
-for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
+for (const k of Object.keys(ui)) if (!out.applied.includes(k) && !(ui[k] && ui[k].code)) out.missing.push(k);
 if (typeof MutationObserver === 'function') {
 new MutationObserver((list) => {
 for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) {

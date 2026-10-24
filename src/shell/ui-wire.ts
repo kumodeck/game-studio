@@ -8,7 +8,7 @@
 //   - the looks and the theme: the model (saved in placement.json, undone, counted);
 //   - the screen shown, a button's look shown, sample values: the game page only (the bridge puts them back at the
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
-import type { BridgeToShell, Item, PlacementFile, PlacementUiEntry, ShellToBridge, UiPropName, UiProps, UiState, UiThemeVar } from '../contract.ts';
+import type { BridgeToShell, CodeUiInfo, Item, PlacementFile, PlacementUiEntry, ShellToBridge, UiPropName, UiProps, UiState, UiThemeVar } from '../contract.ts';
 import type { MenuEntry } from './context-menu.ts';
 import { createUiCard } from './ui-card.ts';
 import { withLooks } from './ui-layer.ts';
@@ -55,6 +55,12 @@ export function createUiWire(d: UiWireDeps) {
   const samples = new Map<string, string>();
   // A colour picker moving: the value before it opened, so its close is one undo step from there.
   const liveFrom = new Map<string, string | number | null>();
+  // studio-canvas-ui (2026-10-24): the game's codeUis as the page last listed them (studio:ui/codes) — the file's
+  // `code` / `from` / `at` and the AI's `list` — and the HTML keys they clash with; the AI's ui.code checks waiting.
+  let codes = new Map<string, CodeUiInfo>();
+  let clash: string[] = [];
+  let checkId = 0;
+  const checks = new Map<number, (r: Array<{ key: string; ok: boolean; why?: string; note?: string }>) => void>();
 
   const setLook = (key: string, path: string, value: string | number | null, live = false) => {
     const { state, name } = splitPath(path);
@@ -130,6 +136,16 @@ export function createUiWire(d: UiWireDeps) {
     foot: () => theme.render(),
     /** The bridge's ui/* messages; false = not one of them. */
     handle(m: BridgeToShell): boolean {
+      if (m.type === 'studio:ui/codes') {
+        codes = new Map(m.list.map((c) => [c.key, c]));
+        clash = m.clash.slice();
+        return true;
+      }
+      if (m.type === 'studio:ui/code-checked') {
+        checks.get(m.id)?.(m.results);
+        checks.delete(m.id);
+        return true;
+      }
       if (m.type === 'studio:ui/screens') {
         screens.update(m.screens, m.current);
         if (d.onUi()) d.render();
@@ -200,7 +216,42 @@ export function createUiWire(d: UiWireDeps) {
     },
     /** placement.json `ui`: the moves with each element's look and screen (ui-layer.ts withLooks). */
     entries(moves: Record<string, PlacementUiEntry>): Record<string, PlacementUiEntry> {
-      return withLooks(moves, model.entries(), screenOf, labels);
+      return withLooks(moves, model.entries(), screenOf, labels, codes);
+    },
+    /** The AI's ui.set look (ai-hands.ts): as the card's row — one undo step, sent to the game, counted. */
+    setLookFor: (key: string, path: string, value: string | number) => setLook(key, path, value),
+    /** The page is read again (the AI's ui.code): the old page's codeUi list must not answer for the new code. */
+    resetCodes() {
+      codes = new Map();
+      clash = [];
+    },
+    /** The game's codeUis (studio-canvas-ui), as last listed; [] for a game without them. */
+    codes: (): CodeUiInfo[] => [...codes.values()],
+    /** codeUi ids an HTML element's key already uses. */
+    clash: () => clash.slice(),
+    /** The AI's ui.code: does each picture follow its box (code-ui.ts check)? null = the page did not answer. */
+    check(keys: string[]): Promise<Array<{ key: string; ok: boolean; why?: string; note?: string }> | null> {
+      const id = ++checkId;
+      return new Promise((res) => {
+        const timer = setTimeout(() => {
+          checks.delete(id);
+          res(null);
+        }, 6000);
+        checks.set(id, (r) => {
+          clearTimeout(timer);
+          res(r);
+        });
+        d.send({ type: 'studio:ui/code-check', id, keys });
+      });
+    },
+    /**
+     * The AI wrote this element's look into the code (`ui.set --clear`): out of the file without a change of the
+     * person's (not on ⌘Z, not on Save · n), as place.code --fold does for a layout.
+     */
+    forgetLook(key: string) {
+      model.forget(key);
+      shown = shown && shown.key === key ? null : shown;
+      samples.delete(key);
     },
   };
 }

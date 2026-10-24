@@ -16,6 +16,7 @@ import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
 import { createUiExtras } from './ui-extras.ts';
+import type { CodeUi } from './code-ui.ts';
 import { loaderPlay } from './play-switch.ts';
 import { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } from './code-lists.ts';
 import { createCodePlaceView } from './code-place.ts';
@@ -36,6 +37,12 @@ export interface EditorDeps {
    * the game's HTML UI. True only with the built-in DOM UI (bridge.ts); absent = the studio:ui/* messages do nothing.
    */
   uiDom?: boolean;
+  /**
+   * studio-canvas-ui (2026-10-24, code-ui.ts): the UI the game draws in its canvas (codeUi), merged into the UI layer's
+   * list by the bridge. Its card rows, its one-frame draw, the darker world around it, the line while it is dragged and
+   * the AI's `ui.code` check. null / absent = a game without codeUi (exactly as before).
+   */
+  uiCode?: CodeUi | null;
   /** Game rules (.studio/studio.json via the shell) and .studio/tools.js extensions. */
   rules: RulesHolder;
   /** Game tools registered so far (more may arrive later through register()). */
@@ -65,6 +72,8 @@ export interface Editor {
   readonly driven: StudioAdapter;
   /** The layer being edited (UI stage 1). */
   layer(): EditLayer;
+  /** The person's language as the shell last said (core/lang): the words the editor draws in the game page. */
+  lang(): 'ja' | 'en';
   /** Tell the shell which adapter it is talking to (core/ready), as the bridge does once when the editor is made. */
   announce(): void;
   /**
@@ -265,8 +274,8 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     const top = '[data-studio-key]:not([data-studio-key] [data-studio-key])';
     el.textContent = layer === 'ui'
-      ? 'canvas:not([data-studio-key]){filter:brightness(.85)}'
-      : `${top}{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *{pointer-events:none!important}`;
+      ? 'canvas:not([data-studio-key]):not([data-studio-ui-canvas]){filter:brightness(.85)}'
+      : `${top},canvas[data-studio-ui-layer]{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *,canvas[data-studio-ui-layer]{pointer-events:none!important}`;
   };
 
   const frame = () => {
@@ -282,6 +291,8 @@ export function createEditor(deps: EditorDeps): Editor {
       /* keep the loop alive; the error was reported when it first happened */
     }
     input?.frame();
+    // The UI drawn in the canvas: one frame of the game when it changed, the darker world around it, the line (code-ui.ts).
+    deps.uiCode?.frame({ ui: layer === 'ui', editing: state.editing, inHand: layer === 'ui' ? input?.inHand() ?? [] : [] });
     toolHost.frame();
     timeline.frame();
     if (layer === 'world') (keepOut.frame(), codePlace.frame(), codeMotion.frame());
@@ -295,7 +306,7 @@ export function createEditor(deps: EditorDeps): Editor {
     post({ type: 'studio:placement/selected', key: state.selected, item, keys: state.group.slice() });
     // A UI element picked: what the card's text / colour rows show (UI stages 2–3).
     if (layer === 'ui' && state.selected && state.group.length <= 1) {
-      const p = uiExtras?.props(state.selected);
+      const p = deps.uiCode?.has(state.selected) ? deps.uiCode.props(state.selected) : uiExtras?.props(state.selected);
       if (p) post({ type: 'studio:ui/props', props: p });
     }
   };
@@ -1044,6 +1055,7 @@ export function createEditor(deps: EditorDeps): Editor {
       // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
       // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
       uiExtras?.begin();
+      deps.uiCode?.begin();
       if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
@@ -1116,6 +1128,7 @@ export function createEditor(deps: EditorDeps): Editor {
       state.editing = false;
       // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
       uiExtras?.end();
+      deps.uiCode?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
           a.end();
@@ -1215,6 +1228,7 @@ export function createEditor(deps: EditorDeps): Editor {
       return adapter;
     },
     layer: () => layer,
+    lang: () => (lang === 'ja' ? 'ja' : 'en'),
     announce: ready,
     playLayers: () => [world, uiStack].filter((x): x is Stack => !!x).map((x) => ({ raw: x.raw, edits: x.edits })),
     settled: () => firstMoments.then(() => undefined),
@@ -1353,7 +1367,20 @@ export function createEditor(deps: EditorDeps): Editor {
         case 'studio:ui/state':
         case 'studio:ui/theme-set':
         case 'studio:ui/props-get':
-          if (state.editing && uiStack) uiExtras?.handle(msg);
+          // A codeUi's key goes to its own card (code-ui.ts); the rest (and screens / theme) to the HTML UI's.
+          if (state.editing && uiStack && !deps.uiCode?.handle(msg)) uiExtras?.handle(msg);
+          dirtyFrame = true;
+          break;
+        case 'studio:ui/code-check':
+        case 'studio:ui/code-clear':
+          // The AI's ui.code / ui.set --clear: answered even with no codeUi (the check says what the game has). The check
+          // waits for the first moments to be over: while the editor watches what the game moves, time runs and the
+          // game draws by itself, so one frame drawn for the check could not be told from the game's own.
+          if (deps.uiCode && msg.type === 'studio:ui/code-check') {
+            const u = deps.uiCode;
+            void firstMoments.then(() => u.handle(msg));
+          } else if (deps.uiCode) deps.uiCode.handle(msg);
+          else if (msg.type === 'studio:ui/code-check') post({ type: 'studio:ui/code-checked', id: msg.id, results: msg.keys.map((key) => ({ key, ok: false, why: `the game has no codeUi('${key}') (it has: none) — after rewriting the drawing, the game must import codeUi from studio-placement.js` })) });
           dirtyFrame = true;
           break;
         case 'studio:core/ui-peek':

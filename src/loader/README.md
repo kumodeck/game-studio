@@ -19,5 +19,11 @@ rule) is out of the keep-out areas' reach and of the row's frame, `by` in an ans
 saved zigzag / ramp / jitter keeps the row a row), and `jitter(seed, i, axis)` is exported so the game's
 code gives the same jitter numbers the editor showed.
 
+Since studio-canvas-ui (2026-10-24) `codeUi(id, def)` names a UI the game draws in a canvas (a score, a health bar, a
+button): its handle answers `box()` (measured from one of 9 places of the canvas, in CSS px or the canvas's own px),
+`look(state?)`, `value(v)`, `hit(x, y)` and `state()` every frame — from the editor's live values while it edits, from the
+file's `ui.<id>` (`code`, `from`, `at`, read at draw time) before Save, else from the code. `uiBoxAt` / `uiAtOf` /
+`uiNearest` are the 9 places' maths, shared with the editor (`test/code-ui.test.ts`).
+
 - `studio-placement.test.mjs` - `node --test src/loader/studio-placement.test.mjs` (source and built copy)
 - `fixtures/` - two tiny games (three.js, PixiJS) for the headless end-to-end check

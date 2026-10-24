@@ -33,6 +33,14 @@
 //   2. lamp 5 put by hand (a pin, as ⌥-drag makes) → the AI writes it into the code (an exception of the rule, or its
 //      own object) and folds the pins: the pin is gone from the file, lamp 5 where the person put it, the others as
 //      they were.
+// `--steps canvas-ui` (studio-canvas-ui, 2026-10-24 — "I want to edit the UI drawn inside the canvas as UI"): the game is
+// examples/three-canvas-hud (its score, health bar, JUMP button and minimap drawn in a 2D canvas, the plain way); each in a
+// new conversation:
+//   1. "make this UI editable" (in Japanese) → the AI rewrites the drawing with codeUi() and sends --do ui.code: the
+//      editor lists them (its 40 px check passed), the HUD's picture is the same before and after the rewrite;
+//   2. the person (through the editor) moves the bar to the top middle at 1.4× and gives the button a pink pressed fill,
+//      presses Save, says "saved" → the AI writes them into codeUi() and sends [ui.code, ui.set --clear]: no `ui` left
+//      in placement.json, every box where the person saw it, nothing left to save.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -69,7 +77,13 @@ if (spawnSync('claude', ['--version'], { encoding: 'utf8' }).status !== 0) {
 const TO_RULE = take('--steps') === 'to-rule';
 const TO_COORDS = take('--steps') === 'to-coords';
 const WRITEBACK = take('--steps') === 'writeback';
-const STEPS = WRITEBACK ? [
+const CANVAS = take('--steps') === 'canvas-ui';
+// The game's main script (the canvas-ui set's game is examples/three-canvas-hud: game.js).
+const MAIN = CANVAS ? 'game.js' : 'main.js';
+const STEPS = CANVAS ? [
+  { say: 'このUIを編集できるようにして', first: true, kind: 'canvas-deliver' },
+  { say: '保存した', first: true, kind: 'canvas-save' },
+] : WRITEBACK ? [
   { say: '保存した', first: true, kind: 'wb-offset' },
   { say: '保存した', first: true, kind: 'wb-pin' },
 ] : TO_COORDS ? [
@@ -106,7 +120,7 @@ const home = join(base, 'home');
 const out = take('--out') ? resolve(take('--out')) : join(base, 'report');
 mkdirSync(home, { recursive: true });
 mkdirSync(out, { recursive: true });
-cpSync(join(PKG, 'test/ai-feel/pillars'), game, { recursive: true });
+cpSync(join(PKG, CANVAS ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
@@ -202,10 +216,10 @@ await applyPlacement(scene, './placement.json');`);
 }
 mkdirSync(join(game, '.studio/ui'), { recursive: true });
 writeFileSync(join(game, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'ja', theme: 'dark', seen: ['timeline-steps', 'open-line'] }));
-const code0 = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
+const code0 = { main: readFileSync(join(game, MAIN), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
 const LAMPS = ['lamp-1', 'lamp-2', 'lamp-3', 'lamp-4', 'lamp-5', 'lamp-6'];
 // Every .js of the game but the loader's copy (the AI may put the layout in a file of its own).
-const readGameJs = () => readdirSync(game).filter((f) => f.endsWith('.js') && f !== 'studio-placement.js' && f !== 'main.js').map((f) => readFileSync(join(game, f), 'utf8')).join('\n');
+const readGameJs = () => readdirSync(game).filter((f) => f.endsWith('.js') && f !== 'studio-placement.js' && f !== MAIN).map((f) => readFileSync(join(game, f), 'utf8')).join('\n');
 // STUDIO_BROWSER: whatever the AI starts never opens a browser of this computer (the headless one below is the editor).
 const editorEnv = { ...process.env, HOME: home, STUDIO_BROWSER: '/usr/bin/true' };
 
@@ -241,7 +255,7 @@ const lampsNow = async () => JSON.parse((await page.eval(`(() => { const p = ${G
   return JSON.stringify(p ? p.keys.map((k, i) => [k, ...[p.objs[i].position.x, p.objs[i].position.y, p.objs[i].position.z].map((v) => Math.round(v * 100) / 100 + 0)]) : []); })()`)) || '[]');
 const sameLamps = (a, b) => a.length === b.length && a.every((q, i) => q[0] === b[i][0] && q.slice(1).every((v, j) => Math.abs(v - b[i][j + 1]) <= 0.011));
 const unsavedNow = async () => /\d/.test(await page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`));
-const fileNow = () => JSON.parse(readFileSync(join(game, 'placement.json'), 'utf8'));
+const fileNow = () => (existsSync(join(game, 'placement.json')) ? JSON.parse(readFileSync(join(game, 'placement.json'), 'utf8')) : {});
 const doEditor = (...a) => spawnSync(process.execPath, [CLI, game, '--do', ...a], { encoding: 'utf8', env: editorEnv }).stdout;
 const waitFor = async (f, ms) => {
   for (const end = Date.now() + ms; Date.now() < end; await sleep(500)) if (await f()) return true;
@@ -251,6 +265,28 @@ const waitFor = async (f, ms) => {
 const PERSON = {
   'wb-offset': () => doEditor('place.set', '--id', 'lamp-row', '--offsets', '[{"way":"side","how":"same","v":1}]'),
   'wb-pin': () => doEditor('place.set', '--id', 'lamp-row', '--pin', '{"key":"lamp-row-5","p":[-9.4,0,-0.8]}'),
+};
+// The canvas-ui set: the HUD canvas's picture (read three times, then one frame drawn: reading a canvas moves it to the
+// browser's CPU drawing, so both pictures of a comparison are drawn the same way) and how many pixels differ from one before.
+const hudPng = () => page.eval(`(() => { const w = ${GW}; const c = w?.document.getElementById('hud'); if (!c) return null; const x = c.getContext('2d');
+  for (let i = 0; i < 3; i++) x.getImageData(0, 0, c.width, c.height); w.__gameStudio?.core?.time?.step?.(); return c.toDataURL('image/png'); })()`);
+const hudDiff = (png) => page.eval(`new Promise((ok) => { const w = ${GW}; const c = w?.document.getElementById('hud'); if (!c) return ok(-1); const img = new Image(); img.onload = () => {
+  const o = document.createElement('canvas'); o.width = c.width; o.height = c.height; const x = o.getContext('2d'); x.drawImage(img, 0, 0);
+  const a = x.getImageData(0, 0, c.width, c.height).data, b = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; let n = 0;
+  for (let i = 0; i < a.length; i += 4) if ([0, 1, 2, 3].some((k) => Math.abs(a[i + k] * a[i + 3] - b[i + k] * b[i + 3]) / 255 > 24)) n++;
+  ok(n); }; img.src = ${JSON.stringify('PNG')}; })`.replace('"PNG"', JSON.stringify(png)));
+/** Every codeUi's box in the game page now ({ id: [x, y, w, h] }, to the tenth of a px). */
+const uiBoxes = async () => JSON.parse((await page.eval(`(() => { const m = ${GW}?.[Symbol.for('game-studio.codeUis')]; const o = {};
+  if (m) for (const [k, e] of m) { const b = e.box(); o[k] = [b.x, b.y, b.w, b.h].map((v) => Math.round(v * 10) / 10); } return JSON.stringify(o); })()`)) || '{}');
+const sameBoxes = (a, b) => Object.keys(a).length > 0 && Object.keys(a).every((k) => b[k] && a[k].every((v, i) => Math.abs(v - b[k][i]) <= 1));
+// The canvas-ui set's person: the bar to the top middle at 1.4×, the button's pressed fill pink (the ids the AI chose).
+PERSON['canvas-save'] = () => {
+  const ui = (listNow()?.ui ?? []).filter((u) => u.code);
+  const bar = ui.find((u) => u.kind === 'bar') ?? ui.find((u) => /hp|health|life|bar/.test(u.key)) ?? ui[1];
+  const btn = ui.find((u) => u.kind === 'button') ?? ui.find((u) => /jump/.test(u.key));
+  const said = [bar ? doEditor('ui.set', '--id', bar.key, '--from', 'top', '--p', '[0,20]', '--s', '1.4') : 'no bar'];
+  if (btn) said.push(doEditor('ui.set', '--id', btn.key, '--set', '{"@active":{"background":"#ff8fb1"}}'));
+  return said.map((x) => x.split('\n')[0]).join(' / ');
 };
 try {
   await page.goto(url);
@@ -267,14 +303,21 @@ try {
       console.log(`  (before: ${sd.stdout.split('\n')[0]}; blue-pillar: ${JSON.stringify((await motions()).map((c) => c.name))})`);
     }
     let lamps0 = null;
+    const hud0 = step.kind === 'canvas-deliver' ? await hudPng() : null;
+    let boxes0 = null;
     if (PERSON[step.kind]) {
       console.log(`  (the person: ${PERSON[step.kind]().split('\n')[0].replace(/ - in the editor.*/, '')})`);
       await sleep(1200);
       await page.eval(`document.querySelector('[data-part=save]')?.click()`);
       await waitFor(async () => !(await unsavedNow()), 10000);
       await sleep(1500);
-      lamps0 = await lampsNow();
-      console.log(`  (saved: places ${JSON.stringify(fileNow().places ?? {})}; lamps ${JSON.stringify(lamps0.map((q) => q.slice(1)))})`);
+      if (CANVAS) {
+        boxes0 = await uiBoxes();
+        console.log(`  (saved: ui ${JSON.stringify(fileNow().ui ?? {})}; boxes ${JSON.stringify(boxes0)})`);
+      } else {
+        lamps0 = await lampsNow();
+        console.log(`  (saved: places ${JSON.stringify(fileNow().places ?? {})}; lamps ${JSON.stringify(lamps0.map((q) => q.slice(1)))})`);
+      }
       writeFileSync(join(out, `step${i + 1}-before.png`), await page.screenshot());
     }
     const cargs = ['-p', step.say, '--output-format', 'stream-json', '--verbose', '--strict-mcp-config', '--setting-sources', 'project',
@@ -308,7 +351,7 @@ try {
     await sleep(1500);
     const m = await motions();
     console.log(`  blue-pillar in the editor now: ${JSON.stringify(m.map((c) => [c.name, c.points, c.len, c.repeat]))}`);
-    const codeNow = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
+    const codeNow = { main: readFileSync(join(game, MAIN), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
     check(r.code === 0 && !!reply, 'the AI answered');
     // A rule that does not come close is no change at all: it may just say so (it may still read the editor's --do list).
     if (step.kind !== 'to-rule-none') check(dos.length > 0, 'it used --do (the editor\'s own work)');
@@ -393,6 +436,31 @@ try {
       const measuredSame = /the look is the same/.test(r.s);
       check(measuredSame, 'the editor\'s measure the AI got back: the look is the same');
       writeFileSync(join(out, `${step.kind}.png`), await page.screenshot());
+    } else if (step.kind === 'canvas-deliver') {
+      await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)), 30000);
+      await sleep(2500);
+      const l = listNow();
+      const ui = (l?.ui ?? []).filter((u) => u.code);
+      console.log(`  editor's list: ui ${JSON.stringify(ui.map((u) => ({ key: u.key, name: u.name, kind: u.kind, box: u.box, at: u.codeAt })))}`);
+      check(/codeUi\s*\(/.test(codeText), 'it wrote codeUi() into the game\'s drawing');
+      check(dos.some((c) => /ui\.code/.test(c)), 'it put them in the editor itself (--do ui.code)');
+      check(/its picture follows it/.test(r.s), 'the editor\'s check passed (each box moved 40 px: the picture followed)');
+      check(ui.length >= 3 && ui.some((u) => /score/i.test(u.key + u.name)), `the score, the bar and the button in the editor's UI list (${ui.map((u) => u.key).join(', ') || 'none'})`);
+      const n = hud0 ? await hudDiff(hud0) : -1;
+      check(n >= 0 && n < 200, `the HUD's picture is the same before and after the rewrite (${n} pixels differ)`);
+      writeFileSync(join(out, 'canvas-deliver.png'), await page.screenshot());
+    } else if (step.kind === 'canvas-save') {
+      await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)), 30000);
+      await sleep(3000);
+      const boxes1 = await uiBoxes();
+      const f = fileNow();
+      console.log(`  placement.json ui ${JSON.stringify(f.ui ?? null)}; boxes now ${JSON.stringify(boxes1)}`);
+      check(edits.length > 0 || codeNow.main !== code0.main, 'it wrote the change into the game\'s code');
+      check(dos.some((c) => /ui\.set/.test(c) && /clear/.test(c)) && dos.some((c) => /ui\.code/.test(c)), 'it read the game again and cleared the entries itself (--do ui.code + ui.set --clear)');
+      check(!f.ui || !Object.values(f.ui).some((e) => e.code), `no canvas UI left in placement.json (${JSON.stringify(f.ui ?? null)})`);
+      check(sameBoxes(boxes0 ?? {}, boxes1), `every box where the person saw it: ${JSON.stringify(Object.fromEntries(Object.keys(boxes0 ?? {}).map((k) => [k, (boxes1[k] ?? []).map((v, i) => Math.round((v - boxes0[k][i]) * 10) / 10)])))}`);
+      check(!(await unsavedNow()), `nothing left to save in the editor ("${await page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`)}")`);
+      writeFileSync(join(out, 'canvas-save.png'), await page.screenshot());
     } else if (step.kind === 'code-place') {
       const l = listNow();
       console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);
@@ -402,7 +470,7 @@ try {
       check(!!lamps && Object.values(lamps.knobs ?? {}).some((k) => k.v === 6) && Object.keys(lamps.knobs ?? {}).length <= 3, `ten lamps in the editor under the layout's name, a knob at 6 (${lamps ? `${lamps.name} ×${lamps.keys.length}` : 'none'})`);
     }
   }
-  writeFileSync(join(out, 'placement.json'), readFileSync(join(game, 'placement.json'), 'utf8'));
+  writeFileSync(join(out, 'placement.json'), JSON.stringify(fileNow(), null, 2));
   writeFileSync(join(out, 'editor.png'), await page.screenshot());
 } finally {
   await browser.close();

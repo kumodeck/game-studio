@@ -20,7 +20,8 @@ import {
 import { installCore, type Core } from '../core/index.ts';
 import { installPlayClock } from '../core/play-clock.ts';
 import { adapterFromPort2D } from '../core/port2d.ts';
-import { findDomUi, uiAdapterFromPort } from '../adapters/ui/index.ts';
+import { findDomUiPort, uiAdapterFromPort } from '../adapters/ui/index.ts';
+import { codeUiEntries, createCodeUi, mergeUiPorts, type CodeUi } from './code-ui.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk, type PlayAskHandle } from './play-ask.ts';
@@ -80,6 +81,9 @@ export function startBridge(opts: BridgeOptions): void {
   const rules: RulesHolder = { config: null, ext: [] };
   const pendingTools: GameTool[] = [];
   let editorRef: Editor | null = null;
+  // studio.redraw(fn) (studio-canvas-ui, 2026-10-24): the game's own one-frame draw for its codeUis, when it does not
+  // draw from requestAnimationFrame. null = the editor runs the game's waiting frame once (core time.step()).
+  let redrawFn: (() => void) | null = null;
   const attached: Record<string, unknown>[] = [];
 
   const api: StudioGlobal = {
@@ -114,6 +118,9 @@ export function startBridge(opts: BridgeOptions): void {
     },
     registerUI(port) {
       uiPorts.push({ get: typeof port === 'function' ? port : () => port, built: null });
+    },
+    redraw(fn) {
+      redrawFn = typeof fn === 'function' ? fn : null;
     },
     core,
     // Levels (2026-10-22, bridge/levels.ts): the code's levels go to the editor (once per page), and the page builds
@@ -271,7 +278,7 @@ export function startBridge(opts: BridgeOptions): void {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend', 'levels'] as const) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'redraw', 'core', 'extend', 'levels'] as const) prior[k] = api[k];
     api.ready = prior.ready as () => void;
     api.attach = prior.attach as (o: Record<string, unknown>) => void;
   }
@@ -369,8 +376,13 @@ export function startBridge(opts: BridgeOptions): void {
    */
   // The UI found is the built-in DOM one (not a game's registerUI port): screens, text and colours apply (ui-extras.ts).
   let uiDom = false;
+  // The UI the game draws in its canvas (codeUi, studio-canvas-ui 2026-10-24; code-ui.ts), merged into the same list.
+  let uiCode: CodeUi | null = null;
+  // The keys the DOM UI lists (a codeUi with the same key is not listed: the HTML one stays, said once).
+  let domKeys = new Set<string>();
   const findUi = (world: StudioAdapter | null): StudioAdapter | null => {
     uiDom = false;
+    uiCode = null;
     for (const u of uiPorts) {
       try {
         if (u.built) return u.built;
@@ -389,9 +401,16 @@ export function startBridge(opts: BridgeOptions): void {
           return new Set<string>();
         }
       };
-      const dom = findDomUi(core, win, skip);
+      const dom = findDomUiPort(win, skip);
       uiDom = !!dom;
-      return dom;
+      domKeys = new Set(dom ? dom.objects().map((o) => o.key) : []);
+      // codeUis (none = exactly as before: the DOM port alone, in its page order).
+      const code = codeUiEntries(win).length ? createCodeUi({ win, core, post, lang: () => editorRef?.lang() ?? 'en', redraw: () => redrawFn, domKeys: () => domKeys }) : null;
+      if (code && code.port.objects().length) {
+        uiCode = code;
+        return uiAdapterFromPort(mergeUiPorts(dom, code.port), core, win);
+      }
+      return dom ? uiAdapterFromPort(dom, core, win) : null;
     } catch (e) {
       console.warn('[studio] DOM UI adapter failed:', e);
       return null;
@@ -432,7 +451,7 @@ export function startBridge(opts: BridgeOptions): void {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
+    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, uiCode, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):

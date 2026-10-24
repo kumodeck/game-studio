@@ -317,7 +317,7 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // HTML is not in the canvas the pictures are cut from, so the box would stay empty.
     const it = d.items().find((i) => i.key === key);
     if (it?.kinds.includes('ui')) {
-      const k = it.kinds.includes('button') ? 'uiButton' : it.kinds.includes('image') ? 'uiImage' : 'uiText';
+      const k = it.kinds.includes('button') ? 'uiButton' : it.kinds.includes('image') ? 'uiImage' : it.kinds.includes('bar') ? 'uiBar' : 'uiText';
       return h('span', { class: 'thumb ui-kind', dataset: { kind: k } }, icon(k));
     }
     const img = h('img', { class: 'thumb', alt: '', width: 32, height: 32 });

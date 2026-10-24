@@ -712,7 +712,7 @@ function readUi(v, fail) {
       fail(where, 'must be an object');
       continue;
     }
-    onlyFields(e, ['p', 's', 'label', 'screen', 'set', 'setWas'], where, fail);
+    onlyFields(e, ['p', 's', 'label', 'screen', 'set', 'setWas', 'code', 'from', 'at'], where, fail);
     if (!Array.isArray(e.p) || e.p.length !== 2) {
       fail(`${where}.p`, 'must be 2 numbers: [dx, dy] in CSS px');
       continue;
@@ -744,10 +744,29 @@ function readUi(v, fail) {
         }
       }
     } else if (e.setWas !== undefined) readUiSet(e.setWas, `${where}.setWas`, fail);
+    // studio-canvas-ui (2026-10-24): a UI the game draws in its canvas (codeUi). `code` = its codeUi id (the key itself:
+    // one entry per codeUi); `from` + `at` = where it is measured from now and its at() numbers from there (both or
+    // neither; the code's units, so the same ±10,000 as an offset).
+    if (e.code !== undefined) {
+      if (typeof e.code !== 'string' || !CODE_ID_RE.test(e.code) || e.code !== key) fail(`${where}.code`, 'must be the codeUi id, the same as the entry\'s key (lower case letters, digits and -)');
+      else o.code = e.code;
+    }
+    if (e.from !== undefined || e.at !== undefined) {
+      if (o.code === undefined) fail(`${where}.from`, '"from" / "at" are a codeUi\'s (with "code")');
+      else if (!UI_FROMS.includes(e.from)) fail(`${where}.from`, `must be one of ${UI_FROMS.join(', ')}`);
+      else if (!Array.isArray(e.at) || e.at.length !== 2) fail(`${where}.at`, 'must be 2 numbers: the at() numbers from "from"');
+      else {
+        const at = e.at.map((x, i) => readNumber(x, -LIMITS.maxUiCoord, LIMITS.maxUiCoord, `${where}.at[${i}]`, fail));
+        if (at.every((x) => x !== null)) (o.from = e.from), (o.at = at.map((x) => round(x, LIMITS.step2d)));
+      }
+    }
     out[key] = o;
   }
   return out;
 }
+
+/** The 9 places a codeUi is measured from (the loader's UI_FROMS, CONTRACT.md §1.13). */
+export const UI_FROMS = Object.freeze(['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right']);
 
 // A colour as CSS writes it: #rgb … #rrggbbaa, rgb()/rgba()/hsl()/hsla() with plain numbers, or a colour word. Never
 // anything that could end the declaration it is put in (the loader writes it into a style sheet for the states).

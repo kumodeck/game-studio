@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#120a24" />
+  <title>Neon Run — three.js + a HUD drawn in a canvas</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #120a24; touch-action: none; }
+    /* Two canvases: the 3D world, and the HUD drawn over it with the 2D canvas API (no HTML UI at all). */
+    canvas { position: fixed; left: 0; top: 0; width: 100%; height: 100%; display: block; }
+    #hud { z-index: 1; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="hud"></canvas>
+  <script type="module" src="game.js"></script>
+</body>
+</html>

@@ -12,8 +12,9 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlaceOffset, Pose } from '../contract.ts';
-import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } from '../schema/hands.mjs';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose } from '../contract.ts';
+import { uiBoxAt } from '../loader/studio-placement.js';
+import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
 import { CODE_LEN } from './motion-library.ts';
 import { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText, type HandMotion, type HandSpot, type MotionGap, type PlaceGap } from './to-rule.ts';
@@ -119,6 +120,30 @@ export interface HandsDeps {
     rename(id: string, to: string): boolean;
     /** Name the level just made (it stays "just made": ⌘Z still takes it away, name and all). */
     nameNew(id: string, to: string): boolean;
+  };
+  /**
+   * studio-canvas-ui (2026-10-24): the UI layer (the HTML UI and the UI the game draws in its canvas, one list) for
+   * ui.code / ui.set / list. Absent = an editor without one (the ops say so).
+   */
+  ui?: {
+    /** Switch to the UI layer (an AI's UI job is one ⌘Z on that layer); false = the game has no UI layer. */
+    show(): boolean;
+    items(): Item[];
+    codes(): CodeUiInfo[];
+    clash(): string[];
+    /** Forget the codeUi list (the page is read again: a stale list must not answer for the new code). */
+    resetCodes(): void;
+    pose(key: string): Pose | undefined;
+    /** As the card's numbers: one undo change, on screen, counted. */
+    setPose(key: string, pose: Pose): void;
+    /** As the card's look rows ('text', 'fontSize', 'color', 'background', '@hover.color' …): one undo change. */
+    setLook(key: string, path: string, value: string | number): void;
+    /** The page's check of each box (code-ui.ts): null = it did not answer. */
+    check(keys: string[]): Promise<Array<{ key: string; ok: boolean; why?: string; note?: string }> | null>;
+    /** The AI wrote it into the code: out of the file, not a change of the person's. false = the file had nothing for it. */
+    clear(key: string): boolean;
+    /** placement.json's `ui` as it would be written now. */
+    entries(): Record<string, PlacementUiEntry>;
   };
   /** The person's Save (only when they asked the AI for it). */
   save(): Promise<boolean>;
@@ -538,7 +563,11 @@ export function createAiHands(d: HandsDeps) {
         d.reload(!!op.editor);
         return { words: {} };
       case 'list':
-        return { list: codeList(d.list() as Record<string, unknown>) };
+        return { list: uiList(codeList(d.list() as Record<string, unknown>)) };
+      case 'ui.code':
+        return uiCode(op);
+      case 'ui.set':
+        return uiSet(op);
       default:
         return { error: `unknown op ${op.do}` };
     }
@@ -624,6 +653,89 @@ export function createAiHands(d: HandsDeps) {
     return { ...l, motions, ...(places.length ? { places } : {}) };
   }
 
+  // ----- the UI drawn in the canvas (studio-canvas-ui, 2026-10-24; CONTRACT.md §1.13) -----
+  /**
+   * ui.code: the AI has rewritten the drawing with codeUi() — read the game again (always: the page runs the code before
+   * the rewrite), list them with the HTML UI, and check each box (moved 40 px, drawn once: does the picture follow?).
+   * A box that is off is the AI's to fix and is said to the AI alone (decision 8): the person sees nothing of it.
+   */
+  async function uiCode(op: Op): Promise<Did> {
+    const u = d.ui;
+    if (!u) return { error: 'this editor has no UI layer' };
+    u.resetCodes();
+    if (!(await d.reloadGame())) return { error: `the game did not come back after reading it again (an error in the code?): look at the game (§3.3), fix it and send ui.code --id ${op.id}` };
+    u.show();
+    const codes = u.codes();
+    const ids = handsUiIds(op) as string[];
+    for (const id of ids) {
+      if (codes.some((c) => c.key === id)) continue;
+      if (u.clash().includes(id)) return { error: `${id}: an HTML element has data-studio-key="${id}" too, so the editor lists the HTML one — give codeUi('${id}') another id` };
+      return { error: `${id}: ${hasNo('codeUi', id, codes.map((c) => c.key))}` };
+    }
+    const r = await u.check(ids);
+    if (!r) return { error: 'the editor did not answer the check of the boxes: run the same --do again' };
+    const bad = r.filter((x) => !x.ok);
+    if (bad.length) return { error: bad.map((x) => `${x.key} - ${x.why}`).join('; ') };
+    const notes = r.filter((x) => x.note).map((x) => `${x.key}: ${x.note}`);
+    const names = ids.map((id) => codes.find((c) => c.key === id)!.name);
+    return { checked: notes.length < ids.length, note: notes.length ? ` (${notes.join('; ')})` : '', words: { names: names.join(d.t('hands.ui.and')) } };
+  }
+
+  /** ui.set: what the card does (an offset, a size, a look) — or `clear`: the AI wrote it into the code. */
+  async function uiSet(op: Op): Promise<Did> {
+    const u = d.ui;
+    if (!u || !u.show()) return { error: 'this game has no UI layer in the editor' };
+    const it = u.items().find((i) => i.key === op.id);
+    const label = it?.label ?? op.id;
+    if (op.clear) {
+      const had = u.clear(op.id);
+      return { cleared: had, words: { name: label }, wordsKey: 'hands.ui.clear' };
+    }
+    if (!it) return { error: `no UI ${op.id} in the editor (UI: ${u.items().map((i) => i.key).slice(0, 12).join(', ') || 'none'})` };
+    const now = u.pose(op.id);
+    if ((op.p || op.s !== undefined) && now) {
+      const pose: Pose = structuredClone(now);
+      const s0 = typeof now.s === 'number' ? now.s : 1;
+      if (op.s !== undefined) pose.s = op.s;
+      if (op.p && op.from) {
+        // at() numbers from a place → the offset the card speaks: where the box would stand, against where it stands.
+        const c = u.codes().find((x) => x.key === op.id);
+        if (!c) return { error: `"from" is for a UI drawn in the canvas (codeUi): ${op.id} is an HTML element — give "p" alone (its offset in CSS px)` };
+        const [W, H, k, ky] = c.frame;
+        const [w, h] = c.size, f = (typeof pose.s === 'number' ? pose.s : 1) / s0;
+        const [x0, y0] = uiBoxAt(c.from, c.at[0], c.at[1], w, h, W, H);
+        const [x1, y1] = uiBoxAt(op.from, op.p[0], op.p[1], w * f, h * f, W, H);
+        pose.p = [now.p[0]! + (x1 + (w * f) / 2 - x0 - w / 2) / k, now.p[1]! + (y1 + (h * f) / 2 - y0 - h / 2) / ky].map((v) => Math.round(v * 10) / 10);
+      } else if (op.p) pose.p = op.p.slice();
+      u.setPose(op.id, pose);
+    }
+    if (op.set) {
+      for (const [k, v] of Object.entries(op.set as Record<string, unknown>)) {
+        if (k.startsWith('@')) for (const [n, x] of Object.entries(v as Record<string, string>)) u.setLook(op.id, `${k}.${n}`, x);
+        else u.setLook(op.id, k, v as string | number);
+      }
+    }
+    return { words: { name: label } };
+  }
+
+  /** `list` with the UI: every element of the UI layer (HTML and canvas), what the file holds for it, and for a codeUi what to write on Save. */
+  function uiList(l: Record<string, unknown>): Record<string, unknown> {
+    const u = d.ui;
+    if (!u || !u.items().length) return l;
+    const codes = new Map(u.codes().map((c) => [c.key, c]));
+    const file = u.entries();
+    const ui = u.items().map((it) => {
+      const c = codes.get(it.key);
+      const e = file[it.key];
+      const ps = u.pose(it.key);
+      return { key: it.key, name: it.label, ...(it.screen ? { screen: it.screen } : {}),
+        ...(ps ? { p: ps.p, s: typeof ps.s === 'number' ? ps.s : 1 } : {}), ...(e?.set ? { set: e.set, ...(e.setWas ? { setWas: e.setWas } : {}) } : {}),
+        ...(c ? { code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } } : { html: true }) };
+    });
+    const clash = u.clash();
+    return { ...l, ui, ...(clash.length ? { uiClash: clash } : {}) };
+  }
+
   /** The person's words for one op ("Claude took “Row” off Blue pillar"), with the AI's name. */
   function words(op: Op, did: Did, ai: Record<string, string>): string {
     const w = did.words ?? {};
@@ -638,7 +750,9 @@ export function createAiHands(d: HandsDeps) {
     const ops = read.ops as Op[];
     if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
     if (d.playing()) await d.stopPlay();
-    d.toWorld();
+    // A job of UI ops is done on the UI layer (its one ⌘Z is a step of that layer); every other job on the world.
+    if (d.ui && ops.some((op) => op.do.startsWith('ui.')) && ops.every((op) => op.do.startsWith('ui.') || op.do === 'list' || op.do === 'save')) d.ui.show();
+    else d.toWorld();
     // The AI's name for its line: the one that asked (by), else the editor's own guess ({ai}).
     const ai: Record<string, string> = job.by ? { ai: d.t(`ai.name.${job.by}`), Ai: d.t(`ai.name.${job.by}`) } : {};
     const results: HandsResult[] = [];
@@ -663,7 +777,7 @@ export function createAiHands(d: HandsDeps) {
         results.push({ do: op.do, ok: true, said: handsSaid(op, did) + (typeof did.gapSaid === 'string' ? did.gapSaid : ''), ...(did.list ? { list: did.list } : {}) });
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
-          if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code'].includes(op.do)) lead = said.length;
+          if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code', 'ui.code'].includes(op.do)) lead = said.length;
           said.push(words(op, did, ai));
         }
         else if (!said.length && op.do === 'save') said.push(d.t('hands.save', ai));

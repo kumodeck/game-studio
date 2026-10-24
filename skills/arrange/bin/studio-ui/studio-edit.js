@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.61 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.62 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -2711,15 +2711,33 @@ function createThreeAdapter({ scene, renderer, camera }) {
    * hides exactly what it did before.
    */
   function hideOverlays() {
+    const uiCanvases = codeUiCanvases();
     for (let el = canvas; el && el.parentElement; el = el.parentElement) {
       for (const sib of el.parentElement.children) {
         if (sib === el || sib.hasAttribute('data-studio-keep') || /^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(sib.tagName)) continue;
         if (sib.matches('[data-studio-key]') || sib.querySelector('[data-studio-key]')) continue;
+        // A canvas the game draws UI in with codeUi() (studio-canvas-ui, 2026-10-24): the editor's UI layer too
+        // (bridge/code-ui.ts), hidden on the world by the editor's layer style like the HTML UI, never here.
+        if (uiCanvases.some((c) => sib === c || sib.contains(c))) continue;
         restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
         sib.style.setProperty('visibility', 'hidden', 'important');
       }
       if (el.parentElement === document.body) break;
     }
+  }
+  /** The canvases the game's codeUi() entries draw in (the loader's list on globalThis; none = []). */
+  function codeUiCanvases() {
+    const m = globalThis[Symbol.for('game-studio.codeUis')];
+    const out = [];
+    if (m instanceof Map) for (const e of m.values()) {
+      try {
+        const c = e && typeof e.canvas === 'function' ? e.canvas() : null;
+        if (c && !out.includes(c)) out.push(c);
+      } catch (err) {
+        /* a canvas getter that fails: nothing to keep */
+      }
+    }
+    return out;
   }
   function showOverlays() {
     for (const [el, val, prio] of restoreDom.splice(0)) {
@@ -3708,7 +3726,36 @@ const CONTRACT_VERSION = 1;
                                                                                                                                                   
                                                                                                                  
      
+                                                                                      
+ 
+
+/**
+ * A UI the game draws in its canvas (codeUi, studio-canvas-ui 2026-10-24; CONTRACT.md §1.13), as the bridge lists it to
+ * the shell (studio:ui/codes): what the file needs beside its offset (`from` / `at`) and what the AI's `list` shows.
+ */
+                             
+                                                                
+              
+                                   
+               
+                                           
+               
+                                                                                                                               
+               
+                                                         
+                       
+                                                                                  
+                
+                                       
+                                                              
                                                                        
+                 
+                                                                   
+                                        
+                                                                   
+                         
+                                                                                   
+                                          
  
 /** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
                              
@@ -4240,6 +4287,12 @@ const CONTRACT_VERSION = 1;
                                                                                     
      
                                                          
+     
+                                                                                                                         
+                                                                                                                       
+                                                      
+     
+                                         
                                                                               
                     
      
@@ -4795,6 +4848,13 @@ const MSG_PREFIX = 'studio:';
                                                                                         
                                                 
      
+                                                                                                                           
+                                                                                                                        
+                                                                                    
+     
+                                                                
+                                                 
+     
                                                                                                                     
                                                                                                                                       
                                                                                                                      
@@ -4930,6 +4990,13 @@ const MSG_PREFIX = 'studio:';
                                                
                                                                                                         
                                                    
+     
+                                                                                                                         
+                                                                                                           
+     
+                                                                    
+                                                                                                      
+                                                                                                                             
                                                                                            
      
                                                                           
@@ -6007,6 +6074,15 @@ const RESULT_FILES                         = {
                    
                                                                                                   
                       
+     
+                                                                                                                         
+                                                                                                                  
+     
+                
+                                                                                                                                    
+                
+                                                                                                                            
+                        
  
 
 /** placement.json `theme` (UI stage 3): one CSS variable of the game's theme, changed in the editor. */
@@ -6514,7 +6590,7 @@ __defs[15] = function (__exports) {
 // The studio's own drawing uses raf(), which always reaches the real browser
 // function, so the editor keeps animating handles while the game is frozen.
                                                   
-const { nativeCancelRaf, nativeRaf, nativeSetTimeout } = __require(0);
+const { nativeCancelRaf, nativeNow, nativeRaf, nativeSetTimeout } = __require(0);
 
                                    
 
@@ -6548,6 +6624,13 @@ const { nativeCancelRaf, nativeRaf, nativeSetTimeout } = __require(0);
                              
                                                   
                                 
+     
+                                                                                                                        
+                                                                                                                       
+                                                                                                                        
+                                                                                                                        
+     
+                  
  
 
 function installTime(opts             )                  {
@@ -6672,6 +6755,22 @@ function installTime(opts             )                  {
     raf: (cb) => ownRaf(cb),
     cancelRaf: (id) => ownCancel(id),
     firstFrame: () => first,
+    step() {
+      if (!frozen || !pending.size) return false;
+      const now = isMainWindow ? nativeNow() : win.performance.now();
+      const t = opts.stamp ? opts.stamp(now) : now;
+      const due = [...pending.entries()];
+      for (const [id] of due) pending.delete(id);
+      for (const [, e] of due) {
+        try {
+          e.cb(t);
+        } catch (err) {
+          // The game's own error, reported by the page as usual; the editor's frame goes on.
+          console.warn('[studio] the game failed drawing one frame:', err);
+        }
+      }
+      return true;
+    },
     ready() {
       readyCalled = true;
       markFirst();
@@ -7569,8 +7668,12 @@ __defs[20] = function (__exports) {
 //   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
 //       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
 // report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
-// The lists are on globalThis (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids')), so the editor's
-// copy in the same page finds what the game's copy was told.
+// The lists are on globalThis (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids' / 'codeUis')), so the
+// editor's copy in the same page finds what the game's copy was told.
+//
+// UI drawn in the canvas (studio-canvas-ui, 2026-10-24): codeUi('score', { name, kind, at, size, look, … }) — a score, a
+// health bar, a button the game paints in a canvas, made editable like an HTML element: the game draws it where box()
+// says, with look(); the editor moves / resizes / recolours it and the game draws one frame. See "UI drawn in the canvas".
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -7608,6 +7711,8 @@ async function applyPlacement(root, source = './placement.json', opts = {}) {
     return codeOnly();
   }
   if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
+  // The UI drawn in the canvas (codeUi): its entries are read by the game's own drawing, from here on (none = the code's).
+  codeUiFile(data.ui);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
@@ -8925,18 +9030,273 @@ function handObject(root, key, three, made) {
   return found;
 }
 
+// ---------------------------------------------------------------------------------------------
+// UI drawn in the canvas (studio-canvas-ui, 2026-10-24; CONTRACT.md §1.13). A request that day: "I want to edit the UI
+// drawn INSIDE the canvas, not only the HTML UI, as UI." A score, a health bar, a button painted with fillText / fillRect
+// is part of the picture: the editor cannot know where it is. So the AI rewrites the drawing ONCE so it reads its place
+// and look from here (the same split as codePlace: the AI writes the code once, the editor is the hands):
+//
+//   const scoreUi = codeUi('score', { name: 'Score', kind: 'text', at: { from: 'top-left', x: 24, y: 18 },
+//     size: [232, 34], look: { text: 'SCORE', fontSize: 24, color: '#ffffff' }, sample: '999,999' });
+//   // every frame, where it draws:
+//   const b = scoreUi.box(), L = scoreUi.look();
+//   ctx.font = `bold ${L.fontSize * b.s}px monospace`; ctx.fillStyle = L.color;
+//   ctx.fillText(`${L.text} ${scoreUi.value(score)}`, b.x, b.y + 26 * b.s);
+//
+//   name     the person's word for it (the list, the card's head)
+//   kind     text | bar | button | image | box — WHAT it is (the list's icon, the sample values), not how it is drawn
+//   screen   the screen it is on (the same ids as HTML's data-studio-screen; none = always)
+//   at       { from, x, y }: from one of 9 places of the canvas (top-left top top-right left center right bottom-left
+//            bottom bottom-right), x / y inward (+ = into the canvas; for the middle ones + = right / down)
+//   size     [w, h], one number (a square), or () => [w, h] (a text whose width changes: measure it with measureText)
+//   scale    its size (1 = as drawn); the AI writes the person's size here on Save
+//   look     what the card may change: text · fontSize · color · background (only these keys are rows on the card)
+//   states   a button's looks: { hover: { background, color }, active: {…}, disabled: {…} }
+//   sample   the first sample value the card offers ('999,999'); a bar's are full · half · empty
+//   round    true = a round button (the editor's light and outline follow a circle)
+//   canvas   the canvas it is drawn in (an element or () => element); none = the last canvas of the page
+//   units    css (the game draws after ctx.scale(devicePixelRatio): CSS px, the default) | canvas (the canvas's own px)
+//
+// The handle answers, every frame, with the editor or without it:
+//   box()        { x, y, w, h, s } — where to draw, in `units`, measured from the canvas's size now; s = the size
+//   look(state?) { text, fontSize, color, background } — the card's changes over `look` (and over states[state]);
+//                with no state: the one the editor shows (hover / pressed / disabled), else the normal look
+//   value(v)     the sample the editor shows now, else v (a bar's sample: 1, 0.5 or 0)
+//   hit(x, y)    true inside the box (a circle for `round`): the game's press test, so a moved button is pressed where
+//                it is drawn — an HTML button does that by itself; a canvas button only through this
+//   state()      the look the editor shows ('hover' | 'active' | 'disabled'), null in the game
+//
+// placement.json `ui.<id>` with `code: id` holds what the person changed until Save (the same entry as an HTML element's,
+// with `from` and `at`: where it is measured from, and the at() numbers from there — so a bar moved to the top middle
+// stays in the top middle on any window size). On Save the AI writes `at` / `scale` / `look` / `states` into the code and
+// takes the entry out of the file ("the code is the truth", 2026-10-24).
+
+const CODE_UIS = Symbol.for('game-studio.codeUis');
+const CODE_UI_FILE = Symbol.for('game-studio.codeUiFile');
+/** The 9 places a codeUi is measured from (Q2 = a, 2026-10-24: a moved UI keeps to the nearest of them). */
+const UI_FROMS = ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'];
+const UI_KINDS = ['text', 'bar', 'button', 'image', 'box'];
+const UI_LOOK = ['text', 'fontSize', 'color', 'background'];
+const UI_STATE_NAMES = ['hover', 'active', 'disabled'];
+
+/**
+ * The file's `ui` entries that name a codeUi, by id — on globalThis, so the game's applyPlacement and the editor's ▶ Play
+ * (each its own copy of this file) fill the one map every handle reads at draw time: the order of codeUi() and
+ * applyPlacement() in the game's code does not matter.
+ */
+function codeUiFile(ui) {
+  const m = new Map();
+  if (ui && typeof ui === 'object') {
+    for (const [k, e] of Object.entries(ui)) {
+      if (!e || e.code !== k || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum)) continue;
+      const o = { p: e.p.slice(), s: isNum(e.s) && e.s > 0 ? e.s : 1 };
+      if (UI_FROMS.includes(e.from) && Array.isArray(e.at) && e.at.length === 2 && e.at.every(isNum)) (o.from = e.from), (o.at = e.at.slice());
+      if (e.set && typeof e.set === 'object') o.set = e.set;
+      m.set(k, o);
+    }
+  }
+  globalThis[CODE_UI_FILE] = m;
+}
+const codeUiFileOf = (id) => (globalThis[CODE_UI_FILE] instanceof Map ? globalThis[CODE_UI_FILE].get(id) : undefined) || null;
+
+/** [left / middle / right, top / middle / bottom] of a place. */
+function uiSides(from) {
+  const [v, h] = from === 'center' ? ['middle', 'middle'] : from === 'left' || from === 'right' ? ['middle', from] : from.includes('-') ? from.split('-') : [from, 'middle'];
+  return [h, v];
+}
+
+/** The box's top-left corner for at() numbers measured from `from` (W × H: the canvas, in units). */
+function uiBoxAt(from, x, y, w, h, W, H) {
+  const [hz, v] = uiSides(UI_FROMS.includes(from) ? from : 'top-left');
+  return [hz === 'left' ? x : hz === 'right' ? W - x - w : W / 2 + x - w / 2, v === 'top' ? y : v === 'bottom' ? H - y - h : H / 2 + y - h / 2];
+}
+
+/** The at() numbers of a box measured from `from` (the inverse of uiBoxAt). */
+function uiAtOf(from, bx, by, w, h, W, H) {
+  const [hz, v] = uiSides(from);
+  return [hz === 'left' ? bx : hz === 'right' ? W - bx - w : bx + w / 2 - W / 2, v === 'top' ? by : v === 'bottom' ? H - by - h : by + h / 2 - H / 2];
+}
+
+/** The nearest of the 9 places to a box (its edges to the canvas's edges, its middle to the canvas's middle). */
+function uiNearest(bx, by, w, h, W, H) {
+  const col = [Math.abs(bx), Math.abs(bx + w / 2 - W / 2), Math.abs(W - bx - w)];
+  const row = [Math.abs(by), Math.abs(by + h / 2 - H / 2), Math.abs(H - by - h)];
+  const c = col.indexOf(Math.min(...col)), r = row.indexOf(Math.min(...row));
+  return UI_FROMS[r * 3 + c];
+}
+
+const uiColorOk = (c) => typeof c === 'string' && UI_COLOR.test(c);
+function uiLookOf(v) {
+  const o = {};
+  if (!v || typeof v !== 'object') return o;
+  if (typeof v.text === 'string') o.text = v.text.slice(0, 200);
+  if (isNum(v.fontSize) && v.fontSize > 0) o.fontSize = v.fontSize;
+  for (const k of ['color', 'background']) if (uiColorOk(v[k])) o[k] = v[k];
+  return o;
+}
+
+/** Register a UI drawn in the canvas; returns its handle (see above). A bad id is said once and the handle still draws. */
+function codeUi(id, def) {
+  const ok = typeof id === 'string' && CODE_ID.test(id) && def && typeof def === 'object';
+  if (!ok) warnOnce(`codeUi(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and { at, size }`);
+  const d = def && typeof def === 'object' ? def : {};
+  const at = d.at && typeof d.at === 'object' ? d.at : {};
+  const states = {};
+  if (d.states && typeof d.states === 'object') for (const s of UI_STATE_NAMES) if (d.states[s]) states[s] = uiLookOf(d.states[s]);
+  const list = codeList(CODE_UIS);
+  const was = ok ? list.get(id) : null;
+  const e = {
+    id: ok ? id : 'ui', name: text(d.name, 40) || (ok ? id : 'UI'), kind: UI_KINDS.includes(d.kind) ? d.kind : 'box',
+    screen: typeof d.screen === 'string' && /^[A-Za-z0-9_:#.\-\/]{1,80}$/.test(d.screen) ? d.screen : null,
+    at: { from: UI_FROMS.includes(at.from) ? at.from : 'top-left', x: isNum(at.x) ? at.x : 0, y: isNum(at.y) ? at.y : 0 },
+    size: d.size, scale: isNum(d.scale) && d.scale > 0 ? d.scale : 1, look: uiLookOf(d.look), states,
+    sample: typeof d.sample === 'string' || isNum(d.sample) ? String(d.sample).slice(0, 200) : null, round: d.round === true,
+    canvasOf: d.canvas, units: d.units === 'canvas' ? 'canvas' : 'css',
+    // The editor's values while it edits (the bridge's src/bridge/code-ui.ts): { p, s, set, state, sample } — null in the
+    // game. Kept when the game calls codeUi() again for the same id (a new round), like a code layout's objects.
+    live: was ? was.live : null,
+  };
+  e.canvas = () => uiCanvas(e);
+  e.frame = () => uiFrame(e);
+  e.box = () => uiBox(e);
+  e.lookNow = (st) => uiLookNow(e, st);
+  e.atNow = () => uiAtNow(e);
+  if (ok) list.set(id, e);
+  return {
+    id: e.id,
+    box: () => {
+      const b = uiBox(e);
+      return { x: b.x, y: b.y, w: b.w, h: b.h, s: b.s };
+    },
+    look: (st) => uiLookNow(e, st),
+    value: (v) => {
+      const sm = e.live && e.live.sample;
+      if (typeof sm !== 'string') return v;
+      return e.kind === 'bar' ? (isNum(Number(sm)) && sm !== '' ? Number(sm) : 0) : sm;
+    },
+    hit: (x, y) => {
+      if (!isNum(x) || !isNum(y)) return false;
+      const b = uiBox(e);
+      if (e.round) {
+        const rx = b.w / 2, ry = b.h / 2;
+        return rx > 0 && ry > 0 && ((x - b.x - rx) / rx) ** 2 + ((y - b.y - ry) / ry) ** 2 <= 1;
+      }
+      return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    },
+    state: () => (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null),
+  };
+}
+
+/** The canvas a codeUi is drawn in: its own `canvas`, else the last canvas of the page (an overlay is added after the game's). */
+function uiCanvas(e) {
+  let c = e.canvasOf;
+  if (typeof c === 'function') {
+    try {
+      c = c();
+    } catch (err) {
+      c = null;
+    }
+  }
+  if (c && typeof c.getBoundingClientRect === 'function') return c;
+  if (typeof document === 'undefined') return null;
+  const all = document.getElementsByTagName('canvas');
+  return all.length ? all[all.length - 1] : null;
+}
+
+/** The canvas's size in the codeUi's units, and k = units per CSS px (the editor's offsets are CSS px, like HTML's). */
+function uiFrame(e) {
+  const c = uiCanvas(e);
+  const cw = c ? c.clientWidth || (c.getBoundingClientRect && c.getBoundingClientRect().width) || c.width || 0 : typeof innerWidth === 'number' ? innerWidth : 0;
+  const ch = c ? c.clientHeight || (c.getBoundingClientRect && c.getBoundingClientRect().height) || c.height || 0 : typeof innerHeight === 'number' ? innerHeight : 0;
+  if (e.units === 'canvas' && c && cw > 0) return { W: c.width, H: c.height, k: c.width / cw, ky: ch > 0 ? c.height / ch : c.width / cw };
+  return { W: cw, H: ch, k: 1, ky: 1 };
+}
+
+/** size as [w, h] in units (unscaled): [w, h], one number, or a function of nothing. */
+function uiSize(e) {
+  let s = e.size;
+  if (typeof s === 'function') {
+    try {
+      s = s();
+    } catch (err) {
+      warnOnce(`codeUi('${e.id}'): size() failed (${err && err.message})`);
+      s = null;
+    }
+  }
+  if (isNum(s)) return [Math.max(0, s), Math.max(0, s)];
+  return Array.isArray(s) && s.length >= 2 && isNum(s[0]) && isNum(s[1]) ? [Math.max(0, s[0]), Math.max(0, s[1])] : [0, 0];
+}
+
+/**
+ * Where it is drawn now, in units. The middle stays where it is when its size changes (the same as an HTML element's).
+ * - the editor's live values: the place it had when editing began (the file's, else the code's) + the offset since then
+ * - the file's `from` / `at` (moved, not saved yet): measured from that place on the canvas's size now
+ * - the file's offset with no `from` (a file written by hand): the code's place + the offset
+ * - else the code's at()
+ */
+function uiBox(e) {
+  const { W, H, k, ky } = uiFrame(e);
+  const [w0, h0] = uiSize(e);
+  const wc = w0 * e.scale, hc = h0 * e.scale;
+  const f = codeUiFileOf(e.id);
+  const live = e.live;
+  let cx, cy, p0;
+  if (f && f.from) {
+    const [bx, by] = uiBoxAt(f.from, f.at[0], f.at[1], wc * f.s, hc * f.s, W, H);
+    cx = bx + (wc * f.s) / 2;
+    cy = by + (hc * f.s) / 2;
+    p0 = f.p;
+  } else {
+    const [bx, by] = uiBoxAt(e.at.from, e.at.x, e.at.y, wc, hc, W, H);
+    cx = bx + wc / 2;
+    cy = by + hc / 2;
+    p0 = [0, 0];
+    if (f && !live) (cx += f.p[0] * k), (cy += f.p[1] * ky);
+  }
+  if (live && Array.isArray(live.p)) (cx += (live.p[0] - p0[0]) * k), (cy += (live.p[1] - p0[1]) * ky);
+  const s = live && isNum(live.s) ? live.s : f ? f.s : 1;
+  const w = wc * s, h = hc * s;
+  return { x: cx - w / 2, y: cy - h / 2, w, h, s: e.scale * s, W, H, k, ky };
+}
+
+/** The nearest place and the at() numbers from it, for where it is now (the file's `from` / `at`; the AI's numbers on Save). */
+function uiAtNow(e) {
+  const b = uiBox(e);
+  const from = uiNearest(b.x, b.y, b.w, b.h, b.W, b.H);
+  const at = uiAtOf(from, b.x, b.y, b.w, b.h, b.W, b.H);
+  return { from, at: at.map((v) => Math.round(v * 10) / 10), scale: Math.round(b.s * 1000) / 1000 };
+}
+
+/** The look now: `look` ← the person's (editor or file) ← the state's (`states` ← the person's for that state). */
+function uiLookNow(e, st) {
+  const out = Object.assign({}, e.look);
+  const f = codeUiFileOf(e.id);
+  const set = e.live && e.live.set ? e.live.set : f && f.set ? f.set : null;
+  if (set) Object.assign(out, uiLookOf(set));
+  const s = st === undefined ? (e.live && UI_STATE_NAMES.includes(e.live.state) ? e.live.state : null) : UI_STATE_NAMES.includes(st) ? st : null;
+  if (s) {
+    if (e.states[s]) Object.assign(out, e.states[s]);
+    if (set && set['@' + s]) {
+      const o = uiLookOf(set['@' + s]);
+      for (const k of ['color', 'background']) if (o[k]) out[k] = o[k];
+    }
+  }
+  return out;
+}
+
 function applyUi(doc, ui) {
   const out = { applied: [], missing: [] };
   const put = (el) => {
     const k = el.dataset.studioKey, e = Object.hasOwn(ui, k) && ui[k];
-    if (!e || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
+    // An entry with `code` is a codeUi's (drawn by the game in its canvas: codeUiFile), never an HTML element's.
+    if (!e || e.code || !Array.isArray(e.p) || e.p.length !== 2 || !e.p.every(isNum) || (e.s !== undefined && !isNum(e.s))) return;
     if (placeUi(el, e.p, e.s === undefined ? 1 : e.s) && !out.applied.includes(k)) out.applied.push(k);
     if (sheet && e.set && typeof e.set === 'object') setUi(el, k, e.set, sheet);
   };
   // Only for a file whose card changed something (a file of moves alone adds nothing to the page, as before).
   const sheet = Object.values(ui).some((e) => e && e.set) ? uiSheet(doc, ui) : null;
   doc.querySelectorAll('[data-studio-key]').forEach(put);
-  for (const k of Object.keys(ui)) if (!out.applied.includes(k)) out.missing.push(k);
+  for (const k of Object.keys(ui)) if (!out.applied.includes(k) && !(ui[k] && ui[k].code)) out.missing.push(k);
   // Elements made later (a result screen written with innerHTML, a HUD rebuilt each round) get the same place.
   if (typeof MutationObserver === 'function') {
     new MutationObserver((list) => {
@@ -9260,6 +9620,11 @@ __def(__exports, "offsetAt", () => offsetAt);
 __def(__exports, "relayCodePlace", () => relayCodePlace);
 __def(__exports, "codeSpot", () => codeSpot);
 __def(__exports, "codePose", () => codePose);
+__def(__exports, "UI_FROMS", () => UI_FROMS);
+__def(__exports, "uiBoxAt", () => uiBoxAt);
+__def(__exports, "uiAtOf", () => uiAtOf);
+__def(__exports, "uiNearest", () => uiNearest);
+__def(__exports, "codeUi", () => codeUi);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
@@ -9435,16 +9800,644 @@ function uiAdapterFromPort(port        , core      , win        )               
  * behave exactly as before UI stage 1). `skip`: keys the world adapter already lists (a DOM board game's pieces).
  */
 function findDomUi(core      , win        , skip                    )                       {
+  const port = findDomUiPort(win, skip);
+  return port ? uiAdapterFromPort(port, core, win) : null;
+}
+
+/**
+ * The built-in DOM UI port itself, or null (as findDomUi). studio-canvas-ui (2026-10-24): the bridge merges it with the
+ * codeUi port (src/bridge/code-ui.ts mergeUiPorts) into the UI seat's one list.
+ */
+function findDomUiPort(win        , skip                    )                {
   if (!win.document.querySelector('[data-studio-key]')) return null;
   const port = createUiPort(win, { skip })          ;
-  if (!port.objects().length) return null;
-  return uiAdapterFromPort(port, core, win);
+  return port.objects().length ? port : null;
 }
 
 __def(__exports, "uiAdapterFromPort", () => uiAdapterFromPort);
 __def(__exports, "findDomUi", () => findDomUi);
+__def(__exports, "findDomUiPort", () => findDomUiPort);
 };
 __defs[23] = function (__exports) {
+'use strict';
+// code-ui.ts
+
+// The UI the game draws in its canvas, in the game page (studio-canvas-ui, 2026-10-24; CONTRACT.md §1.13).
+//
+// A request that day: "I want to edit the UI drawn INSIDE the canvas, not only the HTML UI, as UI." The game's code
+// says where each one is once (codeUi() in the loader: the AI rewrites the drawing so it reads box() / look() / value());
+// this file is the editor's hands on them:
+//   - one Port2D over the codeUi list (objects / get / set / bounds / render), MERGED with the HTML UI's port into ONE
+//     list (mergeUiPorts: top of the screen first; a key both have = the HTML one, said once) — the person thinks
+//     "the score", not "the canvas score", so the frame, the strip, the card and the list are the HTML UI's, unchanged;
+//   - render = the game draws ONE frame with time stopped (core time.step(), or the game's studio.redraw(fn)): the
+//     UI is part of the game's picture, so only the game can draw it again;
+//   - the card's rows from `look` (only what the code gave), its states and sample values (props / handle);
+//   - the world darkened around the boxes only (a board with box-shaped holes over the UI's canvas: the UI is usually
+//     drawn in a canvas of its own over the world, or in the world's own canvas, so no layer can go between them);
+//   - while one is dragged: where it was (dotted) and how far it is from the nearest of the 9 places ("20 px from the top
+//     middle"), the place it will keep to on every window size (Q2 = a, 2026-10-24);
+//   - the AI's `ui.code`: each box moved 40 px and drawn once — if the picture did not follow, the AI is told (and only
+//     the AI: decision 8), so a rewrite that misses box() never reaches the person as "it is selected but does not move".
+//
+// Nothing here is the game's code: the editor's values live on the codeUi entries (`live`) while editing; Play in the
+// same page draws them (the person's draft), a reload forgets them, the file (placement.json `ui.<id>` with `code`)
+// keeps them until the AI writes them into the code on Save.
+                                                                                                                           
+                                             
+
+/** A codeUi entry as the loader keeps it (src/loader/studio-placement.js codeUi). The methods are the game's copy's. */
+                 
+             
+               
+               
+                                             
+                
+                                        
+                                                                            
+                        
+                 
+                    
+                                     
+                                                                                                                
+                                                                
+                                                                 
+ 
+                
+              
+            
+                   
+                        
+                        
+ 
+
+const LIST = Symbol.for('game-studio.codeUis');
+const FILE = Symbol.for('game-studio.codeUiFile');
+const STATES            = ['hover', 'active', 'disabled'];
+const MIN_S = 0.1, MAX_S = 10;
+/** How far `ui.code` moves each box to see that its picture follows (decision 8). */
+const PROBE_PX = 40;
+
+/** The game's codeUi entries (none = []). */
+function codeUiEntries(win        )          {
+  const m = (win                                      )[LIST];
+  return m instanceof Map ? (Array.from(m.values())           ).filter((e) => e && typeof e.box === 'function' && typeof e.atNow === 'function') : [];
+}
+
+// ---- words of the 9 places (the line while dragging; the editor's own words, not the shell's i18n: drawn in the game page)
+const PLACE                                              = {
+  ja: { 'top-left': '左上', top: '上の真ん中', 'top-right': '右上', left: '左の真ん中', center: '真ん中', right: '右の真ん中', 'bottom-left': '左下', bottom: '下の真ん中', 'bottom-right': '右下' },
+  // The glossary's words ("20 px from the top centre", "16 px · 24 px from the top right").
+  en: { 'top-left': 'the top left', top: 'the top centre', 'top-right': 'the top right', left: 'the left centre', center: 'the centre', right: 'the right centre', 'bottom-left': 'the bottom left', bottom: 'the bottom centre', 'bottom-right': 'the bottom right' },
+};
+/** "20 px from the top centre" / "16 px · 24 px from the top right" (and the same in Japanese): a middle row / column says only the other number when it is 0. */
+function placeWords(from        , at                  , lang             )         {
+  const [x, y] = [Math.round(at[0]), Math.round(at[1])];
+  // The top / bottom middle: x is across from the middle (0 = in the middle, said by the place alone); left / right
+  // middle: the same for y. A corner always has both.
+  const words = (from === 'top' || from === 'bottom') && x === 0 ? `${y} px`
+    : (from === 'left' || from === 'right') && y === 0 ? `${x} px`
+    : from === 'center' && x === 0 && y === 0 ? '0 px'
+    : `${x} px · ${y} px`;
+  const place = PLACE[lang][from] ?? from;
+  return lang === 'ja' ? `${place}から ${words}` : `${words} from ${place}`;
+}
+
+                             
+              
+             
+                                 
+                      
+                                                                            
+                                
+                                                                                                             
+                         
+ 
+
+                         
+                                                               
+               
+                            
+                                     
+                                                                                                                                 
+                                      
+                
+              
+                                                                                                                    
+                                                                      
+ 
+
+/** The codeUi side of the UI seat, or null when the game has none (then nothing changes for it). */
+function createCodeUi(d            )                {
+  const { win } = d;
+  const doc = win.document;
+  if (!codeUiEntries(win).length) return null;
+  const told = new Set        ();
+  // The codeUis listed: not an HTML key (said once — to the console and to the AI's `ui.code`).
+  const listed = ()          => {
+    const dom = d.domKeys();
+    return codeUiEntries(win).filter((e) => {
+      if (!dom.has(e.id)) return true;
+      if (!told.has(e.id)) {
+        told.add(e.id);
+        console.info(`[studio] codeUi('${e.id}'): an HTML element has data-studio-key="${e.id}" too — the HTML one is listed. Give one of them another key.`);
+      }
+      return false;
+    });
+  };
+  const byId = (key        ) => listed().find((e) => e.id === key) ?? null;
+  let dirty = false;
+  let infoDirty = true;
+  let editingNow = false;
+
+  /** The editor's values on the entry, made from the file's (or the code's) the first time. */
+  const live = (e       )       => {
+    if (e.live && Array.isArray(e.live.p)) return e.live;
+    const fm = (win                                      )[FILE];
+    const f = fm instanceof Map ? (fm.get(e.id)                                                            ) : undefined;
+    e.live = { p: f ? f.p.slice() : [0, 0], s: f ? f.s : 1, ...(f?.set ? { set: structuredClone(f.set) } : {}), state: null, sample: null };
+    return e.live;
+  };
+  const changed = () => {
+    dirty = true;
+    infoDirty = true;
+  };
+  /** The game draws one frame now (time stopped). */
+  const drawNow = () => {
+    dirty = false;
+    const fn = d.redraw();
+    if (fn) {
+      try {
+        fn();
+      } catch (err) {
+        console.warn('[studio] studio.redraw failed:', err);
+      }
+      return;
+    }
+    d.core.time.step();
+  };
+
+  /** The canvas's place on screen and its units → CSS px. */
+  const screenOf = (e       ) => {
+    const c = e.canvas();
+    const r = c ? c.getBoundingClientRect() : ({ left: 0, top: 0, width: win.innerWidth, height: win.innerHeight }           );
+    const b = e.box();
+    const sx = b.W > 0 ? r.width / b.W : 1, sy = b.H > 0 ? r.height / b.H : 1;
+    return { r, b, sx, sy };
+  };
+  const boundsOf = (e       ) => {
+    const { r, b, sx, sy } = screenOf(e);
+    return { x: r.left + b.x * sx, y: r.top + b.y * sy, w: b.w * sx, h: b.h * sy };
+  };
+
+  const port         = {
+    name: 'canvas-ui',
+    // Top of the screen first (then left first): the list reads like the screen.
+    objects() {
+      const tops = new Map(listed().map((e) => {
+        const b = boundsOf(e);
+        return [e.id, [Math.round(b.y), Math.round(b.x)]]         ;
+      }));
+      return listed().sort((a, b) => tops.get(a.id) [0]  - tops.get(b.id) [0]  || tops.get(a.id) [1]  - tops.get(b.id) [1] )
+        // 'named': the list says `name` (the code's word for it), not the key in words as for an HTML element.
+        .map((e) => ({ key: e.id, label: e.name, kinds: ['ui', e.kind === 'bar' ? 'bar' : e.kind === 'button' ? 'button' : e.kind === 'image' ? 'image' : 'text', 'named'], rotatable: false }));
+    },
+    get(key) {
+      const e = byId(key);
+      if (!e) return null;
+      const l = live(e);
+      return { p: [l.p[0] , l.p[1] ], r: 0, s: l.s };
+    },
+    set(key, pose      ) {
+      const e = byId(key);
+      if (!e) return;
+      const l = live(e);
+      const raw = Array.isArray(pose.s) ? pose.s[0] : pose.s;
+      l.s = Math.min(MAX_S, Math.max(MIN_S, typeof raw === 'number' && Number.isFinite(raw) ? raw : l.s));
+      l.p = [Number(pose.p[0]) || 0, Number(pose.p[1]) || 0];
+      changed();
+    },
+    parentToScreen(key) {
+      const e = byId(key);
+      if (!e) return null;
+      const l = live(e);
+      const { r, b, sx, sy } = screenOf(e);
+      const a = sx * b.k, dd = sy * b.ky;
+      return [a, 0, 0, dd, r.left + (b.x + b.w / 2) * sx - a * l.p[0] , r.top + (b.y + b.h / 2) * sy - dd * l.p[1] ];
+    },
+    bounds(key) {
+      const e = byId(key);
+      return e ? boundsOf(e) : null;
+    },
+    render() {
+      if (dirty && d.core.time.frozen) drawNow();
+    },
+    canvas: () => null,
+    capture: async () => null,
+    // A round button's outline is a circle (the light's hole is too).
+    silhouette(keys) {
+      const es = keys.map(byId);
+      if (es.length !== 1 || !es[0] || !es[0].round) return null;
+      const bb = boundsOf(es[0]);
+      const m = doc.createElement('canvas');
+      m.width = Math.max(1, Math.ceil(bb.w));
+      m.height = Math.max(1, Math.ceil(bb.h));
+      const x = m.getContext('2d');
+      if (!x) return null;
+      x.beginPath();
+      x.ellipse(m.width / 2, m.height / 2, m.width / 2, m.height / 2, 0, 0, Math.PI * 2);
+      x.fill();
+      return { x: bb.x, y: bb.y, w: bb.w, h: bb.h, mask: m };
+    },
+  };
+
+  // ---------------------------------------------------------------- the card (the HTML UI's rows, from `look`)
+  const was = (e       )             => {
+    const w                          = {};
+    for (const n of ['text', 'fontSize', 'color', 'background']         ) if (e.look[n] !== undefined) w[n] = e.look[n];
+    for (const s of STATES) if (e.states[s] && Object.keys(e.states[s] ).length) w[`@${s}`] = { ...e.states[s] };
+    return w              ;
+  };
+  const props = (key        )                 => {
+    const e = byId(key);
+    if (!e) return null;
+    const l = live(e);
+    const now = e.lookNow(l.state);
+    const has = (n        ) => e.look[n] !== undefined;
+    const button = e.kind === 'button' && STATES.some((s) => e.states[s] && Object.keys(e.states[s] ).length);
+    const txt = e.kind === 'text' || e.kind === 'button' || e.kind === 'box';
+    return {
+      key,
+      state: l.state,
+      button,
+      text: has('text') ? String(now.text ?? '') : null,
+      fontSize: has('fontSize') && typeof now.fontSize === 'number' ? now.fontSize : null,
+      color: has('color') || (l.state && e.states[l.state]?.color !== undefined) ? String(now.color ?? '') || null : null,
+      background: has('background') || (l.state && e.states[l.state]?.background !== undefined) ? String(now.background ?? '') || null : null,
+      was: was(e),
+      // A bar's samples are full / half / empty (the card says them in words); a text's are the HTML UI's.
+      sample: e.kind === 'bar' ? { now: l.sample, value: true, bar: true } : txt && (e.sample !== null || has('text')) ? { now: l.sample, value: true, ...(e.sample ? { hint: e.sample } : {}) } : null,
+    };
+  };
+  const postProps = (key        ) => {
+    const p = props(key);
+    if (p) d.post({ type: 'studio:ui/props', props: p });
+  };
+  const setLook = (e       , name        , value                        , state          ) => {
+    const l = live(e);
+    const set = (l.set ??= {})                           ;
+    if (state) {
+      if (name !== 'color' && name !== 'background') return;
+      const o = ((set[`@${state}`]                                       ) ??= {});
+      if (value === null) delete o[name];
+      else o[name] = value;
+      if (!Object.keys(o).length) delete set[`@${state}`];
+    } else if (value === null) delete set[name];
+    else set[name] = name === 'fontSize' ? Math.max(1, Math.min(500, Number(value) || 0)) : String(value).slice(0, 200);
+    changed();
+  };
+
+  // ---------------------------------------------------------------- the list for the shell (the file's from / at)
+  const info = ()               => listed().map((e) => {
+    const a = e.atNow();
+    const b = e.box();
+    const bb = boundsOf(e);
+    return { key: e.id, name: e.name, kind: e.kind, from: a.from, at: a.at, scale: a.scale, code: { ...e.at, scale: e.scale },
+      look: Object.keys(e.look), box: [Math.round(bb.x), Math.round(bb.y), Math.round(bb.w), Math.round(bb.h)],
+      size: [Math.round(b.w * 10) / 10, Math.round(b.h * 10) / 10], frame: [b.W, b.H, b.k, b.ky] };
+  });
+  const postInfo = () => {
+    infoDirty = false;
+    const dom = d.domKeys();
+    d.post({ type: 'studio:ui/codes', list: info(), clash: codeUiEntries(win).filter((e) => dom.has(e.id)).map((e) => e.id) });
+  };
+
+  // ---------------------------------------------------------------- decision 8: does the picture follow the box?
+  const check = (key        )                                                            => {
+    const all = codeUiEntries(win);
+    const e = byId(key);
+    if (!e) {
+      if (all.some((x) => x.id === key)) return { key, ok: false, why: `an HTML element has data-studio-key="${key}" too, so the editor lists the HTML one: give codeUi('${key}') another id` };
+      return { key, ok: false, why: `the game has no codeUi('${key}') (it has: ${all.length ? all.map((x) => `'${x.id}'`).join(', ') : 'none'})` };
+    }
+    const c = e.canvas();
+    let ctx                                  = null;
+    try {
+      ctx = c ? (c.getContext('2d')                                   ) : null;
+    } catch {
+      ctx = null;
+    }
+    if (!c || !ctx || !c.width || !c.height) return { key, ok: true, note: 'not measured (it is not drawn in a 2D canvas)' };
+    if (!d.core.time.frozen && !d.redraw()) return { key, ok: true, note: 'not measured (the game was running)' };
+    const read = () => {
+      try {
+        return ctx .getImageData(0, 0, c.width, c.height).data;
+      } catch {
+        return null;
+      }
+    };
+    const l = live(e);
+    const p0 = l.p.slice();
+    drawNow();
+    const before = read();
+    const b0 = e.box();
+    l.p = [p0[0]  + PROBE_PX, p0[1] ];
+    drawNow();
+    const after = read();
+    const b1 = e.box();
+    l.p = p0;
+    drawNow();
+    if (!before || !after) return { key, ok: true, note: 'not measured (the canvas cannot be read)' };
+    // Units → canvas px.
+    const u = b0.W > 0 ? c.width / b0.W : 1, v = b0.H > 0 ? c.height / b0.H : 1;
+    const rect = (b           , pad        ) => [Math.max(0, Math.floor(b.x * u) - pad), Math.max(0, Math.floor(b.y * v) - pad), Math.min(c.width, Math.ceil((b.x + b.w) * u) + pad), Math.min(c.height, Math.ceil((b.y + b.h) * v) + pad)]         ;
+    // A pixel changed: its colour or its cover by more than a soft shadow's (24 of 255).
+    const diff = (i        ) => Math.abs(before[i]  - after[i] ) + Math.abs(before[i + 1]  - after[i + 1] ) + Math.abs(before[i + 2]  - after[i + 2] ) > 48 || Math.abs(before[i + 3]  - after[i + 3] ) > 24;
+    const count = (x0        , y0        , x1        , y1        ) => {
+      let n = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (diff((y * c.width + x) * 4)) n++;
+      return n;
+    };
+    const [ax0, ay0, ax1, ay1] = rect(b0, 0), [bx0, by0, bx1, by1] = rect(b1, 0);
+    if (count(ax0, ay0, ax1, ay1) < 4 || count(bx0, by0, bx1, by1) < 4) {
+      return { key, ok: false, why: `moving it ${PROBE_PX} px changed nothing on screen: the drawing does not read codeUi('${key}').box() — draw it at box().x / box().y (× box().s), then send ui.code again` };
+    }
+    // What is drawn, from the pixels that changed around both boxes: wider / taller than the box = the box is too small
+    // (the frame would not cover it, a press beside it would miss).
+    const pad = Math.round(Math.max(b0.w * u, b0.h * v) * 0.5) + 8;
+    const [sx0, sy0] = rect(b0, pad), [, , sx1, sy1] = rect(b1, pad);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let y = sy0; y < sy1; y++) for (let x = sx0; x < sx1; x++) {
+      if (!diff((y * c.width + x) * 4)) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    const shift = (b1.x - b0.x) * u;
+    const drawnW = (maxX - minX + 1 - shift) / u, drawnH = (maxY - minY + 1) / v;
+    const slack = 4;
+    if (Number.isFinite(drawnW) && (drawnW > b0.w + slack || drawnH > b0.h + slack)) {
+      return { key, ok: false, why: `the box is smaller than what is drawn (${Math.round(b0.w)}×${Math.round(b0.h)}, drawn ${Math.round(drawnW)}×${Math.round(drawnH)}): make size() cover the whole drawing, then send ui.code again` };
+    }
+    return { key, ok: true };
+  };
+
+  // ---------------------------------------------------------------- the board (the world darker around the boxes) and the line
+  const boards = new Map                                  ();
+  const NS = 'http://www.w3.org/2000/svg';
+  let boardKey = '';
+  const paintBoards = (on         ) => {
+    if (!on) {
+      for (const s of boards.values()) s.remove();
+      boards.clear();
+      for (const c of Array.from(doc.querySelectorAll('canvas[data-studio-ui-canvas]'))) c.removeAttribute('data-studio-ui-canvas');
+      boardKey = '';
+      return;
+    }
+    const es = listed();
+    const byCanvas = new Map                            ();
+    for (const e of es) {
+      const c = e.canvas();
+      if (c) byCanvas.set(c, [...(byCanvas.get(c) ?? []), e]);
+    }
+    const shapes = [...byCanvas].map(([c, list]) => {
+      const r = c.getBoundingClientRect();
+      return { c, r, holes: list.map((e) => ({ b: boundsOf(e), round: e.round })) };
+    });
+    const sig = JSON.stringify(shapes.map((s) => [s.r.left, s.r.top, s.r.width, s.r.height, s.holes.map((h) => [Math.round(h.b.x), Math.round(h.b.y), Math.round(h.b.w), Math.round(h.b.h), h.round])]));
+    if (sig === boardKey) return;
+    boardKey = sig;
+    for (const [c, s] of boards) if (!byCanvas.has(c)) (s.remove(), boards.delete(c));
+    // The canvases the boards cover (the UI's own, and a world canvas under it) are not dimmed by the layer's filter
+    // too (editor.ts paintLayers): one darkening, the board's.
+    for (const c of Array.from(doc.querySelectorAll('canvas'))) {
+      const r = c.getBoundingClientRect();
+      const under = shapes.some((s) => r.left >= s.r.left - 1 && r.top >= s.r.top - 1 && r.right <= s.r.right + 1 && r.bottom <= s.r.bottom + 1);
+      if (under || byCanvas.has(c)) c.setAttribute('data-studio-ui-canvas', '');
+      else c.removeAttribute('data-studio-ui-canvas');
+    }
+    for (const s of shapes) {
+      let svg = boards.get(s.c);
+      if (!svg || !svg.isConnected) {
+        svg = doc.createElementNS(NS, 'svg')                 ;
+        svg.setAttribute('data-studio-ui-board', '');
+        svg.setAttribute('aria-hidden', 'true');
+        // Right after the UI's canvas, in its stacking: over the game's picture, under the HTML UI that comes later.
+        const z = win.getComputedStyle(s.c).zIndex;
+        svg.setAttribute('style', `position:fixed;pointer-events:none;margin:0;padding:0;border:0;${z && z !== 'auto' ? `z-index:${z};` : ''}`);
+        svg.appendChild(doc.createElementNS(NS, 'path'));
+        s.c.after(svg);
+        boards.set(s.c, svg);
+      }
+      const { left, top, width, height } = s.r;
+      Object.assign(svg.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.setAttribute('width', String(width));
+      svg.setAttribute('height', String(height));
+      const holes = s.holes.map(({ b, round }) => {
+        const x = b.x - left - 3, y = b.y - top - 3, w = b.w + 6, h = b.h + 6;
+        if (round) return `M${x + w / 2},${y}a${w / 2},${h / 2} 0 1,0 0.01,0z`;
+        return `M${x},${y}h${w}v${h}h${-w}z`;
+      }).join('');
+      const path = svg.firstChild                  ;
+      path.setAttribute('d', `M0,0H${width}V${height}H0z${holes}`);
+      path.setAttribute('fill-rule', 'evenodd');
+      path.setAttribute('fill', 'rgba(0,0,0,.15)');
+    }
+  };
+
+  /**
+   * The canvases that hold codeUis OVER another canvas (a HUD canvas over the 3D world) are the UI layer's, like HTML UI:
+   * marked while editing, so the editor's layer style hides them on the world (faded with the eye) and the three.js
+   * adapter leaves them alone. A codeUi in the world's own canvas (one canvas for everything) is never hidden.
+   */
+  const markOverlays = (on         ) => {
+    for (const c of Array.from(doc.querySelectorAll('canvas[data-studio-ui-layer]'))) c.removeAttribute('data-studio-ui-layer');
+    if (!on) return;
+    const all = Array.from(doc.querySelectorAll('canvas'));
+    for (const e of listed()) {
+      const c = e.canvas();
+      if (!c) continue;
+      const r = c.getBoundingClientRect();
+      const over = all.some((o) => {
+        if (o === c) return false;
+        const q = o.getBoundingClientRect();
+        return q.width * q.height > 0 && q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top;
+      });
+      if (over) c.setAttribute('data-studio-ui-layer', '');
+    }
+  };
+
+  // The line and the words while one is dragged; where it was (dotted).
+  let line                       = null;
+  const lastBounds = new Map                                                        ();
+  const startBounds = new Map                                                        ();
+  const paintLine = (keys          ) => {
+    const es = keys.map(byId).filter((e)             => !!e);
+    if (es.length !== 1) {
+      line?.remove();
+      line = null;
+      startBounds.clear();
+      return;
+    }
+    const e = es[0] ;
+    if (!startBounds.has(e.id)) startBounds.set(e.id, lastBounds.get(e.id) ?? boundsOf(e));
+    const was0 = startBounds.get(e.id) ;
+    const c = e.canvas();
+    const r = c ? c.getBoundingClientRect() : ({ left: 0, top: 0, width: win.innerWidth, height: win.innerHeight, right: win.innerWidth, bottom: win.innerHeight }           );
+    const a = e.atNow();
+    const bb = boundsOf(e);
+    if (!line || !line.isConnected) {
+      line = doc.createElementNS(NS, 'svg')                 ;
+      line.setAttribute('data-studio-ui-line', '');
+      line.setAttribute('aria-hidden', 'true');
+      line.setAttribute('style', 'position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;z-index:2147483646;overflow:visible');
+      (doc.body || doc.documentElement).appendChild(line);
+    }
+    // The point of the canvas it is measured from, and the box's point facing it.
+    const [hz, v] = a.from === 'center' ? ['m', 'm'] : a.from === 'left' ? ['l', 'm'] : a.from === 'right' ? ['r', 'm'] : a.from === 'top' ? ['m', 't'] : a.from === 'bottom' ? ['m', 'b'] : [a.from.endsWith('left') ? 'l' : 'r', a.from.startsWith('top') ? 't' : 'b'];
+    const ax = hz === 'l' ? r.left : hz === 'r' ? r.right : r.left + r.width / 2, ay = v === 't' ? r.top : v === 'b' ? r.bottom : r.top + r.height / 2;
+    const bx = hz === 'l' ? bb.x : hz === 'r' ? bb.x + bb.w : bb.x + bb.w / 2, by = v === 't' ? bb.y : v === 'b' ? bb.y + bb.h : bb.y + bb.h / 2;
+    const words = placeWords(a.from, a.at, d.lang());
+    const accent = '#ff8a3d';
+    const tw = Math.max(60, words.length * (d.lang() === 'ja' ? 12 : 6.6) + 16);
+    // Left of the box when there is room (the editor's card floats over the right of the game), else right of it; on the
+    // box's middle line, under the line's end.
+    const lx = bb.x - tw - 10 >= 4 ? bb.x - tw - 10 : Math.min(win.innerWidth - tw - 4, bb.x + bb.w + 10);
+    const ly = Math.min(win.innerHeight - 24, Math.max(4, bb.y + bb.h / 2 - 10));
+    line.innerHTML = `<rect x="${was0.x}" y="${was0.y}" width="${was0.w}" height="${was0.h}" rx="4" fill="none" stroke="${accent}" stroke-width="1.5" stroke-dasharray="5 4" opacity=".75"/>`
+      + `<line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="${accent}" stroke-width="1" stroke-dasharray="3 3"/>`
+      + `<circle cx="${ax}" cy="${ay}" r="3" fill="${accent}"/>`
+      + `<g transform="translate(${lx},${ly})"><rect width="${tw}" height="20" rx="5" fill="rgba(20,20,24,.92)" stroke="${accent}" stroke-width="1"/>`
+      + `<text x="8" y="14" font-family="system-ui,-apple-system,'Hiragino Sans',sans-serif" font-size="11" fill="#ffd2b0"></text></g>`;
+    line.querySelector('text') .textContent = words;
+    line.setAttribute('data-from', a.from);
+    line.setAttribute('data-words', words);
+  };
+
+  return {
+    port,
+    has: (key) => !!byId(key),
+    props,
+    handle(msg) {
+      switch (msg.type) {
+        case 'studio:ui/code-check': {
+          const results = msg.keys.map(check);
+          infoDirty = true;
+          d.post({ type: 'studio:ui/code-checked', id: msg.id, results });
+          return true;
+        }
+        case 'studio:ui/code-clear': {
+          const fm = (win                                      )[FILE];
+          if (fm instanceof Map) fm.delete(msg.key);
+          const e = codeUiEntries(win).find((x) => x.id === msg.key);
+          if (e) e.live = { p: [0, 0], s: 1, state: null, sample: null };
+          changed();
+          return true;
+        }
+        case 'studio:ui/set':
+        case 'studio:ui/sample':
+        case 'studio:ui/state':
+        case 'studio:ui/props-get': {
+          const key = msg.key;
+          const e = key ? byId(key) : null;
+          if (!e) {
+            // A state shown on an HTML element: one at a time, so a codeUi's goes back to normal.
+            if (msg.type === 'studio:ui/state') for (const x of listed()) if (x.live?.state) (x.live.state = null, changed());
+            return false;
+          }
+          if (msg.type === 'studio:ui/set') {
+            if (msg.name === 'text' || msg.name === 'fontSize' || msg.name === 'color' || msg.name === 'background') setLook(e, msg.name, msg.value, msg.state && STATES.includes(msg.state) ? msg.state : undefined);
+            if (!msg.quiet) postProps(e.id);
+          } else if (msg.type === 'studio:ui/sample') {
+            live(e).sample = typeof msg.text === 'string' ? msg.text.slice(0, 200) : null;
+            changed();
+            postProps(e.id);
+          } else if (msg.type === 'studio:ui/state') {
+            for (const x of listed()) if (x !== e && x.live?.state) x.live.state = null;
+            live(e).state = msg.state && STATES.includes(msg.state) ? msg.state : null;
+            changed();
+            postProps(e.id);
+          } else postProps(e.id);
+          return true;
+        }
+        default:
+          return false;
+      }
+    },
+    begin() {
+      editingNow = true;
+      for (const e of listed()) live(e);
+      markOverlays(true);
+      changed();
+      postInfo();
+    },
+    end() {
+      editingNow = false;
+      // The looks shown and the samples were for editing; the moves and the card's changes stay (the draft Play shows).
+      for (const e of codeUiEntries(win)) if (e.live) (e.live.state = null, e.live.sample = null);
+      paintBoards(false);
+      paintLine([]);
+      markOverlays(false);
+      changed();
+      if (d.core.time.frozen) drawNow();
+    },
+    frame(o) {
+      if (dirty && d.core.time.frozen) drawNow();
+      paintBoards(editingNow && o.editing && o.ui);
+      const hand = o.ui && o.editing ? o.inHand.filter((k) => !!byId(k)) : [];
+      paintLine(hand);
+      if (!hand.length) for (const e of listed()) lastBounds.set(e.id, boundsOf(e));
+      // The list for the file (from / at) once a gesture is over (not 60 times a second while dragging).
+      if (infoDirty && editingNow && !hand.length) postInfo();
+    },
+  };
+}
+
+/**
+ * The UI seat's ONE list (CONTRACT.md §1.1, 2026-10-24): the HTML UI's port and the codeUi port as one Port2D. Each key
+ * goes to the port that lists it. The order is the screen's, top first (then left first), so a canvas score at the top
+ * sits above an HTML button at the bottom — only when the game has codeUis: an HTML-only game keeps its page order.
+ */
+function mergeUiPorts(dom               , code        )         {
+  if (!dom) return code;
+  let owner = new Map                ();
+  const of = (key        ) => owner.get(key) ?? (code.get(key) ? code : dom);
+  return {
+    name: dom.name,
+    objects() {
+      const a = dom.objects(), b = code.objects();
+      owner = new Map([...b.map((o) => [o.key, code]         ), ...a.map((o) => [o.key, dom]         )]);
+      const all = [...a, ...b];
+      const top = new Map(all.map((o) => {
+        const r = (owner.get(o.key) ?? dom).bounds(o.key);
+        return [o.key, r ? [Math.round(r.y), Math.round(r.x)] : [Infinity, Infinity]]         ;
+      }));
+      return all.sort((x, y) => top.get(x.key) [0]  - top.get(y.key) [0]  || top.get(x.key) [1]  - top.get(y.key) [1] );
+    },
+    get: (key) => of(key).get(key),
+    set: (key, pose) => of(key).set(key, pose),
+    parentToScreen: (key) => of(key).parentToScreen(key),
+    bounds: (key) => of(key).bounds(key),
+    render() {
+      dom.render();
+      code.render();
+    },
+    canvas: () => null,
+    capture: async () => null,
+    silhouette: (keys) => (keys.every((k) => of(k) === code) && code.silhouette ? code.silhouette(keys) : null),
+    pause: () => dom.pause?.(),
+    resume: () => dom.resume?.(),
+  };
+}
+
+__def(__exports, "codeUiEntries", () => codeUiEntries);
+__def(__exports, "placeWords", () => placeWords);
+__def(__exports, "createCodeUi", () => createCodeUi);
+__def(__exports, "mergeUiPorts", () => mergeUiPorts);
+};
+__defs[24] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -9704,7 +10697,7 @@ __def(__exports, "SECOND_LOOK_MS", () => SECOND_LOOK_MS);
 __def(__exports, "worthASecondLook", () => worthASecondLook);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[24] = function (__exports) {
+__defs[25] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -9958,7 +10951,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[25] = function (__exports) {
+__defs[26] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -10273,7 +11266,7 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[26] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // hold.ts
 
@@ -10435,7 +11428,7 @@ __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
 };
-__defs[27] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -10463,7 +11456,7 @@ __defs[27] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
-const { canLift } = __require(26);
+const { canLift } = __require(27);
 
                                
                  
@@ -10837,7 +11830,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[28] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -11059,7 +12052,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[29] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -11112,7 +12105,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[30] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -12310,7 +13303,7 @@ __def(__exports, "unholdFromEvent", () => unholdFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[31] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -12468,7 +13461,7 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[32] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // snap.ts
 
@@ -12569,7 +13562,7 @@ __def(__exports, "stepDetent", () => stepDetent);
 __def(__exports, "freeHeld", () => freeHeld);
 __def(__exports, "firstToTouch", () => firstToTouch);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // outline-slide.ts
 
@@ -12602,7 +13595,7 @@ function slideOf(was                                                       , now
 
 __def(__exports, "slideOf", () => slideOf);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // ../shell/offset-model.ts
 
@@ -12765,7 +13758,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // code-lists.ts
 
@@ -12928,7 +13921,7 @@ __def(__exports, "kindOf", () => kindOf);
 __def(__exports, "codeAvoidsOf", () => codeAvoidsOf);
 __def(__exports, "namedByLayout", () => namedByLayout);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // code-place.ts
 
@@ -12989,8 +13982,8 @@ __defs[36] = function (__exports) {
                                                                                                                                                                               
 const { codePose, knobValues, relayCodePlace } = __require(20);
 const { nativeSetTimeout } = __require(0);
-const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(34);
-const { kindOf } = __require(35);
+const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(35);
+const { kindOf } = __require(36);
 
 const VIOLET = '#a78bfa';
 const YOU = '#ff6b1a';
@@ -13992,7 +14985,7 @@ __def(__exports, "ruleLags", () => ruleLags);
 __def(__exports, "moveWay", () => moveWay);
 __def(__exports, "createCodePlaceView", () => createCodePlaceView);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -14085,17 +15078,17 @@ __defs[37] = function (__exports) {
 const { UI } = __require(13);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { keyStep } = __require(29);
+const { keyStep } = __require(30);
                                              
                                                 
-const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(30);
+const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(31);
                                                      
-const { createRiseButtons } = __require(31);
-const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(32);
-const { canLift, offWhy } = __require(26);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(27);
-const { slideOf } = __require(33);
-const { TOOL_WAY } = __require(36);
+const { createRiseButtons } = __require(32);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(33);
+const { canLift, offWhy } = __require(27);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(28);
+const { slideOf } = __require(34);
+const { TOOL_WAY } = __require(37);
 // What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
 // still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
 const CODE_KNOB = 1;
@@ -15785,7 +16778,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -15843,7 +16836,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -16516,7 +17509,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // ui-extras.ts
 
@@ -17028,7 +18021,7 @@ function createUiExtras(deps              )           {
 __def(__exports, "hexColor", () => hexColor);
 __def(__exports, "createUiExtras", () => createUiExtras);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -17167,7 +18160,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -17220,7 +18213,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -17591,7 +18584,7 @@ __def(__exports, "legacyOffsets", () => legacyOffsets);
 __def(__exports, "libCounted", () => libCounted);
 __def(__exports, "stretchClip", () => stretchClip);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -17616,9 +18609,9 @@ __defs[44] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(41);
-const { samePose } = __require(42);
-const { compose, legacyOffsets } = __require(43);
+const { hasLayer, orderOfLayer } = __require(42);
+const { samePose } = __require(43);
+const { compose, legacyOffsets } = __require(44);
 const { motionRunner, resolveClip } = __require(20);
 
                                                                                                                                   
@@ -17807,7 +18800,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -17858,7 +18851,7 @@ __defs[45] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(44);
+const { moveInPlay } = __require(45);
                                                    
 
                                  
@@ -18016,7 +19009,7 @@ function createPlaySwitch(d                )             {
 __def(__exports, "loaderPlay", () => loaderPlay);
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // ../shell/keep-out-model.ts
 
@@ -18225,7 +19218,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // keep-out-paint.ts
 
@@ -18440,7 +19433,7 @@ __def(__exports, "nearestOn", () => nearestOn);
 __def(__exports, "boundsOf", () => boundsOf);
 __def(__exports, "clipBounds", () => clipBounds);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // keep-out.ts
 
@@ -18469,9 +19462,9 @@ __defs[48] = function (__exports) {
 // moved group draws its areas off by the group's offset.
                                                                                                         
 const { codeSpot, findByKey, knobValues } = __require(20);
-const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(46);
-const { findKnob, knobRange, knobText, unitText } = __require(36);
-const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(47);
+const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(47);
+const { findKnob, knobRange, knobText, unitText } = __require(37);
+const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(48);
 
 const YOU = '#ff6b1a';
 const VIOLET = '#a78bfa';
@@ -19231,7 +20224,7 @@ function createKeepOutView(d                 )              {
 
 __def(__exports, "createKeepOutView", () => createKeepOutView);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // code-motion.ts
 
@@ -19259,7 +20252,7 @@ __defs[49] = function (__exports) {
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
 // pick or drag what is under it — the same reason as timeline-path.ts.
                                                                                                                  
-const { findKnob, knobRange, knobText, unitText } = __require(36);
+const { findKnob, knobRange, knobText, unitText } = __require(37);
 
 const VIOLET = '#8b7cff';
 const YOU = '#ff6b1a';
@@ -19608,7 +20601,7 @@ __def(__exports, "ruleAt", () => ruleAt);
 __def(__exports, "withRuleMotions", () => withRuleMotions);
 __def(__exports, "createCodeMotionView", () => createCodeMotionView);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // seen.ts
 
@@ -19692,7 +20685,7 @@ __def(__exports, "seenEnough", () => seenEnough);
 __def(__exports, "minPickPx", () => minPickPx);
 __def(__exports, "tooSmall", () => tooSmall);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -19702,24 +20695,25 @@ __defs[51] = function (__exports) {
 const { UI } = __require(13);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { withRules } = __require(24);
-const { withEdits } = __require(25);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(27);
-const { createToolHost } = __require(28);
-const { attachInput, tappableAt } = __require(37);
+const { withRules } = __require(25);
+const { withEdits } = __require(26);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(28);
+const { createToolHost } = __require(29);
+const { attachInput, tappableAt } = __require(38);
                                                   
-const { firstToTouch, stepDetent } = __require(32);
-const { createHoldState, withHold } = __require(26);
-const { drivenBetween, WATCH_MS } = __require(38);
-const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
-const { createTimelineView } = __require(39);
-const { createUiExtras } = __require(40);
-const { loaderPlay } = __require(45);
-const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(35);
-const { createCodePlaceView } = __require(36);
-const { createKeepOutView } = __require(48);
-const { createCodeMotionView, withRuleMotions } = __require(49);
-const { seenEnough, tooSmall } = __require(50);
+const { firstToTouch, stepDetent } = __require(33);
+const { createHoldState, withHold } = __require(27);
+const { drivenBetween, WATCH_MS } = __require(39);
+const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(24);
+const { createTimelineView } = __require(40);
+const { createUiExtras } = __require(41);
+                                           
+const { loaderPlay } = __require(46);
+const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(36);
+const { createCodePlaceView } = __require(37);
+const { createKeepOutView } = __require(49);
+const { createCodeMotionView, withRuleMotions } = __require(50);
+const { seenEnough, tooSmall } = __require(51);
 
                              
                                                                                                                      
@@ -19734,6 +20728,12 @@ const { seenEnough, tooSmall } = __require(50);
                                                                                                                       
      
                   
+     
+                                                                                                                        
+                                                                                                                        
+                                                                                         
+     
+                         
                                                                                         
                      
                                                                                  
@@ -19763,6 +20763,8 @@ const { seenEnough, tooSmall } = __require(50);
                                  
                                              
                      
+                                                                                                               
+                      
                                                                                                                      
                    
      
@@ -19963,8 +20965,8 @@ function createEditor(deps            )         {
     }
     const top = '[data-studio-key]:not([data-studio-key] [data-studio-key])';
     el.textContent = layer === 'ui'
-      ? 'canvas:not([data-studio-key]){filter:brightness(.85)}'
-      : `${top}{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *{pointer-events:none!important}`;
+      ? 'canvas:not([data-studio-key]):not([data-studio-ui-canvas]){filter:brightness(.85)}'
+      : `${top},canvas[data-studio-ui-layer]{filter:opacity(${uiPeek ? '.5' : '0'})}[data-studio-key],[data-studio-key] *,canvas[data-studio-ui-layer]{pointer-events:none!important}`;
   };
 
   const frame = () => {
@@ -19980,6 +20982,8 @@ function createEditor(deps            )         {
       /* keep the loop alive; the error was reported when it first happened */
     }
     input?.frame();
+    // The UI drawn in the canvas: one frame of the game when it changed, the darker world around it, the line (code-ui.ts).
+    deps.uiCode?.frame({ ui: layer === 'ui', editing: state.editing, inHand: layer === 'ui' ? input?.inHand() ?? [] : [] });
     toolHost.frame();
     timeline.frame();
     if (layer === 'world') (keepOut.frame(), codePlace.frame(), codeMotion.frame());
@@ -19993,7 +20997,7 @@ function createEditor(deps            )         {
     post({ type: 'studio:placement/selected', key: state.selected, item, keys: state.group.slice() });
     // A UI element picked: what the card's text / colour rows show (UI stages 2–3).
     if (layer === 'ui' && state.selected && state.group.length <= 1) {
-      const p = uiExtras?.props(state.selected);
+      const p = deps.uiCode?.has(state.selected) ? deps.uiCode.props(state.selected) : uiExtras?.props(state.selected);
       if (p) post({ type: 'studio:ui/props', props: p });
     }
   };
@@ -20742,6 +21746,7 @@ function createEditor(deps            )         {
       // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
       // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
       uiExtras?.begin();
+      deps.uiCode?.begin();
       if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
@@ -20814,6 +21819,7 @@ function createEditor(deps            )         {
       state.editing = false;
       // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
       uiExtras?.end();
+      deps.uiCode?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
           a.end();
@@ -20913,6 +21919,7 @@ function createEditor(deps            )         {
       return adapter;
     },
     layer: () => layer,
+    lang: () => (lang === 'ja' ? 'ja' : 'en'),
     announce: ready,
     playLayers: () => [world, uiStack].filter((x)             => !!x).map((x) => ({ raw: x.raw, edits: x.edits })),
     settled: () => firstMoments.then(() => undefined),
@@ -21051,7 +22058,20 @@ function createEditor(deps            )         {
         case 'studio:ui/state':
         case 'studio:ui/theme-set':
         case 'studio:ui/props-get':
-          if (state.editing && uiStack) uiExtras?.handle(msg);
+          // A codeUi's key goes to its own card (code-ui.ts); the rest (and screens / theme) to the HTML UI's.
+          if (state.editing && uiStack && !deps.uiCode?.handle(msg)) uiExtras?.handle(msg);
+          dirtyFrame = true;
+          break;
+        case 'studio:ui/code-check':
+        case 'studio:ui/code-clear':
+          // The AI's ui.code / ui.set --clear: answered even with no codeUi (the check says what the game has). The check
+          // waits for the first moments to be over: while the editor watches what the game moves, time runs and the
+          // game draws by itself, so one frame drawn for the check could not be told from the game's own.
+          if (deps.uiCode && msg.type === 'studio:ui/code-check') {
+            const u = deps.uiCode;
+            void firstMoments.then(() => u.handle(msg));
+          } else if (deps.uiCode) deps.uiCode.handle(msg);
+          else if (msg.type === 'studio:ui/code-check') post({ type: 'studio:ui/code-checked', id: msg.id, results: msg.keys.map((key) => ({ key, ok: false, why: `the game has no codeUi('${key}') (it has: none) — after rewriting the drawing, the game must import codeUi from studio-placement.js` })) });
           dirtyFrame = true;
           break;
         case 'studio:core/ui-peek':
@@ -21209,7 +22229,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -21272,7 +22292,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -21351,6 +22371,8 @@ const PATHS                         = {
   uiText: 'M5.5 5h9|M10 5v10.5',
   uiButton: 'M5.5 6.5h9a2.5 2.5 0 0 1 2.5 2.5v2a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 3 11V9a2.5 2.5 0 0 1 2.5-2.5z|M7.5 10h5',
   uiImage: 'M5 4.5h10A1.5 1.5 0 0 1 16.5 6v8a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 14V6A1.5 1.5 0 0 1 5 4.5z|M3.5 13l4-4 3 3 2-2 4 4|o 12.5 8',
+  // A bar (a health bar, a timer: studio-canvas-ui, 2026-10-24): a long box, two thirds filled.
+  uiBar: 'M3 8.5h14v3H3z|M3 10h8.5|M11.5 8.5v3',
   cube: 'M10 3.5 16 6.75v6.5L10 16.5 4 13.25v-6.5L10 3.5z|M4 6.75 10 10l6-3.25|M10 10v6.5',
   // Four tiles: "the files".
   grid: 'M4.5 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M12 3.5h3.5a1 1 0 0 1 1 1V8a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V4.5a1 1 0 0 1 1-1z|M4.5 11H8a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H4.5a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z|M12 11h3.5a1 1 0 0 1 1 1v3.5a1 1 0 0 1-1 1H12a1 1 0 0 1-1-1V12a1 1 0 0 1 1-1z',
@@ -21455,7 +22477,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -21667,7 +22689,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -21806,7 +22828,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -21826,7 +22848,7 @@ __defs[56] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(53);
+const { icon } = __require(54);
 
                            
                     
@@ -22163,7 +23185,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -22198,8 +23220,8 @@ __defs[57] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(51);
-const { drivenBetween } = __require(38);
+const { createEditor } = __require(52);
+const { drivenBetween } = __require(39);
 const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
@@ -22564,7 +23586,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -22590,12 +23612,12 @@ __defs[58] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(52);
-const { icon } = __require(53);
-const { shootPage } = __require(54);
-const { createPauseHold, isPauseKey } = __require(55);
-const { CHAT_CSS, createChat } = __require(56);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(57);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(53);
+const { icon } = __require(54);
+const { shootPage } = __require(55);
+const { createPauseHold, isPauseKey } = __require(56);
+const { CHAT_CSS, createChat } = __require(57);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(58);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -23540,7 +24562,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -23595,7 +24617,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -23677,7 +24699,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -23691,15 +24713,16 @@ const { CONTRACT_VERSION, LOCAL_PATHS, isStudioMessage } = __require(13);
 const { installCore } = __require(16);
 const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
-const { findDomUi, uiAdapterFromPort } = __require(22);
-const { runSelfCheck } = __require(23);
-const { createEditor } = __require(51);
-const { startPlayAsk } = __require(58);
-const { createPlaySwitch } = __require(45);
-const { arrangeInPlay, moveInPlay } = __require(44);
+const { findDomUiPort, uiAdapterFromPort } = __require(22);
+const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(23);
+const { runSelfCheck } = __require(24);
+const { createEditor } = __require(52);
+const { startPlayAsk } = __require(59);
+const { createPlaySwitch } = __require(46);
+const { arrangeInPlay, moveInPlay } = __require(45);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(59);
-const { watchEarlyTaps } = __require(60);
+const { pickLevel } = __require(60);
+const { watchEarlyTaps } = __require(61);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -23751,6 +24774,9 @@ function startBridge(opts               )       {
   const rules              = { config: null, ext: [] };
   const pendingTools             = [];
   let editorRef                = null;
+  // studio.redraw(fn) (studio-canvas-ui, 2026-10-24): the game's own one-frame draw for its codeUis, when it does not
+  // draw from requestAnimationFrame. null = the editor runs the game's waiting frame once (core time.step()).
+  let redrawFn                      = null;
   const attached                            = [];
 
   const api               = {
@@ -23785,6 +24811,9 @@ function startBridge(opts               )       {
     },
     registerUI(port) {
       uiPorts.push({ get: typeof port === 'function' ? port : () => port, built: null });
+    },
+    redraw(fn) {
+      redrawFn = typeof fn === 'function' ? fn : null;
     },
     core,
     // Levels (2026-10-22, bridge/levels.ts): the code's levels go to the editor (once per page), and the page builds
@@ -23942,7 +24971,7 @@ function startBridge(opts               )       {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'core', 'extend', 'levels']         ) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'redraw', 'core', 'extend', 'levels']         ) prior[k] = api[k];
     api.ready = prior.ready              ;
     api.attach = prior.attach                                        ;
   }
@@ -24040,8 +25069,13 @@ function startBridge(opts               )       {
    */
   // The UI found is the built-in DOM one (not a game's registerUI port): screens, text and colours apply (ui-extras.ts).
   let uiDom = false;
+  // The UI the game draws in its canvas (codeUi, studio-canvas-ui 2026-10-24; code-ui.ts), merged into the same list.
+  let uiCode                = null;
+  // The keys the DOM UI lists (a codeUi with the same key is not listed: the HTML one stays, said once).
+  let domKeys = new Set        ();
   const findUi = (world                      )                       => {
     uiDom = false;
+    uiCode = null;
     for (const u of uiPorts) {
       try {
         if (u.built) return u.built;
@@ -24060,9 +25094,16 @@ function startBridge(opts               )       {
           return new Set        ();
         }
       };
-      const dom = findDomUi(core, win, skip);
+      const dom = findDomUiPort(win, skip);
       uiDom = !!dom;
-      return dom;
+      domKeys = new Set(dom ? dom.objects().map((o) => o.key) : []);
+      // codeUis (none = exactly as before: the DOM port alone, in its page order).
+      const code = codeUiEntries(win).length ? createCodeUi({ win, core, post, lang: () => editorRef?.lang() ?? 'en', redraw: () => redrawFn, domKeys: () => domKeys }) : null;
+      if (code && code.port.objects().length) {
+        uiCode = code;
+        return uiAdapterFromPort(mergeUiPorts(dom, code.port), core, win);
+      }
+      return dom ? uiAdapterFromPort(dom, core, win) : null;
     } catch (e) {
       console.warn('[studio] DOM UI adapter failed:', e);
       return null;
@@ -24103,7 +25144,7 @@ function startBridge(opts               )       {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
+    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, uiCode, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):
@@ -24132,7 +25173,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -24151,11 +25192,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(61);
+const { startBridge } = __require(62);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(62);
+__require(63);
 })();

@@ -12,5 +12,6 @@ Purpose: small sample games to try KUMODeck Game Studio on (and to test it). No 
 | `phaser-v3-hop/` | Phaser 3.80.1 | the Phaser an AI writes first; the adapter's Phaser 3 camera path (added 2026-10-17) |
 | `three-isles/` | three.js r186 | three levels, three landforms (Meadow: hills and a stream; Canyon: a walled valley and a chasm; Summit: a snow mountain with a switchback path): `studio.levels()` and `applyPlacement(…, { level })`, the editor's level switch (added 2026-10-22) |
 | `three-hud/` | three.js r186 | an HTML title card, Start button and score over the world, marked `data-studio-key`: the editor's UI layer (UI stage 1, added 2026-10-19) |
+| `three-canvas-hud/` | three.js r186 | a runner whose score, health bar, JUMP button and minimap are drawn in a 2D canvas over the world, kept as before the AI's `codeUi()` rewrite: the UI drawn in the canvas (studio-canvas-ui, added 2026-10-24) |
 
 Each game folder has `studio-placement.js`, the placement loader as the AI adds it to a game.

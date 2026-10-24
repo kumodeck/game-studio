@@ -548,15 +548,33 @@ export function createThreeAdapter({ scene, renderer, camera }) {
    * hides exactly what it did before.
    */
   function hideOverlays() {
+    const uiCanvases = codeUiCanvases();
     for (let el = canvas; el && el.parentElement; el = el.parentElement) {
       for (const sib of el.parentElement.children) {
         if (sib === el || sib.hasAttribute('data-studio-keep') || /^(SCRIPT|STYLE|LINK|TEMPLATE)$/.test(sib.tagName)) continue;
         if (sib.matches('[data-studio-key]') || sib.querySelector('[data-studio-key]')) continue;
+        // A canvas the game draws UI in with codeUi() (studio-canvas-ui, 2026-10-24): the editor's UI layer too
+        // (bridge/code-ui.ts), hidden on the world by the editor's layer style like the HTML UI, never here.
+        if (uiCanvases.some((c) => sib === c || sib.contains(c))) continue;
         restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
         sib.style.setProperty('visibility', 'hidden', 'important');
       }
       if (el.parentElement === document.body) break;
     }
+  }
+  /** The canvases the game's codeUi() entries draw in (the loader's list on globalThis; none = []). */
+  function codeUiCanvases() {
+    const m = globalThis[Symbol.for('game-studio.codeUis')];
+    const out = [];
+    if (m instanceof Map) for (const e of m.values()) {
+      try {
+        const c = e && typeof e.canvas === 'function' ? e.canvas() : null;
+        if (c && !out.includes(c)) out.push(c);
+      } catch (err) {
+        /* a canvas getter that fails: nothing to keep */
+      }
+    }
+    return out;
   }
   function showOverlays() {
     for (const [el, val, prio] of restoreDom.splice(0)) {

@@ -44,7 +44,10 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // 48 KB since offsets (studio-offsets, 2026-10-24: "a lamp dragged away from the road did nothing" — a rule's objects
 // shifted as a rule: the row frame of one or two rows, ranks, mirrored turns, same / zigzag / ramp, before the keep-out
 // areas); 40.9 → 46.2 KB. A game with a codePlace needs it as much as the rule itself.
-const LOADER_LIMIT = 48 * 1024;
+// 56 KB since the UI drawn in the canvas (studio-canvas-ui, 2026-10-24: "edit the UI drawn INSIDE the canvas as UI"):
+// codeUi() and its handle (box / look / value / hit / state, the 9 places it is measured from, the file's `from` / `at`
+// read at draw time); 46.8 → 54.1 KB. Every game that draws its HUD in a canvas needs all of it.
+const LOADER_LIMIT = 56 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;
