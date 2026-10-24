@@ -49,7 +49,7 @@ import { runWatch, AIW_FOR_MIN } from './ai-watch.mjs';
 import { runHook, registerEditor, unregisterEditor } from './ai-wake.mjs';
 import { recordServer, forgetServer, liveServers, stopFolder, detachEditor, markOpened } from './lifecycle.mjs';
 import { OPEN_PLACES, readOpenPlace, writeOpenPlace, hasPass, openPlace, replyLine, openLine } from './open-in.mjs';
-import { handsCommand, handsFlagValue, HANDS_FLAG_FIELDS, HANDS_FLAG_BOOLS } from './hands-cli.mjs';
+import { handsBoolValue, handsCommand, handsFlagValue, HANDS_FLAG_FIELDS, HANDS_FLAG_BOOLS } from './hands-cli.mjs';
 
 const HELP = `Usage: node studio.mjs <game folder> [options]
 
@@ -595,7 +595,11 @@ function parseArgs(argv) {
     // --do <op> and its fields (hands-cli.mjs): --key pillar-1 --name Row --to "[1,0,2]" --all …
     else if (a === '--do') out.do = argv[++i] ?? '';
     else if (a.startsWith('--') && HANDS_FLAG_FIELDS.includes(a.slice(2))) (out.doFields ||= {})[a.slice(2)] = handsFlagValue(a.slice(2), argv[++i] ?? '');
-    else if (a.startsWith('--') && HANDS_FLAG_BOOLS.includes(a.slice(2))) (out.doFields ||= {})[a.slice(2)] = true;
+    else if (a.startsWith('--') && HANDS_FLAG_BOOLS.includes(a.slice(2))) {
+      const b = handsBoolValue(argv[i + 1]);
+      (out.doFields ||= {})[a.slice(2)] = b.value;
+      if (b.used) i++;
+    }
     else if (a === '--starter') out.starter = argv[++i] || '';
     else if (a === '--starters') out.starters = true;
     else if (a === '--starters-dir') out.startersDir = path.resolve(argv[++i] || '.');

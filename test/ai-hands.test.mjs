@@ -277,3 +277,78 @@ test('CLI with the editor running: a page open → the ops happen there (the CLI
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12, §3.6).
+test('no editor open: motion.code puts a code motion on the timeline (the Library\'s { name, code } and a clip)', () => {
+  const r = apply(BASE(), [{ do: 'motion.code', code: 'spiral', name: '螺旋', key: 'pillar-1' }]);
+  assert.ok(r.results[0].ok, r.results[0].error);
+  assert.deepEqual(r.file.motions.find((m) => m.code), { name: '螺旋', code: 'spiral' });
+  assert.deepEqual(r.file.motion['pillar-1'].clips.at(-1), { use: '螺旋', when: { on: 'start' } });
+  assert.match(r.results[0].said, /put the code motion "螺旋" \(codeMotion\('spiral'\)\) on pillar-1, starts with the game/);
+  // The same code again on another object: the same Library motion (its knobs are one), not a second one with "2" after its name.
+  const r2 = apply(r.file, [{ do: 'motion.code', code: 'spiral', name: 'Spiral', key: 'pillar-6' }]);
+  assert.equal(r2.file.motions.filter((m) => m.code).length, 1);
+  assert.equal(r2.file.motion['pillar-6'].clips.at(-1).use, '螺旋');
+  // replace: the motion of points named "Row" becomes the code motion (every object keeps it).
+  const r3 = apply(BASE(), [{ do: 'motion.code', code: 'row', name: 'Row', replace: true }]);
+  assert.deepEqual(r3.file.motions, [{ name: 'Row', code: 'row' }]);
+  assert.equal(r3.file.motion['pillar-6'].clips[0].use, 'Row');
+  assert.match(r3.results[0].said, /turned "Row" into the code motion/);
+  // A name taken by a motion of points, without replace: a new name.
+  assert.equal(apply(BASE(), [{ do: 'motion.code', code: 'row', name: 'Row' }]).file.motions[1].name, 'Row 2');
+});
+
+test('no editor open: motion.set off writes the switch; knobs are refused (they are the editor\'s, or the code\'s)', () => {
+  const r = apply(BASE(), [{ do: 'motion.set', name: 'Row', key: 'pillar-1', off: true }]);
+  assert.equal(r.file.motion['pillar-1'].clips[0].off, true);
+  assert.equal(apply(r.file, [{ do: 'motion.set', name: 'Row', key: 'pillar-1', off: false }]).file.motion['pillar-1'].clips[0].off, undefined);
+  const k = applyHandsToFile(BASE(), ops([{ do: 'motion.set', name: 'Row', knobs: { radius: 3 } }]));
+  assert.match(k.results[0].error, /no editor is open: change the number in the codeMotion\(\) in the game's code directly/);
+  assert.match(readHandsInput({ do: 'motion.set', name: 'Row', off: true }).errors[0], /"off" is per object/);
+  assert.match(readHandsInput({ do: 'motion.set', name: 'Row', knobs: { 'a b': 1 } }).errors[0], /"knobs" must be/);
+  const code = apply(BASE(), [{ do: 'motion.code', code: 'row', name: 'Row', replace: true }]).file;
+  assert.match(applyHandsToFile(code, ops([{ do: 'motion.set', name: 'Row', len: 3 }])).results[0].error, /is a code motion: its length and repeat are its codeMotion\('row'\)'s/);
+});
+
+test('no editor open: place.code --replace, place.set pin / unpin, place.avoid code / box / off / remove', () => {
+  const file = { ...BASE(), objects: { 'lamp-1': { p: [1, 0, 0], was: { p: [0, 0, 0] } }, tree: { p: [2, 0, 2] } } };
+  const r = apply(file, [{ do: 'place.code', id: 'lamp-row', replace: ['lamp-1', 'lamp-2'] }]);
+  assert.deepEqual(r.file.places, { 'lamp-row': { from: ['lamp-1', 'lamp-2'] } });
+  assert.ok(!r.file.objects['lamp-1'] && r.file.objects.tree, 'the replaced object\'s move is gone with it, the rest stay');
+  assert.match(r.results[0].said, /put codePlace\('lamp-row'\) in place of lamp-1, lamp-2/);
+  // Without replace: nothing to write (the code places it), and no empty entry is left.
+  const r0 = apply(BASE(), [{ do: 'place.code', id: 'hex' }]);
+  assert.equal(r0.file.places, undefined);
+  const p = apply(BASE(), [
+    { do: 'place.set', id: 'hex', pin: { key: 'hex-3', p: [-3.1, 0.95, -19] } },
+    { do: 'place.avoid', id: 'hex', code: 'road' },
+    { do: 'place.avoid', id: 'hex', box: { p: [-8.6, 0, -17], size: [3.2, 2, 5] }, name: '箱 1' },
+    { do: 'place.avoid', id: 'hex', code: 'road', off: true },
+  ]);
+  assert.ok(p.results.every((x) => x.ok), JSON.stringify(p.results));
+  assert.deepEqual(p.file.places.hex, { pins: { 'hex-3': { p: [-3.1, 0.95, -19] } }, avoid: [{ code: 'road', off: true }, { box: { p: [-8.6, 0, -17], size: [3.2, 2, 5] }, name: '箱 1' }] });
+  assert.match(p.results[3].said, /changed the keep-out area codeAvoid\('road'\) on codePlace\('hex'\), switched off/);
+  const q = apply(p.file, [{ do: 'place.avoid', id: 'hex', remove: 'road' }, { do: 'place.avoid', id: 'hex', remove: 0 }, { do: 'place.set', id: 'hex', unpin: 'hex-3' }]);
+  assert.equal(q.file.places, undefined, 'all taken back: nothing left to write');
+  // Refusals that say what to do.
+  const bad = (op, re) => assert.match(applyHandsToFile(BASE(), ops([op])).results[0].error, re);
+  bad({ do: 'place.set', id: 'hex', pin: { key: 'lamp-3', p: [0, 0, 0] } }, /not one of codePlace\('hex'\)'s objects/);
+  bad({ do: 'place.set', id: 'hex', knobs: { gap: 4 } }, /no editor is open: change the number in codePlace\('hex'\)/);
+  bad({ do: 'place.set', id: 'hex', hand: true }, /placing by hand needs the editor open/);
+  bad({ do: 'place.avoid', id: 'hex', code: 'near-player', knobs: { r: 6 } }, /codeAvoid\('near-player'\)/);
+  bad({ do: 'place.avoid', id: 'hex', remove: 2 }, /has no keep-out area 2/);
+  assert.match(readHandsInput({ do: 'place.avoid', id: 'hex', code: 'road', box: { p: [0, 0, 0], size: [1, 1, 1] } }).errors[0], /one of them/);
+  assert.match(readHandsInput({ do: 'place.code', id: 'Lamp Row' }).errors[0], /codePlace id/);
+  assert.match(readHandsInput({ do: 'place.set', id: 'hex' }).errors[0], /needs one of "knobs", "pin", "unpin", "hand"/);
+  // list with no editor open: the layouts the file has changes for.
+  const l = applyHandsToFile(p.file, ops([{ do: 'list' }])).results[0].list;
+  assert.deepEqual(l.places.map((x) => x.id), ['hex']);
+});
+
+test('the flags of the new ops: --code, --knobs as JSON, --replace with a list, --hand false', () => {
+  assert.deepEqual(handsInput({ do: 'place.set', doFields: { id: 'hex', knobs: { gap: 4 } } }), { do: 'place.set', id: 'hex', knobs: { gap: 4 } });
+  const r = spawnSync(process.execPath, [CLI, game('flags'), '--do', 'place.code', '--id', 'lamp-row', '--replace', '["lamp-1"]'], { encoding: 'utf8', env: { ...process.env, CLAUDECODE: '1' } });
+  assert.match(r.stdout, /studio: did put codePlace\('lamp-row'\) in place of lamp-1/);
+  const r2 = spawnSync(process.execPath, [CLI, game('flags2'), '--do', 'place.set', '--id', 'hex', '--hand', 'false'], { encoding: 'utf8', env: { ...process.env, CLAUDECODE: '1' } });
+  assert.match(r2.stdout, /studio: do failed place.set - placing by hand needs the editor open/);
+});

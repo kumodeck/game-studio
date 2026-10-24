@@ -4,39 +4,42 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
 export async function applyPlacement(root, source = './placement.json', opts = {}) {
 const report = { applied: [], missing: [], unstable: [], skipped: [] };
 const three = !!(root && root.isObject3D);
-if (root && typeof root === 'object' && root.nodeType !== 9) last = { root, n: three ? 3 : 2, three };
+const isWorld = !!root && typeof root === 'object' && root.nodeType !== 9;
+if (isWorld) last = { root, n: three ? 3 : 2, three };
+const codeOnly = () => (isWorld && placeCode(root, three, null, report, opts), report);
 let data = source;
 if (typeof source === 'string') {
 try {
 const res = await fetch(source, { cache: 'no-cache' });
-if (!res.ok) return report;
+if (!res.ok) return codeOnly();
 data = await res.json();
 } catch (e) {
 warn('could not read ' + source + ' (' + e.message + ')');
-return report;
+return codeOnly();
 }
 }
 const dim = three ? '3d' : '2d';
 if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
 warn('not a placement file');
-return report;
+return codeOnly();
 }
 if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
 if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
 if (root && root.nodeType === 9) return report;
 if (data.dim !== dim) {
 warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
-return report;
+return codeOnly();
 }
 if (Array.isArray(data.levels)) {
 const level = (opts && opts.level) || levelOfCodeless(data);
 if (!level) {
 warn('this file has levels: pass { level } to applyPlacement');
-return report;
+return codeOnly();
 }
 data = placementForLevel(data, level);
 }
 const n = three ? 3 : 2;
+placeCode(root, three, data.places, report, opts);
 for (const key of Object.keys(data.objects)) {
 const e = data.objects[key];
 if (e && e.unstable) report.unstable.push(key);
@@ -96,6 +99,7 @@ const o = !lib ? null : k ? k.o : world && findByKey(world, key, !!world.isObjec
 if (!o) return false;
 if (!k) k = remember(key, o, !!world.isObject3D, []);
 clip = resolveClip({ use: name, when: { on: 'say' } }, library, key);
+if (clip && clip.code) clip.n = k.three ? 3 : 2;
 k.clips.push(clip);
 }
 ensureRun().play(key, clip, performance.now());
@@ -136,21 +140,23 @@ return ws.length ? ws : [whenOf(c)];
 export function resolveClip(c, lib, key) {
 if (!c || typeof c !== 'object') return null;
 if (typeof c.use === 'string') {
-const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && typeof (x.tracks || x.keys) === 'object');
+const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && (typeof (x.tracks || x.keys) === 'object' || typeof x.code === 'string'));
 const tr = m && m.tracks;
-return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: tr ? tr[key] || {} : m.keys, when: whenOf(c), whens: whensOf(c), until: c.until, scene: !!tr } : null;
+const off = c.off === true ? { off: true } : {};
+if (m && typeof m.code === 'string') return { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, code: m.code, knobs: m.knobs, key, repeat: 'loop', when: whenOf(c), whens: whensOf(c), until: c.until, ...off };
+return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: tr ? tr[key] || {} : m.keys, when: whenOf(c), whens: whensOf(c), until: c.until, scene: !!tr, ...off } : null;
 }
 return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c), whens: whensOf(c) } : null;
 }
 export function motionRunner(objs) {
-const list = (Array.isArray(objs) ? objs : []).filter((x) => x && Array.isArray(x.clips));
+const list = (Array.isArray(objs) ? objs : []).filter((x) => x && Array.isArray(x.clips)).map((x) => ({ ...x, clips: x.clips.filter((c) => c && !c.off) }));
 const movers = new Map();
 const held = new Map();
 let t0 = null;
 const timed = new Set();
 const inside = new Map();
 const ok = (v) => typeof v === 'number' && isFinite(v);
-const round = (c) => (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1);
+const round = (c) => (c.code ? codeRound(c) || Infinity : (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1));
 const ws = (c) => c.whens || (Array.isArray(c.when) ? c.when : c.when ? [c.when] : []);
 const hits = (c, ev, key) => ws(c).some((w) => hit(w, ev, key));
 const hit = (w, ev, key) => {
@@ -228,6 +234,7 @@ playing: () => new Map([...movers].map(([k, r]) => [k, r.clip.name])),
 };
 }
 export function clipAt(c, t) {
+if (c && typeof c === 'object' && typeof c.code === 'string') return codeAt(c, t);
 const out = { p: null, r: null, s: null, done: false };
 if (!c || typeof c !== 'object' || !c.keys || typeof c.keys !== 'object') return out;
 const len = isNum(c.len) && c.len > 0 ? c.len : 1;
@@ -390,7 +397,8 @@ const warn2 = [];
 for (const key of Object.keys(motion)) {
 const m = motion[key], o = findByKey(root, key, three);
 if (!o || !m || typeof m !== 'object') continue;
-const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library, key)).filter(Boolean) : [];
+const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library, key)).filter((c) => c && !c.off) : [];
+for (const c of clips) if (c.code) c.n = n;
 const old = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
 if (!clips.length && !old) continue;
 const k = remember(key, o, three, clips);
@@ -485,11 +493,294 @@ export function placementForLevel(data, id) {
 if (!data || !Array.isArray(data.levels)) return data;
 const l = data.levels.find((x) => x && x.id === id) || {};
 const out = { ...data, objects: l.objects || {} };
-for (const k of ['added', 'removed', 'order', 'motion', 'names']) if (l[k]) out[k] = l[k];
+for (const k of ['added', 'removed', 'order', 'motion', 'names', 'places']) if (l[k]) out[k] = l[k];
 else delete out[k];
 delete out.levels;
 delete out.levelsWas;
 return out;
+}
+const CODE_MOTIONS = Symbol.for('game-studio.codeMotions');
+const CODE_PLACES = Symbol.for('game-studio.codePlaces');
+const CODE_AVOIDS = Symbol.for('game-studio.codeAvoids');
+const codeList = (sym) => (globalThis[sym] instanceof Map ? globalThis[sym] : (globalThis[sym] = new Map()));
+const CODE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const KNOB_NAME = /^[A-Za-z][A-Za-z0-9_]{0,23}$/;
+const KNOB_UNITS = ['m', 'px', 's', 'deg', '%', 'x', 'm/s', 'px/s', ''];
+const MAX_PLACED = 200;
+const MAX_TRIES = 30;
+const warned = new Set();
+const warnOnce = (msg) => {
+if (warned.has(msg)) return;
+warned.add(msg);
+warn(msg);
+};
+const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : '');
+function knobsOf(knobs, where) {
+const out = {};
+if (!knobs || typeof knobs !== 'object') return out;
+const names = Object.keys(knobs).filter((n) => {
+const ok = KNOB_NAME.test(n) && knobs[n] && typeof knobs[n] === 'object' && isNum(knobs[n].v);
+if (!ok) warnOnce(`${where}: knob "${n}" needs a name (letters, digits, _) and a number v`);
+return ok;
+});
+if (names.length > 3) warnOnce(`${where}: at most 3 knobs (the first 3 are shown)`);
+for (const n of names.slice(0, 3)) {
+const d = knobs[n];
+out[n] = { v: d.v, label: text(d.label, 20) || n, unit: KNOB_UNITS.includes(d.unit) ? d.unit : '' };
+for (const f of ['min', 'max']) if (isNum(d[f])) out[n][f] = d[f];
+if (isNum(d.step) && d.step > 0) out[n].step = d.step;
+}
+return out;
+}
+export function knobValues(knobs, fileKnobs) {
+const k = {};
+for (const [name, d] of Object.entries(knobs || {})) {
+const f = fileKnobs && typeof fileKnobs === 'object' && fileKnobs[name] && fileKnobs[name].v;
+k[name] = isNum(f) ? f : d.v;
+}
+return k;
+}
+export function codeMotion(id, def) {
+if (typeof id !== 'string' || !CODE_ID.test(id) || !def || typeof def.at !== 'function') {
+warnOnce(`codeMotion(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and at(t, k)`);
+return null;
+}
+const m = { id, name: text(def.name, 40) || id, knobs: knobsOf(def.knobs, `codeMotion('${id}')`), round: def.round, note: text(def.note, 20), game: def.game === true, drag: def.drag, at: def.at };
+codeList(CODE_MOTIONS).set(id, m);
+return m;
+}
+export function codePlace(id, def) {
+if (typeof id !== 'string' || !CODE_ID.test(id) || !def || typeof def.make !== 'function' || typeof def.at !== 'function') {
+warnOnce(`codePlace(${JSON.stringify(id)}): needs an id (a-z, 0-9, -), make(i) and at(i, k)`);
+return null;
+}
+const was = codeList(CODE_PLACES).get(id);
+const p = { id, name: text(def.name, 40) || id, knobs: knobsOf(def.knobs, `codePlace('${id}')`), count: def.count, make: def.make, at: def.at, drag: def.drag,
+avoid: Array.isArray(def.avoid) ? def.avoid.filter((a) => typeof a === 'string' && CODE_ID.test(a)) : [], keys: [], skipped: [], objs: was ? was.objs : [] };
+codeList(CODE_PLACES).set(id, p);
+return p;
+}
+export function codeAvoid(id, def) {
+if (typeof id !== 'string' || !CODE_ID.test(id) || !def || typeof def.test !== 'function') {
+warnOnce(`codeAvoid(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and test(p, k)`);
+return null;
+}
+const a = { id, name: text(def.name, 40) || id, after: text(def.after, 20), knobs: knobsOf(def.knobs, `codeAvoid('${id}')`), test: def.test, show: def.show };
+codeList(CODE_AVOIDS).set(id, a);
+return a;
+}
+export function codeRound(c) {
+const m = c && codeList(CODE_MOTIONS).get(c.code);
+if (!m) return null;
+let r = m.round;
+try {
+if (typeof r === 'function') r = r(knobValues(m.knobs, c.knobs));
+} catch (e) {
+warnOnce(`codeMotion('${m.id}'): round failed (${e && e.message})`);
+r = null;
+}
+return isNum(r) && r > 0 ? r : null;
+}
+function vecOf(v, n, turn) {
+if (isNum(v)) return n === 3 && turn ? [0, v, 0] : n === 3 ? [v, v, v] : turn ? [v] : [v, v];
+if (!Array.isArray(v) || !v.every(isNum)) return null;
+const w = turn && n === 2 ? 1 : n;
+return v.length >= w ? v.slice(0, w) : null;
+}
+function codeAt(c, t) {
+const out = { p: null, r: null, s: null, done: false };
+const m = codeList(CODE_MOTIONS).get(c.code);
+if (!m) {
+warnOnce(`placement.json uses the code motion "${c.code}", but the game has no codeMotion('${c.code}')`);
+return out;
+}
+const u = isNum(t) ? Math.max(0, t) : 0;
+const k = known.get(c.key);
+const g = { key: c.key, obj: k ? k.o : null, dt: m.game ? Math.max(0, u - (isNum(c.last) ? c.last : u)) : 0, player: m.game ? whereIs(null) : null };
+if (m.game) c.last = u;
+let a;
+try {
+a = m.at(u, knobValues(m.knobs, c.knobs), g);
+} catch (e) {
+warnOnce(`codeMotion('${m.id}'): at failed (${e && e.message})`);
+return out;
+}
+if (!a || typeof a !== 'object') return out;
+const n = c.n === 2 ? 2 : 3;
+out.p = vecOf(a.p, n, false);
+out.r = vecOf(a.r, n, true);
+out.s = vecOf(a.s, n, false);
+return out;
+}
+function randOf(seed) {
+let h = 2166136261;
+for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+return () => {
+h = (h + 0x6d2b79f5) | 0;
+let x = Math.imul(h ^ (h >>> 15), 1 | h);
+x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+};
+}
+function playerAt(root, three, opts) {
+const o = opts && opts.player;
+if (Array.isArray(o) && o.every(isNum)) return o.slice();
+const obj = (o && o.position ? o : null) || player || findByKey(root, 'player', three);
+if (!obj || !obj.position) return null;
+return three ? [obj.position.x, obj.position.y, obj.position.z] : [obj.position.x, obj.position.y];
+}
+function inBox(q, b, n) {
+if (!b || !Array.isArray(b.p) || !Array.isArray(b.size) || !Array.isArray(q)) return false;
+if (n === 2) return Math.abs(q[0] - b.p[0]) <= b.size[0] / 2 && Math.abs(q[1] - b.p[1]) <= b.size[1] / 2;
+return Math.abs(q[0] - b.p[0]) <= b.size[0] / 2 && q[1] >= b.p[1] - 1e-9 && q[1] <= b.p[1] + b.size[1] && Math.abs(q[2] - b.p[2]) <= b.size[2] / 2;
+}
+function avoidTests(p, f, n, g) {
+const tests = [];
+const fileCodes = new Map();
+for (const a of Array.isArray(f.avoid) ? f.avoid : []) {
+if (!a || typeof a !== 'object') continue;
+if (a.box) {
+if (!a.off) tests.push((q) => inBox(q, a.box, n));
+} else if (typeof a.code === 'string') fileCodes.set(a.code, a);
+}
+for (const id of new Set([...p.avoid, ...fileCodes.keys()])) {
+const e = fileCodes.get(id);
+if (e && e.off) continue;
+const d = codeList(CODE_AVOIDS).get(id);
+if (!d) {
+warnOnce(`codePlace('${p.id}') avoids "${id}", but the game has no codeAvoid('${id}')`);
+continue;
+}
+const k = knobValues(d.knobs, e && e.knobs);
+tests.push((q) => {
+try {
+return !!d.test(q, k, g);
+} catch (err) {
+warnOnce(`codeAvoid('${id}'): test failed (${err && err.message})`);
+return false;
+}
+});
+}
+return tests;
+}
+function putCode(o, a, three) {
+const p = vecOf(a.p, three ? 3 : 2, false);
+if (p) three ? o.position.set(p[0], p[1], p[2]) : o.position.set(p[0], p[1]);
+if (a.r !== undefined) {
+if (three && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) o.rotation.set(a.r[0], a.r[1], a.r[2]);
+else if (isNum(a.r) || (Array.isArray(a.r) && isNum(a.r[0]))) {
+const r = isNum(a.r) ? a.r : a.r[0];
+if (three) o.rotation.y = r;
+else o.rotation = r;
+}
+}
+if (a.s !== undefined) {
+if (isNum(a.s) && a.s !== 0) three ? o.scale.setScalar(a.s) : o.scale.set(a.s, a.s);
+else if (Array.isArray(a.s) && a.s.every(isNum)) three ? o.scale.set(a.s[0], a.s[1], a.s[2] ?? a.s[0]) : o.scale.set(a.s[0], a.s[1]);
+}
+}
+function codePlaceAt(p, i, k, tr, level, n) {
+const g = { try: tr, rand: randOf(`${p.id}:${i}:${tr}`), level: level || null };
+let a;
+try {
+a = p.at(i, k, g);
+} catch (e) {
+warnOnce(`codePlace('${p.id}'): at failed (${e && e.message})`);
+return null;
+}
+return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
+}
+function placeCode(root, three, places, report, opts) {
+const all = codeList(CODE_PLACES);
+if (!all.size) return;
+report.places = {};
+const n = three ? 3 : 2;
+const level = (opts && opts.level) || null;
+const made = new Set();
+for (const p of all.values()) {
+for (const o of p.objs) if (o && o.parent) three ? o.parent.remove(o) : o.parent.removeChild(o);
+p.objs = [];
+p.keys = [];
+p.skipped = [];
+const f = places && typeof places === 'object' && places[p.id] && typeof places[p.id] === 'object' ? places[p.id] : {};
+const k = knobValues(p.knobs, f.knobs);
+let count = p.count;
+try {
+if (typeof count === 'function') count = count(k);
+} catch (e) {
+warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
+count = 0;
+}
+count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
+for (let i = 0; i < count; i++) {
+const key = `${p.id}-${i + 1}`;
+const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
+let at = null;
+if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
+else {
+let prev = null;
+for (let tr = 0; tr < MAX_TRIES; tr++) {
+const a = codePlaceAt(p, i, k, tr, level, n);
+if (!a) break;
+const q = vecOf(a.p, n, false);
+if (!tests.some((t) => t(q))) {
+at = a;
+break;
+}
+if (prev && prev.every((v, j) => Math.abs(v - q[j]) < 1e-9)) break;
+prev = q;
+}
+}
+if (!at && !pin) {
+p.skipped.push(key);
+continue;
+}
+let o = null;
+try {
+o = p.make(i);
+} catch (e) {
+warnOnce(`codePlace('${p.id}'): make failed (${e && e.message})`);
+}
+if (!o || !o.position) {
+p.skipped.push(key);
+continue;
+}
+if (three) {
+o.name = key;
+o.userData.studioKey = key;
+root.add(o);
+} else {
+o.label = key;
+o.studioKey = key;
+root.addChild(o);
+}
+if (at) putCode(o, at, three);
+if (pin) put(o, pin, n, three);
+p.objs.push(o);
+p.keys.push(key);
+made.add(o);
+}
+report.places[p.id] = { keys: p.keys.slice(), skipped: p.skipped.slice() };
+}
+for (const [id, f] of Object.entries(places && typeof places === 'object' ? places : {})) {
+if (!f || !Array.isArray(f.from) || !all.has(id)) continue;
+for (const key of f.from) {
+const o = typeof key === 'string' && handObject(root, key, three, made);
+if (o) o.visible = false;
+}
+}
+}
+function handObject(root, key, three, made) {
+let found = null;
+walk(root, (o) => {
+if (found) return false;
+if (made.has(o)) return 'skip';
+const mark = three ? o.userData && o.userData.studioKey : o.studioKey;
+if (mark === key || cleanName(three ? o.name : o.label) === key) found = o;
+return !found;
+});
+return found;
 }
 function applyUi(doc, ui) {
 const out = { applied: [], missing: [] };

@@ -14,21 +14,29 @@
 // Reading a file made before this (studio-timeline: each object's clips hold their own keys) turns every such clip into
 // a Library motion (adopt): a clip with the same name and the same keys as one already here is the same motion; the same
 // name with other keys becomes "Open 2". It is done for the saved copy too, so opening an old file is not a change.
-import type { LibraryMotion, Motion, MotionClip, PlacementFile } from '../contract.ts';
+import type { CodeMotionInfo, LibraryMotion, Motion, MotionClip, PlacementFile } from '../contract.ts';
+import { settledKnobs } from './code-places.ts';
 
 /**
  * A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). A scene motion
  * (studio-timeline-2: `tracks`, several objects' keys) keeps `keys` empty in the editor.
  */
-export function libOf(c: Pick<MotionClip, 'name' | 'len' | 'repeat' | 'keys'> & { tracks?: LibraryMotion['tracks']; order?: string[] }): LibraryMotion {
+export function libOf(c: Pick<MotionClip, 'name' | 'len' | 'repeat' | 'keys'> & { tracks?: LibraryMotion['tracks']; order?: string[]; code?: string; knobs?: LibraryMotion['knobs'] }): LibraryMotion {
+  // A code motion (studio-code-base, 2026-10-24): no keys of its own (the game's codeMotion() has its shape). `len` is
+  // only the timeline's width for it here (the code's round when the game page said it, else 4 s); the file has none.
+  if (c.code) return { name: c.name, len: typeof c.len === 'number' && c.len > 0 ? c.len : CODE_LEN, keys: {}, code: c.code, ...(c.knobs && Object.keys(c.knobs).length ? { knobs: structuredClone(c.knobs) } : {}) };
   // `order` (studio-ui-lead2: the rows' order) only with tracks, and only the keys that are tracks.
   const order = c.tracks && c.order ? c.order.filter((k, i, a) => k in c.tracks! && a.indexOf(k) === i) : null;
   return { name: c.name, len: c.len, ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}), keys: c.tracks ? {} : structuredClone(c.keys ?? {}),
     ...(c.tracks ? { tracks: structuredClone(c.tracks) } : {}), ...(order?.length ? { order } : {}) };
 }
 
-// The order is part of the motion (a reorder is a change to save — studio-ui-lead2).
-const sig = (m: LibraryMotion) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null, m.order ?? null]);
+/** The timeline's width for a code motion whose round the game page has not said (decision 2: "▶ watch" shows 4 s). */
+export const CODE_LEN = 4;
+
+// The order is part of the motion (a reorder is a change to save — studio-ui-lead2). A code motion is its code and the
+// knobs turned (its len is only how wide the strip is drawn).
+const sig = (m: LibraryMotion) => (m.code ? JSON.stringify(['code', m.code, m.knobs ?? null]) : JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null, m.order ?? null]));
 
 export class MotionLibrary {
   private now = new Map<string, LibraryMotion>();
@@ -116,6 +124,31 @@ export class MotionLibrary {
 
   markSaved(): void {
     this.saved = new Map([...this.now].map(([k, v]) => [k, structuredClone(v)]));
+  }
+
+  /**
+   * The game page's code motions (studio-code-base, 2026-10-24; bridge code-lists.ts): each code motion's strip is as
+   * wide as one round of it, and a knob the code has caught up with (its number is the file's v) or no longer has
+   * leaves the file — in what is saved too, so it is not counted (code-places.ts settledKnobs). true = something changed.
+   */
+  settle(list: CodeMotionInfo[]): boolean {
+    let changed = false;
+    const info = new Map(list.map((c) => [c.code, c]));
+    for (const m of [this.now, this.saved]) for (const [name, l] of m) {
+      const c = l.code ? info.get(l.code) : undefined;
+      if (!c) continue;
+      const len = c.round && c.round >= 0.1 && c.round <= 600 ? c.round : CODE_LEN;
+      const k = settledKnobs(l.knobs, c.knobs);
+      if (len === l.len && k === null) continue;
+      const next: LibraryMotion = { ...l, len };
+      if (k !== null) {
+        if (k) next.knobs = k;
+        else delete next.knobs;
+        changed = true;
+      }
+      m.set(name, next);
+    }
+    return changed;
   }
 }
 

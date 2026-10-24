@@ -23,10 +23,29 @@ import { readResultFile, writeResultFile } from './files.mjs';
 import { agentFromEnv } from './which-ai.mjs';
 
 /** The flags an op's fields come from after `--do <op>` (cli.mjs parseArgs). Booleans take no value. */
-export const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len', 'repeat', 'when', 'until', 'points', 'keys', 'ease', 'id', 'level']);
-export const HANDS_FLAG_BOOLS = Object.freeze(['all', 'replace', 'deg', 'editor']);
+export const HANDS_FLAG_FIELDS = Object.freeze(['key', 'name', 'to', 'by', 'len', 'repeat', 'when', 'until', 'points', 'keys', 'ease', 'id', 'level',
+  // Code motions and layouts (studio-code-base): --code spiral, --knobs '{"gap":4}', --pin '{"key":"hex-3","p":[…]}',
+  // --unpin hex-3, --box '{"p":[…],"size":[…]}', --remove 0 | road.
+  'code', 'knobs', 'pin', 'unpin', 'box', 'remove']);
+// A flag of these alone is true; one followed by true / false / a [list] takes it (--hand false, place.code's
+// --replace '["lamp-1","lamp-2"]': the hand-placed objects it takes the place of).
+export const HANDS_FLAG_BOOLS = Object.freeze(['all', 'replace', 'deg', 'editor', 'hand', 'off']);
 /** Fields that are always words (a key "2" stays the text "2"); the others are JSON when they read as JSON. */
-const HANDS_TEXT_FIELDS = new Set(['key', 'name', 'id', 'level', 'repeat', 'ease']);
+const HANDS_TEXT_FIELDS = new Set(['key', 'name', 'id', 'level', 'repeat', 'ease', 'code', 'unpin']);
+
+/** A true / false flag's value: the next word when it is true, false or a [list] (then `used`), else true. */
+export function handsBoolValue(next) {
+  const t = typeof next === 'string' ? next.trim() : '';
+  if (t === 'true' || t === 'false') return { value: t === 'true', used: true };
+  if (t.startsWith('[')) {
+    try {
+      return { value: JSON.parse(t), used: true };
+    } catch {
+      return { value: t, used: true };
+    }
+  }
+  return { value: true, used: false };
+}
 
 /** The value of an op flag: numbers, [lists] and {objects} as JSON, anything else (key:E, a name) as it is. */
 export function handsFlagValue(field, raw) {

@@ -37,7 +37,11 @@ const OUT_DIR = path.join(PKG, 'skills/arrange/bin');
 // several objects in one motion, started together); 23.5 → 24.9 KB (over the 24 KB line).
 // 29 KB since Play in the editor's own page for every motion (studio-no-reload, 2026-10-22): the play hook (start /
 // stop the draft's motions in the edit page, so ▶ Play never opens the game again for a clip that waits); 27.6 → 28.1 KB.
-const LOADER_LIMIT = 29 * 1024;
+// 42 KB since code motions, code layouts and keep-out areas (studio-code-base, 2026-10-24: "a motion made by maths, not
+// points — what then?" and the four user needs): codeMotion / codePlace / codeAvoid, the knobs, placing a layout with its
+// pins and keep-out areas (tries again with a seeded random, skips a row), hiding what a layout replaced; 28.7 → 39.4 KB.
+// Most of it is the layout's own rules, which no game can do without once it has a codePlace.
+const LOADER_LIMIT = 42 * 1024;
 
 const IMPORT_RE = /^import\s+([\s\S]*?)\s+from\s+['"]([^'"]+)['"];?[ \t]*$/gm;
 const DECL_RE = /^(?:export\s+)?(?:async\s+)?(?:function\*?|const|let|var|class)\s+([A-Za-z_$][\w$]*)/gm;

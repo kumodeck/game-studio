@@ -248,3 +248,61 @@ test('placement: motions and when / until', () => {
   bad({ ...file, motion: { a: { clips: [{ use: 'Hop', keys: {} }] } } }, /keys/);
   bad({ ...file, motions: [{ ...hop, when: { on: 'start' } }] }, /when/);
 });
+
+// Code motions, code layouts and keep-out areas (studio-code-base, 2026-10-24): the shapes of CONTRACT.md §4.1.
+test('placement: a code motion is a Library motion with code and knobs, no keys; clips may be off', () => {
+  const file = { ...place3d({}),
+    motions: [{ name: '螺旋', code: 'spiral', knobs: { radius: { v: 3.000004, was: 2 } } }, { name: 'Hop', len: 0.6, keys: { p: [{ t: 0, v: [0, 0, 0] }] } }],
+    motion: { 'pillar-1': { clips: [{ use: '螺旋', when: { on: 'start' } }] }, orb: { clips: [{ use: 'Hop', off: true }] } } };
+  const r = ok(file);
+  assert.deepEqual(r.value.motions[0], { name: '螺旋', code: 'spiral', knobs: { radius: { v: 3, was: 2 } } });
+  assert.equal(r.value.motion.orb.clips[0].off, true);
+  bad({ ...file, motions: [{ name: 'S', code: 'spiral', len: 2, keys: {} }] }, /a code motion has no len \/ repeat \/ keys/);
+  bad({ ...file, motions: [{ name: 'S', code: 'Spiral!' }] }, /codeMotion id/);
+  bad({ ...file, motions: [{ name: 'S', code: 'spiral', knobs: { a: { v: 1 }, b: { v: 1 }, c: { v: 1 }, d: { v: 1 } } }] }, /at most 3 knobs/);
+  bad({ ...file, motions: [{ name: 'S', code: 'spiral', knobs: { r: { v: 20000 } } }] }, /between -10000 and 10000/);
+  bad({ ...file, motions: [{ name: 'Hop', len: 1, keys: {}, knobs: { r: { v: 1 } } }] }, /knobs.*unknown field/);
+  bad({ ...file, motion: { orb: { clips: [{ use: 'Hop', off: false }] } } }, /off.*must be true/);
+});
+
+test('placement: places — knobs, pins, hand, keep-out areas (box / code / off), from; with levels too', () => {
+  const places = {
+    hex: { knobs: { gap: { v: 4, was: 6 } }, pins: { 'hex-3': { p: [-3.1, 0.95, -19] } } },
+    crystal: { avoid: [{ name: '箱 1', box: { p: [-8.6, 0, -17], size: [3.2, 2, 5] } }, { code: 'road' }, { code: 'near-player', knobs: { r: { v: 6, was: 5 } } }, { code: 'lane', off: true }] },
+    lamp: { from: ['lamp-1', 'lamp-2'] },
+    'lamp-row': { hand: true, pins: { 'lamp-row-1': { p: [1, 0, 2] }, 'lamp-row-12': { p: [1, 0, 8], r: 1.5 } } },
+    empty: {},
+  };
+  const r = ok({ ...place3d({}), places });
+  assert.equal(r.value.places.empty, undefined, 'a layout with nothing changed is not written');
+  assert.deepEqual(r.value.places.crystal.avoid.map((a) => a.code ?? a.name), ['箱 1', 'road', 'near-player', 'lane'], 'the order is kept');
+  assert.deepEqual(r.value.places.hex.pins['hex-3'].p, [-3.1, 0.95, -19]);
+  const again = ok(r.json);
+  assert.equal(again.json, r.json, 'canonical: the same bytes again');
+  // 2D boxes are [x, y] / [w, h] px.
+  ok({ ...place2d({}), places: { coins: { avoid: [{ box: { p: [100, 40], size: [64, 32] } }] } } });
+  bad({ ...place2d({}), places: { coins: { avoid: [{ box: { p: [100, 40, 0], size: [64, 32, 1] } }] } } }, /must be 2 numbers/);
+  bad({ ...place3d({}), places: { Hex: {} } }, /codePlace id/);
+  bad({ ...place3d({}), places: { hex: { pins: { 'lamp-3': { p: [0, 0, 0] } } } } }, /"hex-<number>"/);
+  bad({ ...place3d({}), places: { hex: { pins: { 'hex-3': { r: 1 } } } } }, /p: is required/);
+  bad({ ...place3d({}), places: { hex: { hand: false } } }, /hand: must be true/);
+  bad({ ...place3d({}), places: { hex: { avoid: [{ box: { p: [0, 0, 0], size: [1, 1, 1] }, code: 'road' }] } } }, /"box".*or "code"/);
+  bad({ ...place3d({}), places: { hex: { avoid: [{ code: 'road' }, { code: 'road', off: true }] } } }, /listed twice/);
+  bad({ ...place3d({}), places: { hex: { avoid: [{ code: 'road', name: 'x' }] } } }, /only a box has a name/);
+  bad({ ...place3d({}), places: { hex: { avoid: [{ box: { p: [0, 0, 0], size: [-1, 1, 1] } }] } } }, /size\[0\]/);
+  bad({ ...place3d({}), places: { hex: { avoid: Array.from({ length: 17 }, () => ({ box: { p: [0, 0, 0], size: [1, 1, 1] } })) } } }, /at most 16/);
+  bad({ ...place3d({}), places: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`p${i}`, { hand: true }])) }, /at most 64 code layouts/);
+  const many = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`hex-${i + 1}`, { p: [0, 0, 0] }]));
+  bad({ ...place3d({}), places: { hex: { pins: many } } }, /at most 500 pins/);
+  // A level's own places (like its objects); none at the top next to levels.
+  const lv = ok({ ...place3d({}), levels: [{ id: 'cave', places: { hex: { knobs: { gap: { v: 3 } } } } }] });
+  assert.equal(lv.value.levels[0].places.hex.knobs.gap.v, 3);
+  bad({ ...place3d({}), places: { hex: { hand: true } }, levels: [{ id: 'cave' }] }, /top objects must be \{\}/);
+});
+
+test('placement: a file without code motions or places keeps its bytes', () => {
+  const text = JSON.stringify({ ...place3d({ a: { p: [1, 0, 2] } }), motions: [{ name: 'Hop', len: 1, keys: { p: [{ t: 0, v: [0, 0, 0] }] } }], motion: { a: { clips: [{ use: 'Hop' }] } } });
+  const r = ok(text);
+  assert.ok(!/places|"code"|knobs|"off"/.test(r.json));
+  assert.equal(ok(r.json).json, r.json);
+});

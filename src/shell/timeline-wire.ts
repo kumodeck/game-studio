@@ -244,11 +244,16 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const atts = m.clips.map((c) => {
       const use = c.use ?? c.name;
       const l = lib().get(use);
+      // A code motion (studio-code-base, 2026-10-24): its shape is the game's codeMotion(), nothing of the clip goes back
+      // (the clip's len is only the strip's width, its keys are none).
+      if (l?.code) void 0;
       // A scene: this object's track set (a new one goes last in the rows' order — studio-ui-lead2, scene-motion.ts withTrack).
-      if (c.scene || l?.tracks) lib().set(use, withTrack(libOf({ ...c, name: use, tracks: l?.tracks ?? {}, order: l?.order }), key, c.keys));
+      else if (c.scene || l?.tracks) lib().set(use, withTrack(libOf({ ...c, name: use, tracks: l?.tracks ?? {}, order: l?.order }), key, c.keys));
       else lib().set(use, libOf({ ...c, name: use }));
       const a: MotionClip = { name: c.name, use, len: c.len, when: (c.when && typeof c.when === 'object' ? c.when : whenOf(c)) as MotionWhen, keys: {} };
       if (c.until) a.until = c.until;
+      // Switched off (studio-code-base): kept on the object.
+      if (c.off) a.off = true;
       return a;
     });
     raw().set(key, { clips: atts });
@@ -904,7 +909,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     return { name, when };
   }
   /** `key`'s motion `clipName`: when it starts / stops (the AI's motion.set). false = no such clip. */
-  function handsClipSet(key: string, clipName: string, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null }): boolean {
+  function handsClipSet(key: string, clipName: string, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null; off?: boolean }): boolean {
     const c = clipsOf(key).find((x) => x.name === clipName);
     if (!c) return false;
     editOf(key, c, (x) => {
@@ -912,15 +917,23 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (o.when !== undefined) (out.when = o.when), delete out.start;
       if (o.until === null) delete out.until;
       else if (o.until) out.until = o.until;
+      // Switched off (studio-code-base): it stays on the object and does not play.
+      if (o.off === true) out.off = true;
+      else if (o.off === false) delete out.off;
       return out;
     });
     return true;
   }
   /** A Library motion's repeat / length for every object that has it (the AI's motion.set; a new length stretches its keys). */
-  function handsLibSet(name: string, o: { repeat?: MotionRepeat; len?: number }): boolean {
+  function handsLibSet(name: string, o: { repeat?: MotionRepeat; len?: number; knobs?: LibraryMotion['knobs'] | null }): boolean {
     const l = lib().get(name);
     if (!l) return false;
     let n: LibraryMotion = { ...l };
+    // A code motion's knobs (studio-code-base): what the person / the AI turned, { v, was } (null = all back to the code's).
+    if (o.knobs !== undefined) {
+      if (o.knobs && Object.keys(o.knobs).length) n.knobs = structuredClone(o.knobs);
+      else delete n.knobs;
+    }
     if (o.repeat) n.repeat = o.repeat;
     if (o.len) {
       const s = stretchClip({ name, len: l.len, keys: l.keys } as MotionClip, o.len);

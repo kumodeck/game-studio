@@ -125,3 +125,131 @@ test('jobs run one at a time, in order; a move by an amount starts from where it
   // No `by`: "your AI" (the editor's own guess of the name).
   assert.equal(e.lines()[0], 'Your AI moved Blue pillar 6');
 });
+
+// Code motions and code layouts (studio-code-base, 2026-10-24): the editor's end of motion.code / place.* / list.
+import { PlaceStore } from '../src/shell/code-places.ts';
+import { MotionLibrary } from '../src/shell/motion-library.ts';
+import { roundLib } from '../src/shell/motion-model.ts';
+import type { CodeMotionInfo, CodePlaceInfo, PlacementPlace } from '../src/contract.ts';
+
+const HEX: CodePlaceInfo = { id: 'hex', name: '六角形の列', keys: ['hex-1', 'hex-2', 'hex-3', 'hex-4'], skipped: [], drag: 'gap', avoid: ['road'],
+  knobs: { n: { v: 4, label: '個数', unit: '', step: 1 }, gap: { v: 6, label: '間', unit: 'm', min: 2, max: 12 } } };
+const SPIRAL: CodeMotionInfo = { code: 'spiral', name: '螺旋', round: 8, knobs: { radius: { v: 2, label: '半径', unit: 'm' }, turn: { v: 4, label: '1 周', unit: 's' } } };
+
+/** The small editor above, with the game's code lists (empty until the "game" is read again) and a layout store. */
+function codeEditor(o: { listed?: boolean } = {}) {
+  const e = editor();
+  const store = new PlaceStore();
+  let listed = o.listed ?? true;
+  let reloads = 0;
+  const libSets: unknown[] = [];
+  const clipSets: unknown[] = [];
+  Object.assign(e.d, {
+    t: (k: string, v?: Record<string, string | number>) => translate('ja', k, v),
+    codeMotions: () => (listed ? [SPIRAL] : []),
+    codePlaces: () => (listed ? [HEX] : []),
+    codeAvoids: () => (listed ? [{ code: 'road', name: '道の上', knobs: {} }, { code: 'near-player', name: 'プレイヤーから', after: '以内', knobs: { r: { v: 5, label: '距離', unit: 'm' } } }] : []),
+    reloadGame: async () => {
+      reloads++;
+      listed = true;
+      return true;
+    },
+    place: (id: string) => store.get(id),
+    placeIds: () => store.ids(),
+    setPlace: (id: string, p: PlacementPlace | null) => {
+      const from = store.get(id);
+      store.set(id, p);
+      e.undo.push({ changes: [{ kind: 'code-place', key: id, from, to: store.get(id) }] });
+    },
+    libSet: (n: string, x: unknown) => (libSets.push([n, x]), true),
+    clipSet: (k: string, c: string, x: unknown) => (clipSets.push([k, c, x]), true),
+    list: () => ({ from: 'the editor', objects: [], motions: [{ name: 'Row', len: 2, repeat: 'once', on: [] }] }),
+  } satisfies Partial<HandsDeps>);
+  return { ...e, store, reloads: () => reloads, libSets, clipSets };
+}
+
+test('place.code: a game page without the layout yet is read again first; one it never has is a loud answer', async () => {
+  const e = codeEditor({ listed: false });
+  const hands = createAiHands(e.d);
+  const r = await hands.run({ id: '1', by: 'claude', ops: [{ do: 'place.code', id: 'hex' }] });
+  assert.equal(e.reloads(), 1, 'read again once, without asking the person');
+  assert.deepEqual(r.results.map((x) => [x.ok, x.said]), [[true, 'showed codePlace(\'hex\') (4 objects) in the editor — nothing to write: the code places it']]);
+  assert.deepEqual(e.lines(), ['Claude がコードの並べ方「六角形の列」を出しました（4 個 · 個数 4, 間 6 m） (no undo)']);
+  const r2 = await hands.run({ id: '2', ops: [{ do: 'place.code', id: 'lamp' }] });
+  assert.equal(r2.results[0]!.error, "the game has no codePlace('lamp') (it has: 'hex')");
+});
+
+test('place.set knobs / pin, place.avoid — one ⌘Z for the job; a knob back on the code\'s number leaves the file', async () => {
+  const e = codeEditor();
+  const hands = createAiHands(e.d);
+  const r = await hands.run({ id: '1', by: 'claude', ops: [
+    { do: 'place.set', id: 'hex', knobs: { gap: 4 } },
+    { do: 'place.set', id: 'hex', pin: { key: 'hex-3', p: [-3.1, 0.95, -19] } },
+    { do: 'place.avoid', id: 'hex', code: 'near-player', knobs: { r: 6 } },
+    { do: 'place.avoid', id: 'hex', box: { p: [-8, 0, -17], size: [3, 2, 5] } },
+    { do: 'place.avoid', id: 'hex', code: 'road', off: true },
+  ] });
+  assert.ok(r.results.every((x) => x.ok), JSON.stringify(r.results));
+  assert.deepEqual(e.store.get('hex'), {
+    knobs: { gap: { v: 4, was: 6 } }, pins: { 'hex-3': { p: [-3.1, 0.95, -19] } },
+    avoid: [{ code: 'near-player', knobs: { r: { v: 6, was: 5 } } }, { box: { p: [-8, 0, -17], size: [3, 2, 5] }, name: '箱 1' }, { code: 'road', off: true }],
+  });
+  assert.equal(e.undo.size, 1);
+  assert.equal(e.lines()[0], 'Claude が「六角形の列」を変えました: 間 4 m（ほか 4 件）');
+  // Back on the code's numbers, the road on again (it is the code's own condition): nothing left but the rest.
+  await hands.run({ id: '2', ops: [{ do: 'place.set', id: 'hex', knobs: { gap: 6 } }, { do: 'place.avoid', id: 'hex', code: 'road', off: false }, { do: 'place.avoid', id: 'hex', remove: 0 }, { do: 'place.avoid', id: 'hex', remove: 0 }, { do: 'place.set', id: 'hex', unpin: 'hex-3' }] });
+  assert.equal(e.store.get('hex'), null);
+  // Loud answers: a knob the code does not have, an object that is not the layout's.
+  const bad = await hands.run({ id: '3', ops: [{ do: 'place.set', id: 'hex', knobs: { size: 2 } }, { do: 'place.set', id: 'hex', pin: { key: 'pillar-1', p: [0, 0, 0] } }, { do: 'place.avoid', id: 'hex', code: 'lane' }] });
+  assert.deepEqual(bad.results.map((x) => x.error), [
+    `codePlace('hex') has no knob "size" (its knobs: n, gap)`,
+    `"pillar-1" is not one of codePlace('hex')'s objects (hex-1, hex-2, hex-3, hex-4)`,
+    `the game has no codeAvoid('lane') (it has: 'road', 'near-player')`,
+  ]);
+});
+
+test('motion.code: the Library gets { name, code } (one motion per code), on the object starting with the game; motion.set knobs / off', async () => {
+  const e = codeEditor();
+  const made: LibraryMotion[] = [];
+  const make = e.d.make;
+  e.d.make = (k, m, o) => (made.push(m), make(k, m, o));
+  const hands = createAiHands(e.d);
+  const r = await hands.run({ id: '1', by: 'claude', ops: [{ do: 'motion.code', code: 'spiral', name: '螺旋', key: 'pillar-1' }] });
+  assert.ok(r.results[0]!.ok, r.results[0]!.error);
+  assert.deepEqual(made[0], { name: '螺旋', len: 8, keys: {}, code: 'spiral' }, 'the strip is one round wide (8 s)');
+  assert.equal(r.results[0]!.said, 'put the code motion "螺旋" (codeMotion(\'spiral\')) on pillar-1, starts with the game');
+  assert.equal(e.lines()[0], 'Claude が Blue pillar にコードの動き「螺旋」を付けました');
+  // The same code on another object: the same motion, attached (not a second motion with a "2" after its name).
+  await hands.run({ id: '2', ops: [{ do: 'motion.code', code: 'spiral', name: 'Spiral', key: 'pillar-6' }] });
+  assert.equal(made.length, 1);
+  assert.ok(e.calls.includes('attach pillar-6 螺旋'));
+  // Knobs: { v, was = the code's }; a code it does not have says which it has.
+  const k = await hands.run({ id: '3', ops: [{ do: 'motion.set', name: '螺旋', knobs: { radius: 3 } }, { do: 'motion.set', name: '螺旋', key: 'pillar-1', off: true }, { do: 'motion.code', code: 'wave', name: '波' }] });
+  assert.deepEqual(e.libSets[0], ['螺旋', { knobs: { radius: { v: 3, was: 2 } } }]);
+  assert.deepEqual(e.clipSets.at(-1), ['pillar-1', '螺旋', { when: undefined, until: undefined, off: true }]);
+  assert.equal(k.results[2]!.error, "the game has no codeMotion('wave') (it has: 'spiral')");
+  assert.match(e.lines().at(-1)!, /「螺旋」を 半径 3 m にしました（ほか 1 件）/);
+  // list: the code motion with its knobs, the layout with its objects and keep-out areas.
+  const l = (await hands.run({ id: '4', ops: [{ do: 'list' }] })).results[0]!.list as { places: Array<{ id: string; keys: string[]; avoid: unknown[] }> };
+  assert.equal(l.places[0]!.id, 'hex');
+  assert.deepEqual(l.places[0]!.avoid, [{ code: 'road', name: '道の上', knobs: {} }]);
+});
+
+test('the shell keeps code motions and places through a save: a file with them, the same bytes again', () => {
+  const lib = new MotionLibrary();
+  lib.restore({ motions: [{ name: '螺旋', code: 'spiral', knobs: { radius: { v: 3, was: 2 } } } as unknown as LibraryMotion] });
+  assert.equal(lib.get('螺旋')!.len, 4, 'the strip\'s width before the game page said its round');
+  assert.deepEqual(lib.result((m) => roundLib(m)), [{ name: '螺旋', code: 'spiral', knobs: { radius: { v: 3, was: 2 } } }]);
+  assert.deepEqual(lib.changedNames(), []);
+  // The AI wrote 3 into the code: the knob leaves the file, and it is not a change of the person's.
+  assert.equal(lib.settle([{ ...SPIRAL, knobs: { ...SPIRAL.knobs, radius: { v: 3, label: '半径', unit: 'm' } } }]), true);
+  assert.deepEqual(lib.result((m) => roundLib(m)), [{ name: '螺旋', code: 'spiral' }]);
+  assert.deepEqual(lib.changedNames(), []);
+  assert.equal(lib.get('螺旋')!.len, 8, 'one round wide now');
+  const st = new PlaceStore();
+  st.restore({ hex: { knobs: { gap: { v: 4, was: 6 } } }, crystal: { avoid: [{ code: 'road', off: true }] } });
+  assert.deepEqual(st.changedIds(), []);
+  assert.equal(st.settle([{ ...HEX, knobs: { ...HEX.knobs, gap: { v: 4, label: '間', unit: 'm' } } }]), true);
+  assert.deepEqual(st.result(), { crystal: { avoid: [{ code: 'road', off: true }] } });
+  assert.deepEqual(st.changedIds(), []);
+});

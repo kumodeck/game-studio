@@ -1233,6 +1233,13 @@ export type BridgeToShell =
        * kind / dim / rise / fly are that layer's adapter's (the UI is 'dom-ui', '2d').
        */
       layers?: EditLayer[]; layer?: EditLayer }
+  /**
+   * The game's code motions and code layouts (studio-code-base, 2026-10-24; the loader's codeMotion() / codePlace()
+   * lists in the game's page), sent with every list of the world's objects: the shell names them, `--do motion.code` /
+   * `place.code` find them, and a knob the AI wrote into the code (the file's v = the code's v) is taken out of the file.
+   */
+  | { type: 'studio:code-motions'; list: CodeMotionInfo[] }
+  | { type: 'studio:code-places'; list: CodePlaceInfo[]; avoids: CodeAvoidInfo[] }
   | { type: 'studio:core/view-state'; state: unknown }
   /**
    * A pick from the list (or the like) is under the open timeline plate (studio-fix-0143, ⑨ B, a review of 2026-10-24):
@@ -1914,6 +1921,11 @@ export interface PlacementFile {
    * and takes the entry out. With `levels`, each level has its own and this one is absent. Absent = nothing renamed.
    */
   names?: Record<string, string>;
+  /**
+   * Optional (studio-code-base, 2026-10-24, CONTRACT.md §1.12): what the person changed of the game's code layouts
+   * (codePlace), by layout id. With `levels`, each level has its own. Absent = nothing changed (the code places them).
+   */
+  places?: Record<string, PlacementPlace>;
   /** With `levels`, only when they differ from the code: the code's level ids in the code's order (a missing one = deleted). */
   levelsWas?: string[];
 }
@@ -1939,6 +1951,8 @@ export interface PlacementLevel {
   motion?: Record<string, Motion>;
   /** Names the person gave this level's objects (Rename; see PlacementFile.names). */
   names?: Record<string, string>;
+  /** This level's changes to the code layouts (see PlacementFile.places). */
+  places?: Record<string, PlacementPlace>;
 }
 
 /**
@@ -1985,6 +1999,8 @@ export interface MotionClip {
   when?: MotionWhen | MotionWhen[] | string;
   /** When it stops (absent = never: a once clip ends on its last pose, a loop / pingpong goes on). */
   until?: MotionUntil;
+  /** Switched off on the timeline (studio-code-base, 2026-10-24): it stays on the object and does not play. */
+  off?: true;
   /**
    * The Library motion this clip is (studio-motion-triggers): its len / repeat / keys come from `motions` in the file.
    * In the file a clip with `use` has no len / repeat / keys of its own; inside the editor they are filled in from the
@@ -2046,6 +2062,80 @@ export interface LibraryMotion {
    * keys as written (the file sorts object keys, so that is alphabetical). The loader ignores it.
    */
   order?: string[];
+  /**
+   * A code motion (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4): the id of a codeMotion() in the game's code — its
+   * shape lives there. The file then has no len / repeat / keys (in the editor `len` is the strip's width, `keys` {}).
+   */
+  code?: string;
+  /** A code motion's knobs the person turned: v = now, was = the code's number (where the AI writes v on Save). */
+  knobs?: Record<string, KnobValue>;
+}
+
+/** A knob the person turned (code motions, code layouts, keep-out conditions): v now, was = the number in the code. */
+export interface KnobValue {
+  v: number;
+  was?: number;
+}
+
+/**
+ * What the person changed of one code layout (codePlace in the game's code; CONTRACT.md §1.12, §4.1 `places`). Every
+ * field optional; an entry with none is not written.
+ */
+export interface PlacementPlace {
+  knobs?: Record<string, KnobValue>;
+  /** "Just this one" put by hand, over the formula: the layout's own keys ("hex-3") → a pose. */
+  pins?: Record<string, { p: number[]; r?: number; s?: number | number[]; t?: [number, number] }>;
+  /** Placed by hand: every object is a pin (the AI writes the formula out as a list of places on Save). */
+  hand?: true;
+  /** Keep-out areas of this layout, in order: a box drawn by hand, or a codeAvoid() condition; either may be off. */
+  avoid?: PlacementAvoid[];
+  /** The hand-placed objects this layout replaced (✦ To code): hidden until the AI takes them out of the code. */
+  from?: string[];
+}
+export type PlacementAvoid =
+  | { box: { p: number[]; size: number[] }; name?: string; off?: true }
+  | { code: string; knobs?: Record<string, KnobValue>; off?: true };
+
+/**
+ * A code motion as the game page lists it (bridge `studio:code-motions`, read from the loader's codeMotion() list):
+ * its knobs with the code's numbers, its round with them (seconds; null = it never ends).
+ */
+export interface CodeMotionInfo {
+  code: string;
+  name: string;
+  knobs: Record<string, CodeKnob>;
+  round: number | null;
+  note?: string;
+  game?: boolean;
+}
+/** A code layout as the game page lists it (`studio:code-places`): the objects it put and its keep-out conditions. */
+export interface CodePlaceInfo {
+  id: string;
+  name: string;
+  keys: string[];
+  skipped: string[];
+  knobs: Record<string, CodeKnob>;
+  drag?: string | Record<string, string>;
+  /** The codeAvoid() ids it names in the code (on unless the file switches them off). */
+  avoid: string[];
+}
+/** A keep-out condition as the game page lists it (codeAvoid): its words ("From the player" … "within") and knobs. */
+export interface CodeAvoidInfo {
+  code: string;
+  name: string;
+  after?: string;
+  knobs: Record<string, CodeKnob>;
+  /** It draws its own shape on the ground (codeAvoid `show`). */
+  show?: boolean;
+}
+/** A knob as the code writes it: the code's number and how the editor shows it. */
+export interface CodeKnob {
+  v: number;
+  label: string;
+  unit: string;
+  min?: number;
+  max?: number;
+  step?: number;
 }
 
 /**

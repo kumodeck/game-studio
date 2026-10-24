@@ -85,7 +85,28 @@ export const LIMITS = Object.freeze({
   maxRounds: 1000,
   // studio-timeline-2 (2026-10-22): up to 4 ways a motion starts ("E or a click or walking in": a handful at most).
   maxWhens: 4,
+  // Code motions, code layouts and keep-out areas (studio-code-base, 2026-10-24: "sometimes a motion is made by maths,
+  // not by points — what then?", and the four user needs of the same day). A knob is a number of the code the person
+  // turns in the editor (a spiral's radius, a row's gap): 1–3 per codeMotion / codePlace / codeAvoid (the row above the
+  // timeline and the card hold three; a fourth means two motions, or points), written { v, was } only when changed.
+  // ±10,000 is far beyond a radius, a gap or a count; values round to 1e-4 (a knob may be metres, px, seconds or a %).
+  maxKnobs: 3,
+  maxKnob: 10000,
+  stepKnob: 10000,
+  // `places` (one entry per codePlace id the person changed): 64 layouts a file, 16 keep-out areas each, 500 objects put
+  // by hand ("just this one", pins) across all layouts — the same 500 as `objects`.
+  maxPlaces: 64,
+  maxAvoid: 16,
+  maxPins: 500,
 });
+
+/**
+ * The id of a codeMotion / codePlace / codeAvoid in the game's code ("spiral", "lamp-row", "near-player"): written as
+ * it is into the code and into the file, so the same shape as a cue's name. Never shown to the person.
+ */
+export const CODE_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** A knob's name in the code ("radius", "gap", "n"): an identifier the AI writes as k.radius. */
+export const KNOB_RE = /^[A-Za-z][A-Za-z0-9_]{0,23}$/;
 
 /** When a motion starts (contract MotionWhen.on). */
 export const MOTION_TRIGGERS = Object.freeze(['start', 'time', 'key', 'click', 'after', 'enter', 'touch', 'cue', 'say']);
@@ -184,7 +205,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas', 'names'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas', 'names', 'places'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -221,7 +242,7 @@ function placement(data, fail) {
   if (data.levels !== undefined) {
     const levels = readLevels(data.levels, dim, fail);
     if (levels.length) {
-      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion || out.names) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion || out.names || out.places) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
       out.levels = levels;
       // `levelsWas: []` (studio-uniforms, 2026-10-23): the code has no levels yet — the person made Level 2 in a game
       // without them. Its levels without `from` are then the game as it is (Level 1), and a copy is built from those.
@@ -345,6 +366,197 @@ function readWorld(data, dim, fail, objectsOptional = false) {
       if (Object.keys(names).length) out.names = names;
     }
   }
+  // `places` (studio-code-base, 2026-10-24): what the person changed of the game's code layouts (codePlace), per layout
+  // id. Part of a world (each level's own, like `objects`: a level's hand-placed "just this one" is that level's).
+  // Optional: absent = the same bytes as before.
+  if (data.places !== undefined) {
+    const places = readPlaces(data.places, dim, fail);
+    if (Object.keys(places).length) out.places = places;
+  }
+  return out;
+}
+
+/** A pin's key: one of the layout's own objects, "<id>-<n>" (codePlace names them so, from 1). */
+const pinKeyOf = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
+
+/**
+ * `places` (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1): { "<codePlace id>": { knobs?, pins?, hand?, avoid?,
+ * from? } }, only what the person changed — the layout itself (how many, where, the formula) is the game's code.
+ *   knobs  { gap: { v: 4, was: 6 } }: the numbers turned on the card (was = the code's number, for the AI to find)
+ *   pins   { "hex-3": { p, r?, s? } }: "just this one" put by hand (⌥ drag), over the formula
+ *   hand   true: "Place by hand" — every object is a pin (no knobs, no formula, until the AI writes it as a list)
+ *   avoid  [{ box: { p, size }, name? } | { code, knobs? }, + off?]: the layout's keep-out areas, in order
+ *   from   ["lamp-1", …]: hand-placed objects this layout replaced ("✦ To code"); hidden until the AI removes them
+ * An entry with nothing left is not written (same content, same bytes).
+ */
+function readPlaces(v, dim, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('places', 'must be an object keyed by codePlace id');
+    return out;
+  }
+  const ids = Object.keys(v);
+  if (ids.length > LIMITS.maxPlaces) fail('places', `at most ${LIMITS.maxPlaces} code layouts`);
+  let pins = 0;
+  for (const id of ids.slice(0, LIMITS.maxPlaces)) {
+    const where = `places[${JSON.stringify(id)}]`;
+    if (!CODE_ID_RE.test(id)) {
+      fail(where, 'must be a codePlace id: lower case letters, digits and -, like "lamp-row"');
+      continue;
+    }
+    const e = v[id];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from'], where, fail);
+    const o = {};
+    if (e.knobs !== undefined) {
+      const k = readKnobs(e.knobs, `${where}.knobs`, fail);
+      if (Object.keys(k).length) o.knobs = k;
+    }
+    if (e.pins !== undefined) {
+      if (!isObject(e.pins)) fail(`${where}.pins`, `must be an object keyed by the layout's object keys ("${id}-3")`);
+      else {
+        const ps = {};
+        for (const key of Object.keys(e.pins)) {
+          const w = `${where}.pins[${JSON.stringify(key)}]`;
+          if (!pinKeyOf(id, key)) {
+            fail(w, `key must be "${id}-<number>" (one of this layout's objects)`);
+            continue;
+          }
+          if (++pins > LIMITS.maxPins) {
+            fail(`${where}.pins`, `at most ${LIMITS.maxPins} pins in all layouts`);
+            break;
+          }
+          const pe = e.pins[key];
+          if (!isObject(pe)) {
+            fail(w, 'must be an object');
+            continue;
+          }
+          onlyFields(pe, ['p', 'r', 's', 't'], w, fail);
+          if (pe.p === undefined) {
+            fail(`${w}.p`, 'is required');
+            continue;
+          }
+          const pose = readPose(pe, dim, w, fail);
+          if (pose.p) ps[key] = pose;
+        }
+        if (Object.keys(ps).length) o.pins = ps;
+      }
+    }
+    if (e.hand !== undefined) {
+      if (e.hand !== true) fail(`${where}.hand`, 'must be true when present (leave it out: the code places them)');
+      else o.hand = true;
+    }
+    if (e.avoid !== undefined) {
+      const a = readAvoid(e.avoid, dim, `${where}.avoid`, fail);
+      if (a.length) o.avoid = a;
+    }
+    if (e.from !== undefined) {
+      // The hand-placed objects may have had the layout's own keys ("lamp-1" … replaced by codePlace('lamp')): the
+      // loader then hides only the ones it did not make itself.
+      const f = readOrderedKeys(e.from, `${where}.from`, fail);
+      if (f) o.from = f;
+    }
+    if (Object.keys(o).length) out[id] = o;
+  }
+  return out;
+}
+
+/** A layout's keep-out areas: a box drawn by hand or a codeAvoid condition, each maybe off. The order is kept. */
+function readAvoid(v, dim, where, fail) {
+  const list = optionalArray(v, where, LIMITS.maxAvoid, fail);
+  const out = [];
+  const codes = new Set();
+  list.forEach((a, i) => {
+    const w = `${where}[${i}]`;
+    if (!isObject(a)) return fail(w, 'must be an object');
+    onlyFields(a, ['box', 'code', 'knobs', 'off', 'name'], w, fail);
+    if ((a.box === undefined) === (a.code === undefined)) return fail(w, 'needs "box" (an area drawn by hand) or "code" (a codeAvoid id), one of them');
+    const o = {};
+    if (a.box !== undefined) {
+      if (a.knobs !== undefined) fail(`${w}.knobs`, 'only a code condition has knobs');
+      const b = readBox(a.box, dim, `${w}.box`, fail);
+      if (!b) return;
+      o.box = b;
+      if (a.name !== undefined) {
+        const nm = readLabel(a.name, `${w}.name`, fail);
+        if (nm && nm.trim()) o.name = nm.trim().slice(0, LIMITS.maxClipName);
+      }
+    } else {
+      if (typeof a.code !== 'string' || !CODE_ID_RE.test(a.code)) return fail(`${w}.code`, 'must be a codeAvoid id like "near-player"');
+      if (codes.has(a.code)) return fail(`${w}.code`, `"${a.code}" is listed twice`);
+      codes.add(a.code);
+      o.code = a.code;
+      if (a.name !== undefined) fail(`${w}.name`, 'only a box has a name here (a condition is named in its codeAvoid())');
+      if (a.knobs !== undefined) {
+        const k = readKnobs(a.knobs, `${w}.knobs`, fail);
+        if (Object.keys(k).length) o.knobs = k;
+      }
+    }
+    if (a.off !== undefined) {
+      if (a.off !== true) fail(`${w}.off`, 'must be true when present (leave it out: on)');
+      else o.off = true;
+    }
+    out.push(o);
+  });
+  return out;
+}
+
+/**
+ * A box drawn on the ground (a keep-out area): 3D `p` = the middle of its bottom (on the ground) and `size` = [width,
+ * height, depth] m; 2D `p` = its middle and `size` = [width, height] px. Rounded like a pose.
+ */
+function readBox(v, dim, where, fail) {
+  if (!isObject(v)) {
+    fail(where, 'must be { p, size }');
+    return null;
+  }
+  onlyFields(v, ['p', 'size'], where, fail);
+  const n = dim === '3d' ? 3 : 2;
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const nums = (a, lo, f) => (Array.isArray(a) && a.length === n ? a.map((x, k) => readNumber(x, lo, bound, `${where}.${f}[${k}]`, fail)) : (fail(`${where}.${f}`, `must be ${n} numbers`), null));
+  const p = nums(v.p, -bound, 'p');
+  const size = nums(v.size, 0, 'size');
+  if (!p || !size || p.some((x) => x === null) || size.some((x) => x === null)) return null;
+  return { p: p.map((x) => round(x, step)), size: size.map((x) => round(x, step)) };
+}
+
+/**
+ * Knobs the person turned (a codeMotion's, a codePlace's, a codeAvoid's): { "<name>": { v, was? } }, at most maxKnobs.
+ * v = the number now; was = the number written in the code (where the AI finds it to write v in on Save).
+ */
+function readKnobs(v, where, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail(where, 'must be an object keyed by knob name ({ "gap": { "v": 4, "was": 6 } })');
+    return out;
+  }
+  const names = Object.keys(v);
+  if (names.length > LIMITS.maxKnobs) fail(where, `at most ${LIMITS.maxKnobs} knobs`);
+  for (const name of names.slice(0, LIMITS.maxKnobs)) {
+    const w = `${where}[${JSON.stringify(name)}]`;
+    if (!KNOB_RE.test(name)) {
+      fail(w, 'name must match ' + KNOB_RE);
+      continue;
+    }
+    const e = v[name];
+    if (!isObject(e)) {
+      fail(w, 'must be { v, was }');
+      continue;
+    }
+    onlyFields(e, ['v', 'was'], w, fail);
+    const nv = readNumber(e.v, -LIMITS.maxKnob, LIMITS.maxKnob, `${w}.v`, fail);
+    if (nv === null) continue;
+    const o = { v: round(nv, LIMITS.stepKnob) };
+    if (e.was !== undefined) {
+      const was = readNumber(e.was, -LIMITS.maxKnob, LIMITS.maxKnob, `${w}.was`, fail);
+      if (was !== null) o.was = round(was, LIMITS.stepKnob);
+    }
+    out[name] = o;
+  }
   return out;
 }
 
@@ -364,7 +576,7 @@ function readLevels(v, dim, fail) {
     const where = `levels[${i}]`;
     const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
     if (!isObject(item)) return fail(where, 'must be an object');
-    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'blank', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'blank', 'objects', 'added', 'removed', 'order', 'motion', 'names', 'places'], where, fail);
     if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
     if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
     seen.add(item.id);
@@ -658,12 +870,37 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
   v.forEach((c, i) => {
     const at = `${where}[${i}]`;
     if (!isObject(c)) return fail(at, 'must be an object');
+    // A code motion (studio-code-base, 2026-10-24): a Library motion whose shape lives in the game's code
+    // (codeMotion('<code>', { knobs, at }) in the loader), so it has no len / repeat / keys here — only its name, the
+    // id it is in the code, and the knobs the person turned. Both shapes in one entry is an error, said plainly.
+    if (lib && c.code !== undefined) {
+      onlyFields(c, ['name', 'code', 'knobs', 'len', 'repeat', 'keys', 'tracks', 'order'], at, fail);
+      const o = {};
+      if (['len', 'repeat', 'keys', 'tracks', 'order'].some((f) => c[f] !== undefined)) return fail(at, 'a code motion has no len / repeat / keys / tracks (its codeMotion() in the game has them)');
+      if (!okName(c.name)) return fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+      if (names.has(c.name)) return fail(`${at}.name`, `"${c.name}" is used twice`);
+      if (typeof c.code !== 'string' || !CODE_ID_RE.test(c.code)) return fail(`${at}.code`, 'must be a codeMotion id: lower case letters, digits and -, like "spiral"');
+      names.add(c.name);
+      o.name = c.name;
+      o.code = c.code;
+      if (c.knobs !== undefined) {
+        const k = readKnobs(c.knobs, `${at}.knobs`, fail);
+        if (Object.keys(k).length) o.knobs = k;
+      }
+      out.push(o);
+      return;
+    }
     // A Library motion (studio-motion-triggers) is a clip without "when"; an object's clip that uses one has no len /
-    // repeat / keys of its own.
+    // repeat / keys of its own. `off` (studio-code-base): the clip stays on the object but does not play (the timeline's
+    // switch) — the same for a code motion and a motion of points.
     if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys', 'tracks', 'order'], at, fail);
-    else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until'], at, fail);
-    else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys'], at, fail);
+    else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until', 'off'], at, fail);
+    else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys', 'off'], at, fail);
     const o = {};
+    if (!lib && c.off !== undefined) {
+      if (c.off !== true) fail(`${at}.off`, 'must be true when present (leave it out: on)');
+      else o.off = true;
+    }
     if (c.use !== undefined && !lib) {
       if (!okName(c.use)) return fail(`${at}.use`, `must be 1 to ${LIMITS.maxClipName} characters`);
       const name = c.name === undefined ? c.use : c.name;

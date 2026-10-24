@@ -483,6 +483,31 @@ keeping only the two ways in: "we don't need them".
   to Set Up": Custom with AI… (On Collision (AI) / On Signal (AI) when a file already has one). `WHEN_TRIGGERS` in
   `timeline-panel.ts`.
 
+#### 1.9.4 Code motions (2026-10-24, studio-code-base)
+
+Asked for: "sometimes a motion is made by maths, not points — what then?", and the same day's user needs: "tune a
+formula motion by hand, but keep it a formula". A spiral, a wave, a chase is written once in the game's code with the
+loader's `codeMotion(id, { name, knobs, round, note, game, drag, at })` and put on the timeline by the AI (`--do
+motion.code`, §3.6): a **Library motion whose shape is code** — `motions: [{ name, code: id, knobs? }]`, attached like
+any motion (`{ use: name, when, until }`), so detach, delete, rename, `when` / `until` and ⌘Z work as for points.
+
+- `at(t, k, g)` answers the offsets after `t` seconds in `clipAt`'s shape (`p` added, `r` added — `[x, y, z]`, or one
+  number = the turn round the up axis —, `s` multiplying), added to the object's place like a motion of points. `k` =
+  the knobs' numbers: the file's `v` when the person turned one, else the code's. `g` = `{ key, obj, dt, player }`.
+  `game: true` = it reads the game: played frame by frame (`g.dt`), never scrubbed. `round` = seconds of one round (a
+  number or `(k) => …`; none = never ends: `until.times` never comes).
+- **Only what the file attaches plays** (`motionRunner`): a `codeMotion()` the timeline does not have does not move in
+  the game either. A clip may be switched off (`off: true`): it stays on the object and does not play.
+- **Knobs**: 1–3 per motion (`{ v, label, unit, min?, max?, step? }`; `unit` one of `m px s deg % x m/s px/s ''`). The
+  file keeps only the ones the person turned, `{ v, was }` (`was` = the code's number). On Save the AI writes `v` into
+  the code where `was` is; the editor takes a knob out of the file without a count once the game's page says the same
+  number (`MotionLibrary.settle`).
+- The loader keeps the list on `globalThis[Symbol.for('game-studio.codeMotions')]`; the bridge sends it with every
+  world list (`studio:code-motions { list: [{ code, name, knobs, round, note?, game? }] }`, `src/bridge/code-lists.ts`).
+  In the editor (stage 1) a code motion is its row and its name — the strip one round wide (4 s until the page says),
+  no points; ▶ Play plays it (the play hook runs the draft's `motions`). Its knobs on the row, the ◇ on the path and
+  "Turn into points" come in stage 2.
+
 ### 1.10 Levels (2026-10-22)
 
 Optional, added in contract 1 without changing anything else. A game with
@@ -556,6 +581,37 @@ game's code:
   the element has).
 
 ---
+
+### 1.12 Code layouts and keep-out areas (2026-10-24, studio-code-base)
+
+The same day's user needs: "objects placed by a formula or procedurally — I want to adjust them by hand, but keep them a
+formula" and "when placing procedurally, I want to say where not to place them, as coordinates or as code". The
+answers of the same day: dragging one object of a layout changes the formula's number (⌥: that one alone, stage 2); a
+keep-out area belongs to the layout it is drawn for, not to the whole level.
+
+- **Code layout**: `codePlace(id, { name, knobs, count, make, at, drag, avoid })` in the game's code. `applyPlacement()`
+  puts it in after the world is built and before the file's `objects`, **with or without a file** (it is the game's
+  own): `count` objects (≤ 200) from `make(i)`, named `<id>-<i+1>` (three: `name` + `userData.studioKey`; Pixi: `label`
+  + `studioKey`) under the root, at `at(i, k, g)` = `{ p, r?, s? }` in the root's space; `g` = `{ try, rand, level }`,
+  `rand()` seeded by id, number and try (the same places every load). A second `applyPlacement()` takes the layout's
+  earlier objects out first. `report.places = { id: { keys, skipped } }`.
+- **Keep-out conditions**: `codeAvoid(id, { name, after, knobs, test, show })`; `test(p, k, g)` true = nothing goes at
+  `p`, `g` = `{ player, level }` (the player where the level starts: `setPlayer`, `applyPlacement(…, { player })`, or a
+  `player` key). A layout's place inside any of its keep-out areas (its code's `avoid` ids unless the file switches them
+  off, the file's conditions and boxes) is tried again (`g.try` + 1, ≤ 30); a layout that gives the same place again (a
+  row) leaves that number out (`skipped`). Objects put by hand (`pins`, `hand`) are never moved by them.
+- **The file's `places`** (§4.1): only what the person changed — knobs `{ v, was }`, `pins` (that one by hand),
+  `hand: true` (all by hand), `avoid` (boxes and conditions, `off`), `from` (hand-placed objects the layout replaced:
+  the loader hides them — only objects it did not make itself — until the AI takes them out of the code). Each level
+  its own.
+- The loader's lists are on `globalThis[Symbol.for('game-studio.codePlaces')]` / `'codeAvoids'`; the bridge sends
+  `studio:code-places { list: [{ id, name, keys, skipped, knobs, drag?, avoid }], avoids: [{ code, name, after?, knobs,
+  show? }] }` with every world list and names a layout's objects by it ("Street lamps 3" for `lamp-row-3`, where the
+  adapter knew only the key). The shell keeps `places` per level (`src/shell/code-places.ts`): each layout changed is
+  one Save count and one undo change (`kind: 'code-place'`); a change makes the game read the draft again (stage 1: a
+  soft reload — stage 2 moves the objects in place); a knob the code has caught up with leaves the file without a count.
+- Stage 1 shows a layout by its name (the shelf, the card's title, `--do list`); its knobs on the card, dragging one
+  object to turn a knob, ⌥ "just this one", the purple path and the keep-out list on the ground are stages 2–3.
 
 ## 2. Messages (bridge ⇄ shell)
 
@@ -1137,13 +1193,17 @@ stdout, one line per op: `studio: did <what it did> - in the editor (on screen n
 
 | Op | Fields | Editor | No editor (placement.json) |
 |---|---|---|---|
-| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `motions`, `unstable`, `ground`; the Library's motions with `on`; the levels | The objects the file has entries for, the Library, the levels |
+| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `motions`, `unstable`, `ground`; the Library's motions with `on` (a code motion: `code`, `knobs` with `v` now and the code's, `round`, `note`, `game`, or `missing`); the code layouts (`places`: `id`, `name`, `keys`, `knobs`, `drag`, `pins`, `hand`, `avoid`, `skipped`, `from`; a layout the file changes but the game lacks: `missing`); the levels | The objects the file has entries for, the Library (code motions with `code` / `knobs`), the layouts the file has `places` for, the levels |
 | `motion.make` | `name`, `points` \| `keys`, `len` (default 2), `repeat`, `ease` (default linear for points), `key`, `when`, `until`, `replace` | A Library motion (`hands.mjs` handsMotion: points spread evenly over `len`, checked with the validator) and, with `key`, the object's clip (`timeline-wire` handsMake); one undo step | `motions` + `motion.<key>.clips` |
 | `motion.attach` | `key`, `name`, `when`, `until` | `timeline.attach` (+ when / until) | a clip `{ use, when }` |
 | `motion.detach` | `key`, `name` \| `all` | `timeline.detach` ("Remove from this object") | the clip out |
 | `motion.delete` | `name` | `timeline.deleteLib` | out of `motions` and every `motion` |
 | `motion.rename` | `name`, `to` | `timeline.renameLib` | `motions[].name`, every `use`, every `after` |
-| `motion.set` | `name`, `repeat`, `len` (stretches the keys), `key`, `when`, `until` | `handsClipSet` / `handsLibSet` | the same fields |
+| `motion.set` | `name`, `repeat`, `len` (stretches the keys), `key`, `when`, `until`, `knobs` (a code motion's: `{ "radius": 3 }`), `off` (with `key`) | `handsClipSet` / `handsLibSet`; knobs → `{ v, was = the code's }` (one back on the code's number leaves the file) | the same fields; `knobs` refused ("change the number in the codeMotion() directly"); a code motion's `len` / `repeat` refused |
+| `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | The page's code motions (`studio:code-motions`); an id it lacks → the game is read again first, still lacking → `the game has no codeMotion('wave') (it has: 'spiral')`. A Library motion `{ name, code }` (the same code already there = that motion), on `key` starting with the game; `replace` = the motion of points called `name` becomes it | `motions` `{ name, code }` + the clip |
+| `place.code` | `id`, `replace` (keys) | The page's layouts (`studio:code-places`, read again when missing: `the game has no codePlace('lamp') (it has: 'hex')`). `replace` → `places[id].from` (the hand-placed ones hidden; one undo step); without it nothing changes (the line names the layout; no ⌘Z) | `from`, and those keys out of `objects` / `added`; without `replace` nothing |
+| `place.set` | `id`, `knobs`, `pin` (`{ key, p, r?, s? }`), `unpin`, `hand` | `places[id]` (knobs `{ v, was }`, a pin of one of its objects, `hand: true` = every object's place now as pins, `false` = back to code); one undo step, the game reads the draft again | `pin` / `unpin`; `knobs` / `hand` refused (they need the game) |
+| `place.avoid` | `id`, `code` (+ `knobs`, `off`) \| `box` (+ `name`) \| `remove` (index or code id) | `places[id].avoid` (a condition the page must have: `codeAvoid`; a box named "Box n" when unnamed; one of the code's own conditions back on with nothing changed leaves no entry) | the same; `knobs` refused |
 | `object.move` / `turn` / `scale` | `key`, `to` \| `by` (`deg`) | as the card's numbers (one pose change) | `objects.<key>` (`by` needs its pose in the file) |
 | `object.rename` | `key`, `to` | Rename (F2) | `names` |
 | `object.duplicate` | `key`, `to` \| `by` | ⌘D (the game page makes the copy) | `added` |
@@ -1160,7 +1220,8 @@ loops). `motion.attach` without `when` follows the editor's attach rule. `when` 
 `after:Hop`, `cue:<name>`, `say:<words>`. `until`: `{ times }` / `{ cue }` / `times:3` / `cue:<name>` / `null`. An unknown
 op or field is an error (an AI's typo fails loudly). At most 50 ops a call. Tests: `test/ai-hands.test.mjs` (ops, the
 file, the relay, the CLI), `test/ai-hands-shell.test.ts` (the editor's runner, one undo step),
-`test/studio-ai-hands.browser.mjs` (a real editor: the card loses the motion, ⌘Z brings it back, a spiral from points).
+`test/studio-ai-hands.browser.mjs` (a real editor: the card loses the motion, ⌘Z brings it back, a spiral from points;
+`--only code`: a code layout and a code motion in Neon Run — studio-code-base, 2026-10-24).
 
 ---
 
@@ -1293,6 +1354,10 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   Since studio-timeline-2 (§1.9.2): `when` may be a list of 2–4 (any one starts it); a position key may have `in` /
   `out` (its path handles, the units of `v`; both 0 = a corner); a Library motion may have `tracks` (object key → keys,
   1–16) instead of `keys` — a scene motion, whose objects all start together.
+  Since studio-code-base (§1.9.4, 2026-10-24): a Library motion may be a **code motion** `{ name, code, knobs? }` —
+  `code` = a `codeMotion()` id (`^[a-z0-9][a-z0-9-]{0,39}$`), no `len` / `repeat` / `keys` / `tracks` (an entry with
+  both is refused), `knobs` = 1–3 `{ "<name>": { v, was? } }` (name `^[A-Za-z][A-Za-z0-9_]{0,23}$`, |v| ≤ 10,000,
+  rounded to 1e-4). A clip may have `off: true` (switched off: it stays and does not play).
 - Optional (levels, 2026-10-22, §1.10): a game with several levels.
 
   ```json
@@ -1336,6 +1401,25 @@ Validated by one module, `src/schema` (`validatePlacement`, `validateLibrary`,
   AI renames each object in the code and takes its entry out. With `levels`,
   each level has its own `names` and the top has none. Absent = nothing
   renamed (the file keeps its bytes).
+- Optional (studio-code-base, 2026-10-24, §1.12): **`places`** — what the person changed of the game's code layouts,
+  by `codePlace` id (`^[a-z0-9][a-z0-9-]{0,39}$`), ≤ 64. With `levels`, each level has its own and the top has none.
+
+  ```json
+  "places": {
+    "hex":     { "knobs": { "gap": { "v": 4, "was": 6 } }, "pins": { "hex-3": { "p": [-3.1, 0.95, -19] } } },
+    "crystal": { "avoid": [ { "name": "Box 1", "box": { "p": [-8.6, 0, -17], "size": [3.2, 2, 5] } },
+                            { "code": "road", "off": true },
+                            { "code": "near-player", "knobs": { "r": { "v": 6, "was": 5 } } } ] },
+    "lamp":    { "from": ["lamp-1", "lamp-2", "lamp-3"] }
+  }
+  ```
+
+  Every field optional; a layout with none is not written. `knobs` as a code motion's (≤ 3). `pins`: the layout's own
+  keys (`<id>-<n>`) → a pose `{ p, r?, s?, t? }` (rounded like `objects`), ≤ 500 across all layouts. `hand`: `true` only.
+  `avoid`: ≤ 16, in order; each a `box` (3D `p` = the middle of its bottom, `size` = [w, h, d] ≥ 0; 2D `p` = its
+  middle, `size` = [w, h] px; `name?` ≤ 40) or a `code` (a `codeAvoid` id, once each, `knobs?`), either with `off:
+  true`. `from`: object keys, each once (the hand-placed objects it replaced; they may have the layout's own keys).
+  Absent = nothing changed (the file keeps its bytes).
 
 ### 4.2 library.json
 

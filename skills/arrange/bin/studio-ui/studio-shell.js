@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.48 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.49 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1249,6 +1249,13 @@ const MSG_PREFIX = 'studio:';
                                                                                        
          
                                                
+     
+                                                                                                                    
+                                                                                                                       
+                                                                                                                          
+     
+                                                           
+                                                                                  
                                                       
      
                                                                                                                         
@@ -1930,6 +1937,11 @@ const RESULT_FILES                         = {
                                                                                                                      
      
                                  
+     
+                                                                                                                   
+                                                                                                                       
+     
+                                          
                                                                                                                                 
                        
  
@@ -1955,6 +1967,8 @@ const RESULT_FILES                         = {
                                   
                                                                                       
                                  
+                                                                             
+                                          
  
 
 /**
@@ -2001,6 +2015,8 @@ const RESULT_FILES                         = {
                                             
                                                                                                       
                       
+                                                                                                               
+             
      
                                                                                                                        
                                                                                                                        
@@ -2062,6 +2078,80 @@ const RESULT_FILES                         = {
                                                                                                   
      
                    
+     
+                                                                                                                        
+                                                                                                                       
+     
+                
+                                                                                                                   
+                                    
+ 
+
+/** A knob the person turned (code motions, code layouts, keep-out conditions): v now, was = the number in the code. */
+                            
+            
+               
+ 
+
+/**
+ * What the person changed of one code layout (codePlace in the game's code; CONTRACT.md §1.12, §4.1 `places`). Every
+ * field optional; an entry with none is not written.
+ */
+                                 
+                                    
+                                                                                                 
+                                                                                                  
+                                                                                                           
+              
+                                                                                                                     
+                           
+                                                                                                                  
+                  
+ 
+                            
+                                                                       
+                                                                    
+
+/**
+ * A code motion as the game page lists it (bridge `studio:code-motions`, read from the loader's codeMotion() list):
+ * its knobs with the code's numbers, its round with them (seconds; null = it never ends).
+ */
+                                 
+               
+               
+                                  
+                       
+                
+                 
+ 
+/** A code layout as the game page lists it (`studio:code-places`): the objects it put and its keep-out conditions. */
+                                
+             
+               
+                 
+                    
+                                  
+                                         
+                                                                                         
+                  
+ 
+/** A keep-out condition as the game page lists it (codeAvoid): its words ("From the player" … "within") and knobs. */
+                                
+               
+               
+                 
+                                  
+                                                                 
+                 
+ 
+/** A knob as the code writes it: the code's number and how the editor shows it. */
+                           
+            
+                
+               
+               
+               
+                
  
 
 /**
@@ -2601,7 +2691,28 @@ const LIMITS = Object.freeze({
   maxRounds: 1000,
   // studio-timeline-2 (2026-10-22): up to 4 ways a motion starts ("E or a click or walking in": a handful at most).
   maxWhens: 4,
+  // Code motions, code layouts and keep-out areas (studio-code-base, 2026-10-24: "sometimes a motion is made by maths,
+  // not by points — what then?", and the four user needs of the same day). A knob is a number of the code the person
+  // turns in the editor (a spiral's radius, a row's gap): 1–3 per codeMotion / codePlace / codeAvoid (the row above the
+  // timeline and the card hold three; a fourth means two motions, or points), written { v, was } only when changed.
+  // ±10,000 is far beyond a radius, a gap or a count; values round to 1e-4 (a knob may be metres, px, seconds or a %).
+  maxKnobs: 3,
+  maxKnob: 10000,
+  stepKnob: 10000,
+  // `places` (one entry per codePlace id the person changed): 64 layouts a file, 16 keep-out areas each, 500 objects put
+  // by hand ("just this one", pins) across all layouts — the same 500 as `objects`.
+  maxPlaces: 64,
+  maxAvoid: 16,
+  maxPins: 500,
 });
+
+/**
+ * The id of a codeMotion / codePlace / codeAvoid in the game's code ("spiral", "lamp-row", "near-player"): written as
+ * it is into the code and into the file, so the same shape as a cue's name. Never shown to the person.
+ */
+const CODE_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+/** A knob's name in the code ("radius", "gap", "n"): an identifier the AI writes as k.radius. */
+const KNOB_RE = /^[A-Za-z][A-Za-z0-9_]{0,23}$/;
 
 /** When a motion starts (contract MotionWhen.on). */
 const MOTION_TRIGGERS = Object.freeze(['start', 'time', 'key', 'click', 'after', 'enter', 'touch', 'cue', 'say']);
@@ -2700,7 +2811,7 @@ function stringify(v, indent) {
 // placement.json
 
 function placement(data, fail) {
-  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas', 'names'], '', fail);
+  onlyFields(data, ['version', 'tool', 'dim', 'space', 'objects', 'order', 'added', 'removed', 'ui', 'uiView', 'theme', 'motion', 'motions', 'levels', 'levelsWas', 'names', 'places'], '', fail);
   const dim = data.dim;
   if (dim !== '3d' && dim !== '2d') fail('dim', 'must be "3d" or "2d"');
   // "local" = positions are relative to the object's parent (what object.position means in both
@@ -2737,7 +2848,7 @@ function placement(data, fail) {
   if (data.levels !== undefined) {
     const levels = readLevels(data.levels, dim, fail);
     if (levels.length) {
-      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion || out.names) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
+      if (Object.keys(out.objects).length || out.added || out.removed || out.order || out.motion || out.names || out.places) fail('levels', 'with levels, the top objects must be {} (each level has its own)');
       out.levels = levels;
       // `levelsWas: []` (studio-uniforms, 2026-10-23): the code has no levels yet — the person made Level 2 in a game
       // without them. Its levels without `from` are then the game as it is (Level 1), and a copy is built from those.
@@ -2861,6 +2972,197 @@ function readWorld(data, dim, fail, objectsOptional = false) {
       if (Object.keys(names).length) out.names = names;
     }
   }
+  // `places` (studio-code-base, 2026-10-24): what the person changed of the game's code layouts (codePlace), per layout
+  // id. Part of a world (each level's own, like `objects`: a level's hand-placed "just this one" is that level's).
+  // Optional: absent = the same bytes as before.
+  if (data.places !== undefined) {
+    const places = readPlaces(data.places, dim, fail);
+    if (Object.keys(places).length) out.places = places;
+  }
+  return out;
+}
+
+/** A pin's key: one of the layout's own objects, "<id>-<n>" (codePlace names them so, from 1). */
+const pinKeyOf = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
+
+/**
+ * `places` (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1): { "<codePlace id>": { knobs?, pins?, hand?, avoid?,
+ * from? } }, only what the person changed — the layout itself (how many, where, the formula) is the game's code.
+ *   knobs  { gap: { v: 4, was: 6 } }: the numbers turned on the card (was = the code's number, for the AI to find)
+ *   pins   { "hex-3": { p, r?, s? } }: "just this one" put by hand (⌥ drag), over the formula
+ *   hand   true: "Place by hand" — every object is a pin (no knobs, no formula, until the AI writes it as a list)
+ *   avoid  [{ box: { p, size }, name? } | { code, knobs? }, + off?]: the layout's keep-out areas, in order
+ *   from   ["lamp-1", …]: hand-placed objects this layout replaced ("✦ To code"); hidden until the AI removes them
+ * An entry with nothing left is not written (same content, same bytes).
+ */
+function readPlaces(v, dim, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail('places', 'must be an object keyed by codePlace id');
+    return out;
+  }
+  const ids = Object.keys(v);
+  if (ids.length > LIMITS.maxPlaces) fail('places', `at most ${LIMITS.maxPlaces} code layouts`);
+  let pins = 0;
+  for (const id of ids.slice(0, LIMITS.maxPlaces)) {
+    const where = `places[${JSON.stringify(id)}]`;
+    if (!CODE_ID_RE.test(id)) {
+      fail(where, 'must be a codePlace id: lower case letters, digits and -, like "lamp-row"');
+      continue;
+    }
+    const e = v[id];
+    if (!isObject(e)) {
+      fail(where, 'must be an object');
+      continue;
+    }
+    onlyFields(e, ['knobs', 'pins', 'hand', 'avoid', 'from'], where, fail);
+    const o = {};
+    if (e.knobs !== undefined) {
+      const k = readKnobs(e.knobs, `${where}.knobs`, fail);
+      if (Object.keys(k).length) o.knobs = k;
+    }
+    if (e.pins !== undefined) {
+      if (!isObject(e.pins)) fail(`${where}.pins`, `must be an object keyed by the layout's object keys ("${id}-3")`);
+      else {
+        const ps = {};
+        for (const key of Object.keys(e.pins)) {
+          const w = `${where}.pins[${JSON.stringify(key)}]`;
+          if (!pinKeyOf(id, key)) {
+            fail(w, `key must be "${id}-<number>" (one of this layout's objects)`);
+            continue;
+          }
+          if (++pins > LIMITS.maxPins) {
+            fail(`${where}.pins`, `at most ${LIMITS.maxPins} pins in all layouts`);
+            break;
+          }
+          const pe = e.pins[key];
+          if (!isObject(pe)) {
+            fail(w, 'must be an object');
+            continue;
+          }
+          onlyFields(pe, ['p', 'r', 's', 't'], w, fail);
+          if (pe.p === undefined) {
+            fail(`${w}.p`, 'is required');
+            continue;
+          }
+          const pose = readPose(pe, dim, w, fail);
+          if (pose.p) ps[key] = pose;
+        }
+        if (Object.keys(ps).length) o.pins = ps;
+      }
+    }
+    if (e.hand !== undefined) {
+      if (e.hand !== true) fail(`${where}.hand`, 'must be true when present (leave it out: the code places them)');
+      else o.hand = true;
+    }
+    if (e.avoid !== undefined) {
+      const a = readAvoid(e.avoid, dim, `${where}.avoid`, fail);
+      if (a.length) o.avoid = a;
+    }
+    if (e.from !== undefined) {
+      // The hand-placed objects may have had the layout's own keys ("lamp-1" … replaced by codePlace('lamp')): the
+      // loader then hides only the ones it did not make itself.
+      const f = readOrderedKeys(e.from, `${where}.from`, fail);
+      if (f) o.from = f;
+    }
+    if (Object.keys(o).length) out[id] = o;
+  }
+  return out;
+}
+
+/** A layout's keep-out areas: a box drawn by hand or a codeAvoid condition, each maybe off. The order is kept. */
+function readAvoid(v, dim, where, fail) {
+  const list = optionalArray(v, where, LIMITS.maxAvoid, fail);
+  const out = [];
+  const codes = new Set();
+  list.forEach((a, i) => {
+    const w = `${where}[${i}]`;
+    if (!isObject(a)) return fail(w, 'must be an object');
+    onlyFields(a, ['box', 'code', 'knobs', 'off', 'name'], w, fail);
+    if ((a.box === undefined) === (a.code === undefined)) return fail(w, 'needs "box" (an area drawn by hand) or "code" (a codeAvoid id), one of them');
+    const o = {};
+    if (a.box !== undefined) {
+      if (a.knobs !== undefined) fail(`${w}.knobs`, 'only a code condition has knobs');
+      const b = readBox(a.box, dim, `${w}.box`, fail);
+      if (!b) return;
+      o.box = b;
+      if (a.name !== undefined) {
+        const nm = readLabel(a.name, `${w}.name`, fail);
+        if (nm && nm.trim()) o.name = nm.trim().slice(0, LIMITS.maxClipName);
+      }
+    } else {
+      if (typeof a.code !== 'string' || !CODE_ID_RE.test(a.code)) return fail(`${w}.code`, 'must be a codeAvoid id like "near-player"');
+      if (codes.has(a.code)) return fail(`${w}.code`, `"${a.code}" is listed twice`);
+      codes.add(a.code);
+      o.code = a.code;
+      if (a.name !== undefined) fail(`${w}.name`, 'only a box has a name here (a condition is named in its codeAvoid())');
+      if (a.knobs !== undefined) {
+        const k = readKnobs(a.knobs, `${w}.knobs`, fail);
+        if (Object.keys(k).length) o.knobs = k;
+      }
+    }
+    if (a.off !== undefined) {
+      if (a.off !== true) fail(`${w}.off`, 'must be true when present (leave it out: on)');
+      else o.off = true;
+    }
+    out.push(o);
+  });
+  return out;
+}
+
+/**
+ * A box drawn on the ground (a keep-out area): 3D `p` = the middle of its bottom (on the ground) and `size` = [width,
+ * height, depth] m; 2D `p` = its middle and `size` = [width, height] px. Rounded like a pose.
+ */
+function readBox(v, dim, where, fail) {
+  if (!isObject(v)) {
+    fail(where, 'must be { p, size }');
+    return null;
+  }
+  onlyFields(v, ['p', 'size'], where, fail);
+  const n = dim === '3d' ? 3 : 2;
+  const bound = dim === '3d' ? LIMITS.maxCoord3d : LIMITS.maxCoord2d;
+  const step = dim === '3d' ? LIMITS.step3d : LIMITS.step2d;
+  const nums = (a, lo, f) => (Array.isArray(a) && a.length === n ? a.map((x, k) => readNumber(x, lo, bound, `${where}.${f}[${k}]`, fail)) : (fail(`${where}.${f}`, `must be ${n} numbers`), null));
+  const p = nums(v.p, -bound, 'p');
+  const size = nums(v.size, 0, 'size');
+  if (!p || !size || p.some((x) => x === null) || size.some((x) => x === null)) return null;
+  return { p: p.map((x) => round(x, step)), size: size.map((x) => round(x, step)) };
+}
+
+/**
+ * Knobs the person turned (a codeMotion's, a codePlace's, a codeAvoid's): { "<name>": { v, was? } }, at most maxKnobs.
+ * v = the number now; was = the number written in the code (where the AI finds it to write v in on Save).
+ */
+function readKnobs(v, where, fail) {
+  const out = {};
+  if (!isObject(v)) {
+    fail(where, 'must be an object keyed by knob name ({ "gap": { "v": 4, "was": 6 } })');
+    return out;
+  }
+  const names = Object.keys(v);
+  if (names.length > LIMITS.maxKnobs) fail(where, `at most ${LIMITS.maxKnobs} knobs`);
+  for (const name of names.slice(0, LIMITS.maxKnobs)) {
+    const w = `${where}[${JSON.stringify(name)}]`;
+    if (!KNOB_RE.test(name)) {
+      fail(w, 'name must match ' + KNOB_RE);
+      continue;
+    }
+    const e = v[name];
+    if (!isObject(e)) {
+      fail(w, 'must be { v, was }');
+      continue;
+    }
+    onlyFields(e, ['v', 'was'], w, fail);
+    const nv = readNumber(e.v, -LIMITS.maxKnob, LIMITS.maxKnob, `${w}.v`, fail);
+    if (nv === null) continue;
+    const o = { v: round(nv, LIMITS.stepKnob) };
+    if (e.was !== undefined) {
+      const was = readNumber(e.was, -LIMITS.maxKnob, LIMITS.maxKnob, `${w}.was`, fail);
+      if (was !== null) o.was = round(was, LIMITS.stepKnob);
+    }
+    out[name] = o;
+  }
   return out;
 }
 
@@ -2880,7 +3182,7 @@ function readLevels(v, dim, fail) {
     const where = `levels[${i}]`;
     const lfail = (w, msg) => fail(w ? `${where}.${w}` : where, msg);
     if (!isObject(item)) return fail(where, 'must be an object');
-    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'blank', 'objects', 'added', 'removed', 'order', 'motion', 'names'], where, fail);
+    onlyFields(item, ['id', 'label', 'labelWas', 'from', 'blank', 'objects', 'added', 'removed', 'order', 'motion', 'names', 'places'], where, fail);
     if (typeof item.id !== 'string' || !KEY_RE.test(item.id)) return fail(`${where}.id`, 'must match ' + KEY_RE);
     if (seen.has(item.id)) return fail(`${where}.id`, `"${item.id}" is listed twice`);
     seen.add(item.id);
@@ -3174,12 +3476,37 @@ function readClips(v, n, bound, step, where, fail, lib = false) {
   v.forEach((c, i) => {
     const at = `${where}[${i}]`;
     if (!isObject(c)) return fail(at, 'must be an object');
+    // A code motion (studio-code-base, 2026-10-24): a Library motion whose shape lives in the game's code
+    // (codeMotion('<code>', { knobs, at }) in the loader), so it has no len / repeat / keys here — only its name, the
+    // id it is in the code, and the knobs the person turned. Both shapes in one entry is an error, said plainly.
+    if (lib && c.code !== undefined) {
+      onlyFields(c, ['name', 'code', 'knobs', 'len', 'repeat', 'keys', 'tracks', 'order'], at, fail);
+      const o = {};
+      if (['len', 'repeat', 'keys', 'tracks', 'order'].some((f) => c[f] !== undefined)) return fail(at, 'a code motion has no len / repeat / keys / tracks (its codeMotion() in the game has them)');
+      if (!okName(c.name)) return fail(`${at}.name`, `must be 1 to ${LIMITS.maxClipName} characters`);
+      if (names.has(c.name)) return fail(`${at}.name`, `"${c.name}" is used twice`);
+      if (typeof c.code !== 'string' || !CODE_ID_RE.test(c.code)) return fail(`${at}.code`, 'must be a codeMotion id: lower case letters, digits and -, like "spiral"');
+      names.add(c.name);
+      o.name = c.name;
+      o.code = c.code;
+      if (c.knobs !== undefined) {
+        const k = readKnobs(c.knobs, `${at}.knobs`, fail);
+        if (Object.keys(k).length) o.knobs = k;
+      }
+      out.push(o);
+      return;
+    }
     // A Library motion (studio-motion-triggers) is a clip without "when"; an object's clip that uses one has no len /
-    // repeat / keys of its own.
+    // repeat / keys of its own. `off` (studio-code-base): the clip stays on the object but does not play (the timeline's
+    // switch) — the same for a code motion and a motion of points.
     if (lib) onlyFields(c, ['name', 'len', 'repeat', 'keys', 'tracks', 'order'], at, fail);
-    else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until'], at, fail);
-    else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys'], at, fail);
+    else if (c.use !== undefined) onlyFields(c, ['name', 'use', 'when', 'until', 'off'], at, fail);
+    else onlyFields(c, ['name', 'len', 'repeat', 'start', 'when', 'until', 'keys', 'off'], at, fail);
     const o = {};
+    if (!lib && c.off !== undefined) {
+      if (c.off !== true) fail(`${at}.off`, 'must be true when present (leave it out: on)');
+      else o.off = true;
+    }
     if (c.use !== undefined && !lib) {
       if (!okName(c.use)) return fail(`${at}.use`, `must be 1 to ${LIMITS.maxClipName} characters`);
       const name = c.name === undefined ? c.use : c.name;
@@ -3759,6 +4086,8 @@ function utf8Length(s) {
 }
 
 __def(__exports, "LIMITS", () => LIMITS);
+__def(__exports, "CODE_ID_RE", () => CODE_ID_RE);
+__def(__exports, "KNOB_RE", () => KNOB_RE);
 __def(__exports, "MOTION_TRIGGERS", () => MOTION_TRIGGERS);
 __def(__exports, "CUE_RE", () => CUE_RE);
 __def(__exports, "MOTION_EASES", () => MOTION_EASES);
@@ -8795,6 +9124,24 @@ __defs[19] = function (__exports) {
 //   setPlayer(obj)) — all run here; touch · cue · say need the game: touch(key), cue(name), playMotion(key, name).
 // until: { times } rounds, { cue } a named cue; then 'reset' = back to its first pose. motionRunner() is the one place
 // for these rules; the editor's "Try" uses it too. report.motionWaits = the clips that wait for the game's code.
+//
+// Code motions, code layouts and keep-out areas (studio-code-base, 2026-10-24: "sometimes a motion is made by maths, not
+// by points — what then?", and the four user needs of that day: tune a procedural layout or a formula motion by hand and
+// keep it a formula; keep-out areas for a procedural layout, drawn or written as code). The AI writes the formula once in
+// the game's code, with 1–3 knobs (the numbers a person would say: a radius, a gap, a count); the editor shows it with
+// its name and lets the person turn the knobs; the file keeps only what the person changed ({ v, was }, like a pose):
+//   codeMotion('spiral', { name, knobs, round, note, game, drag, at(t, k, g) })   a Library motion whose shape is code:
+//       placement.json `motions: [{ name, code: 'spiral', knobs? }]`; it plays only where the file attaches it (a clip
+//       `{ use: name }`, `off: true` = switched off). at() answers the offsets { p, r, s } after t seconds, like clipAt.
+//   codePlace('hex', { name, knobs, count, make(i), at(i, k, g), drag, avoid })   objects the code puts: made by make(i)
+//       and named hex-1, hex-2 … by this file inside applyPlacement (after the world, before `objects`), placed at
+//       at(i, k, g) — `places.hex` in the file: knobs, pins ("just this one" by hand, over the formula), hand (all by
+//       hand), avoid (keep-out areas), from (hand-placed objects it replaced: hidden). Placed with or without a file.
+//   codeAvoid('road', { name, after, knobs, test(p, k, g), show })   a keep-out condition: a layout's place that tests
+//       true is tried again (g.try + 1, up to 30 times); a place that never gets out (a row) is left out (skipped).
+// report.places = { hex: { keys, skipped } } (a game makes physics bodies for them after applyPlacement, as for the rest).
+// The lists are on globalThis (Symbol.for('game-studio.codeMotions' / 'codePlaces' / 'codeAvoids')), so the editor's
+// copy in the same page finds what the game's copy was told.
 
 const KEY_CHARS = /[^A-Za-z0-9_:#.\-\/]/g;
 const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_').slice(0, 80) : '');
@@ -8808,41 +9155,47 @@ const cleanName = (s) => (typeof s === 'string' && s ? s.replace(KEY_CHARS, '_')
 async function applyPlacement(root, source = './placement.json', opts = {}) {
   const report = { applied: [], missing: [], unstable: [], skipped: [] };
   const three = !!(root && root.isObject3D);
+  const isWorld = !!root && typeof root === 'object' && root.nodeType !== 9;
   // The world the play hook moves (below), kept before the file is read: a game with no placement.json yet (404) still
   // plays the editor's draft motions in its edit page.
-  if (root && typeof root === 'object' && root.nodeType !== 9) last = { root, n: three ? 3 : 2, three };
+  if (isWorld) last = { root, n: three ? 3 : 2, three };
+  // The code's layouts (codePlace) are the game's own objects: put in whatever the file is — none yet, a broken one, one
+  // for another level — so a game never loses them because of placement.json (only the person's changes need the file).
+  const codeOnly = () => (isWorld && placeCode(root, three, null, report, opts), report);
   let data = source;
   if (typeof source === 'string') {
     try {
       const res = await fetch(source, { cache: 'no-cache' });
-      if (!res.ok) return report; // no file yet: nothing to apply
+      if (!res.ok) return codeOnly(); // no file yet: nothing to apply
       data = await res.json();
     } catch (e) {
       warn('could not read ' + source + ' (' + e.message + ')');
-      return report;
+      return codeOnly();
     }
   }
   const dim = three ? '3d' : '2d';
   if (!data || data.tool !== 'placement' || !data.objects || typeof data.objects !== 'object') {
     warn('not a placement file');
-    return report;
+    return codeOnly();
   }
   if (data.theme && typeof data.theme === 'object' && typeof document !== 'undefined') applyTheme(document, data.theme);
   if (data.ui && typeof data.ui === 'object' && typeof document !== 'undefined') report.ui = applyUi(document, data.ui);
   if (root && root.nodeType === 9) return report; // applyPlacement(document): the UI only
   if (data.dim !== dim) {
     warn('the file is for ' + data.dim + ' but the root is a ' + (three ? 'three.js' : 'PixiJS') + ' object');
-    return report;
+    return codeOnly();
   }
   if (Array.isArray(data.levels)) {
     const level = (opts && opts.level) || levelOfCodeless(data);
     if (!level) {
       warn('this file has levels: pass { level } to applyPlacement');
-      return report;
+      return codeOnly();
     }
     data = placementForLevel(data, level);
   }
   const n = three ? 3 : 2;
+  // After the world, before `objects`: an entry the person wrote for one of these keys wins over the formula.
+  placeCode(root, three, data.places, report, opts);
   for (const key of Object.keys(data.objects)) {
     const e = data.objects[key];
     if (e && e.unstable) report.unstable.push(key);
@@ -8929,6 +9282,7 @@ function playMotion(key, name) {
     if (!o) return false;
     if (!k) k = remember(key, o, !!world.isObject3D, []);
     clip = resolveClip({ use: name, when: { on: 'say' } }, library, key);
+    if (clip && clip.code) clip.n = k.three ? 3 : 2;
     k.clips.push(clip);
   }
   ensureRun().play(key, clip, performance.now());
@@ -8995,9 +9349,12 @@ function whensOf(c) {
 function resolveClip(c, lib, key) {
   if (!c || typeof c !== 'object') return null;
   if (typeof c.use === 'string') {
-    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && typeof (x.tracks || x.keys) === 'object');
+    const m = (Array.isArray(lib) ? lib : []).find((x) => x && x.name === c.use && (typeof (x.tracks || x.keys) === 'object' || typeof x.code === 'string'));
     const tr = m && m.tracks;
-    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: tr ? tr[key] || {} : m.keys, when: whenOf(c), whens: whensOf(c), until: c.until, scene: !!tr } : null;
+    const off = c.off === true ? { off: true } : {};
+    // A code motion (codeMotion): its shape is the code's `at`, with the file's knobs; `key` for at()'s g.key.
+    if (m && typeof m.code === 'string') return { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, code: m.code, knobs: m.knobs, key, repeat: 'loop', when: whenOf(c), whens: whensOf(c), until: c.until, ...off };
+    return m ? { name: typeof c.name === 'string' ? c.name : c.use, use: c.use, len: m.len, repeat: m.repeat, keys: tr ? tr[key] || {} : m.keys, when: whenOf(c), whens: whensOf(c), until: c.until, scene: !!tr, ...off } : null;
   }
   return typeof c.name === 'string' && c.keys && typeof c.keys === 'object' ? { ...c, when: whenOf(c), whens: whensOf(c) } : null;
 }
@@ -9017,14 +9374,16 @@ function resolveClip(c, lib, key) {
  *     `until.cue` = when that cue fires; `then: 'reset'` puts it back on its first pose, else it stays where it is.
  */
 function motionRunner(objs) {
-  const list = (Array.isArray(objs) ? objs : []).filter((x) => x && Array.isArray(x.clips));
+  // A clip switched off (`off`, studio-code-base) stays on its object and never plays.
+  const list = (Array.isArray(objs) ? objs : []).filter((x) => x && Array.isArray(x.clips)).map((x) => ({ ...x, clips: x.clips.filter((c) => c && !c.off) }));
   const movers = new Map();
   const held = new Map();
   let t0 = null;
   const timed = new Set();
   const inside = new Map();
   const ok = (v) => typeof v === 'number' && isFinite(v);
-  const round = (c) => (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1);
+  // A code motion's round is its code's (codeMotion `round`); one with none never ends, so `until.times` never comes.
+  const round = (c) => (c.code ? codeRound(c) || Infinity : (ok(c.len) && c.len > 0 ? c.len : 1) * (c.repeat === 'pingpong' ? 2 : 1));
   // A clip's ways to start (resolveClip's `whens`, studio-timeline-2; else its `when`, one or a list).
   const ws = (c) => c.whens || (Array.isArray(c.when) ? c.when : c.when ? [c.when] : []);
   const hits = (c, ev, key) => ws(c).some((w) => hit(w, ev, key));
@@ -9115,6 +9474,7 @@ function motionRunner(objs) {
  * Shared with the editor (the timeline's scrub and ▶, Play), so the editor and the game move the same way.
  */
 function clipAt(c, t) {
+  if (c && typeof c === 'object' && typeof c.code === 'string') return codeAt(c, t);
   const out = { p: null, r: null, s: null, done: false };
   if (!c || typeof c !== 'object' || !c.keys || typeof c.keys !== 'object') return out;
   const len = isNum(c.len) && c.len > 0 ? c.len : 1;
@@ -9333,7 +9693,8 @@ function runMotion(root, data, n, three, report) {
   for (const key of Object.keys(motion)) {
     const m = motion[key], o = findByKey(root, key, three);
     if (!o || !m || typeof m !== 'object') continue;
-    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library, key)).filter(Boolean) : [];
+    const clips = Array.isArray(m.clips) ? m.clips.map((c) => resolveClip(c, library, key)).filter((c) => c && !c.off) : [];
+    for (const c of clips) if (c.code) c.n = n;
     const old = !clips.length && (isNum(m.spin) || (Array.isArray(m.path) && m.path.length && m.path.every((q) => Array.isArray(q) && q.length === n && q.every(isNum))));
     if (!clips.length && !old) continue;
     // The older path / spin plays at once, as a clip of the same shape (clipAt is not its maths: a frame function).
@@ -9444,17 +9805,398 @@ function levelOfCodeless(data) {
 
 /**
  * The file as one level sees it (levels, 2026-10-22): that level's objects / added / removed / order / motion at the
- * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects). A file without levels comes back as it is; a level the file does not list has nothing to apply.
+ * top, no `levels` (`motion` is a level's own since integrate3: its keys are that level's objects; `places` too, studio-code-base). A file without levels comes back as it is; a level the file does not list has nothing to apply.
  */
 function placementForLevel(data, id) {
   if (!data || !Array.isArray(data.levels)) return data;
   const l = data.levels.find((x) => x && x.id === id) || {};
   const out = { ...data, objects: l.objects || {} };
-  for (const k of ['added', 'removed', 'order', 'motion', 'names']) if (l[k]) out[k] = l[k];
+  for (const k of ['added', 'removed', 'order', 'motion', 'names', 'places']) if (l[k]) out[k] = l[k];
   else delete out[k];
   delete out.levels;
   delete out.levelsWas;
   return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Code motions, code layouts and keep-out areas (studio-code-base, 2026-10-24; see the top of the file, CONTRACT.md
+// §1.9.4 and §1.12). WHY in the code and not in the file: a formula ("6 m apart", "round in a spiral") is the game's
+// own shape, and the person's wish was "tune it by hand, but keep it a formula". So the code keeps the formula and its
+// first numbers; the file keeps only the numbers the person turned (`knobs: { gap: { v: 4, was: 6 } }`), the objects put
+// by hand ("just this one": `pins`) and the keep-out areas — the same split as an object's place (`p` and `was`). On
+// Save the AI writes `v` into the code where `was` is (SKILL.md); until then this file plays the new numbers.
+
+const CODE_MOTIONS = Symbol.for('game-studio.codeMotions');
+const CODE_PLACES = Symbol.for('game-studio.codePlaces');
+const CODE_AVOIDS = Symbol.for('game-studio.codeAvoids');
+/** One list per page for each, shared by every copy of this file in it (the game's and the editor's). */
+const codeList = (sym) => (globalThis[sym] instanceof Map ? globalThis[sym] : (globalThis[sym] = new Map()));
+const CODE_ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const KNOB_NAME = /^[A-Za-z][A-Za-z0-9_]{0,23}$/;
+// The units the editor knows how to say (it shows "s" as seconds in the person's language, "deg" as "°", "x" as "×").
+const KNOB_UNITS = ['m', 'px', 's', 'deg', '%', 'x', 'm/s', 'px/s', ''];
+// A layout's objects at most (the file's 500 objects are shared by every layout and every hand-placed object).
+const MAX_PLACED = 200;
+// Tries for a place outside every keep-out area before that object is left out (decision 12: 30).
+const MAX_TRIES = 30;
+const warned = new Set();
+const warnOnce = (msg) => {
+  if (warned.has(msg)) return;
+  warned.add(msg);
+  warn(msg);
+};
+const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : '');
+
+/**
+ * A knob list as the code writes it — { radius: { v: 2, label: 'Radius', unit: 'm', min: 0.2, max: 6, step? } } — kept
+ * to the first 3 (the editor's row holds three; a fourth is said once) and to the shapes the editor can show.
+ */
+function knobsOf(knobs, where) {
+  const out = {};
+  if (!knobs || typeof knobs !== 'object') return out;
+  const names = Object.keys(knobs).filter((n) => {
+    const ok = KNOB_NAME.test(n) && knobs[n] && typeof knobs[n] === 'object' && isNum(knobs[n].v);
+    if (!ok) warnOnce(`${where}: knob "${n}" needs a name (letters, digits, _) and a number v`);
+    return ok;
+  });
+  if (names.length > 3) warnOnce(`${where}: at most 3 knobs (the first 3 are shown)`);
+  for (const n of names.slice(0, 3)) {
+    const d = knobs[n];
+    out[n] = { v: d.v, label: text(d.label, 20) || n, unit: KNOB_UNITS.includes(d.unit) ? d.unit : '' };
+    for (const f of ['min', 'max']) if (isNum(d[f])) out[n][f] = d[f];
+    if (isNum(d.step) && d.step > 0) out[n].step = d.step;
+  }
+  return out;
+}
+
+/** The numbers a formula runs with: the file's `v` for a knob the person turned, else the code's. */
+function knobValues(knobs, fileKnobs) {
+  const k = {};
+  for (const [name, d] of Object.entries(knobs || {})) {
+    const f = fileKnobs && typeof fileKnobs === 'object' && fileKnobs[name] && fileKnobs[name].v;
+    k[name] = isNum(f) ? f : d.v;
+  }
+  return k;
+}
+
+/**
+ * A motion whose shape is code (a spiral, a wave, a chase). Written once in the game's code; it plays only where
+ * placement.json attaches it (the editor's timeline: `motions: [{ name, code: id }]` and a clip `{ use: name }`), so a
+ * motion that is not on the timeline does not move in the game either. Returns the entry (or null for a bad one).
+ *   name   the first name, in the person's words ("Spiral"); the editor may rename it (the id stays)
+ *   knobs  1–3 numbers the person would say ({ radius: { v: 2, label, unit: 'm', min, max } })
+ *   round  seconds of one round (a number or (k) => number); none = it never ends
+ *   note   what the knobs cannot say (20 characters: "follows the player")
+ *   game   true = it reads the game (the player, the score): played frame by frame, never scrubbed
+ *   drag   the knob a drag of its path turns (the editor, later)
+ *   at(t, k, g)  the offsets after t seconds: { p, r, s } like clipAt (added to the place / angles, multiplying the
+ *          size). g = { key, obj, dt, player }. A shape motion depends on t alone, so any moment can be shown.
+ */
+function codeMotion(id, def) {
+  if (typeof id !== 'string' || !CODE_ID.test(id) || !def || typeof def.at !== 'function') {
+    warnOnce(`codeMotion(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and at(t, k)`);
+    return null;
+  }
+  const m = { id, name: text(def.name, 40) || id, knobs: knobsOf(def.knobs, `codeMotion('${id}')`), round: def.round, note: text(def.note, 20), game: def.game === true, drag: def.drag, at: def.at };
+  codeList(CODE_MOTIONS).set(id, m);
+  return m;
+}
+
+/**
+ * Objects the code puts (a row of lamps, coins scattered on a field). Put in by applyPlacement — after the world, before
+ * the file's `objects` — whether or not the file names it: count() objects from make(i), named "<id>-1", "<id>-2" …,
+ * each at at(i, k, g) under the root given to applyPlacement. The file's `places[id]` is only what the person changed.
+ *   name   the layout's name in the person's words ("Lamp row")
+ *   knobs  1–3 numbers ({ gap: { v: 6, label: 'Gap', unit: 'm' }, n: { v: 10, label: 'Count', step: 1 } })
+ *   count  how many (a number or (k) => number; at most 200)
+ *   make(i)  a new object for number i (three: an Object3D; PixiJS: a display object)
+ *   at(i, k, g)  where number i goes: { p, r?, s? } in the root's space (3D r = [x, y, z] or a turn round y; 2D r =
+ *          the angle). g = { try, rand, level }: rand() is the same every load for the same id, number and try (a
+ *          scatter stays where it was); try counts the places refused by a keep-out area
+ *   drag   the knob a drag of one of its objects turns (the editor: "moving it changes Gap · ⌥ just this one")
+ *   avoid  codeAvoid ids on from the start (the person can switch them off)
+ */
+function codePlace(id, def) {
+  if (typeof id !== 'string' || !CODE_ID.test(id) || !def || typeof def.make !== 'function' || typeof def.at !== 'function') {
+    warnOnce(`codePlace(${JSON.stringify(id)}): needs an id (a-z, 0-9, -), make(i) and at(i, k)`);
+    return null;
+  }
+  const was = codeList(CODE_PLACES).get(id);
+  const p = { id, name: text(def.name, 40) || id, knobs: knobsOf(def.knobs, `codePlace('${id}')`), count: def.count, make: def.make, at: def.at, drag: def.drag,
+    avoid: Array.isArray(def.avoid) ? def.avoid.filter((a) => typeof a === 'string' && CODE_ID.test(a)) : [], keys: [], skipped: [], objs: was ? was.objs : [] };
+  codeList(CODE_PLACES).set(id, p);
+  return p;
+}
+
+/**
+ * A keep-out condition, for the code layouts that name it (codePlace `avoid`, or the person's list in the file).
+ *   name / after  how the list says it ("From the player" [5 m] "within")
+ *   knobs  1–3 numbers ({ r: { v: 5, label: 'Distance', unit: 'm' } })
+ *   test(p, k, g)  true = nothing goes at p (the layout's space). g = { player, level }: the player where the level
+ *          starts (setPlayer, applyPlacement's { player }, or an object keyed "player"), since layouts are put once then
+ *   show(k, g)  optional: the shape to paint on the ground ({ circle: { p, r } } / { box: { p, size } })
+ */
+function codeAvoid(id, def) {
+  if (typeof id !== 'string' || !CODE_ID.test(id) || !def || typeof def.test !== 'function') {
+    warnOnce(`codeAvoid(${JSON.stringify(id)}): needs an id (a-z, 0-9, -) and test(p, k)`);
+    return null;
+  }
+  const a = { id, name: text(def.name, 40) || id, after: text(def.after, 20), knobs: knobsOf(def.knobs, `codeAvoid('${id}')`), test: def.test, show: def.show };
+  codeList(CODE_AVOIDS).set(id, a);
+  return a;
+}
+
+/** A code motion's round in seconds with the clip's knobs (codeMotion `round`), or null (none: it never ends). */
+function codeRound(c) {
+  const m = c && codeList(CODE_MOTIONS).get(c.code);
+  if (!m) return null;
+  let r = m.round;
+  try {
+    if (typeof r === 'function') r = r(knobValues(m.knobs, c.knobs));
+  } catch (e) {
+    warnOnce(`codeMotion('${m.id}'): round failed (${e && e.message})`);
+    r = null;
+  }
+  return isNum(r) && r > 0 ? r : null;
+}
+
+/** [x, y(, z)] from a number or a list, n long (a number is the same for every axis, or the turn round the up axis). */
+function vecOf(v, n, turn) {
+  if (isNum(v)) return n === 3 && turn ? [0, v, 0] : n === 3 ? [v, v, v] : turn ? [v] : [v, v];
+  if (!Array.isArray(v) || !v.every(isNum)) return null;
+  const w = turn && n === 2 ? 1 : n;
+  return v.length >= w ? v.slice(0, w) : null;
+}
+
+/**
+ * Where a code motion is after t seconds: its at() with the knobs (the file's over the code's), in clipAt's shape. A
+ * motion the page has no codeMotion() for stays where it is (and is said once). A `game` motion gets g.dt since the
+ * last call of this clip (the runner calls it once a frame).
+ */
+function codeAt(c, t) {
+  const out = { p: null, r: null, s: null, done: false };
+  const m = codeList(CODE_MOTIONS).get(c.code);
+  if (!m) {
+    warnOnce(`placement.json uses the code motion "${c.code}", but the game has no codeMotion('${c.code}')`);
+    return out;
+  }
+  const u = isNum(t) ? Math.max(0, t) : 0;
+  const k = known.get(c.key);
+  const g = { key: c.key, obj: k ? k.o : null, dt: m.game ? Math.max(0, u - (isNum(c.last) ? c.last : u)) : 0, player: m.game ? whereIs(null) : null };
+  if (m.game) c.last = u;
+  let a;
+  try {
+    a = m.at(u, knobValues(m.knobs, c.knobs), g);
+  } catch (e) {
+    warnOnce(`codeMotion('${m.id}'): at failed (${e && e.message})`);
+    return out;
+  }
+  if (!a || typeof a !== 'object') return out;
+  const n = c.n === 2 ? 2 : 3;
+  out.p = vecOf(a.p, n, false);
+  out.r = vecOf(a.r, n, true);
+  out.s = vecOf(a.s, n, false);
+  return out;
+}
+
+/** A seeded random (mulberry32 over a string's hash): the same numbers for the same id, number and try, every load. */
+function randOf(seed) {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  return () => {
+    h = (h + 0x6d2b79f5) | 0;
+    let x = Math.imul(h ^ (h >>> 15), 1 | h);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The player's place when a level starts (keep-out conditions read it): opts.player, setPlayer's, or a "player". */
+function playerAt(root, three, opts) {
+  const o = opts && opts.player;
+  if (Array.isArray(o) && o.every(isNum)) return o.slice();
+  const obj = (o && o.position ? o : null) || player || findByKey(root, 'player', three);
+  if (!obj || !obj.position) return null;
+  return three ? [obj.position.x, obj.position.y, obj.position.z] : [obj.position.x, obj.position.y];
+}
+
+/**
+ * A box drawn in the editor: 3D `p` = the middle of its bottom, `size` = [width, height, depth]; 2D `p` = its middle,
+ * `size` = [width, height].
+ */
+function inBox(q, b, n) {
+  if (!b || !Array.isArray(b.p) || !Array.isArray(b.size) || !Array.isArray(q)) return false;
+  if (n === 2) return Math.abs(q[0] - b.p[0]) <= b.size[0] / 2 && Math.abs(q[1] - b.p[1]) <= b.size[1] / 2;
+  return Math.abs(q[0] - b.p[0]) <= b.size[0] / 2 && q[1] >= b.p[1] - 1e-9 && q[1] <= b.p[1] + b.size[1] && Math.abs(q[2] - b.p[2]) <= b.size[2] / 2;
+}
+
+/**
+ * A layout's keep-out tests (only that layout's, chosen 2026-10-24 — a box drawn for the crystals does
+ * not move the coins): its code's `avoid` (on unless the file says `off`), the file's conditions and its boxes.
+ */
+function avoidTests(p, f, n, g) {
+  const tests = [];
+  const fileCodes = new Map();
+  for (const a of Array.isArray(f.avoid) ? f.avoid : []) {
+    if (!a || typeof a !== 'object') continue;
+    if (a.box) {
+      if (!a.off) tests.push((q) => inBox(q, a.box, n));
+    } else if (typeof a.code === 'string') fileCodes.set(a.code, a);
+  }
+  for (const id of new Set([...p.avoid, ...fileCodes.keys()])) {
+    const e = fileCodes.get(id);
+    if (e && e.off) continue;
+    const d = codeList(CODE_AVOIDS).get(id);
+    if (!d) {
+      warnOnce(`codePlace('${p.id}') avoids "${id}", but the game has no codeAvoid('${id}')`);
+      continue;
+    }
+    const k = knobValues(d.knobs, e && e.knobs);
+    tests.push((q) => {
+      try {
+        return !!d.test(q, k, g);
+      } catch (err) {
+        warnOnce(`codeAvoid('${id}'): test failed (${err && err.message})`);
+        return false;
+      }
+    });
+  }
+  return tests;
+}
+
+/** Put a formula's place on an object: { p, r?, s? } (a code layout's at()). Only what it has is touched. */
+function putCode(o, a, three) {
+  const p = vecOf(a.p, three ? 3 : 2, false);
+  if (p) three ? o.position.set(p[0], p[1], p[2]) : o.position.set(p[0], p[1]);
+  if (a.r !== undefined) {
+    if (three && Array.isArray(a.r) && a.r.length === 3 && a.r.every(isNum)) o.rotation.set(a.r[0], a.r[1], a.r[2]);
+    else if (isNum(a.r) || (Array.isArray(a.r) && isNum(a.r[0]))) {
+      const r = isNum(a.r) ? a.r : a.r[0];
+      if (three) o.rotation.y = r;
+      else o.rotation = r;
+    }
+  }
+  if (a.s !== undefined) {
+    if (isNum(a.s) && a.s !== 0) three ? o.scale.setScalar(a.s) : o.scale.set(a.s, a.s);
+    else if (Array.isArray(a.s) && a.s.every(isNum)) three ? o.scale.set(a.s[0], a.s[1], a.s[2] ?? a.s[0]) : o.scale.set(a.s[0], a.s[1]);
+  }
+}
+
+/** One layout's place for number i on try `tr` (at() answers { p, r?, s? }), or null when at() gives nothing usable. */
+function codePlaceAt(p, i, k, tr, level, n) {
+  const g = { try: tr, rand: randOf(`${p.id}:${i}:${tr}`), level: level || null };
+  let a;
+  try {
+    a = p.at(i, k, g);
+  } catch (e) {
+    warnOnce(`codePlace('${p.id}'): at failed (${e && e.message})`);
+    return null;
+  }
+  return a && typeof a === 'object' && vecOf(a.p, n, false) ? a : null;
+}
+
+/**
+ * Put in every code layout (codePlace) under `root`: the objects of an earlier applyPlacement are taken out first (a
+ * level built again, the game restarted), so they are never doubled. `places` = the file's (this level's) changes.
+ * report.places = { id: { keys, skipped } }.
+ */
+function placeCode(root, three, places, report, opts) {
+  const all = codeList(CODE_PLACES);
+  if (!all.size) return;
+  report.places = {};
+  const n = three ? 3 : 2;
+  const level = (opts && opts.level) || null;
+  const made = new Set();
+  for (const p of all.values()) {
+    for (const o of p.objs) if (o && o.parent) three ? o.parent.remove(o) : o.parent.removeChild(o);
+    p.objs = [];
+    p.keys = [];
+    p.skipped = [];
+    const f = places && typeof places === 'object' && places[p.id] && typeof places[p.id] === 'object' ? places[p.id] : {};
+    const k = knobValues(p.knobs, f.knobs);
+    let count = p.count;
+    try {
+      if (typeof count === 'function') count = count(k);
+    } catch (e) {
+      warnOnce(`codePlace('${p.id}'): count failed (${e && e.message})`);
+      count = 0;
+    }
+    count = isNum(count) ? Math.max(0, Math.min(MAX_PLACED, Math.floor(count))) : 0;
+    // Keep-out areas move what the formula places; what a hand put ("just this one", "Place by hand") stays put.
+    const tests = f.hand ? [] : avoidTests(p, f, n, { player: playerAt(root, three, opts), level });
+    for (let i = 0; i < count; i++) {
+      const key = `${p.id}-${i + 1}`;
+      const pin = f.pins && f.pins[key] && Array.isArray(f.pins[key].p) ? f.pins[key] : null;
+      let at = null;
+      if (pin || !tests.length) at = codePlaceAt(p, i, k, 0, level, n);
+      else {
+        let prev = null;
+        for (let tr = 0; tr < MAX_TRIES; tr++) {
+          const a = codePlaceAt(p, i, k, tr, level, n);
+          if (!a) break;
+          const q = vecOf(a.p, n, false);
+          if (!tests.some((t) => t(q))) {
+            at = a;
+            break;
+          }
+          // The same place again: a row, which has nowhere else to go.
+          if (prev && prev.every((v, j) => Math.abs(v - q[j]) < 1e-9)) break;
+          prev = q;
+        }
+      }
+      if (!at && !pin) {
+        p.skipped.push(key);
+        continue;
+      }
+      let o = null;
+      try {
+        o = p.make(i);
+      } catch (e) {
+        warnOnce(`codePlace('${p.id}'): make failed (${e && e.message})`);
+      }
+      if (!o || !o.position) {
+        p.skipped.push(key);
+        continue;
+      }
+      if (three) {
+        o.name = key;
+        o.userData.studioKey = key;
+        root.add(o);
+      } else {
+        o.label = key;
+        o.studioKey = key;
+        root.addChild(o);
+      }
+      if (at) putCode(o, at, three);
+      if (pin) put(o, pin, n, three);
+      p.objs.push(o);
+      p.keys.push(key);
+      made.add(o);
+    }
+    report.places[p.id] = { keys: p.keys.slice(), skipped: p.skipped.slice() };
+  }
+  // `from` (✦ To code): the hand-placed objects a layout replaced, hidden until the AI takes them out of the code —
+  // only objects this file did not make (the hand ones may have had the layout's own keys).
+  for (const [id, f] of Object.entries(places && typeof places === 'object' ? places : {})) {
+    if (!f || !Array.isArray(f.from) || !all.has(id)) continue;
+    for (const key of f.from) {
+      const o = typeof key === 'string' && handObject(root, key, three, made);
+      if (o) o.visible = false;
+    }
+  }
+}
+
+/** The object with this key that is not one of `made` (a code layout's). */
+function handObject(root, key, three, made) {
+  let found = null;
+  walk(root, (o) => {
+    if (found) return false;
+    if (made.has(o)) return 'skip';
+    const mark = three ? o.userData && o.userData.studioKey : o.studioKey;
+    if (mark === key || cleanName(three ? o.name : o.label) === key) found = o;
+    return !found;
+  });
+  return found;
 }
 
 function applyUi(doc, ui) {
@@ -9781,6 +10523,11 @@ __def(__exports, "handlesOf", () => handlesOf);
 __def(__exports, "motionAt", () => motionAt);
 __def(__exports, "levelOfCodeless", () => levelOfCodeless);
 __def(__exports, "placementForLevel", () => placementForLevel);
+__def(__exports, "knobValues", () => knobValues);
+__def(__exports, "codeMotion", () => codeMotion);
+__def(__exports, "codePlace", () => codePlace);
+__def(__exports, "codeAvoid", () => codeAvoid);
+__def(__exports, "codeRound", () => codeRound);
 __def(__exports, "uiTextPart", () => uiTextPart);
 __def(__exports, "uiTextNode", () => uiTextNode);
 __def(__exports, "placeUi", () => placeUi);
@@ -12775,6 +13522,130 @@ __def(__exports, "layerBlocks", () => layerBlocks);
 };
 __defs[32] = function (__exports) {
 'use strict';
+// code-places.ts
+
+// What the person changed of the game's code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.12, §4.1 `places`):
+// one level's `places`, as it is now and as last saved. Pure logic, no DOM (test/code-base-shell.test.ts).
+//
+// WHY its own store, next to the objects' poses (placement-model.ts): a layout is ONE thing however many objects it
+// puts — turning its Gap moves all of them and is one change on Save · n, like a renamed object — and its knobs keep
+// the code's number (`was`) the way a moved object keeps its `was`, for the AI to find on Save.
+//
+// The code's numbers come from the game's page (bridge code-lists.ts): when the AI has written a knob into the code
+// (the file's v is now the code's v) or taken a knob out, that knob leaves the file without a word — not a change of
+// the person's (decision 3 of the plan). The same for a code motion's knobs (MotionLibrary.settle).
+                                                                                         
+
+const same = (a         , b         ) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+/** The file's rounding of a knob (1e-4), so a number typed back to the code's is no change. */
+const roundKnob = (v        ) => {
+  const r = Math.round(v * 10000) / 10000;
+  return r === 0 ? 0 : r;
+};
+
+/**
+ * Knobs after a turn: `set` (name → number) over `now`, each with the code's number as `was`; a knob back on the code's
+ * number is left out (the file keeps only what differs from the code). undefined = none left.
+ */
+function turnKnobs(now                                       , set                        , code                          )                                        {
+  const out                            = structuredClone(now ?? {});
+  for (const [n, v] of Object.entries(set)) {
+    const was = code[n]?.v;
+    if (was !== undefined && roundKnob(v) === roundKnob(was)) delete out[n];
+    else out[n] = { v: roundKnob(v), ...(was !== undefined ? { was: roundKnob(was) } : {}) };
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/**
+ * Knobs the code has caught up with (its number is the file's v) or no longer has: out. null = nothing to take out.
+ */
+function settledKnobs(k                                       , code                                      )                                               {
+  if (!k || !code) return null;
+  const out = Object.fromEntries(Object.entries(k).filter(([n, x]) => code[n] !== undefined && roundKnob(code[n] .v) !== roundKnob(x.v)));
+  if (Object.keys(out).length === Object.keys(k).length) return null;
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** An entry with nothing left in it is no entry. */
+const tidy = (e                                   )                        => {
+  if (!e) return null;
+  const o = structuredClone(e);
+  for (const k of Object.keys(o)                               ) {
+    const v = o[k];
+    if (v === undefined || (Array.isArray(v) && !v.length) || (v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length)) delete o[k];
+  }
+  return Object.keys(o).length ? o : null;
+};
+
+class PlaceStore {
+          now = new Map                        ();
+          saved = new Map                        ();
+
+  /** The file's (this level's) `places`, both as it is and as saved. */
+  restore(places                                            )       {
+    this.now = new Map(Object.entries(structuredClone(places ?? {})).flatMap(([id, e]) => (tidy(e) ? [[id, tidy(e) ]                            ] : [])));
+    this.saved = new Map([...this.now].map(([k, v]) => [k, structuredClone(v)]));
+  }
+
+  get(id        )                        {
+    const e = this.now.get(id);
+    return e ? structuredClone(e) : null;
+  }
+
+  /** null (or an empty entry) = nothing changed for this layout. */
+  set(id        , e                       )       {
+    const t = tidy(e);
+    if (t) this.now.set(id, t);
+    else this.now.delete(id);
+  }
+
+  ids()           {
+    return [...this.now.keys()];
+  }
+
+  /** Layouts that differ from the last save (each is one Save count). */
+  changedIds()           {
+    const ids = new Set([...this.now.keys(), ...this.saved.keys()]);
+    return [...ids].filter((id) => !same(this.now.get(id), this.saved.get(id)));
+  }
+
+  /** placement.json's `places` (ids in order: the file sorts them anyway), or undefined with none. */
+  result()                                             {
+    if (!this.now.size) return undefined;
+    return Object.fromEntries([...this.now].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([k, v]) => [k, structuredClone(v)]));
+  }
+
+  markSaved()       {
+    this.saved = new Map([...this.now].map(([k, v]) => [k, structuredClone(v)]));
+  }
+
+  /**
+   * The game page's layouts (code-lists.ts): a knob the code has caught up with, or does not have any more, leaves
+   * the file — in what is saved too, so it is not counted as the person's change. true = something left.
+   */
+  settle(list                 )          {
+    let changed = false;
+    for (const p of list) for (const m of [this.now, this.saved]) {
+      const e = m.get(p.id);
+      const k = settledKnobs(e?.knobs, p.knobs);
+      if (!e || k === null) continue;
+      const t = tidy({ ...e, knobs: k });
+      if (t) m.set(p.id, t);
+      else m.delete(p.id);
+      changed = true;
+    }
+    return changed;
+  }
+}
+
+__def(__exports, "roundKnob", () => roundKnob);
+__def(__exports, "turnKnobs", () => turnKnobs);
+__def(__exports, "settledKnobs", () => settledKnobs);
+__def(__exports, "PlaceStore", () => PlaceStore);
+};
+__defs[33] = function (__exports) {
+'use strict';
 // motion-library.ts
 
 // The Library's motions (studio-motion-triggers, 2026-10-22; CONTRACT.md §4.1 `motions`): named motions that are assets
@@ -12793,21 +13664,29 @@ __defs[32] = function (__exports) {
 // Reading a file made before this (studio-timeline: each object's clips hold their own keys) turns every such clip into
 // a Library motion (adopt): a clip with the same name and the same keys as one already here is the same motion; the same
 // name with other keys becomes "Open 2". It is done for the saved copy too, so opening an old file is not a change.
-                                                                                       
+                                                                                                       
+const { settledKnobs } = __require(32);
 
 /**
  * A Library motion as the file writes it (fields in one order; repeat 'once' left out: the default). A scene motion
  * (studio-timeline-2: `tracks`, several objects' keys) keeps `keys` empty in the editor.
  */
-function libOf(c                                                                                                               )                {
+function libOf(c                                                                                                                                                              )                {
+  // A code motion (studio-code-base, 2026-10-24): no keys of its own (the game's codeMotion() has its shape). `len` is
+  // only the timeline's width for it here (the code's round when the game page said it, else 4 s); the file has none.
+  if (c.code) return { name: c.name, len: typeof c.len === 'number' && c.len > 0 ? c.len : CODE_LEN, keys: {}, code: c.code, ...(c.knobs && Object.keys(c.knobs).length ? { knobs: structuredClone(c.knobs) } : {}) };
   // `order` (studio-ui-lead2: the rows' order) only with tracks, and only the keys that are tracks.
   const order = c.tracks && c.order ? c.order.filter((k, i, a) => k in c.tracks  && a.indexOf(k) === i) : null;
   return { name: c.name, len: c.len, ...(c.repeat && c.repeat !== 'once' ? { repeat: c.repeat } : {}), keys: c.tracks ? {} : structuredClone(c.keys ?? {}),
     ...(c.tracks ? { tracks: structuredClone(c.tracks) } : {}), ...(order?.length ? { order } : {}) };
 }
 
-// The order is part of the motion (a reorder is a change to save — studio-ui-lead2).
-const sig = (m               ) => JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null, m.order ?? null]);
+/** The timeline's width for a code motion whose round the game page has not said (decision 2: "▶ watch" shows 4 s). */
+const CODE_LEN = 4;
+
+// The order is part of the motion (a reorder is a change to save — studio-ui-lead2). A code motion is its code and the
+// knobs turned (its len is only how wide the strip is drawn).
+const sig = (m               ) => (m.code ? JSON.stringify(['code', m.code, m.knobs ?? null]) : JSON.stringify([m.len, m.repeat ?? 'once', m.keys, m.tracks ?? null, m.order ?? null]));
 
 class MotionLibrary {
           now = new Map                       ();
@@ -12896,16 +13775,42 @@ class MotionLibrary {
   markSaved()       {
     this.saved = new Map([...this.now].map(([k, v]) => [k, structuredClone(v)]));
   }
+
+  /**
+   * The game page's code motions (studio-code-base, 2026-10-24; bridge code-lists.ts): each code motion's strip is as
+   * wide as one round of it, and a knob the code has caught up with (its number is the file's v) or no longer has
+   * leaves the file — in what is saved too, so it is not counted (code-places.ts settledKnobs). true = something changed.
+   */
+  settle(list                  )          {
+    let changed = false;
+    const info = new Map(list.map((c) => [c.code, c]));
+    for (const m of [this.now, this.saved]) for (const [name, l] of m) {
+      const c = l.code ? info.get(l.code) : undefined;
+      if (!c) continue;
+      const len = c.round && c.round >= 0.1 && c.round <= 600 ? c.round : CODE_LEN;
+      const k = settledKnobs(l.knobs, c.knobs);
+      if (len === l.len && k === null) continue;
+      const next                = { ...l, len };
+      if (k !== null) {
+        if (k) next.knobs = k;
+        else delete next.knobs;
+        changed = true;
+      }
+      m.set(name, next);
+    }
+    return changed;
+  }
 }
 
 /** The page's one Library of motions (one game open at a time). Tests make their own. */
 const motionLibrary = new MotionLibrary();
 
 __def(__exports, "libOf", () => libOf);
+__def(__exports, "CODE_LEN", () => CODE_LEN);
 __def(__exports, "MotionLibrary", () => MotionLibrary);
 __def(__exports, "motionLibrary", () => motionLibrary);
 };
-__defs[33] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // motion-model.ts
 
@@ -12926,7 +13831,7 @@ __defs[33] = function (__exports) {
 // turned into a Library motion when the file is read, for the saved copy too (opening is not a change).
                                                                                                       
 const { whenOf } = __require(19);
-const { motionLibrary } = __require(32);
+const { motionLibrary } = __require(33);
 const { CHANNELS, toClips } = __require(24);
 
 /** An attachment as the file writes it: rounded, fields in one order (name only when it differs from use). */
@@ -12951,6 +13856,9 @@ function roundUntil(u                         )                          {
 
 /** A Library motion as the file writes it (the same rounding as a clip's keys; a scene motion: each object's track). */
 function roundLib(m               , dim      = '3d')                {
+  // A code motion (studio-code-base, 2026-10-24): its shape is the game's codeMotion(); the file has its name, its id
+  // in the code and the knobs the person turned — no len / keys (the editor's len is only the strip's width).
+  if (m.code) return { name: m.name, code: m.code, ...(m.knobs && Object.keys(m.knobs).length ? { knobs: structuredClone(m.knobs) } : {}) }                 ;
   const one = (keys                    ) => roundMotion({ clips: [{ ...m, start: undefined, when: undefined, keys: keys ?? {} }] }, dim) .clips [0] ;
   const c = one(m.keys);
   const head = { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}) };
@@ -12989,6 +13897,8 @@ function roundMotion(m                           , dim      = '3d')             
           use: c.use,
           when: ws.length > 1 ? ws.slice(0, 4).map((w) => roundWhen(w, r, step)) : roundWhen(whenOf(c)              , r, step),
           ...(until ? { until } : {}),
+          // Switched off on the timeline (studio-code-base): it stays on the object and does not play.
+          ...(c.off ? { off: true } : {}),
         }              ;
       }
       // Fields in the file's order: name, len, repeat, start, when, keys (keys last: the long part).
@@ -13009,6 +13919,7 @@ function roundMotion(m                           , dim      = '3d')             
         ...(!c.start && typeof c.when === 'string' && c.when.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
         ...(!c.start && c.when && typeof c.when === 'object' ? { when: Array.isArray(c.when) ? c.when.map((w) => roundWhen(w, r, step)) : roundWhen(c.when, r, step) } : {}),
         ...(roundUntil(c.until) ? { until: roundUntil(c.until) } : {}),
+        ...(c.off ? { off: true          } : {}),
         keys,
       };
     });
@@ -13037,6 +13948,7 @@ function attachAll(m        , lib               )         {
       const use = lib.adopt(c, true);
       const out = { name: c.name, use, len: c.len, when: whenOf(c)              , keys: {} }              ;
       if (c.until) out.until = c.until;
+      if (c.off) out.off = true;
       return out;
     }),
   };
@@ -13125,7 +14037,7 @@ __def(__exports, "attachAll", () => attachAll);
 __def(__exports, "attachWorld", () => attachWorld);
 __def(__exports, "MotionStore", () => MotionStore);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // placement-model.ts
 
@@ -13151,7 +14063,8 @@ __defs[34] = function (__exports) {
 __require(0);
 const { hasLayer, orderOfLayer } = __require(31);
 const { roundPose, samePose } = __require(30);
-const { MotionStore } = __require(33);
+const { MotionStore } = __require(34);
+const { PlaceStore } = __require(32);
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -13251,6 +14164,11 @@ class PlacementModel {
    */
           names = new Map                ();
           savedNames = new Map                ();
+  /**
+   * What the person changed of the game's code layouts (studio-code-base, 2026-10-24; code-places.ts), this level's:
+   * each layout changed is one Save count.
+   */
+           places = new PlaceStore();
 
   /** Load the saved file (before the game reports its items). */
   restore(file                      )       {
@@ -13264,6 +14182,7 @@ class PlacementModel {
     this.motion.restore(file?.motion);
     this.names = new Map(Object.entries(file?.names || {}));
     this.savedNames = new Map(this.names);
+    this.places.restore(file?.places);
     if (!file || !file.objects) return;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
     for (const o of file.order || []) this.fileOrders.set(o.in, o);
@@ -13680,7 +14599,7 @@ class PlacementModel {
   }
 
   dirty()         {
-    let n = this.namesChanged().length;
+    let n = this.namesChanged().length + this.places.changedIds().length;
     for (const [k, p] of this.current) {
       if (this.copyFrom.has(k) || this.removed.has(k)) continue;
       if (!samePose(p, this.saved.get(k), this.dim)) n++;
@@ -13769,6 +14688,8 @@ class PlacementModel {
     // A deleted object's new name goes with it (the AI takes the object out; there is nothing to rename).
     const names = [...this.names].filter(([k]) => !this.isRemoved(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     if (names.length) file.names = Object.fromEntries(names);
+    const places = this.places.result();
+    if (places) file.places = places;
     return file;
   }
 
@@ -13780,6 +14701,7 @@ class PlacementModel {
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
     this.motion.markSaved();
     this.savedNames = new Map(this.names);
+    this.places.markSaved();
   }
 }
 
@@ -13787,7 +14709,7 @@ __def(__exports, "roundPose", () => __require(30).roundPose);
 __def(__exports, "samePose", () => __require(30).samePose);
 __def(__exports, "PlacementModel", () => PlacementModel);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // i18n.ts
 
@@ -14684,6 +15606,33 @@ const en = {
   'hands.more': '{text}, and {n:1 more change|# more changes}',
   'hands.undo': '{text} · {key} undoes it',
   'hands.undoTouch': '{text} · Undo takes it back',
+  // Code motions and code layouts (studio-code-base, 2026-10-24; the plan's words: code-motion/03-words.md, not checked with Gemini yet).
+  'hands.motion.code': '{Ai} put the code motion “{name}” on {obj}',
+  'hands.motion.codeLib': '{Ai} added the code motion “{name}”',
+  'hands.motion.knobs': '{Ai} set “{name}”: {what}',
+  'hands.motion.off': '{Ai} turned “{name}” off on {obj}. It won’t move when you play',
+  'hands.motion.on': '{Ai} turned “{name}” on for {obj}',
+  'hands.place.code': '{Ai} laid out “{name}” by code ({what})',
+  'hands.place.codeReplace': '{Ai} turned {n:1 object|# objects} into the code layout “{name}” ({what})',
+  'hands.place.count': '{n:1 object|# objects}',
+  'hands.place.set': '{Ai} changed “{name}”: {what}',
+  'hands.place.pin': '{obj} placed by hand',
+  'hands.place.unpin': '{obj} back to code',
+  'hands.place.hand': 'placed by hand',
+  'hands.place.unhand': 'back to code',
+  'hands.place.avoid': '{Ai} added “{what}” to {name}’s keep-out areas',
+  'hands.place.avoidSet': '{Ai} changed “{what}” in {name}’s keep-out areas',
+  'hands.place.avoidOff': '{Ai} turned off “{what}” in {name}’s keep-out areas',
+  'hands.place.avoidRemove': '{Ai} took “{what}” off {name}’s keep-out areas',
+  'place.boxName': 'Box {n}',
+  'hands.unit.m': ' m',
+  'hands.unit.px': ' px',
+  'hands.unit.s': ' s',
+  'hands.unit.deg': '°',
+  'hands.unit.%': '%',
+  'hands.unit.x': '×',
+  'hands.unit.m/s': ' m/s',
+  'hands.unit.px/s': ' px/s',
 };
 
                            
@@ -15462,6 +16411,32 @@ const ja                               = {
   'hands.more': '{text}（ほか {n} 件）',
   'hands.undo': '{text} · {key} で戻せます',
   'hands.undoTouch': '{text} · 「元に戻す」で戻せます',
+  'hands.motion.code': '{ai}が {obj} にコードの動き「{name}」を付けました',
+  'hands.motion.codeLib': '{ai}がコードの動き「{name}」を足しました',
+  'hands.motion.knobs': '{ai}が「{name}」を {what} にしました',
+  'hands.motion.off': '{ai}が {obj} の「{name}」をオフにしました。遊んでも動きません',
+  'hands.motion.on': '{ai}が {obj} の「{name}」をオンにしました',
+  'hands.place.code': '{ai}がコードの並べ方「{name}」を出しました（{what}）',
+  'hands.place.codeReplace': '{ai}が {n} 個をコードの並べ方「{name}」にしました（{what}）',
+  'hands.place.count': '{n} 個',
+  'hands.place.set': '{ai}が「{name}」を変えました: {what}',
+  'hands.place.pin': '{obj} だけ手で置く',
+  'hands.place.unpin': '{obj} をコードに戻す',
+  'hands.place.hand': '手置き',
+  'hands.place.unhand': 'コードの並べ方に戻す',
+  'hands.place.avoid': '{ai}が「{name}」の置かない所に「{what}」を足しました',
+  'hands.place.avoidSet': '{ai}が「{name}」の置かない所「{what}」を変えました',
+  'hands.place.avoidOff': '{ai}が「{name}」の置かない所「{what}」をオフにしました',
+  'hands.place.avoidRemove': '{ai}が「{name}」の置かない所から「{what}」を外しました',
+  'place.boxName': '箱 {n}',
+  'hands.unit.m': ' m',
+  'hands.unit.px': ' px',
+  'hands.unit.s': ' 秒',
+  'hands.unit.deg': '°',
+  'hands.unit.%': '%',
+  'hands.unit.x': '×',
+  'hands.unit.m/s': ' m/秒',
+  'hands.unit.px/s': ' px/秒',
 };
 
 const TABLES                                             = { en, ja };
@@ -15518,7 +16493,7 @@ __def(__exports, "detectLang", () => detectLang);
 __def(__exports, "translate", () => translate);
 __def(__exports, "plural", () => plural);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // next-steps.ts
 
@@ -15628,7 +16603,7 @@ __def(__exports, "AI_STEPS", () => AI_STEPS);
 __def(__exports, "NEXT_STEPS", () => NEXT_STEPS);
 __def(__exports, "renderNextSteps", () => renderNextSteps);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ../schema/handoff.mjs
 
@@ -15972,7 +16947,7 @@ __def(__exports, "isRequestId", () => isRequestId);
 __def(__exports, "normalizeStatus", () => normalizeStatus);
 __def(__exports, "statusCovers", () => statusCovers);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ai-flow.ts
 
@@ -16000,7 +16975,7 @@ __defs[38] = function (__exports) {
 //   done / failed    the AI's one-line reply; done also has "Undo AI change"
 //   undone / redone  after the person pressed Undo / Redo
                                                             
-const { statusCovers } = __require(37);
+const { statusCovers } = __require(38);
 
                                                                                                                                                                          
 
@@ -16143,7 +17118,7 @@ __def(__exports, "QUIET_MS", () => QUIET_MS);
 __def(__exports, "reloadDecision", () => reloadDecision);
 __def(__exports, "moreIn", () => moreIn);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // ai-presence.ts
 
@@ -16186,7 +17161,7 @@ __defs[39] = function (__exports) {
 // - unsure   = everything else (never seen watching, a host that cannot tell, the grace after a heartbeat stops).
 // Pure, so test/ai-presence.test.ts reads the rules without a browser; main.ts keeps the clock and draws the words.
                                               
-const { aiBusy } = __require(38);
+const { aiBusy } = __require(39);
 
                                                                              
 
@@ -16251,7 +17226,7 @@ __def(__exports, "UNSEEN_MS", () => UNSEEN_MS);
 __def(__exports, "QUIET_WORK_MS", () => QUIET_WORK_MS);
 __def(__exports, "aiNameKey", () => aiNameKey);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // save-loud.ts
 
@@ -16297,7 +17272,7 @@ function bounces(prevN        , n        , playing         , reducedMotion      
 __def(__exports, "saveLoud", () => saveLoud);
 __def(__exports, "bounces", () => bounces);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // ai-ask.ts
 
@@ -16376,7 +17351,7 @@ function askView(st                     , poses                                 
 __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "askView", () => askView);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -16389,7 +17364,7 @@ __defs[42] = function (__exports) {
 // Pure, so test/play-ask.test.ts reads the rules without a browser; main.ts sends the result to the game page,
 // where bridge/play-ask.ts draws it.
                                                                       
-const { moreIn } = __require(38);
+const { moreIn } = __require(39);
 
                                 
                  
@@ -16455,7 +17430,7 @@ function playWords(t                         )                         {
 __def(__exports, "playLine", () => playLine);
 __def(__exports, "playWords", () => playWords);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // line-fade.ts
 
@@ -16518,7 +17493,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ui-prefs.ts
 
@@ -16606,7 +17581,7 @@ __def(__exports, "UI_LIMITS", () => UI_LIMITS);
 __def(__exports, "normalizeUi", () => normalizeUi);
 __def(__exports, "effectiveTheme", () => effectiveTheme);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // settings-page.ts
 
@@ -16616,7 +17591,7 @@ __defs[45] = function (__exports) {
                                                     
 const { h } = __require(16);
 const { icon } = __require(21);
-const { DEFAULT_UI, UI_LIMITS } = __require(44);
+const { DEFAULT_UI, UI_LIMITS } = __require(45);
 
                                
                          
@@ -16699,7 +17674,7 @@ function renderSettings(el             , d              )       {
 
 __def(__exports, "renderSettings", () => renderSettings);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // edit-ops.ts
 
@@ -16803,7 +17778,7 @@ __def(__exports, "groupLayerMoves", () => groupLayerMoves);
 __def(__exports, "groupLayerPossible", () => groupLayerPossible);
 __def(__exports, "sameKind", () => sameKind);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // keymap.ts
 
@@ -16968,7 +17943,7 @@ __def(__exports, "keysOf", () => keysOf);
 __def(__exports, "keyOf", () => keyOf);
 __def(__exports, "tipText", () => tipText);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // placement-panel.ts
 
@@ -17001,9 +17976,9 @@ __defs[48] = function (__exports) {
                                                       
 const { h, safeImageSrc } = __require(16);
 const { hasLayer, layerBlocks, layerTarget, siblingsOf } = __require(31);
-const { groupLayerPossible, sameKind } = __require(46);
+const { groupLayerPossible, sameKind } = __require(47);
 const { icon, setButton } = __require(21);
-const { tipText } = __require(47);
+const { tipText } = __require(48);
 const { displayName, isGuessed, nameParts } = __require(14);
 const { toneThumb } = __require(17);
 
@@ -18207,7 +19182,7 @@ __def(__exports, "shortName", () => shortName);
 __def(__exports, "createPlacementPanel", () => createPlacementPanel);
 __def(__exports, "heldGameText", () => heldGameText);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // path-edit.ts
 
@@ -18335,7 +19310,7 @@ __def(__exports, "setKind", () => setKind);
 __def(__exports, "toggleCorner", () => toggleCorner);
 __def(__exports, "insertAt", () => insertAt);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // scene-motion.ts
 
@@ -18455,7 +19430,7 @@ __def(__exports, "withTrack", () => withTrack);
 __def(__exports, "withoutTrack", () => withoutTrack);
 __def(__exports, "withOrder", () => withOrder);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // motion-card.ts
 
@@ -18597,7 +19572,7 @@ function motionMenu(d                , c            , at                        
 __def(__exports, "motionCardRow", () => motionCardRow);
 __def(__exports, "motionMenu", () => motionMenu);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // timeline-wire.ts
 
@@ -18619,12 +19594,12 @@ __defs[52] = function (__exports) {
 // the card's numbers, undo and the bridge's messages through here.
                                                                                                                                                                                               
 const { motionRunner, whenOf, whensOf } = __require(19);
-const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(49);
-const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(50);
-const { libOf } = __require(32);
-const { motionCardRow } = __require(51);
+const { bend, insertAt, pointKind, setKind, toggleCorner } = __require(50);
+const { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder: sceneOrder, withOrder, withTrack, withoutTrack } = __require(51);
+const { libOf } = __require(33);
+const { motionCardRow } = __require(52);
                                                      
-const { sameMotion: sameFile } = __require(33);
+const { sameMotion: sameFile } = __require(34);
 
 /**
  * Same motion as the timeline sees it (resolved: the Library motion's keys in each clip). The file's own comparison
@@ -18844,11 +19819,16 @@ function createTimeline(d              , makePanel                             =
     const atts = m.clips.map((c) => {
       const use = c.use ?? c.name;
       const l = lib().get(use);
+      // A code motion (studio-code-base, 2026-10-24): its shape is the game's codeMotion(), nothing of the clip goes back
+      // (the clip's len is only the strip's width, its keys are none).
+      if (l?.code) void 0;
       // A scene: this object's track set (a new one goes last in the rows' order — studio-ui-lead2, scene-motion.ts withTrack).
-      if (c.scene || l?.tracks) lib().set(use, withTrack(libOf({ ...c, name: use, tracks: l?.tracks ?? {}, order: l?.order }), key, c.keys));
+      else if (c.scene || l?.tracks) lib().set(use, withTrack(libOf({ ...c, name: use, tracks: l?.tracks ?? {}, order: l?.order }), key, c.keys));
       else lib().set(use, libOf({ ...c, name: use }));
       const a             = { name: c.name, use, len: c.len, when: (c.when && typeof c.when === 'object' ? c.when : whenOf(c))              , keys: {} };
       if (c.until) a.until = c.until;
+      // Switched off (studio-code-base): kept on the object.
+      if (c.off) a.off = true;
       return a;
     });
     raw().set(key, { clips: atts });
@@ -19504,7 +20484,7 @@ function createTimeline(d              , makePanel                             =
     return { name, when };
   }
   /** `key`'s motion `clipName`: when it starts / stops (the AI's motion.set). false = no such clip. */
-  function handsClipSet(key        , clipName        , o                                                                  )          {
+  function handsClipSet(key        , clipName        , o                                                                                 )          {
     const c = clipsOf(key).find((x) => x.name === clipName);
     if (!c) return false;
     editOf(key, c, (x) => {
@@ -19512,15 +20492,23 @@ function createTimeline(d              , makePanel                             =
       if (o.when !== undefined) (out.when = o.when), delete out.start;
       if (o.until === null) delete out.until;
       else if (o.until) out.until = o.until;
+      // Switched off (studio-code-base): it stays on the object and does not play.
+      if (o.off === true) out.off = true;
+      else if (o.off === false) delete out.off;
       return out;
     });
     return true;
   }
   /** A Library motion's repeat / length for every object that has it (the AI's motion.set; a new length stretches its keys). */
-  function handsLibSet(name        , o                                         )          {
+  function handsLibSet(name        , o                                                                                )          {
     const l = lib().get(name);
     if (!l) return false;
     let n                = { ...l };
+    // A code motion's knobs (studio-code-base): what the person / the AI turned, { v, was } (null = all back to the code's).
+    if (o.knobs !== undefined) {
+      if (o.knobs && Object.keys(o.knobs).length) n.knobs = structuredClone(o.knobs);
+      else delete n.knobs;
+    }
     if (o.repeat) n.repeat = o.repeat;
     if (o.len) {
       const s = stretchClip({ name, len: l.len, keys: l.keys }              , o.len);
@@ -20288,7 +21276,7 @@ function createTimeline(d              , makePanel                             =
 
 __def(__exports, "createTimeline", () => createTimeline);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // motion-ask.ts
 
@@ -20340,7 +21328,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -20433,7 +21421,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[55] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -20739,7 +21727,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -20840,7 +21828,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -20882,7 +21870,12 @@ const { LIMITS } = __require(0);
                                                                                                   
                                                                              
                                                                                                                              
-                                                                          
+                                                                         
+     
+                                                                                                                     
+                                                                                                              
+     
+                                                                                                
 
                             
                     
@@ -21020,7 +22013,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // ../schema/hands.mjs
 
@@ -21041,7 +22034,7 @@ __defs[58] = function (__exports) {
 // from points (handsMotion), the same pose (handsPose), picks the same clip (handsClip) and the same default start
 // (handsDefaultWhen), and words its result with the same sentence (handsSaid) for the AI's stdout line.
 // No imports but the validator (the bundled CLI and the shell bundle both take this file as it is).
-const { CUE_RE, KEY_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } = __require(2);
+const { CODE_ID_RE, CUE_RE, KEY_RE, KNOB_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } = __require(2);
 
 /**
  * Every op, with the fields it needs and the fields it may have. A field not listed is an error (an AI's typo —
@@ -21054,7 +22047,14 @@ const HANDS_OPS = Object.freeze({
   'motion.detach': { need: ['key'], may: ['name', 'all', 'level'] },
   'motion.delete': { need: ['name'], may: [] },
   'motion.rename': { need: ['name', 'to'], may: [] },
-  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'level'] },
+  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'knobs', 'off', 'level'] },
+  // Code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12): the AI writes the formula
+  // in the game's code (codeMotion / codePlace / codeAvoid) and puts it in the editor with these — it is then on the
+  // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
+  'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
+  'place.code': { need: ['id'], may: ['replace', 'level'] },
+  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'level'] },
+  'place.avoid': { need: ['id'], may: ['code', 'box', 'name', 'knobs', 'off', 'remove', 'level'] },
   'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
   'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
   'object.scale': { need: ['key'], may: ['to', 'by', 'level'] },
@@ -21122,15 +22122,56 @@ function readHandsOp(op, at, errors) {
     if (!handsText(op.name, max)) fail(`"name" must be 1 to ${max} characters`);
     else out.name = op.name.trim();
   }
+  const place = op.do.startsWith('place.');
   for (const f of ['id', 'level']) {
     if (!has(f)) continue;
-    if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
+    // A layout's id is a codePlace id (place.*); every other id is a level's.
+    if (f === 'id' && place) {
+      if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
+      else out.id = op.id;
+    } else if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
     else out[f] = op[f];
   }
-  for (const f of ['all', 'replace', 'deg', 'editor']) {
-    if (!has(f)) continue;
+  if (has('code')) {
+    if (typeof op.code !== 'string' || !CODE_ID_RE.test(op.code)) fail(`"code" must be the ${place ? 'codeAvoid' : 'codeMotion'} id in the game's code (lower case letters, digits and -, like "${place ? 'near-player' : 'spiral'}")`);
+    else out.code = op.code;
+  }
+  // place.code's `replace` is the hand-placed objects it takes the place of; elsewhere it is true / false.
+  if (has('replace') && op.do === 'place.code') {
+    const ok = Array.isArray(op.replace) && op.replace.length > 0 && op.replace.length <= LIMITS.maxObjects && op.replace.every((k) => typeof k === 'string' && KEY_RE.test(k)) && new Set(op.replace).size === op.replace.length;
+    if (!ok) fail('"replace" must be the keys of the hand-placed objects this layout takes the place of, each once (["lamp-1", "lamp-2"])');
+    else out.replace = op.replace.slice();
+  }
+  for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
+    if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
     if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
     else out[f] = op[f];
+  }
+  if (has('knobs')) {
+    const ks = op.knobs && typeof op.knobs === 'object' && !Array.isArray(op.knobs) ? Object.entries(op.knobs) : null;
+    if (!ks || !ks.length || ks.length > LIMITS.maxKnobs || !ks.every(([n, v]) => KNOB_RE.test(n) && handsNum(v) && Math.abs(v) <= LIMITS.maxKnob)) fail(`"knobs" must be 1 to ${LIMITS.maxKnobs} knob names with their numbers ({ "gap": 4 }), each within ±${LIMITS.maxKnob}`);
+    else out.knobs = Object.fromEntries(ks);
+  }
+  if (has('pin')) {
+    const pn = op.pin;
+    const ok = pn && typeof pn === 'object' && !Array.isArray(pn) && typeof pn.key === 'string' && KEY_RE.test(pn.key) && handsVec(pn.p)
+      && (pn.r === undefined || handsNum(pn.r)) && (pn.s === undefined || (handsNum(pn.s) && pn.s !== 0) || handsVec(pn.s)) && Object.keys(pn).every((k) => ['key', 'p', 'r', 's'].includes(k));
+    if (!ok) fail('"pin" must be { "key": "hex-3", "p": [x, y, z], "r"?: angle, "s"?: size } (one of the layout\'s objects, put by hand)');
+    else out.pin = structuredClone(pn);
+  }
+  if (has('unpin')) {
+    if (typeof op.unpin !== 'string' || !KEY_RE.test(op.unpin)) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3")');
+    else out.unpin = op.unpin;
+  }
+  if (has('box')) {
+    const b = op.box;
+    const ok = b && typeof b === 'object' && handsVec(b.p) && handsVec(b.size, b.p.length) && b.size.every((x) => x >= 0) && Object.keys(b).every((k) => k === 'p' || k === 'size');
+    if (!ok) fail('"box" must be { "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] } (2D: [x, y] / [w, h] px)');
+    else out.box = { p: b.p.slice(), size: b.size.slice() };
+  }
+  if (has('remove')) {
+    if (!(Number.isInteger(op.remove) && op.remove >= 0) && !(typeof op.remove === 'string' && CODE_ID_RE.test(op.remove))) fail('"remove" must be which keep-out area: its place in the list (0 = the first) or its codeAvoid id');
+    else out.remove = op.remove;
   }
   if (has('to') || has('by')) readHandsAmounts(op, out, fail);
   if (has('len')) {
@@ -21167,7 +22208,15 @@ function readHandsOp(op, at, errors) {
     if (u.error) fail(`"until": ${u.error}`);
     else out.until = u.until;
   }
-  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until"');
+  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
+  if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
+  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand"');
+  if (op.do === 'place.avoid') {
+    if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
+    else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
+    if (has('name') && !has('box')) fail('"name" is a box\'s (a condition is named in its codeAvoid())');
+    if (has('knobs') && !has('code')) fail('"knobs" are a code condition\'s');
+  }
   if (op.do.startsWith('object.') && ['move', 'turn', 'scale'].includes(op.do.slice(7)) && !has('to') && !has('by')) fail('needs "to" or "by"');
   return out;
 }
@@ -21353,6 +22402,7 @@ function handsCopyKey(from, taken) {
 }
 
 const handsQ = (s) => `"${s}"`;
+const handsKnobWords = (k) => Object.entries(k).map(([n, v]) => `${n} ${v}`).join(', ');
 const handsWhenWords = (w) => {
   const one = (x) => (x.on === 'start' ? 'starts with the game' : x.on === 'time' ? `starts ${x.after} s after the start` : x.on === 'key' ? `starts when ${x.key} is pressed`
     : x.on === 'click' ? 'starts when it is clicked' : x.on === 'after' ? `starts after "${x.use}" ends` : x.on === 'enter' ? 'starts when the player walks into its area'
@@ -21379,9 +22429,19 @@ function handsSaid(op, x = {}) {
     case 'motion.delete': return `deleted ${handsQ(op.name)} from the Library${x.from ? ` (it came off ${x.from} object${x.from === 1 ? '' : 's'})` : ''}`;
     case 'motion.rename': return `renamed the motion ${handsQ(op.name)} to ${handsQ(x.to ?? op.to)}`;
     case 'motion.set': {
-      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : ''].filter(Boolean);
+      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : '',
+        op.knobs ? handsKnobWords(op.knobs) : '', op.off !== undefined ? (op.off ? 'switched off' : 'switched on') : ''].filter(Boolean);
       return `set ${handsQ(op.name)}${op.key ? on : ''}: ${parts.join(', ')}`;
     }
+    case 'motion.code': {
+      const name = x.name ?? op.name;
+      return `${x.replaced ? `turned ${handsQ(name)} into` : 'put'} the code motion ${handsQ(name)} (codeMotion('${op.code}'))${op.key ? `${x.replaced ? ',' : ''} on ${op.key}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : x.replaced ? '' : ' in the Library'}`;
+    }
+    case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
+      : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
+    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : ''].filter(Boolean).join(', ')}`;
+    case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
+      : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
     case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
     case 'object.turn': return `turned ${op.key} to ${Math.round(((x.pose?.r ?? 0) * 180) / Math.PI)}°`;
     case 'object.scale': return `resized ${op.key} to ${JSON.stringify(x.pose?.s ?? op.to)}`;
@@ -21395,7 +22455,7 @@ function handsSaid(op, x = {}) {
     case 'level.switch': return `opened the level ${op.id}`;
     case 'save': return 'saved (as the person\'s Save: a saved request follows)';
     case 'editor.reload': return op.editor ? 'reloaded the editor page' : 'reloaded the game in the editor';
-    case 'list': return 'listed the objects, motions and levels';
+    case 'list': return 'listed the objects, motions, code layouts and levels';
     default: return op.do;
   }
 }
@@ -21428,7 +22488,8 @@ function applyHandsToFile(file, ops, o = {}) {
 /** Empty parts out (the validator wants no empty `motion` / `added`…), and the top `objects` there with levels. */
 function handsTidy(f) {
   for (const w of [f, ...(f.levels || [])]) {
-    for (const k of ['motion', 'names']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
+    for (const [id, e] of Object.entries(w.places || {})) if (!Object.keys(e).length) delete w.places[id];
+    for (const k of ['motion', 'names', 'places']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
     for (const k of ['added', 'removed']) if (w[k] && !w[k].length) delete w[k];
   }
   if (f.motions && !f.motions.length) delete f.motions;
@@ -21457,10 +22518,16 @@ function handsFileOp(f, op, dim) {
   if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
   if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
   if (kind === 'level') return handsFileLevel(f, op);
-  if (op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
+  // A knob's `was` is the number in the game's code, which only the game's page knows (decision 5: with no editor to
+  // show it, the AI changes the code's number itself).
+  if (op.knobs && op.do !== 'place.avoid') return { error: `no editor is open: change the number in ${op.do === 'motion.set' ? 'the codeMotion()' : `codePlace('${op.id}')`} in the game's code directly (knobs are turned in the editor)` };
+  if (op.knobs) return { error: `no editor is open: change the number in codeAvoid('${op.code}') in the game's code directly (knobs are turned in the editor)` };
+  if (op.do === 'place.set' && op.hand !== undefined) return { error: 'placing by hand needs the editor open (it reads where the code put each object)' };
+  if ((op.do === 'motion.code' && !op.key) || op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
   const at = handsWorld(f, op);
   if (at.error) return at;
   const w = at.w;
+  if (kind === 'place') return handsFilePlace(w, op, dim);
   if (kind === 'motion') return handsFileMotion(f, w, op, dim);
   return handsFileObject(w, op, dim);
 }
@@ -21475,6 +22542,7 @@ const handsFree = (f, base) => {
 /** Ops on the Library alone: delete, rename, set repeat / length for every object, make without an object. */
 function handsFileLibrary(f, op, dim) {
   if (op.do === 'motion.make') return handsFileMake(f, op, dim);
+  if (op.do === 'motion.code') return handsFileCode(f, op);
   const l = handsLib(f, op.name);
   if (!l) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
   if (op.do === 'motion.delete') {
@@ -21508,6 +22576,7 @@ function handsFileLibrary(f, op, dim) {
     return { to };
   }
   // motion.set without an object: the Library motion's repeat / length (every object that uses it plays it so).
+  if (l.code && (op.repeat || op.len)) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
   if (op.when !== undefined || op.until !== undefined) {
     let n = 0;
     for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) for (const c of w.motion[k].clips || []) if (c.use === op.name) (handsSetClip(c, op), n++);
@@ -21575,6 +22644,7 @@ function handsFileMake(f, op, dim, w) {
 function handsFileMotion(f, w, op, dim) {
   if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
   if (op.do === 'motion.make') return handsFileMake(f, op, dim, w);
+  if (op.do === 'motion.code') return handsFileCode(f, op, w);
   const clips = w.motion?.[op.key]?.clips || [];
   if (op.do === 'motion.attach') {
     if (!handsLib(f, op.name)) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
@@ -21601,10 +22671,126 @@ function handsFileMotion(f, w, op, dim) {
   // motion.set with an object: when / until on its clip; repeat / length on the Library motion (they are the motion's).
   const r = handsClip(named, op.name, op.key);
   if (r.error) return r;
-  handsSetClip(clips[named.indexOf(r.clip)], op);
+  const c = clips[named.indexOf(r.clip)];
+  handsSetClip(c, op);
+  if (op.off === true) c.off = true;
+  else if (op.off === false) delete c.off;
   const l = handsLib(f, r.clip.use ?? r.clip.name);
+  if (l && (op.repeat || op.len) && l.code) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
   if (l) handsSetLib(l, op);
   return {};
+}
+
+/**
+ * motion.code: the Library's code motion `{ name, code }` (the shape is codeMotion('<code>') in the game's code), and
+ * on the object when there is a key — as motion.make does with points. The same code already in the Library is that
+ * motion (the person may have renamed it); `replace` turns the motion of points named `name` into this code motion
+ * (✦ To code: every object that had it keeps it, now as code).
+ */
+function handsFileCode(f, op, w) {
+  const lib = f.motions || [];
+  let m = lib.find((x) => x.name === op.name);
+  let replaced = false;
+  if (m && m.code !== op.code) {
+    if (op.replace) {
+      for (const k of Object.keys(m)) delete m[k];
+      Object.assign(m, { name: op.name, code: op.code });
+      replaced = true;
+    } else m = null;
+  }
+  if (!m) m = lib.find((x) => x.code === op.code) || null;
+  if (!m) {
+    m = { name: handsFree(f, op.name), code: op.code };
+    (f.motions ||= []).push(m);
+  }
+  if (!w) return { name: m.name, replaced };
+  const clips = w.motion?.[op.key]?.clips || [];
+  const had = clips.find((c) => (c.use ?? c.name) === m.name);
+  if (had) {
+    handsSetClip(had, op);
+    return { name: m.name, replaced, when: had.when };
+  }
+  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+  const when = op.when ?? HANDS_MAKE_WHEN;
+  (w.motion ||= {})[op.key] = { clips: [...clips, { use: m.name, when, ...(op.until ? { until: op.until } : {}) }] };
+  return { name: m.name, replaced, when };
+}
+
+/** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
+const handsPlaceKey = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
+
+/**
+ * place.code / place.set / place.avoid on placement.json (no editor open): the layout's entry in `places`, only what
+ * the person (here the AI for them) changed. Knobs and "by hand" are refused before this (they need the game).
+ */
+function handsFilePlace(w, op, dim) {
+  const places = (w.places ||= {});
+  const e = (places[op.id] ||= {});
+  const n = dim === '2d' ? 2 : 3;
+  if (op.do === 'place.code') {
+    if (!op.replace) return {};
+    // ✦ To code: the hand-placed objects are hidden (`from`) until the AI takes them out of the code; their moves and
+    // copies are no longer the person's to keep (the layout is now where they stand).
+    e.from = [...new Set([...(e.from || []), ...op.replace])];
+    for (const k of op.replace) if (w.objects) delete w.objects[k];
+    if (w.added) w.added = w.added.filter((a) => !op.replace.includes(a.key));
+    return {};
+  }
+  if (op.do === 'place.set') {
+    if (op.pin) {
+      if (!handsPlaceKey(op.id, op.pin.key)) return { error: `"${op.pin.key}" is not one of codePlace('${op.id}')'s objects (they are ${op.id}-1, ${op.id}-2 …)` };
+      if (op.pin.p.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
+      const r3 = (v) => Math.round(v * (n === 3 ? 1000 : 10)) / (n === 3 ? 1000 : 10);
+      (e.pins ||= {})[op.pin.key] = { p: op.pin.p.map(r3), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) };
+    }
+    if (op.unpin) {
+      if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
+      delete e.pins[op.unpin];
+      if (!Object.keys(e.pins).length) delete e.pins;
+    }
+    return {};
+  }
+  return handsAvoid(e, op, n);
+}
+
+/** place.avoid on a layout's entry (the file's and the editor's: one rule). { changed } or { error }. */
+function handsAvoid(e, op, n, knobsWas = {}) {
+  const list = (e.avoid ||= []);
+  if (op.remove !== undefined) {
+    const i = typeof op.remove === 'number' ? op.remove : list.findIndex((a) => a.code === op.remove);
+    if (!(i >= 0 && i < list.length)) return { error: `codePlace('${op.id}') has no keep-out area ${JSON.stringify(op.remove)} (${list.length ? list.map((a, j) => (a.code ? `${j}: ${a.code}` : `${j}: ${a.name ?? 'a box'}`)).join(', ') : 'it has none in the file'})` };
+    list.splice(i, 1);
+    if (!list.length) delete e.avoid;
+    return {};
+  }
+  if (op.box) {
+    if (op.box.p.length !== n) return { error: `a box has ${n} numbers in its p and size in a ${n === 3 ? '3D' : '2D'} game` };
+    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
+    const step = n === 3 ? 1000 : 10;
+    const r = (v) => Math.round(v * step) / step;
+    list.push({ box: { p: op.box.p.map(r), size: op.box.size.map(r) }, ...(op.name ? { name: op.name } : {}), ...(op.off ? { off: true } : {}) });
+    return { changed: false };
+  }
+  let a = list.find((x) => x.code === op.code);
+  const changed = !!a;
+  if (!a) {
+    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
+    a = { code: op.code };
+    list.push(a);
+  }
+  if (op.off === true) a.off = true;
+  else if (op.off === false) delete a.off;
+  if (op.knobs) {
+    // A knob back on the code's number is no change (the file keeps only what differs from the code).
+    const ks = { ...(a.knobs || {}) };
+    for (const [k, v] of Object.entries(op.knobs)) {
+      if (knobsWas[k] === v) delete ks[k];
+      else ks[k] = { v, ...(knobsWas[k] !== undefined ? { was: knobsWas[k] } : ks[k]?.was !== undefined ? { was: ks[k].was } : {}) };
+    }
+    if (Object.keys(ks).length) a.knobs = ks;
+    else delete a.knobs;
+  }
+  return { changed };
 }
 
 function handsFileObject(w, op, dim) {
@@ -21694,8 +22880,11 @@ function handsFileList(f) {
     });
   };
   const out = { from: 'placement.json (no editor open: only the objects it has)', objects: f.levels ? [] : world(f) };
-  out.motions = (f.motions || []).map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
-  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l) }));
+  out.motions = (f.motions || []).map((m) => (m.code ? { name: m.name, code: m.code, ...(m.knobs ? { knobs: m.knobs } : {}) } : { name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
+  // The code layouts the file has changes for (the editor's list has every codePlace of the game, with its objects).
+  const places = (w) => Object.entries(w.places || {}).map(([id, e]) => ({ id, ...structuredClone(e) }));
+  if (!f.levels && f.places) out.places = places(f);
+  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l), ...(l.places ? { places: places(l) } : {}) }));
   return out;
 }
 
@@ -21714,8 +22903,10 @@ __def(__exports, "handsPose", () => handsPose);
 __def(__exports, "handsCopyKey", () => handsCopyKey);
 __def(__exports, "handsSaid", () => handsSaid);
 __def(__exports, "applyHandsToFile", () => applyHandsToFile);
+__def(__exports, "handsPlaceKey", () => handsPlaceKey);
+__def(__exports, "handsAvoid", () => handsAvoid);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -21733,8 +22924,10 @@ __defs[59] = function (__exports) {
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-                                                                                                                                
-const { HANDS_MAKE_WHEN, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(58);
+                                                                                                                                                                                                                   
+const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(59);
+const { roundKnob, turnKnobs } = __require(32);
+const { CODE_LEN } = __require(33);
 
                            
              
@@ -21791,8 +22984,22 @@ const { HANDS_MAKE_WHEN, handsClip, handsMotion, handsPose, handsSaid, readHands
                                 
                                                      
                                                                                                                                                                                                                                          
-                                                                                                                       
-                                                                            
+                                                                                                                                      
+                                                                                                                      
+     
+                                                                                                             
+                                                               
+     
+                                  
+                                
+                                
+                                                                                                                
+                                 
+                                                                                                            
+                                           
+                       
+                                                                                                                        
+                                                       
            
                       
                       
@@ -21848,6 +23055,31 @@ function createAiHands(d           ) {
     return ns.length ? ns.map((n) => `"${n}"`).join(', ') : 'it has none';
   };
 
+  // ----- code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12) -----
+  // The AI has just written codeMotion / codePlace / codeAvoid into the game's code when it sends these: a page that does
+  // not list the id yet reads the game again first (decision 5) — the person is never asked to press Reload.
+  async function findCode   (get           , idOf                  , id        )                    {
+    const find = () => get().find((x) => idOf(x) === id) ?? null;
+    if (find()) return find();
+    await d.reloadGame();
+    return find();
+  }
+  const hasNo = (fn        , id        , ids          ) => `the game has no ${fn}('${id}') (it has: ${ids.length ? ids.map((i) => `'${i}'`).join(', ') : 'none'})`;
+  /** "Gap 4 m, Count 5": the knobs as the person reads them (the code's label and unit). */
+  const knobWords = (code                          , vals                        ) => Object.entries(vals).map(([n, v]) => {
+    const k = code[n];
+    const u = k?.unit ? d.t(`hands.unit.${k.unit}`) : '';
+    return `${k?.label ?? n} ${roundKnob(v)}${u === `hands.unit.${k?.unit}` ? ` ${k?.unit}` : u}`;
+  }).join(', ');
+  /** The knobs' numbers now: the file's v over the code's. */
+  const knobsNow = (code                          , file                            ) => Object.fromEntries(Object.entries(code).map(([n, k]) => [n, file?.[n]?.v ?? k.v]));
+  const unknownKnob = (fn        , code                          , set                        ) => {
+    const bad = Object.keys(set).find((n) => !(n in code));
+    return bad ? `${fn} has no knob "${bad}" (its knobs: ${Object.keys(code).join(', ') || 'none'})` : null;
+  };
+  /** A code layout's objects are its own keys: "hex-3" of codePlace('hex'). */
+  const ofPlace = (p               , key        ) => p.keys.includes(key) || (key.startsWith(`${p.id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(p.id.length + 1)));
+
   async function one(op    )               {
     if (op.level && d.levels.active() && op.level !== d.levels.current()) {
       if (!d.levels.ids().includes(op.level)) return { error: `no level "${op.level}" (${d.levels.ids().join(', ')})` };
@@ -21900,15 +23132,35 @@ function createAiHands(d           ) {
         return { to, words: { name: op.name, to } };
       }
       case 'motion.set': {
+        // A code motion's knobs (studio-code-base): turned like the person's knob on the timeline, { v, was = the code's }.
+        const knobs = async (libName        )                                              => {
+          const l = d.lib(libName);
+          if (!l) return { error: `no motion "${libName}" in the Library (${libHint()})` };
+          if (l.code && (op.repeat || op.len)) return { error: `"${libName}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
+          if (!op.knobs) return {};
+          if (!l.code) return { error: `"${libName}" is a motion of points, not code: it has no knobs (motion.code with "replace" turns it into code)` };
+          const info = await findCode(d.codeMotions, (c) => c.code, l.code);
+          if (!info) return { error: hasNo('codeMotion', l.code, d.codeMotions().map((c) => c.code)) };
+          const bad = unknownKnob(`codeMotion('${l.code}')`, info.knobs, op.knobs);
+          if (bad) return { error: bad };
+          d.libSet(libName, { knobs: turnKnobs(l.knobs, op.knobs, info.knobs) ?? null });
+          return { words: knobWords(info.knobs, op.knobs) };
+        };
         if (op.key) {
           if (need(op.key)) return { error: need(op.key)  };
           const r = handsClip(d.motionOf(op.key)?.clips ?? [], op.name, op.key);
           if (r.error) return { error: r.error };
-          if (op.when !== undefined || op.until !== undefined) d.clipSet(op.key, r.clip.name, { when: op.when, until: op.until });
+          const k = await knobs(r.clip.use ?? r.clip.name);
+          if (k.error) return { error: k.error };
+          if (op.when !== undefined || op.until !== undefined || op.off !== undefined) d.clipSet(op.key, r.clip.name, { when: op.when, until: op.until, off: op.off });
           if (op.repeat || op.len) d.libSet(r.clip.use ?? r.clip.name, { repeat: op.repeat, len: op.len });
-          return { words: { name: r.clip.name, obj: name(op.key) } };
+          if (op.off !== undefined && !op.knobs && op.when === undefined && op.until === undefined) return { words: { name: r.clip.name, obj: name(op.key) }, wordsKey: op.off ? 'hands.motion.off' : 'hands.motion.on' };
+          return { words: { name: r.clip.name, obj: name(op.key), ...(k.words ? { what: k.words } : {}) }, ...(k.words ? { wordsKey: 'hands.motion.knobs' } : {}) };
         }
         if (!d.lib(op.name)) return { error: `no motion "${op.name}" in the Library (${libHint()})` };
+        const k = await knobs(op.name);
+        if (k.error) return { error: k.error };
+        if (k.words && !op.when && !op.until && !op.repeat && !op.len) return { words: { name: op.name, what: k.words }, wordsKey: 'hands.motion.knobs' };
         if (op.when !== undefined || op.until !== undefined) {
           const on = d.keys().filter((k) => (d.motionOf(k)?.clips ?? []).some((c) => c.use === op.name));
           if (!on.length) return { error: `"${op.name}" is on no object: put it on one first (motion.attach)` };
@@ -21916,6 +23168,115 @@ function createAiHands(d           ) {
         }
         if (op.repeat || op.len) d.libSet(op.name, { repeat: op.repeat, len: op.len });
         return { words: { name: op.name, obj: '' } };
+      }
+      case 'motion.code': {
+        if (op.key && need(op.key)) return { error: need(op.key)  };
+        const info = await findCode(d.codeMotions, (c) => c.code, op.code);
+        if (!info) return { error: hasNo('codeMotion', op.code, d.codeMotions().map((c) => c.code)) };
+        const named = d.lib(op.name);
+        // The same code already in the Library is that motion (the person may have renamed it): one motion, one set of knobs.
+        const there = named?.code === op.code ? op.name : !(named && op.replace) ? d.libNames().find((n) => d.lib(n)?.code === op.code) : undefined;
+        const words = (n        ) => ({ name: n, obj: op.key ? name(op.key) : '' });
+        if (there) {
+          if (!op.key) return { name: there, words: words(there) };
+          let c = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === there);
+          if (!c) {
+            if (!d.attach(op.key, there)) return { error: `${op.key} cannot take another motion` };
+            c = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === there);
+            // Like a motion the AI makes: it starts with the game unless the op says otherwise (HANDS_MAKE_WHEN).
+            if (c) d.clipSet(op.key, c.name, { when: op.when ?? ({ ...HANDS_MAKE_WHEN }              ), until: op.until });
+          } else if (op.when !== undefined || op.until !== undefined) d.clipSet(op.key, c.name, { when: op.when, until: op.until });
+          const now = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === there);
+          return { name: there, when: now?.when, words: words(there) };
+        }
+        const len = info.round && info.round >= 0.1 && info.round <= 600 ? info.round : CODE_LEN;
+        const m = { name: op.name, len, keys: {}, code: op.code }                 ;
+        const r = d.make(op.key ?? null, m, { when: op.when, until: op.until, replace: op.replace, whenOf: () => ({ ...HANDS_MAKE_WHEN })               });
+        if ('error' in r) return { error: r.error };
+        return { name: r.name, when: r.when, replaced: !!(named && op.replace), words: words(r.name) };
+      }
+      case 'place.code': {
+        const info = await findCode(d.codePlaces, (p) => p.id, op.id);
+        if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+        const e = d.place(op.id) ?? {};
+        const what = [d.t('hands.place.count', { n: info.keys.length }), knobWords(info.knobs, knobsNow(info.knobs, e.knobs))].filter(Boolean).join(' · ');
+        if (!op.replace) return { keys: info.keys.length, words: { name: info.name, what }, wordsKey: 'hands.place.code' };
+        // ✦ To code: the hand-placed objects are hidden until the AI takes them out of the code (one ⌘Z brings them back).
+        const gone = op.replace.filter((k        ) => !d.item(k) && !(e.from ?? []).includes(k));
+        if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
+        d.setPlace(op.id, { ...e, from: [...new Set([...(e.from ?? []), ...op.replace])] });
+        return { keys: info.keys.length, words: { name: info.name, n: op.replace.length, what }, wordsKey: 'hands.place.codeReplace' };
+      }
+      case 'place.set': {
+        const info = await findCode(d.codePlaces, (p) => p.id, op.id);
+        if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+        const e                 = d.place(op.id) ?? {};
+        const n = d.dim() === '2d' ? 2 : 3;
+        const parts           = [];
+        if (op.knobs) {
+          const bad = unknownKnob(`codePlace('${op.id}')`, info.knobs, op.knobs);
+          if (bad) return { error: bad };
+          e.knobs = turnKnobs(e.knobs, op.knobs, info.knobs);
+          parts.push(knobWords(info.knobs, op.knobs));
+        }
+        if (op.pin) {
+          if (!ofPlace(info, op.pin.key)) return { error: `"${op.pin.key}" is not one of codePlace('${op.id}')'s objects (${info.keys.slice(0, 8).join(', ') || 'it has none'})` };
+          if (op.pin.p.length !== n) return { error: `a position has ${n} numbers in a ${d.dim().toUpperCase()} game` };
+          e.pins = { ...(e.pins ?? {}), [op.pin.key]: { p: op.pin.p.slice(), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) } };
+          parts.push(d.t('hands.place.pin', { obj: name(op.pin.key) }));
+        }
+        if (op.unpin) {
+          if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not placed by hand (it follows the code already)` };
+          delete e.pins[op.unpin];
+          parts.push(d.t('hands.place.unpin', { obj: name(op.unpin) }));
+        }
+        if (op.hand === true) {
+          // Place by hand: where each object stands now becomes its own place (the AI writes them out as a list on Save).
+          const pins                                      = {};
+          for (const k of info.keys) {
+            const ps = d.pose(k);
+            if (ps) pins[k] = { p: ps.p.slice(), ...(ps.r !== undefined ? { r: ps.r } : {}), ...(ps.s !== undefined && ps.s !== 1 ? { s: ps.s } : {}), ...(ps.t ? { t: [ps.t[0], ps.t[1]]                     } : {}) };
+          }
+          e.pins = pins;
+          e.hand = true;
+          parts.push(d.t('hands.place.hand'));
+        } else if (op.hand === false) {
+          delete e.hand;
+          delete e.pins;
+          parts.push(d.t('hands.place.unhand'));
+        }
+        d.setPlace(op.id, e);
+        return { words: { name: info.name, what: parts.join(', ') } };
+      }
+      case 'place.avoid': {
+        const info = await findCode(d.codePlaces, (p) => p.id, op.id);
+        if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+        let cond                       = null;
+        if (op.code) {
+          cond = await findCode(d.codeAvoids, (a) => a.code, op.code);
+          if (!cond) return { error: hasNo('codeAvoid', op.code, d.codeAvoids().map((a) => a.code)) };
+          const bad = op.knobs && unknownKnob(`codeAvoid('${op.code}')`, cond.knobs, op.knobs);
+          if (bad) return { error: bad };
+        }
+        const e                 = d.place(op.id) ?? {};
+        const boxes = (e.avoid ?? []).filter((a) => 'box' in a).length;
+        const was = (e.avoid ?? [])[typeof op.remove === 'number' ? op.remove : -1] ?? (e.avoid ?? []).find((a) => 'code' in a && a.code === (op.remove ?? op.code));
+        const o = op.box && !op.name ? { ...op, name: d.t('place.boxName', { n: boxes + 1 }) } : op;
+        const r = handsAvoid(e, o, d.dim() === '2d' ? 2 : 3, cond ? Object.fromEntries(Object.entries(cond.knobs).map(([k, v]) => [k, v.v])) : {});
+        if (r.error) return { error: r.error };
+        // A condition the code names already, switched back on with nothing changed: no entry (the file keeps changes only).
+        if (e.avoid) e.avoid = e.avoid.filter((a) => !('code' in a && info.avoid.includes(a.code) && !a.off && !a.knobs));
+        d.setPlace(op.id, e);
+        const label = (a         ) => {
+          const x = a                                                                                   ;
+          if (!x) return '';
+          if (!x.code) return x.name ?? '';
+          const c = d.codeAvoids().find((y) => y.code === x.code);
+          return [c?.name ?? x.code, c ? knobWords(c.knobs, knobsNow(c.knobs, x.knobs)) : '', c?.after ?? ''].filter(Boolean).join(' ');
+        };
+        const now = op.remove !== undefined ? was : op.box ? e.avoid?.[e.avoid.length - 1] : (e.avoid ?? []).find((a) => 'code' in a && a.code === op.code) ?? { code: op.code };
+        const key = op.remove !== undefined ? 'hands.place.avoidRemove' : op.off === true ? 'hands.place.avoidOff' : r.changed ? 'hands.place.avoidSet' : 'hands.place.avoid';
+        return { changed: r.changed, words: { name: info.name, what: label(now) }, wordsKey: key };
       }
       case 'object.move':
       case 'object.turn':
@@ -21991,16 +23352,47 @@ function createAiHands(d           ) {
         d.reload(!!op.editor);
         return { words: {} };
       case 'list':
-        return { list: d.list() };
+        return { list: codeList(d.list()                           ) };
       default:
         return { error: `unknown op ${op.do}` };
     }
   }
 
+  /**
+   * `list` with the game's code: each code motion with its code id and knobs (the file's numbers over the code's,
+   * `missing` when the game has no such codeMotion), and every code layout with its objects, knobs, pins and keep-out
+   * areas — so "make the gap smaller" or "keep them off the road" can be done without asking the person.
+   */
+  function codeList(l                         )                          {
+    const cm = new Map(d.codeMotions().map((c) => [c.code, c]));
+    const knobsOut = (code                          , file                            ) => Object.fromEntries(Object.entries(code).map(([n, k]) => [n, { ...k, v: file?.[n]?.v ?? k.v, ...(file?.[n] ? { code: k.v } : {}) }]));
+    const motions = (Array.isArray(l.motions) ? l.motions : []).map((m                  ) => {
+      const lm = d.lib(m.name);
+      if (!lm?.code) return m;
+      const c = cm.get(lm.code);
+      const { len: _len, repeat: _repeat, ...rest } = m                                                   ;
+      return { ...rest, code: lm.code, ...(c ? { knobs: knobsOut(c.knobs, lm.knobs), round: c.round, ...(c.note ? { note: c.note } : {}), ...(c.game ? { game: true } : {}) } : { missing: true, ...(lm.knobs ? { knobs: lm.knobs } : {}) }) };
+    });
+    const ps = d.codePlaces();
+    const places            = ps.map((p) => {
+      const e = d.place(p.id) ?? {};
+      return { id: p.id, name: p.name, keys: p.keys, knobs: knobsOut(p.knobs, e.knobs), ...(p.drag ? { drag: p.drag } : {}), ...(e.pins ? { pins: Object.keys(e.pins) } : {}), ...(e.hand ? { hand: true } : {}),
+        avoid: [...p.avoid.filter((a) => !(e.avoid ?? []).some((x) => 'code' in x && x.code === a)).map((a) => ({ code: a })), ...(e.avoid ?? [])].map((a) => {
+          if ('box' in a) return a;
+          const c = d.codeAvoids().find((x) => x.code === a.code);
+          return { ...a, ...(c ? { name: c.name, ...(c.after ? { after: c.after } : {}), knobs: knobsOut(c.knobs, a.knobs) } : { missing: true }) };
+        }), ...(p.skipped.length ? { skipped: p.skipped } : {}), ...(e.from ? { from: e.from } : {}) };
+    });
+    // Changes kept for a layout the game does not have (any more): the AI fixes its code, or takes them out.
+    for (const id of d.placeIds()) if (!ps.some((p) => p.id === id)) places.push({ id, missing: true, ...d.place(id) });
+    return { ...l, motions, ...(places.length ? { places } : {}) };
+  }
+
   /** The person's words for one op ("Claude took “Row” off Blue pillar"), with the AI's name. */
   function words(op    , did     , ai                        )         {
     const w = did.words ?? {};
-    const key = op.do === 'motion.make' && !op.key ? 'hands.motion.makeLib' : op.do === 'motion.set' && !w.obj ? 'hands.motion.setLib' : `hands.${op.do}`;
+    const key = typeof did.wordsKey === 'string' ? did.wordsKey : op.do === 'motion.make' && !op.key ? 'hands.motion.makeLib' : op.do === 'motion.code' && !op.key ? 'hands.motion.codeLib'
+      : op.do === 'motion.set' && !w.obj ? 'hands.motion.setLib' : `hands.${op.do}`;
     return d.t(key, { ...ai, ...w });
   }
 
@@ -22034,7 +23426,7 @@ function createAiHands(d           ) {
         results.push({ do: op.do, ok: true, said: handsSaid(op, did), ...(did.list ? { list: did.list } : {}) });
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
-          if (lead < 0 && (op.do === 'motion.make' || op.do === 'motion.attach')) lead = said.length;
+          if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code'].includes(op.do)) lead = said.length;
           said.push(words(op, did, ai));
         }
         else if (!said.length && op.do === 'save') said.push(d.t('hands.save', ai));
@@ -22059,7 +23451,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -22179,7 +23571,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -22193,7 +23585,7 @@ __defs[61] = function (__exports) {
 // (no Height in 2D, the draw-order keys only in 2D).
 const { h } = __require(16);
 const { icon } = __require(21);
-const { KEYMAP, keysOf } = __require(47);
+const { KEYMAP, keysOf } = __require(48);
 
                                     
                          
@@ -22262,7 +23654,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -22525,7 +23917,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -22549,7 +23941,7 @@ __defs[63] = function (__exports) {
                                                                                     
 
 /** A level's world part: what placement.json has at its top for a game with one level. */
-                                                                                                            
+                                                                                                                       
 
                              
              
@@ -22586,6 +23978,8 @@ function worldOf(f                                                            ) 
   if (f?.order?.length) w.order = structuredClone(f.order);
   if (f?.motion && Object.keys(f.motion).length) w.motion = structuredClone(f.motion);
   if (f?.names && Object.keys(f.names).length) w.names = structuredClone(f.names);
+  // A level's code-layout changes (studio-code-base, 2026-10-24): that level's, like its objects.
+  if (f?.places && Object.keys(f.places).length) w.places = structuredClone(f.places);
   return w;
 }
 
@@ -22754,6 +24148,7 @@ class Levels {
     delete out.order;
     delete out.motion;
     delete out.names;
+    delete out.places;
     out.levels = this.list.map((e) => {
       const w = e.id === this.current ? now : e.world;
       const l                 = { id: e.id };
@@ -22771,6 +24166,7 @@ class Levels {
       if (w.order?.length) l.order = structuredClone(w.order);
       if (w.motion && Object.keys(w.motion).length) l.motion = structuredClone(w.motion);
       if (w.names && Object.keys(w.names).length) l.names = structuredClone(w.names);
+      if (w.places && Object.keys(w.places).length) l.places = structuredClone(w.places);
       return l;
     });
     // The code's order, only when the person's list says something else (an order, a copy, a delete, a rename).
@@ -22941,7 +24337,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -22980,7 +24376,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -23154,7 +24550,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -23352,7 +24748,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -23463,7 +24859,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -23620,7 +25016,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -23690,7 +25086,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -23779,7 +25175,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -23928,7 +25324,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -23991,7 +25387,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -24204,7 +25600,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -24294,7 +25690,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -24310,11 +25706,11 @@ __defs[75] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(71);
-const { withLooks } = __require(70);
-const { createUiScreens } = __require(72);
-const { UiStyleModel, validLook, validTheme } = __require(73);
-const { createUiTheme } = __require(74);
+const { createUiCard } = __require(72);
+const { withLooks } = __require(71);
+const { createUiScreens } = __require(73);
+const { UiStyleModel, validLook, validTheme } = __require(74);
+const { createUiTheme } = __require(75);
                                                    
 
                              
@@ -24509,7 +25905,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -24586,7 +25982,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -24613,49 +26009,49 @@ const { createLibraryMotions } = __require(26);
 const { createMotionDrag } = __require(27);
 const { createMotionTool } = __require(28);
 const { rulesFor } = __require(29);
-const { samePose } = __require(34);
+const { samePose } = __require(35);
 const { h, safeImageSrc } = __require(16);
-const { detectLang, setAiName, setExtraText, translate } = __require(35);
-const { NEXT_STEPS, renderNextSteps } = __require(36);
-const { statusCovers } = __require(37);
-const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(38);
-const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(39);
-const { bounces, saveLoud } = __require(40);
-const { askView: questionView } = __require(41);
-const { playLine, playWords } = __require(42);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(43);
-const { renderSettings } = __require(45);
-const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(44);
+const { detectLang, setAiName, setExtraText, translate } = __require(36);
+const { NEXT_STEPS, renderNextSteps } = __require(37);
+const { statusCovers } = __require(38);
+const { aiBusy, aiPhase, moreIn, reloadDecision } = __require(39);
+const { aiNameKey, aiPresence, presenceSure, QUIET_WORK_MS, UNSEEN_MS } = __require(40);
+const { bounces, saveLoud } = __require(41);
+const { askView: questionView } = __require(42);
+const { playLine, playWords } = __require(43);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineFades, lineKey, lineStayMs } = __require(44);
+const { renderSettings } = __require(46);
+const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(45);
 const { dropTarget, hasLayer, layerTarget } = __require(31);
-const { createPlacementPanel } = __require(48);
-const { createTimeline } = __require(52);
+const { createPlacementPanel } = __require(49);
+const { createTimeline } = __require(53);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(53);
-const { motionLibrary } = __require(32);
-const { attachWorld, roundLib } = __require(33);
+const { createMotionAsk } = __require(54);
+const { motionLibrary } = __require(33);
+const { attachWorld, roundLib } = __require(34);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(54);
-const { createPalette } = __require(55);
-const { fitPicture } = __require(56);
-const { PlacementModel } = __require(34);
-const { UndoStack, poseChange, sharedMotion } = __require(57);
-const { createAiHands } = __require(59);
-const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(46);
+const { receipt } = __require(55);
+const { createPalette } = __require(56);
+const { fitPicture } = __require(57);
+const { PlacementModel } = __require(35);
+const { UndoStack, poseChange, sharedMotion } = __require(58);
+const { createAiHands } = __require(60);
+const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(47);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
-const { keyOf, tipText } = __require(47);
-const { installTooltips } = __require(60);
-const { createShortcutSheet } = __require(61);
-const { createContextMenu } = __require(62);
-const { Levels, worldOf } = __require(63);
-const { checkNoteId } = __require(64);
-const { createLevelSwitch, makeRows } = __require(65);
-const { contextRows } = __require(66);
-const { bigChanges, createSafeSave } = __require(67);
-const { createUnsavedGuard, lostBy, playAsks } = __require(68);
-const { createLayerSwitch } = __require(69);
-const { uiAsPlacement, uiEntries, withUi } = __require(70);
-const { createUiWire } = __require(75);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(76);
+const { keyOf, tipText } = __require(48);
+const { installTooltips } = __require(61);
+const { createShortcutSheet } = __require(62);
+const { createContextMenu } = __require(63);
+const { Levels, worldOf } = __require(64);
+const { checkNoteId } = __require(65);
+const { createLevelSwitch, makeRows } = __require(66);
+const { contextRows } = __require(67);
+const { bigChanges, createSafeSave } = __require(68);
+const { createUnsavedGuard, lostBy, playAsks } = __require(69);
+const { createLayerSwitch } = __require(70);
+const { uiAsPlacement, uiEntries, withUi } = __require(71);
+const { createUiWire } = __require(76);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(77);
 
                                                                         
 
@@ -24710,6 +26106,11 @@ function start(host            ) {
   let editLayer            = 'world';
   let worldDim      = '3d';
   let worldItems         = [];
+  // The game's code motions, code layouts and keep-out conditions (studio-code-base, 2026-10-24; bridge code-lists.ts):
+  // sent after each world list, empty for a game without them (a new list empties them first).
+  let codeMotionList                   = [];
+  let codePlaceList                  = [];
+  let codeAvoidList                  = [];
   let uiItems         = [];
   let uiSeen = false;
   let fileUi                     ;
@@ -26712,6 +28113,11 @@ function start(host            ) {
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
+      // A code layout's changes (studio-code-base): the game lays it out again from the draft.
+      else if (c.kind === 'code-place') {
+        worldModel.places.set(c.key, dir === 'undo' ? c.from : c.to);
+        placesChanged();
+      }
       // Put in this level from the Library (placeHere): undo hides it again, redo shows it again.
       else if (c.kind === 'place') {
         if (dir === 'undo') {
@@ -27824,6 +29230,17 @@ function start(host            ) {
         if (playing) showToast(t('status.gameErrorToast', { msg: m.message }), 8000);
         renderStatus();
         break;
+      // The game's code (studio-code-base, 2026-10-24): what the AI's --do motion.code / place.* find, and the knobs the AI
+      // has written into the code since (the file's v = the code's v) leave the file without counting as a change.
+      case 'studio:code-motions':
+        codeMotionList = m.list;
+        if (motionLibrary.settle(m.list)) (renderAll(), keepSoon());
+        break;
+      case 'studio:code-places':
+        codePlaceList = m.list;
+        codeAvoidList = m.avoids;
+        if (worldModel.places.settle(m.list)) (renderAll(), keepSoon());
+        break;
       case 'studio:placement/items': {
         // UI stage 1: the UI layer's list feeds its own model; nothing of the world's below (the AI's marks, copies,
         // the frame swap) is about it. Its saved places go to the UI layer by name, whichever layer is on.
@@ -27853,6 +29270,10 @@ function start(host            ) {
           break;
         }
         worldItems = m.items;
+        // The code's lists come right after (the bridge sends them only for a game that has code motions / layouts).
+        codeMotionList = [];
+        codePlaceList = [];
+        codeAvoidList = [];
         rememberItems(m.items);
         // The world's list while the shell has just switched to the UI (sent before the bridge got the switch): kept
         // in the world's model only.
@@ -28547,10 +29968,14 @@ function start(host            ) {
    * The camera (view state) and the selection carry over. `why`: 'ai' and
    * 'redo' compare what changed and mark it violet; 'undo' clears the marks.
    */
-  async function softReload(why                        ) {
+  async function softReload(why                                  ) {
     if (swapping || playing) return;
     await keepNow();
-    if (why === 'undo') {
+    // 'draft' (studio-code-base): the game reads the editor's draft again — a code layout's knobs, pins or keep-out
+    // areas changed, which only the game's loader can lay out. Not an AI change: its marks and "AI changed" stay as they are.
+    if (why === 'draft') {
+      // (nothing of the AI's to note)
+    } else if (why === 'undo') {
       aiBefore = null;
       aiBase = null;
       aiBeforeCode = aiBaseCode = null;
@@ -28581,6 +30006,19 @@ function start(host            ) {
     swapTimer = window.setTimeout(finishSwap, 10_000);
     loadGame(true);
     renderAiLine();
+  }
+  // A code layout changed (studio-code-base, 2026-10-24: a knob, a hand-placed one, a keep-out area, or its ⌘Z): only
+  // the game's loader lays a layout out, so the game reads the draft again — once for a burst of changes (the AI's job
+  // of three ops), after a page that is still opening. (Stage 2 of the plan moves them in place, without a reload.)
+  let placesTimer = 0;
+  function placesChanged() {
+    renderAll();
+    keepSoon();
+    clearTimeout(placesTimer);
+    placesTimer = window.setTimeout(function again() {
+      if (swapping || playing) return void (placesTimer = window.setTimeout(again, 200));
+      void softReload('draft');
+    }, 60);
   }
   function finishSwap() {
     clearTimeout(swapTimer);
@@ -29537,6 +30975,30 @@ function start(host            ) {
     make: (k, m, o) => timeline.handsMake(k, m, o),
     clipSet: (k, c, o) => timeline.handsClipSet(k, c, o),
     libSet: (n, o) => timeline.handsLibSet(n, o),
+    // Code motions and code layouts (studio-code-base, 2026-10-24): the game page's lists, and the level's layout changes.
+    codeMotions: () => codeMotionList,
+    codePlaces: () => codePlaceList,
+    codeAvoids: () => codeAvoidList,
+    reloadGame: async () => {
+      clearTimeout(placesTimer);
+      await softReload('draft');
+      for (const end = Date.now() + 15_000; Date.now() < end;) {
+        await new Promise((r) => setTimeout(r, 150));
+        // The code's lists come right after the page's first list (their own messages): one more beat for them.
+        if (!swapping && bridgeAlive && editing && worldItems.length) return (await new Promise((r) => setTimeout(r, 150)), true);
+      }
+      return false;
+    },
+    place: (id) => worldModel.places.get(id),
+    placeIds: () => worldModel.places.ids(),
+    setPlace: (id, e) => {
+      const from = worldModel.places.get(id);
+      worldModel.places.set(id, e);
+      const to = worldModel.places.get(id);
+      if (JSON.stringify(from) === JSON.stringify(to)) return;
+      undo.push({ changes: [{ kind: 'code-place', key: id, from, to }] });
+      placesChanged();
+    },
     levels: {
       active: () => levels.active,
       current: () => levels.current,
@@ -29753,7 +31215,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -29953,19 +31415,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(77);
-const { createLocalHost } = __require(78);
+const { start } = __require(78);
+const { createLocalHost } = __require(79);
 
 start(createLocalHost());
 
 
 };
-__require(79);
+__require(80);
 })();

@@ -12,8 +12,10 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { Dim, Item, LibraryMotion, Motion, MotionClip, MotionRepeat, MotionUntil, MotionWhen, Pose } from '../contract.ts';
-import { HANDS_MAKE_WHEN, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } from '../schema/hands.mjs';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, Pose } from '../contract.ts';
+import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } from '../schema/hands.mjs';
+import { roundKnob, turnKnobs } from './code-places.ts';
+import { CODE_LEN } from './motion-library.ts';
 
 export interface HandsJob {
   id: string;
@@ -70,8 +72,22 @@ export interface HandsDeps {
   deleteLib(name: string): void;
   renameLib(from: string, to: string): string | null;
   make(key: string | null, m: LibraryMotion, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null; replace?: boolean; whenOf?: (clips: MotionClip[]) => MotionWhen }): { name: string; when?: unknown } | { error: string };
-  clipSet(key: string, clipName: string, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null }): boolean;
-  libSet(name: string, o: { repeat?: MotionRepeat; len?: number }): boolean;
+  clipSet(key: string, clipName: string, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null; off?: boolean }): boolean;
+  libSet(name: string, o: { repeat?: MotionRepeat; len?: number; knobs?: Record<string, KnobValue> | null }): boolean;
+  /**
+   * The game page's code motions, code layouts and keep-out conditions (studio-code-base, 2026-10-24; bridge
+   * code-lists.ts) as last listed: [] for a game without them.
+   */
+  codeMotions(): CodeMotionInfo[];
+  codePlaces(): CodePlaceInfo[];
+  codeAvoids(): CodeAvoidInfo[];
+  /** Read the game again (the AI has just written code) and wait for its list; false = it did not come back. */
+  reloadGame(): Promise<boolean>;
+  /** The level on screen's changes to one code layout (null = none), and the layouts it has changes for. */
+  place(id: string): PlacementPlace | null;
+  placeIds(): string[];
+  /** Set them (null = none): one undo change, counted on Save, and the game shows the layout so (it reads it again). */
+  setPlace(id: string, e: PlacementPlace | null): void;
   levels: {
     active(): boolean;
     current(): string;
@@ -127,6 +143,31 @@ export function createAiHands(d: HandsDeps) {
     return ns.length ? ns.map((n) => `"${n}"`).join(', ') : 'it has none';
   };
 
+  // ----- code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12) -----
+  // The AI has just written codeMotion / codePlace / codeAvoid into the game's code when it sends these: a page that does
+  // not list the id yet reads the game again first (decision 5) — the person is never asked to press Reload.
+  async function findCode<T>(get: () => T[], idOf: (x: T) => string, id: string): Promise<T | null> {
+    const find = () => get().find((x) => idOf(x) === id) ?? null;
+    if (find()) return find();
+    await d.reloadGame();
+    return find();
+  }
+  const hasNo = (fn: string, id: string, ids: string[]) => `the game has no ${fn}('${id}') (it has: ${ids.length ? ids.map((i) => `'${i}'`).join(', ') : 'none'})`;
+  /** "Gap 4 m, Count 5": the knobs as the person reads them (the code's label and unit). */
+  const knobWords = (code: Record<string, CodeKnob>, vals: Record<string, number>) => Object.entries(vals).map(([n, v]) => {
+    const k = code[n];
+    const u = k?.unit ? d.t(`hands.unit.${k.unit}`) : '';
+    return `${k?.label ?? n} ${roundKnob(v)}${u === `hands.unit.${k?.unit}` ? ` ${k?.unit}` : u}`;
+  }).join(', ');
+  /** The knobs' numbers now: the file's v over the code's. */
+  const knobsNow = (code: Record<string, CodeKnob>, file?: Record<string, KnobValue>) => Object.fromEntries(Object.entries(code).map(([n, k]) => [n, file?.[n]?.v ?? k.v]));
+  const unknownKnob = (fn: string, code: Record<string, CodeKnob>, set: Record<string, number>) => {
+    const bad = Object.keys(set).find((n) => !(n in code));
+    return bad ? `${fn} has no knob "${bad}" (its knobs: ${Object.keys(code).join(', ') || 'none'})` : null;
+  };
+  /** A code layout's objects are its own keys: "hex-3" of codePlace('hex'). */
+  const ofPlace = (p: CodePlaceInfo, key: string) => p.keys.includes(key) || (key.startsWith(`${p.id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(p.id.length + 1)));
+
   async function one(op: Op): Promise<Did> {
     if (op.level && d.levels.active() && op.level !== d.levels.current()) {
       if (!d.levels.ids().includes(op.level)) return { error: `no level "${op.level}" (${d.levels.ids().join(', ')})` };
@@ -179,15 +220,35 @@ export function createAiHands(d: HandsDeps) {
         return { to, words: { name: op.name, to } };
       }
       case 'motion.set': {
+        // A code motion's knobs (studio-code-base): turned like the person's knob on the timeline, { v, was = the code's }.
+        const knobs = async (libName: string): Promise<{ error?: string; words?: string }> => {
+          const l = d.lib(libName);
+          if (!l) return { error: `no motion "${libName}" in the Library (${libHint()})` };
+          if (l.code && (op.repeat || op.len)) return { error: `"${libName}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
+          if (!op.knobs) return {};
+          if (!l.code) return { error: `"${libName}" is a motion of points, not code: it has no knobs (motion.code with "replace" turns it into code)` };
+          const info = await findCode(d.codeMotions, (c) => c.code, l.code);
+          if (!info) return { error: hasNo('codeMotion', l.code, d.codeMotions().map((c) => c.code)) };
+          const bad = unknownKnob(`codeMotion('${l.code}')`, info.knobs, op.knobs);
+          if (bad) return { error: bad };
+          d.libSet(libName, { knobs: turnKnobs(l.knobs, op.knobs, info.knobs) ?? null });
+          return { words: knobWords(info.knobs, op.knobs) };
+        };
         if (op.key) {
           if (need(op.key)) return { error: need(op.key)! };
           const r = handsClip(d.motionOf(op.key)?.clips ?? [], op.name, op.key);
           if (r.error) return { error: r.error };
-          if (op.when !== undefined || op.until !== undefined) d.clipSet(op.key, r.clip.name, { when: op.when, until: op.until });
+          const k = await knobs(r.clip.use ?? r.clip.name);
+          if (k.error) return { error: k.error };
+          if (op.when !== undefined || op.until !== undefined || op.off !== undefined) d.clipSet(op.key, r.clip.name, { when: op.when, until: op.until, off: op.off });
           if (op.repeat || op.len) d.libSet(r.clip.use ?? r.clip.name, { repeat: op.repeat, len: op.len });
-          return { words: { name: r.clip.name, obj: name(op.key) } };
+          if (op.off !== undefined && !op.knobs && op.when === undefined && op.until === undefined) return { words: { name: r.clip.name, obj: name(op.key) }, wordsKey: op.off ? 'hands.motion.off' : 'hands.motion.on' };
+          return { words: { name: r.clip.name, obj: name(op.key), ...(k.words ? { what: k.words } : {}) }, ...(k.words ? { wordsKey: 'hands.motion.knobs' } : {}) };
         }
         if (!d.lib(op.name)) return { error: `no motion "${op.name}" in the Library (${libHint()})` };
+        const k = await knobs(op.name);
+        if (k.error) return { error: k.error };
+        if (k.words && !op.when && !op.until && !op.repeat && !op.len) return { words: { name: op.name, what: k.words }, wordsKey: 'hands.motion.knobs' };
         if (op.when !== undefined || op.until !== undefined) {
           const on = d.keys().filter((k) => (d.motionOf(k)?.clips ?? []).some((c) => c.use === op.name));
           if (!on.length) return { error: `"${op.name}" is on no object: put it on one first (motion.attach)` };
@@ -195,6 +256,115 @@ export function createAiHands(d: HandsDeps) {
         }
         if (op.repeat || op.len) d.libSet(op.name, { repeat: op.repeat, len: op.len });
         return { words: { name: op.name, obj: '' } };
+      }
+      case 'motion.code': {
+        if (op.key && need(op.key)) return { error: need(op.key)! };
+        const info = await findCode(d.codeMotions, (c) => c.code, op.code);
+        if (!info) return { error: hasNo('codeMotion', op.code, d.codeMotions().map((c) => c.code)) };
+        const named = d.lib(op.name);
+        // The same code already in the Library is that motion (the person may have renamed it): one motion, one set of knobs.
+        const there = named?.code === op.code ? op.name : !(named && op.replace) ? d.libNames().find((n) => d.lib(n)?.code === op.code) : undefined;
+        const words = (n: string) => ({ name: n, obj: op.key ? name(op.key) : '' });
+        if (there) {
+          if (!op.key) return { name: there, words: words(there) };
+          let c = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === there);
+          if (!c) {
+            if (!d.attach(op.key, there)) return { error: `${op.key} cannot take another motion` };
+            c = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === there);
+            // Like a motion the AI makes: it starts with the game unless the op says otherwise (HANDS_MAKE_WHEN).
+            if (c) d.clipSet(op.key, c.name, { when: op.when ?? ({ ...HANDS_MAKE_WHEN } as MotionWhen), until: op.until });
+          } else if (op.when !== undefined || op.until !== undefined) d.clipSet(op.key, c.name, { when: op.when, until: op.until });
+          const now = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === there);
+          return { name: there, when: now?.when, words: words(there) };
+        }
+        const len = info.round && info.round >= 0.1 && info.round <= 600 ? info.round : CODE_LEN;
+        const m = { name: op.name, len, keys: {}, code: op.code } as LibraryMotion;
+        const r = d.make(op.key ?? null, m, { when: op.when, until: op.until, replace: op.replace, whenOf: () => ({ ...HANDS_MAKE_WHEN }) as MotionWhen });
+        if ('error' in r) return { error: r.error };
+        return { name: r.name, when: r.when, replaced: !!(named && op.replace), words: words(r.name) };
+      }
+      case 'place.code': {
+        const info = await findCode(d.codePlaces, (p) => p.id, op.id);
+        if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+        const e = d.place(op.id) ?? {};
+        const what = [d.t('hands.place.count', { n: info.keys.length }), knobWords(info.knobs, knobsNow(info.knobs, e.knobs))].filter(Boolean).join(' · ');
+        if (!op.replace) return { keys: info.keys.length, words: { name: info.name, what }, wordsKey: 'hands.place.code' };
+        // ✦ To code: the hand-placed objects are hidden until the AI takes them out of the code (one ⌘Z brings them back).
+        const gone = op.replace.filter((k: string) => !d.item(k) && !(e.from ?? []).includes(k));
+        if (gone.length === op.replace.length) return { error: `no object ${gone[0]} in the editor${hint()}` };
+        d.setPlace(op.id, { ...e, from: [...new Set([...(e.from ?? []), ...op.replace])] });
+        return { keys: info.keys.length, words: { name: info.name, n: op.replace.length, what }, wordsKey: 'hands.place.codeReplace' };
+      }
+      case 'place.set': {
+        const info = await findCode(d.codePlaces, (p) => p.id, op.id);
+        if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+        const e: PlacementPlace = d.place(op.id) ?? {};
+        const n = d.dim() === '2d' ? 2 : 3;
+        const parts: string[] = [];
+        if (op.knobs) {
+          const bad = unknownKnob(`codePlace('${op.id}')`, info.knobs, op.knobs);
+          if (bad) return { error: bad };
+          e.knobs = turnKnobs(e.knobs, op.knobs, info.knobs);
+          parts.push(knobWords(info.knobs, op.knobs));
+        }
+        if (op.pin) {
+          if (!ofPlace(info, op.pin.key)) return { error: `"${op.pin.key}" is not one of codePlace('${op.id}')'s objects (${info.keys.slice(0, 8).join(', ') || 'it has none'})` };
+          if (op.pin.p.length !== n) return { error: `a position has ${n} numbers in a ${d.dim().toUpperCase()} game` };
+          e.pins = { ...(e.pins ?? {}), [op.pin.key]: { p: op.pin.p.slice(), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) } };
+          parts.push(d.t('hands.place.pin', { obj: name(op.pin.key) }));
+        }
+        if (op.unpin) {
+          if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not placed by hand (it follows the code already)` };
+          delete e.pins[op.unpin];
+          parts.push(d.t('hands.place.unpin', { obj: name(op.unpin) }));
+        }
+        if (op.hand === true) {
+          // Place by hand: where each object stands now becomes its own place (the AI writes them out as a list on Save).
+          const pins: NonNullable<PlacementPlace['pins']> = {};
+          for (const k of info.keys) {
+            const ps = d.pose(k);
+            if (ps) pins[k] = { p: ps.p.slice(), ...(ps.r !== undefined ? { r: ps.r } : {}), ...(ps.s !== undefined && ps.s !== 1 ? { s: ps.s } : {}), ...(ps.t ? { t: [ps.t[0], ps.t[1]] as [number, number] } : {}) };
+          }
+          e.pins = pins;
+          e.hand = true;
+          parts.push(d.t('hands.place.hand'));
+        } else if (op.hand === false) {
+          delete e.hand;
+          delete e.pins;
+          parts.push(d.t('hands.place.unhand'));
+        }
+        d.setPlace(op.id, e);
+        return { words: { name: info.name, what: parts.join(', ') } };
+      }
+      case 'place.avoid': {
+        const info = await findCode(d.codePlaces, (p) => p.id, op.id);
+        if (!info) return { error: hasNo('codePlace', op.id, d.codePlaces().map((p) => p.id)) };
+        let cond: CodeAvoidInfo | null = null;
+        if (op.code) {
+          cond = await findCode(d.codeAvoids, (a) => a.code, op.code);
+          if (!cond) return { error: hasNo('codeAvoid', op.code, d.codeAvoids().map((a) => a.code)) };
+          const bad = op.knobs && unknownKnob(`codeAvoid('${op.code}')`, cond.knobs, op.knobs);
+          if (bad) return { error: bad };
+        }
+        const e: PlacementPlace = d.place(op.id) ?? {};
+        const boxes = (e.avoid ?? []).filter((a) => 'box' in a).length;
+        const was = (e.avoid ?? [])[typeof op.remove === 'number' ? op.remove : -1] ?? (e.avoid ?? []).find((a) => 'code' in a && a.code === (op.remove ?? op.code));
+        const o = op.box && !op.name ? { ...op, name: d.t('place.boxName', { n: boxes + 1 }) } : op;
+        const r = handsAvoid(e, o, d.dim() === '2d' ? 2 : 3, cond ? Object.fromEntries(Object.entries(cond.knobs).map(([k, v]) => [k, v.v])) : {});
+        if (r.error) return { error: r.error };
+        // A condition the code names already, switched back on with nothing changed: no entry (the file keeps changes only).
+        if (e.avoid) e.avoid = e.avoid.filter((a) => !('code' in a && info.avoid.includes(a.code) && !a.off && !a.knobs));
+        d.setPlace(op.id, e);
+        const label = (a: unknown) => {
+          const x = a as { code?: string; name?: string; knobs?: Record<string, KnobValue> } | undefined;
+          if (!x) return '';
+          if (!x.code) return x.name ?? '';
+          const c = d.codeAvoids().find((y) => y.code === x.code);
+          return [c?.name ?? x.code, c ? knobWords(c.knobs, knobsNow(c.knobs, x.knobs)) : '', c?.after ?? ''].filter(Boolean).join(' ');
+        };
+        const now = op.remove !== undefined ? was : op.box ? e.avoid?.[e.avoid.length - 1] : (e.avoid ?? []).find((a) => 'code' in a && a.code === op.code) ?? { code: op.code };
+        const key = op.remove !== undefined ? 'hands.place.avoidRemove' : op.off === true ? 'hands.place.avoidOff' : r.changed ? 'hands.place.avoidSet' : 'hands.place.avoid';
+        return { changed: r.changed, words: { name: info.name, what: label(now) }, wordsKey: key };
       }
       case 'object.move':
       case 'object.turn':
@@ -270,16 +440,47 @@ export function createAiHands(d: HandsDeps) {
         d.reload(!!op.editor);
         return { words: {} };
       case 'list':
-        return { list: d.list() };
+        return { list: codeList(d.list() as Record<string, unknown>) };
       default:
         return { error: `unknown op ${op.do}` };
     }
   }
 
+  /**
+   * `list` with the game's code: each code motion with its code id and knobs (the file's numbers over the code's,
+   * `missing` when the game has no such codeMotion), and every code layout with its objects, knobs, pins and keep-out
+   * areas — so "make the gap smaller" or "keep them off the road" can be done without asking the person.
+   */
+  function codeList(l: Record<string, unknown>): Record<string, unknown> {
+    const cm = new Map(d.codeMotions().map((c) => [c.code, c]));
+    const knobsOut = (code: Record<string, CodeKnob>, file?: Record<string, KnobValue>) => Object.fromEntries(Object.entries(code).map(([n, k]) => [n, { ...k, v: file?.[n]?.v ?? k.v, ...(file?.[n] ? { code: k.v } : {}) }]));
+    const motions = (Array.isArray(l.motions) ? l.motions : []).map((m: { name: string }) => {
+      const lm = d.lib(m.name);
+      if (!lm?.code) return m;
+      const c = cm.get(lm.code);
+      const { len: _len, repeat: _repeat, ...rest } = m as { name: string; len?: number; repeat?: string };
+      return { ...rest, code: lm.code, ...(c ? { knobs: knobsOut(c.knobs, lm.knobs), round: c.round, ...(c.note ? { note: c.note } : {}), ...(c.game ? { game: true } : {}) } : { missing: true, ...(lm.knobs ? { knobs: lm.knobs } : {}) }) };
+    });
+    const ps = d.codePlaces();
+    const places: unknown[] = ps.map((p) => {
+      const e = d.place(p.id) ?? {};
+      return { id: p.id, name: p.name, keys: p.keys, knobs: knobsOut(p.knobs, e.knobs), ...(p.drag ? { drag: p.drag } : {}), ...(e.pins ? { pins: Object.keys(e.pins) } : {}), ...(e.hand ? { hand: true } : {}),
+        avoid: [...p.avoid.filter((a) => !(e.avoid ?? []).some((x) => 'code' in x && x.code === a)).map((a) => ({ code: a })), ...(e.avoid ?? [])].map((a) => {
+          if ('box' in a) return a;
+          const c = d.codeAvoids().find((x) => x.code === a.code);
+          return { ...a, ...(c ? { name: c.name, ...(c.after ? { after: c.after } : {}), knobs: knobsOut(c.knobs, a.knobs) } : { missing: true }) };
+        }), ...(p.skipped.length ? { skipped: p.skipped } : {}), ...(e.from ? { from: e.from } : {}) };
+    });
+    // Changes kept for a layout the game does not have (any more): the AI fixes its code, or takes them out.
+    for (const id of d.placeIds()) if (!ps.some((p) => p.id === id)) places.push({ id, missing: true, ...d.place(id) });
+    return { ...l, motions, ...(places.length ? { places } : {}) };
+  }
+
   /** The person's words for one op ("Claude took “Row” off Blue pillar"), with the AI's name. */
   function words(op: Op, did: Did, ai: Record<string, string>): string {
     const w = did.words ?? {};
-    const key = op.do === 'motion.make' && !op.key ? 'hands.motion.makeLib' : op.do === 'motion.set' && !w.obj ? 'hands.motion.setLib' : `hands.${op.do}`;
+    const key = typeof did.wordsKey === 'string' ? did.wordsKey : op.do === 'motion.make' && !op.key ? 'hands.motion.makeLib' : op.do === 'motion.code' && !op.key ? 'hands.motion.codeLib'
+      : op.do === 'motion.set' && !w.obj ? 'hands.motion.setLib' : `hands.${op.do}`;
     return d.t(key, { ...ai, ...w });
   }
 
@@ -313,7 +514,7 @@ export function createAiHands(d: HandsDeps) {
         results.push({ do: op.do, ok: true, said: handsSaid(op, did), ...(did.list ? { list: did.list } : {}) });
         // Save, a reload and a look are not changes to undo: the line names only what changed.
         if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
-          if (lead < 0 && (op.do === 'motion.make' || op.do === 'motion.attach')) lead = said.length;
+          if (lead < 0 && ['motion.make', 'motion.attach', 'motion.code', 'place.code'].includes(op.do)) lead = said.length;
           said.push(words(op, did, ai));
         }
         else if (!said.length && op.do === 'save') said.push(d.t('hands.save', ai));

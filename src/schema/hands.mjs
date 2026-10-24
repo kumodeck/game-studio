@@ -15,7 +15,7 @@
 // from points (handsMotion), the same pose (handsPose), picks the same clip (handsClip) and the same default start
 // (handsDefaultWhen), and words its result with the same sentence (handsSaid) for the AI's stdout line.
 // No imports but the validator (the bundled CLI and the shell bundle both take this file as it is).
-import { CUE_RE, KEY_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } from './studio-files.mjs';
+import { CODE_ID_RE, CUE_RE, KEY_RE, KNOB_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } from './studio-files.mjs';
 
 /**
  * Every op, with the fields it needs and the fields it may have. A field not listed is an error (an AI's typo —
@@ -28,7 +28,14 @@ export const HANDS_OPS = Object.freeze({
   'motion.detach': { need: ['key'], may: ['name', 'all', 'level'] },
   'motion.delete': { need: ['name'], may: [] },
   'motion.rename': { need: ['name', 'to'], may: [] },
-  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'level'] },
+  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'knobs', 'off', 'level'] },
+  // Code motions and code layouts (studio-code-base, 2026-10-24; CONTRACT.md §1.9.4, §1.12): the AI writes the formula
+  // in the game's code (codeMotion / codePlace / codeAvoid) and puts it in the editor with these — it is then on the
+  // timeline / in the layout's card with its knobs, one ⌘Z away, like any of the AI's changes.
+  'motion.code': { need: ['code', 'name'], may: ['key', 'when', 'until', 'replace', 'level'] },
+  'place.code': { need: ['id'], may: ['replace', 'level'] },
+  'place.set': { need: ['id'], may: ['knobs', 'pin', 'unpin', 'hand', 'level'] },
+  'place.avoid': { need: ['id'], may: ['code', 'box', 'name', 'knobs', 'off', 'remove', 'level'] },
   'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
   'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
   'object.scale': { need: ['key'], may: ['to', 'by', 'level'] },
@@ -96,15 +103,56 @@ function readHandsOp(op, at, errors) {
     if (!handsText(op.name, max)) fail(`"name" must be 1 to ${max} characters`);
     else out.name = op.name.trim();
   }
+  const place = op.do.startsWith('place.');
   for (const f of ['id', 'level']) {
     if (!has(f)) continue;
-    if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
+    // A layout's id is a codePlace id (place.*); every other id is a level's.
+    if (f === 'id' && place) {
+      if (typeof op.id !== 'string' || !CODE_ID_RE.test(op.id)) fail('"id" must be the codePlace id in the game\'s code (lower case letters, digits and -, like "lamp-row")');
+      else out.id = op.id;
+    } else if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
     else out[f] = op[f];
   }
-  for (const f of ['all', 'replace', 'deg', 'editor']) {
-    if (!has(f)) continue;
+  if (has('code')) {
+    if (typeof op.code !== 'string' || !CODE_ID_RE.test(op.code)) fail(`"code" must be the ${place ? 'codeAvoid' : 'codeMotion'} id in the game's code (lower case letters, digits and -, like "${place ? 'near-player' : 'spiral'}")`);
+    else out.code = op.code;
+  }
+  // place.code's `replace` is the hand-placed objects it takes the place of; elsewhere it is true / false.
+  if (has('replace') && op.do === 'place.code') {
+    const ok = Array.isArray(op.replace) && op.replace.length > 0 && op.replace.length <= LIMITS.maxObjects && op.replace.every((k) => typeof k === 'string' && KEY_RE.test(k)) && new Set(op.replace).size === op.replace.length;
+    if (!ok) fail('"replace" must be the keys of the hand-placed objects this layout takes the place of, each once (["lamp-1", "lamp-2"])');
+    else out.replace = op.replace.slice();
+  }
+  for (const f of ['all', 'replace', 'deg', 'editor', 'hand', 'off']) {
+    if (!has(f) || (f === 'replace' && op.do === 'place.code')) continue;
     if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
     else out[f] = op[f];
+  }
+  if (has('knobs')) {
+    const ks = op.knobs && typeof op.knobs === 'object' && !Array.isArray(op.knobs) ? Object.entries(op.knobs) : null;
+    if (!ks || !ks.length || ks.length > LIMITS.maxKnobs || !ks.every(([n, v]) => KNOB_RE.test(n) && handsNum(v) && Math.abs(v) <= LIMITS.maxKnob)) fail(`"knobs" must be 1 to ${LIMITS.maxKnobs} knob names with their numbers ({ "gap": 4 }), each within ±${LIMITS.maxKnob}`);
+    else out.knobs = Object.fromEntries(ks);
+  }
+  if (has('pin')) {
+    const pn = op.pin;
+    const ok = pn && typeof pn === 'object' && !Array.isArray(pn) && typeof pn.key === 'string' && KEY_RE.test(pn.key) && handsVec(pn.p)
+      && (pn.r === undefined || handsNum(pn.r)) && (pn.s === undefined || (handsNum(pn.s) && pn.s !== 0) || handsVec(pn.s)) && Object.keys(pn).every((k) => ['key', 'p', 'r', 's'].includes(k));
+    if (!ok) fail('"pin" must be { "key": "hex-3", "p": [x, y, z], "r"?: angle, "s"?: size } (one of the layout\'s objects, put by hand)');
+    else out.pin = structuredClone(pn);
+  }
+  if (has('unpin')) {
+    if (typeof op.unpin !== 'string' || !KEY_RE.test(op.unpin)) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3")');
+    else out.unpin = op.unpin;
+  }
+  if (has('box')) {
+    const b = op.box;
+    const ok = b && typeof b === 'object' && handsVec(b.p) && handsVec(b.size, b.p.length) && b.size.every((x) => x >= 0) && Object.keys(b).every((k) => k === 'p' || k === 'size');
+    if (!ok) fail('"box" must be { "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] } (2D: [x, y] / [w, h] px)');
+    else out.box = { p: b.p.slice(), size: b.size.slice() };
+  }
+  if (has('remove')) {
+    if (!(Number.isInteger(op.remove) && op.remove >= 0) && !(typeof op.remove === 'string' && CODE_ID_RE.test(op.remove))) fail('"remove" must be which keep-out area: its place in the list (0 = the first) or its codeAvoid id');
+    else out.remove = op.remove;
   }
   if (has('to') || has('by')) readHandsAmounts(op, out, fail);
   if (has('len')) {
@@ -141,7 +189,15 @@ function readHandsOp(op, at, errors) {
     if (u.error) fail(`"until": ${u.error}`);
     else out.until = u.until;
   }
-  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until"');
+  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until', 'knobs', 'off'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until", "knobs", "off"');
+  if (op.do === 'motion.set' && has('off') && !has('key')) fail('"off" is per object: give "key" (the object whose motion is switched off / on)');
+  if (op.do === 'place.set' && ['knobs', 'pin', 'unpin', 'hand'].every((f) => !has(f))) fail('needs one of "knobs", "pin", "unpin", "hand"');
+  if (op.do === 'place.avoid') {
+    if (has('remove') && (has('code') || has('box'))) fail('"remove" alone (which area), or "code" / "box" to add or change one');
+    else if (!has('remove') && has('code') === has('box')) fail('needs "code" (a codeAvoid id in the game\'s code) or "box" (an area: { p, size }), one of them');
+    if (has('name') && !has('box')) fail('"name" is a box\'s (a condition is named in its codeAvoid())');
+    if (has('knobs') && !has('code')) fail('"knobs" are a code condition\'s');
+  }
   if (op.do.startsWith('object.') && ['move', 'turn', 'scale'].includes(op.do.slice(7)) && !has('to') && !has('by')) fail('needs "to" or "by"');
   return out;
 }
@@ -327,6 +383,7 @@ export function handsCopyKey(from, taken) {
 }
 
 const handsQ = (s) => `"${s}"`;
+const handsKnobWords = (k) => Object.entries(k).map(([n, v]) => `${n} ${v}`).join(', ');
 const handsWhenWords = (w) => {
   const one = (x) => (x.on === 'start' ? 'starts with the game' : x.on === 'time' ? `starts ${x.after} s after the start` : x.on === 'key' ? `starts when ${x.key} is pressed`
     : x.on === 'click' ? 'starts when it is clicked' : x.on === 'after' ? `starts after "${x.use}" ends` : x.on === 'enter' ? 'starts when the player walks into its area'
@@ -353,9 +410,19 @@ export function handsSaid(op, x = {}) {
     case 'motion.delete': return `deleted ${handsQ(op.name)} from the Library${x.from ? ` (it came off ${x.from} object${x.from === 1 ? '' : 's'})` : ''}`;
     case 'motion.rename': return `renamed the motion ${handsQ(op.name)} to ${handsQ(x.to ?? op.to)}`;
     case 'motion.set': {
-      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : ''].filter(Boolean);
+      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : '',
+        op.knobs ? handsKnobWords(op.knobs) : '', op.off !== undefined ? (op.off ? 'switched off' : 'switched on') : ''].filter(Boolean);
       return `set ${handsQ(op.name)}${op.key ? on : ''}: ${parts.join(', ')}`;
     }
+    case 'motion.code': {
+      const name = x.name ?? op.name;
+      return `${x.replaced ? `turned ${handsQ(name)} into` : 'put'} the code motion ${handsQ(name)} (codeMotion('${op.code}'))${op.key ? `${x.replaced ? ',' : ''} on ${op.key}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : x.replaced ? '' : ' in the Library'}`;
+    }
+    case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
+      : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
+    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : ''].filter(Boolean).join(', ')}`;
+    case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
+      : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
     case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
     case 'object.turn': return `turned ${op.key} to ${Math.round(((x.pose?.r ?? 0) * 180) / Math.PI)}°`;
     case 'object.scale': return `resized ${op.key} to ${JSON.stringify(x.pose?.s ?? op.to)}`;
@@ -369,7 +436,7 @@ export function handsSaid(op, x = {}) {
     case 'level.switch': return `opened the level ${op.id}`;
     case 'save': return 'saved (as the person\'s Save: a saved request follows)';
     case 'editor.reload': return op.editor ? 'reloaded the editor page' : 'reloaded the game in the editor';
-    case 'list': return 'listed the objects, motions and levels';
+    case 'list': return 'listed the objects, motions, code layouts and levels';
     default: return op.do;
   }
 }
@@ -402,7 +469,8 @@ export function applyHandsToFile(file, ops, o = {}) {
 /** Empty parts out (the validator wants no empty `motion` / `added`…), and the top `objects` there with levels. */
 function handsTidy(f) {
   for (const w of [f, ...(f.levels || [])]) {
-    for (const k of ['motion', 'names']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
+    for (const [id, e] of Object.entries(w.places || {})) if (!Object.keys(e).length) delete w.places[id];
+    for (const k of ['motion', 'names', 'places']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
     for (const k of ['added', 'removed']) if (w[k] && !w[k].length) delete w[k];
   }
   if (f.motions && !f.motions.length) delete f.motions;
@@ -431,10 +499,16 @@ function handsFileOp(f, op, dim) {
   if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
   if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
   if (kind === 'level') return handsFileLevel(f, op);
-  if (op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
+  // A knob's `was` is the number in the game's code, which only the game's page knows (decision 5: with no editor to
+  // show it, the AI changes the code's number itself).
+  if (op.knobs && op.do !== 'place.avoid') return { error: `no editor is open: change the number in ${op.do === 'motion.set' ? 'the codeMotion()' : `codePlace('${op.id}')`} in the game's code directly (knobs are turned in the editor)` };
+  if (op.knobs) return { error: `no editor is open: change the number in codeAvoid('${op.code}') in the game's code directly (knobs are turned in the editor)` };
+  if (op.do === 'place.set' && op.hand !== undefined) return { error: 'placing by hand needs the editor open (it reads where the code put each object)' };
+  if ((op.do === 'motion.code' && !op.key) || op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
   const at = handsWorld(f, op);
   if (at.error) return at;
   const w = at.w;
+  if (kind === 'place') return handsFilePlace(w, op, dim);
   if (kind === 'motion') return handsFileMotion(f, w, op, dim);
   return handsFileObject(w, op, dim);
 }
@@ -449,6 +523,7 @@ const handsFree = (f, base) => {
 /** Ops on the Library alone: delete, rename, set repeat / length for every object, make without an object. */
 function handsFileLibrary(f, op, dim) {
   if (op.do === 'motion.make') return handsFileMake(f, op, dim);
+  if (op.do === 'motion.code') return handsFileCode(f, op);
   const l = handsLib(f, op.name);
   if (!l) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
   if (op.do === 'motion.delete') {
@@ -482,6 +557,7 @@ function handsFileLibrary(f, op, dim) {
     return { to };
   }
   // motion.set without an object: the Library motion's repeat / length (every object that uses it plays it so).
+  if (l.code && (op.repeat || op.len)) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
   if (op.when !== undefined || op.until !== undefined) {
     let n = 0;
     for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) for (const c of w.motion[k].clips || []) if (c.use === op.name) (handsSetClip(c, op), n++);
@@ -549,6 +625,7 @@ function handsFileMake(f, op, dim, w) {
 function handsFileMotion(f, w, op, dim) {
   if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
   if (op.do === 'motion.make') return handsFileMake(f, op, dim, w);
+  if (op.do === 'motion.code') return handsFileCode(f, op, w);
   const clips = w.motion?.[op.key]?.clips || [];
   if (op.do === 'motion.attach') {
     if (!handsLib(f, op.name)) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
@@ -575,10 +652,126 @@ function handsFileMotion(f, w, op, dim) {
   // motion.set with an object: when / until on its clip; repeat / length on the Library motion (they are the motion's).
   const r = handsClip(named, op.name, op.key);
   if (r.error) return r;
-  handsSetClip(clips[named.indexOf(r.clip)], op);
+  const c = clips[named.indexOf(r.clip)];
+  handsSetClip(c, op);
+  if (op.off === true) c.off = true;
+  else if (op.off === false) delete c.off;
   const l = handsLib(f, r.clip.use ?? r.clip.name);
+  if (l && (op.repeat || op.len) && l.code) return { error: `"${l.name}" is a code motion: its length and repeat are its codeMotion('${l.code}')'s` };
   if (l) handsSetLib(l, op);
   return {};
+}
+
+/**
+ * motion.code: the Library's code motion `{ name, code }` (the shape is codeMotion('<code>') in the game's code), and
+ * on the object when there is a key — as motion.make does with points. The same code already in the Library is that
+ * motion (the person may have renamed it); `replace` turns the motion of points named `name` into this code motion
+ * (✦ To code: every object that had it keeps it, now as code).
+ */
+function handsFileCode(f, op, w) {
+  const lib = f.motions || [];
+  let m = lib.find((x) => x.name === op.name);
+  let replaced = false;
+  if (m && m.code !== op.code) {
+    if (op.replace) {
+      for (const k of Object.keys(m)) delete m[k];
+      Object.assign(m, { name: op.name, code: op.code });
+      replaced = true;
+    } else m = null;
+  }
+  if (!m) m = lib.find((x) => x.code === op.code) || null;
+  if (!m) {
+    m = { name: handsFree(f, op.name), code: op.code };
+    (f.motions ||= []).push(m);
+  }
+  if (!w) return { name: m.name, replaced };
+  const clips = w.motion?.[op.key]?.clips || [];
+  const had = clips.find((c) => (c.use ?? c.name) === m.name);
+  if (had) {
+    handsSetClip(had, op);
+    return { name: m.name, replaced, when: had.when };
+  }
+  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+  const when = op.when ?? HANDS_MAKE_WHEN;
+  (w.motion ||= {})[op.key] = { clips: [...clips, { use: m.name, when, ...(op.until ? { until: op.until } : {}) }] };
+  return { name: m.name, replaced, when };
+}
+
+/** "lamp-3" is one of codePlace('lamp')'s objects (it names them "<id>-<n>", from 1). */
+export const handsPlaceKey = (id, key) => key.startsWith(`${id}-`) && /^[1-9][0-9]{0,3}$/.test(key.slice(id.length + 1));
+
+/**
+ * place.code / place.set / place.avoid on placement.json (no editor open): the layout's entry in `places`, only what
+ * the person (here the AI for them) changed. Knobs and "by hand" are refused before this (they need the game).
+ */
+function handsFilePlace(w, op, dim) {
+  const places = (w.places ||= {});
+  const e = (places[op.id] ||= {});
+  const n = dim === '2d' ? 2 : 3;
+  if (op.do === 'place.code') {
+    if (!op.replace) return {};
+    // ✦ To code: the hand-placed objects are hidden (`from`) until the AI takes them out of the code; their moves and
+    // copies are no longer the person's to keep (the layout is now where they stand).
+    e.from = [...new Set([...(e.from || []), ...op.replace])];
+    for (const k of op.replace) if (w.objects) delete w.objects[k];
+    if (w.added) w.added = w.added.filter((a) => !op.replace.includes(a.key));
+    return {};
+  }
+  if (op.do === 'place.set') {
+    if (op.pin) {
+      if (!handsPlaceKey(op.id, op.pin.key)) return { error: `"${op.pin.key}" is not one of codePlace('${op.id}')'s objects (they are ${op.id}-1, ${op.id}-2 …)` };
+      if (op.pin.p.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
+      const r3 = (v) => Math.round(v * (n === 3 ? 1000 : 10)) / (n === 3 ? 1000 : 10);
+      (e.pins ||= {})[op.pin.key] = { p: op.pin.p.map(r3), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) };
+    }
+    if (op.unpin) {
+      if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
+      delete e.pins[op.unpin];
+      if (!Object.keys(e.pins).length) delete e.pins;
+    }
+    return {};
+  }
+  return handsAvoid(e, op, n);
+}
+
+/** place.avoid on a layout's entry (the file's and the editor's: one rule). { changed } or { error }. */
+export function handsAvoid(e, op, n, knobsWas = {}) {
+  const list = (e.avoid ||= []);
+  if (op.remove !== undefined) {
+    const i = typeof op.remove === 'number' ? op.remove : list.findIndex((a) => a.code === op.remove);
+    if (!(i >= 0 && i < list.length)) return { error: `codePlace('${op.id}') has no keep-out area ${JSON.stringify(op.remove)} (${list.length ? list.map((a, j) => (a.code ? `${j}: ${a.code}` : `${j}: ${a.name ?? 'a box'}`)).join(', ') : 'it has none in the file'})` };
+    list.splice(i, 1);
+    if (!list.length) delete e.avoid;
+    return {};
+  }
+  if (op.box) {
+    if (op.box.p.length !== n) return { error: `a box has ${n} numbers in its p and size in a ${n === 3 ? '3D' : '2D'} game` };
+    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
+    const step = n === 3 ? 1000 : 10;
+    const r = (v) => Math.round(v * step) / step;
+    list.push({ box: { p: op.box.p.map(r), size: op.box.size.map(r) }, ...(op.name ? { name: op.name } : {}), ...(op.off ? { off: true } : {}) });
+    return { changed: false };
+  }
+  let a = list.find((x) => x.code === op.code);
+  const changed = !!a;
+  if (!a) {
+    if (list.length >= LIMITS.maxAvoid) return { error: `codePlace('${op.id}') already has ${LIMITS.maxAvoid} keep-out areas` };
+    a = { code: op.code };
+    list.push(a);
+  }
+  if (op.off === true) a.off = true;
+  else if (op.off === false) delete a.off;
+  if (op.knobs) {
+    // A knob back on the code's number is no change (the file keeps only what differs from the code).
+    const ks = { ...(a.knobs || {}) };
+    for (const [k, v] of Object.entries(op.knobs)) {
+      if (knobsWas[k] === v) delete ks[k];
+      else ks[k] = { v, ...(knobsWas[k] !== undefined ? { was: knobsWas[k] } : ks[k]?.was !== undefined ? { was: ks[k].was } : {}) };
+    }
+    if (Object.keys(ks).length) a.knobs = ks;
+    else delete a.knobs;
+  }
+  return { changed };
 }
 
 function handsFileObject(w, op, dim) {
@@ -668,8 +861,11 @@ function handsFileList(f) {
     });
   };
   const out = { from: 'placement.json (no editor open: only the objects it has)', objects: f.levels ? [] : world(f) };
-  out.motions = (f.motions || []).map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
-  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l) }));
+  out.motions = (f.motions || []).map((m) => (m.code ? { name: m.name, code: m.code, ...(m.knobs ? { knobs: m.knobs } : {}) } : { name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
+  // The code layouts the file has changes for (the editor's list has every codePlace of the game, with its objects).
+  const places = (w) => Object.entries(w.places || {}).map(([id, e]) => ({ id, ...structuredClone(e) }));
+  if (!f.levels && f.places) out.places = places(f);
+  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l), ...(l.places ? { places: places(l) } : {}) }));
   return out;
 }
 

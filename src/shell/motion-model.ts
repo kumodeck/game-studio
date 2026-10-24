@@ -40,6 +40,9 @@ function roundUntil(u: MotionUntil | undefined): MotionUntil | undefined {
 
 /** A Library motion as the file writes it (the same rounding as a clip's keys; a scene motion: each object's track). */
 export function roundLib(m: LibraryMotion, dim: Dim = '3d'): LibraryMotion {
+  // A code motion (studio-code-base, 2026-10-24): its shape is the game's codeMotion(); the file has its name, its id
+  // in the code and the knobs the person turned — no len / keys (the editor's len is only the strip's width).
+  if (m.code) return { name: m.name, code: m.code, ...(m.knobs && Object.keys(m.knobs).length ? { knobs: structuredClone(m.knobs) } : {}) } as LibraryMotion;
   const one = (keys: MotionClip['keys']) => roundMotion({ clips: [{ ...m, start: undefined, when: undefined, keys: keys ?? {} }] }, dim)!.clips![0]!;
   const c = one(m.keys);
   const head = { name: c.name, len: c.len, ...(c.repeat ? { repeat: c.repeat } : {}) };
@@ -78,6 +81,8 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
           use: c.use,
           when: ws.length > 1 ? ws.slice(0, 4).map((w) => roundWhen(w, r, step)) : roundWhen(whenOf(c) as MotionWhen, r, step),
           ...(until ? { until } : {}),
+          // Switched off on the timeline (studio-code-base): it stays on the object and does not play.
+          ...(c.off ? { off: true } : {}),
         } as MotionClip;
       }
       // Fields in the file's order: name, len, repeat, start, when, keys (keys last: the long part).
@@ -98,6 +103,7 @@ export function roundMotion(m: Motion | null | undefined, dim: Dim = '3d'): Moti
         ...(!c.start && typeof c.when === 'string' && c.when.trim() ? { when: c.when.trim().slice(0, 200) } : {}),
         ...(!c.start && c.when && typeof c.when === 'object' ? { when: Array.isArray(c.when) ? c.when.map((w) => roundWhen(w, r, step)) : roundWhen(c.when, r, step) } : {}),
         ...(roundUntil(c.until) ? { until: roundUntil(c.until) } : {}),
+        ...(c.off ? { off: true as const } : {}),
         keys,
       };
     });
@@ -126,6 +132,7 @@ export function attachAll(m: Motion, lib: MotionLibrary): Motion {
       const use = lib.adopt(c, true);
       const out = { name: c.name, use, len: c.len, when: whenOf(c) as MotionWhen, keys: {} } as MotionClip;
       if (c.until) out.until = c.until;
+      if (c.off) out.off = true;
       return out;
     }),
   };

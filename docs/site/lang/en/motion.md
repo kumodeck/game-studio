@@ -159,7 +159,8 @@ You don’t have to add points yourself. Two ways to use your AI:
 - **Use a motion you made.** Press **✦ Ask Claude** on the timeline (or a right-click on the object, or the motion in the Library). The chat box at the bottom gets a chip with both names, like **crate · Hop**, and the cursor. Say what you want: “start it when the player walks up,” then “a bit slower.” Your AI connects that moment in the game’s code.
 
 ![The chat box with the chip “crate · Hop” and the words “Start it when the player walks up”](media/motion-ask.webp)
-- **Describe it.** Select something and ask in the box at the bottom: “make the boat rock gently.” Your AI writes the movement into the game’s code. It plays in **▶ Play** and in the game, but it isn’t on the timeline.
+- **Describe it.** Select something and ask in the box at the bottom: “make the boat rock gently,” “spin the pillar in a spiral.” A motion of places (from here to there, a hop) your AI makes from points, on the timeline like yours. A motion said by numbers (a spiral, a wave, round and round) or one that follows the game (chasing the player) it writes as a **code motion**: the motion’s shape is in the game’s code, and it is on the timeline under its name, with no points. It plays in **▶ Play** and in the game, and <kbd>⌘</kbd><kbd>Z</kbd> takes it off. To change its shape, ask your AI again.
+- **Lay things out.** “Ten street lamps along the road, 6 m apart”: your AI writes the row in the game’s code and shows it in the editor at once. The list shows the lamps under the row’s name (**Street lamps 1**, **2** …). Ask “a bit closer together” and the row changes on screen (one <kbd>⌘</kbd><kbd>Z</kbd> takes it back, and it counts on **Save**). Places to keep clear (“not on the road”, “not near the player”) work the same way.
 
 ## In the game
 

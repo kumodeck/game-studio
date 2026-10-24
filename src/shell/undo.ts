@@ -8,7 +8,7 @@
 // front is ONE press of Undo. Changes are applied in order on redo and in
 // reverse order on undo (a group's draw-order moves only undo exactly
 // backwards, each one being "take it out, put it at that place").
-import { LIMITS, type LibraryMotion, type Motion, type Pose } from '../contract.ts';
+import { LIMITS, type LibraryMotion, type Motion, type PlacementPlace, type Pose } from '../contract.ts';
 
 export type Change =
   | { kind: 'pose'; key: string; from: Pose; to: Pose }
@@ -36,7 +36,12 @@ export type Change =
   /** UI stage 3: a theme variable (`key` = its name, "--accent"). null = the game's own value. */
   | { kind: 'ui-theme'; key: string; from: string | null; to: string | null }
   /** Renamed in place (studio-uniforms, 2026-10-23: Rename, F2): the person's name before / after. null = the game's own. */
-  | { kind: 'name'; key: string; from: string | null; to: string | null };
+  | { kind: 'name'; key: string; from: string | null; to: string | null }
+  /**
+   * A code layout's changes (studio-code-base, 2026-10-24; code-places.ts): `key` is the codePlace id, from / to its
+   * whole entry in `places` (knobs, pins, by hand, keep-out areas, what it replaced). null = nothing changed.
+   */
+  | { kind: 'code-place'; key: string; from: PlacementPlace | null; to: PlacementPlace | null };
 
 export interface UndoEntry {
   changes: Change[];

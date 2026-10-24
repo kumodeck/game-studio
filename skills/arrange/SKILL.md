@@ -14,7 +14,8 @@ for it (§3).
 
 **Do the editor's work yourself; never hand it to the person.** Whatever the person could do in the editor — take a
 motion off an object, make a motion or put one on, change when it starts, move / turn / resize / rename / duplicate /
-delete an object, put it on the ground, make / duplicate / rename / open a level — you do with **`--do`** (§3.4): it
+delete an object, put it on the ground, make / duplicate / rename / open a level, put a code motion or a code layout you
+wrote in the editor and turn its numbers, add a keep-out area — you do with **`--do`** (§3.4): it
 happens in the open editor, on screen (one ⌘Z undoes it, it counts on Save), or in `placement.json` when no editor is
 open. Never answer with steps for them to click ("1. Select the blue pillar 2. Right-click the Motion row 3. …"), never
 ask them to reload the editor or the game (it reloads the game by itself when files change; `--do editor.reload` when
@@ -506,15 +507,25 @@ It prints one line per op — `studio: did took "Row" off pillar-1 - in the edit
 motion.detach - pillar-1 has no motion "Hop" (its motions: "Row")` (exit 1; the other ops were done) — then, with the
 editor running, the `studio: reply with this link …` line: that link goes first in your reply.
 
+After you write a `codeMotion` / `codePlace` / `codeAvoid` into the game's code, send its `--do` at once: an editor page
+that does not have the id yet reads the game again by itself first. `studio: do failed place.code - the game has no
+codePlace('lamp') (it has: 'hex')` means your code did not run as you think (a typo in the id, an error, the import
+missing): fix your code and send the same `--do` again — never ask the person to reload. With no editor open, `knobs`
+and `hand` are refused (they need the game's numbers): change the number in the code itself instead.
+
 | Op | Fields | Does |
 |---|---|---|
-| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)") and its motions; the Library's motions and what they are on; the levels. Use it to find what "the blue pillar's old motion" means |
+| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)") and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`); the levels. Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
 | `motion.make` | `name`, `points` or `keys`, `len` (s, default 2), `repeat` (once / loop / pingpong), `ease`, `key`, `when`, `until`, `replace` | A Library motion — on the timeline, played by the loader — and, with `key`, put on that object. `points` = positions it goes through, offsets from where it stands, spread evenly over `len` (linear between them); `keys` = the file's own keys (`p` / `r` / `s`) for turns and sizes. A taken name becomes "Spiral 2" unless `replace: true` (the same motion with new keys) |
 | `motion.attach` | `key`, `name`, `when`, `until` | Put a Library motion on an object |
 | `motion.detach` | `key`, `name` (or `all: true`) | Take a motion off that object (the "Remove from this object" of its card); the motion stays in the Library |
 | `motion.delete` | `name` | Delete it from the Library and every object |
 | `motion.rename` | `name`, `to` | Rename it everywhere |
-| `motion.set` | `name`, `repeat`, `len` (stretches its keys), `key` + `when` / `until` | Change how it repeats, how long it takes, when it starts / stops (`key` = on that object; without it, on every object that has it) |
+| `motion.set` | `name`, `repeat`, `len` (stretches its keys), `key` + `when` / `until`, `knobs`, `key` + `off` | Change how it repeats, how long it takes, when it starts / stops (`key` = on that object; without it, on every object that has it). `knobs` (`{ "radius": 3 }`): a code motion's numbers, turned on screen (needs the editor open). `off: true` / `false`: switched off on that object (it stays there and does not play) / on again |
+| `motion.code` | `code`, `name`, `key`, `when`, `until`, `replace` | Put the code motion you wrote (`codeMotion('<code>', …)` in the game's code, "Motion" below) on the timeline: a Library motion with the knobs, played by the loader, and on `key` (starting with the game unless `when` says). The same `code` already in the Library is that motion (the person may have renamed it). `replace: true`: the motion of points called `name` becomes this code motion (every object that has it keeps it) |
+| `place.code` | `id`, `replace` (keys) | Show the code layout you wrote (`codePlace('<id>', …)`, "Code layouts" below) in the editor: its objects, listed under the layout's name. `replace`: the hand-placed objects it takes the place of (`["lamp-1", …]`) — hidden at once (one ⌘Z brings them back), gone from the code by you on Save |
+| `place.set` | `id`, `knobs`, `pin`, `unpin`, `hand` | `knobs` (`{ "gap": 4 }`): the layout's numbers, on screen (needs the editor open). `pin` (`{ "key": "lamp-3", "p": [x, y, z] }`): just that one put by hand; `unpin`: that one back on the formula. `hand: true`: every object placed by hand where it stands now (needs the editor open); `false`: back on the code |
+| `place.avoid` | `id`, `code` (+ `knobs`, `off`) or `box` (+ `name`), or `remove` | A keep-out area of that layout only: your `codeAvoid('<code>', …)` added, switched `off` / on, its `knobs` turned; or a box `{ "p": [x, y, z] (the middle of its bottom), "size": [w, h, d] }` (2D: `[x, y]` middle / `[w, h]` px); or `remove`: which one (its place in the list, 0 = the first, or its code id) |
 | `object.move` / `object.turn` / `object.scale` | `key`, `to` or `by` (turn: radians, `deg: true` for degrees; scale `by` = times) | Move, turn, resize (its place; its motion comes along) |
 | `object.rename` / `object.duplicate` / `object.delete` | `key` (+ `to`: the name; duplicate: the copy's place) | As Rename (F2), Duplicate (⌘D), Delete; the copy's key is in the line |
 | `object.ground` | `key` | Drop to floor (needs the editor open) |
@@ -573,7 +584,10 @@ or the marks in the code (§5).
   editor's UI layer. See "The UI (`ui`)" after "Copies and deletions".
 - `motion` / `motions` (optional): objects the user made **move by themselves** in the editor, with keys on a timeline;
   the motions are Library assets (`motions`: "Open", "Row") and each object says which it uses and when it starts and
-  stops (`motion`). See "Motion (`motions`, `motion`)" after "The UI".
+  stops (`motion`). A motion with `code` is one of your `codeMotion()`s, with the knobs the person turned. See "Motion
+  (`motions`, `motion`)" after "The UI".
+- `places` (optional): what the person changed of your **code layouts** (`codePlace()`): turned knobs, objects put by
+  hand, keep-out areas. See "Code layouts and keep-out areas (`places`)" after "Motion".
 
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
@@ -636,8 +650,10 @@ For each key in `objects`:
 2. Replace the position, rotation and scale there with `p`, `r`, `s`, in the code's own style (`position.set(…)`,
    a row in a level table, `{ x, y }`, degrees if the code uses degrees).
 3. Remove that key from `placement.json`.
-4. When the numbers are computed (a loop, a formula, random), there is nothing to replace. Keep that key and use the
-   loader for it, and tell the user which objects stayed that way.
+4. When the numbers are computed (a loop, a formula, random), there is nothing to replace. Write that layout as a
+   `codePlace` ("Code layouts" below): then the editor changes it as a formula — the person turns its gap or count and
+   it stays a formula. Until you do, keep that key and use the loader for it, and tell the user which objects stayed
+   that way.
 5. When every key is gone, delete `placement.json` and, if nothing uses it any more, the loader.
 
 ### Copies and deletions (`added`, `removed`)
@@ -779,37 +795,69 @@ text fits. If they say a long one overflows, fix the CSS (a `max-width`, `text-o
 **When the person asks for a motion** ("make the blue pillar spiral", "make the door swing open when E is pressed",
 "take the old motion off, only the spiral"), in this order:
 
-1. **Make it an editor motion**, with `--do motion.make` (§3.4): a Library motion on the timeline, played by the
-   loader — never code in the game. A shape (a spiral, a circle, a wave, a figure eight, a bob, a hop) is **points**:
-   work them out with a formula, as offsets from where the object stands starting at `[0, 0, 0]`, and enough of them
-   for a smooth curve (about 12–16 a turn; up to 256). `len` = seconds for one round, `repeat` = `loop` (round and
-   round), `pingpong` (there and back) or `once`. A turn or a change of size is `keys` with `r` / `s` (below).
-2. **When it starts**: `when` (the game starts — the default for a motion you make —, a key, a click, after another
+1. **A motion said by places** (from here to there, a door that swings open, a hop, a patrol round these posts) is an
+   editor motion of **points**, with `--do motion.make` (§3.4): a Library motion on the timeline, played by the loader.
+   Work the points out as offsets from where the object stands, starting at `[0, 0, 0]`. `len` = seconds for one
+   round, `repeat` = `loop`, `pingpong` (there and back) or `once`. A turn or a change of size is `keys` with `r` / `s`
+   (below).
+2. **A motion said by numbers** (a spiral, round and round, a wave, a bob, a circle, a figure eight) **or one that reacts
+   to the game** (chases the player, runs away, faster as the score goes up) is a **code motion**: write it once in the
+   game's code with `codeMotion()` (below), with **1–3 knobs** — only the numbers the person would say ("bigger",
+   "faster": a radius, one turn's seconds, a height) — then put it on the object with `--do motion.code --code spiral
+   --name Spiral --key pillar-1`. It is on the timeline under its name (no points: its shape is your code). When the
+   person asks for "bigger" / "faster", turn its knob yourself (`--do motion.set --name Spiral --knobs '{"radius":2}'`):
+   it changes on screen and stays a formula. Reply in one line, about the game, not the editor's buttons: "The pillar
+   spirals now, 1.2 m round, 4 s a turn. Say "wider" or "faster" and I'll change it."
+3. **When it starts**: `when` (the game starts — the default for a motion you make —, a key, a click, after another
    motion, walking into an area). One that needs the game — `touch`, a `cue`, words only the code can tell ("when the boss falls") — is still an editor motion:
    give it that `when` and add the one line in the code (`touch('door')`, `cue('boss-down')`, below).
-3. **The object already moves** (`--do list` shows its motions): two motions that start with the game play at once
+4. **The object already moves** (`--do list` shows its motions): two motions that start with the game play at once
    (their moves add up). When their words say "instead" / "only the spiral" / "the old motion off", take the old one
    off in the same command (`motion.detach`; `all: true` for every one) — one ⌘Z takes back both. Otherwise keep it,
    and say in your line that it still has the old one too ("It still sways as well; say so and I'll take that off").
-4. **Code only when an editor motion cannot be it**: it follows physics or the game's rules (bounces off walls, chases
-   the player, is pushed, depends on the score). Then say so in one line: "This one is in the game's code, so it doesn't
-   show on the timeline." Never both on one object: the two fight.
-5. Look at it (§3.3: `--shot`; or ▶ Play), then reply: the link first, then one line ("The blue pillar now spirals up
-   and down, 4 s a round. It's on the timeline; ⌘Z in the editor takes it back."). Never "press Reload" or "open it
+5. **Only the game's own code when neither can be it**: it follows physics (bounces off walls, is pushed), or the game
+   has no loader you can use. Then say so in one line: "This one is in the game's code, so it doesn't show on the
+   timeline." Never both on one object: the two fight.
+6. Look at it (§3.3: `--shot`; or ▶ Play), then reply: the link first, then one line. Never "press Reload" or "open it
    again": the editor already shows it.
+7. **On Save** (a `saved` request): a code motion in `motions` with `knobs` → find its `codeMotion('<code>')`, write
+   each knob's `v` where its `was` is (`radius: { v: 2 …` → `v: 3`), and leave the file alone (the editor takes the knob
+   out once the code says the same). A `codeMotion()` that no Library motion names any more (deleted, turned into
+   points, the AI's add undone) → take it out of the code. A clip with `off: true` is switched off on purpose: leave it.
 
-A spiral up a pillar — two turns of 1.2 m, 3 m up, 4 s, there and back — worked out and sent in one line:
+A spiral on a pillar — the code motion, then the one command (the loader is in the game, §4 Way 1; with a copy from
+before code motions, copy `bin/studio-placement.js` in again — older copies have no `codeMotion`):
 
-```sh
-node <…>/bin/studio.mjs <game folder> --do "$(node -e '
-const n = 48, pts = [];
-for (let i = 0; i <= n; i++) { const a = (i / n) * 2 * Math.PI * 2;
-  pts.push([1.2 * Math.cos(a) - 1.2, (i / n) * 3, 1.2 * Math.sin(a)].map((x) => Math.round(x * 1000) / 1000)); }
-console.log(JSON.stringify({ do: "motion.make", name: "Spiral", len: 4, repeat: "pingpong", points: pts, key: "pillar-1" }));')"
+```js
+import { applyPlacement, codeMotion } from './studio-placement.js';
+// The pillar's spiral: radius and one turn are its knobs (on Save, write the person's numbers here).
+codeMotion('spiral', {
+  name: 'Spiral',                                       // in the person's words (their language)
+  knobs: {
+    radius: { v: 1.2, label: 'Radius', unit: 'm', min: 0.2, max: 6 },
+    turn:   { v: 4,   label: 'One turn', unit: 's', min: 0.5, max: 20 },
+  },
+  round: (k) => 2 * k.turn,                             // one round (two turns, up and back): seconds
+  at: (t, k) => {                                       // the offset after t seconds: { p, r, s } like a key's
+    const a = (t / k.turn) * 2 * Math.PI, up = 1.5 - 1.5 * Math.cos(a / 2);
+    return { p: [k.radius * Math.cos(a) - k.radius, up, k.radius * Math.sin(a)] };
+  },
+});
+// …build the world, then applyPlacement(scene, './placement.json') as before.
 ```
 
-(The first point is `[0, 0, 0]`: the motion starts where the pillar stands. "Only the spiral": the same `--do` as a
-list, `{ "do": "motion.detach", "key": "pillar-1", "name": "Sway" }` first.)
+```sh
+node <…>/bin/studio.mjs <game folder> --do motion.code --code spiral --name Spiral --key pillar-1
+```
+
+`codeMotion(id, { name, knobs, round, note, game, drag, at })`: `id` = lower case, digits and `-` (the file's `code`).
+`knobs`: 1–3, each `{ v, label, unit, min?, max?, step? }` — `label` one noun in the person's words, `unit` one of `m`
+`px` `s` `deg` `%` `x` `m/s` `px/s` `''`. `at(t, k, g)` returns offsets added to where the object stands (`p`), to its
+angles (`r`: `[x, y, z]`, or one number = a turn round the up axis) and multiplying its size (`s`); a shape depends on
+`t` alone. `round` = seconds of one round (a number or `(k) => …`; none = it never ends). `game: true` = it reads the
+game (`g.player`, the player's place; `g.dt`; `g.obj`, the object) and is played frame by frame. `note` = 20 characters
+for what the knobs cannot say ("follows the player"). It moves only where the timeline puts it (`motion.code`), so a
+motion that is not on the timeline does not move in the game either.
 
 The editor has a **timeline** (like Unity's Animation window or Blender's Dope Sheet): the user moves the time line,
 moves / turns / resizes an object, and a **key** is set at that moment; the object goes from key to key. A motion
@@ -904,6 +952,99 @@ key), adding the result to the object's place every frame, started and stopped w
 Check: ▶ Play in the editor (it plays the saved file and the draft: the game starting, keys, timers, ends) — then do
 what `when` says in the game (press E, walk into the area, open the chest) and watch it play. In the editor the user
 can try every cue with the timeline's **Try** ▶ buttons.
+
+### Code layouts and keep-out areas (`places`)
+
+**When the person asks for a layout** ("ten street lamps along the left of the road, 6 m apart — I'll change the gap
+later", "scatter crystals on the field", "not on the road", "not within 5 m of the player"), in this order:
+
+1. **A layout said by places** ("a gate here", "these three over there") is objects at coordinates: `object.move` /
+   `object.duplicate` (§3.4), as always.
+2. **A layout said by numbers, spacing or a rule** (N of them, every 6 m, along both sides, in a ring, scattered) is a
+   **code layout**: write it once with `codePlace()` (below), with **1–3 knobs** (only the numbers the person would say:
+   a gap, a count, a radius) and **one `drag`** (the knob a drag of one object turns), then show it with `--do
+   place.code --id lamp-row`. Its objects are named `lamp-row-1`, `lamp-row-2` … and the editor lists them under the
+   layout's name. When the person asks for "closer" / "two more", turn the knob yourself (`--do place.set --id lamp-row
+   --knobs '{"gap":4}'`): the row changes on screen and stays a formula. Reply in one line, about the game, not the
+   editor's buttons: "Ten street lamps, 6 m apart on the left of the road. Say "closer" or "more" and I'll change it."
+   Don't explain Save, knobs or what a drag does: the editor says that itself (a drag of one object moves that one).
+3. **Where not to put them**, said as a rule ("not on the road", "not near the player") → write a `codeAvoid()` and add
+   it with `--do place.avoid --id crystals --code near-player`; said as a place ("not around here") → `--do place.avoid
+   --id crystals --box '{"p":[x,y,z],"size":[w,h,d]}'`. A keep-out area belongs to that one layout (another layout
+   avoids it only when it is added there too), and never moves an object put by hand.
+4. **Write new layouts this way from the start.** A game that places them in a loop of its own shows each object as a
+   hand-placed one (the person moves one at a time, the loop is lost); rewrite that loop as a `codePlace` when they ask
+   to change the layout as a whole ("closer together", "keep the formula").
+5. **On Save** (a `saved` request), per layout in `places`: `knobs` → write each `v` where its `was` is, in that
+   `codePlace` / `codeAvoid` (`gap: { v: 6 …` → `v: 4`); `pins` and boxes stay in the file (the loader places them; the
+   person put them there by hand); `hand: true` → write the layout out as a list of coordinates (the pins) in the code
+   and take its entry out of `places`; `from` → take those hand-placed objects out of the code (the layout is in their
+   place) and take `from` out. The editor takes a knob out of the file once the code says the same.
+6. **No loader, or bodies that place themselves** (a physics engine owns the positions): keep the layout in the game's
+   code and say in one line: "This layout is in the game's code, so the editor shows each object on its own."
+
+A row and a scatter, and two keep-out conditions (the loader is in the game, §4 Way 1; refresh an older copy):
+
+```js
+import { applyPlacement, codePlace, codeAvoid } from './studio-placement.js';
+// Street lamps on the left of the road: Gap and Count are its knobs (on Save, write the person's numbers here).
+codePlace('lamp-row', {
+  name: 'Street lamps',
+  knobs: { n: { v: 10, label: 'Count', unit: '', min: 1, max: 30, step: 1 }, gap: { v: 6, label: 'Gap', unit: 'm', min: 2, max: 20 } },
+  count: (k) => k.n,
+  make: (i) => makeLamp(),                                        // number i's object; the loader names it lamp-row-<i+1>
+  at: (i, k) => ({ p: [-4.5, 0, -8 - i * k.gap] }),               // where number i goes: { p, r?, s? }, the scene's space
+  drag: 'gap',                                                     // dragging one lamp turns the Gap
+});
+// Crystals scattered on the field, never on the road nor near the player (rand: the same places every load).
+codePlace('crystals', {
+  name: 'Crystals',
+  knobs: { n: { v: 12, label: 'Count', unit: '', min: 1, max: 60, step: 1 } },
+  count: (k) => k.n,
+  make: () => makeCrystal(),
+  at: (i, k, g) => ({ p: [g.rand() * 40 - 20, 0, -g.rand() * 60], r: g.rand() * 6.28 }),
+  avoid: ['road'],                                                 // on from the start (the person can switch it off)
+});
+codeAvoid('road', { name: 'On the road', test: (p) => Math.abs(p[0]) < 3.5 });
+codeAvoid('near-player', {
+  name: 'From the player', after: 'within',                        // the list says: From the player [5 m] within
+  knobs: { r: { v: 5, label: 'Distance', unit: 'm', min: 1, max: 20 } },
+  test: (p, k, g) => !!g.player && Math.hypot(p[0] - g.player[0], p[2] - g.player[2]) < k.r,
+});
+// …build the world, then: const report = await applyPlacement(scene, './placement.json'); report.places.crystals.keys
+```
+
+```sh
+node <…>/bin/studio.mjs <game folder> --do '[{"do":"place.code","id":"crystals"},{"do":"place.avoid","id":"crystals","code":"near-player"}]'
+```
+
+- `codePlace(id, { name, knobs, count, make, at, drag, avoid })`: put in by `applyPlacement()` after the world is built,
+  before the file's `objects` — with or without a `placement.json`. `make(i)` returns a new object (three.js: an
+  Object3D; PixiJS: a display object); the loader names it `<id>-<i+1>` and adds it to the root you pass to
+  `applyPlacement`. `at(i, k, g)`: `p` in the root's space (3D `[x, y, z]`, 2D `[x, y]` px), `r` (3D `[x, y, z]` or one
+  number = the turn round the up axis; 2D the angle), `s`; `g.rand()` = a random number that is the same every load for
+  the same id, number and try; `g.try` = how many places a keep-out area refused; `g.level` = the level being built.
+  `count` at most 200. Physics bodies: make them after `applyPlacement`, from `report.places[id].keys`.
+- `codeAvoid(id, { name, after, knobs, test, show })`: `test(p, k, g)` true = nothing goes at `p`; `g.player` = where
+  the player is when the level starts (`setPlayer(player)` before `applyPlacement`, or an object keyed `player`, or
+  `applyPlacement(scene, url, { player: [x, y, z] })`). A place refused is tried again (`g.try` + 1, up to 30 times); a
+  layout that gives the same place again (a row) leaves that one out (`report.places[id].skipped`).
+- In `placement.json` (each level its own, like `objects`):
+
+  ```json
+  "places": {
+    "lamp-row": { "knobs": { "gap": { "v": 4, "was": 6 } }, "pins": { "lamp-row-3": { "p": [-3.1, 0, -19] } } },
+    "crystals": { "avoid": [ { "name": "Box 1", "box": { "p": [-8.6, 0, -17], "size": [3.2, 2, 5] } },
+                             { "code": "road", "off": true },
+                             { "code": "near-player", "knobs": { "r": { "v": 6, "was": 5 } } } ] },
+    "lamps": { "from": ["lamp-1", "lamp-2", "lamp-3"] }
+  }
+  ```
+
+  Only what the person changed: `knobs` (`v` now, `was` = your number), `pins` (just that one by hand), `hand: true`
+  (all by hand), `avoid` (in order: a box drawn by hand — `p` = the middle of its bottom, `size` = [w, h, d] —, or one
+  of your conditions with its knobs; `off: true` = switched off), `from` (hand-placed objects it replaced). Change them
+  through `--do place.*`, never by hand while the editor is open.
 
 ### Levels (`levels`)
 

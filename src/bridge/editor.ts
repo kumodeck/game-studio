@@ -17,6 +17,7 @@ import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
 import { createUiExtras } from './ui-extras.ts';
 import { loaderPlay } from './play-switch.ts';
+import { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } from './code-lists.ts';
 import { seenEnough, tooSmall } from './seen.ts';
 
 export interface EditorDeps {
@@ -141,6 +142,18 @@ export function createEditor(deps: EditorDeps): Editor {
     if (watchBase && layer === 'world') {
       if (msg.type === 'studio:placement/moved') (watchBase.set(msg.key, msg.pose), watchSet.add(msg.key));
       else if (msg.type === 'studio:placement/moved-group') for (const m of msg.poses) (watchBase.set(m.key, m.pose), watchSet.add(m.key));
+    }
+    // The game's code motions and code layouts go with every list of the world's objects (code-lists.ts): the shell
+    // knows them as soon as it knows the objects they put, and a layout's objects are called by its name ("Lamp row 3",
+    // not "lamp-row-3") wherever the editor names them. Only for a game that has some (others: the same messages as before).
+    if (msg.type === 'studio:placement/items' && msg.layer !== 'ui') {
+      const motions = codeMotionsOf(win), places = codePlacesOf(win);
+      if (motions.length || places.length) {
+        deps.post({ ...msg, items: namedByLayout(msg.items, places) });
+        deps.post({ type: 'studio:code-motions', list: motions });
+        deps.post({ type: 'studio:code-places', list: places, avoids: codeAvoidsOf(win) });
+        return;
+      }
     }
     deps.post(msg);
   };

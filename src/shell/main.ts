@@ -23,6 +23,9 @@ import {
   type GameToolInfo,
   type Item,
   type AiAgent,
+  type CodeAvoidInfo,
+  type CodeMotionInfo,
+  type CodePlaceInfo,
   type Lang,
   type PlacementFile,
   type Pose,
@@ -149,6 +152,11 @@ export function start(host: StudioHost) {
   let editLayer: EditLayer = 'world';
   let worldDim: Dim = '3d';
   let worldItems: Item[] = [];
+  // The game's code motions, code layouts and keep-out conditions (studio-code-base, 2026-10-24; bridge code-lists.ts):
+  // sent after each world list, empty for a game without them (a new list empties them first).
+  let codeMotionList: CodeMotionInfo[] = [];
+  let codePlaceList: CodePlaceInfo[] = [];
+  let codeAvoidList: CodeAvoidInfo[] = [];
   let uiItems: Item[] = [];
   let uiSeen = false;
   let fileUi: PlacementFile['ui'];
@@ -2151,6 +2159,11 @@ export function start(host: StudioHost) {
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
+      // A code layout's changes (studio-code-base): the game lays it out again from the draft.
+      else if (c.kind === 'code-place') {
+        worldModel.places.set(c.key, dir === 'undo' ? c.from : c.to);
+        placesChanged();
+      }
       // Put in this level from the Library (placeHere): undo hides it again, redo shows it again.
       else if (c.kind === 'place') {
         if (dir === 'undo') {
@@ -3263,6 +3276,17 @@ export function start(host: StudioHost) {
         if (playing) showToast(t('status.gameErrorToast', { msg: m.message }), 8000);
         renderStatus();
         break;
+      // The game's code (studio-code-base, 2026-10-24): what the AI's --do motion.code / place.* find, and the knobs the AI
+      // has written into the code since (the file's v = the code's v) leave the file without counting as a change.
+      case 'studio:code-motions':
+        codeMotionList = m.list;
+        if (motionLibrary.settle(m.list)) (renderAll(), keepSoon());
+        break;
+      case 'studio:code-places':
+        codePlaceList = m.list;
+        codeAvoidList = m.avoids;
+        if (worldModel.places.settle(m.list)) (renderAll(), keepSoon());
+        break;
       case 'studio:placement/items': {
         // UI stage 1: the UI layer's list feeds its own model; nothing of the world's below (the AI's marks, copies,
         // the frame swap) is about it. Its saved places go to the UI layer by name, whichever layer is on.
@@ -3292,6 +3316,10 @@ export function start(host: StudioHost) {
           break;
         }
         worldItems = m.items;
+        // The code's lists come right after (the bridge sends them only for a game that has code motions / layouts).
+        codeMotionList = [];
+        codePlaceList = [];
+        codeAvoidList = [];
         rememberItems(m.items);
         // The world's list while the shell has just switched to the UI (sent before the bridge got the switch): kept
         // in the world's model only.
@@ -3986,10 +4014,14 @@ export function start(host: StudioHost) {
    * The camera (view state) and the selection carry over. `why`: 'ai' and
    * 'redo' compare what changed and mark it violet; 'undo' clears the marks.
    */
-  async function softReload(why: 'ai' | 'undo' | 'redo') {
+  async function softReload(why: 'ai' | 'undo' | 'redo' | 'draft') {
     if (swapping || playing) return;
     await keepNow();
-    if (why === 'undo') {
+    // 'draft' (studio-code-base): the game reads the editor's draft again — a code layout's knobs, pins or keep-out
+    // areas changed, which only the game's loader can lay out. Not an AI change: its marks and "AI changed" stay as they are.
+    if (why === 'draft') {
+      // (nothing of the AI's to note)
+    } else if (why === 'undo') {
       aiBefore = null;
       aiBase = null;
       aiBeforeCode = aiBaseCode = null;
@@ -4020,6 +4052,19 @@ export function start(host: StudioHost) {
     swapTimer = window.setTimeout(finishSwap, 10_000);
     loadGame(true);
     renderAiLine();
+  }
+  // A code layout changed (studio-code-base, 2026-10-24: a knob, a hand-placed one, a keep-out area, or its ⌘Z): only
+  // the game's loader lays a layout out, so the game reads the draft again — once for a burst of changes (the AI's job
+  // of three ops), after a page that is still opening. (Stage 2 of the plan moves them in place, without a reload.)
+  let placesTimer = 0;
+  function placesChanged() {
+    renderAll();
+    keepSoon();
+    clearTimeout(placesTimer);
+    placesTimer = window.setTimeout(function again() {
+      if (swapping || playing) return void (placesTimer = window.setTimeout(again, 200));
+      void softReload('draft');
+    }, 60);
   }
   function finishSwap() {
     clearTimeout(swapTimer);
@@ -4976,6 +5021,30 @@ export function start(host: StudioHost) {
     make: (k, m, o) => timeline.handsMake(k, m, o),
     clipSet: (k, c, o) => timeline.handsClipSet(k, c, o),
     libSet: (n, o) => timeline.handsLibSet(n, o),
+    // Code motions and code layouts (studio-code-base, 2026-10-24): the game page's lists, and the level's layout changes.
+    codeMotions: () => codeMotionList,
+    codePlaces: () => codePlaceList,
+    codeAvoids: () => codeAvoidList,
+    reloadGame: async () => {
+      clearTimeout(placesTimer);
+      await softReload('draft');
+      for (const end = Date.now() + 15_000; Date.now() < end;) {
+        await new Promise((r) => setTimeout(r, 150));
+        // The code's lists come right after the page's first list (their own messages): one more beat for them.
+        if (!swapping && bridgeAlive && editing && worldItems.length) return (await new Promise((r) => setTimeout(r, 150)), true);
+      }
+      return false;
+    },
+    place: (id) => worldModel.places.get(id),
+    placeIds: () => worldModel.places.ids(),
+    setPlace: (id, e) => {
+      const from = worldModel.places.get(id);
+      worldModel.places.set(id, e);
+      const to = worldModel.places.get(id);
+      if (JSON.stringify(from) === JSON.stringify(to)) return;
+      undo.push({ changes: [{ kind: 'code-place', key: id, from, to }] });
+      placesChanged();
+    },
     levels: {
       active: () => levels.active,
       current: () => levels.current,

@@ -18,7 +18,7 @@
 import type { Dim, LevelInfo, PlacementFile, PlacementLevel } from '../contract.ts';
 
 /** A level's world part: what placement.json has at its top for a game with one level. */
-export type WorldPart = Pick<PlacementFile, 'objects' | 'added' | 'removed' | 'order' | 'motion' | 'names'>;
+export type WorldPart = Pick<PlacementFile, 'objects' | 'added' | 'removed' | 'order' | 'motion' | 'names' | 'places'>;
 
 export interface LevelEntry {
   id: string;
@@ -55,6 +55,8 @@ export function worldOf(f: Partial<PlacementFile> | PlacementLevel | null | unde
   if (f?.order?.length) w.order = structuredClone(f.order);
   if (f?.motion && Object.keys(f.motion).length) w.motion = structuredClone(f.motion);
   if (f?.names && Object.keys(f.names).length) w.names = structuredClone(f.names);
+  // A level's code-layout changes (studio-code-base, 2026-10-24): that level's, like its objects.
+  if (f?.places && Object.keys(f.places).length) w.places = structuredClone(f.places);
   return w;
 }
 
@@ -223,6 +225,7 @@ export class Levels {
     delete out.order;
     delete out.motion;
     delete out.names;
+    delete out.places;
     out.levels = this.list.map((e) => {
       const w = e.id === this.current ? now : e.world;
       const l: PlacementLevel = { id: e.id };
@@ -240,6 +243,7 @@ export class Levels {
       if (w.order?.length) l.order = structuredClone(w.order);
       if (w.motion && Object.keys(w.motion).length) l.motion = structuredClone(w.motion);
       if (w.names && Object.keys(w.names).length) l.names = structuredClone(w.names);
+      if (w.places && Object.keys(w.places).length) l.places = structuredClone(w.places);
       return l;
     });
     // The code's order, only when the person's list says something else (an order, a copy, a delete, a rename).

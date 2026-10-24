@@ -21,6 +21,7 @@ import { type Dim, type Item, type PlacementAdded, type PlacementEntry, type Pla
 import { hasLayer, orderOfLayer } from './layers.ts';
 import { roundPose, samePose } from './pose-compare.ts';
 import { MotionStore } from './motion-model.ts';
+import { PlaceStore } from './code-places.ts';
 
 // The pose rounding and comparison live in pose-compare.ts (2026-10-21) so the game page's Play code
 // (bridge/play-arrange.ts) can use them without the whole model; re-exported here for the shell and the tests.
@@ -120,6 +121,11 @@ export class PlacementModel {
    */
   private names = new Map<string, string>();
   private savedNames = new Map<string, string>();
+  /**
+   * What the person changed of the game's code layouts (studio-code-base, 2026-10-24; code-places.ts), this level's:
+   * each layout changed is one Save count.
+   */
+  readonly places = new PlaceStore();
 
   /** Load the saved file (before the game reports its items). */
   restore(file: PlacementFile | null): void {
@@ -133,6 +139,7 @@ export class PlacementModel {
     this.motion.restore(file?.motion);
     this.names = new Map(Object.entries(file?.names || {}));
     this.savedNames = new Map(this.names);
+    this.places.restore(file?.places);
     if (!file || !file.objects) return;
     for (const [k, e] of Object.entries(file.objects)) this.fileEntries.set(k, e);
     for (const o of file.order || []) this.fileOrders.set(o.in, o);
@@ -549,7 +556,7 @@ export class PlacementModel {
   }
 
   dirty(): number {
-    let n = this.namesChanged().length;
+    let n = this.namesChanged().length + this.places.changedIds().length;
     for (const [k, p] of this.current) {
       if (this.copyFrom.has(k) || this.removed.has(k)) continue;
       if (!samePose(p, this.saved.get(k), this.dim)) n++;
@@ -638,6 +645,8 @@ export class PlacementModel {
     // A deleted object's new name goes with it (the AI takes the object out; there is nothing to rename).
     const names = [...this.names].filter(([k]) => !this.isRemoved(k)).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
     if (names.length) file.names = Object.fromEntries(names);
+    const places = this.places.result();
+    if (places) file.places = places;
     return file;
   }
 
@@ -649,5 +658,6 @@ export class PlacementModel {
     for (const layer of this.layers()) this.savedOrder.set(layer, this.order(layer));
     this.motion.markSaved();
     this.savedNames = new Map(this.names);
+    this.places.markSaved();
   }
 }

@@ -1,12 +1,13 @@
 // A real AI on the AI's hands (studio-ai-hands, 2026-10-24): the claude CLI, with this package's arrange skill, asked
 // what a person asked that day (in Japanese, as they did: STEPS below) — and checked that it does the editor's work
 // itself instead of handing it back.
-//   1. "make the blue pillar spiral" → a motion on the timeline (an editor motion), not code in the game, and no
-//      "press Reload" / steps for the person;
-//   2. (the same conversation) "take the blue pillar's old motion off, only the spiral" → the AI takes "Sway" off
-//      itself, with no steps for the person (or says it is off already, when it took it off in 1);
-//   3. the same words in a NEW conversation, with Sway put back on the pillar first (the person's state that day: the
-//      old motion and the spiral both on it) → the AI takes Sway off itself, the spiral stays.
+// Since studio-code-base (2026-10-24: "a spiral is a code motion; a row with a gap I change later is a code layout"):
+//   1. "make the blue pillar spiral" → a CODE motion: codeMotion() written in the game's code and put on the pillar's
+//      timeline with --do motion.code (the editor shows it, with its knobs), no "press Reload" / steps for the person;
+//   2. (a new conversation) "ten street lamps, 6 m apart; I want to change the gap later" → a code layout: codePlace()
+//      in the code and --do place.code (the editor lists ten lamps under the layout's name, a knob at 6).
+// `--steps points` runs the earlier set (studio-ai-hands): the spiral, then "take the old motion off, only the spiral"
+// in the same conversation and in a new one with Sway put back first.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -16,7 +17,7 @@
 // Prints what the AI ran (`--do` lines), what it said (the editor's pass `t=…` hidden), and the checks. Exit 1 on a
 // failure, 3 when there is no claude CLI or no headless Chrome. It costs real AI usage (three short turns).
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,10 +41,13 @@ if (spawnSync('claude', ['--version'], { encoding: 'utf8' }).status !== 0) {
   process.exit(3);
 }
 
-const STEPS = [
-  { say: '青い柱を螺旋で動かして', first: true },
-  { say: '青い柱の前の動きを外して、螺旋だけにして' },
-  { say: '青い柱の前の動きを外して、螺旋だけにして', first: true, seed: true },
+const STEPS = take('--steps') === 'points' ? [
+  { say: '青い柱を螺旋で動かして', first: true, kind: 'spiral' },
+  { say: '青い柱の前の動きを外して、螺旋だけにして', kind: 'only' },
+  { say: '青い柱の前の動きを外して、螺旋だけにして', first: true, seed: true, kind: 'only' },
+] : [
+  { say: '青い柱を螺旋で動かして', first: true, kind: 'code-motion' },
+  { say: '街灯を 6 m おきに 10 本並べて。間は後で変えたい', first: true, kind: 'code-place' },
 ];
 // Handing the work back (Japanese and English): steps to click, asking for a reload or a Save, "in the editor, do …".
 const HANDBACK = /右クリック|再読み込み|リロード|を押して(?!くだ)|押してください|開き直|選んで.*(外|押)|手順|^\s*[1-9]\.\s|Reload|right-click|press Save|保存してください|Save を押/m;
@@ -67,6 +71,8 @@ symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
 mkdirSync(join(game, '.studio/ui'), { recursive: true });
 writeFileSync(join(game, '.studio/ui/prefs.json'), JSON.stringify({ version: 1, lang: 'ja', theme: 'dark', seen: ['timeline-steps', 'open-line'] }));
 const code0 = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
+// Every .js of the game but the loader's copy (the AI may put the layout in a file of its own).
+const readGameJs = () => readdirSync(game).filter((f) => f.endsWith('.js') && f !== 'studio-placement.js' && f !== 'main.js').map((f) => readFileSync(join(game, f), 'utf8')).join('\n');
 // STUDIO_BROWSER: whatever the AI starts never opens a browser of this computer (the headless one below is the editor).
 const editorEnv = { ...process.env, HOME: home, STUDIO_BROWSER: '/usr/bin/true' };
 
@@ -86,6 +92,16 @@ try {
 }
 const page = await newPage(browser, { width: 1280, height: 800 });
 const motions = async () => JSON.parse((await page.eval(`JSON.stringify((window.__studioTimeline?.motionOf('blue-pillar')?.clips ?? []).map((c) => ({ name: c.name, use: c.use, len: c.len, repeat: c.repeat ?? 'once', points: c.keys?.p?.length ?? 0, when: c.when })))`)) || '[]');
+// What the editor has (its own --do list, the way the AI reads it): code motions with `code`, code layouts in `places`.
+const listNow = () => {
+  const r = spawnSync(process.execPath, [CLI, game, '--do', 'list'], { encoding: 'utf8', env: editorEnv });
+  const line = r.stdout.split('\n').find((l) => l.startsWith('studio: list '));
+  try {
+    return line ? JSON.parse(line.slice('studio: list '.length)) : null;
+  } catch {
+    return null;
+  }
+};
 try {
   await page.goto(url);
   await page.waitFor(`document.querySelectorAll('.obj').length > 0`, 90000);
@@ -134,13 +150,31 @@ try {
     const codeNow = { main: readFileSync(join(game, 'main.js'), 'utf8'), index: readFileSync(join(game, 'index.html'), 'utf8') };
     check(r.code === 0 && !!reply, 'the AI answered');
     check(dos.length > 0, 'it used --do (the editor\'s own work)');
-    check(codeNow.main === code0.main && codeNow.index === code0.index, 'the game\'s code is untouched (the motion is the editor\'s, not code)');
     check(!HANDBACK.test(reply), 'no steps, reload or Save handed back to the person');
     check(/^https?:\/\/127\.0\.0\.1:\d+\/__studio\/\?t=/.test(reply.trim()), 'the editor\'s link is the first line');
-    const spiral = m.find((c) => c.points >= 8 && c.name !== 'Sway');
-    if (i === 0) check(!!spiral, `a spiral on the blue pillar's timeline (${spiral ? `${spiral.name}, ${spiral.points} points` : 'none'})`);
-    if (i >= 1) check(!!spiral && !m.some((c) => c.name === 'Sway' || c.use === 'Sway') && m.length === 1, 'only the spiral is left: Sway is off');
-    if (i === 2) check(dos.some((c) => /motion\.detach/.test(c)), 'it took Sway off itself (motion.detach)');
+    const codeText = Object.values(codeNow).join('\n') + readGameJs();
+    if (step.kind === 'spiral' || step.kind === 'only') {
+      check(codeNow.main === code0.main && codeNow.index === code0.index, 'the game\'s code is untouched (the motion is the editor\'s, not code)');
+      const spiral = m.find((c) => c.points >= 8 && c.name !== 'Sway');
+      if (step.kind === 'spiral') check(!!spiral, `a spiral on the blue pillar's timeline (${spiral ? `${spiral.name}, ${spiral.points} points` : 'none'})`);
+      else check(!!spiral && !m.some((c) => c.name === 'Sway' || c.use === 'Sway') && m.length === 1, 'only the spiral is left: Sway is off');
+      if (step.seed) check(dos.some((c) => /motion\.detach/.test(c)), 'it took Sway off itself (motion.detach)');
+    } else if (step.kind === 'code-motion') {
+      const l = listNow();
+      const cm = (l?.motions ?? []).filter((x) => x.code);
+      const onPillar = l?.objects?.find((o) => o.key === 'blue-pillar')?.motions ?? [];
+      console.log(`  editor's list: code motions ${JSON.stringify(cm)}; blue-pillar's motions ${JSON.stringify(onPillar)}`);
+      check(/codeMotion\s*\(/.test(codeText), 'it wrote a codeMotion() in the game\'s code');
+      check(dos.some((c) => /motion\.code/.test(c)), 'it put it on the timeline itself (--do motion.code)');
+      check(cm.some((x) => onPillar.includes(x.name) && !x.missing && Object.keys(x.knobs ?? {}).length >= 1 && Object.keys(x.knobs ?? {}).length <= 3), 'the blue pillar has the code motion on its timeline, with 1–3 knobs');
+    } else if (step.kind === 'code-place') {
+      const l = listNow();
+      console.log(`  editor's list: places ${JSON.stringify((l?.places ?? []).map((p) => ({ id: p.id, name: p.name, n: p.keys?.length, knobs: p.knobs })))}`);
+      const lamps = (l?.places ?? []).find((p) => (p.keys?.length ?? 0) >= 10);
+      check(/codePlace\s*\(/.test(codeText), 'it wrote a codePlace() in the game\'s code');
+      check(dos.some((c) => /place\.code/.test(c)), 'it showed it in the editor itself (--do place.code)');
+      check(!!lamps && Object.values(lamps.knobs ?? {}).some((k) => k.v === 6) && Object.keys(lamps.knobs ?? {}).length <= 3, `ten lamps in the editor under the layout's name, a knob at 6 (${lamps ? `${lamps.name} ×${lamps.keys.length}` : 'none'})`);
+    }
   }
   writeFileSync(join(out, 'placement.json'), readFileSync(join(game, 'placement.json'), 'utf8'));
   writeFileSync(join(out, 'editor.png'), await page.screenshot());
