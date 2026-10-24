@@ -189,6 +189,15 @@ export class MotionStore {
     else this.now.delete(key);
   }
 
+  /**
+   * `key`'s motion as last saved (null = none then). studio-motion-next-2 (2026-10-24): the dock's one line tells a clip
+   * whose attachment (when / until / off) changed from one that did not — changedKeys() only says the object changed.
+   */
+  savedOf(key: string): Motion | null {
+    const m = this.saved.get(key);
+    return m ? structuredClone(m) : null;
+  }
+
   /** Keys whose motion differs from the last save (each is one Save count and a dot on its row). */
   changedKeys(): string[] {
     const keys = new Set([...this.now.keys(), ...this.saved.keys()]);

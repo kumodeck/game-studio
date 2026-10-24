@@ -35,7 +35,8 @@ const sameMotion = (a: Motion | null | undefined, b: Motion | null | undefined) 
   const inline = (m: Motion | null | undefined) => (m?.clips ? { clips: m.clips.map(({ use, ...c }) => ({ ...c, name: `${c.name}\u0000${use ?? ''}` })) } : m);
   return sameFile(inline(a), inline(b));
 };
-import { createTimelinePanel, type TimelineView } from './timeline-panel.ts';
+import { createTimelinePanel, type TimelineActs, type TimelineView } from './timeline-panel.ts';
+import type { NoteIn, NoteMotion } from './motion-note.ts';
 import {
   blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys,
   keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, setKey, snapT, stretchClip, withClip, type Copied, type KeyRef, type Offsets,
@@ -122,6 +123,11 @@ export interface TimelineDeps {
    * rule" in the chat box and the request marked `intent: 'to-code'`. Absent = no AI here: no row.
    */
   toRule?(key: string, motion: { name: string; use: string }): void;
+  /**
+   * The plate drew again, or the motions changed (studio-motion-next-2): the dock's one line asks noteIn() again
+   * (motion-note.ts). Absent = no such line (the unit tests).
+   */
+  note?(): void;
   /** The line's "Compare with original" switched (one switch with the card's: the person wants the marks or not). */
   compareShow?(on: boolean): void;
   /** A knob of a compared rule turned: measure it again (the game page runs the rule; compare() then has the new gap). */
@@ -222,13 +228,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * Its own one line says the next step, so the first-time three steps ("1 Pick a moment on the ruler…") stay away.
    */
   let making: { key: string; shown: boolean; from: number } | null = null;
-  /**
-   * studio-motion-next (2026-10-24; a hands-on review): the object whose motion was just made —
-   * Done / Esc after making, or ● Rec motion turned off with a motion on the plate. The plate says the next step under the
-   * line ("✓ gate’s motion is made · Save puts it in the game · ✦ Turn it into a rule…") until Save, another object,
-   * making again, ● Rec motion on again, or ✦ Turn into a rule pressed.
-   */
-  let nextKey: string | null = null;
+  // (studio-motion-next's `nextKey` — the object whose motion was just made, for the plate's next-step line — is gone:
+  // studio-motion-next-2 (2026-10-24) says the next step for as long as the motion has changes not saved, over the ask
+  // field (noteIn below, motion-note.ts). A hands-on review of v0.1.58: "I never saw it once" — it came only after Done / Esc
+  // or ● Rec motion off, never after reshaping a motion, the common case.)
   /**
    * "Fine-tune" open (the rows of the old ⋯, in the plate beside the timeline): set by hand this session, else null =
    * as remembered (FINE_KEY, then FINE_SEEN). WHY read each time and not once here: the game's ui prefs come from the
@@ -803,7 +806,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const key = head();
     // Another object shown (picked, or a scene opened): making on the one before has ended.
     if (making && key !== making.key) making = null;
-    if (nextKey && key !== nextKey) nextKey = null;
     const c = key ? clipOf(key) : null;
     const qs = cues();
     const eases = new Set<MotionEase>();
@@ -847,7 +849,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       // studio-motion-next: ✦ Turn into a rule on the line — the card menu's condition (motion-card.ts motionMenu): points
       // to make a rule of (two or more places), not a rule already.
       canRule: !!d.toRule && !!c && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2,
-      next: nextKey && nextKey === key && c ? { name: c.name } : null,
       // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
       fine: fineNow(),
       slim,
@@ -1134,7 +1135,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     auto = true;
     making = { key, shown: false, from: 0 };
     madeKey = null;
-    nextKey = null;
     if (fresh) (clearTimeout(fresh.timer), (fresh = null));
     time = 1;
     if (!open) setOpen(true);
@@ -1167,8 +1167,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function endMaking(): boolean {
     if (!making) return false;
     if (!making.shown) time = 0;
-    // Something was made (studio-motion-next): the next step under the line.
-    else if (clipOf(making.key)) nextKey = making.key;
     making = null;
     refresh();
     panel.render();
@@ -1302,7 +1300,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     d.send(msg);
   }
 
-  const panel = makePanel(view, {
+  const acts: TimelineActs = {
     t: d.t,
     ruleKnob(name, v, end) {
       const key = head();
@@ -1338,9 +1336,6 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
         if (!making.shown) time = 0;
         making = null;
       }
-      const k = head();
-      const c = k ? clipOf(k) : null;
-      nextKey = !on && k && c && CHANNELS.some((ch) => (c.keys[ch]?.length ?? 0) >= 2) ? k : null;
       sendRec();
       panel.render();
     },
@@ -1516,11 +1511,23 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     // studio-motion-next: ✦ Ask AI by what is asked (a menu), and the line's ✦ Turn into a rule.
     ...(d.ask && d.menu ? { askMenu: (at: HTMLElement) => askMenu(at) } : {}),
     ...(d.toRule ? { toRule: () => toRuleOf(head()) } : {}),
-  });
+  };
+  const panel = makePanel(view, acts);
+  // studio-motion-next-2: the dock's one line (motion-note.ts) follows every redraw of the plate — a point dragged, the ease
+  // or Repeat changed, ● Rec motion switched all redraw it, and only some of them tell the shell (d.changed).
+  const drawPlate = panel.render;
+  panel.render = () => (drawPlate(), d.note?.());
   /**
-   * ✦ Ask AI's menu (studio-motion-next, 2026-10-24; a hands-on review: "split ✦ Ask Claude by what is asked — this motion as a rule /
-   * a new motion / anything"). Each row only puts a draft in the chat box with this motion's chip (nothing is sent). "Turn
-   * this motion into a rule" only where the line's ✦ Turn into a rule is (a motion of points).
+   * ✦ Ask AI's menu, by what the person wants done to the motion on screen (studio-motion-next-2, 2026-10-24; a
+   * hands-on review of v0.1.58 on studio-motion-next's "Turn this motion into a rule / Make a new motion for me / Ask anything":
+   * "'rule' says nothing of what gets better" and "the last two differ only in the draft's first sentence — and 'Ask
+   * anything' is the field right above"). Each row puts ITS OWN draft in the chat box with this motion's chip, nothing sent:
+   *   - Make this motion adjustable with numbers (speed, size…): the line's ✦ Turn into a rule (draft "Turn into a close
+   *     rule", the request marked to-code) — only for a motion of points, as that button;
+   *   - Have this motion changed… (e.g. slower, bounce higher): draft "Change this motion: ", the person writes on;
+   *   - Have another motion added… (e.g. spin when you get close): draft "Add another motion: ".
+   * The rows say the RESULT (mnext2.toNumbers, the one place for it); "…" = your words go after the draft; the example is
+   * each row's grey second line (context-menu.ts `sub`), so the three can be told apart before one is pressed.
    */
   function askMenu(at: HTMLElement) {
     const key = head();
@@ -1529,16 +1536,54 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const m = { name: c.name, use: c.use ?? c.name };
     const rule = !!d.toRule && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2;
     d.menu?.(at, [
-      ...(rule ? [{ id: 'tl-ask-rule', label: d.t('tl.askMenu.rule'), ai: true, run: () => toRuleOf(key) }] : []),
-      { id: 'tl-ask-new', label: d.t('tl.askMenu.new'), ai: true, run: () => d.ask?.(key, m, d.t('tl.askMenu.newDraft')) },
-      { id: 'tl-ask-free', label: d.t('tl.askMenu.free'), ai: true, run: () => askAbout(key) },
+      ...(rule ? [{ id: 'tl-ask-rule', label: d.t('mnext2.toNumbersMenu', { what: d.t('mnext2.toNumbers') }), sub: d.t('mnext2.toNumbersSub'), ai: true, run: () => toRuleOf(key) }] : []),
+      { id: 'tl-ask-fix', label: d.t('mnext2.fix'), sub: d.t('mnext2.fixSub'), ai: true, run: () => d.ask?.(key, m, d.t('mnext2.fixDraft')) },
+      { id: 'tl-ask-add', label: d.t('mnext2.add'), sub: d.t('mnext2.addSub'), ai: true, run: () => d.ask?.(key, m, d.t('mnext2.addDraft')) },
     ]);
+  }
+  /**
+   * What the dock's one line says (studio-motion-next-2, 2026-10-24; motion-note.ts noteOf decides the words): the motion on
+   * screen when it has changes not saved, ● Rec motion on for it, and every other motion not saved.
+   * "On screen" = the plate's object when the plate is open (head()), else the picked one — folded, the line stays for the
+   * picked object (the review's check 3: "fold the timeline → still, I can tell there are changes not saved").
+   * A clip is "changed" when its Library motion (keys, length, repeat, a rule's numbers) or its attachment on the object
+   * (when / until / off) differs from the last save — the same things the Save count counts (motion-library changedNames,
+   * motion-model changedKeys), per clip, so the line names the motion that changed, not just the object.
+   */
+  function noteIn(): NoteIn {
+    const key = shown() ? head() : d.picked();
+    const libChanged = new Set(lib().changedNames());
+    const keyChanged = new Set(raw().changedKeys());
+    const changed = (k: string, c: MotionClip): boolean => {
+      const use = c.use ?? c.name;
+      if (libChanged.has(use)) return true;
+      if (!keyChanged.has(k)) return false;
+      const att = (m: Motion | null) => m?.clips?.find((x) => (x.use ?? x.name) === use) ?? null;
+      const now = att(raw().get(k));
+      const was = att(raw().savedOf(k));
+      return !!now && (!was || !sameFile({ clips: [now] }, { clips: [was] }));
+    };
+    const of = (k: string, c: MotionClip): NoteMotion => ({ key: k, label: d.label(k), name: c.name, made: !lib().wasSaved(c.use ?? c.name) });
+    const c = key ? clipOf(key) : null;
+    const here = key && c && changed(key, c) ? { ...of(key, c), canRule: !!d.toRule && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2 } : null;
+    // Each Library motion once (a scene's objects share one), here's left out.
+    const seen = new Set(here && c ? [c.use ?? c.name] : []);
+    const others: NoteMotion[] = [];
+    for (const k of d.order()) {
+      if (!d.place(k)) continue;
+      for (const x of clipsOf(k)) {
+        const use = x.use ?? x.name;
+        if (seen.has(use) || !changed(k, x)) continue;
+        seen.add(use);
+        others.push(of(k, x));
+      }
+    }
+    return { here, rec: !!key && records(key), others };
   }
   /** ✦ Turn into a rule on `key`'s motion on screen (the line's button, the next-step line, ✦ Ask AI's menu). */
   function toRuleOf(key: string | null) {
     const c = key ? clipOf(key) : null;
     if (!key || !c) return;
-    nextKey = null;
     d.toRule?.(key, { name: c.name, use: c.use ?? c.name });
     panel.render();
   }
@@ -1859,12 +1904,15 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       sendPath(true);
       if (shown()) panel.render();
     },
-    /** Saved (studio-motion-next): the next-step line ("Save puts it in the game") has done its job. */
+    /** Saved: the dock's one line ("… changed · Save puts it in the game") has done its job (studio-motion-next-2: it reads the store). */
     saved() {
-      if (!nextKey) return;
-      nextKey = null;
-      if (shown()) panel.render();
+      d.note?.();
     },
+    noteIn,
+    /** The dock's ● (studio-motion-next-2): Rec motion off, as Fine-tune's ● does. */
+    recOff: () => acts.auto(false),
+    /** The dock's ✦ Make it adjustable with numbers (studio-motion-next-2): the plate's ✦ Turn into a rule, on the motion on screen. */
+    toRuleHere: () => toRuleOf(shown() ? head() : d.picked()),
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
       stop();

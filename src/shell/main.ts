@@ -77,6 +77,7 @@ import { DEFAULT_UI, effectiveTheme, normalizeUi } from './ui-prefs.ts';
 import { dropTarget, hasLayer, layerTarget, type LayerOp } from './layers.ts';
 import { createPlacementPanel } from './placement-panel.ts';
 import { createTimeline } from './timeline-wire.ts';
+import { createMotionNote, noteOf } from './motion-note.ts';
 import { libCounted } from './timeline-model.ts';
 import { createMotionAsk } from './motion-ask.ts';
 import { CODE_LEN, motionLibrary } from './motion-library.ts';
@@ -288,6 +289,16 @@ export function start(host: StudioHost) {
   useGivenNames((k) => worldModel.nameOf(k));
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
+  // studio-motion-next-2 (2026-10-24; a hands-on review of v0.1.58): the motion's one line over the ask field (motion-note.ts) —
+  // "gate’s motion changed · Save puts it in the game · ✦ …" / "● Recording · press ● when you're done" / "Not saved: …".
+  // Made before the timeline (whose redraws draw it, `note` below); drawn only once the dock is up (noteReady).
+  const motionNote = createMotionNote({
+    t: (k, v) => t(k, v),
+    recOff: () => timeline.recOff(),
+    toRule: host.offline ? undefined : () => timeline.toRuleHere(),
+    pick: (k) => selectObject(k, true),
+  });
+  let noteReady = false;
   // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
   // timeline plate at the foot of the game, the path in 3D, auto key. The world's only, 3D, while editing the Scene.
   const timeline = createTimeline({
@@ -353,6 +364,7 @@ export function start(host: StudioHost) {
     },
     compareShow: (on) => setCompareShown(on),
     remeasure: (name) => void remeasureMotion(name),
+    note: () => renderMotionNote(),
   });
   // ----- ✦ Turn into a rule (studio-code-torule, 2026-10-24; shell/to-rule.ts) -----
   // What the AI swapped in for the hand's shape, and the hand's shape itself, until Save: the comparison on the card,
@@ -948,6 +960,8 @@ export function start(host: StudioHost) {
     const intro = !host.offline && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN) && !picked && editing && !playing && tool === 'placement' && page === 'tool';
     if (introLine.hidden === intro) introLine.hidden = !intro;
     if (intro && introLine.textContent !== t('intro.line')) introLine.textContent = t('intro.line');
+    // The motion's one line follows the pick (studio-motion-next-2): a pick from the game or the list comes through here.
+    renderMotionNote();
     // ---- the sheet's tabs (phone / side window, something picked, the bottom not folded) ----
     const shown = phone() && picked && editing && !playing && tool === 'placement' && page === 'tool' && !fold;
     const motionOn = shown && timeline.isOpen() && !timeline.el.hidden;
@@ -1031,7 +1045,9 @@ export function start(host: StudioHost) {
   // now-ja-35-side-pick). Now the sheet shows ONE of the list, the card or the motion, the field at its foot; the
   // reply floats over the game's top and the presence is a dot in the field. renderSheet says which tab is on.
   const sheetTabs = h('div', { class: 'sheet-tabs', role: 'tablist', dataset: { part: 'sheet-tabs' }, hidden: true });
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, presenceRow, bar);
+  // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, presenceRow, bar);
+  noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
@@ -4268,7 +4284,7 @@ export function start(host: StudioHost) {
       savedOnce = true;
       saveDoneUntil = Date.now() + SAVE_DONE_MS;
     }
-    // studio-motion-next: the timeline's next-step line ("Save puts it in the game") has done its job.
+    // studio-motion-next-2: the line over the field ("… changed · Save puts it in the game") has done its job.
     if (!errors.length) timeline.saved();
     if (!errors.length) emit('saved', null);
     renderButtons();
@@ -5177,6 +5193,21 @@ export function start(host: StudioHost) {
   let saveTimer = 0;
   // The count at the last render: the Save bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
   let prevUnsaved = 0;
+  /**
+   * The motion's one line over the ask field, and the Save's ring (studio-motion-next-2, 2026-10-24; motion-note.ts). Only
+   * while the Scene's world is edited (where motions are made); not while playing (the dock is hidden then anyway).
+   * The ring: the top bar's Save in the line's orange while the line speaks of a change not saved — the review's "tie the
+   * changes not saved to the Save button above" (B of the two ways; A, a Save in the line, would be a second Save).
+   */
+  function renderMotionNote() {
+    if (!noteReady) return;
+    const on = editing && !playing && editLayer === 'world' && tool === 'placement' && page === 'tool';
+    const glow = motionNote.render(on ? noteOf(timeline.noteIn()) : null);
+    for (const b of saveBtns) {
+      if (glow && !b.hidden) b.dataset.glow = 'motion';
+      else delete b.dataset.glow;
+    }
+  }
   function renderButtons() {
     motionTool.sync();
     const n = dirtyCount();
@@ -5249,6 +5280,7 @@ export function start(host: StudioHost) {
     }
     playMoreBtn.title = t('pal.playFresh');
     playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));
+    renderMotionNote();
     keepSoon();
   }
 

@@ -167,12 +167,8 @@ export interface TimelineView {
    * rule" beside Preview / Repeat / When. false: a rule motion already, under two points, no AI here.
    */
   canRule?: boolean;
-  /**
-   * The next step, once a motion is made (studio-motion-next; ● Rec motion turned off, or Done after making): one line
-   * under the line — "✓ gate’s motion is made · Save puts it in the game · ✦ Turn it into a rule…". `name` = the motion's
-   * name on screen. null = not now (Save, another object, making again, ✦ pressed).
-   */
-  next?: { name: string } | null;
+  // (`next`, studio-motion-next's next-step line under the line, is gone: studio-motion-next-2 says it over the ask field,
+  // for as long as the motion has changes not saved — motion-note.ts.)
 }
 
 export interface TimelineActs {
@@ -273,10 +269,9 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, rulerPad, names), track);
   // (studio-motion-flow's first-time three steps, .tl-coach, are gone — studio-motion-line: the line says the next step.)
   const main = h('div', { class: 'tl-main' }, fineEl, h('div', { class: 'tl-right' }, selRow, body));
-  // studio-motion-next: the next step once a motion is made, under the line (full width: the line has no room for it, and
-  // it stays when the plate is folded to the line — slim — since it is what to do now).
-  const nextEl = h('div', { class: 'tl-next', role: 'status', hidden: true, dataset: { part: 'tl-next' } });
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, nextEl, main);
+  // (studio-motion-next's next-step line under the line, .tl-next, is gone — studio-motion-next-2: one line over the ask
+  // field instead, main.ts / motion-note.ts, seen with the plate open, slim or folded.)
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, main);
   // The narrow order is on (a phone, the side window, or a plate too narrow for the line: render() measures).
   let tightNow = false;
 
@@ -1068,7 +1063,6 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       }
     }
     renderFine(v);
-    renderNext(v);
     if (had) (inMore ? fineEl : el).querySelector<HTMLSelectElement>(`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderSel(v);
     // A scene (studio-timeline-2) says what it is — one motion, this many objects — over the rows it names. Said once
@@ -1091,23 +1085,6 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     }
     renderRuler(v);
     place(v);
-  }
-
-  /**
-   * The next step once a motion is made (studio-motion-next, 2026-10-24; a hands-on review: "after making a motion there are three
-   * things to press — ✦ Ask Claude, the box, Save — and I can't tell which"): "✓ gate’s motion is made · Save puts it in
-   * the game · ✦ Turn it into a rule to adjust it with numbers". Save is the top bar's (one Save, save-loud.ts); the rule
-   * part is a button, the same as the line's ✦ Turn into a rule. Its words never say "knob" (the glossary: a hands-on review did not
-   * know the word).
-   */
-  function renderNext(v: TimelineView) {
-    const n = v.clip && v.next && !v.making ? v.next : null;
-    nextEl.hidden = !n;
-    if (!n) return void nextEl.replaceChildren();
-    nextEl.replaceChildren(icon('check'), h('span', { class: 'tl-next-w', dataset: { part: 'tl-next-made' }, text: t('tl.next.made', { name: n.name }) }),
-      ...(v.canRule && act.toRule ? [h('span', { class: 'tl-next-dot', 'aria-hidden': 'true', text: '·' }),
-        h('button', { type: 'button', class: 'tl-next-rule', title: t('tl.ruleTip'), dataset: { action: 'tl-next-rule', part: 'tl-next-rule' }, onclick: () => act.toRule!() },
-          icon('spark'), h('span', { text: t('tl.next.rule') }))] : []));
   }
 
   // The line's first part (▶, or the "drag it" words with no motion yet): ⌄ below it = the line wrapped.

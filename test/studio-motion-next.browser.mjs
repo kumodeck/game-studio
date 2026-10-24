@@ -3,14 +3,16 @@
 // put it in the game; then make it adjustable with numbers" — they press Save, then ✦ Turn into a rule, without a doubt.
 // Lantern Cove, PC 1280×800, the stand-in AI watching (test/ai-feel/fake-agent.mjs), one language a run (`--lang en|ja`),
 // dark by default (`--themes dark,light`):
-//   1. the lighthouse: the strip's Motion → Make a motion → two moves → Done: under the line, "✓ <motion> is made · Save
-//      puts it in the game · ✦ Turn it into a rule to adjust it with numbers"; on the line, beside Preview / Repeat / When,
-//      "✦ Turn into a rule" (the same row);
-//   2. ✦ Ask Claude: a menu — "Turn this motion into a rule / Make a new motion for me / Ask anything" (Esc closes it);
+//   1. the lighthouse: the strip's Motion → Make a motion → two moves → Done: over the ask field, "<motion> is made · Save
+//      puts it in the game · Recording · press ● when you're done", its ● → "… · ✦ Make it adjustable with numbers"
+//      (studio-motion-next-2: the one line over the field; it was under the plate's line); on the plate's line, beside
+//      Preview / Repeat / When, "✦ Turn into a rule" (the same row);
+//   2. ✦ Ask Claude: a menu — "Make this motion adjustable with numbers / Have this motion changed… / Have another motion
+//      added…" (studio-motion-next-2's words; Esc closes it);
 //   3. Save (the top bar): "Saved: <motion>" → the AI has it in: "✓ Saved: <motion> · In the game" (with the timeline open,
-//      the chip beside the ask field: "✓ In the game: <motion>", the result first); the next-step line gone;
+//      the chip beside the ask field: "✓ In the game: <motion>", the result first); the line over the field gone;
 //   4. ✦ Turn into a rule on the line: the draft "Turn into a close rule" in the chat box, nothing sent;
-//   5. the sea stack: Make a motion, a move, then ● Rec motion off (Fine-tune): the next-step line at once;
+//   5. the sea stack: Make a motion, a move, then ● Rec motion off (Fine-tune): the line over the field at once;
 //   6. no page errors.
 // Pictures (`--shots <dir>`): <after|before>-<lang>-<theme>-<1-next|2-menu|3a-save-word|3-saved|4-rule|5-rec-off>.png
 // (3a: the top bar's Save as "Save (put it in the game)", for the picture only — the review's other way, to compare). `--before --ui <dir>`
@@ -51,10 +53,12 @@ const ROOT = `document.querySelector('iframe.game, iframe').contentDocument.quer
 const DBG = `document.querySelector('iframe.game, iframe').contentWindow.__gameStudio?._debug`;
 const TL = `window.__studioTimeline`;
 const LINE = `(() => { const l = document.querySelector('.ai-line'); return l && !l.hidden ? l.innerText.replace(/\\s+/g, ' ').trim() : ''; })()`;
+// studio-motion-next-2 (2026-10-24): the next step is the one line over the ask field now (motion-note.ts; the plate's .tl-next
+// is gone), and ✦ Ask's rows say the result. Its parts are read as test/studio-motion-next-2.browser.mjs reads them.
 const W = LANG === 'ja'
-  ? { made: /^(.+)ができました · 保存するとゲームに入ります$/, rule: 'ルールにすると、数字で調整できます', btn: 'ルールにする', menu: ['この動きをルールにする', '新しい動きを作ってもらう', '自由に頼む'],
+  ? { made: /^(.+)ができました$/, rule: '数字で調整できるようにする', btn: 'ルールにする', menu: ['この動きを数字で調整できるようにする', 'この動きを直してもらう…', '別の動きを足してもらう…'],
     kept: /^保存しました: (.+)/, in: /保存しました: (.+) · ゲームに入りました/, draft: '近いルールにして' }
-  : { made: /^(.+) is made · Save puts it in the game$/, rule: 'Turn it into a rule to adjust it with numbers', btn: 'Turn into a rule', menu: ['Turn this motion into a rule', 'Make a new motion for me', 'Ask anything'],
+  : { made: /^(.+) is made$/, rule: 'Make it adjustable with numbers', btn: 'Turn into a rule', menu: ['Make this motion adjustable with numbers', 'Have this motion changed…', 'Have another motion added…'],
     kept: /^Saved: (.+)/, in: /Saved: (.+) · In the game/, draft: 'Turn into a close rule' };
 
 async function open(browser, theme) {
@@ -101,7 +105,7 @@ async function run(browser, theme) {
     const stripAt = (sel) => j(`(() => { const o = document.querySelector('iframe.game, iframe').getBoundingClientRect(); const b = ${ROOT}.querySelector(${JSON.stringify(sel)});
       if (!b || b.hidden || !b.getBoundingClientRect().width) return null; const r = b.getBoundingClientRect(); return JSON.stringify({ x: o.left + r.left + r.width / 2, y: o.top + r.top + r.height / 2 }); })()`);
     const menu = () => j(`(() => { const m = document.querySelector('[data-part=context-menu]'); if (!m || m.hidden) return null;
-      return JSON.stringify([...m.querySelectorAll('.ctx-label')].map((c) => c.textContent)); })()`);
+      return JSON.stringify([...m.querySelectorAll('.ctx-label')].map((c) => [...c.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim())); })()`);
     const text = (part) => j(`JSON.stringify((() => { const e = document.querySelector('[data-part=${part}]'); return e && !e.hidden && e.offsetParent ? e.textContent : null; })())`);
     const key = async (k, code, vk) => {
       await page.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', key: k, code, windowsVirtualKeyCode: vk });
@@ -128,10 +132,12 @@ async function run(browser, theme) {
     await drag('lighthouse', -2.5);
     await page.eval(`${TL}.state().playing && document.querySelector('[data-part=tl-play]')?.click()`);
     await press('[data-part=tl-done]');
-    const made = await text('tl-next-made');
+    const made = await text('motion-note-what');
     const motion = W.made.exec(made || '')?.[1] ?? '';
-    check(!!motion, `${tag}: the next step under the line ("${made}")`);
-    check((await text('tl-next-rule')) === W.rule, `${tag}: its rule part, a button ("${await text('tl-next-rule')}")`);
+    check(!!motion, `${tag}: the next step over the field ("${made}")`);
+    // ● Rec motion is still on after Done: the line ends with "press ● when you're done"; its ● → the ✦ part.
+    await press('[data-part=motion-note-rec-off]');
+    check((await text('motion-note-rule')) === W.rule, `${tag}: its ✦ part, a button ("${await text('motion-note-rule')}")`);
     const ruleBtn = await at('[data-part=tl-to-rule]');
     const play = await at('[data-part=tl-play]');
     const starts = await at('[data-part=tl-starts]');
@@ -166,7 +172,7 @@ async function run(browser, theme) {
     const inGame = await until(`${JSON.stringify(W.in.source)} && new RegExp(${JSON.stringify(W.in.source)}).test(${LINE})`, 25000);
     const line = await page.eval(LINE);
     check(inGame && line.includes(motion), `${tag}: the AI has it in → "${line}"`);
-    check((await text('tl-next')) === null, `${tag}: the next-step line has done its job`);
+    check((await text('motion-note')) === null, `${tag}: the line over the field has done its job`);
     // The timeline is open, so the finished line is the chip beside the ask field (fix-0142 ④): the result first.
     const chip = await text('ai-tuck');
     check(chip === null || (chip.startsWith(LANG === 'ja' ? 'ゲームに入りました: ' : 'In the game: ') && chip.includes(motion)), `${tag}: the chip beside the field says it is in ("${chip}")`);
@@ -186,7 +192,7 @@ async function run(browser, theme) {
     await page.eval(`${TL}.state().playing && document.querySelector('[data-part=tl-play]')?.click()`);
     if (!(await at('[data-part=tl-auto]'))) await press('[data-part=tl-fine-btn]');
     await press('[data-part=tl-auto]');
-    const off = await text('tl-next-made');
+    const off = await text('motion-note-what');
     check(W.made.test(off || '') && !(await at('[data-part=tl-done]')), `${tag}: ● Rec motion off → the next step ("${off}")`);
     await shot('5-rec-off');
 

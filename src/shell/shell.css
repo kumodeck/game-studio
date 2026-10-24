@@ -1549,17 +1549,46 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-rule-btn .icon { width: 13px; height: 13px; color: var(--ai-text); }
 .tl-rule-btn:hover { background: var(--ai-soft); }
 /* Narrow (a phone, the side window): not on the line — a third row there pushed the rows off a plate already 3/4 of the
-   screen (studio-timeline-line: "two rows at most"). The next-step line's ✦ and ✦ AI's menu have it. */
+   screen (studio-timeline-line: "two rows at most"). The line over the ask field's ✦ and ✦ AI's menu have it. */
 .timeline.narrow .tl-head > .tl-rule-btn { display: none; }
-/* The next step once a motion is made (studio-motion-next): one line under the line, the text's own colour (a fact, not a
-   warning), ✓ then the words; the rule part a violet text button. Wraps on a phone, never "…". */
-.tl-next { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; padding: 0 12px 6px; font-size: var(--fs-s); color: var(--text); line-height: 1.35; }
-.tl-next[hidden] { display: none; }
-.tl-next > .icon { width: 13px; height: 13px; flex: none; color: var(--text-2); }
-.tl-next-dot { color: var(--text-3, var(--text-2)); }
-.tl-next-rule { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin: 0 -6px; border-radius: var(--r); color: var(--ai-text); font-weight: 600; font-size: inherit; }
-.tl-next-rule .icon { width: 12px; height: 12px; }
-.tl-next-rule:hover { background: var(--ai-soft); }
+/* ----- studio-motion-next-2 (2026-10-24; a hands-on review of v0.1.58): the motion's one line over the ask field (motion-note.ts),
+   the top bar's Save ringed in the same orange while it speaks of a change, and ✦ Ask's rows with a grey second line.
+   (studio-motion-next's .tl-next, the line under the plate's head, is gone: "I never saw it once".) ----- */
+/* A caption on the game, centred over the ask field like .intro-line (a thin glass so it reads over a bright game), in
+   the text colour (it says what to do now). Its dot and the word "Save" are the Save's orange: the two read as one. */
+.motion-note { margin: 0; justify-self: center; max-width: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 6px;
+  padding: 4px 12px; border-radius: 16px; font-size: var(--fs-s); line-height: 1.45; color: var(--text); text-align: center;
+  background: var(--glass); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur); box-shadow: var(--shadow);
+  animation: studio-rise var(--dur-in) var(--ease); }
+.motion-note[hidden] { display: none; }
+.shell:is([data-palette="open"], [data-palette="suggest"]) .motion-note { display: none; }
+.mn-lead { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--you); box-shadow: 0 0 0 3px var(--you-soft); }
+.mn-dot { color: var(--text-3, var(--text-2)); }
+.mn-save-w { color: var(--you-text, var(--you)); font-weight: 600; }
+.mn-go { display: inline; padding: 0 2px; margin: 0 -2px; border: 0; border-radius: 4px; background: none; color: inherit; font: inherit; font-weight: 600;
+  text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
+.mn-go:hover { background: var(--raise-2); }
+/* Recording: the Rec motion's red (.tl-auto.on), its dot as in Fine-tune; the second dot is the button that ends it. */
+.mn-rec { display: inline-flex; align-items: center; gap: 6px; color: var(--rec); font-weight: 600; }
+.mn-rec-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--rec); box-shadow: 0 0 0 3px var(--rec-soft); }
+.mn-rec-end { display: inline-flex; align-items: center; gap: 4px; }
+.mn-rec-off { display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: var(--raise-2); cursor: pointer; }
+.mn-rec-off:hover { background: var(--raise-3); }
+.mn-rule { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin: 0 -6px; border: 0; border-radius: var(--r); background: none;
+  color: var(--ai-text); font: inherit; font-weight: 600; cursor: pointer; }
+.mn-rule .icon { width: 12px; height: 12px; }
+.mn-rule:hover { background: var(--ai-soft); }
+/* The Save, ringed in its own orange while the line speaks of a change not saved (main.ts data-glow): a steady ring, and one
+   slow breath as it starts — not a pulse that never stops (the eye goes there once; then the ring is enough). */
+.top-actions > button.top-save[data-glow="motion"] { box-shadow: 0 0 0 3px var(--you-soft), 0 0 14px color-mix(in srgb, var(--you) 55%, transparent); }
+@media (prefers-reduced-motion: no-preference) {
+  .top-actions > button.top-save[data-glow="motion"] { animation: mn-glow 1.4s var(--ease) 2; }
+}
+@keyframes mn-glow { 50% { box-shadow: 0 0 0 5px var(--you-soft), 0 0 22px color-mix(in srgb, var(--you) 75%, transparent); } }
+/* ✦ Ask's rows (context-menu.ts `sub`): the label over a grey example, both wrapping inside the menu's 320 px. */
+.ctx-row.two { height: auto; padding: 6px 10px; align-items: flex-start; }
+.ctx-row.two .ctx-label { white-space: normal; }
+.ctx-sub { display: block; margin-left: 19px; font-size: var(--fs-s); color: var(--text-2); line-height: 1.35; }
 /* ⋯'s panel (timeline-more.ts): fixed over the page, above the ⋯ (the plate clips what is inside it). One label column,
    then the controls; rows wrap inside on a phone. */
 .tl-more { position: fixed; z-index: 60; padding: 6px 12px 8px; border-radius: 14px; background: var(--glass-thick, var(--glass)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);

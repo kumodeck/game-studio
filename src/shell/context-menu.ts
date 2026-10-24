@@ -45,6 +45,11 @@ export interface MenuItem {
    * pressed. Still one press (⌘Z brings it back); the red is a "read me first", not a wall.
    */
   danger?: boolean;
+  /**
+   * A grey second line under the label (studio-motion-next-2, 2026-10-24: ✦ Ask's rows, "e.g. slower, bounce higher") — what
+   * the row is for, so rows that each put a draft in the box can be told apart before one is pressed. Absent = one line.
+   */
+  sub?: string;
   run(): void;
 }
 /**
@@ -149,8 +154,9 @@ export function createContextMenu(d: ContextMenuDeps) {
         el.append(h('div', { class: 'ctx-note', role: 'presentation', text: e.note }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
-        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label),
+      const btn = h('button', { type: 'button', class: `${e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row'}${e.sub ? ' two' : ''}`, role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
+        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label,
+          e.sub ? h('span', { class: 'ctx-sub', text: e.sub }) : null),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
       btn.addEventListener('pointerenter', (ev) => {

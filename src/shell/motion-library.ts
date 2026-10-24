@@ -106,6 +106,14 @@ export class MotionLibrary {
     return true;
   }
 
+  /**
+   * `name` was in the Library at the last save (studio-motion-next-2, 2026-10-24): the dock's one line says "is made" for
+   * a motion new since then, "changed" for one that was there.
+   */
+  wasSaved(name: string): boolean {
+    return this.saved.has(name);
+  }
+
   /** Motions that differ from the last save (each is one Save count). */
   changedNames(): string[] {
     const names = new Set([...this.now.keys(), ...this.saved.keys()]);

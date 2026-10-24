@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.58 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.59 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -12195,12 +12195,8 @@ function whensShort(t                                                           
                                                                                                       
      
                     
-     
-                                                                                                                       
-                                                                                                                          
-                                                                                    
-     
-                                 
+                                                                                                                           
+                                                                       
  
 
                                
@@ -12301,10 +12297,9 @@ function createTimelinePanel(view                    , act              ) {
   const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, rulerPad, names), track);
   // (studio-motion-flow's first-time three steps, .tl-coach, are gone — studio-motion-line: the line says the next step.)
   const main = h('div', { class: 'tl-main' }, fineEl, h('div', { class: 'tl-right' }, selRow, body));
-  // studio-motion-next: the next step once a motion is made, under the line (full width: the line has no room for it, and
-  // it stays when the plate is folded to the line — slim — since it is what to do now).
-  const nextEl = h('div', { class: 'tl-next', role: 'status', hidden: true, dataset: { part: 'tl-next' } });
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, nextEl, main);
+  // (studio-motion-next's next-step line under the line, .tl-next, is gone — studio-motion-next-2: one line over the ask
+  // field instead, main.ts / motion-note.ts, seen with the plate open, slim or folded.)
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, main);
   // The narrow order is on (a phone, the side window, or a plate too narrow for the line: render() measures).
   let tightNow = false;
 
@@ -13096,7 +13091,6 @@ function createTimelinePanel(view                    , act              ) {
       }
     }
     renderFine(v);
-    renderNext(v);
     if (had) (inMore ? fineEl : el).querySelector                   (`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderSel(v);
     // A scene (studio-timeline-2) says what it is — one motion, this many objects — over the rows it names. Said once
@@ -13119,23 +13113,6 @@ function createTimelinePanel(view                    , act              ) {
     }
     renderRuler(v);
     place(v);
-  }
-
-  /**
-   * The next step once a motion is made (studio-motion-next, 2026-10-24; a hands-on review: "after making a motion there are three
-   * things to press — ✦ Ask Claude, the box, Save — and I can't tell which"): "✓ gate’s motion is made · Save puts it in
-   * the game · ✦ Turn it into a rule to adjust it with numbers". Save is the top bar's (one Save, save-loud.ts); the rule
-   * part is a button, the same as the line's ✦ Turn into a rule. Its words never say "knob" (the glossary: a hands-on review did not
-   * know the word).
-   */
-  function renderNext(v              ) {
-    const n = v.clip && v.next && !v.making ? v.next : null;
-    nextEl.hidden = !n;
-    if (!n) return void nextEl.replaceChildren();
-    nextEl.replaceChildren(icon('check'), h('span', { class: 'tl-next-w', dataset: { part: 'tl-next-made' }, text: t('tl.next.made', { name: n.name }) }),
-      ...(v.canRule && act.toRule ? [h('span', { class: 'tl-next-dot', 'aria-hidden': 'true', text: '·' }),
-        h('button', { type: 'button', class: 'tl-next-rule', title: t('tl.ruleTip'), dataset: { action: 'tl-next-rule', part: 'tl-next-rule' }, onclick: () => act.toRule () },
-          icon('spark'), h('span', { text: t('tl.next.rule') }))] : []));
   }
 
   // The line's first part (▶, or the "drag it" words with no motion yet): ⌄ below it = the line wrapped.
@@ -15738,6 +15715,14 @@ class MotionLibrary {
     return true;
   }
 
+  /**
+   * `name` was in the Library at the last save (studio-motion-next-2, 2026-10-24): the dock's one line says "is made" for
+   * a motion new since then, "changed" for one that was there.
+   */
+  wasSaved(name        )          {
+    return this.saved.has(name);
+  }
+
   /** Motions that differ from the last save (each is one Save count). */
   changedNames()           {
     const names = new Set([...this.now.keys(), ...this.saved.keys()]);
@@ -15985,6 +15970,15 @@ class MotionStore {
   set(key        , m               )       {
     if (m) this.now.set(key, structuredClone(m));
     else this.now.delete(key);
+  }
+
+  /**
+   * `key`'s motion as last saved (null = none then). studio-motion-next-2 (2026-10-24): the dock's one line tells a clip
+   * whose attachment (when / until / off) changed from one that did not — changedKeys() only says the object changed.
+   */
+  savedOf(key        )                {
+    const m = this.saved.get(key);
+    return m ? structuredClone(m) : null;
   }
 
   /** Keys whose motion differs from the last save (each is one Save count and a dot on its row). */
@@ -16920,21 +16914,35 @@ const en = {
   'tl.askShort': 'AI',
   'tl.ask': 'Ask {ai}',
   'tl.askTip': 'Ask {ai} about “{name}” in the chat box below',
-  // studio-motion-next (2026-10-24; a hands-on review: "after making a
-  // motion I can't tell what to press next" — ✦ Ask, the box, Save). ✦ Ask is a menu now, by what is asked; each row
-  // only puts a draft in the box below (nothing is sent until the person sends).
-  'tl.askMenuTip': 'Ask {ai}: turn it into a rule, make a new motion, or anything else',
-  'tl.askMenu.rule': 'Turn this motion into a rule',
-  'tl.askMenu.new': 'Make a new motion for me',
-  'tl.askMenu.free': 'Ask anything',
-  'tl.askMenu.newDraft': 'Make another, new motion: ',
   // The line's "✦ Turn into a rule" (the words of toRule.place): beside Preview / Repeat / When, for a motion of points.
   'tl.ruleTip': 'Ask {ai} for a close rule (a wave, up and down, a circle, a spiral) in place of this motion, to adjust it with numbers. The box below gets a draft; you send it',
-  // The next step, once a motion is made (● Rec motion turned off, or Done): one line under the line. "Save" is the top
-  // bar's button; the rule part is a button (the same as the line's ✦ Turn into a rule). Never "knob" on screen
-  // (the glossary: a hands-on review did not know the word) — "with numbers".
-  'tl.next.made': '{name} is made · Save puts it in the game',
-  'tl.next.rule': 'Turn it into a rule to adjust it with numbers',
+  // ----- studio-motion-next-2 (2026-10-24; a hands-on review of v0.1.58) -----
+  // One block (another member works on i18n the same day). The things to PRESS say the result, not "rule" ("rule" says
+  // nothing of what gets better — the review): mnext2.toNumbers is the one place for that result, in ✦ Ask's menu and on
+  // the line over the ask field. Every other "rule" on screen stays until the word for the whole editor is decided.
+  // ✦ Ask's menu, by what the person wants done to the motion on screen (each row only puts its own draft in the box):
+  'tl.askMenuTip': 'Ask {ai}: make it adjustable with numbers, change it, or add another motion',
+  'mnext2.toNumbers': 'adjustable with numbers',
+  'mnext2.toNumbersMenu': 'Make this motion {what}',
+  'mnext2.toNumbersSub': 'speed, size and so on',
+  'mnext2.fix': 'Have this motion changed…',
+  'mnext2.fixSub': 'e.g. slower, bounce higher',
+  'mnext2.fixDraft': 'Change this motion: ',
+  'mnext2.add': 'Have another motion added…',
+  'mnext2.addSub': 'e.g. spin when you get close',
+  'mnext2.addDraft': 'Add another motion: ',
+  // The one line over the ask field (motion-note.ts): while the motion on screen has changes not saved, ● Rec motion on,
+  // or another object's motion is not saved. {save} = the top bar's Save word (btn.save) in its orange. Never "knob".
+  'mnext2.made': '{name} is made',
+  'mnext2.changed': '{name} changed',
+  'mnext2.save': '{save} puts it in the game',
+  'mnext2.line': 'Make it {what}',
+  'mnext2.rec': 'Recording',
+  'mnext2.recEnd': 'press {dot} when you’re done',
+  'mnext2.recOffTip': 'Stop recording (Rec motion off): moving it then moves where it stands',
+  'mnext2.elsewhere': 'Not saved:',
+  'mnext2.more': '(+{n})',
+  'mnext2.goTip': 'Pick {obj} to see its motion',
   'tl.when.orMore': '+{n} more',
   'tl.when.orMoreTip': 'Other ways it starts (in Fine-tune)',
   'tl.when.also': 'Trigger',
@@ -18018,14 +18026,28 @@ const ja                               = {
   'tl.askShort': 'AI',
   'tl.ask': '{ai}に頼む',
   'tl.askTip': '下のチャットの欄で「{name}」について {ai}に頼む',
-  'tl.askMenuTip': '{ai}に頼む: ルールにする・新しい動きを作る・自由に',
-  'tl.askMenu.rule': 'この動きをルールにする',
-  'tl.askMenu.new': '新しい動きを作ってもらう',
-  'tl.askMenu.free': '自由に頼む',
-  'tl.askMenu.newDraft': '別の新しい動きを作って: ',
   'tl.ruleTip': 'この動きに近いルール（波・上下・円・らせん）を {ai}に作ってもらい、入れ替えます。数字で調整できるようになります。下の欄に下書きが入ります（送るのはあなた）',
-  'tl.next.made': '{name}ができました · 保存するとゲームに入ります',
-  'tl.next.rule': 'ルールにすると、数字で調整できます',
+  // ----- studio-motion-next-2 (2026-10-24): what is pressed says the result; mnext2.toNumbers is the one place -----
+  'tl.askMenuTip': '{ai}に頼む: 数字で調整できるように・直す・別の動きを足す',
+  'mnext2.toNumbers': '数字で調整できるようにする',
+  'mnext2.toNumbersMenu': 'この動きを{what}',
+  'mnext2.toNumbersSub': '速さ・大きさなど',
+  'mnext2.fix': 'この動きを直してもらう…',
+  'mnext2.fixSub': '例：もっとゆっくり・高く跳ねる',
+  'mnext2.fixDraft': 'この動きを直して: ',
+  'mnext2.add': '別の動きを足してもらう…',
+  'mnext2.addSub': '例：近づいたら回る',
+  'mnext2.addDraft': '別の動きを足して: ',
+  'mnext2.made': '{name}ができました',
+  'mnext2.changed': '{name}を変えました',
+  'mnext2.save': '{save}するとゲームに入ります',
+  'mnext2.line': '{what}',
+  'mnext2.rec': '記録中',
+  'mnext2.recEnd': '終わったら {dot} を押す',
+  'mnext2.recOffTip': '記録を終わる（動きを記録 オフ）: そのあと動かすと、置き場所が変わります',
+  'mnext2.elsewhere': '保存していない動き:',
+  'mnext2.more': '（ほか {n}）',
+  'mnext2.goTip': '{obj} を選んで動きを見る',
   'tl.when.orMore': 'ほか {n}',
   'tl.when.orMoreTip': 'ほかのきっかけ（細かく調整の中）',
   'tl.when.also': 'きっかけ',
@@ -22424,6 +22446,7 @@ const sameMotion = (a                           , b                           ) 
   return sameFile(inline(a), inline(b));
 };
 const { createTimelinePanel } = __require(26);
+                                                           
 const { blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, easeKeys, keyTimes, MAX_CLIPS, MAX_LEN, MIN_LEN, moveKeys, keyName, offsetOf, offsetsAt, pasteKeys, refId, restOf, SAME_T, sameT, setKey, snapT, stretchClip, withClip } = __require(24);
                                                    
 
@@ -22507,6 +22530,11 @@ const { blankClip, CHANNELS, changedChannels, compose, copyKeys, deleteKeys, eas
                                                                                                    
      
                                                                     
+     
+                                                                                                                 
+                                                              
+     
+                
                                                                                                                      
                                   
                                                                                                                           
@@ -22607,13 +22635,10 @@ function createTimeline(d              , makePanel                             =
    * Its own one line says the next step, so the first-time three steps ("1 Pick a moment on the ruler…") stay away.
    */
   let making                                                       = null;
-  /**
-   * studio-motion-next (2026-10-24; a hands-on review): the object whose motion was just made —
-   * Done / Esc after making, or ● Rec motion turned off with a motion on the plate. The plate says the next step under the
-   * line ("✓ gate’s motion is made · Save puts it in the game · ✦ Turn it into a rule…") until Save, another object,
-   * making again, ● Rec motion on again, or ✦ Turn into a rule pressed.
-   */
-  let nextKey                = null;
+  // (studio-motion-next's `nextKey` — the object whose motion was just made, for the plate's next-step line — is gone:
+  // studio-motion-next-2 (2026-10-24) says the next step for as long as the motion has changes not saved, over the ask
+  // field (noteIn below, motion-note.ts). A hands-on review of v0.1.58: "I never saw it once" — it came only after Done / Esc
+  // or ● Rec motion off, never after reshaping a motion, the common case.)
   /**
    * "Fine-tune" open (the rows of the old ⋯, in the plate beside the timeline): set by hand this session, else null =
    * as remembered (FINE_KEY, then FINE_SEEN). WHY read each time and not once here: the game's ui prefs come from the
@@ -23188,7 +23213,6 @@ function createTimeline(d              , makePanel                             =
     const key = head();
     // Another object shown (picked, or a scene opened): making on the one before has ended.
     if (making && key !== making.key) making = null;
-    if (nextKey && key !== nextKey) nextKey = null;
     const c = key ? clipOf(key) : null;
     const qs = cues();
     const eases = new Set            ();
@@ -23232,7 +23256,6 @@ function createTimeline(d              , makePanel                             =
       // studio-motion-next: ✦ Turn into a rule on the line — the card menu's condition (motion-card.ts motionMenu): points
       // to make a rule of (two or more places), not a rule already.
       canRule: !!d.toRule && !!c && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2,
-      next: nextKey && nextKey === key && c ? { name: c.name } : null,
       // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
       fine: fineNow(),
       slim,
@@ -23519,7 +23542,6 @@ function createTimeline(d              , makePanel                             =
     auto = true;
     making = { key, shown: false, from: 0 };
     madeKey = null;
-    nextKey = null;
     if (fresh) (clearTimeout(fresh.timer), (fresh = null));
     time = 1;
     if (!open) setOpen(true);
@@ -23552,8 +23574,6 @@ function createTimeline(d              , makePanel                             =
   function endMaking()          {
     if (!making) return false;
     if (!making.shown) time = 0;
-    // Something was made (studio-motion-next): the next step under the line.
-    else if (clipOf(making.key)) nextKey = making.key;
     making = null;
     refresh();
     panel.render();
@@ -23687,7 +23707,7 @@ function createTimeline(d              , makePanel                             =
     d.send(msg);
   }
 
-  const panel = makePanel(view, {
+  const acts               = {
     t: d.t,
     ruleKnob(name, v, end) {
       const key = head();
@@ -23723,9 +23743,6 @@ function createTimeline(d              , makePanel                             =
         if (!making.shown) time = 0;
         making = null;
       }
-      const k = head();
-      const c = k ? clipOf(k) : null;
-      nextKey = !on && k && c && CHANNELS.some((ch) => (c.keys[ch]?.length ?? 0) >= 2) ? k : null;
       sendRec();
       panel.render();
     },
@@ -23901,11 +23918,23 @@ function createTimeline(d              , makePanel                             =
     // studio-motion-next: ✦ Ask AI by what is asked (a menu), and the line's ✦ Turn into a rule.
     ...(d.ask && d.menu ? { askMenu: (at             ) => askMenu(at) } : {}),
     ...(d.toRule ? { toRule: () => toRuleOf(head()) } : {}),
-  });
+  };
+  const panel = makePanel(view, acts);
+  // studio-motion-next-2: the dock's one line (motion-note.ts) follows every redraw of the plate — a point dragged, the ease
+  // or Repeat changed, ● Rec motion switched all redraw it, and only some of them tell the shell (d.changed).
+  const drawPlate = panel.render;
+  panel.render = () => (drawPlate(), d.note?.());
   /**
-   * ✦ Ask AI's menu (studio-motion-next, 2026-10-24; a hands-on review: "split ✦ Ask Claude by what is asked — this motion as a rule /
-   * a new motion / anything"). Each row only puts a draft in the chat box with this motion's chip (nothing is sent). "Turn
-   * this motion into a rule" only where the line's ✦ Turn into a rule is (a motion of points).
+   * ✦ Ask AI's menu, by what the person wants done to the motion on screen (studio-motion-next-2, 2026-10-24; a
+   * hands-on review of v0.1.58 on studio-motion-next's "Turn this motion into a rule / Make a new motion for me / Ask anything":
+   * "'rule' says nothing of what gets better" and "the last two differ only in the draft's first sentence — and 'Ask
+   * anything' is the field right above"). Each row puts ITS OWN draft in the chat box with this motion's chip, nothing sent:
+   *   - Make this motion adjustable with numbers (speed, size…): the line's ✦ Turn into a rule (draft "Turn into a close
+   *     rule", the request marked to-code) — only for a motion of points, as that button;
+   *   - Have this motion changed… (e.g. slower, bounce higher): draft "Change this motion: ", the person writes on;
+   *   - Have another motion added… (e.g. spin when you get close): draft "Add another motion: ".
+   * The rows say the RESULT (mnext2.toNumbers, the one place for it); "…" = your words go after the draft; the example is
+   * each row's grey second line (context-menu.ts `sub`), so the three can be told apart before one is pressed.
    */
   function askMenu(at             ) {
     const key = head();
@@ -23914,16 +23943,54 @@ function createTimeline(d              , makePanel                             =
     const m = { name: c.name, use: c.use ?? c.name };
     const rule = !!d.toRule && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2;
     d.menu?.(at, [
-      ...(rule ? [{ id: 'tl-ask-rule', label: d.t('tl.askMenu.rule'), ai: true, run: () => toRuleOf(key) }] : []),
-      { id: 'tl-ask-new', label: d.t('tl.askMenu.new'), ai: true, run: () => d.ask?.(key, m, d.t('tl.askMenu.newDraft')) },
-      { id: 'tl-ask-free', label: d.t('tl.askMenu.free'), ai: true, run: () => askAbout(key) },
+      ...(rule ? [{ id: 'tl-ask-rule', label: d.t('mnext2.toNumbersMenu', { what: d.t('mnext2.toNumbers') }), sub: d.t('mnext2.toNumbersSub'), ai: true, run: () => toRuleOf(key) }] : []),
+      { id: 'tl-ask-fix', label: d.t('mnext2.fix'), sub: d.t('mnext2.fixSub'), ai: true, run: () => d.ask?.(key, m, d.t('mnext2.fixDraft')) },
+      { id: 'tl-ask-add', label: d.t('mnext2.add'), sub: d.t('mnext2.addSub'), ai: true, run: () => d.ask?.(key, m, d.t('mnext2.addDraft')) },
     ]);
+  }
+  /**
+   * What the dock's one line says (studio-motion-next-2, 2026-10-24; motion-note.ts noteOf decides the words): the motion on
+   * screen when it has changes not saved, ● Rec motion on for it, and every other motion not saved.
+   * "On screen" = the plate's object when the plate is open (head()), else the picked one — folded, the line stays for the
+   * picked object (the review's check 3: "fold the timeline → still, I can tell there are changes not saved").
+   * A clip is "changed" when its Library motion (keys, length, repeat, a rule's numbers) or its attachment on the object
+   * (when / until / off) differs from the last save — the same things the Save count counts (motion-library changedNames,
+   * motion-model changedKeys), per clip, so the line names the motion that changed, not just the object.
+   */
+  function noteIn()         {
+    const key = shown() ? head() : d.picked();
+    const libChanged = new Set(lib().changedNames());
+    const keyChanged = new Set(raw().changedKeys());
+    const changed = (k        , c            )          => {
+      const use = c.use ?? c.name;
+      if (libChanged.has(use)) return true;
+      if (!keyChanged.has(k)) return false;
+      const att = (m               ) => m?.clips?.find((x) => (x.use ?? x.name) === use) ?? null;
+      const now = att(raw().get(k));
+      const was = att(raw().savedOf(k));
+      return !!now && (!was || !sameFile({ clips: [now] }, { clips: [was] }));
+    };
+    const of = (k        , c            )             => ({ key: k, label: d.label(k), name: c.name, made: !lib().wasSaved(c.use ?? c.name) });
+    const c = key ? clipOf(key) : null;
+    const here = key && c && changed(key, c) ? { ...of(key, c), canRule: !!d.toRule && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2 } : null;
+    // Each Library motion once (a scene's objects share one), here's left out.
+    const seen = new Set(here && c ? [c.use ?? c.name] : []);
+    const others               = [];
+    for (const k of d.order()) {
+      if (!d.place(k)) continue;
+      for (const x of clipsOf(k)) {
+        const use = x.use ?? x.name;
+        if (seen.has(use) || !changed(k, x)) continue;
+        seen.add(use);
+        others.push(of(k, x));
+      }
+    }
+    return { here, rec: !!key && records(key), others };
   }
   /** ✦ Turn into a rule on `key`'s motion on screen (the line's button, the next-step line, ✦ Ask AI's menu). */
   function toRuleOf(key               ) {
     const c = key ? clipOf(key) : null;
     if (!key || !c) return;
-    nextKey = null;
     d.toRule?.(key, { name: c.name, use: c.use ?? c.name });
     panel.render();
   }
@@ -24244,12 +24311,15 @@ function createTimeline(d              , makePanel                             =
       sendPath(true);
       if (shown()) panel.render();
     },
-    /** Saved (studio-motion-next): the next-step line ("Save puts it in the game") has done its job. */
+    /** Saved: the dock's one line ("… changed · Save puts it in the game") has done its job (studio-motion-next-2: it reads the store). */
     saved() {
-      if (!nextKey) return;
-      nextKey = null;
-      if (shown()) panel.render();
+      d.note?.();
     },
+    noteIn,
+    /** The dock's ● (studio-motion-next-2): Rec motion off, as Fine-tune's ● does. */
+    recOff: () => acts.auto(false),
+    /** The dock's ✦ Make it adjustable with numbers (studio-motion-next-2): the plate's ✦ Turn into a rule, on the motion on screen. */
+    toRuleHere: () => toRuleOf(shown() ? head() : d.picked()),
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */
     reset() {
       stop();
@@ -24348,6 +24418,134 @@ __def(__exports, "createTimeline", () => createTimeline);
 };
 __defs[58] = function (__exports) {
 'use strict';
+// motion-note.ts
+
+// The motion's one line over the ask field (studio-motion-next-2, 2026-10-24; a hands-on review of v0.1.58).
+//
+// What it fixes: v0.1.57's next-step line ("✓ gate’s motion is made · Save puts it in the game · ✦ …", timeline-panel's
+// .tl-next) showed only right after Done / Esc or ● Rec motion off — "I never saw it once". Reshaping a motion (a point or
+// a handle dragged, the ease, the path, Repeat changed) — the common case — said nothing, the line sat under the plate's
+// head where the eye does not go, and another pick or a fold took it away.
+// Now ONE line, over the ask field (the dock, main.ts), where it is seen with the plate open, slim or folded:
+//   - the picked object's motion has changes not saved → "gate’s motion changed · Save puts it in the game · ✦ Make it
+//     adjustable with numbers" ("… is made" for a motion new since the last save), for as long as that is so;
+//   - ● Rec motion on (the plate open, a move adds a point) → "● Recording · press ● when you're done" (the second ● is a
+//     button: Rec motion off), in place of the ✦ part — finish first, then the next step;
+//   - another object picked, or none → "Not saved: gate’s motion (+1) · Save puts it in the game" (the name picks it);
+//   - Save → the line goes (the AI line says "Saved: gate’s motion", save-receipt.ts).
+// WHY over the field and not under the plate's head: the field is where the eye already is (it is the one thing always on
+// screen while editing), and it stays when the plate is folded. The plate's own line (.tl-next) is gone: the same words in
+// two places read as two things.
+// WHY the top bar's Save glows instead of a Save in the line (two ways shown side by side, shots-2/): ONE Save (v0.1.9, a
+// hands-on review: "why are there two buttons that do the same thing?"; save-loud.ts), and a Save in the line would read as
+// "save this motion" while it saves every change. The line's dot and its "Save" are the Save's orange; main.ts rings the
+// Save in the same orange while the line speaks of a change (`unsaved`).
+// What to say is decided here without the DOM (noteOf), so test/motion-next-2.test.ts reads it without a browser.
+const { h } = __require(16);
+const { icon } = __require(21);
+
+/** A motion with changes not saved: the object it is on and the motion's name on screen. */
+                             
+              
+                                       
+                
+                                                  
+               
+                                                                                               
+                
+ 
+
+                         
+                                                                                                                 
+                                                   
+                                                                                  
+               
+                                                                                          
+                       
+ 
+
+                    
+                                                                                                                        
+                                                                                   
+               
+                                                                                                                       
+                
+         
+
+function noteOf(s        )       {
+  const change = s.here
+    ? { where: 'here'         , motion: s.here, more: 0 }
+    : s.others[0] ? { where: 'elsewhere'         , motion: s.others[0], more: s.others.length - 1 } : null;
+  if (!change && !s.rec) return null;
+  return { change, rec: s.rec, rule: !!s.here?.canRule && !s.rec };
+}
+
+                                 
+                                                                 
+                                                                                                    
+                 
+                                                                                                                             
+                  
+                                                                                                    
+                          
+ 
+
+function createMotionNote(d                ) {
+  const el = h('p', { class: 'motion-note', role: 'status', 'aria-live': 'polite', hidden: true, dataset: { part: 'motion-note' } });
+  const dot = () => h('span', { class: 'mn-dot', 'aria-hidden': 'true', text: '·' });
+  /** Draw `n` (null: hidden). Returns whether it speaks of a change not saved (main.ts rings the Save then). */
+  function render(n      )          {
+    el.hidden = !n;
+    if (!n) {
+      el.replaceChildren();
+      delete el.dataset.kind;
+      return false;
+    }
+    const t = d.t;
+    const parts         = [];
+    const c = n.change;
+    el.dataset.kind = c ? c.where : 'rec';
+    if (c) {
+      // The Save's orange (shell.css --you): the dot at the start, and "Save" in "Save puts it in the game".
+      parts.push(h('span', { class: 'mn-lead', 'aria-hidden': 'true' }));
+      if (c.where === 'here') {
+        parts.push(h('span', { class: 'mn-what', dataset: { part: 'motion-note-what' }, text: t(c.motion.made ? 'mnext2.made' : 'mnext2.changed', { name: c.motion.name }) }));
+      } else {
+        const name = h('button', { type: 'button', class: 'mn-go', title: t('mnext2.goTip', { obj: c.motion.label }), dataset: { action: 'motion-note-go', part: 'motion-note-go' },
+          onclick: () => d.pick(c.motion.key) }, c.motion.name);
+        parts.push(h('span', { class: 'mn-what', dataset: { part: 'motion-note-what' } }, t('mnext2.elsewhere'), ' ', name,
+          ...(c.more ? [' ', t('mnext2.more', { n: c.more })] : [])));
+      }
+      parts.push(dot());
+      // "Save puts it in the game": "Save" alone in the orange (the button's word), split on the {save} mark.
+      const [a = '', b = ''] = t('mnext2.save', { save: '\u0000' }).split('\u0000');
+      parts.push(h('span', { class: 'mn-save', dataset: { part: 'motion-note-save' } }, a, h('b', { class: 'mn-save-w', text: t('btn.save') }), b));
+    }
+    if (n.rec) {
+      if (c) parts.push(dot());
+      // "● Recording · press ● when you're done": the second ● is the button (Rec motion off), split on the {dot} mark.
+      const [a = '', b = ''] = t('mnext2.recEnd', { dot: '\u0000' }).split('\u0000');
+      parts.push(h('span', { class: 'mn-rec', dataset: { part: 'motion-note-rec' } }, h('span', { class: 'mn-rec-dot', 'aria-hidden': 'true' }), t('mnext2.rec')),
+        dot(),
+        h('span', { class: 'mn-rec-end' }, a,
+          h('button', { type: 'button', class: 'mn-rec-off', title: t('mnext2.recOffTip'), 'aria-label': t('mnext2.recOffTip'), dataset: { action: 'motion-note-rec-off', part: 'motion-note-rec-off' }, onclick: () => d.recOff() },
+            h('span', { class: 'mn-rec-dot' })), b));
+    }
+    if (n.rule && d.toRule) {
+      parts.push(dot(), h('button', { type: 'button', class: 'mn-rule', title: t('tl.ruleTip'), dataset: { action: 'motion-note-rule', part: 'motion-note-rule' }, onclick: () => d.toRule () },
+        icon('spark'), h('span', { text: t('mnext2.line', { what: t('mnext2.toNumbers') }) })));
+    }
+    el.replaceChildren(...parts);
+    return !!c;
+  }
+  return { el, render };
+}
+
+__def(__exports, "noteOf", () => noteOf);
+__def(__exports, "createMotionNote", () => createMotionNote);
+};
+__defs[59] = function (__exports) {
+'use strict';
 // motion-ask.ts
 
 // "Ask your AI" about a motion, in the chat box (studio-motion-panel, 2026-10-22).
@@ -24398,7 +24596,7 @@ function createMotionAsk(d               ) {
 
 __def(__exports, "createMotionAsk", () => createMotionAsk);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // save-receipt.ts
 
@@ -24510,7 +24708,7 @@ __def(__exports, "RECEIPT_NAMES", () => RECEIPT_NAMES);
 __def(__exports, "savedList", () => savedList);
 __def(__exports, "receipt", () => receipt);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // offset-model.ts
 
@@ -24673,7 +24871,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // offset-choices.ts
 
@@ -24696,7 +24894,7 @@ __defs[61] = function (__exports) {
                                                                                                                   
 const { h } = __require(16);
 const { knobEl } = __require(25);
-const { addOffset } = __require(60);
+const { addOffset } = __require(61);
 
                                                                          
                                                        
@@ -25007,7 +25205,7 @@ __def(__exports, "createOffsetChoices", () => createOffsetChoices);
 __def(__exports, "offsetRowWords", () => offsetRowWords);
 __def(__exports, "offsetRowsEl", () => offsetRowsEl);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // code-place-wire.ts
 
@@ -25057,8 +25255,8 @@ __defs[62] = function (__exports) {
 const { h } = __require(16);
 const { knobEl, knobNumber } = __require(25);
 const { turnKnobs } = __require(34);
-const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(61);
-const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(60);
+const { amountWords, createOffsetChoices, offsetRowWords, offsetRowsEl } = __require(62);
+const { addOffset, dragAmount, jitterRow, lastOf, movesRank, noAmount, MAX_OFFSETS } = __require(61);
 const { roundPose } = __require(31);
 const { gapText, placeGaps } = __require(53);
 
@@ -25824,7 +26022,7 @@ function createCodePlaceWire(d                   )                {
 
 __def(__exports, "createCodePlaceWire", () => createCodePlaceWire);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // keep-out-model.ts
 
@@ -26033,7 +26231,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[64] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // keep-out-wire.ts
 
@@ -26064,7 +26262,7 @@ const { h } = __require(16);
 const { icon } = __require(21);
 const { knobEl } = __require(25);
                                                    
-const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(63);
+const { MAX_AVOID, addBox, canRemove, changedRows, copyRowTo, knobRow, knobsNow, nextBoxName, removeRow, rowKey, rowsOf, setBox, switchRow } = __require(64);
 
                                                                          
                                    
@@ -26358,7 +26556,7 @@ function createKeepOutWire(d                 )              {
 
 __def(__exports, "createKeepOutWire", () => createKeepOutWire);
 };
-__defs[65] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // palette.ts
 
@@ -26664,7 +26862,7 @@ __def(__exports, "SUGGEST_MIN", () => SUGGEST_MIN);
 __def(__exports, "suggests", () => suggests);
 __def(__exports, "createPalette", () => createPalette);
 };
-__defs[66] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // thumb-fit.ts
 
@@ -26765,7 +26963,7 @@ function fitPicture(src        , out = OUT)                  {
 __def(__exports, "FIT_MARGIN", () => FIT_MARGIN);
 __def(__exports, "fitPicture", () => fitPicture);
 };
-__defs[67] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // undo.ts
 
@@ -26979,7 +27177,7 @@ __def(__exports, "poseChange", () => poseChange);
 __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
-__defs[68] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // write-back.ts
 
@@ -27072,7 +27270,7 @@ __def(__exports, "FOLD_TOL", () => FOLD_TOL);
 __def(__exports, "foldGaps", () => foldGaps);
 __def(__exports, "foldSaid", () => foldSaid);
 };
-__defs[69] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ai-hands.ts
 
@@ -27095,7 +27293,7 @@ const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSai
 const { roundKnob, turnKnobs } = __require(34);
 const { CODE_LEN } = __require(35);
 const { MOTION_SAMPLES, gapText, motionGap, placeGaps, timeText } = __require(53);
-const { foldGaps, foldSaid } = __require(68);
+const { foldGaps, foldSaid } = __require(69);
 
                            
              
@@ -27766,7 +27964,7 @@ function createAiHands(d           ) {
 
 __def(__exports, "createAiHands", () => createAiHands);
 };
-__defs[70] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -27886,7 +28084,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[71] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -27969,7 +28167,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[72] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -28020,6 +28218,11 @@ const { icon } = __require(21);
                                                                                             
      
                    
+     
+                                                                                                                             
+                                                                                                                         
+     
+               
               
  
 /**
@@ -28124,8 +28327,9 @@ function createContextMenu(d                 ) {
         el.append(h('div', { class: 'ctx-note', role: 'presentation', text: e.note }));
         continue;
       }
-      const btn = h('button', { type: 'button', class: e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row', role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
-        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label),
+      const btn = h('button', { type: 'button', class: `${e.ai ? 'ctx-row ai' : e.danger ? 'ctx-row danger' : 'ctx-row'}${e.sub ? ' two' : ''}`, role: e.checked === undefined ? 'menuitem' : 'menuitemradio', tabindex: '-1', dataset: { action: `ctx-${e.id}` }, disabled: !!e.disabled, 'aria-disabled': e.disabled ? 'true' : undefined, 'aria-checked': e.checked === undefined ? undefined : String(e.checked) },
+        h('span', { class: 'ctx-label' }, e.ai ? h('span', { class: 'ctx-spark', 'aria-hidden': 'true' }, icon('spark')) : null, e.label,
+          e.sub ? h('span', { class: 'ctx-sub', text: e.sub }) : null),
         e.checked ? h('span', { class: 'ctx-key ctx-check', text: '✓', 'aria-hidden': 'true' }) : !phone && e.key ? h('kbd', { class: 'ctx-key', text: e.key }) : null);
       const i = items.length;
       btn.addEventListener('pointerenter', (ev) => {
@@ -28232,7 +28436,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[73] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -28652,7 +28856,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[74] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -28691,7 +28895,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[75] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -28865,7 +29069,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[76] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -29063,7 +29267,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[77] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -29174,7 +29378,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[78] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -29331,7 +29535,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[79] = function (__exports) {
+__defs[80] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -29401,7 +29605,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[80] = function (__exports) {
+__defs[81] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -29490,7 +29694,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[81] = function (__exports) {
+__defs[82] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -29639,7 +29843,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[82] = function (__exports) {
+__defs[83] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -29702,7 +29906,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[83] = function (__exports) {
+__defs[84] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -29915,7 +30119,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[84] = function (__exports) {
+__defs[85] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -30005,7 +30209,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[85] = function (__exports) {
+__defs[86] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -30021,11 +30225,11 @@ __defs[85] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(81);
-const { withLooks } = __require(80);
-const { createUiScreens } = __require(82);
-const { UiStyleModel, validLook, validTheme } = __require(83);
-const { createUiTheme } = __require(84);
+const { createUiCard } = __require(82);
+const { withLooks } = __require(81);
+const { createUiScreens } = __require(83);
+const { UiStyleModel, validLook, validTheme } = __require(84);
+const { createUiTheme } = __require(85);
                                                    
 
                              
@@ -30220,7 +30424,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[86] = function (__exports) {
+__defs[87] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -30297,7 +30501,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[87] = function (__exports) {
+__defs[88] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -30342,36 +30546,37 @@ const { DEFAULT_UI, effectiveTheme, normalizeUi } = __require(47);
 const { dropTarget, hasLayer, layerTarget } = __require(32);
 const { createPlacementPanel } = __require(51);
 const { createTimeline } = __require(57);
+const { createMotionNote, noteOf } = __require(58);
 const { libCounted } = __require(24);
-const { createMotionAsk } = __require(58);
+const { createMotionAsk } = __require(59);
 const { CODE_LEN, motionLibrary } = __require(35);
 const { attachWorld, roundLib } = __require(36);
 const { icon, setButton } = __require(21);
-const { receipt } = __require(59);
-const { createCodePlaceWire } = __require(62);
-const { createKeepOutWire } = __require(64);
-const { createPalette } = __require(65);
-const { fitPicture } = __require(66);
+const { receipt } = __require(60);
+const { createCodePlaceWire } = __require(63);
+const { createKeepOutWire } = __require(65);
+const { createPalette } = __require(66);
+const { fitPicture } = __require(67);
 const { PlacementModel } = __require(37);
-const { UndoStack, poseChange, sharedMotion } = __require(67);
-const { createAiHands } = __require(69);
+const { UndoStack, poseChange, sharedMotion } = __require(68);
+const { createAiHands } = __require(70);
 const { MOTION_SAMPLES, RuleCompare, gapText, motionGap, timeText } = __require(53);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(49);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(50);
-const { installTooltips } = __require(70);
-const { createShortcutSheet } = __require(71);
-const { createContextMenu } = __require(72);
-const { Levels, worldOf } = __require(73);
-const { checkNoteId } = __require(74);
-const { createLevelSwitch, makeRows } = __require(75);
-const { contextRows } = __require(76);
-const { bigChanges, createSafeSave } = __require(77);
-const { createUnsavedGuard, lostBy, playAsks } = __require(78);
-const { createLayerSwitch } = __require(79);
-const { uiAsPlacement, uiEntries, withUi } = __require(80);
-const { createUiWire } = __require(85);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(86);
+const { installTooltips } = __require(71);
+const { createShortcutSheet } = __require(72);
+const { createContextMenu } = __require(73);
+const { Levels, worldOf } = __require(74);
+const { checkNoteId } = __require(75);
+const { createLevelSwitch, makeRows } = __require(76);
+const { contextRows } = __require(77);
+const { bigChanges, createSafeSave } = __require(78);
+const { createUnsavedGuard, lostBy, playAsks } = __require(79);
+const { createLayerSwitch } = __require(80);
+const { uiAsPlacement, uiEntries, withUi } = __require(81);
+const { createUiWire } = __require(86);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(87);
 
                                                                         
 
@@ -30553,6 +30758,16 @@ function start(host            ) {
   useGivenNames((k) => worldModel.nameOf(k));
   const undo = new UndoStack();
   undo.layerNow = () => (editLayer === 'ui' ? 'ui' : undefined);
+  // studio-motion-next-2 (2026-10-24; a hands-on review of v0.1.58): the motion's one line over the ask field (motion-note.ts) —
+  // "gate’s motion changed · Save puts it in the game · ✦ …" / "● Recording · press ● when you're done" / "Not saved: …".
+  // Made before the timeline (whose redraws draw it, `note` below); drawn only once the dock is up (noteReady).
+  const motionNote = createMotionNote({
+    t: (k, v) => t(k, v),
+    recOff: () => timeline.recOff(),
+    toRule: host.offline ? undefined : () => timeline.toRuleHere(),
+    pick: (k) => selectObject(k, true),
+  });
+  let noteReady = false;
   // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
   // timeline plate at the foot of the game, the path in 3D, auto key. The world's only, 3D, while editing the Scene.
   const timeline = createTimeline({
@@ -30618,6 +30833,7 @@ function start(host            ) {
     },
     compareShow: (on) => setCompareShown(on),
     remeasure: (name) => void remeasureMotion(name),
+    note: () => renderMotionNote(),
   });
   // ----- ✦ Turn into a rule (studio-code-torule, 2026-10-24; shell/to-rule.ts) -----
   // What the AI swapped in for the hand's shape, and the hand's shape itself, until Save: the comparison on the card,
@@ -31213,6 +31429,8 @@ function start(host            ) {
     const intro = !host.offline && prefsLoaded && !uiPrefs.seen?.includes(INTRO_SEEN) && !picked && editing && !playing && tool === 'placement' && page === 'tool';
     if (introLine.hidden === intro) introLine.hidden = !intro;
     if (intro && introLine.textContent !== t('intro.line')) introLine.textContent = t('intro.line');
+    // The motion's one line follows the pick (studio-motion-next-2): a pick from the game or the list comes through here.
+    renderMotionNote();
     // ---- the sheet's tabs (phone / side window, something picked, the bottom not folded) ----
     const shown = phone() && picked && editing && !playing && tool === 'placement' && page === 'tool' && !fold;
     const motionOn = shown && timeline.isOpen() && !timeline.el.hidden;
@@ -31296,7 +31514,9 @@ function start(host            ) {
   // now-ja-35-side-pick). Now the sheet shows ONE of the list, the card or the motion, the field at its foot; the
   // reply floats over the game's top and the presence is a dot in the field. renderSheet says which tab is on.
   const sheetTabs = h('div', { class: 'sheet-tabs', role: 'tablist', dataset: { part: 'sheet-tabs' }, hidden: true });
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, presenceRow, bar);
+  // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, presenceRow, bar);
+  noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
   const app = h('div', { class: 'shell', dataset: { part: 'app' } }, header, side, stage);
@@ -34533,7 +34753,7 @@ function start(host            ) {
       savedOnce = true;
       saveDoneUntil = Date.now() + SAVE_DONE_MS;
     }
-    // studio-motion-next: the timeline's next-step line ("Save puts it in the game") has done its job.
+    // studio-motion-next-2: the line over the field ("… changed · Save puts it in the game") has done its job.
     if (!errors.length) timeline.saved();
     if (!errors.length) emit('saved', null);
     renderButtons();
@@ -35442,6 +35662,21 @@ function start(host            ) {
   let saveTimer = 0;
   // The count at the last render: the Save bounces once when it goes 0 → 1 or more (save-loud.ts bounces).
   let prevUnsaved = 0;
+  /**
+   * The motion's one line over the ask field, and the Save's ring (studio-motion-next-2, 2026-10-24; motion-note.ts). Only
+   * while the Scene's world is edited (where motions are made); not while playing (the dock is hidden then anyway).
+   * The ring: the top bar's Save in the line's orange while the line speaks of a change not saved — the review's "tie the
+   * changes not saved to the Save button above" (B of the two ways; A, a Save in the line, would be a second Save).
+   */
+  function renderMotionNote() {
+    if (!noteReady) return;
+    const on = editing && !playing && editLayer === 'world' && tool === 'placement' && page === 'tool';
+    const glow = motionNote.render(on ? noteOf(timeline.noteIn()) : null);
+    for (const b of saveBtns) {
+      if (glow && !b.hidden) b.dataset.glow = 'motion';
+      else delete b.dataset.glow;
+    }
+  }
   function renderButtons() {
     motionTool.sync();
     const n = dirtyCount();
@@ -35514,6 +35749,7 @@ function start(host            ) {
     }
     playMoreBtn.title = t('pal.playFresh');
     playMoreBtn.setAttribute('aria-label', t('pal.playFresh'));
+    renderMotionNote();
     keepSoon();
   }
 
@@ -36042,7 +36278,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -36242,19 +36478,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[89] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(87);
-const { createLocalHost } = __require(88);
+const { start } = __require(88);
+const { createLocalHost } = __require(89);
 
 start(createLocalHost());
 
 
 };
-__require(89);
+__require(90);
 })();
