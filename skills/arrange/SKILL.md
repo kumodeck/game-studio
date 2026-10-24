@@ -1,6 +1,6 @@
 ---
 name: arrange
-description: Open a local visual editor next to a web game so the user can drag, rotate and scale objects (placement) and see, swap or add the assets the game uses (library), then apply the saved placement.json / library.json to the game's code. Works with three.js out of the box; for Phaser, PixiJS, plain canvas or DOM games, home-made engines and Godot web exports, you first write a small adapter for the game from the bundled examples. Use when the user wants to move, position, line up, rotate or resize things in their game ("put the tree a bit to the right", "fix the layout", "arrange the level", "/arrange"), or wants to see, swap or clean up the game's images, models and sounds ("what assets does my game use", "replace this texture", "/arrange library"). Also use it to fit the editor to one game ("snap to the grid", "only 90° turns", "keep things inside the field", "a tool to draw the course") or to change how the editor itself looks ("put the list on the left", "make it light", "bigger buttons", "fewer buttons"). Also covers requests the user sends from the editor ("ask your AI about this object", "name it", "ideas for your AI": fit, look, tool, publish, multiplayer, save data, 3D models) and telling the editor how your work is going. When the user says "look" (in any language) while the editor is open, read `.studio/requests/`.
+description: Open a local visual editor next to a web game so the user can drag, rotate and scale objects (placement) and see, swap or add the assets the game uses (library), then apply the saved placement.json / library.json to the game's code. Works with three.js out of the box; for Phaser, PixiJS, plain canvas or DOM games, home-made engines and Godot web exports, you first write a small adapter for the game from the bundled examples. Use when the user wants to move, position, line up, rotate or resize things in their game ("put the tree a bit to the right", "fix the layout", "arrange the level", "/arrange"), or wants to see, swap or clean up the game's images, models and sounds ("what assets does my game use", "replace this texture", "/arrange library"). Also use it to fit the editor to one game ("snap to the grid", "only 90° turns", "keep things inside the field", "a tool to draw the course") or to change how the editor itself looks ("put the list on the left", "make it light", "bigger buttons", "fewer buttons"). Also covers requests the user sends from the editor ("ask your AI about this object", "name it", "ideas for your AI": fit, look, tool, publish, multiplayer, save data, 3D models) and telling the editor how your work is going. When the user says "look" (in any language) while the editor is open, read `.studio/requests/`. Also use it whenever the user asks for work the editor can do — "take the old motion off", "make the pillar spiral", "move / rename / duplicate it", "add a level" — and do it yourself with `--do` (in the open editor, or in placement.json), never as steps for the user to click.
 ---
 
 # Arrange: placement editor and asset library
@@ -11,6 +11,17 @@ after `studio: ready` (`studio: reply with this link alone on the first line of 
 <url>`). The app's "open" card, "it's open next to the chat" or "the editor is ready" without the link is never
 enough. The editor opens in the person's default browser by itself; the window next to the chat only when they ask
 for it (§3).
+
+**Do the editor's work yourself; never hand it to the person.** Whatever the person could do in the editor — take a
+motion off an object, make a motion or put one on, change when it starts, move / turn / resize / rename / duplicate /
+delete an object, put it on the ground, make / duplicate / rename / open a level — you do with **`--do`** (§3.4): it
+happens in the open editor, on screen (one ⌘Z undoes it, it counts on Save), or in `placement.json` when no editor is
+open. Never answer with steps for them to click ("1. Select the blue pillar 2. Right-click the Motion row 3. …"), never
+ask them to reload the editor or the game (it reloads the game by itself when files change; `--do editor.reload` when
+you need it), and never ask them to save so that your change lands. Then reply: the editor's link alone on the first
+line, then one line of what changed ("Took “Row” off the blue pillar; it only spirals now. ⌘Z in the editor brings it
+back."). WHY (a request, 2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst
+experience."
 
 Typing coordinates back and forth ("a bit more to the right… no, less") is the slowest part of building a game with
 an AI. This skill opens a small local editor where the **user** moves things by hand and the **editor writes a file**.
@@ -139,7 +150,7 @@ the game's structure changes a lot.
    `EDIT HERE` parts, not its camera maths.
 5. Open the editor (§3). It runs a **self-check** at once and tells you the result in one `studio: check …` line, with
    details in `.studio/check.md` (the check runs when the editor page loads; with `--no-open`, before anyone opens
-   it, step 6's `--check-view` runs it and prints the same `studio: check …` line). Fix what it names and reload the editor page in the browser (the server reads
+   it, step 6's `--check-view` runs it and prints the same `studio: check …` line). Fix what it names and reload the editor page yourself with `--do editor.reload --editor` (§3.4; the server reads
    `.studio/adapter.js` again on every load; no restart needed). Do not hand the editor to the user until the check
    passes.
 6. Then run the **view check** once (2D games): `node <this skill's folder>/bin/studio.mjs <game folder> --check-view`.
@@ -244,7 +255,7 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 | `studio: open app …` | This person chose the window next to the chat (`--open-in app`); nothing opened | `preview_start` with the link (above), the link still first in the reply |
 | `studio: open none …` | Nothing could be opened (`--no-open`, SSH, no display) | The link first, then "Open this link in your browser." |
 | `studio: check ok` | The adapter works | Nothing; the user can start |
-| `studio: check failed` | The adapter (or the built-in three.js one) does not work for this game | Read `.studio/check.md`, fix `.studio/adapter.js` (§2), ask the user to reload the page |
+| `studio: check failed` | The adapter (or the built-in three.js one) does not work for this game | Read `.studio/check.md`, fix `.studio/adapter.js` (§2), then `--do editor.reload --editor` (§3.4) |
 | `studio: unnamed` | Some objects have no name (`path:` keys; the line lists them) | §3.2: offer **once** to name them, before the user saves |
 | `studio: saved placement` | `placement.json` was written | §4 |
 | `studio: saved library` | `library.json` was written | §6 |
@@ -256,6 +267,9 @@ any) in every command for this game: start, `--watch`, `--status`, `--stop`.
 | `studio: undone` | The person pressed **Undo AI change**: the editor already put the game's files back as they were before your last change | §3.1 (`undone`): do not redo it |
 | `studio: watching <n> waiting` | Your watch (`--watch`, below) started with requests waiting; they follow, one line each (with none waiting it prints nothing) | Handle them in order |
 | `studio: watch rest …` | Your watch ended on time (after 29 minutes), nothing is wrong | Start the same watch again at once (below). Say nothing |
+| `studio: did … - in the editor …` / `- in placement.json …` | Your `--do` (§3.4) did that op, there | The link first, then one line of what changed |
+| `studio: do failed <op> - <why>` | That op was not done (the others were) | Fix what it says (a key, a motion's name: `--do list`) and run that op again |
+| `studio: list {…}` | `--do list`: the objects (key, the name the person sees, their motions), the Library's motions, the levels | Find what their words mean ("the blue pillar") there |
 | `studio: request play` | The person asked while **playing** the game in the editor (▶ Play; the game is still running): their words, then `while playing`, the picture of that moment and how many console errors came with it. `paused, chat .studio/chat/<id>.json` instead of `while playing`: they **paused** the game to talk with you about that moment | §3.1 (`play`): fix it without stopping their game; paused: **answer** first (§3.1.1, "Paused") |
 | `studio: answer` | The person answered your `asking` question in the editor (a button or their own words; the question and the request it is about follow) | §3.1 (`answer`): go on with that answer |
 | `studio: from the Game Studio editor …` | The plugin's hook woke you (below, "Woken by the editor"): the lines under it are requests, same words as above, each ending with the game folder in `[…]` | Handle them in order (§3.1), like watch lines |
@@ -326,7 +340,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — wire it with `playMotion(key, name)` where their words say (§4 Motion). A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
@@ -387,7 +401,8 @@ contractions. Name the thing, not a feeling. Say what happened, then what to do 
 | `done` note | "Added 3 lighthouses around the island" | "Task completed successfully!" |
 | `failed` note | "Couldn't find the barrel in the code" | "An error occurred." |
 | `done` note for an `undone` request | "Okay, it's back to how it was" | "Acknowledged undo" |
-| After applying a layout | "Moved 4 objects and added 2 duplicates. Reload the game to see them." | "Your layout has been applied." |
+| After applying a layout | "Moved 4 objects and added 2 duplicates. The editor shows them now." | "Your layout has been applied." / "Reload the game to see them." |
+| After doing editor work yourself (§3.4) | "Took “Row” off the blue pillar. ⌘Z in the editor brings it back." | "To remove it: 1. Select the pillar 2. Right-click…" |
 | `done` note after the first save (§4) | "Added a loader (1 line). Your layout is in." | "Applied via the loader approach." |
 | In your window after the first save | "Added a loader (1 line) that reads placement.json when the game starts, so your layout is in. Want the numbers written into the code instead? Say so." | A list of options with pros and cons |
 | `asking` note (the question) | "Is the second door a real door, or only for looks?" | "Clarification required." |
@@ -446,8 +461,8 @@ conversation, not a bug report:
 When the first `studio: unnamed` line appears (or `--requests` / the editor list shows `path:` keys), and the user
 has not saved yet, **offer once** to name them first, in one short message, for example: "3 things in your game
 have no name yet (the ground, a rock, …). Shall I name them in the code first? Then what you save keeps working
-when the code changes." Name only the ones the user agrees to (§5), ask them to reload the editor, and do not ask
-again in this session (the line comes back on every reload; that is not a new question). WHY now: names added after
+when the code changes." Name only the ones the user agrees to (§5) — the editor reloads the game by itself when the code changes —, and do
+not ask again in this session (the line comes back on every reload; that is not a new question). WHY now: names added after
 a save change the keys, so `placement.json` has to be renamed too (§5). If they say no, carry on: `path:` keys
 work until the code changes. A `name` request from the editor (§3.1) is the user asking; just do it.
 
@@ -466,8 +481,52 @@ request), **look at the game itself before you say it is done**:
    the rock is now left of the house and the second barrel is gone"), and set `--status done`.
 
 If `--shot` prints `studio: shot skipped` (no Chrome or Chromium, `STUDIO_CHROME` can point at one; or Chrome cannot start inside your sandbox) or you cannot
-open pictures, do not stop at "not checked on the real game yet": tell the user in **one line** what to look at,
-for example "Reload the game: the rock should be left of the house, and the second barrel gone."
+open pictures, do not stop at "not checked on the real game yet": tell the user in **one line** what to look at in
+the editor (it already shows your change), for example "In the editor, the rock is now left of the house and the
+second barrel is gone."
+
+### 3.4 Do it in the editor yourself (`--do`)
+
+Editor work is yours to do, with one command. With the editor open, it happens **in the editor**: the person sees it
+change at once, one ⌘Z takes back the whole command, it counts on Save · n like their own edits, and a line over the
+ask bar says "Claude took “Row” off Blue pillar · ⌘Z undoes it". With no editor open (not started, or no page has it
+open) the same ops are written into `placement.json`, in the shape the editor writes, and the editor shows them when it
+opens. Never edit `motions` / `motion` / `objects` in `placement.json` by hand while the editor is open: its draft
+writes over the file on the person's next change. (If you must hand-edit the file then, for keys renamed in the code,
+§5, run `--do editor.reload --editor` right after, so the editor reads your file.)
+
+```sh
+node <…>/bin/studio.mjs <game folder> --do list                                          # what is there: keys, names, motions
+node <…>/bin/studio.mjs <game folder> --do motion.detach --key pillar-1 --name Row       # one op from flags
+node <…>/bin/studio.mjs <game folder> --do '[{"do":"motion.detach","key":"pillar-1","all":true},
+  {"do":"motion.make","name":"Spiral","len":4,"repeat":"loop","points":[[0,0,0],…],"key":"pillar-1"}]'   # several: ONE ⌘Z
+```
+
+It prints one line per op — `studio: did took "Row" off pillar-1 - in the editor (…)`, or `studio: do failed
+motion.detach - pillar-1 has no motion "Hop" (its motions: "Row")` (exit 1; the other ops were done) — then, with the
+editor running, the `studio: reply with this link …` line: that link goes first in your reply.
+
+| Op | Fields | Does |
+|---|---|---|
+| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)") and its motions; the Library's motions and what they are on; the levels. Use it to find what "the blue pillar's old motion" means |
+| `motion.make` | `name`, `points` or `keys`, `len` (s, default 2), `repeat` (once / loop / pingpong), `ease`, `key`, `when`, `until`, `replace` | A Library motion — on the timeline, played by the loader — and, with `key`, put on that object. `points` = positions it goes through, offsets from where it stands, spread evenly over `len` (linear between them); `keys` = the file's own keys (`p` / `r` / `s`) for turns and sizes. A taken name becomes "Spiral 2" unless `replace: true` (the same motion with new keys) |
+| `motion.attach` | `key`, `name`, `when`, `until` | Put a Library motion on an object |
+| `motion.detach` | `key`, `name` (or `all: true`) | Take a motion off that object (the "Remove from this object" of its card); the motion stays in the Library |
+| `motion.delete` | `name` | Delete it from the Library and every object |
+| `motion.rename` | `name`, `to` | Rename it everywhere |
+| `motion.set` | `name`, `repeat`, `len` (stretches its keys), `key` + `when` / `until` | Change how it repeats, how long it takes, when it starts / stops (`key` = on that object; without it, on every object that has it) |
+| `object.move` / `object.turn` / `object.scale` | `key`, `to` or `by` (turn: radians, `deg: true` for degrees; scale `by` = times) | Move, turn, resize (its place; its motion comes along) |
+| `object.rename` / `object.duplicate` / `object.delete` | `key` (+ `to`: the name; duplicate: the copy's place) | As Rename (F2), Duplicate (⌘D), Delete; the copy's key is in the line |
+| `object.ground` | `key` | Drop to floor (needs the editor open) |
+| `level.new` / `level.duplicate` / `level.rename` / `level.switch` | `name`; `id`; `id` + `to`; `id` | New (blank) level, Duplicate, rename, open one (`level` on any object op = do it on that level) |
+| `save` | — | The person's Save. **Only when they say "save"** — otherwise Save stays theirs |
+| `editor.reload` | `editor: true` = the editor page itself | Reload the game in the editor (or the page: after a change to `.studio/adapter.js`, `studio.json`, `tools.js`, `.studio/ui/`) |
+
+`when`: `"start"`, `"click"`, `"touch"`, `"key:E"` (any `KeyboardEvent.code`: `"key:Space"`), `"time:2"`,
+`"after:Hop"`, `"cue:chest-opened"`, `"say:<their words>"`, the file's object (`{"on":"enter","area":{…}}`), or a list
+(any of them starts it). Without `when`, a motion you make starts with the game; one you put on with `motion.attach`
+starts with the game, or after the object's last motion when one already does (the editor's own rule for a drop). `until`: `"times:3"`, `"cue:boss-down"`, `null` = never. Keys: from `--do list`, a request's `objects`,
+or the marks in the code (§5).
 
 ## 4. Read placement.json and apply it
 
@@ -518,8 +577,8 @@ for example "Reload the game: the rock should be left of the house, and the seco
 
 **If the game already reads `placement.json`** (the samples do; or an earlier session added the loader: look for
 `applyPlacement` / `studio-placement.js`), there is nothing to choose: the save is in the game the next time it
-loads. Do not ask; look at the game (§3.3), set `done` and say so in one line ("Your layout is in. Reload the game to
-play it."). Copies and deletions (`added`, `removed`) still need you: the loader only shows them until the code has
+loads. Do not ask; look at the game (§3.3), set `done` and say so in one line ("Your layout is in. ▶ Play in the editor
+plays it."). Copies and deletions (`added`, `removed`) still need you: the loader only shows them until the code has
 them (a look-alike copy, a hidden deletion), see "Copies and deletions".
 
 **Otherwise (the first save of a game without the loader): add the loader (Way 1) without asking**, then tell them,
@@ -635,8 +694,8 @@ entry out of `names`. Say which keys you chose.
 
 1. Run the game (or reload it in the editor). Every copy is there, every deleted object is gone, and the game starts
    without console errors.
-2. Open the editor again (or ask the user to): copies show as ordinary objects (no **copy** tag), deleted ones are not
-   listed, and Save shows no unsaved count. If a copy shows the **copy** tag again, its key in the code does not
+2. Look in the editor yourself (it reloads the game by itself when your files change; `--do editor.reload` if not):
+   `--do list` shows the copies as ordinary objects and the deleted ones gone, and Save shows no unsaved count. If a copy shows the **copy** tag again, its key in the code does not
    match `added[].key`; if a deleted object is back, the code still creates it. Fix and check again.
 3. Tell the user in one or two sentences what you added and removed.
 
@@ -679,8 +738,8 @@ also to marked elements the game adds later, such as a game-over screen). A game
 5. Remove that key from `ui` (and `uiView` when `ui` is empty). The loader would otherwise apply the offset a second
    time on top of `left` / `top` numbers you changed.
 
-Check after applying: reload the game **without the editor** (or Play) and compare with what the user saw; then open
-the editor, press **U** (World | UI) and see that Save shows no unsaved count.
+Check after applying: shoot the game **without the editor** (`--shot`, §3.3) and compare with what the user saw; the
+editor reloads the game by itself, and Save then shows no unsaved count.
 
 **Screens, looks and the theme** (`screen`, `set` / `setWas`, `theme`). The UI list's head picks a screen of the game
 (Title, Playing, Paused, Game over…, the containers marked `data-studio-screen`, §5); the card changes an element's
@@ -716,6 +775,41 @@ done. **Sample values** (the card's "999,999", "a long name") are never in the f
 text fits. If they say a long one overflows, fix the CSS (a `max-width`, `text-overflow`, a smaller size) when asked.
 
 ### Motion (`motions`, `motion`)
+
+**When the person asks for a motion** ("make the blue pillar spiral", "make the door swing open when E is pressed",
+"take the old motion off, only the spiral"), in this order:
+
+1. **Make it an editor motion**, with `--do motion.make` (§3.4): a Library motion on the timeline, played by the
+   loader — never code in the game. A shape (a spiral, a circle, a wave, a figure eight, a bob, a hop) is **points**:
+   work them out with a formula, as offsets from where the object stands starting at `[0, 0, 0]`, and enough of them
+   for a smooth curve (about 12–16 a turn; up to 256). `len` = seconds for one round, `repeat` = `loop` (round and
+   round), `pingpong` (there and back) or `once`. A turn or a change of size is `keys` with `r` / `s` (below).
+2. **When it starts**: `when` (the game starts — the default for a motion you make —, a key, a click, after another
+   motion, walking into an area). One that needs the game — `touch`, a `cue`, words only the code can tell ("when the boss falls") — is still an editor motion:
+   give it that `when` and add the one line in the code (`touch('door')`, `cue('boss-down')`, below).
+3. **The object already moves** (`--do list` shows its motions): two motions that start with the game play at once
+   (their moves add up). When their words say "instead" / "only the spiral" / "the old motion off", take the old one
+   off in the same command (`motion.detach`; `all: true` for every one) — one ⌘Z takes back both. Otherwise keep it,
+   and say in your line that it still has the old one too ("It still sways as well; say so and I'll take that off").
+4. **Code only when an editor motion cannot be it**: it follows physics or the game's rules (bounces off walls, chases
+   the player, is pushed, depends on the score). Then say so in one line: "This one is in the game's code, so it doesn't
+   show on the timeline." Never both on one object: the two fight.
+5. Look at it (§3.3: `--shot`; or ▶ Play), then reply: the link first, then one line ("The blue pillar now spirals up
+   and down, 4 s a round. It's on the timeline; ⌘Z in the editor takes it back."). Never "press Reload" or "open it
+   again": the editor already shows it.
+
+A spiral up a pillar — two turns of 1.2 m, 3 m up, 4 s, there and back — worked out and sent in one line:
+
+```sh
+node <…>/bin/studio.mjs <game folder> --do "$(node -e '
+const n = 48, pts = [];
+for (let i = 0; i <= n; i++) { const a = (i / n) * 2 * Math.PI * 2;
+  pts.push([1.2 * Math.cos(a) - 1.2, (i / n) * 3, 1.2 * Math.sin(a)].map((x) => Math.round(x * 1000) / 1000)); }
+console.log(JSON.stringify({ do: "motion.make", name: "Spiral", len: 4, repeat: "pingpong", points: pts, key: "pillar-1" }));')"
+```
+
+(The first point is `[0, 0, 0]`: the motion starts where the pillar stands. "Only the spiral": the same `--do` as a
+list, `{ "do": "motion.detach", "key": "pillar-1", "name": "Sway" }` first.)
 
 The editor has a **timeline** (like Unity's Animation window or Blender's Dope Sheet): the user moves the time line,
 moves / turns / resizes an object, and a **key** is set at that moment; the object goes from key to key. A motion
@@ -783,10 +877,12 @@ motion can be on several objects. Each object says **which** motion it uses and 
    playMotion('gate', 'Hop');  // when: { on: 'say' }: read the words, find that moment
    ```
 
-3. **Motions picked in the Library** (an `ask` with `motions`: "make this crate Hop when the player walks up"): wire
-   the moment in the game's code with `playMotion(key, name)` — it plays any Library motion on any object, attached
-   or not (the loader finds the object by its key). **Do not write `motions` / `motion` in placement.json**: they are
-   the editor's; say in one line what you wired, so the user can also attach it in the editor.
+3. **Motions picked in the Library** (an `ask` with `motions`: "make this crate Hop when the player walks up"): put the
+   motion on the object yourself — `--do motion.attach --key crate --name Hop --when …` (§3.4) — with the `when`
+   their words say. Code only for a moment the game decides: attach it with that `when` (`"cue:near-crate"`) and add
+   the one line (`cue('near-crate')`) where it happens; `playMotion(key, name)` plays any Library motion on any object
+   from the code, attached or not. Change motions through `--do`, not by writing `motions` / `motion` in
+   placement.json yourself (with the editor open its draft writes over yours; with none open `--do` writes the file).
 4. **The code already sets that object's position or angle every frame** (its own update, a physics body, a tween):
    the two would fight. Use the motion in that code instead and take the key out of `motion`:
 
@@ -875,9 +971,10 @@ copies, renames, levels) reaches you only through `placement.json` on Save.
 
 Use **Way 2** on the Godot project, not on the web export: the values live in the scene files (`.tscn`) as
 `position = Vector2(…)`, `rotation = …`, `scale = Vector2(…)` on the node whose name or `studio_key` metadata matches
-the key. Change them there (or in the script that sets them), then ask the user to export for Web again (or run the
-export command if the project has an export preset and the user agrees). Editing the exported `.pck` does nothing
-useful.
+the key. Change them there (or in the script that sets them), then export for Web again yourself when the project has an
+export preset (`godot --headless --path <project> --export-release "<the Web preset's name>" <export folder>/index.html`);
+only without a preset (or without Godot on this computer), say in one line what to export. Editing the exported `.pck`
+does nothing useful.
 
 ### Physics games
 
@@ -903,8 +1000,10 @@ The editor (and your adapter) picks each object's key in this order:
 
 When objects are unnamed, or many share a name (`"tree"` ×12), **add marks in the code** where each object is
 created, with names that mean something in the game (`tree-near-gate`, `coin-03`). Keys may use
-`A–Z a–z 0–9 _ : # . - /`, up to 80 characters. If the user already saved with `path:` keys, add the marks, then ask
-the user to open the editor and save once more so the next file uses the new keys.
+`A–Z a–z 0–9 _ : # . - /`, up to 80 characters. If the user already saved with `path:` keys, add the marks and move
+those entries in `placement.json` to the new keys yourself (`objects`, `motion`, `added` / `removed` / `order`, `names`);
+with the editor open, run `--do editor.reload --editor` right after, so it reads the file with the new keys (§3.4).
+Never ask the person to save again for it.
 
 - Put the mark on the **top object the user should move** (the group or container, not each child).
 - To keep something out of the editor (UI layers, helpers, the ground): three.js `userData.studio = false`, PixiJS
@@ -1035,7 +1134,8 @@ such a sentence, handle it the same way: explain, ask, then connect.
 Triggers: "make the editor fit my game", "snap to tiles", "only turn by 90°", "keep things on the board", "crates
 should always be the same size", "lock the ground", "I want a tool to draw the race track / place along a path".
 
-Two files, both read when the editor page loads (ask the user to reload the editor after you change them):
+Two files, both read when the editor page loads (reload it yourself after you change them: `--do editor.reload
+--editor`, §3.4):
 
 | File | For | Code? |
 |---|---|---|
@@ -1048,7 +1148,8 @@ Steps:
    objects are which (names, groups) and where the playable area is.
 2. Prefer `studio.json`. Write `tools.js` only for what settings cannot express.
 3. Use the game's own numbers: grid = the tile size the code uses; bounds = the arena the code uses.
-4. Ask the user to reload the editor; check that moving now snaps / stays inside. Rules apply to the handles, keys and
+4. Reload the editor yourself (`--do editor.reload --editor`); check that moving now snaps / stays inside (`--do
+   object.move` there and `--do list`, or tell them in one line what now snaps). Rules apply to the handles, keys and
    tools; undo and saved files are never changed by them.
 5. A game tool's data is saved to `.studio/data/<id>.json` when the user presses **Save** (stdout:
    `studio: saved .studio/data/<id>.json`). Apply it to the game like placement.json: add a small loader without
@@ -1074,7 +1175,7 @@ Safe to change: everything about how the editor page looks and which buttons it 
 (and not to be worked around): the game page, the handles' behaviour, the saved file formats, the server.
 
 Steps: write the smallest change that does what the user asked (often 3–10 lines of CSS or `studioShell` calls),
-ask them to reload the editor, adjust. **If something goes wrong:** open the editor with `&ui=off` added to its URL
+reload the editor yourself (`--do editor.reload --editor`, §3.4), adjust. **If something goes wrong:** open the editor with `&ui=off` added to its URL
 (the original look, nothing loaded from `.studio/ui/`), or delete the `.studio/ui/` folder.
 
 Reference with the list of parts, CSS variables, the `studioShell` API and examples (list on the left, light colours,

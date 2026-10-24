@@ -398,7 +398,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   const editClip = (f: (c: MotionClip) => MotionClip) => {
     const key = head();
     const c = key ? clipOf(key) : null;
-    if (!key || !c) return;
+    if (key && c) editOf(key, c, f);
+  };
+  /**
+   * `key`'s clip `c` changed by `f`, one undo step (the head's menus through editClip; the AI's `motion.set` through
+   * handsClipSet, studio-ai-hands 2026-10-24 — the same edit, on the object the AI names instead of the one on the plate).
+   */
+  function editOf(key: string, c: MotionClip, f: (c: MotionClip) => MotionClip) {
     const nx = f(structuredClone(c));
     chosen.set(key, nx.name);
     const next = new Map<string, Motion | null>([[key, withClip(store().get(key), c.name, nx)]]);
@@ -408,7 +414,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (x) next.set(k, withClip(store().get(k), x.name, likeScene(x, nx)));
     }
     commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
-  };
+  }
 
   /**
    * Record `pose` (what the object shows now) as keys at the time line, for the channels that differ from `was` (what
@@ -859,6 +865,74 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     refresh();
     if (shown()) panel.render();
     d.changed();
+  }
+
+  // ----- the AI's hands (studio-ai-hands, 2026-10-24; ai-hands.ts, schema/hands.mjs) -----
+  // WHY here: an AI's `--do motion.make` must be the same thing as the person's "+ Make a motion" — a Library motion,
+  // on the timeline, one ⌘Z — never code in the game (a request, 2026-10-24: the spiral Claude wrote into index.html was not on
+  // the timeline and fought the editor's motion). These are the plate's own edits, on the object the AI names.
+  /**
+   * A Library motion the AI made (hands.mjs handsMotion: from its points or keys), put in the Library and — with `key` —
+   * on that object, starting `when` (default: the editor's rule, as a drop). One undo step. `replace`: the same name
+   * with new keys (every object that has it moves the new way); else a taken name becomes "Spiral 2".
+   */
+  function handsMake(key: string | null, m: LibraryMotion, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null; replace?: boolean; whenOf?: (clips: MotionClip[]) => MotionWhen }): { name: string; when?: MotionClip['when'] } | { error: string } {
+    if (key && !d.place(key)) return { error: `no object ${key} in the editor` };
+    const was = lib().get(m.name);
+    const name = was && !o.replace ? lib().free(m.name) : m.name;
+    if (key && !clipsOf(key).some((c) => (c.use ?? c.name) === name) && clipsOf(key).length >= MAX_CLIPS) return { error: `${key} already has ${MAX_CLIPS} motions` };
+    // The object's motion before anything changes (resolved with the Library as it was): its undo puts that back.
+    const before = key ? store().get(key) : null;
+    const raws = key ? raw().get(key)?.clips ?? [] : [];
+    lib().set(name, { ...m, name });
+    const pre: Change[] = [{ kind: 'motion-lib', key: name, from: was && o.replace ? was : null, to: lib().get(name) }];
+    if (!key) {
+      d.undo.push({ changes: pre });
+      refresh();
+      if (shown()) panel.render();
+      d.changed();
+      return { name };
+    }
+    const l = lib().get(name)!;
+    const had = clipsOf(key).find((c) => (c.use ?? c.name) === name);
+    const when = o.when ?? had?.when ?? (o.whenOf ? o.whenOf(raws) : { on: 'start' as const });
+    const clip: MotionClip = { name: had?.name ?? name, use: name, len: l.len, ...(l.repeat ? { repeat: l.repeat } : {}), when, keys: structuredClone(l.keys) };
+    const until = o.until === undefined ? had?.until : o.until;
+    if (until) clip.until = until;
+    chosen.set(key, clip.name);
+    commit(new Map([[key, withClip(store().get(key), clip.name, clip)]]), new Map([[key, before]]), true, pre);
+    return { name, when };
+  }
+  /** `key`'s motion `clipName`: when it starts / stops (the AI's motion.set). false = no such clip. */
+  function handsClipSet(key: string, clipName: string, o: { when?: MotionWhen | MotionWhen[]; until?: MotionUntil | null }): boolean {
+    const c = clipsOf(key).find((x) => x.name === clipName);
+    if (!c) return false;
+    editOf(key, c, (x) => {
+      const out: MotionClip = { ...x };
+      if (o.when !== undefined) (out.when = o.when), delete out.start;
+      if (o.until === null) delete out.until;
+      else if (o.until) out.until = o.until;
+      return out;
+    });
+    return true;
+  }
+  /** A Library motion's repeat / length for every object that has it (the AI's motion.set; a new length stretches its keys). */
+  function handsLibSet(name: string, o: { repeat?: MotionRepeat; len?: number }): boolean {
+    const l = lib().get(name);
+    if (!l) return false;
+    let n: LibraryMotion = { ...l };
+    if (o.repeat) n.repeat = o.repeat;
+    if (o.len) {
+      const s = stretchClip({ name, len: l.len, keys: l.keys } as MotionClip, o.len);
+      n = { ...n, len: s.len, keys: s.keys };
+      if (l.tracks) n.tracks = Object.fromEntries(Object.entries(l.tracks).map(([k, ks]) => [k, stretchClip({ name, len: l.len, keys: ks } as MotionClip, o.len!).keys]));
+    }
+    lib().set(name, n);
+    d.undo.push({ changes: [{ kind: 'motion-lib', key: name, from: l, to: lib().get(name) }] });
+    refresh();
+    if (shown()) panel.render();
+    d.changed();
+    return true;
   }
 
   // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
@@ -1578,6 +1652,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     room: (key: string): boolean => clipsOf(key).length < MAX_CLIPS,
     duplicateLib,
     deleteLib,
+    // The AI's hands (ai-hands.ts): the same edits as the plate's, named by object and motion.
+    handsMake,
+    handsClipSet,
+    handsLibSet,
     renameLib: (from: string, to: string): string | null => {
       const n = lib().free(to.trim().slice(0, 40));
       if (!renameLib(from, n)) return null;

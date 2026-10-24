@@ -211,3 +211,12 @@ it: "+ Link an object" under the rows opens `timeline-link.ts`'s list (or a clic
 `timeline.linkPick` in main.ts's placement/selected) — a link makes the motion a scene motion (`scene-motion.ts`
 asScene / asOrdinary), nothing new. ⋯'s "Show every motion in the scene" shows every moving object's row again.
 `test/motion-focus.test.ts`, `test/studio-motion-focus.browser.mjs`.
+
+The AI's hands (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6; a request: "I asked Claude, and it asked me to do the
+Studio's hand work. That is the worst experience."): `ai-hands.ts` does the AI's `studio.mjs --do …` in the editor —
+the timeline's attach / detach / delete / rename and `handsMake` / `handsClipSet` / `handsLibSet` (timeline-wire.ts),
+the card's pose, Rename, Duplicate, Delete, Drop to floor, the levels, Save — as ONE undo step (`UndoStack.begin` /
+`end`; the entry's `ai` is the Undo tooltip's words) with one line over the ask bar naming the AI ("Claude took “Row”
+off Blue pillar · ⌘Z undoes it", i18n `hands.*`). The jobs come on an event stream (`host.hands`, host-local.ts), which a
+hidden tab still gets. What an op means is `src/schema/hands.mjs`'s, shared with the CLI's placement.json path.
+`test/ai-hands-shell.test.ts`, `test/studio-ai-hands.browser.mjs`.

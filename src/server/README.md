@@ -8,6 +8,7 @@ dependencies). It is the local implementation of the host interface (contract 3)
     node skills/arrange/bin/studio.mjs <game folder> --stop                 # stop this folder's editor (its stop secret, else pid: .studio/server.json) + watch (pid: watch.json)
     node skills/arrange/bin/studio.mjs <game folder> --requests | --status <state> [--request id] [--changed n] [--note text]
     node skills/arrange/bin/studio.mjs <game folder> --watch                 # the agent's watch (Monitor): a line per request, .studio/watch.json while it runs
+    node skills/arrange/bin/studio.mjs <game folder> --do <op> [--key k …]   # the AI does editor work itself: in the open editor, else in placement.json (CONTRACT.md §3.6)
     node skills/arrange/bin/studio.mjs <empty folder> --starter 3d|2d|<id>   # copy a sample game in, then open it (refused when any game page is there)
     node skills/arrange/bin/studio.mjs --starters                            # list the samples (JSON lines)
 
@@ -21,6 +22,8 @@ dependencies). It is the local implementation of the host interface (contract 3)
 - `ai-watch.mjs` - `--watch` (one line per request, the heartbeat `.studio/watch.json`) and reading it back as "is an AI watching" (AI feel, 2026-10-16)
 - `which-ai.mjs` - which AI is behind the editor (Claude / Codex / unknown), from the wake hook and the environment it was started in: the AI line's "More in Claude" (2026-10-21)
 - `play-chat.mjs` - the chat over a paused game kept as `.studio/chat/<first request id>.json`: the person's turns (server, POST /request) and the AI's (`--status … --note`) (2026-10-22)
+- `hands-cli.mjs` - `--do` (studio-ai-hands, 2026-10-24): the AI's editor work — the ops from flags or JSON, sent to the open editor page (`askEditor`), else applied to placement.json with `schema/hands.mjs` and the validator; one `studio: did …` / `studio: do failed …` line per op, then the reply line (CONTRACT.md §3.6)
+- `hands-relay.mjs` - the editor page's event stream (`GET /__studio/api/hands`) and its answers: `POST /__studio/hands` (the folder's secret) hands the newest page a job and waits up to 20 s for its answer; a hidden tab gets it at once (the status poll stops there)
 - `ai-undo.mjs` - the game files' signature (the editor reloads the game when it changes) and the snapshots in `.studio/undo/` behind "Undo AI change"
 - `loader-copy.mjs` - the game's copy of the loader (`studio-placement.js`, any version) is answered with the editor's own, the file on disk unchanged: an older copy has no play hook and ▶ Play would open a new page (integrate 1023, 2026-10-23; how a copy is known: CONTRACT.md §3.5.3)
 - `files.mjs` - what may be served or written (inside the folder only, no dot-files, no overwrites)
@@ -49,6 +52,8 @@ dependencies). It is the local implementation of the host interface (contract 3)
 | `POST /__studio/api/next-step` | `{ "id": "publish" \| "multiplayer" \| "save-data" \| "ai-assets" }`; writes `.studio/next-step.md` |
 | `POST /__studio/api/request` | a request for the AI (`ask` / `name` / `next-step`); keeps `.studio/requests/<id>.json`, prints `studio: request …` (or the `next-step` line for KUMODeck steps) |
 | `GET /__studio/api/status` | `{ status, time, watching, seen?, code }`: the AI's `.studio/status.json` (lenient: broken = null), whether its `--watch` runs, and the game files' signature |
+| `POST /__studio/hands` | `--do` (header `x-studio-agent`: the folder's secret, no cookie): `{ ops, by? }` → `{ editor: false }` with no page open, else the page's `{ editor: true, results }` (504 after 20 s) |
+| `GET /__studio/api/hands` | the editor page's event stream: a `job` event per `--do`; `POST /__studio/api/hands/<id>` is its answer |
 | `POST /__studio/api/undo` | `{ "to": "<request id>", "redo"?: true }`: puts the game's files back as they were at that request (the files before become the `redo` snapshot); keeps an `undone` request, prints `studio: undone …` |
 | `GET /__studio/api/kumo/status` | `{ signedIn, loginCommand, email?, balanceCents?, project?, projects?, jobs?, topUpUrl? }` (never the key) |
 | `POST /__studio/api/kumo/project` | `{ "projectId" }` when the folder has no kumo.json |

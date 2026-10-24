@@ -147,6 +147,27 @@ export function createLocalHost(base: string = LOCAL_PATHS.api): StudioHost {
         return { ok: false, error: (e as Error).message };
       }
     },
+    // The AI's hands (src/server/hands-relay.mjs): one event stream; each `job` is done by the shell and its answer
+    // posted back. EventSource comes back by itself after a drop (the server sends `retry`), and its events reach a
+    // hidden tab at once — the status poll does not run there (main.ts pollStatus).
+    hands(onJob) {
+      if (typeof EventSource === 'undefined') return () => undefined;
+      const es = new EventSource(base + 'hands', { withCredentials: true });
+      es.addEventListener('job', (ev) => {
+        let job: { id: string; ops: unknown; by?: 'claude' | 'codex' };
+        try {
+          job = JSON.parse((ev as MessageEvent).data);
+        } catch {
+          return;
+        }
+        if (!job || typeof job.id !== 'string') return;
+        void onJob(job).then(
+          (r) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify(r), 'application/json'),
+          (e) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify({ results: [{ do: '?', ok: false, error: String((e as Error)?.message || e) }] }), 'application/json'),
+        ).catch(() => undefined);
+      });
+      return () => es.close();
+    },
     async loadUi() {
       return (await call<{ value: unknown }>('GET', 'ui').catch(() => ({ value: null }))).value ?? null;
     },

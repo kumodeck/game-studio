@@ -22,6 +22,8 @@
 //   studio: stopped pid <n> …  /  studio: not running …   --stop
 //   studio: reply with this link alone …: <url>   right after every ready line (and --open-in; --link: on stderr)
 //   studio: open browser|app|none - …        after that: where the editor went (browser by default, open-in.mjs)
+//   studio: did <what it did> - <where>      --do: one line per op the AI asked the editor to do (hands-cli.mjs)
+//   studio: do failed <op> - <why>           …or could not do
 //   <url>                                    --link: the running editor's link, pass included, and nothing else
 //   studio: open-in browser|app (…) - …      --open-in (after the link, when the editor is running)
 // No line ever prints the editor's address without its pass (?t=): such a link only says "Missing pass" (open-in.mjs).
@@ -47,6 +49,7 @@ import { runWatch, AIW_FOR_MIN } from './ai-watch.mjs';
 import { runHook, registerEditor, unregisterEditor } from './ai-wake.mjs';
 import { recordServer, forgetServer, liveServers, stopFolder, detachEditor, markOpened } from './lifecycle.mjs';
 import { OPEN_PLACES, readOpenPlace, writeOpenPlace, hasPass, openPlace, replyLine, openLine } from './open-in.mjs';
+import { handsCommand, handsFlagValue, HANDS_FLAG_FIELDS, HANDS_FLAG_BOOLS } from './hands-cli.mjs';
 
 const HELP = `Usage: node studio.mjs <game folder> [options]
 
@@ -112,6 +115,20 @@ For the AI agent (hand-offs, see the arrange skill), then exit:
     --after <text>   what it would be (one short line each, shown side by side)
                    done / failed also move the waiting requests up to <id> into
                    .studio/requests/done/, so the next --requests shows only new ones
+  --do <op> [fields]  do editor work yourself instead of asking the person: in the open editor (on
+                   screen, one Cmd+Z undoes it, counted on Save), else written into placement.json.
+                   One op from flags:  --do motion.detach --key pillar-1 --name Row
+                   or JSON (one op or a list):  --do '[{"do":"motion.detach","key":"pillar-1"}, …]'
+                   ops: motion.make (name, points | keys, len, repeat, ease, key, when, until, replace),
+                   motion.attach (key, name, when, until), motion.detach (key, name | all),
+                   motion.delete (name), motion.rename (name, to), motion.set (name, repeat, len,
+                   key, when, until), object.move | object.turn | object.scale (key, to | by; turn:
+                   radians, --deg for degrees), object.rename (key, to), object.duplicate (key, to | by),
+                   object.delete (key), object.ground (key), level.new (name), level.duplicate (id,
+                   name), level.rename (id, to), level.switch (id), save (only when the person says
+                   so), editor.reload (--editor: the editor page itself). Fields as --<field> <value>
+                   (numbers and lists as JSON: --to "[1,0,2]"); when: start | click | touch | key:E |
+                   time:2 | after:Hop | cue:<name>. Prints "studio: did …" per op. CONTRACT.md §3.6
   -h, --help       show this help
 
 STUDIO_BROWSER=<command> opens links with that command instead of the default browser (tests).
@@ -169,7 +186,7 @@ export async function main(argv) {
     root = found.root;
     entry = found.entry;
     // Only for the editor itself: the hand-off commands print nothing extra, so the watch stays quiet.
-    if (!args.watch && !args.requests && args.status === undefined && !args.checkView && !args.shot) process.stdout.write(found.line + '\n');
+    if (!args.watch && !args.requests && args.status === undefined && args.do === undefined && !args.checkView && !args.shot) process.stdout.write(found.line + '\n');
   }
   if (!existsSync(path.join(root, entry))) {
     // No game here. With the default page that usually means "an empty folder": say on stdout what
@@ -200,6 +217,8 @@ export async function main(argv) {
     return 0;
   }
   if (args.status !== undefined) return writeStatus(root, args);
+  // The AI's hands (hands-cli.mjs): editor work done in the open editor, or in placement.json when none is open.
+  if (args.do !== undefined) return handsCommand(root, args, { running: await runningEditor(root), replyLine });
 
   if (args.checkView) return checkView(root, entry, args, here);
   if (args.shot) return gameShot(root, entry);
@@ -573,6 +592,10 @@ function parseArgs(argv) {
     else if (a === '--about') (out.about ||= []).push(...String(argv[++i] || '').split(',').map((k) => k.trim()).filter(Boolean));
     else if (a === '--before') out.before = argv[++i];
     else if (a === '--after') out.after = argv[++i];
+    // --do <op> and its fields (hands-cli.mjs): --key pillar-1 --name Row --to "[1,0,2]" --all …
+    else if (a === '--do') out.do = argv[++i] ?? '';
+    else if (a.startsWith('--') && HANDS_FLAG_FIELDS.includes(a.slice(2))) (out.doFields ||= {})[a.slice(2)] = handsFlagValue(a.slice(2), argv[++i] ?? '');
+    else if (a.startsWith('--') && HANDS_FLAG_BOOLS.includes(a.slice(2))) (out.doFields ||= {})[a.slice(2)] = true;
     else if (a === '--starter') out.starter = argv[++i] || '';
     else if (a === '--starters') out.starters = true;
     else if (a === '--starters-dir') out.startersDir = path.resolve(argv[++i] || '.');

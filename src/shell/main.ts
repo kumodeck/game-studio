@@ -78,6 +78,7 @@ import { createPalette, type PaletteRow } from './palette.ts';
 import { fitPicture } from './thumb-fit.ts';
 import { PlacementModel } from './placement-model.ts';
 import { UndoStack, poseChange, sharedMotion, type Change, type UndoEntry } from './undo.ts';
+import { createAiHands } from './ai-hands.ts';
 import { copyKey, groupLayerMoves, groupLayerPossible, sameKind } from './edit-ops.ts';
 import { displayName, forgetNames, noteItems, useGivenNames, useNameLang } from './names.ts';
 import { keyOf, tipText } from './keymap.ts';
@@ -1769,14 +1770,15 @@ export function start(host: StudioHost) {
    * found senseless. '' = back to the game's own name. Only a named world object (an unnamed one is "✦ Ask AI to name
    * it…": its name must first exist in the code).
    */
-  function renameObject(key: string, name: string) {
+  function renameObject(key: string, name: string): boolean {
     const it = items.find((i) => i.key === key);
-    if (!it || it.unstable || editLayer !== 'world') return;
+    if (!it || it.unstable || editLayer !== 'world') return false;
     const v = name.trim() === it.label ? '' : name.trim();
     const from = worldModel.rename(key, v || null);
-    if (!undo.push({ changes: [{ kind: 'name', key, from, to: v || null }] })) return;
+    if (!undo.push({ changes: [{ kind: 'name', key, from, to: v || null }] })) return false;
     renderAll();
     keepSoon();
+    return true;
   }
   /** F2 / the menu's Rename: the one picked, named world object's card name becomes a field. */
   function startRename() {
@@ -2007,6 +2009,8 @@ export function start(host: StudioHost) {
   /** Undo / Redo tooltips name what they would change: "Undo: move house". */
   function describe(e: UndoEntry | null): string {
     if (!e) return '';
+    // The AI's change (ai-hands.ts): its own words, with its name — "Undo: Claude took “Row” off Blue pillar".
+    if (e.ai) return e.ai;
     const name = (k: string) => {
       const it = items.find((i) => i.key === k);
       return it ? displayName(it, t) : k;
@@ -2113,8 +2117,8 @@ export function start(host: StudioHost) {
     return reqs.map((r) => r.key);
   }
 
-  function removeSelection() {
-    const keys = targets();
+  /** Delete `keys` (the selection; the AI's object.delete names one). */
+  function removeSelection(keys = targets()) {
     if (!keys.length || !editing || editLayer === 'ui') return;
     for (const k of keys) model.remove(k);
     undo.push({ changes: keys.map((k) => ({ kind: 'remove', key: k })) });
@@ -4913,6 +4917,124 @@ export function start(host: StudioHost) {
     aiLook = true;
     if (page === 'settings') renderAll();
   };
+  // ----- the AI's hands (studio-ai-hands, 2026-10-24; ai-hands.ts, CONTRACT.md §3.6) -----
+  // `studio.mjs <game> --do …` from the AI: the editor's own edits, on the object the AI names, ONE ⌘Z for the job, and
+  // a line saying the AI did it. WHY (a request, 2026-10-24): the AI asked the person to click through the editor for it.
+  const aiHands = createAiHands({
+    t,
+    // The new page's own list (a level opened, a reload clears `items`): ops never land on the list of the page before.
+    ready: () => bridgeAlive && editing && !swapping && (editLayer === 'world' ? items.length > 0 : worldItems.length > 0),
+    playing: () => playing,
+    stopPlay: async () => {
+      if (playing) await togglePlay();
+    },
+    toWorld: () => {
+      if (editLayers && editLayer !== 'world') setEditLayer('world');
+    },
+    dim: () => worldDim,
+    item: (k) => worldItems.find((i) => i.key === k),
+    label: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    },
+    keys: () => worldItems.map((i) => i.key),
+    pose: (k) => worldModel.pose(k),
+    // As the card's numbers do (setPose above), on the place itself: the timeline open or not, the AI moves where it stands.
+    setPose: (k, pose) => {
+      const from = worldModel.pose(k);
+      if (from && undo.push(poseChange(k, from, pose))) applyPose(k, pose);
+    },
+    rename: (k, to) => renameObject(k, to),
+    duplicate: async (k) => {
+      const [copy] = copySelection([k]);
+      if (!copy) return null;
+      // The copy is the game page's to make (placement/added, which also pushes its undo change into the AI's group).
+      for (const end = Date.now() + 5000; pendingCopies.has(copy) && Date.now() < end;) await new Promise((r) => setTimeout(r, 50));
+      return worldModel.isCopy(copy) ? copy : null;
+    },
+    remove: (k) => removeSelection([k]),
+    ground: (k) => new Promise<boolean>((resolve) => {
+      if (!canDrop) return resolve(false);
+      const off = ctx.on('studio:placement/moved', (m) => {
+        if (m.key !== k || !m.end) return;
+        off();
+        clearTimeout(timer);
+        resolve(true);
+      });
+      const timer = window.setTimeout(() => (off(), resolve(false)), 3000);
+      send({ type: 'studio:placement/step', key: k, op: 'drop', hold: false });
+    }),
+    motionOf: (k) => timeline.motionOf(k),
+    rawClips: (k) => worldModel.motion.get(k)?.clips ?? [],
+    lib: (n) => motionLibrary.get(n),
+    libNames: () => motionLibrary.list().map((m) => m.name),
+    usage: (n) => timeline.usage(n).length,
+    attach: (k, n) => timeline.attach(k, n),
+    detach: (k, c) => timeline.detach(k, c),
+    deleteLib: (n) => timeline.deleteLib(n),
+    renameLib: (a, b) => timeline.renameLib(a, b),
+    make: (k, m, o) => timeline.handsMake(k, m, o),
+    clipSet: (k, c, o) => timeline.handsClipSet(k, c, o),
+    libSet: (n, o) => timeline.handsLibSet(n, o),
+    levels: {
+      active: () => levels.active,
+      current: () => levels.current,
+      ids: () => levels.list.map((e) => e.id),
+      label: (id) => levels.labelOf(id),
+      add: async (kind) => {
+        const was = levels.active ? levels.current : '';
+        await addLevel(kind);
+        return levels.active && levels.current !== was ? levels.current : null;
+      },
+      go: async (id) => {
+        await goLevel(id);
+        return levels.current === id;
+      },
+      rename: (id, to) => {
+        const ok = levels.rename(id, to);
+        levelsChanged(ok);
+        return ok;
+      },
+      // Not levelsChanged (that ends "just made"): the AI's "Duplicate as Night cove" stays one ⌘Z away, name and all.
+      nameNew: (id, to) => {
+        const ok = levels.rename(id, to);
+        if (ok && levelMade?.id === id) {
+          levelMade.name = levels.labelOf(id);
+          renderLevelMade();
+        }
+        renderAll();
+        keepSoon();
+        return ok;
+      },
+    },
+    save: () => handOff(),
+    // After the answer is on its way (the CLI waits for it): the editor page itself, or the game behind the old picture.
+    reload: (whole) => void window.setTimeout(() => (whole ? location.reload() : void softReload('ai')), whole ? 800 : 0),
+    list: () => ({
+      from: 'the editor',
+      level: levels.active ? { id: levels.current, name: levels.labelOf(levels.current) } : undefined,
+      objects: worldItems.map((i) => {
+        const ms = (timeline.motionOf(i.key)?.clips ?? []).map((c) => c.name);
+        return { key: i.key, name: displayName(i, t), ...(ms.length ? { motions: ms } : {}), ...(i.unstable ? { unstable: true } : {}), ...(i.backdrop || i.held === 'ground' ? { ground: true } : {}) };
+      }),
+      motions: motionLibrary.list().map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once', on: timeline.usage(m.name).map((u) => u.key) })),
+      ...(levels.active ? { levels: levels.list.map((e) => ({ id: e.id, name: levels.labelOf(e.id) })) } : {}),
+    }),
+    undoBegin: () => undo.begin(),
+    undoEnd: (words) => {
+      const e = undo.end(words);
+      renderButtons();
+      return !!e;
+    },
+    done: (words, undoable) => {
+      renderAll();
+      keepSoon();
+      // Who changed it, and the way back, in one line where the person's eyes are (the ask bar's notice).
+      const line = !undoable ? words : phone() ? t('hands.undoTouch', { text: words }) : t('hands.undo', { text: words, key: keyOf('undo', isMac()) });
+      showToast(line, 8000);
+    },
+  });
+
   const api: StudioShellApi = {
     version: 1,
     part: (name) => parts[name],
@@ -5060,6 +5182,8 @@ export function start(host: StudioHost) {
       }, () => undefined);
       loadGame();
       void pollStatus();
+      // The AI's hands (ai-hands.ts): jobs from `studio.mjs --do` from now on (they wait for the game to be listed).
+      host.hands?.((job) => aiHands.run(job));
     } catch (e) {
       showToast((e as Error).message);
     }

@@ -723,6 +723,9 @@ except `.studio/adapter.js` through its own route).
 |---|---|---|
 | `GET /__studio/` | — | Shell page (built UI in `skills/arrange/bin/studio-ui/`) |
 | `POST /__studio/stop` | — (header `x-studio-stop: <secret from .studio/server.json>`, no cookie) | `{ok:true}`, then the editor stops. Used by `studio.mjs <folder> --stop`; a wrong or missing secret is 403 |
+| `POST /__studio/hands` | `{ ops, by? }` (header `x-studio-agent: <the same secret>`, no cookie) | The AI's `--do` (§3.6): `{ editor: false }` when no page is open; else the newest page does the ops and its answer comes back, `{ editor: true, results }`; 504 when the page did not answer in 20 s; 422 with `details` when the ops do not read |
+| `GET /__studio/api/hands` | — | The editor page's event stream (`text/event-stream`): one `job` event `{ id, ops, by? }` per `--do` (§3.6) |
+| `POST /__studio/api/hands/:id` | `{ results }` | The page's answer to job `id`; 410 when no `--do` waits for it any more |
 | `GET /__studio/studio-edit.js` | — | Edit script |
 | `GET /__studio/game-adapter.js` | — | `<game>/.studio/adapter.js` (plain file only), or an empty script |
 | `GET /__studio/api/open` | — | `{ gameUrl, origin, lanUrl }`; the shell adds `?studio=edit` |
@@ -1103,6 +1106,61 @@ Enter, Shift, E / R / Q, Tab, Esc, the numbers and "/" (chat) all are taken.
   only in a page opened with `studio=edit`).
 - Screen tests: `__gameStudio._debug` is absent while the page plays (as on a
   Play page), and `_play.playing()` says whether it plays.
+
+### 3.6 The AI's hands: editor work done by the AI (`--do`, 2026-10-24)
+
+A request (2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst experience." The
+AI had answered "take the motion off" with four steps for the person to click, and made a spiral by writing it into the
+game's code (not on the timeline, fighting the editor's motion, "press Reload"). Now the AI does editor work itself:
+
+    node studio.mjs <game folder> --do <op> [--<field> <value> …]        one op (numbers and lists as JSON)
+    node studio.mjs <game folder> --do '<op JSON>' | '[<op JSON>, …]'    one or several (one ⌘Z for all)
+
+- **An editor page open** (the server running and a page connected to `GET /__studio/api/hands`): the CLI posts the ops
+  to `POST /__studio/hands` with the folder's secret; the newest page does them with its own edits (`src/shell/ai-hands.ts`:
+  the timeline's attach / detach / delete / make, the card's pose, Rename, Duplicate, Delete, Drop to floor, the
+  levels' New / Duplicate / rename / switch, Save) — on screen at once, ONE undo step for the job (`UndoStack.begin` /
+  `end`, the entry's `ai` = its words for the Undo tooltip), counted on Save · n, its draft written as for any edit,
+  and one line over the ask bar with the AI's name: "Claude took “Row” off Blue pillar · ⌘Z undoes it" (`by` = the
+  CLI's environment, `src/server/which-ai.mjs`). A page that is playing goes back to Edit first; the UI layer goes to
+  the world. Jobs run one at a time, in order. A page whose stream just dropped (a reload) is waited for 6 s.
+- **No page open** (not started, or started with no page): the CLI applies the same ops to `placement.json`
+  (`src/schema/hands.mjs` applyHandsToFile), checks the result with the file's validator, and writes it (nothing when
+  it would not be valid). What only the game knows is refused with the reason (Drop to floor, a blank New level,
+  switching the level, `by` amounts for an object the file has no pose for).
+- **A page open that does not answer** in 20 s: nothing is written (the page may still do it); the CLI says so (exit 1).
+
+stdout, one line per op: `studio: did <what it did> - in the editor (on screen now; ⌘Z there undoes it)` or
+`- in placement.json (…)`; `studio: do failed <op> - <why>` (the other ops are still done); `studio: list {…}` for
+`list`; then, with the editor running, the reply line (`studio: reply with this link …: <url>`). Exit 0 = every op done,
+1 = one or more failed, 2 = the ops did not read.
+
+| Op | Fields | Editor | No editor (placement.json) |
+|---|---|---|---|
+| `list` | — | Every object of the level on screen: `key`, `name` (what the person sees, `names.ts`), `motions`, `unstable`, `ground`; the Library's motions with `on`; the levels | The objects the file has entries for, the Library, the levels |
+| `motion.make` | `name`, `points` \| `keys`, `len` (default 2), `repeat`, `ease` (default linear for points), `key`, `when`, `until`, `replace` | A Library motion (`hands.mjs` handsMotion: points spread evenly over `len`, checked with the validator) and, with `key`, the object's clip (`timeline-wire` handsMake); one undo step | `motions` + `motion.<key>.clips` |
+| `motion.attach` | `key`, `name`, `when`, `until` | `timeline.attach` (+ when / until) | a clip `{ use, when }` |
+| `motion.detach` | `key`, `name` \| `all` | `timeline.detach` ("Remove from this object") | the clip out |
+| `motion.delete` | `name` | `timeline.deleteLib` | out of `motions` and every `motion` |
+| `motion.rename` | `name`, `to` | `timeline.renameLib` | `motions[].name`, every `use`, every `after` |
+| `motion.set` | `name`, `repeat`, `len` (stretches the keys), `key`, `when`, `until` | `handsClipSet` / `handsLibSet` | the same fields |
+| `object.move` / `turn` / `scale` | `key`, `to` \| `by` (`deg`) | as the card's numbers (one pose change) | `objects.<key>` (`by` needs its pose in the file) |
+| `object.rename` | `key`, `to` | Rename (F2) | `names` |
+| `object.duplicate` | `key`, `to` \| `by` | ⌘D (the game page makes the copy) | `added` |
+| `object.delete` | `key` | Delete | `removed` |
+| `object.ground` | `key` | Drop to floor (End) | refused |
+| `level.new` / `level.duplicate` | `name`; `id` | New level / Duplicate, opened | duplicate: a level with `from`; new: refused |
+| `level.rename` / `level.switch` | `id`, `to`; `id` | the levels' menu | rename: `label` / `labelWas`; switch: refused |
+| `save` | — | the person's Save (only when they ask the AI for it) | nothing to do |
+| `editor.reload` | `editor` | the game page (`softReload`), or the editor page itself | refused |
+
+A motion `motion.make` puts on an object starts with the game unless `when` says otherwise (`HANDS_MAKE_WHEN`: the
+person asked for it to move now; the editor's attach rule, "after its last motion", never comes after a motion that
+loops). `motion.attach` without `when` follows the editor's attach rule. `when` takes the file's object (or a list), or a short word: `start`, `click`, `touch`, `key:E` (`KeyE`), `time:2`,
+`after:Hop`, `cue:<name>`, `say:<words>`. `until`: `{ times }` / `{ cue }` / `times:3` / `cue:<name>` / `null`. An unknown
+op or field is an error (an AI's typo fails loudly). At most 50 ops a call. Tests: `test/ai-hands.test.mjs` (ops, the
+file, the relay, the CLI), `test/ai-hands-shell.test.ts` (the editor's runner, one undo step),
+`test/studio-ai-hands.browser.mjs` (a real editor: the card loses the motion, ⌘Z brings it back, a spiral from points).
 
 ---
 

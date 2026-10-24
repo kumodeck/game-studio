@@ -1,0 +1,5 @@
+{
+  "version": 1, "tool": "placement", "dim": "3d", "space": "local", "objects": {},
+  "motions": [{ "name": "Sway", "len": 2, "repeat": "pingpong", "keys": { "p": [{ "t": 0, "v": [0, 0, 0] }, { "t": 2, "v": [1.5, 0, 0] }] } }],
+  "motion": { "blue-pillar": { "clips": [{ "use": "Sway", "when": { "on": "start" } }] } }
+}

@@ -1616,6 +1616,14 @@ export interface StudioHost {
    */
   undoAi?(to: string, opts?: { redo?: boolean }): Promise<{ ok: boolean; error?: string; restored?: number; removed?: number; redo?: string | null }>;
   /**
+   * The AI's hands (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6, optional): `studio.mjs <game> --do …` hands the open
+   * editor a job — editor work the AI does itself instead of asking the person (take a motion off, make one from
+   * points, move, rename, add a level, Save). The shell does it with its own edits (shell/ai-hands.ts) and the promise's
+   * answer goes back to the AI. The local host keeps an event stream open (src/server/hands-relay.mjs): it reaches a
+   * hidden tab at once. Returns the way to stop listening. Left out (the web demo: no AI) = no jobs.
+   */
+  hands?(onJob: (job: { id: string; ops: unknown; by?: 'claude' | 'codex' }) => Promise<unknown>): () => void;
+  /**
    * Pass the adapter self-check to the user's AI. Local host: one stdout line
    * ("studio: check failed: …") and .studio/check.md with what to fix.
    */

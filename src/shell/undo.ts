@@ -41,6 +41,11 @@ export type Change =
 export interface UndoEntry {
   changes: Change[];
   /**
+   * The AI did it (studio-ai-hands, 2026-10-24; ai-hands.ts): what it did in the person's words ("Claude took “Row” off
+   * Blue pillar"), for the Undo tooltip — so ⌘Z says whose change it takes back. Absent = the person's own step.
+   */
+  ai?: string;
+  /**
    * UI stage 1: 'ui' = a step on the game's UI layer (absent = the world). One history for both layers; undoing a
    * step of the other layer switches to it first, so what goes back is seen (as Figma does across pages).
    */
@@ -54,6 +59,12 @@ export class UndoStack {
   private done: UndoEntry[] = [];
   private undone: UndoEntry[] = [];
   private readonly limit: number;
+  /**
+   * An open group (begin() … end()): every push goes into ONE entry, so one ⌘Z takes back all of it. studio-ai-hands
+   * (2026-10-24): the AI's `--do` with three ops (take Row off, make Spiral, put it on) is one change of the AI's, like
+   * a drag of five picked objects is one of the person's. `pushed` = the entry is in `done` already (its first change).
+   */
+  private group: { entry: UndoEntry; pushed: boolean } | null = null;
 
   /** The layer a step belongs to when push() is not told (the shell sets it: the layer being edited). */
   layerNow: () => 'ui' | undefined = () => undefined;
@@ -67,6 +78,16 @@ export class UndoStack {
     // A change from a value to the same value is nothing (every kind with a `to`: poses, motions, looks, the theme).
     const changes = e.changes.filter((c) => !('to' in c) || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
+    if (this.group) {
+      if (!this.group.pushed) {
+        this.done.push(this.group.entry);
+        this.group.pushed = true;
+        if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
+      }
+      this.group.entry.changes.push(...changes);
+      this.undone.length = 0;
+      return true;
+    }
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });
     if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
@@ -102,6 +123,22 @@ export class UndoStack {
   clear(): void {
     this.done.length = 0;
     this.undone.length = 0;
+    // An open group starts again on the new level (its steps there are the group's; the old level's went with it).
+    if (this.group) this.group = { entry: { changes: [] }, pushed: false };
+  }
+
+  /** Open a group: every push until end() is one entry (one ⌘Z). A group already open stays the one. */
+  begin(): void {
+    if (!this.group) this.group = { entry: { changes: [] }, pushed: false };
+  }
+
+  /** Close the group; `ai` = the words for its Undo tooltip. Returns its entry, or null when nothing was pushed. */
+  end(ai?: string): UndoEntry | null {
+    const g = this.group;
+    this.group = null;
+    if (!g || !g.pushed) return null;
+    if (ai) g.entry.ai = ai;
+    return g.entry;
   }
 
   get canUndo(): boolean {

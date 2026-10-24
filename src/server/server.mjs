@@ -43,6 +43,8 @@ import { createKumo } from './kumo.mjs';
 import { listGameFiles, codeSignature, snapshotGame, restoreGame } from './ai-undo.mjs';
 import { readWatch, handoffLine, wakeAlive } from './ai-watch.mjs';
 import { agentFromEnv, whichAi } from './which-ai.mjs';
+import { createHandsRelay, HANDS_WAIT_MS } from './hands-relay.mjs';
+import { readHandsInput } from '../schema/hands.mjs';
 
 const PREFIX = '/__studio/';
 const EDIT_SCRIPT_URL = '/__studio/studio-edit.js';
@@ -110,6 +112,8 @@ export async function startStudioServer(o) {
   // Optional KUMODeck sign-in for AI pictures / 3D (kumo.mjs). Reads the CLI's saved sign-in only
   // when the editor asks; holds the key here and never hands it to the browser.
   ctx.kumo = createKumo({ rootReal, log, ...(o.kumo || {}) });
+  // The AI's hands in the editor (hands-relay.mjs): `--do` reaches the open editor page through here.
+  ctx.hands = createHandsRelay();
 
   server.on('request', (req, res) => {
     handle(req, res).catch((e) => {
@@ -133,6 +137,14 @@ export async function startStudioServer(o) {
       sendJson(res, 200, { ok: true });
       setImmediate(() => o.onStop());
       return;
+    }
+
+    // `studio.mjs <folder> --do …` (hands-cli.mjs, studio-ai-hands 2026-10-24): the AI asks the open editor page to do
+    // editor work. Like --stop it is not a browser: no cookie, the folder's secret from .studio/server.json instead
+    // (the same one --stop uses: whoever can read that file can already stop or restart this editor).
+    if (u.pathname === PREFIX + 'hands' && req.method === 'POST') {
+      if (!safeEqual(String(req.headers['x-studio-agent'] || ''), stopToken)) return sendJson(res, 403, { error: 'wrong agent token' });
+      return handsFromAgent(req, res, ctx);
     }
 
     // First visit: the pass arrives in the query. Trade it for a cookie and drop it from the URL,
@@ -183,6 +195,7 @@ export async function startStudioServer(o) {
     stopToken,
     close: () =>
       new Promise((resolve) => {
+        ctx.hands.close();
         server.close(() => resolve());
         server.closeAllConnections?.();
       }),
@@ -207,6 +220,19 @@ async function handleApi(req, res, u, ctx) {
   // window. Only to a page that already holds the pass's cookie (every API call is checked for it above), so it
   // gives nothing new to anyone; it is never logged.
   if (route === 'link' && m === 'GET') return sendJson(res, 200, { url: ctx.url });
+
+  // The editor page's end of the AI's hands (hands-relay.mjs): the stream jobs come on, and its answer to one.
+  if (route === 'hands' && m === 'GET') return ctx.hands.open(req, res);
+  const handsId = /^hands\/([0-9a-f]{16})$/.exec(route);
+  if (handsId && m === 'POST') {
+    let r;
+    try {
+      r = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8'));
+    } catch {
+      throw httpError(400, 'body must be JSON');
+    }
+    return sendJson(res, ctx.hands.answer(handsId[1], r) ? 200 : 410, { ok: true });
+  }
 
   const file = /^files\/(placement|library)$/.exec(route);
   if (file && m === 'GET') {
@@ -459,6 +485,30 @@ async function handleApi(req, res, u, ctx) {
   }
 
   return sendJson(res, 404, { error: 'unknown API route' });
+}
+
+/**
+ * POST /__studio/hands from `--do` (hands-cli.mjs): the ops go to the open editor page, its answer comes back.
+ * { editor: false } when no page is open (the CLI writes placement.json then); { editor: true, results } when the page
+ * did them; 504 when a page is open but did not answer (nothing is written then: the page may still do it).
+ */
+async function handsFromAgent(req, res, ctx) {
+  let body;
+  try {
+    body = JSON.parse((await readBody(req, 256 * 1024)).toString('utf8'));
+  } catch {
+    throw httpError(400, 'body must be JSON like {"ops":[…],"by":"claude"}');
+  }
+  const r = readHandsInput(body && body.ops);
+  if (!r.ok) return sendJson(res, 422, { error: 'ops were not read', details: r.errors });
+  if (!(await ctx.hands.ready())) return sendJson(res, 200, { editor: false });
+  const by = body.by === 'claude' || body.by === 'codex' ? body.by : undefined;
+  const answer = await ctx.hands.send({ ops: r.ops, ...(by ? { by } : {}) }, HANDS_WAIT_MS);
+  if (!answer) return sendJson(res, 504, { editor: true, error: `the editor page did not answer in ${HANDS_WAIT_MS / 1000} s` });
+  const results = Array.isArray(answer.results) ? answer.results.slice(0, r.ops.length) : [];
+  // The log keeps what the AI did in the editor (studio.log), one line each, like the requests' lines.
+  for (const x of results) ctx.log(`studio: hands ${x && x.ok ? 'did' : 'failed'} ${String(x && x.do).slice(0, 40)}${x && (x.said || x.error) ? ' - ' + String(x.said || x.error).slice(0, 200) : ''}`);
+  return sendJson(res, 200, { editor: true, results, ...(answer.note ? { note: String(answer.note).slice(0, 300) } : {}) });
 }
 
 /**

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.47 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.48 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -1631,6 +1631,14 @@ function isStudioMessage(x         )                     {
                                                                     
      
                                                                                                                                                       
+     
+                                                                                                                        
+                                                                                                                 
+                                                                                                                         
+                                                                                                                     
+                                                                                                     
+     
+                                                                                                              
      
                                                                               
                                                                        
@@ -14651,6 +14659,31 @@ const en = {
   'pal.showInLibrary': 'Show in Library →',
   'pal.showFileInLibrary': 'Show {file} in Library →',
   'pal.libraryUseWords': 'library find open asset ライブラリ 素材',
+  // The AI's hands (studio-ai-hands, 2026-10-24; ai-hands.ts): the line over the ask bar when the AI did editor work
+  // itself (`studio.mjs --do`), with its name — so the person knows who changed what, and that ⌘Z takes it back.
+  'hands.motion.make': '{Ai} made “{name}” and put it on {obj}',
+  'hands.motion.makeLib': '{Ai} made the motion “{name}”',
+  'hands.motion.attach': '{Ai} put “{name}” on {obj}',
+  'hands.motion.detach': '{Ai} took “{name}” off {obj}',
+  'hands.motion.delete': '{Ai} deleted the motion “{name}”',
+  'hands.motion.rename': '{Ai} renamed “{name}” to “{to}”',
+  'hands.motion.set': '{Ai} changed “{name}” on {obj}',
+  'hands.motion.setLib': '{Ai} changed the motion “{name}”',
+  'hands.object.move': '{Ai} moved {obj}',
+  'hands.object.turn': '{Ai} turned {obj}',
+  'hands.object.scale': '{Ai} resized {obj}',
+  'hands.object.rename': '{Ai} renamed {obj} to “{to}”',
+  'hands.object.duplicate': '{Ai} duplicated {obj}',
+  'hands.object.delete': '{Ai} deleted {obj}',
+  'hands.object.ground': '{Ai} put {obj} on the ground',
+  'hands.level.new': '{Ai} made {level}',
+  'hands.level.duplicate': '{Ai} made {level}, a copy of this level',
+  'hands.level.rename': '{Ai} renamed the level to “{to}”',
+  'hands.level.switch': '{Ai} opened {level}',
+  'hands.save': '{Ai} saved',
+  'hands.more': '{text}, and {n:1 more change|# more changes}',
+  'hands.undo': '{text} · {key} undoes it',
+  'hands.undoTouch': '{text} · Undo takes it back',
 };
 
                            
@@ -15406,6 +15439,29 @@ const ja                               = {
   'card.open': 'カードを開く',
   'pal.showInLibrary': 'ライブラリで見る →',
   'pal.showFileInLibrary': '{file} をライブラリで見る →',
+  'hands.motion.make': '{ai}が「{name}」を作って {obj} に付けました',
+  'hands.motion.makeLib': '{ai}が動き「{name}」を作りました',
+  'hands.motion.attach': '{ai}が {obj} に「{name}」を付けました',
+  'hands.motion.detach': '{ai}が {obj} から「{name}」を外しました',
+  'hands.motion.delete': '{ai}が動き「{name}」を削除しました',
+  'hands.motion.rename': '{ai}が「{name}」の名前を「{to}」にしました',
+  'hands.motion.set': '{ai}が {obj} の「{name}」を変えました',
+  'hands.motion.setLib': '{ai}が動き「{name}」を変えました',
+  'hands.object.move': '{ai}が {obj} を動かしました',
+  'hands.object.turn': '{ai}が {obj} を回しました',
+  'hands.object.scale': '{ai}が {obj} の大きさを変えました',
+  'hands.object.rename': '{ai}が {obj} の名前を「{to}」にしました',
+  'hands.object.duplicate': '{ai}が {obj} を複製しました',
+  'hands.object.delete': '{ai}が {obj} を削除しました',
+  'hands.object.ground': '{ai}が {obj} を地面に置きました',
+  'hands.level.new': '{ai}が {level} を作りました',
+  'hands.level.duplicate': '{ai}がこのレベルを複製して {level} を作りました',
+  'hands.level.rename': '{ai}がレベルの名前を「{to}」にしました',
+  'hands.level.switch': '{ai}が {level} を開きました',
+  'hands.save': '{ai}が保存しました',
+  'hands.more': '{text}（ほか {n} 件）',
+  'hands.undo': '{text} · {key} で戻せます',
+  'hands.undoTouch': '{text} · 「元に戻す」で戻せます',
 };
 
 const TABLES                                             = { en, ja };
@@ -18942,7 +18998,13 @@ function createTimeline(d              , makePanel                             =
   const editClip = (f                               ) => {
     const key = head();
     const c = key ? clipOf(key) : null;
-    if (!key || !c) return;
+    if (key && c) editOf(key, c, f);
+  };
+  /**
+   * `key`'s clip `c` changed by `f`, one undo step (the head's menus through editClip; the AI's `motion.set` through
+   * handsClipSet, studio-ai-hands 2026-10-24 — the same edit, on the object the AI names instead of the one on the plate).
+   */
+  function editOf(key        , c            , f                               ) {
     const nx = f(structuredClone(c));
     chosen.set(key, nx.name);
     const next = new Map                       ([[key, withClip(store().get(key), c.name, nx)]]);
@@ -18952,7 +19014,7 @@ function createTimeline(d              , makePanel                             =
       if (x) next.set(k, withClip(store().get(k), x.name, likeScene(x, nx)));
     }
     commit(next, new Map([...next.keys()].map((k) => [k, store().get(k)])), true);
-  };
+  }
 
   /**
    * Record `pose` (what the object shows now) as keys at the time line, for the channels that differ from `was` (what
@@ -19403,6 +19465,74 @@ function createTimeline(d              , makePanel                             =
     refresh();
     if (shown()) panel.render();
     d.changed();
+  }
+
+  // ----- the AI's hands (studio-ai-hands, 2026-10-24; ai-hands.ts, schema/hands.mjs) -----
+  // WHY here: an AI's `--do motion.make` must be the same thing as the person's "+ Make a motion" — a Library motion,
+  // on the timeline, one ⌘Z — never code in the game (a request, 2026-10-24: the spiral Claude wrote into index.html was not on
+  // the timeline and fought the editor's motion). These are the plate's own edits, on the object the AI names.
+  /**
+   * A Library motion the AI made (hands.mjs handsMotion: from its points or keys), put in the Library and — with `key` —
+   * on that object, starting `when` (default: the editor's rule, as a drop). One undo step. `replace`: the same name
+   * with new keys (every object that has it moves the new way); else a taken name becomes "Spiral 2".
+   */
+  function handsMake(key               , m               , o                                                                                                                                   )                                                                  {
+    if (key && !d.place(key)) return { error: `no object ${key} in the editor` };
+    const was = lib().get(m.name);
+    const name = was && !o.replace ? lib().free(m.name) : m.name;
+    if (key && !clipsOf(key).some((c) => (c.use ?? c.name) === name) && clipsOf(key).length >= MAX_CLIPS) return { error: `${key} already has ${MAX_CLIPS} motions` };
+    // The object's motion before anything changes (resolved with the Library as it was): its undo puts that back.
+    const before = key ? store().get(key) : null;
+    const raws = key ? raw().get(key)?.clips ?? [] : [];
+    lib().set(name, { ...m, name });
+    const pre           = [{ kind: 'motion-lib', key: name, from: was && o.replace ? was : null, to: lib().get(name) }];
+    if (!key) {
+      d.undo.push({ changes: pre });
+      refresh();
+      if (shown()) panel.render();
+      d.changed();
+      return { name };
+    }
+    const l = lib().get(name) ;
+    const had = clipsOf(key).find((c) => (c.use ?? c.name) === name);
+    const when = o.when ?? had?.when ?? (o.whenOf ? o.whenOf(raws) : { on: 'start'          });
+    const clip             = { name: had?.name ?? name, use: name, len: l.len, ...(l.repeat ? { repeat: l.repeat } : {}), when, keys: structuredClone(l.keys) };
+    const until = o.until === undefined ? had?.until : o.until;
+    if (until) clip.until = until;
+    chosen.set(key, clip.name);
+    commit(new Map([[key, withClip(store().get(key), clip.name, clip)]]), new Map([[key, before]]), true, pre);
+    return { name, when };
+  }
+  /** `key`'s motion `clipName`: when it starts / stops (the AI's motion.set). false = no such clip. */
+  function handsClipSet(key        , clipName        , o                                                                  )          {
+    const c = clipsOf(key).find((x) => x.name === clipName);
+    if (!c) return false;
+    editOf(key, c, (x) => {
+      const out             = { ...x };
+      if (o.when !== undefined) (out.when = o.when), delete out.start;
+      if (o.until === null) delete out.until;
+      else if (o.until) out.until = o.until;
+      return out;
+    });
+    return true;
+  }
+  /** A Library motion's repeat / length for every object that has it (the AI's motion.set; a new length stretches its keys). */
+  function handsLibSet(name        , o                                         )          {
+    const l = lib().get(name);
+    if (!l) return false;
+    let n                = { ...l };
+    if (o.repeat) n.repeat = o.repeat;
+    if (o.len) {
+      const s = stretchClip({ name, len: l.len, keys: l.keys }              , o.len);
+      n = { ...n, len: s.len, keys: s.keys };
+      if (l.tracks) n.tracks = Object.fromEntries(Object.entries(l.tracks).map(([k, ks]) => [k, stretchClip({ name, len: l.len, keys: ks }              , o.len ).keys]));
+    }
+    lib().set(name, n);
+    d.undo.push({ changes: [{ kind: 'motion-lib', key: name, from: l, to: lib().get(name) }] });
+    refresh();
+    if (shown()) panel.render();
+    d.changed();
+    return true;
   }
 
   // ----- making and attaching from outside the plate (studio-motion-flow): the card, the Library, a drop -----
@@ -20122,6 +20252,10 @@ function createTimeline(d              , makePanel                             =
     room: (key        )          => clipsOf(key).length < MAX_CLIPS,
     duplicateLib,
     deleteLib,
+    // The AI's hands (ai-hands.ts): the same edits as the plate's, named by object and motion.
+    handsMake,
+    handsClipSet,
+    handsLibSet,
     renameLib: (from        , to        )                => {
       const n = lib().free(to.trim().slice(0, 40));
       if (!renameLib(from, n)) return null;
@@ -20753,6 +20887,11 @@ const { LIMITS } = __require(0);
                             
                     
      
+                                                                                                                        
+                                                                                                                 
+     
+              
+     
                                                                                                                   
                                                                                                           
      
@@ -20766,6 +20905,12 @@ class UndoStack {
           done              = [];
           undone              = [];
                    limit        ;
+  /**
+   * An open group (begin() … end()): every push goes into ONE entry, so one ⌘Z takes back all of it. studio-ai-hands
+   * (2026-10-24): the AI's `--do` with three ops (take Row off, make Spiral, put it on) is one change of the AI's, like
+   * a drag of five picked objects is one of the person's. `pushed` = the entry is in `done` already (its first change).
+   */
+          group                                               = null;
 
   /** The layer a step belongs to when push() is not told (the shell sets it: the layer being edited). */
   layerNow                         = () => undefined;
@@ -20779,6 +20924,16 @@ class UndoStack {
     // A change from a value to the same value is nothing (every kind with a `to`: poses, motions, looks, the theme).
     const changes = e.changes.filter((c) => !('to' in c) || JSON.stringify(c.from) !== JSON.stringify(c.to));
     if (!changes.length) return false;
+    if (this.group) {
+      if (!this.group.pushed) {
+        this.done.push(this.group.entry);
+        this.group.pushed = true;
+        if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
+      }
+      this.group.entry.changes.push(...changes);
+      this.undone.length = 0;
+      return true;
+    }
     const layer = e.layer ?? this.layerNow();
     this.done.push(layer ? { changes, layer } : { changes });
     if (this.done.length > this.limit) this.done.splice(0, this.done.length - this.limit);
@@ -20814,6 +20969,22 @@ class UndoStack {
   clear()       {
     this.done.length = 0;
     this.undone.length = 0;
+    // An open group starts again on the new level (its steps there are the group's; the old level's went with it).
+    if (this.group) this.group = { entry: { changes: [] }, pushed: false };
+  }
+
+  /** Open a group: every push until end() is one entry (one ⌘Z). A group already open stays the one. */
+  begin()       {
+    if (!this.group) this.group = { entry: { changes: [] }, pushed: false };
+  }
+
+  /** Close the group; `ai` = the words for its Undo tooltip. Returns its entry, or null when nothing was pushed. */
+  end(ai         )                   {
+    const g = this.group;
+    this.group = null;
+    if (!g || !g.pushed) return null;
+    if (ai) g.entry.ai = ai;
+    return g.entry;
   }
 
   get canUndo()          {
@@ -20850,6 +21021,1045 @@ __def(__exports, "UndoStack", () => UndoStack);
 __def(__exports, "sharedMotion", () => sharedMotion);
 };
 __defs[58] = function (__exports) {
+'use strict';
+// ../schema/hands.mjs
+
+// The AI's hands in the editor (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6): what `studio.mjs <game> --do …` asks
+// the editor to do — take a motion off an object, make a motion from points, move / rename / duplicate an object, add a
+// level, Save — and the same change written into placement.json when no editor is open.
+//
+// WHY (a request, 2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst
+// experience." Claude answered with a numbered list (1. select the blue pillar 2. right-click the card's Motion row 3.
+// "Remove from this object" 4. Save), because SKILL.md said "Do not write motions / motion in placement.json: they are
+// the editor's". The same day it made a spiral by writing it into index.html, so the spiral was not on the timeline,
+// fought the editor's own motion, and the person was asked to press Reload. Now the AI does editor work through the
+// editor: a running editor changes on screen (one ⌘Z undoes it, it counts on Save · n), and with no editor open the
+// same op is written into placement.json in the shape the editor itself writes.
+//
+// One module for both sides, so they agree on what an op means: the CLI (src/server/hands-cli.mjs) reads the ops and
+// writes the file with applyHandsToFile(); the editor (src/shell/ai-hands.ts) reads the same ops, makes the same motion
+// from points (handsMotion), the same pose (handsPose), picks the same clip (handsClip) and the same default start
+// (handsDefaultWhen), and words its result with the same sentence (handsSaid) for the AI's stdout line.
+// No imports but the validator (the bundled CLI and the shell bundle both take this file as it is).
+const { CUE_RE, KEY_RE, LIMITS, MOTION_EASES, MOTION_REPEATS, MOTION_TRIGGERS, validateStudioFile } = __require(2);
+
+/**
+ * Every op, with the fields it needs and the fields it may have. A field not listed is an error (an AI's typo —
+ * `"clip"` for `"name"` — should fail loudly, not be ignored). `level`: the level the op is about (a game with levels;
+ * the editor opens it first, the file writes into it).
+ */
+const HANDS_OPS = Object.freeze({
+  'motion.make': { need: ['name'], may: ['len', 'repeat', 'points', 'keys', 'ease', 'key', 'when', 'until', 'replace', 'level'] },
+  'motion.attach': { need: ['key', 'name'], may: ['when', 'until', 'level'] },
+  'motion.detach': { need: ['key'], may: ['name', 'all', 'level'] },
+  'motion.delete': { need: ['name'], may: [] },
+  'motion.rename': { need: ['name', 'to'], may: [] },
+  'motion.set': { need: ['name'], may: ['repeat', 'len', 'key', 'when', 'until', 'level'] },
+  'object.move': { need: ['key'], may: ['to', 'by', 'level'] },
+  'object.turn': { need: ['key'], may: ['to', 'by', 'deg', 'level'] },
+  'object.scale': { need: ['key'], may: ['to', 'by', 'level'] },
+  'object.rename': { need: ['key', 'to'], may: ['level'] },
+  'object.duplicate': { need: ['key'], may: ['to', 'by', 'level'] },
+  'object.delete': { need: ['key'], may: ['level'] },
+  'object.ground': { need: ['key'], may: ['level'] },
+  'level.new': { need: [], may: ['name'] },
+  'level.duplicate': { need: [], may: ['id', 'name'] },
+  'level.rename': { need: ['to'], may: ['id'] },
+  'level.switch': { need: ['id'], may: [] },
+  save: { need: [], may: [] },
+  'editor.reload': { need: [], may: ['editor'] },
+  // Read only: the objects as the person calls them ("Blue pillar (1st)"), their keys and motions, the Library's
+  // motions and the levels — so "the blue pillar's old motion" can be found without asking the person.
+  list: { need: [], may: [] },
+});
+const HANDS_OP_NAMES = Object.freeze(Object.keys(HANDS_OPS));
+/** At most this many ops in one --do (a spiral is one op; 50 is a whole re-layout). */
+const HANDS_MAX_OPS = 50;
+/** A level id, as studio.levels() gives them (letters, digits, - and _). */
+const HANDS_LEVEL_RE = /^[A-Za-z0-9_-]{1,40}$/;
+const HANDS_CTRL_RE = /[\u0000-\u001f\u007f]/;
+
+const handsNum = (x) => typeof x === 'number' && Number.isFinite(x);
+const handsVec = (x, n) => Array.isArray(x) && (n ? x.length === n : x.length === 2 || x.length === 3) && x.every(handsNum);
+const handsText = (x, max) => typeof x === 'string' && !!x.trim() && x.length <= max && !HANDS_CTRL_RE.test(x);
+
+/**
+ * Read the AI's ops: a JSON text, one op object, or a list of them. Each is `{ "do": "motion.detach", "key": … }`.
+ * Returns { ok: true, ops } (copies, `when` / `until` in the file's shape) or { ok: false, errors }.
+ */
+function readHandsInput(input) {
+  let v = input;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch (e) {
+      return { ok: false, errors: [`not JSON: ${String(e && e.message).slice(0, 120)}`] };
+    }
+  }
+  const list = Array.isArray(v) ? v : [v];
+  if (!list.length) return { ok: false, errors: ['no ops'] };
+  if (list.length > HANDS_MAX_OPS) return { ok: false, errors: [`at most ${HANDS_MAX_OPS} ops at once`] };
+  const errors = [];
+  const ops = list.map((op, i) => readHandsOp(op, list.length > 1 ? `op ${i + 1}` : 'op', errors));
+  return errors.length ? { ok: false, errors: errors.slice(0, 20) } : { ok: true, ops };
+}
+
+function readHandsOp(op, at, errors) {
+  const fail = (what) => (errors.push(`${at}: ${what}`), null);
+  if (!op || typeof op !== 'object' || Array.isArray(op)) return fail('must be an object like {"do":"motion.detach","key":"pillar-1","name":"Row"}');
+  const spec = HANDS_OPS[op.do];
+  if (!spec) return fail(`"do" must be one of ${HANDS_OP_NAMES.join(', ')}`);
+  at = `${at} (${op.do})`;
+  const out = { do: op.do };
+  for (const f of Object.keys(op)) if (f !== 'do' && !spec.need.includes(f) && !spec.may.includes(f)) fail(`unknown field "${f}" (it takes ${[...spec.need, ...spec.may].join(', ') || 'nothing'})`);
+  for (const f of spec.need) if (op[f] === undefined) fail(`needs "${f}"`);
+  const has = (f) => op[f] !== undefined;
+  if (has('key') && (typeof op.key !== 'string' || !KEY_RE.test(op.key))) fail('"key" must be an object key (letters, digits, _ : # . - /)');
+  else if (has('key')) out.key = op.key;
+  if (has('name')) {
+    // A level's name may be longer than a motion's (it is shown in the level's head, up to 60 characters).
+    const max = op.do.startsWith('level.') ? 60 : LIMITS.maxClipName;
+    if (!handsText(op.name, max)) fail(`"name" must be 1 to ${max} characters`);
+    else out.name = op.name.trim();
+  }
+  for (const f of ['id', 'level']) {
+    if (!has(f)) continue;
+    if (typeof op[f] !== 'string' || !HANDS_LEVEL_RE.test(op[f])) fail(`"${f}" must be a level id (letters, digits, - and _)`);
+    else out[f] = op[f];
+  }
+  for (const f of ['all', 'replace', 'deg', 'editor']) {
+    if (!has(f)) continue;
+    if (typeof op[f] !== 'boolean') fail(`"${f}" must be true or false`);
+    else out[f] = op[f];
+  }
+  if (has('to') || has('by')) readHandsAmounts(op, out, fail);
+  if (has('len')) {
+    if (!handsNum(op.len) || op.len < LIMITS.minClipLen || op.len > LIMITS.maxClipLen) fail(`"len" must be ${LIMITS.minClipLen} to ${LIMITS.maxClipLen} seconds`);
+    else out.len = op.len;
+  }
+  if (has('repeat')) {
+    if (!MOTION_REPEATS.includes(op.repeat)) fail(`"repeat" must be one of ${MOTION_REPEATS.join(', ')}`);
+    else out.repeat = op.repeat;
+  }
+  if (has('ease')) {
+    if (!MOTION_EASES.includes(op.ease)) fail(`"ease" must be one of ${MOTION_EASES.join(', ')}`);
+    else out.ease = op.ease;
+  }
+  if (has('points')) {
+    const ok = Array.isArray(op.points) && op.points.length >= 2 && op.points.length <= LIMITS.maxClipKeys && op.points.every((p) => handsVec(p))
+      && op.points.every((p) => p.length === op.points[0].length);
+    if (!ok) fail(`"points" must be 2 to ${LIMITS.maxClipKeys} positions, each [x, y, z] (3D) or [x, y] (2D), offsets from where the object stands`);
+    else out.points = op.points.map((p) => p.slice());
+  }
+  if (has('keys')) {
+    if (!op.keys || typeof op.keys !== 'object' || Array.isArray(op.keys)) fail('"keys" must be { "p": [{ "t": 0, "v": [0, 0, 0] }, …], "r": …, "s": … }');
+    else out.keys = structuredClone(op.keys);
+  }
+  if (op.do === 'motion.make' && !has('points') && !has('keys')) fail('needs "points" (positions to go through) or "keys"');
+  if (op.do === 'motion.make' && has('points') && has('keys')) fail('"points" or "keys", not both');
+  if (has('when')) {
+    const w = readHandsWhen(op.when);
+    if (w.error) fail(`"when": ${w.error}`);
+    else out.when = w.when;
+  }
+  if (has('until')) {
+    const u = readHandsUntil(op.until);
+    if (u.error) fail(`"until": ${u.error}`);
+    else out.until = u.until;
+  }
+  if (op.do === 'motion.set' && ['repeat', 'len', 'when', 'until'].every((f) => !has(f))) fail('needs one of "repeat", "len", "when", "until"');
+  if (op.do.startsWith('object.') && ['move', 'turn', 'scale'].includes(op.do.slice(7)) && !has('to') && !has('by')) fail('needs "to" or "by"');
+  return out;
+}
+
+/** `to` / `by` mean different things per op: a position, an angle, a size, or a new name. */
+function readHandsAmounts(op, out, fail) {
+  const kind = op.do;
+  for (const f of ['to', 'by']) {
+    if (op[f] === undefined) continue;
+    const v = op[f];
+    if (kind === 'object.rename' || kind === 'motion.rename' || kind === 'level.rename') {
+      if (f === 'by') fail('"by" is not for a rename');
+      else if (!handsText(v, kind === 'motion.rename' ? LIMITS.maxClipName : 120)) fail('"to" must be the new name');
+      else out.to = v.trim();
+    } else if (kind === 'object.move' || kind === 'object.duplicate') {
+      if (!handsVec(v)) fail(`"${f}" must be [x, y, z] (3D) or [x, y] (2D)`);
+      else out[f] = v.slice();
+    } else if (kind === 'object.turn') {
+      if (!handsNum(v)) fail(`"${f}" must be an angle (radians; "deg": true for degrees)`);
+      else out[f] = v;
+    } else if (kind === 'object.scale') {
+      if (f === 'by' ? !(handsNum(v) && v > 0) : !(handsNum(v) && v !== 0) && !handsVec(v)) fail(f === 'by' ? '"by" must be a number above 0 (2 = twice as big)' : '"to" must be a size (1 = as built) or [x, y, z]');
+      else out[f] = Array.isArray(v) ? v.slice() : v;
+    } else fail(`"${f}" is not for ${kind}`);
+  }
+  if (out.to !== undefined && out.by !== undefined) fail('"to" or "by", not both');
+}
+
+/**
+ * When a motion starts, the AI's way: the file's object ({ "on": "key", "key": "KeyE" }), a list of them, or a short
+ * word — "start", "click", "touch", "key:E" / "key:Space", "time:2", "after:Hop", "cue:chest-opened", "say:<words>".
+ */
+function readHandsWhen(v) {
+  if (Array.isArray(v)) {
+    if (v.length < 1 || v.length > LIMITS.maxWhens) return { error: `a list of 1 to ${LIMITS.maxWhens}` };
+    const xs = v.map(readHandsWhen);
+    const bad = xs.find((x) => x.error);
+    if (bad) return bad;
+    const ws = xs.map((x) => x.when);
+    return { when: ws.length === 1 ? ws[0] : ws };
+  }
+  let w = v;
+  if (typeof v === 'string') {
+    const i = v.indexOf(':');
+    const on = (i < 0 ? v : v.slice(0, i)).trim();
+    const arg = i < 0 ? '' : v.slice(i + 1).trim();
+    if (on === 'key') {
+      // "E" → "KeyE", "1" → "Digit1": the AI may write the key as people say it; the file wants KeyboardEvent.code.
+      const code = /^[A-Za-z]$/.test(arg) ? `Key${arg.toUpperCase()}` : /^[0-9]$/.test(arg) ? `Digit${arg}` : arg;
+      w = { on, key: code };
+    } else if (on === 'time') w = { on, after: Number(arg) };
+    else if (on === 'after') w = { on, use: arg };
+    else if (on === 'cue') w = { on, cue: arg };
+    else if (on === 'say') w = arg ? { on, say: arg } : { on };
+    else w = { on };
+  }
+  if (!w || typeof w !== 'object' || !MOTION_TRIGGERS.includes(w.on)) return { error: `"on" must be one of ${MOTION_TRIGGERS.join(', ')}` };
+  if (w.on === 'key' && !(typeof w.key === 'string' && /^[A-Za-z][A-Za-z0-9]{1,24}$/.test(w.key))) return { error: 'a key like "KeyE", "Space", "ArrowUp" (or "key:E")' };
+  if (w.on === 'time' && !(handsNum(w.after) && w.after >= 0 && w.after <= LIMITS.maxClipLen)) return { error: 'time needs "after": seconds' };
+  if (w.on === 'after' && !handsText(w.use, LIMITS.maxClipName)) return { error: 'after needs the motion it follows ("after:Hop")' };
+  if (w.on === 'cue' && !(typeof w.cue === 'string' && CUE_RE.test(w.cue))) return { error: 'a cue name like "chest-opened" (lower case, digits, -)' };
+  if (w.on === 'enter' && !(w.area && handsVec(w.area.p) && handsVec(w.area.size))) return { error: 'enter needs "area": { "p": [x, y, z], "size": [w, h, d] }' };
+  return { when: structuredClone(w) };
+}
+
+/** When it stops: { "times": 3 }, { "cue": "boss-down" }, { "then": "reset" }, or "times:3" / "cue:boss-down"; null = never. */
+function readHandsUntil(v) {
+  if (v === null || v === 'never') return { until: null };
+  let u = v;
+  if (typeof v === 'string') {
+    const [k, a] = v.split(':').map((s) => s.trim());
+    u = k === 'times' ? { times: Number(a) } : k === 'cue' ? { cue: a } : null;
+  }
+  if (!u || typeof u !== 'object' || Array.isArray(u)) return { error: '{ "times": 3 } or { "cue": "boss-down" } (null = never stops)' };
+  const out = {};
+  if (u.times !== undefined) {
+    if (!(Number.isInteger(u.times) && u.times >= 1 && u.times <= LIMITS.maxRounds)) return { error: `"times" must be 1 to ${LIMITS.maxRounds}` };
+    out.times = u.times;
+  }
+  if (u.cue !== undefined) {
+    if (!(typeof u.cue === 'string' && CUE_RE.test(u.cue))) return { error: '"cue" must be a cue name like "boss-down"' };
+    out.cue = u.cue;
+  }
+  if (u.then !== undefined) {
+    if (u.then !== 'stay' && u.then !== 'reset') return { error: '"then" must be stay or reset' };
+    out.then = u.then;
+  }
+  if (out.times === undefined && out.cue === undefined) return { error: 'needs "times" or "cue"' };
+  return { until: out };
+}
+
+/**
+ * The Library motion an op makes ({ name, len, repeat, keys } as the file writes it), or { error }.
+ * `points`: positions the object goes through, as offsets from where it stands, spread evenly over `len` (default 2 s),
+ * linear between them unless `ease` says otherwise — WHY linear: every key's default ease slows to a stop at the key,
+ * so a spiral of 48 points would stutter 48 times; the path is still the smooth curve through the points (the loader's
+ * trackAt). `keys`: the file's own keys (p / r / s), when the AI needs turns or sizes too.
+ * Checked with the file's own validator, so a motion the editor or the loader would refuse is refused here first.
+ */
+function handsMotion(op, dim) {
+  const n = dim === '2d' ? 2 : 3;
+  const len = op.len ?? 2;
+  let keys;
+  if (op.points) {
+    if (op.points[0].length !== n) return { error: `points must have ${n} numbers each in a ${dim.toUpperCase()} game` };
+    const ease = op.ease ?? 'linear';
+    const last = op.points.length - 1;
+    keys = { p: op.points.map((v, i) => ({ t: (len * i) / last, v: v.slice(), ...(i < last && ease !== 'ease' ? { ease } : {}) })) };
+  } else keys = structuredClone(op.keys);
+  const m = { name: op.name, len, ...(op.repeat && op.repeat !== 'once' ? { repeat: op.repeat } : {}), keys };
+  const r = validateStudioFile({ version: 1, tool: 'placement', dim, space: 'local', objects: {}, motions: [m] }, { tool: 'placement' });
+  if (!r.ok) return { error: r.errors.slice(0, 3).map((e) => e.replace(/^motions\[0\]\.?/, '')).join('; ') };
+  return { motion: r.value.motions[0] };
+}
+
+/** The clip of `clips` an op means: by its name or its Library motion's; none named = the only one. { clip } or { error }. */
+function handsClip(clips, name, key) {
+  const cs = clips || [];
+  const said = () => (cs.length ? `its motions: ${cs.map((c) => `"${c.name}"`).join(', ')}` : 'it has no motion');
+  if (!cs.length) return { error: `${key} has no motion` };
+  if (name === undefined) {
+    if (cs.length === 1) return { clip: cs[0] };
+    return { error: `${key} has ${cs.length ? `${cs.length} motions` : 'no motion'}: say which one with "name" (${said()})` };
+  }
+  const c = cs.find((x) => x.name === name) || cs.find((x) => x.use === name);
+  return c ? { clip: c } : { error: `${key} has no motion "${name}" (${said()})` };
+}
+
+/**
+ * How a motion the AI MAKES starts when the op does not say: with the game. WHY not the attach rule below ("after its
+ * last motion"): the person asked for it to move now ("make it spiral"), and after a motion that loops forever (Sway,
+ * pingpong) "after" never comes — a real AI's spiral would have waited for ever (found in the real-AI run, 2026-10-24).
+ */
+const HANDS_MAKE_WHEN = Object.freeze({ on: 'start' });
+
+/** How a motion put on an object starts when the op does not say: the editor's own rule (timeline-wire attach). */
+function handsDefaultWhen(clips) {
+  const cs = clips || [];
+  const last = cs[cs.length - 1];
+  const starts = cs.some((c) => (c.when && typeof c.when === 'object' && !Array.isArray(c.when) ? c.when.on === 'start' : c.start === true || c.when === undefined));
+  return starts && last ? { on: 'after', use: last.use ?? last.name } : { on: 'start' };
+}
+
+/** The pose after a move / turn / scale op, rounded like the file. { pose } or { error } (needs the pose for `by`). */
+function handsPose(op, pose, dim) {
+  const n = dim === '2d' ? 2 : 3;
+  const step = dim === '2d' ? 10 : 1000;
+  const rd = (v, s) => Math.round(v * s) / s;
+  const out = pose ? structuredClone(pose) : {};
+  if (op.do === 'object.move' || op.do === 'object.duplicate') {
+    const v = op.to ?? op.by;
+    if (!v) return { pose: out };
+    if (v.length !== n) return { error: `a position has ${n} numbers in a ${dim.toUpperCase()} game` };
+    if (op.by && !pose?.p) return { error: `where ${op.key} stands now is not known here: give "to" (a place), or open the editor` };
+    out.p = v.map((x, i) => rd(op.by ? pose.p[i] + x : x, step));
+  } else if (op.do === 'object.turn') {
+    const a = (op.deg ? (op.to ?? op.by) * Math.PI / 180 : op.to ?? op.by);
+    if (op.by !== undefined && !pose) return { error: `how ${op.key} is turned now is not known here: give "to", or open the editor` };
+    let r = op.by !== undefined ? (pose.r ?? 0) + a : a;
+    // (-π, π], like the file.
+    r = Math.atan2(Math.sin(r), Math.cos(r));
+    if (r <= -Math.PI + 1e-9) r = Math.PI;
+    out.r = rd(r, 10000);
+  } else if (op.do === 'object.scale') {
+    if (op.by !== undefined) {
+      if (!pose) return { error: `the size of ${op.key} now is not known here: give "to", or open the editor` };
+      const s = pose.s ?? 1;
+      out.s = Array.isArray(s) ? s.map((x) => rd(x * op.by, 10000)) : rd(s * op.by, 10000);
+    } else {
+      if (Array.isArray(op.to) && op.to.length !== n) return { error: `a size has 1 or ${n} numbers in a ${dim.toUpperCase()} game` };
+      out.s = Array.isArray(op.to) ? op.to.map((x) => rd(x, 10000)) : rd(op.to, 10000);
+    }
+  }
+  return { pose: out };
+}
+
+/** "crate-1" → "crate-2" (the editor's copyKey rule, edit-ops.ts): a key nothing has. */
+function handsCopyKey(from, taken) {
+  let base = from.replace(/^path:.*$/, 'copy').replace(/#\d+$/, '').replace(/[-_ .]?\d+$/, '');
+  base = (base || 'copy').slice(0, 70);
+  for (let n = 2; n < 100000; n++) if (!taken.has(`${base}-${n}`)) return `${base}-${n}`;
+  return `${base}-${Date.now()}`;
+}
+
+const handsQ = (s) => `"${s}"`;
+const handsWhenWords = (w) => {
+  const one = (x) => (x.on === 'start' ? 'starts with the game' : x.on === 'time' ? `starts ${x.after} s after the start` : x.on === 'key' ? `starts when ${x.key} is pressed`
+    : x.on === 'click' ? 'starts when it is clicked' : x.on === 'after' ? `starts after "${x.use}" ends` : x.on === 'enter' ? 'starts when the player walks into its area'
+    : x.on === 'touch' ? 'starts when the player touches it (the game calls touch(key))' : x.on === 'cue' ? `starts on cue('${x.cue}') in the game's code`
+    : 'waits for the game\'s code to call playMotion(key, name)');
+  return Array.isArray(w) ? w.map(one).join(' or ') : one(w);
+};
+
+/**
+ * One English line of what an op did, for the AI (the `studio: did …` line). `x`: what only the doer knows — the motion
+ * made ({ motion }), the clip taken off ({ clip }), a copy's key, how many objects lost a deleted motion, a level's name.
+ */
+function handsSaid(op, x = {}) {
+  if (x.said) return x.said;
+  const on = op.key ? ` on ${op.key}` : '';
+  switch (op.do) {
+    case 'motion.make': {
+      const m = x.motion;
+      const pts = m?.keys?.p?.length;
+      return `made ${handsQ(m?.name ?? op.name)} (${pts ? `${pts} points, ` : ''}${m?.len ?? op.len ?? 2} s, ${m?.repeat ?? 'once'})${op.key ? ` and put it${on}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}` : ' in the Library'}`;
+    }
+    case 'motion.attach': return `put ${handsQ(op.name)}${on}, ${handsWhenWords(x.when ?? op.when ?? { on: 'start' })}`;
+    case 'motion.detach': return x.all ? `took every motion off ${op.key} (${x.all})` : `took ${handsQ(x.clip ?? op.name)} off ${op.key}`;
+    case 'motion.delete': return `deleted ${handsQ(op.name)} from the Library${x.from ? ` (it came off ${x.from} object${x.from === 1 ? '' : 's'})` : ''}`;
+    case 'motion.rename': return `renamed the motion ${handsQ(op.name)} to ${handsQ(x.to ?? op.to)}`;
+    case 'motion.set': {
+      const parts = [op.repeat ? `repeat ${op.repeat}` : '', op.len ? `${op.len} s` : '', op.when ? handsWhenWords(op.when) : '', op.until !== undefined ? (op.until ? `stops after ${op.until.times ? `${op.until.times} rounds` : `cue('${op.until.cue}')`}` : 'never stops') : ''].filter(Boolean);
+      return `set ${handsQ(op.name)}${op.key ? on : ''}: ${parts.join(', ')}`;
+    }
+    case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
+    case 'object.turn': return `turned ${op.key} to ${Math.round(((x.pose?.r ?? 0) * 180) / Math.PI)}°`;
+    case 'object.scale': return `resized ${op.key} to ${JSON.stringify(x.pose?.s ?? op.to)}`;
+    case 'object.rename': return `renamed ${op.key} to ${handsQ(op.to)} (the code's key stays until you rename it there: placement.json "names")`;
+    case 'object.duplicate': return `duplicated ${op.key} as ${x.copy ?? '?'}`;
+    case 'object.delete': return `deleted ${op.key}`;
+    case 'object.ground': return `put ${op.key} on the ground`;
+    case 'level.new': return `made a new level ${handsQ(x.label ?? op.name ?? '')} (${x.id ?? '?'}) and opened it`;
+    case 'level.duplicate': return `duplicated the level as ${handsQ(x.label ?? op.name ?? '')} (${x.id ?? '?'}) and opened it`;
+    case 'level.rename': return `renamed the level ${x.id ?? op.id ?? ''} to ${handsQ(op.to)}`;
+    case 'level.switch': return `opened the level ${op.id}`;
+    case 'save': return 'saved (as the person\'s Save: a saved request follows)';
+    case 'editor.reload': return op.editor ? 'reloaded the editor page' : 'reloaded the game in the editor';
+    case 'list': return 'listed the objects, motions and levels';
+    default: return op.do;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The same ops on placement.json, for when no editor is open (the CLI writes the result after the file's validator).
+
+/**
+ * Apply `ops` to a placement file (its validated value, or null for none yet). Returns { file, results }: the new value
+ * (not yet validated: the caller runs validateStudioFile and writes nothing when it fails) and one { do, ok, said | error }
+ * per op. An op that fails changes nothing; the others still apply (each result says).
+ * What only the game knows is refused with a reason (the ground under an object, a blank level's objects): those need
+ * the editor open.
+ */
+function applyHandsToFile(file, ops, o = {}) {
+  const f = file ? structuredClone(file) : { version: 1, tool: 'placement', dim: o.dim || '3d', space: 'local', objects: {} };
+  const dim = f.dim;
+  const results = [];
+  for (const op of ops) {
+    try {
+      const r = handsFileOp(f, op, dim);
+      results.push(r.error ? { do: op.do, ok: false, error: r.error } : { do: op.do, ok: true, said: handsSaid(op, r), ...(r.list ? { list: r.list } : {}) });
+    } catch (e) {
+      results.push({ do: op.do, ok: false, error: String(e && e.message).slice(0, 200) });
+    }
+  }
+  return { file: handsTidy(f), results };
+}
+
+/** Empty parts out (the validator wants no empty `motion` / `added`…), and the top `objects` there with levels. */
+function handsTidy(f) {
+  for (const w of [f, ...(f.levels || [])]) {
+    for (const k of ['motion', 'names']) if (w[k] && !Object.keys(w[k]).length) delete w[k];
+    for (const k of ['added', 'removed']) if (w[k] && !w[k].length) delete w[k];
+  }
+  if (f.motions && !f.motions.length) delete f.motions;
+  if (!f.objects) f.objects = {};
+  return f;
+}
+
+/** The world part an op is about: the top of a file without levels, else the level `op.level` names. */
+function handsWorld(f, op) {
+  if (!f.levels) {
+    if (op.level) return { error: `this game has no levels yet (no "level" needed)` };
+    return { w: f };
+  }
+  if (!op.level) return { error: `this game has levels: say which one with "level" (${f.levels.map((l) => l.id).join(', ')})` };
+  const w = f.levels.find((l) => l.id === op.level);
+  return w ? { w } : { error: `no level "${op.level}" (${f.levels.map((l) => l.id).join(', ')})` };
+}
+
+function handsFileOp(f, op, dim) {
+  const kind = op.do.split('.')[0];
+  // No editor open: there is no person's Save to press, and placement.json is written as it is.
+  if (op.do === 'save') return { said: 'nothing to save: no editor is open, and placement.json is written as it is' };
+  if (op.do === 'editor.reload') return { error: 'the editor is not open (nothing to reload)' };
+  if (op.do === 'list') return { list: handsFileList(f) };
+  if (op.do === 'object.ground') return { error: 'putting it on the ground needs the editor open (it measures what is under the object)' };
+  if (op.do === 'level.new') return { error: 'a new (blank) level needs the editor open (it lists what the level keeps)' };
+  if (op.do === 'level.switch') return { error: 'the editor is not open: it opens on a level when it starts' };
+  if (kind === 'level') return handsFileLevel(f, op);
+  if (op.do === 'motion.delete' || op.do === 'motion.rename' || (op.do === 'motion.set' && !op.key) || (op.do === 'motion.make' && !op.key)) return handsFileLibrary(f, op, dim);
+  const at = handsWorld(f, op);
+  if (at.error) return at;
+  const w = at.w;
+  if (kind === 'motion') return handsFileMotion(f, w, op, dim);
+  return handsFileObject(w, op, dim);
+}
+
+const handsLib = (f, name) => (f.motions || []).find((m) => m.name === name) || null;
+const handsWorlds = (f) => [f, ...(f.levels || [])];
+const handsFree = (f, base) => {
+  if (!handsLib(f, base)) return base;
+  for (let i = 2; ; i++) if (!handsLib(f, `${base} ${i}`)) return `${base} ${i}`;
+};
+
+/** Ops on the Library alone: delete, rename, set repeat / length for every object, make without an object. */
+function handsFileLibrary(f, op, dim) {
+  if (op.do === 'motion.make') return handsFileMake(f, op, dim);
+  const l = handsLib(f, op.name);
+  if (!l) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
+  if (op.do === 'motion.delete') {
+    let from = 0;
+    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) {
+      const cs = (w.motion[k].clips || []).filter((c) => c.use !== op.name);
+      if (cs.length === (w.motion[k].clips || []).length) continue;
+      from++;
+      if (cs.length) w.motion[k] = { clips: cs };
+      else delete w.motion[k];
+    }
+    f.motions = f.motions.filter((m) => m !== l);
+    return { from };
+  }
+  if (op.do === 'motion.rename') {
+    const to = handsFree(f, op.to);
+    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) {
+      w.motion[k] = { clips: w.motion[k].clips.map((c) => {
+        const fix = (x) => (x && x.on === 'after' && x.use === op.name ? { ...x, use: to } : x);
+        const when = Array.isArray(c.when) ? c.when.map(fix) : fix(c.when);
+        const out = { ...c, ...(when ? { when } : {}) };
+        if (c.use === op.name) {
+          out.use = to;
+          if (c.name === op.name) out.name = to;
+        }
+        if (out.name === out.use) delete out.name;
+        return out;
+      }) };
+    }
+    l.name = to;
+    return { to };
+  }
+  // motion.set without an object: the Library motion's repeat / length (every object that uses it plays it so).
+  if (op.when !== undefined || op.until !== undefined) {
+    let n = 0;
+    for (const w of handsWorlds(f)) for (const k of Object.keys(w.motion || {})) for (const c of w.motion[k].clips || []) if (c.use === op.name) (handsSetClip(c, op), n++);
+    if (!n) return { error: `"${op.name}" is on no object: put it on one first (motion.attach)` };
+  }
+  handsSetLib(l, op);
+  return {};
+}
+
+function handsSetLib(l, op) {
+  if (op.repeat) {
+    if (op.repeat === 'once') delete l.repeat;
+    else l.repeat = op.repeat;
+  }
+  if (op.len) {
+    // A new length stretches the keys with it (timeline-model stretchClip): "slower" / "faster" keep the same path.
+    const k = op.len / l.len;
+    for (const ch of ['p', 'r', 's']) for (const key of l.keys?.[ch] || []) key.t = Math.min(op.len, Math.round(key.t * k * 1000) / 1000);
+    for (const tr of Object.values(l.tracks || {})) for (const ch of ['p', 'r', 's']) for (const key of tr[ch] || []) key.t = Math.min(op.len, Math.round(key.t * k * 1000) / 1000);
+    l.len = op.len;
+  }
+}
+
+function handsSetClip(c, op) {
+  if (op.when !== undefined) {
+    c.when = structuredClone(op.when);
+    delete c.start;
+  }
+  if (op.until !== undefined) {
+    if (op.until) c.until = structuredClone(op.until);
+    else delete c.until;
+  }
+}
+
+/** motion.make: the Library motion (made from points or keys), and on the object when there is a key. */
+function handsFileMake(f, op, dim, w) {
+  const made = handsMotion(op, dim);
+  if (made.error) return made;
+  const m = made.motion;
+  const was = handsLib(f, m.name);
+  if (was && op.replace) {
+    // `replace`: the same name with new keys — every object that has it moves the new way (the AI fixing its spiral).
+    for (const k of Object.keys(was)) delete was[k];
+    Object.assign(was, m);
+  } else {
+    // Without it a name already taken gets "Spiral 2", as the editor's Library does: an AI never overwrites by accident.
+    if (was) m.name = handsFree(f, m.name);
+    (f.motions ||= []).push(m);
+  }
+  if (!w) return { motion: m };
+  const clips = w.motion?.[op.key]?.clips || [];
+  if (clips.some((c) => (c.use ?? c.name) === m.name)) {
+    const c = clips.find((x) => (x.use ?? x.name) === m.name);
+    handsSetClip(c, op);
+    return { motion: m, when: c.when };
+  }
+  if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+  // A motion the AI makes starts with the game unless it says otherwise (HANDS_MAKE_WHEN).
+  const when = op.when ?? HANDS_MAKE_WHEN;
+  const clip = { use: m.name, when, ...(op.until ? { until: op.until } : {}) };
+  (w.motion ||= {})[op.key] = { clips: [...clips, clip] };
+  return { motion: m, when };
+}
+
+function handsFileMotion(f, w, op, dim) {
+  if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
+  if (op.do === 'motion.make') return handsFileMake(f, op, dim, w);
+  const clips = w.motion?.[op.key]?.clips || [];
+  if (op.do === 'motion.attach') {
+    if (!handsLib(f, op.name)) return { error: `no motion "${op.name}" in the Library (${(f.motions || []).map((m) => `"${m.name}"`).join(', ') || 'it has none'})` };
+    if (clips.some((c) => (c.use ?? c.name) === op.name)) return { error: `${op.key} has "${op.name}" already (motion.set changes when it starts)` };
+    if (clips.length >= LIMITS.maxClips) return { error: `${op.key} already has ${LIMITS.maxClips} motions` };
+    const when = op.when ?? handsDefaultWhen(clips);
+    (w.motion ||= {})[op.key] = { clips: [...clips, { use: op.name, when, ...(op.until ? { until: op.until } : {}) }] };
+    return { when };
+  }
+  const named = clips.map((c) => ({ ...c, name: c.name ?? c.use }));
+  if (op.do === 'motion.detach') {
+    if (op.all) {
+      if (!clips.length) return { error: `${op.key} has no motion` };
+      delete w.motion[op.key];
+      return { all: named.map((c) => `"${c.name}"`).join(', ') };
+    }
+    const r = handsClip(named, op.name, op.key);
+    if (r.error) return r;
+    const rest = clips.filter((_, i) => named[i] !== r.clip);
+    if (rest.length) w.motion[op.key] = { clips: rest };
+    else delete w.motion[op.key];
+    return { clip: r.clip.name };
+  }
+  // motion.set with an object: when / until on its clip; repeat / length on the Library motion (they are the motion's).
+  const r = handsClip(named, op.name, op.key);
+  if (r.error) return r;
+  handsSetClip(clips[named.indexOf(r.clip)], op);
+  const l = handsLib(f, r.clip.use ?? r.clip.name);
+  if (l) handsSetLib(l, op);
+  return {};
+}
+
+function handsFileObject(w, op, dim) {
+  const added = (w.added || []).find((a) => a.key === op.key);
+  if ((w.removed || []).some((r) => r.key === op.key)) return { error: `${op.key} was deleted` };
+  const entry = w.objects?.[op.key];
+  const now = added ? { p: added.p, r: added.r, s: added.s } : entry ? { p: entry.p, r: entry.r, s: entry.s, ...(entry.t ? { t: entry.t } : {}) } : null;
+  if (op.do === 'object.rename') {
+    (w.names ||= {})[op.key] = op.to;
+    return {};
+  }
+  if (op.do === 'object.delete') {
+    if (added) w.added = w.added.filter((a) => a !== added);
+    else (w.removed ||= []).push({ key: op.key, ...(entry?.label ? { label: entry.label } : {}), ...(entry?.was ? { was: entry.was } : {}) });
+    if (w.objects) delete w.objects[op.key];
+    if (w.motion) delete w.motion[op.key];
+    if (w.names) delete w.names[op.key];
+    if (w.removed) w.removed.sort((a, b) => (a.key < b.key ? -1 : 1));
+    return {};
+  }
+  if (op.do === 'object.duplicate') {
+    const base = handsPose({ ...op, do: 'object.move' }, now, dim);
+    if (!now?.p && !op.to) return { error: `where ${op.key} stands is not known here: give "to" (the copy's place), or open the editor` };
+    if (base.error) return base;
+    const taken = new Set([...Object.keys(w.objects || {}), ...(w.added || []).map((a) => a.key), ...(w.removed || []).map((r) => r.key)]);
+    const copy = handsCopyKey(op.key, taken);
+    const p = base.pose;
+    (w.added ||= []).push({ key: copy, from: op.key, p: p.p, r: p.r ?? 0, s: p.s ?? 1 });
+    return { copy };
+  }
+  const r = handsPose(op, now, dim);
+  if (r.error) return r;
+  if (added) Object.assign(added, { p: r.pose.p ?? added.p, r: r.pose.r ?? added.r, s: r.pose.s ?? added.s });
+  else {
+    const e = (w.objects ||= {})[op.key] || {};
+    if (r.pose.p) e.p = r.pose.p;
+    if (r.pose.r !== undefined) e.r = r.pose.r;
+    if (r.pose.s !== undefined) e.s = r.pose.s;
+    w.objects[op.key] = e;
+  }
+  return { pose: r.pose };
+}
+
+function handsFileLevel(f, op) {
+  if (!f.levels) return { error: 'this game has no levels in placement.json yet: open the editor (its levels come from the game)' };
+  const id = op.id ?? (op.do === 'level.rename' || op.do === 'level.duplicate' ? null : undefined);
+  if (op.do === 'level.rename' || op.do === 'level.duplicate') {
+    if (!id) return { error: `say which level with "id" (${f.levels.map((l) => l.id).join(', ')})` };
+  }
+  const l = f.levels.find((x) => x.id === id);
+  if (!l) return { error: `no level "${id}" (${f.levels.map((x) => x.id).join(', ')})` };
+  if (op.do === 'level.rename') {
+    // The code's name stays in labelWas (the AI renames it in the code); renamed back = nothing to do.
+    const code = l.labelWas ?? l.label ?? l.id;
+    if (op.to === code) delete l.labelWas;
+    else if (!l.from) l.labelWas = code;
+    l.label = op.to;
+    return { id: l.id };
+  }
+  // level.duplicate: a level made in the editor is `from` its code level, with this level's entries over it.
+  const ids = new Set(f.levels.map((x) => x.id));
+  let n = 2;
+  while (ids.has(`${l.from ?? l.id}-${n}`)) n++;
+  const nid = `${l.from ?? l.id}-${n}`;
+  const label = op.name ?? `${l.label ?? l.id} ${n}`;
+  const copy = { ...structuredClone(l), id: nid, label, from: l.from ?? l.id };
+  delete copy.labelWas;
+  f.levels.splice(f.levels.indexOf(l) + 1, 0, copy);
+  if (!f.levelsWas) f.levelsWas = f.levels.filter((x) => !x.from).map((x) => x.id);
+  return { id: nid, label };
+}
+
+/**
+ * `list` with no editor open: what placement.json knows (only objects it has an entry for — the editor's own `list`
+ * has every object of the game, with the names the person sees).
+ */
+function handsFileList(f) {
+  const world = (w) => {
+    const keys = new Set([...Object.keys(w.objects || {}), ...(w.added || []).map((a) => a.key), ...Object.keys(w.motion || {}), ...Object.keys(w.names || {})]);
+    return [...keys].sort().map((key) => {
+      const o = { key };
+      const label = w.names?.[key] ?? w.objects?.[key]?.label;
+      if (label) o.name = label;
+      const ms = (w.motion?.[key]?.clips || []).map((c) => c.name ?? c.use);
+      if (ms.length) o.motions = ms;
+      return o;
+    });
+  };
+  const out = { from: 'placement.json (no editor open: only the objects it has)', objects: f.levels ? [] : world(f) };
+  out.motions = (f.motions || []).map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once' }));
+  if (f.levels) out.levels = f.levels.map((l) => ({ id: l.id, name: l.label ?? l.id, objects: world(l) }));
+  return out;
+}
+
+
+__def(__exports, "HANDS_OPS", () => HANDS_OPS);
+__def(__exports, "HANDS_OP_NAMES", () => HANDS_OP_NAMES);
+__def(__exports, "HANDS_MAX_OPS", () => HANDS_MAX_OPS);
+__def(__exports, "readHandsInput", () => readHandsInput);
+__def(__exports, "readHandsWhen", () => readHandsWhen);
+__def(__exports, "readHandsUntil", () => readHandsUntil);
+__def(__exports, "handsMotion", () => handsMotion);
+__def(__exports, "handsClip", () => handsClip);
+__def(__exports, "HANDS_MAKE_WHEN", () => HANDS_MAKE_WHEN);
+__def(__exports, "handsDefaultWhen", () => handsDefaultWhen);
+__def(__exports, "handsPose", () => handsPose);
+__def(__exports, "handsCopyKey", () => handsCopyKey);
+__def(__exports, "handsSaid", () => handsSaid);
+__def(__exports, "applyHandsToFile", () => applyHandsToFile);
+};
+__defs[59] = function (__exports) {
+'use strict';
+// ai-hands.ts
+
+// The AI's hands in the editor (studio-ai-hands, 2026-10-24; CONTRACT.md §3.6): the editor's end of
+// `studio.mjs <game> --do …`. The local server hands the page a job (host.hands, an event stream); this does each op
+// with the editor's own edits — the timeline's attach / detach / delete, the card's pose, Rename, Duplicate, Delete,
+// New level, Save — so what the AI does is exactly what the person's hands would have done: on screen at once, ONE ⌘Z
+// for the whole job (UndoStack begin / end), counted on Save · n, and said in one line over the ask bar ("Claude took
+// “Row” off Blue pillar · ⌘Z undoes it"), with the AI's name, so the person knows who changed it.
+//
+// WHY (a request, 2026-10-24): "I asked Claude, and it asked me to do the Studio's hand work. That is the worst
+// experience." / "The editor and Claude don't mesh." What the ops mean (which clip "Row" is, the pose after "by", a
+// motion from points, the default start) is schema/hands.mjs's — the same functions the CLI uses on placement.json when
+// no editor is open, so the two never disagree.
+//
+// Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
+// stand-ins.
+                                                                                                                                
+const { HANDS_MAKE_WHEN, handsClip, handsMotion, handsPose, handsSaid, readHandsInput } = __require(58);
+
+                           
+             
+               
+                                                                                                           
+                          
+ 
+                              
+             
+              
+                                                                          
+                
+                 
+                                                                          
+                 
+ 
+                                               
+/** What one op did, for its result line and the person's line: hands.mjs handsSaid's extras plus the words' vars. */
+                                                                                             
+
+                            
+                                                                 
+                                                                                       
+                   
+                     
+                                                                                           
+                            
+                                                                                    
+                  
+             
+                                      
+                                                                        
+                             
+                   
+                                                               
+                                      
+                                                                                             
+                                         
+                                           
+                                                                                
+                                                 
+                            
+                                                                                      
+                                        
+                                                                                                   
+                                       
+                                                                                    
+                                      
+                                          
+                       
+                              
+                                             
+                                              
+                                
+                                                     
+                                                                                                                                                                                                                                         
+                                                                                                                       
+                                                                            
+           
+                      
+                      
+                    
+                              
+                                                                                       
+                                                        
+                                     
+                                            
+                                                                                                 
+                                             
+    
+                                                                
+                           
+                                
+                                                                                                                           
+                  
+                    
+                                                                                   
+                                  
+     
+                                                                                                                         
+                                                                                                             
+     
+                                               
+ 
+
+/** How long a job waits for the editor to be ready (a page that is still opening the game). */
+const READY_WAIT_MS = 12_000;
+
+function createAiHands(d           ) {
+  // One job at a time, in the order they came (two quick --do from the AI must not interleave their ops).
+  let queue                   = Promise.resolve();
+  const name = (key        ) => d.label(key);
+
+  async function waitReady()                   {
+    const end = Date.now() + READY_WAIT_MS;
+    while (!d.ready()) {
+      if (Date.now() > end) return false;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return true;
+  }
+
+  /** The object an op names, or the reason it isn't there. */
+  const need = (key        )                => (d.item(key) ? null : `no object ${key} in the editor${hint()}`);
+  const hint = () => {
+    const ks = d.keys();
+    return ks.length ? ` (objects: ${ks.slice(0, 12).join(', ')}${ks.length > 12 ? ', …' : ''})` : '';
+  };
+  const libHint = () => {
+    const ns = d.libNames();
+    return ns.length ? ns.map((n) => `"${n}"`).join(', ') : 'it has none';
+  };
+
+  async function one(op    )               {
+    if (op.level && d.levels.active() && op.level !== d.levels.current()) {
+      if (!d.levels.ids().includes(op.level)) return { error: `no level "${op.level}" (${d.levels.ids().join(', ')})` };
+      if (!(await d.levels.go(op.level)) || !(await waitReady())) return { error: `could not open the level ${op.level}` };
+    }
+    switch (op.do) {
+      case 'motion.make': {
+        if (op.key && need(op.key)) return { error: need(op.key)  };
+        const made = handsMotion(op, d.dim());
+        if (made.error) return { error: made.error };
+        // Without `when` it starts with the game (hands.mjs HANDS_MAKE_WHEN: the person asked for it to move now).
+        const r = d.make(op.key ?? null, made.motion                 , { when: op.when, until: op.until, replace: op.replace, whenOf: () => ({ ...HANDS_MAKE_WHEN })               });
+        if ('error' in r) return { error: r.error };
+        const m = d.lib(r.name);
+        return { motion: m, when: r.when, words: { name: r.name, obj: op.key ? name(op.key) : '' } };
+      }
+      case 'motion.attach': {
+        if (need(op.key)) return { error: need(op.key)  };
+        if (!d.lib(op.name)) return { error: `no motion "${op.name}" in the Library (${libHint()})` };
+        if ((d.motionOf(op.key)?.clips ?? []).some((c) => (c.use ?? c.name) === op.name)) return { error: `${op.key} has "${op.name}" already (motion.set changes when it starts)` };
+        if (!d.attach(op.key, op.name)) return { error: `${op.key} cannot take another motion` };
+        const c = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === op.name);
+        if (c && (op.when !== undefined || op.until !== undefined)) d.clipSet(op.key, c.name, { when: op.when, until: op.until });
+        const now = (d.motionOf(op.key)?.clips ?? []).find((x) => (x.use ?? x.name) === op.name);
+        return { when: now?.when, words: { name: op.name, obj: name(op.key) } };
+      }
+      case 'motion.detach': {
+        if (need(op.key)) return { error: need(op.key)  };
+        const clips = d.motionOf(op.key)?.clips ?? [];
+        if (op.all) {
+          if (!clips.length) return { error: `${op.key} has no motion` };
+          for (const c of clips) d.detach(op.key, c.name);
+          return { all: clips.map((c) => `"${c.name}"`).join(', '), words: { name: clips.map((c) => c.name).join(', '), obj: name(op.key) } };
+        }
+        const r = handsClip(clips, op.name, op.key);
+        if (r.error) return { error: r.error };
+        d.detach(op.key, r.clip.name);
+        return { clip: r.clip.name, words: { name: r.clip.name, obj: name(op.key) } };
+      }
+      case 'motion.delete': {
+        if (!d.lib(op.name)) return { error: `no motion "${op.name}" in the Library (${libHint()})` };
+        const from = d.usage(op.name);
+        d.deleteLib(op.name);
+        return { from, words: { name: op.name } };
+      }
+      case 'motion.rename': {
+        if (!d.lib(op.name)) return { error: `no motion "${op.name}" in the Library (${libHint()})` };
+        const to = d.renameLib(op.name, op.to);
+        if (!to) return { error: `could not rename "${op.name}"` };
+        return { to, words: { name: op.name, to } };
+      }
+      case 'motion.set': {
+        if (op.key) {
+          if (need(op.key)) return { error: need(op.key)  };
+          const r = handsClip(d.motionOf(op.key)?.clips ?? [], op.name, op.key);
+          if (r.error) return { error: r.error };
+          if (op.when !== undefined || op.until !== undefined) d.clipSet(op.key, r.clip.name, { when: op.when, until: op.until });
+          if (op.repeat || op.len) d.libSet(r.clip.use ?? r.clip.name, { repeat: op.repeat, len: op.len });
+          return { words: { name: r.clip.name, obj: name(op.key) } };
+        }
+        if (!d.lib(op.name)) return { error: `no motion "${op.name}" in the Library (${libHint()})` };
+        if (op.when !== undefined || op.until !== undefined) {
+          const on = d.keys().filter((k) => (d.motionOf(k)?.clips ?? []).some((c) => c.use === op.name));
+          if (!on.length) return { error: `"${op.name}" is on no object: put it on one first (motion.attach)` };
+          for (const k of on) d.clipSet(k, (d.motionOf(k) .clips .find((c) => c.use === op.name)) .name, { when: op.when, until: op.until });
+        }
+        if (op.repeat || op.len) d.libSet(op.name, { repeat: op.repeat, len: op.len });
+        return { words: { name: op.name, obj: '' } };
+      }
+      case 'object.move':
+      case 'object.turn':
+      case 'object.scale': {
+        if (need(op.key)) return { error: need(op.key)  };
+        const from = d.pose(op.key);
+        if (!from) return { error: `${op.key} cannot be moved here` };
+        const it = d.item(op.key) ;
+        if (op.do === 'object.move' && it.movable === false) return { error: `${op.key} is locked by this game's rules (.studio/studio.json)` };
+        if (op.do === 'object.turn' && !it.rotatable) return { error: `${op.key} does not turn in this game` };
+        if (op.do === 'object.scale' && !it.scalable) return { error: `${op.key} does not resize in this game` };
+        const r = handsPose(op, from, d.dim());
+        if (r.error) return { error: r.error };
+        d.setPose(op.key, r.pose        );
+        return { pose: r.pose, words: { obj: name(op.key) } };
+      }
+      case 'object.rename': {
+        if (need(op.key)) return { error: need(op.key)  };
+        if (d.item(op.key) .unstable) return { error: `${op.key} has no name in the code yet: name it there first (a mark, §5), then rename` };
+        const was = name(op.key);
+        if (!d.rename(op.key, op.to)) return { error: `${op.key} already has that name` };
+        return { words: { obj: was, to: op.to } };
+      }
+      case 'object.duplicate': {
+        if (need(op.key)) return { error: need(op.key)  };
+        const copy = await d.duplicate(op.key);
+        if (!copy) return { error: `the game could not copy ${op.key}` };
+        if (op.to || op.by) {
+          const r = handsPose({ ...op, do: 'object.move' }, d.pose(copy), d.dim());
+          if (!r.error) d.setPose(copy, r.pose        );
+        }
+        return { copy, words: { obj: name(op.key) } };
+      }
+      case 'object.delete': {
+        if (need(op.key)) return { error: need(op.key)  };
+        const was = name(op.key);
+        d.remove(op.key);
+        return { words: { obj: was } };
+      }
+      case 'object.ground': {
+        if (need(op.key)) return { error: need(op.key)  };
+        if (!(await d.ground(op.key))) return { error: `${op.key} did not move: there is nothing under it to stand on, or this game cannot (2D)` };
+        return { words: { obj: name(op.key) } };
+      }
+      case 'level.new':
+      case 'level.duplicate': {
+        if (op.do === 'level.duplicate' && op.id && op.id !== d.levels.current()) {
+          if (!d.levels.ids().includes(op.id)) return { error: `no level "${op.id}" (${d.levels.ids().join(', ')})` };
+          await d.levels.go(op.id);
+        }
+        const id = await d.levels.add(op.do === 'level.new' ? 'blank' : 'copy');
+        if (!id) return { error: 'the level could not be made' };
+        if (op.name) d.levels.nameNew(id, op.name);
+        // The new level's game page: the next op of the job works on what it lists.
+        await waitReady();
+        const label = d.levels.label(id);
+        return { id, label, words: { level: label } };
+      }
+      case 'level.rename': {
+        const id = op.id ?? d.levels.current();
+        if (!d.levels.active() || !d.levels.ids().includes(id)) return { error: d.levels.active() ? `no level "${id}" (${d.levels.ids().join(', ')})` : 'this game has no levels yet (level.new or level.duplicate makes the second one)' };
+        if (!d.levels.rename(id, op.to)) return { error: `the level ${id} is called that already` };
+        return { id, words: { to: op.to } };
+      }
+      case 'level.switch': {
+        if (!d.levels.active() || !d.levels.ids().includes(op.id)) return { error: d.levels.active() ? `no level "${op.id}" (${d.levels.ids().join(', ')})` : 'this game has no levels' };
+        if (!(await d.levels.go(op.id)) || !(await waitReady())) return { error: `could not open the level ${op.id}` };
+        return { words: { level: d.levels.label(op.id) } };
+      }
+      case 'save':
+        return (await d.save()) ? { words: {} } : { error: 'Save did not go through (the line in the editor says why)' };
+      case 'editor.reload':
+        d.reload(!!op.editor);
+        return { words: {} };
+      case 'list':
+        return { list: d.list() };
+      default:
+        return { error: `unknown op ${op.do}` };
+    }
+  }
+
+  /** The person's words for one op ("Claude took “Row” off Blue pillar"), with the AI's name. */
+  function words(op    , did     , ai                        )         {
+    const w = did.words ?? {};
+    const key = op.do === 'motion.make' && !op.key ? 'hands.motion.makeLib' : op.do === 'motion.set' && !w.obj ? 'hands.motion.setLib' : `hands.${op.do}`;
+    return d.t(key, { ...ai, ...w });
+  }
+
+  async function now(job          )                                      {
+    const read = readHandsInput(job.ops);
+    if (!read.ok) return { results: [{ do: '?', ok: false, error: read.errors.join('; ') }] };
+    const ops = read.ops        ;
+    if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
+    if (d.playing()) await d.stopPlay();
+    d.toWorld();
+    // The AI's name for its line: the one that asked (by), else the editor's own guess ({ai}).
+    const ai                         = job.by ? { ai: d.t(`ai.name.${job.by}`), Ai: d.t(`ai.name.${job.by}`) } : {};
+    const results                = [];
+    const said           = [];
+    // ⌘Z after the job: its undo step, or a level it made last (New level / Duplicate are taken back by ⌘Z until the
+    // next change); a level opened or renamed is not.
+    let levelLast                          = null;
+    // The job's line leads with what the person asked for: a motion made or put on (the detach before it is the tidy-up).
+    let lead = -1;
+    d.undoBegin();
+    for (const op of ops) {
+      let did     ;
+      try {
+        did = await one(op);
+      } catch (e) {
+        did = { error: String((e         )?.message || e).slice(0, 200) };
+      }
+      if (did.error) results.push({ do: op.do, ok: false, error: did.error });
+      else {
+        if (op.do.startsWith('level.')) levelLast = op.do === 'level.new' || op.do === 'level.duplicate' ? 'made' : 'other';
+        results.push({ do: op.do, ok: true, said: handsSaid(op, did), ...(did.list ? { list: did.list } : {}) });
+        // Save, a reload and a look are not changes to undo: the line names only what changed.
+        if (op.do !== 'save' && op.do !== 'editor.reload' && op.do !== 'list') {
+          if (lead < 0 && (op.do === 'motion.make' || op.do === 'motion.attach')) lead = said.length;
+          said.push(words(op, did, ai));
+        }
+        else if (!said.length && op.do === 'save') said.push(d.t('hands.save', ai));
+      }
+    }
+    const first = said[Math.max(0, lead)] ?? '';
+    const text = said.length > 1 ? d.t('hands.more', { text: first, n: said.length - 1 }) : first;
+    const step = d.undoEnd(text);
+    if (text) d.done(text, levelLast ? levelLast === 'made' : step);
+    return { results };
+  }
+
+  return {
+    /** Do a job from the AI; resolves to what each op did (the CLI prints one line each). */
+    run(job          )                                      {
+      const p = queue.then(() => now(job));
+      queue = p.catch(() => undefined);
+      return p;
+    },
+  };
+}
+
+__def(__exports, "createAiHands", () => createAiHands);
+};
+__defs[60] = function (__exports) {
 'use strict';
 // tooltip.ts
 
@@ -20969,7 +22179,7 @@ function installTooltips(root             )                                    {
 
 __def(__exports, "installTooltips", () => installTooltips);
 };
-__defs[59] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // shortcuts.ts
 
@@ -21052,7 +22262,7 @@ function createShortcutSheet(d                   ) {
 
 __def(__exports, "createShortcutSheet", () => createShortcutSheet);
 };
-__defs[60] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // context-menu.ts
 
@@ -21315,7 +22525,7 @@ function createContextMenu(d                 ) {
 __def(__exports, "placeMenu", () => placeMenu);
 __def(__exports, "createContextMenu", () => createContextMenu);
 };
-__defs[61] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -21731,7 +22941,7 @@ __def(__exports, "slugOf", () => slugOf);
 __def(__exports, "levelIdOf", () => levelIdOf);
 __def(__exports, "Levels", () => Levels);
 };
-__defs[62] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // check-note.ts
 
@@ -21770,7 +22980,7 @@ function checkNoteId(check                        , items                       
 
 __def(__exports, "checkNoteId", () => checkNoteId);
 };
-__defs[63] = function (__exports) {
+__defs[65] = function (__exports) {
 'use strict';
 // level-switch.ts
 
@@ -21944,7 +23154,7 @@ function createLevelSwitch(d                 ) {
 __def(__exports, "makeRows", () => makeRows);
 __def(__exports, "createLevelSwitch", () => createLevelSwitch);
 };
-__defs[64] = function (__exports) {
+__defs[66] = function (__exports) {
 'use strict';
 // context-rows.ts
 
@@ -22142,7 +23352,7 @@ function contextRows(place          , f          )           {
 
 __def(__exports, "contextRows", () => contextRows);
 };
-__defs[65] = function (__exports) {
+__defs[67] = function (__exports) {
 'use strict';
 // safe-save.ts
 
@@ -22253,7 +23463,7 @@ function createSafeSave(deps                              ) {
 __def(__exports, "bigChanges", () => bigChanges);
 __def(__exports, "createSafeSave", () => createSafeSave);
 };
-__defs[66] = function (__exports) {
+__defs[68] = function (__exports) {
 'use strict';
 // unsaved-guard.ts
 
@@ -22410,7 +23620,7 @@ __def(__exports, "lostBy", () => lostBy);
 __def(__exports, "playAsks", () => playAsks);
 __def(__exports, "createUnsavedGuard", () => createUnsavedGuard);
 };
-__defs[67] = function (__exports) {
+__defs[69] = function (__exports) {
 'use strict';
 // layer-switch.ts
 
@@ -22480,7 +23690,7 @@ function createLayerSwitch(choose                        , togglePeek           
 
 __def(__exports, "createLayerSwitch", () => createLayerSwitch);
 };
-__defs[68] = function (__exports) {
+__defs[70] = function (__exports) {
 'use strict';
 // ui-layer.ts
 
@@ -22569,7 +23779,7 @@ __def(__exports, "uiEntries", () => uiEntries);
 __def(__exports, "withLooks", () => withLooks);
 __def(__exports, "withUi", () => withUi);
 };
-__defs[69] = function (__exports) {
+__defs[71] = function (__exports) {
 'use strict';
 // ui-card.ts
 
@@ -22718,7 +23928,7 @@ function createUiCard(d            ) {
 
 __def(__exports, "createUiCard", () => createUiCard);
 };
-__defs[70] = function (__exports) {
+__defs[72] = function (__exports) {
 'use strict';
 // ui-screens.ts
 
@@ -22781,7 +23991,7 @@ function createUiScreens(d               ) {
 
 __def(__exports, "createUiScreens", () => createUiScreens);
 };
-__defs[71] = function (__exports) {
+__defs[73] = function (__exports) {
 'use strict';
 // ui-style-model.ts
 
@@ -22994,7 +24204,7 @@ __def(__exports, "validLook", () => validLook);
 __def(__exports, "validTheme", () => validTheme);
 __def(__exports, "UiStyleModel", () => UiStyleModel);
 };
-__defs[72] = function (__exports) {
+__defs[74] = function (__exports) {
 'use strict';
 // ui-theme.ts
 
@@ -23084,7 +24294,7 @@ function createUiTheme(d             ) {
 
 __def(__exports, "createUiTheme", () => createUiTheme);
 };
-__defs[73] = function (__exports) {
+__defs[75] = function (__exports) {
 'use strict';
 // ui-wire.ts
 
@@ -23100,11 +24310,11 @@ __defs[73] = function (__exports) {
 //     end of editing) and here only to draw the card — never saved. A new game page starts without them.
                                                                                                                                                     
                                                    
-const { createUiCard } = __require(69);
-const { withLooks } = __require(68);
-const { createUiScreens } = __require(70);
-const { UiStyleModel, validLook, validTheme } = __require(71);
-const { createUiTheme } = __require(72);
+const { createUiCard } = __require(71);
+const { withLooks } = __require(70);
+const { createUiScreens } = __require(72);
+const { UiStyleModel, validLook, validTheme } = __require(73);
+const { createUiTheme } = __require(74);
                                                    
 
                              
@@ -23299,7 +24509,7 @@ function createUiWire(d            ) {
 
 __def(__exports, "createUiWire", () => createUiWire);
 };
-__defs[74] = function (__exports) {
+__defs[76] = function (__exports) {
 'use strict';
 // sheet-fold.ts
 
@@ -23376,7 +24586,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[75] = function (__exports) {
+__defs[77] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -23429,22 +24639,23 @@ const { createPalette } = __require(55);
 const { fitPicture } = __require(56);
 const { PlacementModel } = __require(34);
 const { UndoStack, poseChange, sharedMotion } = __require(57);
+const { createAiHands } = __require(59);
 const { copyKey, groupLayerMoves, groupLayerPossible, sameKind } = __require(46);
 const { displayName, forgetNames, noteItems, useGivenNames, useNameLang } = __require(14);
 const { keyOf, tipText } = __require(47);
-const { installTooltips } = __require(58);
-const { createShortcutSheet } = __require(59);
-const { createContextMenu } = __require(60);
-const { Levels, worldOf } = __require(61);
-const { checkNoteId } = __require(62);
-const { createLevelSwitch, makeRows } = __require(63);
-const { contextRows } = __require(64);
-const { bigChanges, createSafeSave } = __require(65);
-const { createUnsavedGuard, lostBy, playAsks } = __require(66);
-const { createLayerSwitch } = __require(67);
-const { uiAsPlacement, uiEntries, withUi } = __require(68);
-const { createUiWire } = __require(73);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(74);
+const { installTooltips } = __require(60);
+const { createShortcutSheet } = __require(61);
+const { createContextMenu } = __require(62);
+const { Levels, worldOf } = __require(63);
+const { checkNoteId } = __require(64);
+const { createLevelSwitch, makeRows } = __require(65);
+const { contextRows } = __require(66);
+const { bigChanges, createSafeSave } = __require(67);
+const { createUnsavedGuard, lostBy, playAsks } = __require(68);
+const { createLayerSwitch } = __require(69);
+const { uiAsPlacement, uiEntries, withUi } = __require(70);
+const { createUiWire } = __require(75);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(76);
 
                                                                         
 
@@ -25120,14 +26331,15 @@ function start(host            ) {
    * found senseless. '' = back to the game's own name. Only a named world object (an unnamed one is "✦ Ask AI to name
    * it…": its name must first exist in the code).
    */
-  function renameObject(key        , name        ) {
+  function renameObject(key        , name        )          {
     const it = items.find((i) => i.key === key);
-    if (!it || it.unstable || editLayer !== 'world') return;
+    if (!it || it.unstable || editLayer !== 'world') return false;
     const v = name.trim() === it.label ? '' : name.trim();
     const from = worldModel.rename(key, v || null);
-    if (!undo.push({ changes: [{ kind: 'name', key, from, to: v || null }] })) return;
+    if (!undo.push({ changes: [{ kind: 'name', key, from, to: v || null }] })) return false;
     renderAll();
     keepSoon();
+    return true;
   }
   /** F2 / the menu's Rename: the one picked, named world object's card name becomes a field. */
   function startRename() {
@@ -25358,6 +26570,8 @@ function start(host            ) {
   /** Undo / Redo tooltips name what they would change: "Undo: move house". */
   function describe(e                  )         {
     if (!e) return '';
+    // The AI's change (ai-hands.ts): its own words, with its name — "Undo: Claude took “Row” off Blue pillar".
+    if (e.ai) return e.ai;
     const name = (k        ) => {
       const it = items.find((i) => i.key === k);
       return it ? displayName(it, t) : k;
@@ -25464,8 +26678,8 @@ function start(host            ) {
     return reqs.map((r) => r.key);
   }
 
-  function removeSelection() {
-    const keys = targets();
+  /** Delete `keys` (the selection; the AI's object.delete names one). */
+  function removeSelection(keys = targets()) {
     if (!keys.length || !editing || editLayer === 'ui') return;
     for (const k of keys) model.remove(k);
     undo.push({ changes: keys.map((k) => ({ kind: 'remove', key: k })) });
@@ -28264,6 +29478,124 @@ function start(host            ) {
     aiLook = true;
     if (page === 'settings') renderAll();
   };
+  // ----- the AI's hands (studio-ai-hands, 2026-10-24; ai-hands.ts, CONTRACT.md §3.6) -----
+  // `studio.mjs <game> --do …` from the AI: the editor's own edits, on the object the AI names, ONE ⌘Z for the job, and
+  // a line saying the AI did it. WHY (a request, 2026-10-24): the AI asked the person to click through the editor for it.
+  const aiHands = createAiHands({
+    t,
+    // The new page's own list (a level opened, a reload clears `items`): ops never land on the list of the page before.
+    ready: () => bridgeAlive && editing && !swapping && (editLayer === 'world' ? items.length > 0 : worldItems.length > 0),
+    playing: () => playing,
+    stopPlay: async () => {
+      if (playing) await togglePlay();
+    },
+    toWorld: () => {
+      if (editLayers && editLayer !== 'world') setEditLayer('world');
+    },
+    dim: () => worldDim,
+    item: (k) => worldItems.find((i) => i.key === k),
+    label: (k) => {
+      const it = worldItems.find((i) => i.key === k);
+      return it ? displayName(it, t) : k;
+    },
+    keys: () => worldItems.map((i) => i.key),
+    pose: (k) => worldModel.pose(k),
+    // As the card's numbers do (setPose above), on the place itself: the timeline open or not, the AI moves where it stands.
+    setPose: (k, pose) => {
+      const from = worldModel.pose(k);
+      if (from && undo.push(poseChange(k, from, pose))) applyPose(k, pose);
+    },
+    rename: (k, to) => renameObject(k, to),
+    duplicate: async (k) => {
+      const [copy] = copySelection([k]);
+      if (!copy) return null;
+      // The copy is the game page's to make (placement/added, which also pushes its undo change into the AI's group).
+      for (const end = Date.now() + 5000; pendingCopies.has(copy) && Date.now() < end;) await new Promise((r) => setTimeout(r, 50));
+      return worldModel.isCopy(copy) ? copy : null;
+    },
+    remove: (k) => removeSelection([k]),
+    ground: (k) => new Promise         ((resolve) => {
+      if (!canDrop) return resolve(false);
+      const off = ctx.on('studio:placement/moved', (m) => {
+        if (m.key !== k || !m.end) return;
+        off();
+        clearTimeout(timer);
+        resolve(true);
+      });
+      const timer = window.setTimeout(() => (off(), resolve(false)), 3000);
+      send({ type: 'studio:placement/step', key: k, op: 'drop', hold: false });
+    }),
+    motionOf: (k) => timeline.motionOf(k),
+    rawClips: (k) => worldModel.motion.get(k)?.clips ?? [],
+    lib: (n) => motionLibrary.get(n),
+    libNames: () => motionLibrary.list().map((m) => m.name),
+    usage: (n) => timeline.usage(n).length,
+    attach: (k, n) => timeline.attach(k, n),
+    detach: (k, c) => timeline.detach(k, c),
+    deleteLib: (n) => timeline.deleteLib(n),
+    renameLib: (a, b) => timeline.renameLib(a, b),
+    make: (k, m, o) => timeline.handsMake(k, m, o),
+    clipSet: (k, c, o) => timeline.handsClipSet(k, c, o),
+    libSet: (n, o) => timeline.handsLibSet(n, o),
+    levels: {
+      active: () => levels.active,
+      current: () => levels.current,
+      ids: () => levels.list.map((e) => e.id),
+      label: (id) => levels.labelOf(id),
+      add: async (kind) => {
+        const was = levels.active ? levels.current : '';
+        await addLevel(kind);
+        return levels.active && levels.current !== was ? levels.current : null;
+      },
+      go: async (id) => {
+        await goLevel(id);
+        return levels.current === id;
+      },
+      rename: (id, to) => {
+        const ok = levels.rename(id, to);
+        levelsChanged(ok);
+        return ok;
+      },
+      // Not levelsChanged (that ends "just made"): the AI's "Duplicate as Night cove" stays one ⌘Z away, name and all.
+      nameNew: (id, to) => {
+        const ok = levels.rename(id, to);
+        if (ok && levelMade?.id === id) {
+          levelMade.name = levels.labelOf(id);
+          renderLevelMade();
+        }
+        renderAll();
+        keepSoon();
+        return ok;
+      },
+    },
+    save: () => handOff(),
+    // After the answer is on its way (the CLI waits for it): the editor page itself, or the game behind the old picture.
+    reload: (whole) => void window.setTimeout(() => (whole ? location.reload() : void softReload('ai')), whole ? 800 : 0),
+    list: () => ({
+      from: 'the editor',
+      level: levels.active ? { id: levels.current, name: levels.labelOf(levels.current) } : undefined,
+      objects: worldItems.map((i) => {
+        const ms = (timeline.motionOf(i.key)?.clips ?? []).map((c) => c.name);
+        return { key: i.key, name: displayName(i, t), ...(ms.length ? { motions: ms } : {}), ...(i.unstable ? { unstable: true } : {}), ...(i.backdrop || i.held === 'ground' ? { ground: true } : {}) };
+      }),
+      motions: motionLibrary.list().map((m) => ({ name: m.name, len: m.len, repeat: m.repeat ?? 'once', on: timeline.usage(m.name).map((u) => u.key) })),
+      ...(levels.active ? { levels: levels.list.map((e) => ({ id: e.id, name: levels.labelOf(e.id) })) } : {}),
+    }),
+    undoBegin: () => undo.begin(),
+    undoEnd: (words) => {
+      const e = undo.end(words);
+      renderButtons();
+      return !!e;
+    },
+    done: (words, undoable) => {
+      renderAll();
+      keepSoon();
+      // Who changed it, and the way back, in one line where the person's eyes are (the ask bar's notice).
+      const line = !undoable ? words : phone() ? t('hands.undoTouch', { text: words }) : t('hands.undo', { text: words, key: keyOf('undo', isMac()) });
+      showToast(line, 8000);
+    },
+  });
+
   const api                 = {
     version: 1,
     part: (name) => parts[name],
@@ -28411,6 +29743,8 @@ function start(host            ) {
       }, () => undefined);
       loadGame();
       void pollStatus();
+      // The AI's hands (ai-hands.ts): jobs from `studio.mjs --do` from now on (they wait for the game to be listed).
+      host.hands?.((job) => aiHands.run(job));
     } catch (e) {
       showToast((e         ).message);
     }
@@ -28419,7 +29753,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[76] = function (__exports) {
+__defs[78] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -28555,6 +29889,27 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
         return { ok: false, error: (e         ).message };
       }
     },
+    // The AI's hands (src/server/hands-relay.mjs): one event stream; each `job` is done by the shell and its answer
+    // posted back. EventSource comes back by itself after a drop (the server sends `retry`), and its events reach a
+    // hidden tab at once — the status poll does not run there (main.ts pollStatus).
+    hands(onJob) {
+      if (typeof EventSource === 'undefined') return () => undefined;
+      const es = new EventSource(base + 'hands', { withCredentials: true });
+      es.addEventListener('job', (ev) => {
+        let job                                                       ;
+        try {
+          job = JSON.parse((ev                ).data);
+        } catch {
+          return;
+        }
+        if (!job || typeof job.id !== 'string') return;
+        void onJob(job).then(
+          (r) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify(r), 'application/json'),
+          (e) => call('POST', `hands/${encodeURIComponent(job.id)}`, JSON.stringify({ results: [{ do: '?', ok: false, error: String((e         )?.message || e) }] }), 'application/json'),
+        ).catch(() => undefined);
+      });
+      return () => es.close();
+    },
     async loadUi() {
       return (await call                    ('GET', 'ui').catch(() => ({ value: null }))).value ?? null;
     },
@@ -28598,19 +29953,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[77] = function (__exports) {
+__defs[79] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(75);
-const { createLocalHost } = __require(76);
+const { start } = __require(77);
+const { createLocalHost } = __require(78);
 
 start(createLocalHost());
 
 
 };
-__require(77);
+__require(79);
 })();
