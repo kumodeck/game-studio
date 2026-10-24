@@ -395,6 +395,36 @@
 
       canvas() { const r = theRenderer(); return r ? r.canvas : null; },
 
+      // The layers left out above (`studio = false`: a HUD layer, a background) as boxes on the page (CSS px). The editor
+      // draws a faint dotted frame "Not selectable yet" there on its UI layer (studio-canvas-ui stage 2, 2026-10-24), and
+      // the person's ✦ asks the AI to make it selectable. A container's parts one by one (a HUD layer spans the screen);
+      // a background is dropped by the editor (too big to be a UI part).
+      leftOut() {
+        const s = stage();
+        if (!s || !theRenderer()) return [];
+        const out = [];
+        const push = (o) => {
+          if (!o || o.destroyed || !o.visible || typeof o.getLocalBounds !== 'function') return;
+          const b = o.getLocalBounds();
+          if (!(b.maxX - b.minX > 0 && b.maxY - b.minY > 0)) return;
+          const m = mul(mul(css(), view), worldOf(o));
+          const pts = [[b.minX, b.minY], [b.maxX, b.minY], [b.minX, b.maxY], [b.maxX, b.maxY]]
+            .map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+          const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+          const x = Math.min(...xs), y = Math.min(...ys);
+          out.push({ x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y });
+        };
+        const walk = (c) => c.children.forEach((o) => {
+          if (o.destroyed || !o.visible) return;
+          if (o.studio === false) {
+            if (o.children && o.children.length) o.children.forEach(push);
+            else push(o);
+          } else if (o.children && o.children.length) walk(o);
+        });
+        walk(s);
+        return out.slice(0, 50);
+      },
+
       // Copy and delete (optional; without them the studio shows stand-ins).
       // clone: a new display object of the same class drawing the same thing,
       // inserted right after the original (drawn just in front of it), listed

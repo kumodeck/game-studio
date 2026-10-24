@@ -328,6 +328,37 @@
       },
 
       canvas() { const g = findGame(); return g ? g.canvas : null; },
+
+      // The UI left out above (scrollFactor 0 = fixed to the screen): its boxes on the page (CSS px). The editor draws a
+      // faint dotted frame "Not selectable yet" there on its UI layer (studio-canvas-ui stage 2, 2026-10-24), and the
+      // person's ✦ asks the AI to make it selectable. A container's parts one by one (a HUD in one container spans the
+      // screen); a full-screen sky fixed to the screen is dropped by the editor (too big to be a UI part).
+      leftOut() {
+        const game = findGame();
+        if (!game) return [];
+        const out = [];
+        const push = (o, scene, via) => {
+          if (!o || !o.visible || typeof o.getBounds !== 'function') return;
+          const b = o.getBounds();
+          if (!(b.width > 0 && b.height > 0)) return;
+          const m = worldToScreen(via, scene);
+          const pts = [[b.x, b.y], [b.right, b.y], [b.x, b.bottom], [b.right, b.bottom]]
+            .map(([x, y]) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]);
+          const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+          const x = Math.min(...xs), y = Math.min(...ys);
+          out.push({ x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y });
+        };
+        game.scene.getScenes(true).forEach((scene) => {
+          scene.children.list.forEach((o) => {
+            if (!o || !o.visible || !(o.scrollFactorX === 0 && o.scrollFactorY === 0)) return;
+            if (/Particle|Emitter|Light|Zone/.test(o.type || '')) return;
+            // A container's children are drawn with the container's scroll factor (its matrix: `via`).
+            if (o.list && o.list.length) o.list.forEach((c) => push(c, scene, o));
+            else push(o, scene, o);
+          });
+        });
+        return out.slice(0, 50);
+      },
     };
   });
 })();

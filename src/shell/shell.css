@@ -623,6 +623,11 @@ span.foot-row { display: flex; align-items: center; min-height: var(--h); }
   color: var(--you-text); background: var(--you-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you) 45%, transparent); max-width: min(30%, 160px); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; }
 /* A button's topic (studio-code-keepout: "Keep-out areas"): violet, what the words are turned into — a rule (the AI's). */
 .ask-chip.topic { flex: none; color: var(--ai-text); background: var(--ai-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ai) 45%, transparent); }
+/* A place on the game's screen (studio-canvas-ui stage 2: ✦'s "Here (bottom left)"): the small picture of the place pressed
+   (240×160, 3:2) before the words, so the chip shows what "here" is. */
+.ask-chip.with-pic { flex: none; padding-left: 3px; }
+.ask-chip-pic { display: inline-block; width: 21px; height: 14px; margin: 3px 5px 0 0; vertical-align: top; border-radius: 3px; object-fit: cover;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--you) 45%, transparent); }
 .ask-input { flex: 1; min-width: 0; height: 100%; border: 0; background: none; color: var(--text); font: inherit; outline: none; padding: 0; }
 .ask-input::placeholder { color: var(--text-2); }
 /* A short notice in the field's place (main.ts showToast; the second design review's ⑧, 2026-10-19): one line in the
@@ -1578,6 +1583,9 @@ button.shelf-file.to:hover { background: var(--raise-2); }
   color: var(--ai-text); font: inherit; font-weight: 600; cursor: pointer; }
 .mn-rule .icon { width: 12px; height: 12px; }
 .mn-rule:hover { background: var(--ai-soft); }
+/* The UI list with nothing selectable yet (studio-canvas-ui stage 2): one quiet line, no ✦ (that is in the line above the
+   ask field, the one place the why is said). */
+.list-empty { list-style: none; padding: 6px 10px; font-size: var(--fs-s); }
 /* The Save, ringed in its own orange while the line speaks of a change not saved (main.ts data-glow): a steady ring, and one
    slow breath as it starts — not a pulse that never stops (the eye goes there once; then the ring is enough). */
 .top-actions > button.top-save[data-glow="motion"] { box-shadow: 0 0 0 3px var(--you-soft), 0 0 14px color-mix(in srgb, var(--you) 55%, transparent); }

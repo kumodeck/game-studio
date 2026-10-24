@@ -9,3 +9,4 @@ example's plain drawing (the test compares them).
 ## Contents
 
 - game.js - the example's game.js with drawHud() rewritten through codeUi() (the test copies the example folder, then this file over its game.js)
+- screens/ - a one-canvas game with two screens of canvas UI ('play', 'over') for the stage 2 screen test (studio-canvas-ui-2, 2026-10-24)

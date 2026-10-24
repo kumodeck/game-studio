@@ -107,6 +107,7 @@ import { createUnsavedGuard, lostBy, playAsks, type GuardOp } from './unsaved-gu
 import { createLayerSwitch } from './layer-switch.ts';
 import { uiAsPlacement, uiEntries, withUi } from './ui-layer.ts';
 import { createUiWire } from './ui-wire.ts';
+import { createUiMissing } from './ui-missing.ts';
 import { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } from './sheet-fold.ts';
 
 type Phase = 'loading' | 'waiting' | 'no-adapter' | 'ready' | 'playing';
@@ -298,6 +299,15 @@ export function start(host: StudioHost) {
     toRule: host.offline ? undefined : () => timeline.toRuleHere(),
     pick: (k) => selectObject(k, true),
   });
+  // studio-canvas-ui stage 2 (2026-10-24; ui-missing.ts): a press on the game's UI that cannot be selected yet — the one
+  // line over the ask field "This UI can't be selected yet · ✦ Ask Claude to make this UI editable", the ✦'s draft and
+  // its chip (the place pressed), and the request's `intent: "ui-code"`. The UI layer's only.
+  const uiMissing = createUiMissing({
+    t: (k, v) => t(k, v),
+    aiVars: () => aiVars(),
+    draft: host.offline ? undefined : (text) => focusAsk(text),
+    cleared: () => send({ type: 'studio:ui/missing-clear' }),
+  });
   let noteReady = false;
   // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
   // timeline plate at the foot of the game, the path in 3D, auto key. The world's only, 3D, while editing the Scene.
@@ -414,6 +424,13 @@ export function start(host: StudioHost) {
     ruleCompare.show = on;
     compareChanged();
   }
+  /** The ✦ of "This UI can't be selected yet" is what the box's words are about: on the UI layer, nothing picked. */
+  function uiAskNow() {
+    if (editLayer !== 'ui' || selected || group.length || libraryShown()) return null;
+    return uiMissing.chip();
+  }
+  /** The field's one placeholder ("Ask Claude…"). */
+  const askPh = () => t('ask.game', host.offline ? {} : aiVars());
   /** ✦ Turn into a rule on the card: several hand-placed world objects, none of them a rule's own already. */
   function toRuleFor(keys: string[]): (() => void) | null {
     if (host.offline || editLayer !== 'world' || keys.length < 2) return null;
@@ -1046,7 +1063,7 @@ export function start(host: StudioHost) {
   // reply floats over the game's top and the presence is a dot in the field. renderSheet says which tab is on.
   const sheetTabs = h('div', { class: 'sheet-tabs', role: 'tablist', dataset: { part: 'sheet-tabs' }, hidden: true });
   // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, presenceRow, bar);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
@@ -1455,6 +1472,8 @@ export function start(host: StudioHost) {
   const placementPanel = createPlacementPanel({
     t,
     uiHead: () => uiWire.head(),
+    // studio-canvas-ui stage 2: the UI layer with nothing selectable yet (the game's UI is in its picture).
+    emptyNote: () => (editLayer === 'ui' && editLayers?.includes('ui') ? t('uiMissing.empty') : null),
     uiLook: (k) => uiWire.look(k),
     uiFoot: () => uiWire.foot(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
@@ -1529,6 +1548,12 @@ export function start(host: StudioHost) {
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
       const toRule = toRuleNow(keys);
       if (toRule) toRuleAsk = null;
+      // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): the place pressed, the frames, the picture.
+      const ui = uiAskNow() ? uiMissing.ask() : null;
+      if (ui) {
+        uiMissing.drop();
+        return askAi({ kind: 'ask', text, layer: 'ui', intent: 'ui-code', pressed: ui.pressed, found: ui.found, ...(ui.shot ? { shot: ui.shot } : {}) });
+      }
       return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code' as const } : requestPlaces()) });
     },
     answering: () => answering(),
@@ -1543,6 +1568,9 @@ export function start(host: StudioHost) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now()!.name] : []),
     // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
     askTopic: () => {
+      // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
+      const ui = uiAskNow();
+      if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
       // ✦ Write into the rule: "Street lamps (rule)" "Sideways · All the same 1 m" (studio-writeback).
       const rk = libraryShown() ? null : toKnobAskNow();
       const ra = rk ? codePlaces.ruleAsk(rk.id, rk.way) : null;
@@ -3368,6 +3396,8 @@ export function start(host: StudioHost) {
   function useLayer(l: EditLayer) {
     // A button's look shown on the UI goes back to normal when the UI is left.
     if (l !== 'ui') uiWire.picked(null);
+    // The line and the ✦'s place are the UI layer's (ui-missing.ts).
+    if (l !== 'ui') uiMissing.drop();
     editLayer = l;
     model = l === 'ui' ? uiModel : worldModel;
     items = l === 'ui' ? uiItems : worldItems;
@@ -3388,6 +3418,9 @@ export function start(host: StudioHost) {
   function selectObject(key: string | null, focus = false) {
     selected = key;
     group = key ? [key] : [];
+    // A pick: the words are about it now, not about the place ✦ was pressed on, and the line about that place goes
+    // (ui-missing.ts: "the next action").
+    if (key) (uiMissing.drop(), uiMissing.hide(true));
     // The card first, then the selection: "bring into view" must already know what the card covers.
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
@@ -3496,6 +3529,11 @@ export function start(host: StudioHost) {
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
+    // studio-canvas-ui stage 2: the UI seen but not selectable yet — the frames' places, a press beside every UI box.
+    if (uiMissing.handle(m)) {
+      if (m.type === 'studio:ui/missing' && m.at) renderPresence();
+      return;
+    }
     if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
@@ -4796,6 +4834,11 @@ export function start(host: StudioHost) {
     }
     // "+ Draw a box" on (studio-code-keepout): Esc stops it first (the pick stays).
     if (!mod && k === 'escape' && keepOut.stopDraw()) return true;
+    // "This UI can't be selected yet" (studio-canvas-ui stage 2): Esc takes the line and the cross away first.
+    if (!mod && k === 'escape' && uiMissing.shown()) {
+      uiMissing.hide(true);
+      return true;
+    }
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
     if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
@@ -5023,6 +5066,10 @@ export function start(host: StudioHost) {
   window.addEventListener('keydown', (e) => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    // "This UI can't be selected yet" (studio-canvas-ui stage 2) goes with Esc wherever the focus is: a press in the game
+    // leaves the focus where it was (the ask box after a request, the editor's own pointer handling keeps it), and the
+    // line said Esc would take it away. The field's own Esc (it lets go of the focus) still happens.
+    if (e.key === 'Escape' && uiMissing.shown()) uiMissing.hide(true);
     if (typing && !(e.ctrlKey || e.metaKey)) return;
     // Typing in a field (the ask box, ⌘K's search, a number on the card, a rename): the field keeps ⌘Z, ⌘A, ⌘C, ⌘V,
     // ⌘X, ⌘Y and Delete for its own text (basics pass, 2026-10-18 — ⌘A used to select every object instead of the
@@ -5201,6 +5248,8 @@ export function start(host: StudioHost) {
    */
   function renderMotionNote() {
     if (!noteReady) return;
+    // The UI layer's line about UI not selectable yet (ui-missing.ts): only while the UI is edited.
+    uiMissing.render(editing && !playing && editLayer === 'ui');
     const on = editing && !playing && editLayer === 'world' && tool === 'placement' && page === 'tool';
     const glow = motionNote.render(on ? noteOf(timeline.noteIn()) : null);
     for (const b of saveBtns) {
@@ -5496,6 +5545,7 @@ export function start(host: StudioHost) {
       codes: () => uiWire.codes(),
       clash: () => uiWire.clash(),
       resetCodes: () => uiWire.resetCodes(),
+      found: () => uiMissing.found(),
       pose: (k) => uiModel.pose(k),
       setPose: (k, pose) => {
         const from = uiModel.pose(k);

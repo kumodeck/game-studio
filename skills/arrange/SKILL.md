@@ -121,8 +121,11 @@ marks (§5) go into that same file.
   `drawImage` over the game — often in a second 2D canvas on top of a three.js one, and no `data-studio-key`): make it
   editable the first time you look at the game, **without asking** — all of it at once — and say so in one line in
   the game's words ("I made the score, the health bar and the JUMP button movable in the editor; they look the same").
-  How: "UI drawn in the canvas" (§4). Decided on 2026-10-24: it is a rewrite of the drawing, but its
-  picture stays the same to the pixel, and a UI the person cannot pick is a dead end in the editor.
+  How: "UI drawn in the canvas" (§4). Decided on 2026-10-24: do not ask — it is a rewrite of
+  the drawing, but its picture stays the same to the pixel, and a UI the person cannot pick is a dead end in the
+  editor. The one line is a report, never a how-to: no "press Save", no "open the UI layer", no editor steps.
+  Until you do, the editor shows that UI with faint dotted frames "Not selectable yet" (`--do list` → `uiFound`: where
+  it sees UI it cannot select — your checklist of what to deliver).
 - `adapters/` is in the same folder as this `SKILL.md`. Each example is short and commented; you copy one and fit it
   to the game. Details in [`references/adapters.md`](references/adapters.md).
 - If the game is built by a bundler, open the folder the bundler writes (`npm run build`; started on the project
@@ -347,7 +350,7 @@ node <this skill's folder>/bin/studio.mjs <game folder> --requests      # one JS
 | `kind` | What the user wants | What you do |
 |---|---|---|
 | `saved` | They pressed **Save** (`files`: `placement.json`, `library.json` or `.studio/data/<id>.json`) | §4, §6 or §8 |
-| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). `intent: "to-code"` = they pressed **✦ Turn into a rule** on these hand-placed objects or this motion (its points in `motions[].keys`): "Turn into a rule" in §4. `intent: "to-knob"` = they pressed **✦ Write into the rule** on a rule's offset: `places[0]` is the layout with `way`, its `offsets` and each object's `line` / `rank` / `offset` — "Code layouts" step 8. A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
+| `ask` | `text` = their words about `objects` (key, name, the pose in the editor at that moment; it may not be saved yet, see `unsaved`). **No `objects` (or an empty list) = about the whole game** ("make it night", "add enemies"): they typed it with nothing picked. 3D: `view` = where their camera stood (`eye`) and looked (`target`), world units. Each object may have `files` = the asset files it is drawn with (its model, its picture). `assets` = files they picked in the Library (paths in the game folder): "this" in their words means those files (and the `objects`, if any). `motions` = motions they picked in the Library (`name`, `len`, `on`: the objects it is on and `when`): "this motion" — put it on the object yourself with `--do motion.attach … --when …` (§3.4); code (`playMotion(key, name)`) only for a moment the game decides (§4 Motion). `intent: "to-code"` = they pressed **✦ Turn into a rule** on these hand-placed objects or this motion (its points in `motions[].keys`): "Turn into a rule" in §4. `intent: "to-knob"` = they pressed **✦ Write into the rule** on a rule's offset: `places[0]` is the layout with `way`, its `offsets` and each object's `line` / `rank` / `offset` — "Code layouts" step 8. `intent: "ui-code"` = they pressed **✦ Ask … to make this UI editable** on a part of the game's UI the editor cannot select yet: `pressed` = where (game page CSS px), `found` = the dotted frames the editor showed (`box` [x, y, w, h], `from` `hud-canvas` / `left-out`), `shot` = a 240×160 picture round the place (**open it**) — "UI drawn in the canvas" in §4, **all of the game's canvas UI at once**. A file made with "Make with AI" has a line in `.studio/generated.json` (its kind and the words it was made from: "a coin pickup chime" tells you where the sound belongs) | Do what they asked in the game code. Find each object by its key (§5), and by its `files` when the key alone is not enough ("make this enemy the boss": that model is the boss). Put new things where `view` sees them (between `eye` and a little past `target`), unless they said where. **"Add this to the scene" with `assets`**: add a new object to the game made from each file (load the model / picture, give it a name mark, §5), put it where `view` looks, and say what you named it. If the words are unclear or it is a big change, ask first in your own window |
 | `name` | Give these `objects` (no name, `path:` keys) a name. Each `label` is the name the editor shows for it, guessed from its shape, colour and place ("Black pillar by the road (left, 3rd)"): the words the user knows it by | Add a mark to each in the code (§5), choosing names from what they are (the `label` is a hint, not a name to copy: `roadside-pillar`, not `black-pillar-left-3rd`); say which names you chose |
 | `next-step` | `step` = `fit` / `look` / `tool` (in this game, with their words in `text`) or a KUMODeck step | `fit`, `tool`: §8. `look`: §9. KUMODeck steps: §7 (`.studio/next-step.md`) |
 | `answer` | Their answer to your `asking` question, given in the editor: `text` = the answer (one of your `--choice` words, or their own), `to` = the request the question was about, `question` = your question; `objects` = what it was `--about` | Go on with that answer, as if they had said it in your window: `working`, then `done` for **this** request id (`done --request <answer id>` also clears the request the question was about). If they answered in your window first, the editor's answer is the same answer: mark it `done` with no change |
@@ -521,7 +524,9 @@ and `hand` are refused (they need the game's numbers): change the number in the 
 
 | Op | Fields | Does |
 |---|---|---|
-| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)"), `p` (where it stands in the editor now, saved or not) and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`; a motion of points with its `keys.p`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`, `from`, `offsets` and `objects`: each object's `line` / `rank` / `offset`); the levels; the UI (`ui`: every element of the UI layer — HTML ones `html: true`, canvas ones with `code`, `kind`, `box` on screen, `codeAt` (the code's at() and scale now) and `write` (the `at` and `scale` to write on Save), each with `p` / `s` / `set` as the editor has them). Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
+| `list` | — | `studio: list {…}`: every object of the level on screen with its key, the name the person sees ("Blue pillar by the road (left, 3rd)"), `p` (where it stands in the editor now, saved or not) and its motions; the Library's motions and what they are on (a code motion with its `code` and `knobs`; a motion of points with its `keys.p`); the code layouts (`places`: id, name, its objects' keys, `knobs`, keep-out areas, `skipped`, `from`, `offsets` and `objects`: each object's `line` / `rank` / `offset`); the levels; the UI (`ui`: every element of the UI layer — HTML ones `html: true`, canvas ones with `code`, `kind`, `box` on screen, `codeAt` (the code's at() and scale now) and `write` (the `at` and `scale` to write on Save), each with `p` / `s` / `set` as the editor has them; a canvas one on
+another screen has `screen`); `uiFound`: the game's UI the editor sees but cannot select yet (`box` [x, y, w, h] game
+page CSS px, `from` `hud-canvas` / `left-out` — the dotted frames; "UI drawn in the canvas", §4). Use it to find what "the blue pillar's old motion" or "the lamps' gap" means |
 | `motion.make` | `name`, `points` or `keys`, `len` (s, default 2), `repeat` (once / loop / pingpong), `ease`, `key`, `when`, `until`, `replace` | A Library motion — on the timeline, played by the loader — and, with `key`, put on that object. `points` = positions it goes through, offsets from where it stands, spread evenly over `len` (linear between them); `keys` = the file's own keys (`p` / `r` / `s`) for turns and sizes. A taken name becomes "Spiral 2" unless `replace: true` (the same motion with new keys) |
 | `motion.attach` | `key`, `name`, `when`, `until` | Put a Library motion on an object |
 | `motion.detach` | `key`, `name` (or `all: true`) | Take a motion off that object (the "Remove from this object" of its card); the motion stays in the Library |
@@ -814,11 +819,16 @@ loader's `codeUi()`; the editor then lists it in the UI layer with the HTML UI (
 the same frame, strip and card — the person sees no difference between the two (do not tell them "canvas" or "HTML").
 
 **Deliver it** (the first time you look at a game with such a UI, without asking — §1 — or when asked "make this UI
-editable"):
+editable": an `ask` with `intent: "ui-code"`, from the ✦ on the line "This UI can't be selected yet"):
 
 1. **Find every one** the game draws fixed on the screen: `fillText` / `fillRect` / `arc` / `drawImage` of a score, a
    bar, a button, a minimap; Phaser's `setScrollFactor(0)` texts, a Pixi HUD container (those engines: later — tell
-   the person in one line). **All of them in one go**, never one per request.
+   the person in one line). **All of them in one go**, never one per request — a `ui-code` ask names ONE place the
+   person pressed (`pressed`, its picture `shot`), but they mean "this UI": deliver that one and every other part not
+   delivered yet. Your clues: `found` in the ask / `uiFound` in `--do list` (the dotted frames: each is a part, or a few
+   parts close together, of a 2D canvas over the game's or of what the engine's adapter leaves out as UI), the picture,
+   and the code. When you are done, `--do list` has no `uiFound` left (a frame left over = a part you missed, or a
+   `size` that does not cover its drawing).
 2. **Shoot the game before** (`--shot`, §3.3) and keep `.studio/shot/game.png`.
 3. Rewrite the drawing, one `codeUi()` per part. Import it from the loader (copy `bin/studio-placement.js` in first,
    Way 1, when the game does not have it):
@@ -862,12 +872,20 @@ editable"):
      pressed as above).
    - The game draws from `requestAnimationFrame` (the editor draws ONE frame of it, with time stopped, after each
      change). A game that does not: `window.studio?.redraw?.(() => drawHud())` once.
+   - **Screens**: a part shown on one screen only (the title, the game-over panel, a pause menu) gets `screen: 'title'`
+     / `'play'` / `'over'` / `'pause'` (the same ids as HTML's `data-studio-screen`: a page with both is one screen
+     each). With 2 or more screens the editor's UI list offers them ("Playing ⌄ 1 / 2"); the person picks "Game over"
+     and the game must draw that screen's UI — and change nothing else (not the score, not the time, not the game's own
+     state). So the drawing asks the editor first: `const screen = globalThis.studio?.screen?.() || state.screen;` then
+     draws the parts of `screen`. Outside the editor `studio.screen()` is absent / null: the game decides as before.
 4. **The picture must not change by one pixel**: shoot again (`--shot`) and compare with step 2. Different → fix the
    drawing (a rounding, a missing `* b.s`) and shoot again.
 5. `--do ui.code --id score,hp-bar,jump,minimap` (all of them). The editor checks each box (§3.4); `do failed` → fix and
    send again. Then **one line** in the game's words, no editor steps: "I made the score, the health bar and the JUMP
    button movable in the editor (they look the same)". Nothing about pressing Save, picking or dragging: the editor
-   says that itself, and the person already knows Save is how they hand it to you.
+   says that itself, and the person already knows Save is how they hand it to you. For a `ui-code` ask that line is the
+   `--status done` note of that request (§3.1), the same words: "I made the minimap movable in the editor, and the
+   score and the health bar too (they look the same)".
 
 **Leave out** (say it in one line if asked): a name over a character's head and anything else that follows the world
 (it is a scene object, not UI); a part whose place the game changes every frame (a bouncing score: deliver its resting

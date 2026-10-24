@@ -19,7 +19,7 @@
 // Nothing here is the game's code: the editor's values live on the codeUi entries (`live`) while editing; Play in the
 // same page draws them (the person's draft), a reload forgets them, the file (placement.json `ui.<id>` with `code`)
 // keeps them until the AI writes them into the code on Save.
-import type { BridgeToShell, CodeUiInfo, Port2D, Pose, ShellToBridge, UiProps, UiState, UiStyleSet } from '../contract.ts';
+import type { BridgeToShell, CodeUiInfo, Port2D, Pose, ShellToBridge, UiProps, UiScreenInfo, UiState, UiStyleSet } from '../contract.ts';
 import type { Core } from '../core/index.ts';
 
 /** A codeUi entry as the loader keeps it (src/loader/studio-placement.js codeUi). The methods are the game's copy's. */
@@ -27,6 +27,8 @@ interface Entry {
   id: string;
   name: string;
   kind: string;
+  /** The screen it is on (its codeUi `screen`; null = every screen). */
+  screen: string | null;
   at: { from: string; x: number; y: number };
   scale: number;
   look: Record<string, string | number>;
@@ -97,10 +99,18 @@ export interface CodeUi {
   props(key: string): UiProps | null;
   /** A studio:ui/* message about a codeUi key (set / sample / state / props-get / code-check / code-clear); false = not ours. */
   handle(msg: ShellToBridge): boolean;
-  begin(): void;
+  /** Editing starts; `html` = the HTML UI's screen on screen now (the codeUis' screen starts there when it has one). */
+  begin(html?: string | null): void;
   end(): void;
   /** Every editor frame: draw the game once when something changed; the board, the line; the list for the shell. */
   frame(o: { ui: boolean; editing: boolean; inHand: string[] }): void;
+  /**
+   * Stage 2 (2026-10-24): the screens the codeUis are on, in the code's order ([] = none named). The UI list's head
+   * offers them (with the HTML UI's screens: the same id is one screen) when there are 2 or more.
+   */
+  screens(): UiScreenInfo[];
+  /** The screen shown while editing (studio.screen() answers it; the game draws that screen's UI); null = not editing. */
+  screenNow(): string | null;
 }
 
 /** The codeUi side of the UI seat, or null when the game has none (then nothing changes for it). */
@@ -109,8 +119,14 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
   const doc = win.document;
   if (!codeUiEntries(win).length) return null;
   const told = new Set<string>();
-  // The codeUis listed: not an HTML key (said once — to the console and to the AI's `ui.code`).
-  const listed = (): Entry[] => {
+  // Stage 2 (2026-10-24; the plan's decision 13): the screen shown while editing. Choosing one only chooses what the game
+  // draws (studio.screen() answers it); the game's own state (score, time) is untouched, so ▶ Play starts as always.
+  let screen: string | null = null;
+  const screenIds = (): string[] => [...new Set(codeUiEntries(win).map((e) => e.screen).filter((x): x is string => !!x))];
+  /** On the screen shown now: no screen of its own, or that one (before editing / with no screens: every one). */
+  const onScreen = (e: Entry) => !e.screen || screen === null || e.screen === screen;
+  // Every codeUi that is not an HTML key (said once — to the console and to the AI's `ui.code`), on any screen.
+  const all = (): Entry[] => {
     const dom = d.domKeys();
     return codeUiEntries(win).filter((e) => {
       if (!dom.has(e.id)) return true;
@@ -121,6 +137,8 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
       return false;
     });
   };
+  // The codeUis listed: on the screen shown.
+  const listed = (): Entry[] => all().filter(onScreen);
   const byId = (key: string) => listed().find((e) => e.id === key) ?? null;
   let dirty = false;
   let infoDirty = true;
@@ -176,7 +194,7 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
       }));
       return listed().sort((a, b) => tops.get(a.id)![0]! - tops.get(b.id)![0]! || tops.get(a.id)![1]! - tops.get(b.id)![1]!)
         // 'named': the list says `name` (the code's word for it), not the key in words as for an HTML element.
-        .map((e) => ({ key: e.id, label: e.name, kinds: ['ui', e.kind === 'bar' ? 'bar' : e.kind === 'button' ? 'button' : e.kind === 'image' ? 'image' : 'text', 'named'], rotatable: false }));
+        .map((e) => ({ key: e.id, label: e.name, kinds: ['ui', e.kind === 'bar' ? 'bar' : e.kind === 'button' ? 'button' : e.kind === 'image' ? 'image' : 'text', 'named'], rotatable: false, ...(e.screen ? { screen: e.screen } : {}) }));
     },
     get(key) {
       const e = byId(key);
@@ -274,11 +292,12 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
   };
 
   // ---------------------------------------------------------------- the list for the shell (the file's from / at)
-  const info = (): CodeUiInfo[] => listed().map((e) => {
+  // Every screen's (the file's `from` / `at` and the AI's `list` and `ui.code` speak of all of them, shown or not).
+  const info = (): CodeUiInfo[] => all().map((e) => {
     const a = e.atNow();
     const b = e.box();
     const bb = boundsOf(e);
-    return { key: e.id, name: e.name, kind: e.kind, from: a.from, at: a.at, scale: a.scale, code: { ...e.at, scale: e.scale },
+    return { key: e.id, name: e.name, kind: e.kind, ...(e.screen ? { screen: e.screen } : {}), from: a.from, at: a.at, scale: a.scale, code: { ...e.at, scale: e.scale },
       look: Object.keys(e.look), box: [Math.round(bb.x), Math.round(bb.y), Math.round(bb.w), Math.round(bb.h)],
       size: [Math.round(b.w * 10) / 10, Math.round(b.h * 10) / 10], frame: [b.W, b.H, b.k, b.ky] };
   });
@@ -290,11 +309,24 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
 
   // ---------------------------------------------------------------- decision 8: does the picture follow the box?
   const check = (key: string): { key: string; ok: boolean; why?: string; note?: string } => {
-    const all = codeUiEntries(win);
+    const every = codeUiEntries(win);
+    // On another screen: measured on its own screen (shown for the measure, then the one shown before again).
+    const other = all().find((x) => x.id === key && !onScreen(x));
+    if (other) {
+      const was = screen;
+      screen = other.screen;
+      try {
+        return check(key);
+      } finally {
+        screen = was;
+        changed();
+        drawNow();
+      }
+    }
     const e = byId(key);
     if (!e) {
-      if (all.some((x) => x.id === key)) return { key, ok: false, why: `an HTML element has data-studio-key="${key}" too, so the editor lists the HTML one: give codeUi('${key}') another id` };
-      return { key, ok: false, why: `the game has no codeUi('${key}') (it has: ${all.length ? all.map((x) => `'${x.id}'`).join(', ') : 'none'})` };
+      if (every.some((x) => x.id === key)) return { key, ok: false, why: `an HTML element has data-studio-key="${key}" too, so the editor lists the HTML one: give codeUi('${key}') another id` };
+      return { key, ok: false, why: `the game has no codeUi('${key}') (it has: ${every.length ? every.map((x) => `'${x.id}'`).join(', ') : 'none'})` };
     }
     const c = e.canvas();
     let ctx: CanvasRenderingContext2D | null = null;
@@ -428,8 +460,11 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
    * marked while editing, so the editor's layer style hides them on the world (faded with the eye) and the three.js
    * adapter leaves them alone. A codeUi in the world's own canvas (one canvas for everything) is never hidden.
    */
+  // The canvases this marked (a HUD canvas the bridge marked for the UI layer before editing keeps its mark: ui-found.ts).
+  const marked = new Set<HTMLCanvasElement>();
   const markOverlays = (on: boolean) => {
-    for (const c of Array.from(doc.querySelectorAll('canvas[data-studio-ui-layer]'))) c.removeAttribute('data-studio-ui-layer');
+    for (const c of marked) c.removeAttribute('data-studio-ui-layer');
+    marked.clear();
     if (!on) return;
     const all = Array.from(doc.querySelectorAll('canvas'));
     for (const e of listed()) {
@@ -441,7 +476,7 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
         const q = o.getBoundingClientRect();
         return q.width * q.height > 0 && q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top;
       });
-      if (over) c.setAttribute('data-studio-ui-layer', '');
+      if (over && !c.hasAttribute('data-studio-ui-layer')) (c.setAttribute('data-studio-ui-layer', ''), marked.add(c));
     }
   };
 
@@ -492,8 +527,21 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
     line.setAttribute('data-words', words);
   };
 
+  /**
+   * The screen shown when editing starts: the HTML UI's screen on screen when it has one (a page with both is one
+   * screen at a time), else 'play' (the editor holds the game in a run), else the code's first.
+   */
+  const first = (html: string | null): string | null => {
+    const ids = screenIds();
+    if (!ids.length) return null;
+    if (html) return html;
+    return ids.includes('play') ? 'play' : ids[0]!;
+  };
+
   return {
     port,
+    screens: () => screenIds().map((id) => ({ id })),
+    screenNow: () => (editingNow ? screen : null),
     has: (key) => !!byId(key),
     props,
     handle(msg) {
@@ -503,6 +551,15 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
           infoDirty = true;
           d.post({ type: 'studio:ui/code-checked', id: msg.id, results });
           return true;
+        }
+        case 'studio:ui/screen': {
+          // The codeUis' screens (with the HTML UI's: ui-extras.ts shows that one too, so this answers false). Another
+          // screen = another list and another picture (the game draws studio.screen()'s UI).
+          if (!screenIds().length) return false;
+          screen = typeof msg.id === 'string' ? msg.id : first(null);
+          for (const x of codeUiEntries(win)) if (x.live) (x.live.state = null, x.live.sample = null);
+          changed();
+          return false;
         }
         case 'studio:ui/code-clear': {
           const fm = (win as unknown as Record<symbol, unknown>)[FILE];
@@ -542,8 +599,9 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
           return false;
       }
     },
-    begin() {
+    begin(html?: string | null) {
       editingNow = true;
+      screen = first(html ?? null);
       for (const e of listed()) live(e);
       markOverlays(true);
       changed();
@@ -551,6 +609,7 @@ export function createCodeUi(d: CodeUiDeps): CodeUi | null {
     },
     end() {
       editingNow = false;
+      screen = null;
       // The looks shown and the samples were for editing; the moves and the card's changes stay (the draft Play shows).
       for (const e of codeUiEntries(win)) if (e.live) (e.live.state = null, e.live.sample = null);
       paintBoards(false);

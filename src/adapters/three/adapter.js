@@ -556,6 +556,9 @@ export function createThreeAdapter({ scene, renderer, camera }) {
         // A canvas the game draws UI in with codeUi() (studio-canvas-ui, 2026-10-24): the editor's UI layer too
         // (bridge/code-ui.ts), hidden on the world by the editor's layer style like the HTML UI, never here.
         if (uiCanvases.some((c) => sib === c || sib.contains(c))) continue;
+        // A HUD canvas (a 2D canvas over the game's) the bridge marked for the UI layer before editing (studio-canvas-ui
+        // stage 2, 2026-10-24): its UI is seen there with "Not selectable yet" frames; the layer style hides it on the world.
+        if (sib.matches('canvas[data-studio-ui-layer]') || sib.querySelector('canvas[data-studio-ui-layer]')) continue;
         restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
         sib.style.setProperty('visibility', 'hidden', 'important');
       }

@@ -320,8 +320,10 @@ async function handleApi(req, res, u, ctx) {
     // "play" (asked while playing, §3.5): the picture goes to its own file and the record names it, so the request
     // stays a small JSON the AI reads whole and opens the picture only when it wants to.
     let fixedId;
-    if (v.kind === 'play' && v.shot) {
-      fixedId = requestId('play');
+    // An "ask" from ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2) brings the picture round the place
+    // pressed: kept the same way (a small file the record names).
+    if ((v.kind === 'play' || (v.kind === 'ask' && v.intent === 'ui-code')) && v.shot) {
+      fixedId = requestId(v.kind);
       v.shot = await keepPlayShot(ctx.rootReal, fixedId, v.shot);
       if (!v.shot) delete v.shot;
     }
@@ -553,7 +555,7 @@ async function keepPlayShot(rootReal, id, dataUrl) {
   }
   try {
     const dir = path.join(rootReal, '.studio', 'play');
-    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-play-[0-9a-f]{4}\.(jpg|png)$/.test(n)).sort();
+    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-(play|ask)-[0-9a-f]{4}\.(jpg|png)$/.test(n)).sort();
     for (const n of names.slice(0, Math.max(0, names.length - PLAY_SHOTS_KEPT))) await fs.rm(path.join(dir, n), { force: true });
   } catch {
     /* pruning is tidying only */

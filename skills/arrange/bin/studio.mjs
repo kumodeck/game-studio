@@ -1791,7 +1791,9 @@ async function writeStudioNote(rootReal, name, text) {
  * generated.json: what "Make with AI" made, with the words (generated.mjs; only the server writes it, 2026-10-22).
  */
 // chat/<id>.json (pause, 2026-10-22): the talk over a paused game, named by its first `play` request (play-chat.mjs).
-const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
+// play/<id>.jpg: a "play" request's picture, and since studio-canvas-ui stage 2 (2026-10-24) an "ask" one's (✦ Ask … to
+// make this UI editable: the picture round the place pressed).
+const STUDIO_WRITABLE = /^(generated\.json|requests\/[0-9]{8}-[0-9]{6}-[0-9]{3}-[a-z-]{2,10}-[0-9a-f]{4}\.json|play\/[0-9]{8}-[0-9]{6}-[0-9]{3}-(?:play|ask)-[0-9a-f]{4}\.(?:jpg|png)|chat\/[0-9]{8}-[0-9]{6}-[0-9]{3}-play-[0-9a-f]{4}\.json|status\.json|watch\.json|wake\.json|told\.json|server\.json|open\.json|next-step\.md|check\.md|view-check\.md|view-check\/(?:game|editor)\.png|shot\/game(?:-phone)?\.png|ui\/prefs\.json|data\/[a-z0-9][a-z0-9-]{0,39}\.json)$/;
 
 async function ensureRealDir(dir) {
   const check = async () => {
@@ -2260,7 +2262,24 @@ function normalizeRequestInput(input) {
   }
   // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
   // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
-  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob')) out.intent = r.intent;
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob' || r.intent === 'ui-code')) out.intent = r.intent;
+  // 'ui-code' (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Ask Claude to make this UI editable"): where the person
+  // pressed on the game's screen, the dotted frames the editor showed, and the picture round the press. Hints like
+  // `places`: a bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).
+  if (out.intent === 'ui-code') {
+    const xy = (a) => Array.isArray(a) && a.length === 2 && a.every((v) => isFin(v) && Math.abs(v) < 1e6);
+    if (xy(r.pressed)) out.pressed = r.pressed.map((v) => Math.round(v));
+    if (Array.isArray(r.found)) {
+      const fs = r.found.slice(0, 24).filter((f) => f && Array.isArray(f.box) && f.box.length === 4 && f.box.every((v) => isFin(v) && Math.abs(v) < 1e6)
+        && (f.from === 'hud-canvas' || f.from === 'left-out')).map((f) => ({ box: f.box.map((v) => Math.round(v)), from: f.from }));
+      if (fs.length) out.found = fs;
+    }
+    if (r.shot !== undefined) {
+      const ok = typeof r.shot === 'string' && r.shot.length <= HANDOFF_LIMITS.maxShot && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(r.shot);
+      if (!ok) errors.push(`"shot" must be a JPEG or PNG data URL of at most ${HANDOFF_LIMITS.maxShot} characters`);
+      else out.shot = r.shot;
+    }
+  }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
@@ -3929,6 +3948,12 @@ function handoffLine(rec, relPath) {
     const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
+  // ✦ Ask … to make this UI editable (studio-canvas-ui stage 2, 2026-10-24): the line says what it is for and where the
+  // clues are — the place pressed, how many dotted frames, the picture's file (SKILL.md "UI drawn in the canvas").
+  if (v.kind === 'ask' && v.intent === 'ui-code') {
+    const bits = ['make the canvas UI editable', Array.isArray(v.pressed) ? `pressed ${v.pressed.join(',')}` : '', Array.isArray(v.found) && v.found.length ? `${v.found.length} not selectable yet` : '', v.shot ? `picture ${v.shot}` : ''].filter(Boolean);
+    return `studio: request ask ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
+  }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {
     return `studio: next-step ${v.step} ${(v.files && v.files[0]) || '.studio/next-step.md'}`;
   }
@@ -5519,8 +5544,10 @@ async function handleApi(req, res, u, ctx) {
     // "play" (asked while playing, §3.5): the picture goes to its own file and the record names it, so the request
     // stays a small JSON the AI reads whole and opens the picture only when it wants to.
     let fixedId;
-    if (v.kind === 'play' && v.shot) {
-      fixedId = requestId('play');
+    // An "ask" from ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2) brings the picture round the place
+    // pressed: kept the same way (a small file the record names).
+    if ((v.kind === 'play' || (v.kind === 'ask' && v.intent === 'ui-code')) && v.shot) {
+      fixedId = requestId(v.kind);
       v.shot = await keepPlayShot(ctx.rootReal, fixedId, v.shot);
       if (!v.shot) delete v.shot;
     }
@@ -5752,7 +5779,7 @@ async function keepPlayShot(rootReal, id, dataUrl) {
   }
   try {
     const dir = path.join(rootReal, '.studio', 'play');
-    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-play-[0-9a-f]{4}\.(jpg|png)$/.test(n)).sort();
+    const names = (await fs.readdir(dir)).filter((n) => /^\d{8}-\d{6}-\d{3}-(play|ask)-[0-9a-f]{4}\.(jpg|png)$/.test(n)).sort();
     for (const n of names.slice(0, Math.max(0, names.length - PLAY_SHOTS_KEPT))) await fs.rm(path.join(dir, n), { force: true });
   } catch {
     /* pruning is tidying only */

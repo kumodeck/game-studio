@@ -131,6 +131,12 @@ export function handoffLine(rec, relPath) {
     const bits = [chatId ? `paused, chat .studio/chat/${chatId}.json` : 'while playing', v.shot ? `picture ${v.shot}` : '', errs ? `${errs} error${errs === 1 ? '' : 's'}` : ''].filter(Boolean);
     return `studio: request play ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
   }
+  // ✦ Ask … to make this UI editable (studio-canvas-ui stage 2, 2026-10-24): the line says what it is for and where the
+  // clues are — the place pressed, how many dotted frames, the picture's file (SKILL.md "UI drawn in the canvas").
+  if (v.kind === 'ask' && v.intent === 'ui-code') {
+    const bits = ['make the canvas UI editable', Array.isArray(v.pressed) ? `pressed ${v.pressed.join(',')}` : '', Array.isArray(v.found) && v.found.length ? `${v.found.length} not selectable yet` : '', v.shot ? `picture ${v.shot}` : ''].filter(Boolean);
+    return `studio: request ask ${relPath} ${JSON.stringify((v.text || '').length > 120 ? v.text.slice(0, 119) + '…' : v.text || '')} (${bits.join(', ')})`;
+  }
   if (v.kind === 'next-step' && (KUMODECK_STEP_IDS.includes(v.step) || FILE_STEP_IDS.includes(v.step))) {
     return `studio: next-step ${v.step} ${(v.files && v.files[0]) || '.studio/next-step.md'}`;
   }

@@ -202,6 +202,12 @@ the Theme fold under the UI list (the game's CSS variables on `:root`); `ui-styl
 the game's own; `set` / `setWas` / `theme` of placement.json; the validator's rules before a value is taken), with
 `ui-layer.ts` withLooks / withUi writing the file. `test/ui-edit-2.test.ts`, `test/studio-ui-edit-2.browser.mjs`.
 
+The UI not selectable yet (studio-canvas-ui stage 2, 2026-10-24; CONTRACT.md §1.13): `ui-missing.ts` is the one line
+over the ask field after a press on the game's UI the editor cannot select ("This UI can't be selected yet · ✦ Ask … to
+make this UI editable"; Esc / the next action takes it away), the ✦'s draft and chip ("Here (bottom left)" with the
+picture of the place) and what the request carries (`intent: 'ui-code'`, `pressed`, `found`, `shot`); the UI list's
+"No selectable UI yet" is placement-panel's `emptyNote`. The frames and the cross are the bridge's (`ui-found.ts`).
+
 Since studio-motion-panel (2026-10-22) the plate's top is one line (▶ · time · ● · the motion · Starts ▷ · ⋯ · ✦ Ask AI · ⌄):
 `timeline-more.ts` is the ⋯ panel (Repeat, Stops, the other ways it starts, every cue to Try), and `motion-ask.ts` remembers
 the motion "Ask AI" was pressed on, so the chat box's chip reads "crate · Hop" and the request carries that motion.

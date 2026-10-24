@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.62 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.63 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -2719,6 +2719,9 @@ function createThreeAdapter({ scene, renderer, camera }) {
         // A canvas the game draws UI in with codeUi() (studio-canvas-ui, 2026-10-24): the editor's UI layer too
         // (bridge/code-ui.ts), hidden on the world by the editor's layer style like the HTML UI, never here.
         if (uiCanvases.some((c) => sib === c || sib.contains(c))) continue;
+        // A HUD canvas (a 2D canvas over the game's) the bridge marked for the UI layer before editing (studio-canvas-ui
+        // stage 2, 2026-10-24): its UI is seen there with "Not selectable yet" frames; the layer style hides it on the world.
+        if (sib.matches('canvas[data-studio-ui-layer]') || sib.querySelector('canvas[data-studio-ui-layer]')) continue;
         restoreDom.push([sib, sib.style.getPropertyValue('visibility'), sib.style.getPropertyPriority('visibility')]);
         sib.style.setProperty('visibility', 'hidden', 'important');
       }
@@ -3740,6 +3743,8 @@ const CONTRACT_VERSION = 1;
                
                                            
                
+                                                                          
+                  
                                                                                                                                
                
                                                          
@@ -3756,6 +3761,16 @@ const CONTRACT_VERSION = 1;
                          
                                                                                    
                                           
+ 
+/**
+ * The game's UI the editor can see but not select yet (studio-canvas-ui stage 2, 2026-10-24; CONTRACT.md §1.13 "Not
+ * delivered yet"): `box` = viewport CSS px [x, y, w, h] of the game page. `from`: 'hud-canvas' = a lump of drawing in a 2D
+ * canvas laid over the game's canvas (outside every codeUi box); 'left-out' = what the engine's adapter leaves out as UI
+ * (Port2D.leftOut). Nothing else: one canvas with everything in it gives none (the editor does not guess).
+ */
+                          
+                                        
+                                  
  
 /** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
                              
@@ -4133,6 +4148,8 @@ const CONTRACT_VERSION = 1;
                                                       
      
                                                                                                               
+                                                                                                                       
+                                                                    
 
                                                                             
      
@@ -4293,6 +4310,14 @@ const CONTRACT_VERSION = 1;
                                                       
      
                                          
+     
+                                                                                                                         
+                                                                                                                           
+                                                                                                                       
+                                                                                 
+                                                                    
+     
+                           
                                                                               
                     
      
@@ -4534,6 +4559,14 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                                                                      
      
                                                                                                               
+     
+                                                                                                                     
+                                                                                                                   
+                                                                                                                         
+                                                                                                                      
+                                                                            
+     
+                                                                    
      
                                                                            
                                                                             
@@ -4855,6 +4888,11 @@ const MSG_PREFIX = 'studio:';
                                                                 
                                                  
      
+                                                                                                                      
+                                                                         
+     
+                                       
+     
                                                                                                                     
                                                                                                                                       
                                                                                                                      
@@ -4995,6 +5033,19 @@ const MSG_PREFIX = 'studio:';
                                                                                                            
      
                                                                     
+     
+                                                                                                                          
+                                                                                                                                 
+     
+                                                 
+     
+                                                                                                                      
+                                                                                                                      
+                                                                                                                        
+                                                                                                                          
+                                                                                            
+     
+                                                                                                             
                                                                                                       
                                                                                                                              
                                                                                            
@@ -5278,13 +5329,23 @@ function isStudioMessage(x         )                     {
      
                          
      
+                                                                                                                       
+                                                                                                                        
+                                                                                                                        
+                                                                             
+     
+                             
+                                                                                                                   
+                    
+     
                                                                                                                     
                                                                                                  
      
                
      
-                                                                                                                    
-                                                                                          
+                                                                                                                    
+                                                                                                                          
+                                                                                 
      
                 
                                                                                                                   
@@ -5311,7 +5372,7 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                            
+                                                                        
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -7443,6 +7504,14 @@ function adapterFromPort2D(port        , _core      , win         = window)     
         return port.silhouette (keys);
       } catch {
         return null;
+      }
+    } : undefined,
+    // The game's UI the port leaves out (studio-canvas-ui stage 2: the UI layer's dotted frames, bridge/ui-found.ts).
+    leftOut: port.leftOut ? () => {
+      try {
+        return port.leftOut () || [];
+      } catch {
+        return [];
       }
     } : undefined,
     async capture(key, { size }) {
@@ -9843,7 +9912,7 @@ __defs[23] = function (__exports) {
 // Nothing here is the game's code: the editor's values live on the codeUi entries (`live`) while editing; Play in the
 // same page draws them (the person's draft), a reload forgets them, the file (placement.json `ui.<id>` with `code`)
 // keeps them until the AI writes them into the code on Save.
-                                                                                                                           
+                                                                                                                                         
                                              
 
 /** A codeUi entry as the loader keeps it (src/loader/studio-placement.js codeUi). The methods are the game's copy's. */
@@ -9851,6 +9920,8 @@ __defs[23] = function (__exports) {
              
                
                
+                                                                        
+                        
                                              
                 
                                         
@@ -9921,10 +9992,18 @@ function placeWords(from        , at                  , lang             )      
                                      
                                                                                                                                  
                                       
-                
+                                                                                                                        
+                                    
               
                                                                                                                     
                                                                       
+     
+                                                                                                                    
+                                                                                                  
+     
+                            
+                                                                                                                          
+                             
  
 
 /** The codeUi side of the UI seat, or null when the game has none (then nothing changes for it). */
@@ -9933,8 +10012,14 @@ function createCodeUi(d            )                {
   const doc = win.document;
   if (!codeUiEntries(win).length) return null;
   const told = new Set        ();
-  // The codeUis listed: not an HTML key (said once — to the console and to the AI's `ui.code`).
-  const listed = ()          => {
+  // Stage 2 (2026-10-24; the plan's decision 13): the screen shown while editing. Choosing one only chooses what the game
+  // draws (studio.screen() answers it); the game's own state (score, time) is untouched, so ▶ Play starts as always.
+  let screen                = null;
+  const screenIds = ()           => [...new Set(codeUiEntries(win).map((e) => e.screen).filter((x)              => !!x))];
+  /** On the screen shown now: no screen of its own, or that one (before editing / with no screens: every one). */
+  const onScreen = (e       ) => !e.screen || screen === null || e.screen === screen;
+  // Every codeUi that is not an HTML key (said once — to the console and to the AI's `ui.code`), on any screen.
+  const all = ()          => {
     const dom = d.domKeys();
     return codeUiEntries(win).filter((e) => {
       if (!dom.has(e.id)) return true;
@@ -9945,6 +10030,8 @@ function createCodeUi(d            )                {
       return false;
     });
   };
+  // The codeUis listed: on the screen shown.
+  const listed = ()          => all().filter(onScreen);
   const byId = (key        ) => listed().find((e) => e.id === key) ?? null;
   let dirty = false;
   let infoDirty = true;
@@ -10000,7 +10087,7 @@ function createCodeUi(d            )                {
       }));
       return listed().sort((a, b) => tops.get(a.id) [0]  - tops.get(b.id) [0]  || tops.get(a.id) [1]  - tops.get(b.id) [1] )
         // 'named': the list says `name` (the code's word for it), not the key in words as for an HTML element.
-        .map((e) => ({ key: e.id, label: e.name, kinds: ['ui', e.kind === 'bar' ? 'bar' : e.kind === 'button' ? 'button' : e.kind === 'image' ? 'image' : 'text', 'named'], rotatable: false }));
+        .map((e) => ({ key: e.id, label: e.name, kinds: ['ui', e.kind === 'bar' ? 'bar' : e.kind === 'button' ? 'button' : e.kind === 'image' ? 'image' : 'text', 'named'], rotatable: false, ...(e.screen ? { screen: e.screen } : {}) }));
     },
     get(key) {
       const e = byId(key);
@@ -10098,11 +10185,12 @@ function createCodeUi(d            )                {
   };
 
   // ---------------------------------------------------------------- the list for the shell (the file's from / at)
-  const info = ()               => listed().map((e) => {
+  // Every screen's (the file's `from` / `at` and the AI's `list` and `ui.code` speak of all of them, shown or not).
+  const info = ()               => all().map((e) => {
     const a = e.atNow();
     const b = e.box();
     const bb = boundsOf(e);
-    return { key: e.id, name: e.name, kind: e.kind, from: a.from, at: a.at, scale: a.scale, code: { ...e.at, scale: e.scale },
+    return { key: e.id, name: e.name, kind: e.kind, ...(e.screen ? { screen: e.screen } : {}), from: a.from, at: a.at, scale: a.scale, code: { ...e.at, scale: e.scale },
       look: Object.keys(e.look), box: [Math.round(bb.x), Math.round(bb.y), Math.round(bb.w), Math.round(bb.h)],
       size: [Math.round(b.w * 10) / 10, Math.round(b.h * 10) / 10], frame: [b.W, b.H, b.k, b.ky] };
   });
@@ -10114,11 +10202,24 @@ function createCodeUi(d            )                {
 
   // ---------------------------------------------------------------- decision 8: does the picture follow the box?
   const check = (key        )                                                            => {
-    const all = codeUiEntries(win);
+    const every = codeUiEntries(win);
+    // On another screen: measured on its own screen (shown for the measure, then the one shown before again).
+    const other = all().find((x) => x.id === key && !onScreen(x));
+    if (other) {
+      const was = screen;
+      screen = other.screen;
+      try {
+        return check(key);
+      } finally {
+        screen = was;
+        changed();
+        drawNow();
+      }
+    }
     const e = byId(key);
     if (!e) {
-      if (all.some((x) => x.id === key)) return { key, ok: false, why: `an HTML element has data-studio-key="${key}" too, so the editor lists the HTML one: give codeUi('${key}') another id` };
-      return { key, ok: false, why: `the game has no codeUi('${key}') (it has: ${all.length ? all.map((x) => `'${x.id}'`).join(', ') : 'none'})` };
+      if (every.some((x) => x.id === key)) return { key, ok: false, why: `an HTML element has data-studio-key="${key}" too, so the editor lists the HTML one: give codeUi('${key}') another id` };
+      return { key, ok: false, why: `the game has no codeUi('${key}') (it has: ${every.length ? every.map((x) => `'${x.id}'`).join(', ') : 'none'})` };
     }
     const c = e.canvas();
     let ctx                                  = null;
@@ -10252,8 +10353,11 @@ function createCodeUi(d            )                {
    * marked while editing, so the editor's layer style hides them on the world (faded with the eye) and the three.js
    * adapter leaves them alone. A codeUi in the world's own canvas (one canvas for everything) is never hidden.
    */
+  // The canvases this marked (a HUD canvas the bridge marked for the UI layer before editing keeps its mark: ui-found.ts).
+  const marked = new Set                   ();
   const markOverlays = (on         ) => {
-    for (const c of Array.from(doc.querySelectorAll('canvas[data-studio-ui-layer]'))) c.removeAttribute('data-studio-ui-layer');
+    for (const c of marked) c.removeAttribute('data-studio-ui-layer');
+    marked.clear();
     if (!on) return;
     const all = Array.from(doc.querySelectorAll('canvas'));
     for (const e of listed()) {
@@ -10265,7 +10369,7 @@ function createCodeUi(d            )                {
         const q = o.getBoundingClientRect();
         return q.width * q.height > 0 && q.left < r.right && q.right > r.left && q.top < r.bottom && q.bottom > r.top;
       });
-      if (over) c.setAttribute('data-studio-ui-layer', '');
+      if (over && !c.hasAttribute('data-studio-ui-layer')) (c.setAttribute('data-studio-ui-layer', ''), marked.add(c));
     }
   };
 
@@ -10316,8 +10420,21 @@ function createCodeUi(d            )                {
     line.setAttribute('data-words', words);
   };
 
+  /**
+   * The screen shown when editing starts: the HTML UI's screen on screen when it has one (a page with both is one
+   * screen at a time), else 'play' (the editor holds the game in a run), else the code's first.
+   */
+  const first = (html               )                => {
+    const ids = screenIds();
+    if (!ids.length) return null;
+    if (html) return html;
+    return ids.includes('play') ? 'play' : ids[0] ;
+  };
+
   return {
     port,
+    screens: () => screenIds().map((id) => ({ id })),
+    screenNow: () => (editingNow ? screen : null),
     has: (key) => !!byId(key),
     props,
     handle(msg) {
@@ -10327,6 +10444,15 @@ function createCodeUi(d            )                {
           infoDirty = true;
           d.post({ type: 'studio:ui/code-checked', id: msg.id, results });
           return true;
+        }
+        case 'studio:ui/screen': {
+          // The codeUis' screens (with the HTML UI's: ui-extras.ts shows that one too, so this answers false). Another
+          // screen = another list and another picture (the game draws studio.screen()'s UI).
+          if (!screenIds().length) return false;
+          screen = typeof msg.id === 'string' ? msg.id : first(null);
+          for (const x of codeUiEntries(win)) if (x.live) (x.live.state = null, x.live.sample = null);
+          changed();
+          return false;
         }
         case 'studio:ui/code-clear': {
           const fm = (win                                      )[FILE];
@@ -10366,8 +10492,9 @@ function createCodeUi(d            )                {
           return false;
       }
     },
-    begin() {
+    begin(html                ) {
       editingNow = true;
+      screen = first(html ?? null);
       for (const e of listed()) live(e);
       markOverlays(true);
       changed();
@@ -10375,6 +10502,7 @@ function createCodeUi(d            )                {
     },
     end() {
       editingNow = false;
+      screen = null;
       // The looks shown and the samples were for editing; the moves and the card's changes stay (the draft Play shows).
       for (const e of codeUiEntries(win)) if (e.live) (e.live.state = null, e.live.sample = null);
       paintBoards(false);
@@ -10438,6 +10566,680 @@ __def(__exports, "createCodeUi", () => createCodeUi);
 __def(__exports, "mergeUiPorts", () => mergeUiPorts);
 };
 __defs[24] = function (__exports) {
+'use strict';
+// play-shot.ts
+
+// The picture and the UI that go with a request made while playing (CONTRACT.md §3.5; 2026-10-20: "I asked the AI
+// while playing and it ignored the UI on screen").
+//
+// WHY this file: the first picture (2026-10-20) drew only the page's canvases. A game's HUD, title, buttons and score
+// are usually HTML over the canvas, so the AI got a picture without them and could not tell what the person was
+// looking at when they said "make the score bigger" or "this button is in the way". `shootPage` is a screenshot of
+// the page as the player sees it: canvases AND the HTML over them, painted into one canvas. One picture is all that
+// goes (a UI list in words was tried the same day and taken out: "a screenshot is enough").
+//
+// WHY a small painter of our own, not the usual ways:
+// - the browser's own screen capture (getDisplayMedia) asks the person every time with a dialog — in the middle of a
+//   run; the brief says no dialog;
+// - there is no library here (the bridge is one file that goes into every game page);
+// - the SVG <foreignObject> route loads asynchronously, drops the game's style sheets unless each one is copied in,
+//   and in some browsers marks the canvas unreadable (then there is no picture at all).
+// The painter draws what HUDs are made of — boxes with a background colour, a border and round corners, text in its
+// font and colour, images from the game's own site — in the page's painting order (in-flow first, then positioned
+// boxes by z-index), synchronously, at the moment Enter is pressed.
+// NOT drawn (the AI sees the UI's place and words, not its finish): CSS gradients, shadows and glows (text-shadow,
+// box-shadow), CSS background images, inline SVG, rotations (a turned box is drawn upright in its bounds), pictures
+// from another site (drawing one would make the whole picture unreadable), what is typed in a game's input field
+// (its value is not text in the page), anything inside a shadow root or an iframe.
+//
+// The editor's own parts (the ask overlay, the tool strip) are never drawn: `skip` names them.
+
+/** Widest picture sent (px). Enough to read a sign in the game; a 1024 px JPEG is ~100-250 KB. */
+const SHOT_W = 1024;
+/** Text the painter draws at most (characters): a long credits page would otherwise take long frames to paint. */
+const PAINT_CHARS = 4000;
+
+
+// ---------------------------------------------------------------------------
+// The page (browser only)
+// ---------------------------------------------------------------------------
+
+                                      
+
+const isTransparent = (c        ) => !c || c === 'transparent' || /rgba\([^)]*,\s*0(\.0+)?\)$/.test(c) || /\/\s*0(\.0+)?\)$/.test(c);
+const sameSite = (win     , src        ) => {
+  if (!src) return false;
+  if (/^(data|blob):/.test(src)) return true;
+  try {
+    return new URL(src, win.location.href).origin === win.location.origin;
+  } catch {
+    return false;
+  }
+};
+const shown = (cs                     ) => cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse';
+const onScreen = (r         , vw        , vh        ) => r.width >= 1 && r.height >= 1 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
+
+/**
+ * The game as the player sees it — canvases and the HTML UI over them — scaled to SHOT_W at most, as a JPEG. null when
+ * nothing could be drawn (an empty page) or the browser refuses (a canvas with pictures from another site).
+ * `area` (studio-canvas-ui stage 2, 2026-10-24): only that part of the page, at its own size (CSS px) — the picture round
+ * the place pressed on the UI layer that goes with "✦ Have Claude make this UI editable" (a part outside the page is
+ * the page's colour).
+ */
+function shootPage(win     , skip                          , area                                                 )                {
+  const doc = win.document;
+  const vw = win.innerWidth, vh = win.innerHeight;
+  if (!vw || !vh) return null;
+  const k = area ? 1 : Math.min(1, SHOT_W / vw);
+  const out = doc.createElement('canvas');
+  out.width = Math.round((area ? area.w : vw) * k);
+  out.height = Math.round((area ? area.h : vh) * k);
+  const g = out.getContext('2d');
+  if (!g) return null;
+  g.scale(k, k);
+  // The part of the page drawn: everything below is drawn in page CSS px, moved so the area's corner is the picture's.
+  if (area) g.translate(-area.x, -area.y);
+  // The page's own colour under everything (CSS gives the body's to the whole page when the root has none).
+  const rootBg = [doc.documentElement, doc.body].map((e) => (e ? win.getComputedStyle(e).backgroundColor : '')).find((c) => !isTransparent(c));
+  g.fillStyle = rootBg || '#000';
+  if (area) g.fillRect(area.x, area.y, area.w, area.h);
+  else g.fillRect(0, 0, vw, vh);
+  let drawn = 0;
+  let chars = 0;
+  const range = doc.createRange();
+
+  // Positioned boxes are painted after the flow, lowest z-index first (CSS painting order, simplified: a box with
+  // z-index auto takes its parent's).
+  const later                                                                  = [];
+  let order = 0;
+
+  const box = (el         , cs                     , r         , alpha        ) => {
+    const bg = cs.backgroundColor;
+    const bw = parseFloat(cs.borderTopWidth) || 0;
+    const bc = cs.borderTopColor;
+    const paintBg = !isTransparent(bg);
+    const paintBorder = bw > 0 && cs.borderTopStyle !== 'none' && !isTransparent(bc);
+    if (!paintBg && !paintBorder) return;
+    const rad = Math.min(r.width / 2, r.height / 2, cs.borderTopLeftRadius.endsWith('%') ? (parseFloat(cs.borderTopLeftRadius) / 100) * r.width : parseFloat(cs.borderTopLeftRadius) || 0);
+    g.globalAlpha = alpha;
+    g.beginPath();
+    if (rad > 0 && typeof g.roundRect === 'function') g.roundRect(r.left, r.top, r.width, r.height, rad);
+    else g.rect(r.left, r.top, r.width, r.height);
+    if (paintBg) {
+      g.fillStyle = bg;
+      g.fill();
+    }
+    if (paintBorder) {
+      g.lineWidth = bw;
+      g.strokeStyle = bc;
+      g.stroke();
+    }
+    drawn++;
+  };
+
+  const text = (node      , cs                     , alpha        ) => {
+    const raw = node.data;
+    if (!raw.trim() || chars > PAINT_CHARS) return;
+    const tt = cs.textTransform;
+    const show = (s        ) => (tt === 'uppercase' ? s.toUpperCase() : tt === 'lowercase' ? s.toLowerCase() : s);
+    g.globalAlpha = alpha;
+    g.fillStyle = cs.color;
+    g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    g.textBaseline = 'middle';
+    const ls = parseFloat(cs.letterSpacing);
+    if ('letterSpacing' in g) (g                                                        ).letterSpacing = Number.isFinite(ls) ? `${ls}px` : '0px';
+    // Word by word, each where the browser laid it out (wrapped lines, centred text and all); a word the browser broke
+    // over two lines (no spaces: Japanese) letter by letter.
+    const re = /\S+/g;
+    let m                        ;
+    while ((m = re.exec(raw)) && chars <= PAINT_CHARS) {
+      range.setStart(node, m.index);
+      range.setEnd(node, m.index + m[0].length);
+      const rects = range.getClientRects();
+      if (rects.length === 1) {
+        const q = rects[0] ;
+        if (onScreen(q, vw, vh)) g.fillText(show(m[0]), q.left, q.top + q.height / 2);
+        chars += m[0].length;
+        continue;
+      }
+      let i = m.index;
+      for (const ch of m[0]) {
+        range.setStart(node, i);
+        range.setEnd(node, i + ch.length);
+        const q = range.getClientRects()[0];
+        if (q && onScreen(q, vw, vh)) g.fillText(show(ch), q.left, q.top + q.height / 2);
+        i += ch.length;
+        chars++;
+      }
+    }
+    drawn++;
+  };
+
+  const paint = (el         , alpha        , z        , top         ) => {
+    if (skip(el)) return;
+    const cs = win.getComputedStyle(el);
+    if (cs.display === 'none') return;
+    const a = alpha * (Number(cs.opacity) || (cs.opacity === '0' ? 0 : 1));
+    if (a <= 0.01) return;
+    const positioned = cs.position !== 'static';
+    const zi = cs.zIndex === 'auto' ? z : Number(cs.zIndex) || 0;
+    if (positioned && !top) {
+      later.push({ el, z: zi, order: order++, alpha });
+      return;
+    }
+    const tag = el.tagName;
+    const r = el.getBoundingClientRect();
+    const visible = cs.visibility === 'visible' && onScreen(r, vw, vh);
+    if (visible && el !== doc.documentElement && el !== doc.body) box(el, cs, r, a);
+    if (visible && tag === 'CANVAS') {
+      try {
+        g.globalAlpha = a;
+        g.drawImage(el                     , r.left, r.top, r.width, r.height);
+        drawn++;
+      } catch {
+        /* this one cannot be read; the others still can */
+      }
+      return;
+    }
+    if (visible && (tag === 'IMG' || tag === 'VIDEO')) {
+      const m = el                                       ;
+      const src = tag === 'IMG' ? m.currentSrc || m.src : m.currentSrc || m.src;
+      // Only the game's own pictures: one from another site would make the whole picture unreadable.
+      const ready = tag === 'IMG' ? m.complete && m.naturalWidth > 0 : m.readyState >= 2;
+      if (ready && sameSite(win, src)) {
+        try {
+          g.globalAlpha = a;
+          g.drawImage(m, r.left, r.top, r.width, r.height);
+          drawn++;
+        } catch {
+          /* not drawable */
+        }
+      }
+      return;
+    }
+    if (tag === 'SVG' || tag === 'svg' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEMPLATE' || tag === 'IFRAME') return;
+    for (const c of Array.from(el.childNodes)) {
+      if (c.nodeType === 3) {
+        if (shown(cs)) text(c        , cs, a);
+      } else if (c.nodeType === 1) paint(c           , a, zi, false);
+    }
+  };
+
+  paint(doc.documentElement, 1, 0, true);
+  while (later.length) {
+    later.sort((x, y) => x.z - y.z || x.order - y.order);
+    const next = later.shift() ;
+    paint(next.el, next.alpha, next.z, true);
+  }
+  g.globalAlpha = 1;
+  if (!drawn) return null;
+  try {
+    return out.toDataURL('image/jpeg', 0.82);
+  } catch {
+    return null;
+  }
+}
+
+__def(__exports, "SHOT_W", () => SHOT_W);
+__def(__exports, "shootPage", () => shootPage);
+};
+__defs[25] = function (__exports) {
+'use strict';
+// ui-found.ts
+
+// The game's UI the editor can SEE but not select yet (studio-canvas-ui stage 2, 2026-10-24; CONTRACT.md §1.13 "Not
+// delivered yet"; the canvas UI plan's decisions 9–11).
+//
+// Stage 1 made a UI drawn in the canvas selectable once the AI names it in the code (codeUi). Until then it is part of
+// the picture, and a press on it did nothing at all — the person could not tell "not possible" from "broken". Now, on
+// the UI layer:
+//   - where the editor KNOWS there is UI it cannot select, a faint dotted frame with the tag "Not selectable yet"
+//     (above the frame; to its right when there is no room above — the top bar's strip sits there);
+//   - a press outside every UI box: a cross where it was pressed, and the shell's one line "This UI can't be selected
+//     yet · ✦ Have Claude make this UI editable" (the picture round the press goes with it, for the ask's chip).
+//
+// What the editor KNOWS (never a guess — a "UI-looking" region that turned out to be the world would be a frame that
+// selects nothing, decision 9):
+//   - 'hud-canvas': a 2D canvas laid OVER the game's canvas (three.js with a HUD canvas, a Pixi HUD canvas): the lumps of
+//     what is drawn in it (its non-transparent pixels), outside every codeUi box (those are selectable already);
+//   - 'left-out': what the engine's adapter already leaves out because it is UI (Port2D.leftOut: Phaser's scrollFactor 0,
+//     Pixi's `studio = false` layers).
+// One canvas with everything in it gives nothing: the world and the UI are one picture there (bridge.ts then makes no UI
+// layer either, exactly as before). The frames are not in the UI list (the list is what can be selected, decision 10).
+//
+// All of it is the editor's own drawing in the game page (a shadow root marked data-studio-ui, so the game's CSS cannot
+// reach it and play-shot.ts's painter leaves it out), gone when editing ends.
+                                                             
+const { shootPage } = __require(24);
+
+                       
+            
+            
+            
+            
+ 
+
+/** CSS px per grid cell when the HUD canvas is read (4 = a 1280×800 canvas is a 320×200 grid). */
+const CELL = 4;
+/** A pixel counts as drawn above this alpha (of 255): a soft shadow's edge does not. */
+const ALPHA = 24;
+/** Lumps on one line closer than this (CSS px) are one thing: the words of "SCORE 12,480" without a box behind them. */
+const SAME_LINE_GAP = 12;
+/** A lump bigger than this share of its canvas is not a UI part (a full-screen tint, a vignette): left out. */
+const TOO_BIG = 0.5;
+/** Room kept round a codeUi box (CSS px): its anti-aliased edge is not a lump of its own. */
+const BOX_PAD = 6;
+/** At most this many frames (a HUD of 30 icons would be a sea of dotted lines; the AI gets the first ones as clues). */
+const MAX_FOUND = 24;
+/** The picture round a press that goes with the ask (CSS px; the plan's 240×160). */
+const SHOT_AREA = { w: 240, h: 160 };
+
+// ---------------------------------------------------------------- pure parts (test/ui-found.test.ts)
+
+/**
+ * The lumps of a grid (1 = drawn): 8-neighbour connected cells → their boxes in cells [x0, y0, x1, y1] (x1 / y1
+ * exclusive). One pass of union-find over the drawn cells.
+ */
+function lumps(grid            , gw        , gh        )                                          {
+  const parent = new Int32Array(gw * gh).fill(-1);
+  const root = (i        )         => {
+    while (parent[i]  !== i) {
+      parent[i] = parent[parent[i] ] ;
+      i = parent[i] ;
+    }
+    return i;
+  };
+  const join = (a        , b        ) => {
+    const ra = root(a), rb = root(b);
+    if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb);
+  };
+  for (let y = 0; y < gh; y++) {
+    for (let x = 0; x < gw; x++) {
+      const i = y * gw + x;
+      if (!grid[i]) continue;
+      parent[i] = i;
+      // The cells already seen that touch this one: left, and the three above.
+      if (x > 0 && grid[i - 1]) join(i, i - 1);
+      if (y > 0) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          if (nx >= 0 && nx < gw && grid[i - gw + dx]) join(i, i - gw + dx);
+        }
+      }
+    }
+  }
+  const boxes = new Map                                          ();
+  for (let y = 0; y < gh; y++) {
+    for (let x = 0; x < gw; x++) {
+      const i = y * gw + x;
+      if (!grid[i]) continue;
+      const r = root(i);
+      const b = boxes.get(r);
+      if (!b) boxes.set(r, [x, y, x + 1, y + 1]);
+      else {
+        if (x < b[0]) b[0] = x;
+        if (y < b[1]) b[1] = y;
+        if (x + 1 > b[2]) b[2] = x + 1;
+        if (y + 1 > b[3]) b[3] = y + 1;
+      }
+    }
+  }
+  return [...boxes.values()];
+}
+
+/**
+ * Boxes that are one thing: overlapping or touching, or on the same line with a gap of `lineGap` or less (the words of
+ * a text drawn without a box behind it). Until nothing changes.
+ */
+function mergeRects(rects        , lineGap = SAME_LINE_GAP)         {
+  const out = rects.map((r) => ({ ...r }));
+  const one = (a      , b      ) => {
+    const gx = Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w);
+    const gy = Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h);
+    if (gx <= 1 && gy <= 1) return true;
+    // The same line: they share at least half of the lower one's height.
+    const shared = -gy;
+    return gx <= lineGap && shared >= 0.5 * Math.min(a.h, b.h);
+  };
+  for (let again = true; again;) {
+    again = false;
+    for (let i = 0; i < out.length && !again; i++) {
+      for (let j = i + 1; j < out.length; j++) {
+        if (!one(out[i] , out[j] )) continue;
+        const a = out[i] , b = out[j] ;
+        const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+        out[i] = { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+        out.splice(j, 1);
+        again = true;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** The nearest of the 9 places of a W × H screen to a point (the chip's "bottom left"; thirds across and down). */
+function placeOf(x        , y        , W        , H        )         {
+  const c = x < W / 3 ? 0 : x < (2 * W) / 3 ? 1 : 2;
+  const r = y < H / 3 ? 0 : y < (2 * H) / 3 ? 1 : 2;
+  return ['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right'][r * 3 + c] ;
+}
+
+// ---------------------------------------------------------------- the page
+
+                                      
+
+const visible = (win     , c         ) => {
+  const r = c.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return false;
+  const cs = win.getComputedStyle(c);
+  return cs.display !== 'none' && cs.visibility !== 'hidden' && Number(cs.opacity) !== 0;
+};
+const overlaps = (a         , b         ) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+const zOf = (win     , c         ) => {
+  const z = Number(win.getComputedStyle(c).zIndex);
+  return Number.isFinite(z) ? z : 0;
+};
+
+/**
+ * The 2D canvases laid over another canvas of the game (the UI's own canvas): drawn above it (a higher z-index, or
+ * the same and later in the page). The editor's own canvases (data-studio-ui) are not the game's.
+ */
+function hudCanvases(win     )                      {
+  const all = Array.from(win.document.querySelectorAll('canvas')).filter((c) => !c.hasAttribute('data-studio-ui') && visible(win, c));
+  return all.filter((c) => {
+    const r = c.getBoundingClientRect();
+    return all.some((o) => {
+      if (o === c || !overlaps(o.getBoundingClientRect(), r)) return false;
+      const zc = zOf(win, c), zo = zOf(win, o);
+      return zc !== zo ? zc > zo : !!(o.compareDocumentPosition(c) & 4 /* c follows o */);
+    });
+  });
+}
+
+/**
+ * Mark the HUD canvases as the UI layer's (data-studio-ui-layer, as code-ui.ts marks a codeUi's canvas): the editor's
+ * layer style then hides them while the world is edited (the eye shows them faded) and shows them on the UI layer, and
+ * the three.js adapter does not hide them as "the game's DOM over the canvas" — which it did, so a HUD with nothing
+ * delivered was never on screen in the editor at all (found while building this, 2026-10-24). Only 2D canvases (a
+ * second WebGL canvas is not read); called by the bridge before editing starts (before the adapters hide anything).
+ */
+function markHudCanvases(win     )                      {
+  const out                      = [];
+  for (const c of hudCanvases(win)) {
+    let two = false;
+    try {
+      two = !!c.width && !!c.height && !!c.getContext('2d');
+    } catch {
+      two = false;
+    }
+    if (!two) continue;
+    c.setAttribute('data-studio-ui-layer', '');
+    out.push(c);
+  }
+  return out;
+}
+
+/** The lumps of what is drawn in a HUD canvas, outside `skip` (viewport CSS px), as viewport CSS px boxes. */
+function canvasLumps(c                   , skip        )         {
+  let data                   ;
+  try {
+    // A canvas with a WebGL context answers null here (not ours to read); an empty one has nothing drawn.
+    const ctx = c.getContext('2d');
+    if (!ctx || !c.width || !c.height) return [];
+    data = ctx.getImageData(0, 0, c.width, c.height).data;
+  } catch {
+    return []; // a picture from another site made it unreadable
+  }
+  const r = c.getBoundingClientRect();
+  const W = c.width, H = c.height;
+  const gw = Math.ceil(r.width / CELL), gh = Math.ceil(r.height / CELL);
+  const grid = new Uint8Array(gw * gh);
+  // About one sample per CSS px (a 2× canvas is read every other pixel).
+  const kx = r.width / W, ky = r.height / H;
+  const step = Math.max(1, Math.round(1 / Math.max(kx, ky)));
+  for (let y = 0; y < H; y += step) {
+    const gy = Math.min(gh - 1, Math.floor((y * ky) / CELL));
+    const row = y * W;
+    for (let x = 0; x < W; x += step) {
+      if (data[(row + x) * 4 + 3]  <= ALPHA) continue;
+      grid[gy * gw + Math.min(gw - 1, Math.floor((x * kx) / CELL))] = 1;
+    }
+  }
+  // What a codeUi box covers is selectable already: its cells are not lumps (the box and a few px round it).
+  for (const s of skip) {
+    const x0 = Math.max(0, Math.floor((s.x - BOX_PAD - r.left) / CELL)), x1 = Math.min(gw, Math.ceil((s.x + s.w + BOX_PAD - r.left) / CELL));
+    const y0 = Math.max(0, Math.floor((s.y - BOX_PAD - r.top) / CELL)), y1 = Math.min(gh, Math.ceil((s.y + s.h + BOX_PAD - r.top) / CELL));
+    for (let y = y0; y < y1; y++) grid.fill(0, y * gw + x0, y * gw + Math.max(x0, x1));
+  }
+  const boxes = lumps(grid, gw, gh).map(([x0, y0, x1, y1]) => ({ x: r.left + x0 * CELL, y: r.top + y0 * CELL, w: (x1 - x0) * CELL, h: (y1 - y0) * CELL }));
+  return mergeRects(boxes).filter((b) => (b.w >= 6 || b.h >= 6) && b.w * b.h <= TOO_BIG * r.width * r.height);
+}
+
+/**
+ * Everything found now: the HUD canvases' lumps (outside `skip`, the UI boxes on screen) and the adapter's left-out UI.
+ * Rounded, at most MAX_FOUND, top of the screen first.
+ */
+function findUi(win     , skip        , leftOut        )            {
+  const out            = [];
+  const W = win.innerWidth, H = win.innerHeight;
+  for (const c of hudCanvases(win)) for (const b of canvasLumps(c, skip)) out.push({ box: [b.x, b.y, b.w, b.h], from: 'hud-canvas' });
+  for (const b of leftOut) {
+    if (!b || ![b.x, b.y, b.w, b.h].every(Number.isFinite) || b.w < 1 || b.h < 1 || b.w * b.h > TOO_BIG * W * H) continue;
+    // Already selectable (a codeUi in front of it), or a lump of the HUD canvas already: once.
+    const inside = (s      ) => b.x >= s.x - BOX_PAD && b.y >= s.y - BOX_PAD && b.x + b.w <= s.x + s.w + BOX_PAD && b.y + b.h <= s.y + s.h + BOX_PAD;
+    if (skip.some(inside) || out.some((f) => inside({ x: f.box[0], y: f.box[1], w: f.box[2], h: f.box[3] }))) continue;
+    out.push({ box: [b.x, b.y, b.w, b.h], from: 'left-out' });
+  }
+  return out
+    .map((f) => ({ ...f, box: f.box.map((v) => Math.round(v))                   }))
+    .sort((a, b) => a.box[1] - b.box[1] || a.box[0] - b.box[0])
+    .slice(0, MAX_FOUND);
+}
+
+// ---------------------------------------------------------------- the view (frames, tags, the cross)
+
+// The editor's own words drawn in the game page (as code-ui.ts's "20 px from the top centre"); the glossary's.
+const WORDS                                       = {
+  ja: { tag: 'まだ選べません' },
+  en: { tag: 'Not selectable yet' },
+};
+
+                              
+           
+                                 
+                      
+                                                         
+                    
+                                                                                         
+                  
+                                                                           
+                 
+                                                                                                                      
+                       
+                                                                                                                
+                 
+                                                                                                  
+                   
+ 
+
+                              
+                                                                        
+                    
+                                                                                                                
+                
+                                                                                                                    
+                                                                   
+                                                                                                                         
+                                        
+                                                                                                                      
+                             
+                                                            
+              
+ 
+
+function createUiFound(d             )              {
+  const { win } = d;
+  const doc = win.document;
+  let found            = [];
+  let sent = '';
+  let stale = true;
+  let lastWork = 0;
+  let cross                                              = null;
+  let host                     = null;
+  let root                    = null;
+  let drawn = '';
+  // The game page was resized while the game is held (the editor's panels open, the window): a game sizes its HUD canvas
+  // in its resize handler, and setting a canvas's width clears it — with the game held, nothing draws it again, and the
+  // HUD vanished from the picture (found while building this, 2026-10-24: the frames went with it, the HUD stayed blank).
+  // So the game draws ONE frame of its own after a resize (no time passes), only in a page with a HUD canvas.
+  // true at first: a resize before the editor came (the shell sizes the game's frame as it opens) went unseen.
+  let resized = true;
+  win.addEventListener('resize', () => {
+    resized = true;
+  });
+
+  const work = () => {
+    stale = false;
+    lastWork = win.performance.now();
+    try {
+      found = findUi(win, d.boxes(), d.leftOut());
+    } catch (e) {
+      console.warn('[studio] looking for the game\'s UI failed:', e);
+      found = [];
+    }
+    const sig = JSON.stringify(found);
+    if (sig !== sent) {
+      sent = sig;
+      d.post({ type: 'studio:ui/found', found });
+    }
+  };
+
+  const ensureHost = () => {
+    if (host && host.isConnected) return root ;
+    host = doc.createElement('game-studio-found');
+    // Marked as the editor's: the painter of the ask's picture and the HUD finder leave it out.
+    host.setAttribute('data-studio-ui', '');
+    host.setAttribute('aria-hidden', 'true');
+    host.setAttribute('style', 'position:fixed;left:0;top:0;width:0;height:0;margin:0;padding:0;border:0;z-index:2147483600;pointer-events:none');
+    root = host.attachShadow({ mode: 'open' });
+    (doc.body || doc.documentElement).appendChild(host);
+    return root;
+  };
+  const paint = (show         ) => {
+    const L = WORDS[d.lang()];
+    const sig = show ? JSON.stringify([found, cross, d.lang()]) : '';
+    if (sig === drawn) return;
+    drawn = sig;
+    if (!show) {
+      host?.remove();
+      host = null;
+      root = null;
+      return;
+    }
+    const r = ensureHost();
+    // The plan's look (mock/canvas-ui.html .nyb / .nyt): a faint white dashed frame 5 px round the lump, the tag in a
+    // dark pill with a dashed edge; the frame pressed into a little brighter. A thin dark edge outside the white dashes
+    // so the frame reads on a light game too (pixi-garden's pale green, 2026-10-24).
+    const css = `.f{position:fixed;border:1.5px dashed rgba(255,255,255,.42);border-radius:8px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,.22)}
+.f.on{border-color:rgba(255,255,255,.85);background:rgba(255,255,255,.05)}
+.t{position:fixed;font:11.5px/18px system-ui,-apple-system,'Hiragino Sans','Hiragino Kaku Gothic ProN',sans-serif;padding:0 7px;border-radius:6px;background:rgba(28,28,30,.92);border:1px dashed rgba(255,255,255,.45);color:#d6d6da;white-space:nowrap}
+svg{position:fixed;left:0;top:0;overflow:visible}`;
+    const parts           = [];
+    // The tag's size, near enough to keep it off the other frames (11.5 px type, 7 px padding a side).
+    const tw = [...L.tag].reduce((a, ch) => a + (ch.charCodeAt(0) > 0x2e80 ? 11.5 : 6.4), 16), th = 20;
+    const frames = found.map((f) => ({ x: f.box[0] - 5, y: f.box[1] - 5, w: f.box[2] + 10, h: f.box[3] + 10 }));
+    const free = (r      , own        ) => r.y >= 4 && r.x >= 0 && r.x + r.w <= win.innerWidth
+      && !frames.some((o, j) => j !== own && r.x < o.x + o.w && r.x + r.w > o.x && r.y < o.y + o.h && r.y + r.h > o.y);
+    found.forEach((f, i) => {
+      const [x, y, w, h] = f.box;
+      const on = cross && cross.on === i ? ' on' : '';
+      parts.push(`<div class="f${on}" data-found="${i}" style="left:${x - 5}px;top:${y - 5}px;width:${w + 10}px;height:${h + 10}px"></div>`);
+      // Above the frame; to its right when there is no room above (the top bar's strip and the game's top edge) or the
+      // place above is another frame (the score's, right over the health bar: found while building this, 2026-10-24).
+      const above = { x: x - 5, y: y - 5 - 22, w: tw, h: th }, right = { x: x + w + 12, y: y + h / 2 - 10, w: tw, h: th };
+      const t = free(above, i) ? above : free(right, i) ? right : above.y >= 4 ? above : right;
+      parts.push(`<div class="t" data-found-tag="${i}" style="left:${t.x}px;top:${t.y}px">${L.tag}</div>`);
+    });
+    if (cross) {
+      // The cross where it was pressed: white with a dark edge, readable on any game.
+      const { x, y } = cross;
+      const arm = 11;
+      const line = (x1        , y1        , x2        , y2        ) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+      const shape = `<circle cx="${x}" cy="${y}" r="7"/>${line(x - arm, y, x + arm, y)}${line(x, y - arm, x, y + arm)}`;
+      parts.push(`<svg data-found-cross="" width="1" height="1"><g fill="none" stroke="rgba(0,0,0,.7)" stroke-width="3.5">${shape}</g><g fill="none" stroke="#fff" stroke-width="1.5">${shape}</g></svg>`);
+    }
+    r.innerHTML = `<style>${css}</style>${parts.join('')}`;
+  };
+
+  return {
+    list() {
+      if (stale) work();
+      return found;
+    },
+    stale() {
+      stale = true;
+    },
+    frame(o) {
+      const on = o.ui && o.editing;
+      // Quiet frames only (a drag redraws the HUD every frame; the frames follow when it is let go), and not more
+      // often than 4 times a second; a look every 3 s besides, for a game page that changed by itself (a resize).
+      const now = win.performance.now();
+      if (resized && o.editing && !o.busy) {
+        resized = false;
+        if (hudCanvases(win).length) {
+          d.drawGame();
+          d.render();
+        }
+        stale = true;
+        lastWork = 0;
+      }
+      if (!o.busy && (stale ? now - lastWork > 250 : on && now - lastWork > 3000)) work();
+      if (!on && cross) cross = null;
+      paint(on && !o.busy);
+    },
+    missed(x, y) {
+      if (stale) work();
+      if (!found.length && !d.delivered()) return false;
+      const on = found.findIndex((f) => x >= f.box[0] - 5 && x <= f.box[0] + f.box[2] + 5 && y >= f.box[1] - 5 && y <= f.box[1] + f.box[3] + 5);
+      cross = { x, y, on };
+      drawn = '';
+      paint(true);
+      // The picture round the press (the ask's chip), the world drawn first in this task (a WebGL canvas's picture).
+      let shot                    ;
+      try {
+        d.render();
+        const a = { x: Math.round(x - SHOT_AREA.w / 2), y: Math.round(y - SHOT_AREA.h / 2), w: SHOT_AREA.w, h: SHOT_AREA.h };
+        shot = shootPage(win, (e) => e.hasAttribute('data-studio-ui') || e.tagName === 'GAME-STUDIO-PLAY', a) || undefined;
+      } catch {
+        shot = undefined;
+      }
+      d.post({ type: 'studio:ui/missing', at: [Math.round(x), Math.round(y)], place: placeOf(x, y, win.innerWidth, win.innerHeight), ...(d.any() ? {} : { none: true }), ...(shot ? { shot } : {}) });
+      return true;
+    },
+    clear(tell) {
+      if (!cross) return;
+      cross = null;
+      if (tell) d.post({ type: 'studio:ui/missing', at: null });
+    },
+    end() {
+      cross = null;
+      paint(false);
+      stale = true;
+    },
+  };
+}
+
+__def(__exports, "SHOT_AREA", () => SHOT_AREA);
+__def(__exports, "lumps", () => lumps);
+__def(__exports, "mergeRects", () => mergeRects);
+__def(__exports, "placeOf", () => placeOf);
+__def(__exports, "hudCanvases", () => hudCanvases);
+__def(__exports, "markHudCanvases", () => markHudCanvases);
+__def(__exports, "findUi", () => findUi);
+__def(__exports, "createUiFound", () => createUiFound);
+};
+__defs[26] = function (__exports) {
 'use strict';
 // selfcheck.ts
 
@@ -10697,7 +11499,7 @@ __def(__exports, "SECOND_LOOK_MS", () => SECOND_LOOK_MS);
 __def(__exports, "worthASecondLook", () => worthASecondLook);
 __def(__exports, "runSelfCheck", () => runSelfCheck);
 };
-__defs[25] = function (__exports) {
+__defs[27] = function (__exports) {
 'use strict';
 // ../core/rules.ts
 
@@ -10951,7 +11753,7 @@ __def(__exports, "rulesFor", () => rulesFor);
 __def(__exports, "placeOnGrid", () => placeOnGrid);
 __def(__exports, "withRules", () => withRules);
 };
-__defs[26] = function (__exports) {
+__defs[28] = function (__exports) {
 'use strict';
 // ../core/edits.ts
 
@@ -11266,7 +12068,7 @@ function withEdits(inner               )               {
 
 __def(__exports, "withEdits", () => withEdits);
 };
-__defs[27] = function (__exports) {
+__defs[29] = function (__exports) {
 'use strict';
 // hold.ts
 
@@ -11428,7 +12230,7 @@ __def(__exports, "createHoldState", () => createHoldState);
 __def(__exports, "holdItem", () => holdItem);
 __def(__exports, "withHold", () => withHold);
 };
-__defs[28] = function (__exports) {
+__defs[30] = function (__exports) {
 'use strict';
 // group.ts
 
@@ -11456,7 +12258,7 @@ __defs[28] = function (__exports) {
 //   handle and the others get the same move in metres. Turning goes around the
 //   middle of the group on the ground (vertical axis), as a turntable would.
                                                                                                   
-const { canLift } = __require(27);
+const { canLift } = __require(29);
 
                                
                  
@@ -11830,7 +12632,7 @@ __def(__exports, "groupScale", () => groupScale);
 __def(__exports, "groupLift", () => groupLift);
 __def(__exports, "groupPoses", () => groupPoses);
 };
-__defs[29] = function (__exports) {
+__defs[31] = function (__exports) {
 'use strict';
 // game-tools.ts
 
@@ -12052,7 +12854,7 @@ function createToolHost(d              )           {
 
 __def(__exports, "createToolHost", () => createToolHost);
 };
-__defs[30] = function (__exports) {
+__defs[32] = function (__exports) {
 'use strict';
 // ../core/keys.ts
 
@@ -12105,7 +12907,7 @@ function keyStep(key        , shift         , dim             )                {
 
 __def(__exports, "keyStep", () => keyStep);
 };
-__defs[31] = function (__exports) {
+__defs[33] = function (__exports) {
 'use strict';
 // handles.ts
 
@@ -13303,7 +14105,7 @@ __def(__exports, "unholdFromEvent", () => unholdFromEvent);
 __def(__exports, "choiceFromEvent", () => choiceFromEvent);
 __def(__exports, "handleFromEvent", () => handleFromEvent);
 };
-__defs[32] = function (__exports) {
+__defs[34] = function (__exports) {
 'use strict';
 // rise.ts
 
@@ -13461,7 +14263,7 @@ function createRiseButtons(doc          )              {
 __def(__exports, "RISE_LABELS", () => RISE_LABELS);
 __def(__exports, "createRiseButtons", () => createRiseButtons);
 };
-__defs[33] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // snap.ts
 
@@ -13562,7 +14364,7 @@ __def(__exports, "stepDetent", () => stepDetent);
 __def(__exports, "freeHeld", () => freeHeld);
 __def(__exports, "firstToTouch", () => firstToTouch);
 };
-__defs[34] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // outline-slide.ts
 
@@ -13595,7 +14397,7 @@ function slideOf(was                                                       , now
 
 __def(__exports, "slideOf", () => slideOf);
 };
-__defs[35] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // ../shell/offset-model.ts
 
@@ -13758,7 +14560,7 @@ __def(__exports, "snapAmount", () => snapAmount);
 __def(__exports, "noAmount", () => noAmount);
 __def(__exports, "rowAt", () => rowAt);
 };
-__defs[36] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // code-lists.ts
 
@@ -13921,7 +14723,7 @@ __def(__exports, "kindOf", () => kindOf);
 __def(__exports, "codeAvoidsOf", () => codeAvoidsOf);
 __def(__exports, "namedByLayout", () => namedByLayout);
 };
-__defs[37] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // code-place.ts
 
@@ -13982,8 +14784,8 @@ __defs[37] = function (__exports) {
                                                                                                                                                                               
 const { codePose, knobValues, relayCodePlace } = __require(20);
 const { nativeSetTimeout } = __require(0);
-const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(35);
-const { kindOf } = __require(36);
+const { addOffset, dragAmount, lastOf, movesRank, noAmount, offsetsFull, snapAmount } = __require(37);
+const { kindOf } = __require(38);
 
 const VIOLET = '#a78bfa';
 const YOU = '#ff6b1a';
@@ -14985,7 +15787,7 @@ __def(__exports, "ruleLags", () => ruleLags);
 __def(__exports, "moveWay", () => moveWay);
 __def(__exports, "createCodePlaceView", () => createCodePlaceView);
 };
-__defs[38] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // input.ts
 
@@ -15078,17 +15880,17 @@ __defs[38] = function (__exports) {
 const { UI } = __require(13);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { keyStep } = __require(30);
+const { keyStep } = __require(32);
                                              
                                                 
-const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(31);
+const { HANDLE_LABELS, LOCK_NOTE, MANY_LABEL, OFF_LINES, gameNote, unholdFromEvent, READOUT_WORDS, TOOL_HINT, choiceFromEvent, createHandles, handleFromEvent, isMotionKey, moreFromEvent, motionFromEvent, toolFromKey } = __require(33);
                                                      
-const { createRiseButtons } = __require(32);
-const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(33);
-const { canLift, offWhy } = __require(27);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(28);
-const { slideOf } = __require(34);
-const { TOOL_WAY } = __require(37);
+const { createRiseButtons } = __require(34);
+const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(35);
+const { canLift, offWhy } = __require(29);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(30);
+const { slideOf } = __require(36);
+const { TOOL_WAY } = __require(39);
 // What a drag of a rule layout's object does (moveHandle's data.code; studio-to-coords): turn the layout's knobs, stay
 // still (no knob for that way), or move just this one (⌥). 0 = an ordinary move (not a rule's object).
 const CODE_KNOB = 1;
@@ -15126,6 +15928,13 @@ const CODE_FREE = 3;
                                                                                               
      
                                                                                                                             
+     
+                                                                                                                        
+                                                                                                                         
+     
+                                          
+                                                                                                  
+                       
  
 
                               
@@ -15883,6 +16692,7 @@ function attachInput(deps           )              {
       return;
     }
     select(key);
+    if (!key) deps.missed?.(p.x, p.y);
   };
 
   /**
@@ -15995,6 +16805,7 @@ function attachInput(deps           )              {
   const onDown = (e              ) => {
     const h = handleFromEvent(e);
     block(e);
+    deps.pressed?.();
     // A press with an id we still hold means we missed its release.
     ptrs.delete(e.pointerId);
     // A new touch while nothing is down: clear leftovers from lost releases.
@@ -16778,7 +17589,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[39] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -16836,7 +17647,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[40] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -17509,7 +18320,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[41] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // ui-extras.ts
 
@@ -17547,6 +18358,12 @@ const { uiTextNode, uiTextPart } = __require(20);
                                  
                                                                                           
                  
+     
+                                                                                                                        
+                                                                                                                
+                                                                                                                    
+     
+                                                                      
  
 
                            
@@ -17558,6 +18375,8 @@ const { uiTextNode, uiTextPart } = __require(20);
                                       
                                                                                
                                      
+                                                                                                 
+                             
  
 
 const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
@@ -17687,7 +18506,12 @@ function createUiExtras(deps              )           {
   const current = ()                => forced ?? screenEls().find(drawn)?.dataset.studioScreen ?? null;
   const postScreens = () => {
     const list = screens();
-    if (list.length) deps.post({ type: 'studio:ui/screens', screens: list, current: current(), forced: forced !== null });
+    const more = deps.more?.();
+    // The canvas UI's screens after the HTML ones (stage 2): a canvas-only screen joins the menu; the same id is one.
+    // Only one screen in all (the canvas's alone) = no menu, as a game with no screens.
+    if (more) for (const s of more.screens) if (!list.some((x) => x.id === s.id)) list.push(s);
+    const htmlCount = screens().length;
+    if (list.length && (htmlCount || list.length > 1)) deps.post({ type: 'studio:ui/screens', screens: list, current: current() ?? more?.current ?? null, forced: forced !== null });
   };
 
   // ---------------------------------------------------------------- elements
@@ -17979,6 +18803,7 @@ function createUiExtras(deps              )           {
       paint();
     },
     props,
+    screenNow: () => current(),
     handle(msg) {
       switch (msg.type) {
         case 'studio:ui/screen':
@@ -18021,7 +18846,7 @@ function createUiExtras(deps              )           {
 __def(__exports, "hexColor", () => hexColor);
 __def(__exports, "createUiExtras", () => createUiExtras);
 };
-__defs[42] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -18160,7 +18985,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[43] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -18213,7 +19038,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[44] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -18584,7 +19409,7 @@ __def(__exports, "legacyOffsets", () => legacyOffsets);
 __def(__exports, "libCounted", () => libCounted);
 __def(__exports, "stretchClip", () => stretchClip);
 };
-__defs[45] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -18609,9 +19434,9 @@ __defs[45] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(42);
-const { samePose } = __require(43);
-const { compose, legacyOffsets } = __require(44);
+const { hasLayer, orderOfLayer } = __require(44);
+const { samePose } = __require(45);
+const { compose, legacyOffsets } = __require(46);
 const { motionRunner, resolveClip } = __require(20);
 
                                                                                                                                   
@@ -18800,7 +19625,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[46] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -18851,7 +19676,7 @@ __defs[46] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(45);
+const { moveInPlay } = __require(47);
                                                    
 
                                  
@@ -19009,7 +19834,7 @@ function createPlaySwitch(d                )             {
 __def(__exports, "loaderPlay", () => loaderPlay);
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[47] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // ../shell/keep-out-model.ts
 
@@ -19218,7 +20043,7 @@ __def(__exports, "changedRows", () => changedRows);
 __def(__exports, "rowKey", () => rowKey);
 __def(__exports, "inBox", () => inBox);
 };
-__defs[48] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // keep-out-paint.ts
 
@@ -19433,7 +20258,7 @@ __def(__exports, "nearestOn", () => nearestOn);
 __def(__exports, "boundsOf", () => boundsOf);
 __def(__exports, "clipBounds", () => clipBounds);
 };
-__defs[49] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // keep-out.ts
 
@@ -19462,9 +20287,9 @@ __defs[49] = function (__exports) {
 // moved group draws its areas off by the group's offset.
                                                                                                         
 const { codeSpot, findByKey, knobValues } = __require(20);
-const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(47);
-const { findKnob, knobRange, knobText, unitText } = __require(37);
-const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(48);
+const { addBox, inBox, nextBoxName, rowsOf, setBox } = __require(49);
+const { findKnob, knobRange, knobText, unitText } = __require(39);
+const { B, boundsOf, boxCorners, clipBounds, edgesOf, nearestOn, outlineOf, runsOf, sampleGrid, shapeOf } = __require(50);
 
 const YOU = '#ff6b1a';
 const VIOLET = '#a78bfa';
@@ -20224,7 +21049,7 @@ function createKeepOutView(d                 )              {
 
 __def(__exports, "createKeepOutView", () => createKeepOutView);
 };
-__defs[50] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // code-motion.ts
 
@@ -20252,7 +21077,7 @@ __defs[50] = function (__exports) {
 // WHY its own listeners, added before input.ts (editor.ts makes this before attaching input): a press on the ◇ must not
 // pick or drag what is under it — the same reason as timeline-path.ts.
                                                                                                                  
-const { findKnob, knobRange, knobText, unitText } = __require(37);
+const { findKnob, knobRange, knobText, unitText } = __require(39);
 
 const VIOLET = '#8b7cff';
 const YOU = '#ff6b1a';
@@ -20601,7 +21426,7 @@ __def(__exports, "ruleAt", () => ruleAt);
 __def(__exports, "withRuleMotions", () => withRuleMotions);
 __def(__exports, "createCodeMotionView", () => createCodeMotionView);
 };
-__defs[51] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // seen.ts
 
@@ -20685,7 +21510,7 @@ __def(__exports, "seenEnough", () => seenEnough);
 __def(__exports, "minPickPx", () => minPickPx);
 __def(__exports, "tooSmall", () => tooSmall);
 };
-__defs[52] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -20695,25 +21520,26 @@ __defs[52] = function (__exports) {
 const { UI } = __require(13);
                                              
 const { nativeClearTimeout, nativeNow, nativeSetTimeout } = __require(0);
-const { withRules } = __require(25);
-const { withEdits } = __require(26);
-const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(28);
-const { createToolHost } = __require(29);
-const { attachInput, tappableAt } = __require(38);
+const { withRules } = __require(27);
+const { withEdits } = __require(28);
+const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(30);
+const { createToolHost } = __require(31);
+const { attachInput, tappableAt } = __require(40);
                                                   
-const { firstToTouch, stepDetent } = __require(33);
-const { createHoldState, withHold } = __require(27);
-const { drivenBetween, WATCH_MS } = __require(39);
-const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(24);
-const { createTimelineView } = __require(40);
-const { createUiExtras } = __require(41);
-                                           
-const { loaderPlay } = __require(46);
-const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(36);
-const { createCodePlaceView } = __require(37);
-const { createKeepOutView } = __require(49);
-const { createCodeMotionView, withRuleMotions } = __require(50);
-const { seenEnough, tooSmall } = __require(51);
+const { firstToTouch, stepDetent } = __require(35);
+const { createHoldState, withHold } = __require(29);
+const { drivenBetween, WATCH_MS } = __require(41);
+const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(26);
+const { createTimelineView } = __require(42);
+const { createUiExtras } = __require(43);
+const { codeUiEntries } = __require(23);
+const { createUiFound } = __require(25);
+const { loaderPlay } = __require(48);
+const { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } = __require(38);
+const { createCodePlaceView } = __require(39);
+const { createKeepOutView } = __require(51);
+const { createCodeMotionView, withRuleMotions } = __require(52);
+const { seenEnough, tooSmall } = __require(53);
 
                              
                                                                                                                      
@@ -20734,6 +21560,8 @@ const { seenEnough, tooSmall } = __require(51);
                                                                                          
      
                          
+                                                                                        
+                                     
                                                                                         
                      
                                                                                  
@@ -20860,8 +21688,16 @@ function createEditor(deps            )         {
     }
     deps.post(msg);
   };
+  // The canvas UI's screens (codeUi `screen`, studio-canvas-ui stage 2) for the screens' menu: with the HTML ones, or alone.
+  const codeScreens = () => (deps.uiCode && deps.uiCode.screens().length ? { screens: deps.uiCode.screens(), current: deps.uiCode.screenNow() } : null);
   // UI stages 2–3 (ui-extras.ts): another screen shown = the UI layer's list again, without a pick that is gone.
-  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), relist: () => {
+  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), more: codeScreens, relist: () => relistUi() }) : null;
+  /** A game whose only screens are its canvas UI's (no HTML UI): the menu is said from here (≥ 2 screens). */
+  const postCodeScreens = () => {
+    const c = codeScreens();
+    if (!uiExtras && c && c.screens.length > 1) post({ type: 'studio:ui/screens', screens: c.screens, current: c.current, forced: true });
+  };
+  function relistUi() {
     if (!uiStack) return;
     if (layer !== 'ui') {
       try {
@@ -20877,8 +21713,57 @@ function createEditor(deps            )         {
     input?.selectionChanged();
     postSelected();
     dirtyFrame = true;
-  } }) : null;
+  }
   const state            = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
+  /**
+   * The game's UI the editor sees but cannot select yet (studio-canvas-ui stage 2, 2026-10-24; ui-found.ts): the dotted
+   * frames on the UI layer, and a press beside every UI box → the cross and the shell's line with ✦. Only with a UI layer
+   * (bridge.ts makes one, empty, when there is nothing to select yet but such UI is seen).
+   */
+  const uiBoxes = ()         => {
+    if (!uiStack) return [];
+    const out         = [];
+    try {
+      for (const it of uiStack.driven.list()) {
+        const r = uiStack.driven.anchor(it.key)?.rect;
+        if (r) out.push(r);
+      }
+    } catch {
+      /* none this frame */
+    }
+    return out;
+  };
+  const uiFound = uiStack ? createUiFound({ win, post: (m) => post(m), lang: () => (lang === 'ja' ? 'ja' : 'en'),
+    leftOut: () => (world?.raw.leftOut ? world.raw.leftOut() : []),
+    boxes: uiBoxes,
+    any: () => {
+      try {
+        return !!uiStack && uiStack.driven.list().length > 0;
+      } catch {
+        return false;
+      }
+    },
+    delivered: () => codeUiEntries(win).length > 0,
+    drawGame: () => {
+      const fn = deps.redraw?.();
+      if (fn) {
+        try {
+          fn();
+        } catch (e) {
+          console.warn('[studio] studio.redraw failed:', e);
+        }
+      } else if (core.time.frozen) core.time.step();
+    },
+    render: () => {
+      try {
+        world?.driven.render();
+        uiStack?.driven.render();
+      } catch {
+        /* the picture without the world */
+      }
+    } }) : null;
+  // A drag of a UI box was going on in the last frame (the frames are worked out again when it is let go).
+  let uiBusy = false;
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
   const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
@@ -20984,6 +21869,12 @@ function createEditor(deps            )         {
     input?.frame();
     // The UI drawn in the canvas: one frame of the game when it changed, the darker world around it, the line (code-ui.ts).
     deps.uiCode?.frame({ ui: layer === 'ui', editing: state.editing, inHand: layer === 'ui' ? input?.inHand() ?? [] : [] });
+    if (uiFound) {
+      const busy = layer === 'ui' && (input?.inHand().length ?? 0) > 0;
+      if (uiBusy && !busy) uiFound.stale();
+      uiBusy = busy;
+      uiFound.frame({ ui: layer === 'ui', editing: state.editing, busy });
+    }
     toolHost.frame();
     timeline.frame();
     if (layer === 'world') (keepOut.frame(), codePlace.frame(), codeMotion.frame());
@@ -21745,8 +22636,13 @@ function createEditor(deps            )         {
       state.editing = true;
       // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
       // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
+      // The canvas UI's screen first (it starts on the HTML UI's screen shown), so the screens' menu has both.
+      deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
       uiExtras?.begin();
-      deps.uiCode?.begin();
+      postCodeScreens();
+      // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
+      uiFound?.stale();
+      uiFound?.list();
       if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
@@ -21820,6 +22716,7 @@ function createEditor(deps            )         {
       // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
       uiExtras?.end();
       deps.uiCode?.end();
+      uiFound?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
           a.end();
@@ -21852,7 +22749,9 @@ function createEditor(deps            )         {
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
       ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
-      ...(layer === 'world' && !deps.paused ? { codePlace } : {}) });
+      ...(layer === 'world' && !deps.paused ? { codePlace } : {}),
+      // studio-canvas-ui stage 2: a press on the UI layer that selected nothing → ui-found.ts says why (or nothing, as before).
+      ...(layer === 'ui' && uiFound ? { missed: (x        , y        ) => void uiFound.missed(x, y), pressed: () => uiFound.clear(true) } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -21895,6 +22794,8 @@ function createEditor(deps            )         {
       } else if (worldView !== undefined && world.driven.view.restore) world.driven.view.restore(worldView);
     }
     layer = to;
+    uiFound?.clear(true);
+    uiFound?.stale();
     raw = next.raw;
     edits = next.edits;
     adapter = next.driven;
@@ -22052,14 +22953,21 @@ function createEditor(deps            )         {
           if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
+        case 'studio:ui/missing-clear':
+          uiFound?.clear(false);
+          break;
         case 'studio:ui/screen':
         case 'studio:ui/sample':
         case 'studio:ui/set':
         case 'studio:ui/state':
         case 'studio:ui/theme-set':
         case 'studio:ui/props-get':
+          // What is drawn may change (a long sample, another screen): the frames are worked out again.
+          uiFound?.stale();
           // A codeUi's key goes to its own card (code-ui.ts); the rest (and screens / theme) to the HTML UI's.
           if (state.editing && uiStack && !deps.uiCode?.handle(msg)) uiExtras?.handle(msg);
+          // A screen with no HTML UI to show it (the canvas UI's alone): its list and the menu from here.
+          if (state.editing && msg.type === 'studio:ui/screen' && !uiExtras && codeScreens()) (relistUi(), postCodeScreens());
           dirtyFrame = true;
           break;
         case 'studio:ui/code-check':
@@ -22229,7 +23137,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[53] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -22292,7 +23200,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[54] = function (__exports) {
+__defs[56] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -22477,219 +23385,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[55] = function (__exports) {
-'use strict';
-// play-shot.ts
-
-// The picture and the UI that go with a request made while playing (CONTRACT.md §3.5; 2026-10-20: "I asked the AI
-// while playing and it ignored the UI on screen").
-//
-// WHY this file: the first picture (2026-10-20) drew only the page's canvases. A game's HUD, title, buttons and score
-// are usually HTML over the canvas, so the AI got a picture without them and could not tell what the person was
-// looking at when they said "make the score bigger" or "this button is in the way". `shootPage` is a screenshot of
-// the page as the player sees it: canvases AND the HTML over them, painted into one canvas. One picture is all that
-// goes (a UI list in words was tried the same day and taken out: "a screenshot is enough").
-//
-// WHY a small painter of our own, not the usual ways:
-// - the browser's own screen capture (getDisplayMedia) asks the person every time with a dialog — in the middle of a
-//   run; the brief says no dialog;
-// - there is no library here (the bridge is one file that goes into every game page);
-// - the SVG <foreignObject> route loads asynchronously, drops the game's style sheets unless each one is copied in,
-//   and in some browsers marks the canvas unreadable (then there is no picture at all).
-// The painter draws what HUDs are made of — boxes with a background colour, a border and round corners, text in its
-// font and colour, images from the game's own site — in the page's painting order (in-flow first, then positioned
-// boxes by z-index), synchronously, at the moment Enter is pressed.
-// NOT drawn (the AI sees the UI's place and words, not its finish): CSS gradients, shadows and glows (text-shadow,
-// box-shadow), CSS background images, inline SVG, rotations (a turned box is drawn upright in its bounds), pictures
-// from another site (drawing one would make the whole picture unreadable), what is typed in a game's input field
-// (its value is not text in the page), anything inside a shadow root or an iframe.
-//
-// The editor's own parts (the ask overlay, the tool strip) are never drawn: `skip` names them.
-
-/** Widest picture sent (px). Enough to read a sign in the game; a 1024 px JPEG is ~100-250 KB. */
-const SHOT_W = 1024;
-/** Text the painter draws at most (characters): a long credits page would otherwise take long frames to paint. */
-const PAINT_CHARS = 4000;
-
-
-// ---------------------------------------------------------------------------
-// The page (browser only)
-// ---------------------------------------------------------------------------
-
-                                      
-
-const isTransparent = (c        ) => !c || c === 'transparent' || /rgba\([^)]*,\s*0(\.0+)?\)$/.test(c) || /\/\s*0(\.0+)?\)$/.test(c);
-const sameSite = (win     , src        ) => {
-  if (!src) return false;
-  if (/^(data|blob):/.test(src)) return true;
-  try {
-    return new URL(src, win.location.href).origin === win.location.origin;
-  } catch {
-    return false;
-  }
-};
-const shown = (cs                     ) => cs.display !== 'none' && cs.visibility !== 'hidden' && cs.visibility !== 'collapse';
-const onScreen = (r         , vw        , vh        ) => r.width >= 1 && r.height >= 1 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
-
-/**
- * The game as the player sees it — canvases and the HTML UI over them — scaled to SHOT_W at most, as a JPEG. null when
- * nothing could be drawn (an empty page) or the browser refuses (a canvas with pictures from another site).
- */
-function shootPage(win     , skip                          )                {
-  const doc = win.document;
-  const vw = win.innerWidth, vh = win.innerHeight;
-  if (!vw || !vh) return null;
-  const k = Math.min(1, SHOT_W / vw);
-  const out = doc.createElement('canvas');
-  out.width = Math.round(vw * k);
-  out.height = Math.round(vh * k);
-  const g = out.getContext('2d');
-  if (!g) return null;
-  g.scale(k, k);
-  // The page's own colour under everything (CSS gives the body's to the whole page when the root has none).
-  const rootBg = [doc.documentElement, doc.body].map((e) => (e ? win.getComputedStyle(e).backgroundColor : '')).find((c) => !isTransparent(c));
-  g.fillStyle = rootBg || '#000';
-  g.fillRect(0, 0, vw, vh);
-  let drawn = 0;
-  let chars = 0;
-  const range = doc.createRange();
-
-  // Positioned boxes are painted after the flow, lowest z-index first (CSS painting order, simplified: a box with
-  // z-index auto takes its parent's).
-  const later                                                                  = [];
-  let order = 0;
-
-  const box = (el         , cs                     , r         , alpha        ) => {
-    const bg = cs.backgroundColor;
-    const bw = parseFloat(cs.borderTopWidth) || 0;
-    const bc = cs.borderTopColor;
-    const paintBg = !isTransparent(bg);
-    const paintBorder = bw > 0 && cs.borderTopStyle !== 'none' && !isTransparent(bc);
-    if (!paintBg && !paintBorder) return;
-    const rad = Math.min(r.width / 2, r.height / 2, cs.borderTopLeftRadius.endsWith('%') ? (parseFloat(cs.borderTopLeftRadius) / 100) * r.width : parseFloat(cs.borderTopLeftRadius) || 0);
-    g.globalAlpha = alpha;
-    g.beginPath();
-    if (rad > 0 && typeof g.roundRect === 'function') g.roundRect(r.left, r.top, r.width, r.height, rad);
-    else g.rect(r.left, r.top, r.width, r.height);
-    if (paintBg) {
-      g.fillStyle = bg;
-      g.fill();
-    }
-    if (paintBorder) {
-      g.lineWidth = bw;
-      g.strokeStyle = bc;
-      g.stroke();
-    }
-    drawn++;
-  };
-
-  const text = (node      , cs                     , alpha        ) => {
-    const raw = node.data;
-    if (!raw.trim() || chars > PAINT_CHARS) return;
-    const tt = cs.textTransform;
-    const show = (s        ) => (tt === 'uppercase' ? s.toUpperCase() : tt === 'lowercase' ? s.toLowerCase() : s);
-    g.globalAlpha = alpha;
-    g.fillStyle = cs.color;
-    g.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-    g.textBaseline = 'middle';
-    const ls = parseFloat(cs.letterSpacing);
-    if ('letterSpacing' in g) (g                                                        ).letterSpacing = Number.isFinite(ls) ? `${ls}px` : '0px';
-    // Word by word, each where the browser laid it out (wrapped lines, centred text and all); a word the browser broke
-    // over two lines (no spaces: Japanese) letter by letter.
-    const re = /\S+/g;
-    let m                        ;
-    while ((m = re.exec(raw)) && chars <= PAINT_CHARS) {
-      range.setStart(node, m.index);
-      range.setEnd(node, m.index + m[0].length);
-      const rects = range.getClientRects();
-      if (rects.length === 1) {
-        const q = rects[0] ;
-        if (onScreen(q, vw, vh)) g.fillText(show(m[0]), q.left, q.top + q.height / 2);
-        chars += m[0].length;
-        continue;
-      }
-      let i = m.index;
-      for (const ch of m[0]) {
-        range.setStart(node, i);
-        range.setEnd(node, i + ch.length);
-        const q = range.getClientRects()[0];
-        if (q && onScreen(q, vw, vh)) g.fillText(show(ch), q.left, q.top + q.height / 2);
-        i += ch.length;
-        chars++;
-      }
-    }
-    drawn++;
-  };
-
-  const paint = (el         , alpha        , z        , top         ) => {
-    if (skip(el)) return;
-    const cs = win.getComputedStyle(el);
-    if (cs.display === 'none') return;
-    const a = alpha * (Number(cs.opacity) || (cs.opacity === '0' ? 0 : 1));
-    if (a <= 0.01) return;
-    const positioned = cs.position !== 'static';
-    const zi = cs.zIndex === 'auto' ? z : Number(cs.zIndex) || 0;
-    if (positioned && !top) {
-      later.push({ el, z: zi, order: order++, alpha });
-      return;
-    }
-    const tag = el.tagName;
-    const r = el.getBoundingClientRect();
-    const visible = cs.visibility === 'visible' && onScreen(r, vw, vh);
-    if (visible && el !== doc.documentElement && el !== doc.body) box(el, cs, r, a);
-    if (visible && tag === 'CANVAS') {
-      try {
-        g.globalAlpha = a;
-        g.drawImage(el                     , r.left, r.top, r.width, r.height);
-        drawn++;
-      } catch {
-        /* this one cannot be read; the others still can */
-      }
-      return;
-    }
-    if (visible && (tag === 'IMG' || tag === 'VIDEO')) {
-      const m = el                                       ;
-      const src = tag === 'IMG' ? m.currentSrc || m.src : m.currentSrc || m.src;
-      // Only the game's own pictures: one from another site would make the whole picture unreadable.
-      const ready = tag === 'IMG' ? m.complete && m.naturalWidth > 0 : m.readyState >= 2;
-      if (ready && sameSite(win, src)) {
-        try {
-          g.globalAlpha = a;
-          g.drawImage(m, r.left, r.top, r.width, r.height);
-          drawn++;
-        } catch {
-          /* not drawable */
-        }
-      }
-      return;
-    }
-    if (tag === 'SVG' || tag === 'svg' || tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEMPLATE' || tag === 'IFRAME') return;
-    for (const c of Array.from(el.childNodes)) {
-      if (c.nodeType === 3) {
-        if (shown(cs)) text(c        , cs, a);
-      } else if (c.nodeType === 1) paint(c           , a, zi, false);
-    }
-  };
-
-  paint(doc.documentElement, 1, 0, true);
-  while (later.length) {
-    later.sort((x, y) => x.z - y.z || x.order - y.order);
-    const next = later.shift() ;
-    paint(next.el, next.alpha, next.z, true);
-  }
-  g.globalAlpha = 1;
-  if (!drawn) return null;
-  try {
-    return out.toDataURL('image/jpeg', 0.82);
-  } catch {
-    return null;
-  }
-}
-
-__def(__exports, "SHOT_W", () => SHOT_W);
-__def(__exports, "shootPage", () => shootPage);
-};
-__defs[56] = function (__exports) {
+__defs[57] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -22828,7 +23524,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[57] = function (__exports) {
+__defs[58] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -22848,7 +23544,7 @@ __defs[57] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(54);
+const { icon } = __require(56);
 
                            
                     
@@ -23185,7 +23881,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[58] = function (__exports) {
+__defs[59] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -23220,8 +23916,8 @@ __defs[58] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(52);
-const { drivenBetween } = __require(39);
+const { createEditor } = __require(54);
+const { drivenBetween } = __require(41);
 const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
@@ -23586,7 +24282,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[59] = function (__exports) {
+__defs[60] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -23612,12 +24308,12 @@ __defs[59] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(53);
-const { icon } = __require(54);
-const { shootPage } = __require(55);
-const { createPauseHold, isPauseKey } = __require(56);
-const { CHAT_CSS, createChat } = __require(57);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(58);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(55);
+const { icon } = __require(56);
+const { shootPage } = __require(24);
+const { createPauseHold, isPauseKey } = __require(57);
+const { CHAT_CSS, createChat } = __require(58);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(59);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -24562,7 +25258,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[60] = function (__exports) {
+__defs[61] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -24617,7 +25313,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[61] = function (__exports) {
+__defs[62] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -24699,7 +25395,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[62] = function (__exports) {
+__defs[63] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -24715,14 +25411,15 @@ const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
 const { findDomUiPort, uiAdapterFromPort } = __require(22);
 const { codeUiEntries, createCodeUi, mergeUiPorts } = __require(23);
-const { runSelfCheck } = __require(24);
-const { createEditor } = __require(52);
-const { startPlayAsk } = __require(59);
-const { createPlaySwitch } = __require(46);
-const { arrangeInPlay, moveInPlay } = __require(45);
+const { findUi: findUiNow, markHudCanvases } = __require(25);
+const { runSelfCheck } = __require(26);
+const { createEditor } = __require(54);
+const { startPlayAsk } = __require(60);
+const { createPlaySwitch } = __require(48);
+const { arrangeInPlay, moveInPlay } = __require(47);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(60);
-const { watchEarlyTaps } = __require(61);
+const { pickLevel } = __require(61);
+const { watchEarlyTaps } = __require(62);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -24777,6 +25474,8 @@ function startBridge(opts               )       {
   // studio.redraw(fn) (studio-canvas-ui, 2026-10-24): the game's own one-frame draw for its codeUis, when it does not
   // draw from requestAnimationFrame. null = the editor runs the game's waiting frame once (core time.step()).
   let redrawFn                      = null;
+  // The codeUi side of the UI seat once the editor found it (studio.screen() reads its screen).
+  let uiCodeRef                = null;
   const attached                            = [];
 
   const api               = {
@@ -24815,6 +25514,9 @@ function startBridge(opts               )       {
     redraw(fn) {
       redrawFn = typeof fn === 'function' ? fn : null;
     },
+    // The canvas UI's screen the editor shows (studio-canvas-ui stage 2; code-ui.ts): null outside editing — the game
+    // decides then, and ▶ Play starts from its own first screen as with HTML screens.
+    screen: () => (playSwitch?.playing ? null : uiCodeRef?.screenNow() ?? null),
     core,
     // Levels (2026-10-22, bridge/levels.ts): the code's levels go to the editor (once per page), and the page builds
     // the level the editor's URL asks for. Outside the editor's frame: null, the game picks its level itself.
@@ -24971,7 +25673,7 @@ function startBridge(opts               )       {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'redraw', 'core', 'extend', 'levels']         ) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'redraw', 'screen', 'core', 'extend', 'levels']         ) prior[k] = api[k];
     api.ready = prior.ready              ;
     api.attach = prior.attach                                        ;
   }
@@ -25086,6 +25788,13 @@ function startBridge(opts               )       {
       }
     }
     if (world && world.kind === 'dom') return null;
+    // A 2D canvas laid over the game's (a HUD canvas): the UI layer's, before any adapter hides "the game's DOM over the
+    // canvas" when editing starts (studio-canvas-ui stage 2; ui-found.ts markHudCanvases).
+    try {
+      markHudCanvases(win);
+    } catch {
+      /* none marked: as before */
+    }
     try {
       const skip = () => {
         try {
@@ -25103,12 +25812,40 @@ function startBridge(opts               )       {
         uiCode = code;
         return uiAdapterFromPort(mergeUiPorts(dom, code.port), core, win);
       }
-      return dom ? uiAdapterFromPort(dom, core, win) : null;
+      if (dom) return uiAdapterFromPort(dom, core, win);
+      // Nothing selectable yet, but the game's UI is seen (studio-canvas-ui stage 2, 2026-10-24; ui-found.ts): a HUD canvas
+      // over the game's with something drawn in it, or UI the engine's adapter leaves out. An empty UI layer then, so
+      // Scene | UI is there, its list says "No selectable UI yet", the frames show where it is, and a press there says
+      // why with ✦. One canvas with everything in it finds nothing: no UI layer, exactly as before.
+      const boxes         = code ? code.port.objects().map((o) => code.port.bounds(o.key)).filter((b)            => !!b) : [];
+      let left         = [];
+      try {
+        left = world?.leftOut?.() ?? [];
+      } catch {
+        left = [];
+      }
+      // Only beside a world: with no world adapter (yet) an empty UI layer would end the wait for one (the loop above
+      // stops at the first UI it finds) and open an editor with nothing to edit.
+      if (world && (code || findUiNow(win, boxes, left).length)) return uiAdapterFromPort(nothingYet(), core, win);
+      return null;
     } catch (e) {
       console.warn('[studio] DOM UI adapter failed:', e);
       return null;
     }
   };
+
+  /** The UI seat with nothing to select yet (stage 2): an empty list, the same 2D base as every UI port. */
+  const nothingYet = ()         => ({
+    name: 'canvas-ui',
+    objects: () => [],
+    get: () => null,
+    set() {},
+    parentToScreen: () => null,
+    bounds: () => null,
+    render() {},
+    canvas: () => null,
+    capture: async () => null,
+  });
 
   core.time.firstFrame().then(async () => {
     // Engines often build the scene a little after their first frame (async
@@ -25144,7 +25881,8 @@ function startBridge(opts               )       {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, uiCode, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
+    uiCodeRef = uiCode;
+    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, uiCode, redraw: () => redrawFn, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):
@@ -25173,7 +25911,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[63] = function (__exports) {
+__defs[64] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -25192,11 +25930,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(62);
+const { startBridge } = __require(63);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(63);
+__require(64);
 })();

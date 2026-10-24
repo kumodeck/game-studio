@@ -12,7 +12,7 @@
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose } from '../contract.ts';
+import type { CodeAvoidInfo, CodeKnob, CodeMotionInfo, CodePlaceInfo, CodeUiInfo, Dim, Item, KnobValue, LibraryMotion, Motion, MotionClip, MotionKey, MotionRepeat, MotionUntil, MotionWhen, PlacementPlace, PlacementUiEntry, PlaceOffset, Pose, UiFound } from '../contract.ts';
 import { uiBoxAt } from '../loader/studio-placement.js';
 import { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } from '../schema/hands.mjs';
 import { roundKnob, turnKnobs } from './code-places.ts';
@@ -144,6 +144,11 @@ export interface HandsDeps {
     clear(key: string): boolean;
     /** placement.json's `ui` as it would be written now. */
     entries(): Record<string, PlacementUiEntry>;
+    /**
+     * Stage 2 (2026-10-24; bridge/ui-found.ts): the game's UI the editor sees but cannot select yet — the dotted frames
+     * (viewport CSS px boxes; 'hud-canvas' / 'left-out'). The AI's clues for what to deliver with codeUi.
+     */
+    found?(): UiFound[];
   };
   /** The person's Save (only when they asked the AI for it). */
   save(): Promise<boolean>;
@@ -721,6 +726,9 @@ export function createAiHands(d: HandsDeps) {
   /** `list` with the UI: every element of the UI layer (HTML and canvas), what the file holds for it, and for a codeUi what to write on Save. */
   function uiList(l: Record<string, unknown>): Record<string, unknown> {
     const u = d.ui;
+    // The UI not selectable yet (stage 2): where the editor sees it, whether or not anything is selectable.
+    const found = u?.found?.() ?? [];
+    if (found.length) l = { ...l, uiFound: found };
     if (!u || !u.items().length) return l;
     const codes = new Map(u.codes().map((c) => [c.key, c]));
     const file = u.entries();
@@ -732,6 +740,13 @@ export function createAiHands(d: HandsDeps) {
         ...(ps ? { p: ps.p, s: typeof ps.s === 'number' ? ps.s : 1 } : {}), ...(e?.set ? { set: e.set, ...(e.setWas ? { setWas: e.setWas } : {}) } : {}),
         ...(c ? { code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } } : { html: true }) };
     });
+    // A canvas UI on another screen than the one shown (stage 2: not in the UI list now) — the AI writes it all the same.
+    for (const c of codes.values()) {
+      if (ui.some((x) => x.key === c.key)) continue;
+      const e = file[c.key];
+      ui.push({ key: c.key, name: c.name, ...(c.screen ? { screen: c.screen } : {}), ...(e?.set ? { set: e.set, ...(e.setWas ? { setWas: e.setWas } : {}) } : {}),
+        code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } });
+    }
     const clash = u.clash();
     return { ...l, ui, ...(clash.length ? { uiClash: clash } : {}) };
   }
@@ -751,7 +766,11 @@ export function createAiHands(d: HandsDeps) {
     if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
     if (d.playing()) await d.stopPlay();
     // A job of UI ops is done on the UI layer (its one ⌘Z is a step of that layer); every other job on the world.
-    if (d.ui && ops.some((op) => op.do.startsWith('ui.')) && ops.every((op) => op.do.startsWith('ui.') || op.do === 'list' || op.do === 'save')) d.ui.show();
+    // A job of `list` alone only reads: the layer the person is on stays (studio-canvas-ui stage 2, 2026-10-24: the real
+    // AI's last `--do list` after delivering the canvas UI took the person to the Scene, where that UI is hidden).
+    if (ops.every((op) => op.do === 'list')) {
+      /* stay */
+    } else if (d.ui && ops.some((op) => op.do.startsWith('ui.')) && ops.every((op) => op.do.startsWith('ui.') || op.do === 'list' || op.do === 'save')) d.ui.show();
     else d.toWorld();
     // The AI's name for its line: the one that asked (by), else the editor's own guess ({ai}).
     const ai: Record<string, string> = job.by ? { ai: d.t(`ai.name.${job.by}`), Ai: d.t(`ai.name.${job.by}`) } : {};

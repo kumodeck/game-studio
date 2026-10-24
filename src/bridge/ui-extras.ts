@@ -32,6 +32,12 @@ export interface UiExtrasDeps {
   post(msg: BridgeToShell): void;
   /** The UI layer's list changed (another screen is shown): the editor lists it again. */
   relist(): void;
+  /**
+   * studio-canvas-ui stage 2 (2026-10-24): the screens of the UI the game draws in its canvas (codeUi `screen`) and the
+   * one it draws now — one list with the HTML screens (the same id is one screen: data-studio-screen="over" and
+   * codeUi('retry', { screen: 'over' }) are the same "Game over"). Absent / [] = the HTML screens alone, as before.
+   */
+  more?(): { screens: UiScreenInfo[]; current: string | null } | null;
 }
 
 export interface UiExtras {
@@ -43,6 +49,8 @@ export interface UiExtras {
   handle(msg: ShellToBridge): boolean;
   /** The props of a UI element for the card (null = no such element drawn). */
   props(key: string): UiProps | null;
+  /** The HTML screen on screen now (the one shown, else the one the game draws; null = none). */
+  screenNow(): string | null;
 }
 
 const KEY = /^[A-Za-z0-9_:#.\-\/]{1,80}$/;
@@ -172,7 +180,12 @@ export function createUiExtras(deps: UiExtrasDeps): UiExtras {
   const current = (): string | null => forced ?? screenEls().find(drawn)?.dataset.studioScreen ?? null;
   const postScreens = () => {
     const list = screens();
-    if (list.length) deps.post({ type: 'studio:ui/screens', screens: list, current: current(), forced: forced !== null });
+    const more = deps.more?.();
+    // The canvas UI's screens after the HTML ones (stage 2): a canvas-only screen joins the menu; the same id is one.
+    // Only one screen in all (the canvas's alone) = no menu, as a game with no screens.
+    if (more) for (const s of more.screens) if (!list.some((x) => x.id === s.id)) list.push(s);
+    const htmlCount = screens().length;
+    if (list.length && (htmlCount || list.length > 1)) deps.post({ type: 'studio:ui/screens', screens: list, current: current() ?? more?.current ?? null, forced: forced !== null });
   };
 
   // ---------------------------------------------------------------- elements
@@ -464,6 +477,7 @@ export function createUiExtras(deps: UiExtrasDeps): UiExtras {
       paint();
     },
     props,
+    screenNow: () => current(),
     handle(msg) {
       switch (msg.type) {
         case 'studio:ui/screen':

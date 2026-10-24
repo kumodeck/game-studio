@@ -41,6 +41,12 @@
 //   2. the person (through the editor) moves the bar to the top middle at 1.4× and gives the button a pink pressed fill,
 //      presses Save, says "saved" → the AI writes them into codeUi() and sends [ui.code, ui.set --clear]: no `ui` left
 //      in placement.json, every box where the person saw it, nothing left to save.
+// `--steps canvas-ui-2` (studio-canvas-ui stage 2, 2026-10-24 — the UI not selectable yet): the same example with nothing
+// delivered; the person (this test, in the editor) opens the UI layer, presses the minimap's dotted frame, presses ✦
+// "Ask … to make this UI editable" and sends the draft (an ask with `intent: "ui-code"`, the place, the frames, the
+// picture), then says in the AI's window that they asked from the editor → the AI delivers ALL the HUD's parts at once
+// (codeUi + --do ui.code, the check passed, the picture the same), the dotted frames are gone (`uiFound` empty), it marks
+// the request done, and it hands no steps back.
 // The game is Pillar Plaza (`pillars/`: a blue pillar that already sways), copied to a temporary folder. The editor
 // runs with its own HOME (so no KUMODeck sign-in on this computer is read) and is open in a headless Chrome the whole
 // time, as the person's editor would be; the AI's `--do` reaches it there. The skill is the package's own
@@ -77,10 +83,13 @@ if (spawnSync('claude', ['--version'], { encoding: 'utf8' }).status !== 0) {
 const TO_RULE = take('--steps') === 'to-rule';
 const TO_COORDS = take('--steps') === 'to-coords';
 const WRITEBACK = take('--steps') === 'writeback';
+const CANVAS2 = take('--steps') === 'canvas-ui-2';
 const CANVAS = take('--steps') === 'canvas-ui';
-// The game's main script (the canvas-ui set's game is examples/three-canvas-hud: game.js).
-const MAIN = CANVAS ? 'game.js' : 'main.js';
-const STEPS = CANVAS ? [
+// The game's main script (the canvas-ui sets' game is examples/three-canvas-hud: game.js).
+const MAIN = CANVAS || CANVAS2 ? 'game.js' : 'main.js';
+const STEPS = CANVAS2 ? [
+  { say: 'エディタから頼んだよ', first: true, kind: 'canvas-ask' },
+] : CANVAS ? [
   { say: 'このUIを編集できるようにして', first: true, kind: 'canvas-deliver' },
   { say: '保存した', first: true, kind: 'canvas-save' },
 ] : WRITEBACK ? [
@@ -120,7 +129,7 @@ const home = join(base, 'home');
 const out = take('--out') ? resolve(take('--out')) : join(base, 'report');
 mkdirSync(home, { recursive: true });
 mkdirSync(out, { recursive: true });
-cpSync(join(PKG, CANVAS ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
+cpSync(join(PKG, CANVAS || CANVAS2 ? 'examples/three-canvas-hud' : 'test/ai-feel/pillars'), game, { recursive: true });
 rmSync(join(game, 'README.md'), { force: true });
 mkdirSync(join(game, '.claude/skills'), { recursive: true });
 symlinkSync(join(PKG, 'skills/arrange'), join(game, '.claude/skills/arrange'));
@@ -303,7 +312,35 @@ try {
       console.log(`  (before: ${sd.stdout.split('\n')[0]}; blue-pillar: ${JSON.stringify((await motions()).map((c) => c.name))})`);
     }
     let lamps0 = null;
-    const hud0 = step.kind === 'canvas-deliver' ? await hudPng() : null;
+    const hud0 = step.kind === 'canvas-deliver' || step.kind === 'canvas-ask' ? await hudPng() : null;
+    // Stage 2's person: the UI layer, a press on the minimap's dotted frame, ✦, and Send (the draft as it is).
+    let asked = null;
+    if (step.kind === 'canvas-ask') {
+      await page.eval(`document.querySelector('[data-part=layer-switch] [data-layer=ui]')?.click()`);
+      await sleep(1500);
+      const frames = JSON.parse(await page.eval(`(() => { const r = ${GW}?.document.querySelector('game-studio-found')?.shadowRoot;
+        return JSON.stringify(r ? [...r.querySelectorAll('.f')].map((f) => { const b = f.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; }) : []); })()`) || '[]');
+      // The minimap: the frame lowest on the left.
+      const mm = frames.filter((b) => b[0] < 200).sort((a, b) => b[1] - a[1])[0];
+      const fb = JSON.parse(await page.eval(`JSON.stringify(document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect())`));
+      console.log(`  (the person: the UI layer — ${frames.length} dotted frames; presses the minimap's ${JSON.stringify(mm)})`);
+      if (mm) await page.click(fb.left + mm[0] + mm[2] / 2, fb.top + mm[1] + mm[3] / 2);
+      await sleep(700);
+      const line = await page.eval(`document.querySelector('[data-part=ui-missing]:not([hidden])')?.innerText.replace(/\\s+/g, ' ') ?? null`);
+      console.log(`  (the line: ${line})`);
+      await page.eval(`document.querySelector('[data-action=ui-missing-ask]')?.click()`);
+      await sleep(600);
+      const box = await page.eval(`(() => { const a = document.querySelector('[data-part=ask]'); return a.querySelector('.ask-chip:not([hidden])')?.textContent + ' | ' + a.querySelector('.ask-input').value; })()`);
+      console.log(`  (the box: ${box}; sends it)`);
+      writeFileSync(join(out, `step${i + 1}-before.png`), await page.screenshot());
+      await page.eval(`document.querySelector('[data-part=ask] .ask-send')?.click()`);
+      await sleep(1500);
+      const dir = join(game, '.studio/requests');
+      const name = existsSync(dir) ? readdirSync(dir).filter((n) => n.includes('-ask-')).sort().pop() : null;
+      asked = name ? JSON.parse(readFileSync(join(dir, name), 'utf8')) : null;
+      check(!!asked && asked.intent === 'ui-code' && Array.isArray(asked.pressed) && (asked.found ?? []).length >= 4 && /^\.studio\/play\//.test(asked.shot ?? ''),
+        `the editor sent the ask: intent ui-code, the place, the frames, the picture (${asked ? JSON.stringify({ intent: asked.intent, pressed: asked.pressed, found: asked.found?.length, shot: asked.shot }) : 'none'})`);
+    }
     let boxes0 = null;
     if (PERSON[step.kind]) {
       console.log(`  (the person: ${PERSON[step.kind]().split('\n')[0].replace(/ - in the editor.*/, '')})`);
@@ -449,6 +486,22 @@ try {
       const n = hud0 ? await hudDiff(hud0) : -1;
       check(n >= 0 && n < 200, `the HUD's picture is the same before and after the rewrite (${n} pixels differ)`);
       writeFileSync(join(out, 'canvas-deliver.png'), await page.screenshot());
+    } else if (step.kind === 'canvas-ask') {
+      await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)), 30000);
+      await sleep(3000);
+      const l = listNow();
+      const ui = (l?.ui ?? []).filter((u) => u.code);
+      console.log(`  editor's list: ui ${JSON.stringify(ui.map((u) => ({ key: u.key, name: u.name, kind: u.kind, box: u.box })))}; uiFound ${JSON.stringify(l?.uiFound ?? [])}`);
+      check(/codeUi\s*\(/.test(codeText), 'it wrote codeUi() into the game\'s drawing');
+      check(dos.some((c) => /ui\.code/.test(c)), 'it put them in the editor itself (--do ui.code)');
+      check(/its picture follows it/.test(r.s), 'the editor\'s check passed (each box moved 40 px: the picture followed)');
+      check(ui.length >= 4 && ui.some((u) => /map/i.test(u.key + u.name)) && ui.some((u) => /score/i.test(u.key + u.name)), `all of them at once: the minimap and the rest (${ui.map((u) => u.key).join(', ') || 'none'})`);
+      check(!(l?.uiFound ?? []).length, `the dotted frames are gone (uiFound ${JSON.stringify(l?.uiFound ?? [])})`);
+      const n = hud0 ? await hudDiff(hud0) : -1;
+      check(n >= 0 && n < 200, `the HUD's picture is the same before and after the rewrite (${n} pixels differ)`);
+      const st = existsSync(join(game, '.studio/status.json')) ? JSON.parse(readFileSync(join(game, '.studio/status.json'), 'utf8')) : null;
+      check(!!asked && !!st && st.state === 'done' && (st.request === asked.id || (st.handled ?? []).includes(asked.id)), `the ask marked done in the editor (${st ? JSON.stringify({ state: st.state, request: st.request, note: st.note }) : 'no status'})`);
+      writeFileSync(join(out, 'canvas-ask.png'), await page.screenshot());
     } else if (step.kind === 'canvas-save') {
       await waitFor(async () => (await page.eval(`document.querySelectorAll('iframe.game').length === 1 && !!${GW}?.__gameStudio?._debug`)), 30000);
       await sleep(3000);

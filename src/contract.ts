@@ -99,6 +99,8 @@ export interface CodeUiInfo {
   name: string;
   /** text | bar | button | image | box. */
   kind: string;
+  /** The screen it is on (its codeUi `screen`); absent = every screen. */
+  screen?: string;
   /** Where it is now, from the nearest of the 9 places (top-left … bottom-right): the file's `from`, the AI's at() on Save. */
   from: string;
   /** The at() numbers from `from` (the code's units). */
@@ -115,6 +117,16 @@ export interface CodeUiInfo {
   size: [number, number];
   /** The canvas in the code's units [W, H], and units per CSS px across / down. */
   frame: [number, number, number, number];
+}
+/**
+ * The game's UI the editor can see but not select yet (studio-canvas-ui stage 2, 2026-10-24; CONTRACT.md §1.13 "Not
+ * delivered yet"): `box` = viewport CSS px [x, y, w, h] of the game page. `from`: 'hud-canvas' = a lump of drawing in a 2D
+ * canvas laid over the game's canvas (outside every codeUi box); 'left-out' = what the engine's adapter leaves out as UI
+ * (Port2D.leftOut). Nothing else: one canvas with everything in it gives none (the editor does not guess).
+ */
+export interface UiFound {
+  box: [number, number, number, number];
+  from: 'hud-canvas' | 'left-out';
 }
 /** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
 export interface UiThemeVar {
@@ -492,6 +504,8 @@ export interface StudioAdapter {
    * selection or the view changed, never every frame.
    */
   silhouette?(keys: string[]): { x: number; y: number; w: number; h: number; mask: HTMLCanvasElement } | null;
+  /** Optional: the port's leftOut() (Port2D.leftOut): the game's UI this adapter leaves out, viewport CSS px boxes. */
+  leftOut?(): Array<{ x: number; y: number; w: number; h: number }>;
 
   // --- copy and delete (optional, CONTRACT.md §1.8; all three or none) ---
   /**
@@ -652,6 +666,14 @@ export interface StudioGlobal {
    * the game's waiting frame once, with time stopped.
    */
   redraw?(fn: (() => void) | null): void;
+  /**
+   * Optional (studio-canvas-ui stage 2, 2026-10-24): the screen of the game's canvas UI the editor shows now (a codeUi's
+   * `screen`: 'play', 'over'…), null when the game decides (not editing, or no screen chosen). A game whose codeUis are on
+   * several screens draws the one this names while it answers — the person picks "Game over" in the UI list's head and
+   * the game draws its game-over UI, with its own state (score, time) untouched:
+   *   const screen = globalThis.studio?.screen?.() || state.screen;
+   */
+  screen?(): string | null;
   /** Shared services, for adapters that want the load log or the real rAF. */
   core: CoreContext;
   /**
@@ -893,6 +915,14 @@ export interface Port2D {
    * alpha is the coverage). Without it the outline is a rounded box.
    */
   silhouette?(keys: string[]): { x: number; y: number; w: number; h: number; mask: HTMLCanvasElement } | null;
+  /**
+   * Optional (studio-canvas-ui stage 2, 2026-10-24): the screen boxes (viewport CSS px) of what objects() leaves out
+   * BECAUSE it is the game's UI — Phaser's scrollFactor 0 (fixed to the screen), Pixi's `studio = false` layers (a
+   * full-screen background is not UI: leave it out). The editor draws a faint dotted frame "Not selectable yet" there on
+   * the UI layer: it is the game's UI, but nobody has told the editor what it is yet (the AI makes it selectable with
+   * codeUi). Never a guess: only what the adapter already leaves out as UI.
+   */
+  leftOut?(): Array<{ x: number; y: number; w: number; h: number }>;
   /**
    * Optional draw order (layers). Both or neither. `parent` names the list
    * the object is drawn in (KEY_RE characters: 'stage', the parent's key…);
@@ -1214,6 +1244,11 @@ export type ShellToBridge =
   | { type: 'studio:ui/code-check'; id: number; keys: string[] }
   | { type: 'studio:ui/code-clear'; key: string }
   /**
+   * studio-canvas-ui stage 2 (2026-10-24): the line "This UI can't be selected yet" went (Esc, the ✦ pressed, another
+   * action in the editor page): the cross at the pressed place goes too.
+   */
+  | { type: 'studio:ui/missing-clear' }
+  /**
    * While the world is edited, the game's UI (data-studio-key) is hidden — off the picture and out of the pointer's
    * way — unless `on` (the shell's eye button / ⇧U, a try of the editor, 2026-10-20: "the UI is always there, in the way"). On: shown
    * faded, still not in the pointer's way. Only the editing look: nothing is saved and the game's code is untouched.
@@ -1354,6 +1389,19 @@ export type BridgeToShell =
    * codeUi ids an HTML element's data-studio-key already uses (the HTML one is listed, the codeUi is not).
    */
   | { type: 'studio:ui/codes'; list: CodeUiInfo[]; clash: string[] }
+  /**
+   * studio-canvas-ui stage 2 (2026-10-24): the game's UI the editor sees but cannot select yet (UiFound; [] = none), when
+   * editing starts and whenever it changes — the dotted frames' places, the AI's `list` (`uiFound`) and a ui-code ask's `found`.
+   */
+  | { type: 'studio:ui/found'; found: UiFound[] }
+  /**
+   * studio-canvas-ui stage 2: a press on the UI layer outside every UI box, in a game whose UI is drawn in its canvas
+   * (codeUis, or dotted frames): the cross is drawn there, and the shell says one line with ✦. `at` = the press, game
+   * page CSS px (null = the cross went: the next action in the game page); `place` = the nearest of the 9 places of the
+   * game's screen (the chip's "bottom left"); `none` = nothing is selectable on the UI layer at all; `shot` = the picture
+   * round the press (240×160 CSS px, a JPEG data URL; play-shot.ts's painter), for the ask.
+   */
+  | { type: 'studio:ui/missing'; at: [number, number] | null; place?: string; none?: boolean; shot?: string }
   /** The answer to studio:ui/code-check: per key, did its picture follow the box (`why` when not). */
   | { type: 'studio:ui/code-checked'; id: number; results: Array<{ key: string; ok: boolean; why?: string; note?: string }> }
   | { type: 'studio:placement/selected'; key: string | null; item?: Item; keys?: string[] }
@@ -1637,13 +1685,23 @@ export interface StudioRequestInput {
    */
   intent?: RequestIntent;
   /**
+   * `intent: 'ui-code'` only (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Have Claude make this UI editable"):
+   * where the person pressed on the game's screen, game page CSS px — the UI they mean is drawn there. The AI makes ALL
+   * of the game's canvas UI selectable at once (codeUi + `--do ui.code`), not only this one; `found` and `shot` are its
+   * clues. (Not `at`, the plan's word: a stored request's `at` is its time.)
+   */
+  pressed?: [number, number];
+  /** `intent: 'ui-code'` only: the dotted frames on screen when it was asked (UiFound: the editor's own boxes). */
+  found?: UiFound[];
+  /**
    * UI stage 1: 'ui' when the objects are the game's HTML UI (data-studio-key elements, picked in the UI layer), so
    * the AI changes that element's HTML / CSS, not a world object. Absent = the world, as before.
    */
   layer?: 'ui';
   /**
-   * "play" only (§3.5): the game's picture at that moment, a JPEG / PNG data URL (≤ 1.5 MB). The host keeps it as a
-   * file and the stored request names that file instead (local: `.studio/play/<id>.jpg`).
+   * "play" (§3.5): the game's picture at that moment, a JPEG / PNG data URL (≤ 1.5 MB). Also an "ask" with `intent:
+   * 'ui-code'` (studio-canvas-ui stage 2): the picture round the pressed place (240×160). The host keeps it as a file and
+   * the stored request names that file instead (local: `.studio/play/<id>.jpg`).
    */
   shot?: string;
   /** "play" only: the game's console (errors and warnings first-class, plus the last few lines), oldest first. */
@@ -1670,7 +1728,7 @@ export interface StudioRequestInput {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-export type RequestIntent = 'avoid' | 'to-code' | 'to-knob';
+export type RequestIntent = 'avoid' | 'to-code' | 'to-knob' | 'ui-code';
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
 export interface RequestPlace {
   id: string;

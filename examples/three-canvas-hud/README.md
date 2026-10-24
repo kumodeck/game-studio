@@ -7,7 +7,8 @@ a request of 2026-10-24: "I want to edit the UI drawn inside the canvas, not onl
 
 It is kept in the shape **before** the AI's rewrite: `drawHud()` in `game.js` is plain canvas code with its numbers in
 the drawing (`fillText(…, 26, 40)`, `arc(w - 24 - 36, …)`), as an AI usually writes it first. The editor cannot know
-where the score is, so the UI layer has nothing to pick yet. Ask your AI "make this UI editable": it rewrites the drawing
+where the score is, so the UI layer has nothing to pick yet: it shows the four parts as faint dotted frames "Not
+selectable yet", and a press on one says why with "✦ Ask … to make this UI editable" (stage 2). Ask your AI "make this UI editable": it rewrites the drawing
 with `codeUi()` (SKILL.md "UI drawn in the canvas"; the picture stays the same to the pixel), sends `--do ui.code`, and
 the score, the bar, the button and the minimap are picked, moved, resized and recoloured like HTML UI.
 

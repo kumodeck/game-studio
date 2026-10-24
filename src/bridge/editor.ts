@@ -16,7 +16,8 @@ import { drivenBetween, WATCH_MS } from './observe.ts';
 import { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } from './selfcheck.ts';
 import { createTimelineView } from './timeline-path.ts';
 import { createUiExtras } from './ui-extras.ts';
-import type { CodeUi } from './code-ui.ts';
+import { codeUiEntries, type CodeUi } from './code-ui.ts';
+import { createUiFound, type Rect } from './ui-found.ts';
 import { loaderPlay } from './play-switch.ts';
 import { codeAvoidsOf, codeMotionsOf, codePlacesOf, namedByLayout } from './code-lists.ts';
 import { createCodePlaceView } from './code-place.ts';
@@ -43,6 +44,8 @@ export interface EditorDeps {
    * the AI's `ui.code` check. null / absent = a game without codeUi (exactly as before).
    */
   uiCode?: CodeUi | null;
+  /** studio.redraw(fn): the game's own one-frame draw, when it gave one (bridge.ts). */
+  redraw?: () => (() => void) | null;
   /** Game rules (.studio/studio.json via the shell) and .studio/tools.js extensions. */
   rules: RulesHolder;
   /** Game tools registered so far (more may arrive later through register()). */
@@ -169,8 +172,16 @@ export function createEditor(deps: EditorDeps): Editor {
     }
     deps.post(msg);
   };
+  // The canvas UI's screens (codeUi `screen`, studio-canvas-ui stage 2) for the screens' menu: with the HTML ones, or alone.
+  const codeScreens = () => (deps.uiCode && deps.uiCode.screens().length ? { screens: deps.uiCode.screens(), current: deps.uiCode.screenNow() } : null);
   // UI stages 2–3 (ui-extras.ts): another screen shown = the UI layer's list again, without a pick that is gone.
-  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), relist: () => {
+  const uiExtras = deps.ui && deps.uiDom ? createUiExtras({ win, post: (m) => post(m), more: codeScreens, relist: () => relistUi() }) : null;
+  /** A game whose only screens are its canvas UI's (no HTML UI): the menu is said from here (≥ 2 screens). */
+  const postCodeScreens = () => {
+    const c = codeScreens();
+    if (!uiExtras && c && c.screens.length > 1) post({ type: 'studio:ui/screens', screens: c.screens, current: c.current, forced: true });
+  };
+  function relistUi() {
     if (!uiStack) return;
     if (layer !== 'ui') {
       try {
@@ -186,8 +197,57 @@ export function createEditor(deps: EditorDeps): Editor {
     input?.selectionChanged();
     postSelected();
     dirtyFrame = true;
-  } }) : null;
+  }
   const state: EditState = { editing: false, selected: null, group: [], multi: false, items: [], axis: 'y', scaleMode: 'spread', turnMode: 'spread' };
+  /**
+   * The game's UI the editor sees but cannot select yet (studio-canvas-ui stage 2, 2026-10-24; ui-found.ts): the dotted
+   * frames on the UI layer, and a press beside every UI box → the cross and the shell's line with ✦. Only with a UI layer
+   * (bridge.ts makes one, empty, when there is nothing to select yet but such UI is seen).
+   */
+  const uiBoxes = (): Rect[] => {
+    if (!uiStack) return [];
+    const out: Rect[] = [];
+    try {
+      for (const it of uiStack.driven.list()) {
+        const r = uiStack.driven.anchor(it.key)?.rect;
+        if (r) out.push(r);
+      }
+    } catch {
+      /* none this frame */
+    }
+    return out;
+  };
+  const uiFound = uiStack ? createUiFound({ win, post: (m) => post(m), lang: () => (lang === 'ja' ? 'ja' : 'en'),
+    leftOut: () => (world?.raw.leftOut ? world.raw.leftOut() : []),
+    boxes: uiBoxes,
+    any: () => {
+      try {
+        return !!uiStack && uiStack.driven.list().length > 0;
+      } catch {
+        return false;
+      }
+    },
+    delivered: () => codeUiEntries(win).length > 0,
+    drawGame: () => {
+      const fn = deps.redraw?.();
+      if (fn) {
+        try {
+          fn();
+        } catch (e) {
+          console.warn('[studio] studio.redraw failed:', e);
+        }
+      } else if (core.time.frozen) core.time.step();
+    },
+    render: () => {
+      try {
+        world?.driven.render();
+        uiStack?.driven.render();
+      } catch {
+        /* the picture without the world */
+      }
+    } }) : null;
+  // A drag of a UI box was going on in the last frame (the frames are worked out again when it is let go).
+  let uiBusy = false;
   // The timeline (studio-timeline, 2026-10-22; timeline-path.ts): the poses at the time line and the picked object's
   // path in 3D. Made here, before input.ts attaches, so a press on a path point reaches it first (timeline-path.ts says why).
   const timeline = createTimelineView({ win, adapter: () => adapter, poser: () => edits, post: (m) => post(m), lang: () => lang,
@@ -293,6 +353,12 @@ export function createEditor(deps: EditorDeps): Editor {
     input?.frame();
     // The UI drawn in the canvas: one frame of the game when it changed, the darker world around it, the line (code-ui.ts).
     deps.uiCode?.frame({ ui: layer === 'ui', editing: state.editing, inHand: layer === 'ui' ? input?.inHand() ?? [] : [] });
+    if (uiFound) {
+      const busy = layer === 'ui' && (input?.inHand().length ?? 0) > 0;
+      if (uiBusy && !busy) uiFound.stale();
+      uiBusy = busy;
+      uiFound.frame({ ui: layer === 'ui', editing: state.editing, busy });
+    }
     toolHost.frame();
     timeline.frame();
     if (layer === 'world') (keepOut.frame(), codePlace.frame(), codeMotion.frame());
@@ -1054,8 +1120,13 @@ export function createEditor(deps: EditorDeps): Editor {
       state.editing = true;
       // The screen chosen before (Play → Edit in the same page) again, the person's looks, and the screens / theme
       // for the shell (UI stages 2–3). Before the lists, so they list that screen's elements.
+      // The canvas UI's screen first (it starts on the HTML UI's screen shown), so the screens' menu has both.
+      deps.uiCode?.begin(uiExtras?.screenNow() ?? null);
       uiExtras?.begin();
-      deps.uiCode?.begin();
+      postCodeScreens();
+      // The frames' places for the shell (the AI's `list`, a ui-code ask), on whichever layer editing starts.
+      uiFound?.stale();
+      uiFound?.list();
       if (layer === 'ui') state.items = adapter.list();
       post({ type: 'studio:placement/items', items: state.items, ...itemsLayer() });
       // The other layer's list too, once (UI stage 1): the shell keeps the UI's saved places in the file and shows them
@@ -1129,6 +1200,7 @@ export function createEditor(deps: EditorDeps): Editor {
       // Screens, samples and a shown button look go back to the game's (its set / theme stay: the layout).
       uiExtras?.end();
       deps.uiCode?.end();
+      uiFound?.end();
       for (const a of [adapter, ...others().map((o) => o.driven)]) {
         try {
           a.end();
@@ -1161,7 +1233,9 @@ export function createEditor(deps: EditorDeps): Editor {
     };
     input = attachInput({ adapter, edits, core, win, post: inPost, state, select, selectMany, step, tools: toolHost, markDirty: () => (dirtyFrame = true),
       ...(deps.paused ? { passKeyUp: true } : { unhold }), ...(deps.ignore ? { ignore: deps.ignore } : {}),
-      ...(layer === 'world' && !deps.paused ? { codePlace } : {}) });
+      ...(layer === 'world' && !deps.paused ? { codePlace } : {}),
+      // studio-canvas-ui stage 2: a press on the UI layer that selected nothing → ui-found.ts says why (or nothing, as before).
+      ...(layer === 'ui' && uiFound ? { missed: (x: number, y: number) => void uiFound.missed(x, y), pressed: () => uiFound.clear(true) } : {}) });
     if (pendingHandlePx) input.setHandleSize(pendingHandlePx);
     input.setInset(inset);
     input.setTheme(theme);
@@ -1204,6 +1278,8 @@ export function createEditor(deps: EditorDeps): Editor {
       } else if (worldView !== undefined && world.driven.view.restore) world.driven.view.restore(worldView);
     }
     layer = to;
+    uiFound?.clear(true);
+    uiFound?.stale();
     raw = next.raw;
     edits = next.edits;
     adapter = next.driven;
@@ -1361,14 +1437,21 @@ export function createEditor(deps: EditorDeps): Editor {
           if (msg.layer !== layer) (timeline.clear(), codePlace.clear(), codeMotion.clear(), keepOut.clear());
           if (msg.layer === 'world' || msg.layer === 'ui') setLayer(msg.layer);
           break;
+        case 'studio:ui/missing-clear':
+          uiFound?.clear(false);
+          break;
         case 'studio:ui/screen':
         case 'studio:ui/sample':
         case 'studio:ui/set':
         case 'studio:ui/state':
         case 'studio:ui/theme-set':
         case 'studio:ui/props-get':
+          // What is drawn may change (a long sample, another screen): the frames are worked out again.
+          uiFound?.stale();
           // A codeUi's key goes to its own card (code-ui.ts); the rest (and screens / theme) to the HTML UI's.
           if (state.editing && uiStack && !deps.uiCode?.handle(msg)) uiExtras?.handle(msg);
+          // A screen with no HTML UI to show it (the canvas UI's alone): its list and the menu from here.
+          if (state.editing && msg.type === 'studio:ui/screen' && !uiExtras && codeScreens()) (relistUi(), postCodeScreens());
           dirtyFrame = true;
           break;
         case 'studio:ui/code-check':

@@ -31,6 +31,9 @@ test('the ask box gets words only from ✦ buttons (focusAsk callers)', () => {
     // studio-to-coords (2026-10-24): the line after a drag the rule kept still — ✦ Ask Claude: "Let me move Street lamps
     // sideways too" puts that draft in the box (the person sends it).
     [/^ask: \(draft\) => focusAsk\(draft\),$/, 'a rule\'s object held still: ✦ Ask for that knob (a draft)'],
+    // studio-canvas-ui stage 2 (2026-10-24): the line "This UI can't be selected yet · ✦ Ask Claude to make this UI
+    // editable" puts the draft "Make this UI editable" and the chip of the place pressed in the box (the person sends it).
+    [/^draft: host\.offline \? undefined : \(text\) => focusAsk\(text\),$/, 'ui-missing.ts: ✦ Ask … to make this UI editable (a draft)'],
   ];
   for (const l of lines) assert.ok(allowed.some(([re]) => re.test(l)), `a new caller writes in the ask box: ${l}`);
 });
@@ -41,6 +44,8 @@ test('nothing is sent at once except what the person sends (askAi callers)', () 
     [/^ask: \(keys, text, files\) => \(answering\(\) \? answerAi\(text\) : askAi\(\{ kind: 'ask'/, 'the ask box\'s own send'],
     // studio-code-torule: the same send, written out (the words of ✦ Turn into a rule go with `intent: 'to-code'`).
     [/^return askAi\(\{ kind: 'ask', text, objects: requestObjects\(keys\)/, 'the ask box\'s own send (with ✦ Turn into a rule\'s intent)'],
+    // studio-canvas-ui stage 2: the same send when the box's words came from ✦ Ask … to make this UI editable (`intent: 'ui-code'`).
+    [/^return askAi\(\{ kind: 'ask', text, layer: 'ui', intent: 'ui-code'/, 'the ask box\'s own send (with ✦ make this UI editable\'s intent)'],
     [/^return askAi\(\{ kind: 'answer'/, 'the answer the person typed to the AI\'s question'],
     [/^void askAi\(\{ kind: 'play'/, 'the pause ask box\'s own send'],
     [/^ask: \(r\) => askAi\(r\),$/, 'the Library tool\'s ctx.ask (its own buttons: studio-library, not this step)'],

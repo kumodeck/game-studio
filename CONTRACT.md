@@ -775,8 +775,38 @@ const b = scoreUi.box(), L = scoreUi.look();   // every frame, where it is drawn
   it keeps to that place on any window size. **On Save** the AI writes `at` / `scale` / `look` / `states` into the
   `codeUi()` and sends `[ui.code, ui.set --clear]` in one `--do` (§3.6): the entry leaves the file (no Save count), the
   editor draws it where the code now puts it. HTML UI the same way: the AI writes the CSS and clears the entry.
-- **Not yet** (stage 2–3): UI not delivered yet shown dotted ("Not selectable yet") with ✦ to ask; `codeUi` screens; Phaser /
-  Pixi (`onChange`); a `codeTheme`. Tests: `test/code-ui.test.mjs`, `test/studio-canvas-ui.browser.mjs`.
+- **Not delivered yet** (stage 2, 2026-10-24; `src/bridge/ui-found.ts`, `src/shell/ui-missing.ts`; the plan's decisions
+  9–12). Where the editor KNOWS there is UI it cannot select — never a guess — it shows it on the UI layer as a faint
+  dotted frame with the tag "Not selectable yet" (above the frame; right of it when there is no room above), not in the
+  list: (a) **a 2D canvas laid over the game's canvas** (a higher z-index, or the same and later in the page): the lumps
+  of its non-transparent pixels outside every UI box (`from: 'hud-canvas'`); (b) **what the world adapter leaves out as
+  UI** — `Port2D.leftOut()` / `StudioAdapter.leftOut()`, viewport CSS px boxes (the Phaser example: `scrollFactor 0`;
+  Pixi: `studio = false` layers, a container's parts one by one; `from: 'left-out'`). A lump or box over half the screen
+  is not a UI part (a backdrop) and is left out. **One canvas with everything in it gives nothing**: no frames and,
+  with nothing else, no UI layer (as before). A HUD canvas is marked `data-studio-ui-layer` before editing starts (so
+  the three.js adapter does not hide it as an overlay; the layer style hides it on the world, the eye shows it), and a
+  game page resized while held draws ONE frame of its own (a resize handler that sets a canvas's width clears it).
+  With nothing selectable but such UI seen, the UI layer is there with an empty list: **Scene | UI** shows, the list
+  says "No selectable UI yet". A press on the UI layer outside every UI box (a game with canvas UI: frames or codeUis)
+  draws a cross there and the shell's one line over the ask field: "This UI can't be selected yet" ("This game draws its
+  UI inside the picture" when nothing is selectable) · **✦ Ask {ai} to make this UI editable** — the reason is said in
+  that one place only. The next press in the game, Esc, another layer or a pick takes it away. ✦ only puts a draft in
+  the box below, "Make this UI editable", with the chip "Here (bottom left)" (the nearest of the 9 places) and a small
+  picture of the place (240 × 160 CSS px round the press, play-shot.ts's painter); the person sends it: an `ask` with
+  `intent: 'ui-code'`, `pressed` (game page CSS px), `found` (the frames) and `shot` (kept as `.studio/play/<id>.jpg`,
+  §3.1), `layer: 'ui'`. The AI delivers **all** of the game's canvas UI at once (SKILL.md "UI drawn in the canvas");
+  `--do list` gives the frames as `uiFound`. The first time the AI looks at a game with such UI it delivers it without
+  asking and says so in one line (decided on 2026-10-24: do not ask first).
+- **Screens** (stage 2): `codeUi`s with a `screen` on 2 or more screens put the screens' menu at the head of the UI
+  list ("Playing ⌄ 1 / 2"), merged with the HTML UI's screens (§1.11; the same id is one screen). The list shows the
+  screen shown (and every `codeUi` without a screen); choosing one only chooses what the game draws:
+  `studio.screen()` answers it while editing (null otherwise) and the game draws that screen's UI —
+  `const screen = globalThis.studio?.screen?.() || state.screen` — with its own state (score, time) untouched, so ▶ Play
+  starts from its own first screen. Editing starts on the HTML UI's screen shown, else `play`, else the first one.
+  `ui.code` measures a box on another screen on its own screen. The card's States (a `button` with `states`) and the
+  samples (a bar's full / half / empty; a text whose `size` is a function: its frame follows the sample) are stage 1's.
+- **Not yet** (stage 3): Phaser / Pixi through `codeUi` (`onChange`); a `codeTheme`. Tests: `test/code-ui.test.ts`,
+  `test/ui-found.test.ts`, `test/studio-canvas-ui.browser.mjs` (`--only one|missing|screens`).
 
 ## 2. Messages (bridge ⇄ shell)
 
@@ -797,6 +827,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `core/game-error` | `{ message, where? }`: the game's own page threw (edit and Play, first 3 per load); the shell says what to do |
 | | `core/levels` | `{ levels: LevelInfo[], current }`: the game called `studio.levels()` (§1.10); `current` = the level this page shows |
 | | `placement/items` | `Item[]`; `layer?` whose list it is (UI stage 1; absent = the world). When editing starts in a game with a UI, the UI's list is sent once too, so its saved places are kept and shown |
+| | `ui/found` · `ui/missing` | studio-canvas-ui stage 2 (§1.13): the UI seen but not selectable yet (`UiFound[]`: `box`, `from`), when editing starts and when it changes; a press on the UI layer beside every UI box (`at`, `place` = one of the 9, `none` = nothing selectable, `shot` = the picture round it) or `at: null` = the cross went (the next press in the game) |
 | | `ui/screens` · `ui/props` · `ui/theme` | UI stages 2–3 (§1.11): the screens and the one shown (`forced` = the editor chose it), when editing starts and after `ui/screen` (only for a game with screens); the picked UI element's props (`text`, `fontSize`, `color`, `background`, `button`, `state`, `was` = the game's own, `sample`), after a UI pick and each `ui/*` change of it; the theme's variables (`name`, `type` color / font, `value`, `was`), when editing starts and after `ui/theme-set` (only when there are some) |
 | | `placement/selected` | `{ key, item? }` |
 | | `placement/moved` | `{ key, pose, end?, from?, press?, hold?, alone? }` (`alone`: ⌥ held — a rule's object put by hand, §1.12) |
@@ -812,6 +843,7 @@ origin, never `'*'`. Full payload types: `ShellToBridge`, `BridgeToShell`.
 | | `library/previewed` | `{ url, ok }` |
 | shell → bridge | `core/edit` | `{ on, viewState? }` |
 | | `core/play` | `{ on, motion?, motions?, viewState? }` (§3.5.3, 2026-10-22): ▶ Play and back to Edit in the page on screen. `on`: the editor puts its tools away and the game goes on from the edit layout (`motion` = the draft's motions, played from their start, every `when` through the game's loader; `motions` = the Library's); the page then says `play/hello` as a Play page. Off: the game held, every object back where Play found it (three.js: also what the game added held out of the scene and what it took away put back, both handed back to the game at the next `on`; adapter `watch(on, whole)`), the editor up again on `viewState` (`core/ready` with `editing: true`, the list). Only to a page whose editor is up |
+| | `ui/missing-clear` | studio-canvas-ui stage 2 (§1.13): the line "This UI can't be selected yet" went by the shell's hand (Esc, ✦, a pick): the cross goes too |
 | | `ui/screen` · `ui/sample` · `ui/set` · `ui/state` · `ui/theme-set` · `ui/props-get` | UI stages 2–3 (§1.11; only after `core/ready` listed `layers`): show a screen (`id` null = as the game shows it); a sample text (`null` = its own); one look field (`name`, `value`, `state?`; `null` = the game's own; `quiet` = no `ui/props` back, for the values the file holds, given again when a page opens); a button's look; a theme variable; ask for an element's props |
 | | `core/layer` | `{ layer: 'world' \| 'ui' }` (UI stage 1, only after `core/ready` listed `layers`): drop the pick, put the input on that layer's adapter, answer `core/ready` + its `placement/items`. The world's edit camera goes to the game's own view while the UI is edited and back after; `core/view-state` is only sent for the world |
 | | `core/view` | `frameAll`, `home`, `focus`, `zoom`, `orbit`, `pan`, `rise` (camera up / down by `by` × the game's height; 3D adapters with `view.rise(dy)`, which `core/ready` reports as `rise: true`; adapters with `view.fly(right, up, fwd)` — and `view.look(dx, dy)` — report `fly: true`, and the editor page then sends the fly keys held there as `core/fly { keys, fast }`), `restore` (adapters may also have `view.home({ glide? })` — the opening view, the game camera in three.js — and `view.settle(key)` — the first pick from it glides to an editing angle; the bridge uses them itself. `home` (⌘K "Back to the opening view", ⇧F) calls `view.home({ glide: true })`, or `frameAll()` when the adapter has no `home`) |
@@ -1050,7 +1082,10 @@ a bonus that wakes an agent that happens to be watching.
   swaps it in with `--do place.code --replace` / `motion.code --replace` (§3.6), or, when none comes within half the
   object's size / a tenth of the path's, replaces nothing and says so; `"to-knob"` (studio-writeback) = ✦ Write into the
   rule: `places[0]` also has `way`, its `offsets` and `objects` (`{ key, line?, rank?, offset? }`, ≤ 200) — the AI
-  writes that way into the rule as a knob and sends `place.code --fold <way>`, §1.12), `step`, `lang`, `dim`, `unsaved` (changes not
+  writes that way into the rule as a knob and sends `place.code --fold <way>`, §1.12; `"ui-code"` (studio-canvas-ui stage
+  2) = ✦ Ask … to make this UI editable: `pressed` = the place pressed `[x, y]` (game page CSS px), `found` = the dotted
+  frames (≤ 24 `{ box, from }`), `shot` = the picture round the place (a data URL in; the host keeps it as
+  `.studio/play/<id>.jpg` and names that) — the AI makes all of the game's canvas UI selectable, §1.13), `step`, `lang`, `dim`, `unsaved` (changes not
   saved yet), `view` (`ask`, 3D: the camera's `eye` and `target` when they
   asked, so new things land in sight), `files` (what it is about: `placement.json`,
   `.studio/next-step.md`, …; for `delete-files`, `.studio/next-step.md` then

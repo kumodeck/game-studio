@@ -135,6 +135,13 @@ export interface InputDeps {
    * objects stay where the rule puts them unless ⌥. Absent = none (the UI layer, pause-move).
    */
   codePlace?: Pick<CodePlaceView, 'note' | 'dragStart' | 'dragTo' | 'dragEnd' | 'stopChip' | 'held' | 'ruled' | 'choosing'>;
+  /**
+   * studio-canvas-ui stage 2 (2026-10-24; ui-found.ts): a plain tap that selected nothing (the UI layer: a press on the
+   * game's UI that is not selectable yet → the cross and the shell's line). Absent = nothing more than the pick dropped.
+   */
+  missed?: (x: number, y: number) => void;
+  /** Every press in the game page, first (the cross of the last miss goes: "the next action"). */
+  pressed?: () => void;
 }
 
 export interface InputHandle {
@@ -892,6 +899,7 @@ export function attachInput(deps: InputDeps): InputHandle {
       return;
     }
     select(key);
+    if (!key) deps.missed?.(p.x, p.y);
   };
 
   /**
@@ -1004,6 +1012,7 @@ export function attachInput(deps: InputDeps): InputHandle {
   const onDown = (e: PointerEvent) => {
     const h = handleFromEvent(e);
     block(e);
+    deps.pressed?.();
     // A press with an id we still hold means we missed its release.
     ptrs.delete(e.pointerId);
     // A new touch while nothing is down: clear leftovers from lost releases.

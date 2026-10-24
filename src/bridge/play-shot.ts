@@ -51,22 +51,28 @@ const onScreen = (r: DOMRect, vw: number, vh: number) => r.width >= 1 && r.heigh
 /**
  * The game as the player sees it — canvases and the HTML UI over them — scaled to SHOT_W at most, as a JPEG. null when
  * nothing could be drawn (an empty page) or the browser refuses (a canvas with pictures from another site).
+ * `area` (studio-canvas-ui stage 2, 2026-10-24): only that part of the page, at its own size (CSS px) — the picture round
+ * the place pressed on the UI layer that goes with "✦ Have Claude make this UI editable" (a part outside the page is
+ * the page's colour).
  */
-export function shootPage(win: Win, skip: (el: Element) => boolean): string | null {
+export function shootPage(win: Win, skip: (el: Element) => boolean, area?: { x: number; y: number; w: number; h: number }): string | null {
   const doc = win.document;
   const vw = win.innerWidth, vh = win.innerHeight;
   if (!vw || !vh) return null;
-  const k = Math.min(1, SHOT_W / vw);
+  const k = area ? 1 : Math.min(1, SHOT_W / vw);
   const out = doc.createElement('canvas');
-  out.width = Math.round(vw * k);
-  out.height = Math.round(vh * k);
+  out.width = Math.round((area ? area.w : vw) * k);
+  out.height = Math.round((area ? area.h : vh) * k);
   const g = out.getContext('2d');
   if (!g) return null;
   g.scale(k, k);
+  // The part of the page drawn: everything below is drawn in page CSS px, moved so the area's corner is the picture's.
+  if (area) g.translate(-area.x, -area.y);
   // The page's own colour under everything (CSS gives the body's to the whole page when the root has none).
   const rootBg = [doc.documentElement, doc.body].map((e) => (e ? win.getComputedStyle(e).backgroundColor : '')).find((c) => !isTransparent(c));
   g.fillStyle = rootBg || '#000';
-  g.fillRect(0, 0, vw, vh);
+  if (area) g.fillRect(area.x, area.y, area.w, area.h);
+  else g.fillRect(0, 0, vw, vh);
   let drawn = 0;
   let chars = 0;
   const range = doc.createRange();

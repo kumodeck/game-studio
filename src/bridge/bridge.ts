@@ -22,6 +22,7 @@ import { installPlayClock } from '../core/play-clock.ts';
 import { adapterFromPort2D } from '../core/port2d.ts';
 import { findDomUiPort, uiAdapterFromPort } from '../adapters/ui/index.ts';
 import { codeUiEntries, createCodeUi, mergeUiPorts, type CodeUi } from './code-ui.ts';
+import { findUi as findUiNow, markHudCanvases, type Rect } from './ui-found.ts';
 import { runSelfCheck } from './selfcheck.ts';
 import { createEditor, type Editor } from './editor.ts';
 import { startPlayAsk, type PlayAskHandle } from './play-ask.ts';
@@ -84,6 +85,8 @@ export function startBridge(opts: BridgeOptions): void {
   // studio.redraw(fn) (studio-canvas-ui, 2026-10-24): the game's own one-frame draw for its codeUis, when it does not
   // draw from requestAnimationFrame. null = the editor runs the game's waiting frame once (core time.step()).
   let redrawFn: (() => void) | null = null;
+  // The codeUi side of the UI seat once the editor found it (studio.screen() reads its screen).
+  let uiCodeRef: CodeUi | null = null;
   const attached: Record<string, unknown>[] = [];
 
   const api: StudioGlobal = {
@@ -122,6 +125,9 @@ export function startBridge(opts: BridgeOptions): void {
     redraw(fn) {
       redrawFn = typeof fn === 'function' ? fn : null;
     },
+    // The canvas UI's screen the editor shows (studio-canvas-ui stage 2; code-ui.ts): null outside editing — the game
+    // decides then, and ▶ Play starts from its own first screen as with HTML screens.
+    screen: () => (playSwitch?.playing ? null : uiCodeRef?.screenNow() ?? null),
     core,
     // Levels (2026-10-22, bridge/levels.ts): the code's levels go to the editor (once per page), and the page builds
     // the level the editor's URL asks for. Outside the editor's frame: null, the game picks its level itself.
@@ -278,7 +284,7 @@ export function startBridge(opts: BridgeOptions): void {
       threeAttach(o);
       coreAttach(o);
     };
-    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'redraw', 'core', 'extend', 'levels'] as const) prior[k] = api[k];
+    for (const k of ['version', 'registerAdapter', 'register2D', 'registerUI', 'redraw', 'screen', 'core', 'extend', 'levels'] as const) prior[k] = api[k];
     api.ready = prior.ready as () => void;
     api.attach = prior.attach as (o: Record<string, unknown>) => void;
   }
@@ -393,6 +399,13 @@ export function startBridge(opts: BridgeOptions): void {
       }
     }
     if (world && world.kind === 'dom') return null;
+    // A 2D canvas laid over the game's (a HUD canvas): the UI layer's, before any adapter hides "the game's DOM over the
+    // canvas" when editing starts (studio-canvas-ui stage 2; ui-found.ts markHudCanvases).
+    try {
+      markHudCanvases(win);
+    } catch {
+      /* none marked: as before */
+    }
     try {
       const skip = () => {
         try {
@@ -410,12 +423,40 @@ export function startBridge(opts: BridgeOptions): void {
         uiCode = code;
         return uiAdapterFromPort(mergeUiPorts(dom, code.port), core, win);
       }
-      return dom ? uiAdapterFromPort(dom, core, win) : null;
+      if (dom) return uiAdapterFromPort(dom, core, win);
+      // Nothing selectable yet, but the game's UI is seen (studio-canvas-ui stage 2, 2026-10-24; ui-found.ts): a HUD canvas
+      // over the game's with something drawn in it, or UI the engine's adapter leaves out. An empty UI layer then, so
+      // Scene | UI is there, its list says "No selectable UI yet", the frames show where it is, and a press there says
+      // why with ✦. One canvas with everything in it finds nothing: no UI layer, exactly as before.
+      const boxes: Rect[] = code ? code.port.objects().map((o) => code.port.bounds(o.key)).filter((b): b is Rect => !!b) : [];
+      let left: Rect[] = [];
+      try {
+        left = world?.leftOut?.() ?? [];
+      } catch {
+        left = [];
+      }
+      // Only beside a world: with no world adapter (yet) an empty UI layer would end the wait for one (the loop above
+      // stops at the first UI it finds) and open an editor with nothing to edit.
+      if (world && (code || findUiNow(win, boxes, left).length)) return uiAdapterFromPort(nothingYet(), core, win);
+      return null;
     } catch (e) {
       console.warn('[studio] DOM UI adapter failed:', e);
       return null;
     }
   };
+
+  /** The UI seat with nothing to select yet (stage 2): an empty list, the same 2D base as every UI port. */
+  const nothingYet = (): Port2D => ({
+    name: 'canvas-ui',
+    objects: () => [],
+    get: () => null,
+    set() {},
+    parentToScreen: () => null,
+    bounds: () => null,
+    render() {},
+    canvas: () => null,
+    capture: async () => null,
+  });
 
   core.time.firstFrame().then(async () => {
     // Engines often build the scene a little after their first frame (async
@@ -451,7 +492,8 @@ export function startBridge(opts: BridgeOptions): void {
       post({ type: 'studio:core/wait', reason: 'no-adapter' });
       return;
     }
-    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, uiCode, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
+    uiCodeRef = uiCode;
+    editor = createEditor({ adapter, ui, uiDom: !!ui && uiDom, uiCode, redraw: () => redrawFn, core, win, post, rules, tools: pendingTools.splice(0), earlyTaps });
     editorRef = editor;
     if (playAsk) playSwitch = createPlaySwitch({ win, core, editor, playAsk });
     // Read-only peek for headless tests and debugging (not part of the contract):

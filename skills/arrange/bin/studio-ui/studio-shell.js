@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.62 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.63 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -115,6 +115,8 @@ const CONTRACT_VERSION = 1;
                
                                            
                
+                                                                          
+                  
                                                                                                                                
                
                                                          
@@ -131,6 +133,16 @@ const CONTRACT_VERSION = 1;
                          
                                                                                    
                                           
+ 
+/**
+ * The game's UI the editor can see but not select yet (studio-canvas-ui stage 2, 2026-10-24; CONTRACT.md §1.13 "Not
+ * delivered yet"): `box` = viewport CSS px [x, y, w, h] of the game page. `from`: 'hud-canvas' = a lump of drawing in a 2D
+ * canvas laid over the game's canvas (outside every codeUi box); 'left-out' = what the engine's adapter leaves out as UI
+ * (Port2D.leftOut). Nothing else: one canvas with everything in it gives none (the editor does not guess).
+ */
+                          
+                                        
+                                  
  
 /** One CSS variable of the game's theme (:root / html / body), as the theme rows show it. */
                              
@@ -508,6 +520,8 @@ const CONTRACT_VERSION = 1;
                                                       
      
                                                                                                               
+                                                                                                                       
+                                                                    
 
                                                                             
      
@@ -668,6 +682,14 @@ const CONTRACT_VERSION = 1;
                                                       
      
                                          
+     
+                                                                                                                         
+                                                                                                                           
+                                                                                                                       
+                                                                                 
+                                                                    
+     
+                           
                                                                               
                     
      
@@ -909,6 +931,14 @@ const TOOL_ID_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
                                                                      
      
                                                                                                               
+     
+                                                                                                                     
+                                                                                                                   
+                                                                                                                         
+                                                                                                                      
+                                                                            
+     
+                                                                    
      
                                                                            
                                                                             
@@ -1230,6 +1260,11 @@ const MSG_PREFIX = 'studio:';
                                                                 
                                                  
      
+                                                                                                                      
+                                                                         
+     
+                                       
+     
                                                                                                                     
                                                                                                                                       
                                                                                                                      
@@ -1370,6 +1405,19 @@ const MSG_PREFIX = 'studio:';
                                                                                                            
      
                                                                     
+     
+                                                                                                                          
+                                                                                                                                 
+     
+                                                 
+     
+                                                                                                                      
+                                                                                                                      
+                                                                                                                        
+                                                                                                                          
+                                                                                            
+     
+                                                                                                             
                                                                                                       
                                                                                                                              
                                                                                            
@@ -1653,13 +1701,23 @@ function isStudioMessage(x         )                     {
      
                          
      
+                                                                                                                       
+                                                                                                                        
+                                                                                                                        
+                                                                             
+     
+                             
+                                                                                                                   
+                    
+     
                                                                                                                     
                                                                                                  
      
                
      
-                                                                                                                    
-                                                                                          
+                                                                                                                    
+                                                                                                                          
+                                                                                 
      
                 
                                                                                                                   
@@ -1686,7 +1744,7 @@ function isStudioMessage(x         )                     {
  * into the rule's own numbers (a knob in the game's words: "From the road"), names it in `drag`, and sends `place.code
  * --fold <way>`; the offset row becomes that knob on the card.
  */
-                                                            
+                                                                        
 /** A rule layout named in an ask (StudioRequestInput.places): its id and name, its knobs now, its keep-out areas. */
                                
              
@@ -18000,6 +18058,27 @@ const en = {
   'uiLook.sample.ownHint': 'Your own…',
   'uiLook.sample.off': 'Show the game’s own text',
   'uiLook.sample.note': 'Only while editing. Never saved.',
+  // studio-canvas-ui stage 2 (2026-10-24; ui-missing.ts and the UI list): the game's UI the editor sees but cannot select
+  // yet. The glossary's "UI drawn in the canvas" rows (Gemini not checked yet). The dotted
+  // frames' tag "Not selectable yet" is drawn in the game page (bridge/ui-found.ts). The chip names where it was pressed
+  // by the 9 places of the screen ("Here (bottom left)").
+  'uiMissing.here': 'This UI can’t be selected yet',
+  'uiMissing.none': 'This game draws its UI inside the picture',
+  'uiMissing.ask': 'Ask {ai} to make this UI editable',
+  'uiMissing.askTip': 'Puts a draft and the place you pressed in the box below. Nothing is sent until you send it.',
+  'uiMissing.draft': 'Make this UI editable',
+  'uiMissing.chip': 'Here ({place})',
+  'uiMissing.chipTip': 'The place you pressed: a small picture of it goes with your words',
+  'uiMissing.empty': 'No selectable UI yet',
+  'uiPlace.top-left': 'top left',
+  'uiPlace.top': 'top centre',
+  'uiPlace.top-right': 'top right',
+  'uiPlace.left': 'left centre',
+  'uiPlace.center': 'centre',
+  'uiPlace.right': 'right centre',
+  'uiPlace.bottom-left': 'bottom left',
+  'uiPlace.bottom': 'bottom centre',
+  'uiPlace.bottom-right': 'bottom right',
   // UI stage 3 (ui-theme.ts): the game's CSS variables under the UI list.
   'uiTheme.title': 'Theme',
   'undo.look': 'change {name}’s look',
@@ -19021,6 +19100,24 @@ const ja                               = {
   'uiLook.sample.ownHint': '自分で…',
   'uiLook.sample.off': 'ゲームの文字に戻す',
   'uiLook.sample.note': '編集の間だけ。保存しない。',
+  // studio-canvas-ui stage 2 (2026-10-24): the UI not selectable yet — the glossary's words as they are.
+  'uiMissing.here': 'ここの UI はまだ選べません',
+  'uiMissing.none': 'このゲームの UI は、ゲームの絵の中に描かれています',
+  'uiMissing.ask': '{ai}にこの UI を編集できるようにしてもらう',
+  'uiMissing.askTip': '下の欄に下書きと押した所を入れます。送るまで何も起きません',
+  'uiMissing.draft': 'この UI を編集できるようにして',
+  'uiMissing.chip': '{place}のここ',
+  'uiMissing.chipTip': '押した所。その所の小さな写真が言葉と一緒に届きます',
+  'uiMissing.empty': '選べる UI はまだありません',
+  'uiPlace.top-left': '左上',
+  'uiPlace.top': '上の真ん中',
+  'uiPlace.top-right': '右上',
+  'uiPlace.left': '左の真ん中',
+  'uiPlace.center': '真ん中',
+  'uiPlace.right': '右の真ん中',
+  'uiPlace.bottom-left': '左下',
+  'uiPlace.bottom': '下の真ん中',
+  'uiPlace.bottom-right': '右下',
   'uiTheme.title': 'テーマ',
   'undo.look': '{name} の見た目を変更',
   'undo.theme': 'テーマを変更',
@@ -19674,7 +19771,24 @@ function normalizeRequestInput(input) {
   }
   // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
   // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
-  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob')) out.intent = r.intent;
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob' || r.intent === 'ui-code')) out.intent = r.intent;
+  // 'ui-code' (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Ask Claude to make this UI editable"): where the person
+  // pressed on the game's screen, the dotted frames the editor showed, and the picture round the press. Hints like
+  // `places`: a bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).
+  if (out.intent === 'ui-code') {
+    const xy = (a) => Array.isArray(a) && a.length === 2 && a.every((v) => isFin(v) && Math.abs(v) < 1e6);
+    if (xy(r.pressed)) out.pressed = r.pressed.map((v) => Math.round(v));
+    if (Array.isArray(r.found)) {
+      const fs = r.found.slice(0, 24).filter((f) => f && Array.isArray(f.box) && f.box.length === 4 && f.box.every((v) => isFin(v) && Math.abs(v) < 1e6)
+        && (f.from === 'hud-canvas' || f.from === 'left-out')).map((f) => ({ box: f.box.map((v) => Math.round(v)), from: f.from }));
+      if (fs.length) out.found = fs;
+    }
+    if (r.shot !== undefined) {
+      const ok = typeof r.shot === 'string' && r.shot.length <= HANDOFF_LIMITS.maxShot && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(r.shot);
+      if (!ok) errors.push(`"shot" must be a JPEG or PNG data URL of at most ${HANDOFF_LIMITS.maxShot} characters`);
+      else out.shot = r.shot;
+    }
+  }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.
@@ -20902,6 +21016,12 @@ const { toneThumb } = __require(17);
                                      
      
                                 
+     
+                                                                                                                      
+                                                                                                                       
+                                                                               
+     
+                              
                                                                                                         
                                       
                                                                                                            
@@ -20940,7 +21060,7 @@ const { toneThumb } = __require(17);
                                                                                                                   
                               
      
-                                                                
+                                                                                             
                                                                                                                 
                          
                                                                   
@@ -21335,14 +21455,17 @@ function createPlacementPanel(d                    )                 {
     askEl.classList.toggle('whole', whole);
     // A button's topic (a layout's keep-out areas): its own two chips and example, over the object's chip.
     const topic = answer ? null : d.askTopic?.() ?? null;
-    askTag.hidden = !topic;
+    askTag.hidden = !topic || !topic.tag;
+    askChip.classList.toggle('with-pic', !!topic?.pic);
     if (topic) {
       askEl.classList.remove('whole');
       askChip.hidden = false;
-      askChip.textContent = topic.chip;
-      askTag.textContent = topic.tag;
+      // A place on the game's screen (studio-canvas-ui stage 2: "Here (bottom left)"): its small picture before the words.
+      askChip.replaceChildren(...(topic.pic ? [h('img', { class: 'ask-chip-pic', src: topic.pic, alt: '', dataset: { part: 'ask-chip-pic' } })] : []), topic.chip);
+      if (topic.tip) askChip.title = topic.tip;
+      askTag.textContent = topic.tag ?? '';
       askInput.placeholder = topic.ph;
-      askInput.setAttribute('aria-label', `${topic.chip} · ${topic.tag}`);
+      askInput.setAttribute('aria-label', topic.tag ? `${topic.chip} · ${topic.tag}` : topic.chip);
     }
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
@@ -21964,7 +22087,11 @@ function createPlacementPanel(d                    )                 {
   const renderListTools = () => {
     listTools.replaceChildren();
     const n = d.items().length;
-    if (!n) return;
+    if (!n) {
+      // The UI layer with nothing selectable yet: its head as usual ("On screen", or the screen's menu).
+      if (d.emptyNote?.()) listTools.append(d.uiHead?.() ?? h('span', { class: 'list-title', text: d.t('list.titleUi') }));
+      return;
+    }
     const on = d.multi();
     // Head: "Objects  13" ··· "Select" / "Done". The long how-to sentences
     // that sat here (Shift+click, box, ⌘A) are the button's tooltip; with
@@ -22001,6 +22128,11 @@ function createPlacementPanel(d                    )                 {
     // picture arrived after the card (new copies, first selection).
     for (const [k, arr] of thumbs) thumbs.set(k, arr.filter((img) => img.isConnected && !list.contains(img)));
     dragging = null;
+    const empty = items.length ? null : d.emptyNote?.() ?? null;
+    if (empty) {
+      list.append(h('li', { class: 'muted list-empty', dataset: { part: 'ui-empty' }, text: empty }));
+      return;
+    }
     if (d.items().some(hasLayer)) {
       list.classList.add('by-layer');
       list.dataset.order = 'front-first';
@@ -27753,7 +27885,7 @@ __defs[70] = function (__exports) {
 //
 // Pure of the DOM: every effect goes through HandsDeps (main.ts wires them), so test/ai-hands.test.ts runs it with
 // stand-ins.
-                                                                                                                                                                                                                                                                         
+                                                                                                                                                                                                                                                                                  
 const { uiBoxAt } = __require(19);
 const { HANDS_MAKE_WHEN, handsAvoid, handsClip, handsMotion, handsPose, handsSaid, handsUiIds, readHandsInput } = __require(33);
 const { roundKnob, turnKnobs } = __require(34);
@@ -27885,6 +28017,11 @@ const { foldGaps, foldSaid } = __require(69);
                                 
                                                             
                                                 
+       
+                                                                                                                        
+                                                                                                          
+       
+                        
     
                                                                 
                            
@@ -28462,6 +28599,9 @@ function createAiHands(d           ) {
   /** `list` with the UI: every element of the UI layer (HTML and canvas), what the file holds for it, and for a codeUi what to write on Save. */
   function uiList(l                         )                          {
     const u = d.ui;
+    // The UI not selectable yet (stage 2): where the editor sees it, whether or not anything is selectable.
+    const found = u?.found?.() ?? [];
+    if (found.length) l = { ...l, uiFound: found };
     if (!u || !u.items().length) return l;
     const codes = new Map(u.codes().map((c) => [c.key, c]));
     const file = u.entries();
@@ -28473,6 +28613,13 @@ function createAiHands(d           ) {
         ...(ps ? { p: ps.p, s: typeof ps.s === 'number' ? ps.s : 1 } : {}), ...(e?.set ? { set: e.set, ...(e.setWas ? { setWas: e.setWas } : {}) } : {}),
         ...(c ? { code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } } : { html: true }) };
     });
+    // A canvas UI on another screen than the one shown (stage 2: not in the UI list now) — the AI writes it all the same.
+    for (const c of codes.values()) {
+      if (ui.some((x) => x.key === c.key)) continue;
+      const e = file[c.key];
+      ui.push({ key: c.key, name: c.name, ...(c.screen ? { screen: c.screen } : {}), ...(e?.set ? { set: e.set, ...(e.setWas ? { setWas: e.setWas } : {}) } : {}),
+        code: c.key, kind: c.kind, box: c.box, codeAt: c.code, write: { at: { from: c.from, x: c.at[0], y: c.at[1] }, scale: c.scale } });
+    }
     const clash = u.clash();
     return { ...l, ui, ...(clash.length ? { uiClash: clash } : {}) };
   }
@@ -28492,7 +28639,11 @@ function createAiHands(d           ) {
     if (!(await waitReady())) return { results: ops.map((op) => ({ do: op.do, ok: false, error: 'the editor is still opening the game: run the same --do again in a moment' })) };
     if (d.playing()) await d.stopPlay();
     // A job of UI ops is done on the UI layer (its one ⌘Z is a step of that layer); every other job on the world.
-    if (d.ui && ops.some((op) => op.do.startsWith('ui.')) && ops.every((op) => op.do.startsWith('ui.') || op.do === 'list' || op.do === 'save')) d.ui.show();
+    // A job of `list` alone only reads: the layer the person is on stays (studio-canvas-ui stage 2, 2026-10-24: the real
+    // AI's last `--do list` after delivering the canvas UI took the person to the Scene, where that UI is hidden).
+    if (ops.every((op) => op.do === 'list')) {
+      /* stay */
+    } else if (d.ui && ops.some((op) => op.do.startsWith('ui.')) && ops.every((op) => op.do.startsWith('ui.') || op.do === 'list' || op.do === 'save')) d.ui.show();
     else d.toWorld();
     // The AI's name for its line: the one that asked (by), else the editor's own guess ({ai}).
     const ai                         = job.by ? { ai: d.t(`ai.name.${job.by}`), Ai: d.t(`ai.name.${job.by}`) } : {};
@@ -31076,6 +31227,124 @@ __def(__exports, "createUiWire", () => createUiWire);
 };
 __defs[87] = function (__exports) {
 'use strict';
+// ui-missing.ts
+
+// The UI the editor sees but cannot select yet, in the shell (studio-canvas-ui stage 2, 2026-10-24; the plan's decisions
+// 10–11; bridge/ui-found.ts draws the dotted frames and the cross).
+//
+// A press on the UI layer beside every UI box (on a dotted frame or not) used to do nothing — "is it broken?". Now the
+// one line where Studio always speaks (over the ask field, the dock: motion-note.ts's place) says why, once:
+//   "This UI can't be selected yet · ✦ Ask Claude to make this UI editable"
+// and, when nothing on the UI layer can be selected at all, "This game draws its UI inside the picture · ✦ …".
+// The reason is said in this one place only (the map's rule 6): no ✦ in the list, which says "No selectable UI yet".
+// The line goes with the next action in the game page (the bridge says `at: null`), Esc, another layer, Play.
+//
+// ✦ only puts a draft in the box below — "Make this UI editable" and the chip "Here (bottom left)" with a small picture
+// of the place pressed (the map's rule 2: the person sends). Sent, the request carries `intent: "ui-code"`, the place
+// pressed, the dotted frames and the picture; the AI makes ALL of the game's canvas UI selectable at once (SKILL.md).
+                                                             
+const { h } = __require(16);
+const { icon } = __require(21);
+
+                                
+                                                                 
+                                              
+                                   
+                                                                                                           
+                             
+                                                                                                       
+                  
+ 
+
+/** What a pressed ✦ asks about, until it is sent or the screen shows something else. */
+                        
+                            
+                
+                
+                   
+ 
+
+function createUiMissing(d               ) {
+  const el = h('p', { class: 'motion-note ui-missing', role: 'status', 'aria-live': 'polite', hidden: true, dataset: { part: 'ui-missing' } });
+  let found            = [];
+  let miss                                                                               = null;
+  let ask               = null;
+  let shownOn = false;
+
+  const draw = () => {
+    const on = shownOn && !!miss;
+    el.hidden = !on;
+    if (!on || !miss) {
+      el.replaceChildren();
+      return;
+    }
+    const t = d.t;
+    const parts         = [h('span', { class: 'mn-what', dataset: { part: 'ui-missing-what' }, text: t(miss.none ? 'uiMissing.none' : 'uiMissing.here') })];
+    if (d.draft) {
+      const m = miss;
+      parts.push(h('span', { class: 'mn-dot', 'aria-hidden': 'true', text: '·' }),
+        h('button', { type: 'button', class: 'mn-rule', title: t('uiMissing.askTip'), dataset: { action: 'ui-missing-ask', part: 'ui-missing-ask' }, onclick: () => {
+          ask = { pressed: m.at, place: m.place, ...(m.shot ? { shot: m.shot } : {}), found: found.slice() };
+          hide(true);
+          d.draft (t('uiMissing.draft'));
+        } }, icon('spark'), h('span', { text: t('uiMissing.ask', d.aiVars()) })));
+    }
+    el.replaceChildren(...parts);
+  };
+  /** The line goes (`tell`: the cross in the game page too). */
+  const hide = (tell         ) => {
+    const had = !!miss;
+    miss = null;
+    draw();
+    if (had && tell) d.cleared();
+  };
+
+  return {
+    el,
+    /** The bridge's ui/found and ui/missing; false = not one of them. */
+    handle(m               )          {
+      if (m.type === 'studio:ui/found') {
+        found = m.found.slice(0, 24);
+        return true;
+      }
+      if (m.type === 'studio:ui/missing') {
+        miss = m.at ? { at: m.at, place: m.place ?? 'center', none: !!m.none, ...(m.shot ? { shot: m.shot } : {}) } : null;
+        draw();
+        return true;
+      }
+      return false;
+    },
+    /** Draw for whether the UI layer is edited now (the line is the UI layer's only). */
+    render(on         ) {
+      shownOn = on;
+      if (!on && miss) hide(true);
+      else draw();
+    },
+    /** Esc / another action of the shell's own: the line goes, and the cross. */
+    hide,
+    shown: () => !el.hidden,
+    /** The frames now (the AI's `list`). */
+    found: () => found.slice(),
+    /** The ✦ pressed and not sent yet, or null. */
+    ask: () => ask,
+    /** The ask box's chip while the ✦'s draft is there: "Here (bottom left)" and the picture. */
+    chip()                                                     {
+      if (!ask) return null;
+      return { chip: d.t('uiMissing.chip', { place: d.t(`uiPlace.${ask.place}`) }), ...(ask.shot ? { pic: ask.shot } : {}), tip: d.t('uiMissing.chipTip') };
+    },
+    /** Sent, or the screen shows something else now (a pick, the world, Play): the ✦'s place is no longer what the words are about. */
+    drop() {
+      ask = null;
+    },
+  };
+}
+
+                                                           
+
+__def(__exports, "createUiMissing", () => createUiMissing);
+};
+__defs[88] = function (__exports) {
+'use strict';
 // sheet-fold.ts
 
 // The bottom sheet folded to one row (a phone, the side window next to a chat). A try of v0.1.7 in the Claude app's side
@@ -31151,7 +31420,7 @@ __def(__exports, "barPress", () => barPress);
 __def(__exports, "FOLD_DRAG", () => FOLD_DRAG);
 __def(__exports, "gripEnd", () => gripEnd);
 };
-__defs[88] = function (__exports) {
+__defs[89] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -31226,7 +31495,8 @@ const { createUnsavedGuard, lostBy, playAsks } = __require(79);
 const { createLayerSwitch } = __require(80);
 const { uiAsPlacement, uiEntries, withUi } = __require(81);
 const { createUiWire } = __require(86);
-const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(87);
+const { createUiMissing } = __require(87);
+const { barPress, FOLD_DRAG, gripEnd, readFold, writeFold } = __require(88);
 
                                                                         
 
@@ -31417,6 +31687,15 @@ function start(host            ) {
     toRule: host.offline ? undefined : () => timeline.toRuleHere(),
     pick: (k) => selectObject(k, true),
   });
+  // studio-canvas-ui stage 2 (2026-10-24; ui-missing.ts): a press on the game's UI that cannot be selected yet — the one
+  // line over the ask field "This UI can't be selected yet · ✦ Ask Claude to make this UI editable", the ✦'s draft and
+  // its chip (the place pressed), and the request's `intent: "ui-code"`. The UI layer's only.
+  const uiMissing = createUiMissing({
+    t: (k, v) => t(k, v),
+    aiVars: () => aiVars(),
+    draft: host.offline ? undefined : (text) => focusAsk(text),
+    cleared: () => send({ type: 'studio:ui/missing-clear' }),
+  });
   let noteReady = false;
   // Motions (motion-gui, then the timeline: studio-timeline 2026-10-22; timeline-wire.ts): the card's Motion row, the
   // timeline plate at the foot of the game, the path in 3D, auto key. The world's only, 3D, while editing the Scene.
@@ -31533,6 +31812,13 @@ function start(host            ) {
     ruleCompare.show = on;
     compareChanged();
   }
+  /** The ✦ of "This UI can't be selected yet" is what the box's words are about: on the UI layer, nothing picked. */
+  function uiAskNow() {
+    if (editLayer !== 'ui' || selected || group.length || libraryShown()) return null;
+    return uiMissing.chip();
+  }
+  /** The field's one placeholder ("Ask Claude…"). */
+  const askPh = () => t('ask.game', host.offline ? {} : aiVars());
   /** ✦ Turn into a rule on the card: several hand-placed world objects, none of them a rule's own already. */
   function toRuleFor(keys          )                      {
     if (host.offline || editLayer !== 'world' || keys.length < 2) return null;
@@ -32165,7 +32451,7 @@ function start(host            ) {
   // reply floats over the game's top and the presence is a dot in the field. renderSheet says which tab is on.
   const sheetTabs = h('div', { class: 'sheet-tabs', role: 'tablist', dataset: { part: 'sheet-tabs' }, hidden: true });
   // studio-motion-next-2: the motion's one line right over the field (after the intro line, which is gone by the first pick).
-  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, presenceRow, bar);
+  const dock = h('section', { class: 'ask-strip dock' }, caption, cardSlot, h('div', { class: 'palette-slot' }), introLine, motionNote.el, uiMissing.el, presenceRow, bar);
   noteReady = true;
   // (introLine over presenceRow: the presence words on a narrow PC bar belong to the field, so they stay on it.)
   const stage = h('div', { class: 'stage', dataset: { part: 'stage' } }, iframe, scrim, assetsPage, inspector, dock, levelNote);
@@ -32574,6 +32860,8 @@ function start(host            ) {
   const placementPanel = createPlacementPanel({
     t,
     uiHead: () => uiWire.head(),
+    // studio-canvas-ui stage 2: the UI layer with nothing selectable yet (the game's UI is in its picture).
+    emptyNote: () => (editLayer === 'ui' && editLayers?.includes('ui') ? t('uiMissing.empty') : null),
     uiLook: (k) => uiWire.look(k),
     uiFoot: () => uiWire.foot(),
     // A mouse over a row, the card or the ask chip lights those objects in the game (a hands-on try, 2026-10-19).
@@ -32648,6 +32936,12 @@ function start(host            ) {
       // ✦ Turn into a rule (studio-code-torule): the words were for the hand's shape on screen — the AI swaps a rule in.
       const toRule = toRuleNow(keys);
       if (toRule) toRuleAsk = null;
+      // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): the place pressed, the frames, the picture.
+      const ui = uiAskNow() ? uiMissing.ask() : null;
+      if (ui) {
+        uiMissing.drop();
+        return askAi({ kind: 'ask', text, layer: 'ui', intent: 'ui-code', pressed: ui.pressed, found: ui.found, ...(ui.shot ? { shot: ui.shot } : {}) });
+      }
       return askAi({ kind: 'ask', text, objects: requestObjects(keys), ...(files.length ? { assets: files } : {}), ...requestMotions(toRule === 'motion'), ...(toRule ? { intent: 'to-code'          } : requestPlaces()) });
     },
     answering: () => answering(),
@@ -32662,6 +32956,9 @@ function start(host            ) {
     motions: () => (libraryShown() ? libraryMotions.picked() : motionAsk.now() ? [motionAsk.now() .name] : []),
     // "✦ Describe with text" under keep-out areas (studio-code-keepout): the chips "crystal ×12" "Keep-out areas".
     askTopic: () => {
+      // ✦ Ask Claude to make this UI editable (studio-canvas-ui stage 2): "Here (bottom left)" with the place's picture.
+      const ui = uiAskNow();
+      if (ui) return { chip: ui.chip, ph: askPh(), ...(ui.pic ? { pic: ui.pic } : {}), tip: ui.tip };
       // ✦ Write into the rule: "Street lamps (rule)" "Sideways · All the same 1 m" (studio-writeback).
       const rk = libraryShown() ? null : toKnobAskNow();
       const ra = rk ? codePlaces.ruleAsk(rk.id, rk.way) : null;
@@ -34487,6 +34784,8 @@ function start(host            ) {
   function useLayer(l           ) {
     // A button's look shown on the UI goes back to normal when the UI is left.
     if (l !== 'ui') uiWire.picked(null);
+    // The line and the ✦'s place are the UI layer's (ui-missing.ts).
+    if (l !== 'ui') uiMissing.drop();
     editLayer = l;
     model = l === 'ui' ? uiModel : worldModel;
     items = l === 'ui' ? uiItems : worldItems;
@@ -34507,6 +34806,9 @@ function start(host            ) {
   function selectObject(key               , focus = false) {
     selected = key;
     group = key ? [key] : [];
+    // A pick: the words are about it now, not about the place ✦ was pressed on, and the line about that place goes
+    // (ui-missing.ts: "the next action").
+    if (key) (uiMissing.drop(), uiMissing.hide(true));
     // The card first, then the selection: "bring into view" must already know what the card covers.
     if (tool === 'placement' && page === 'tool') placementPanel.render();
     else placementPanel.renderAsk();
@@ -34615,6 +34917,11 @@ function start(host            ) {
     if (m.type === 'studio:placement/at-is') return motionDrag.answer(m.id, m.key);
     // UI stages 2–3: the screens, an element's look, the theme (ui-wire.ts).
     if (uiWire.handle(m)) return;
+    // studio-canvas-ui stage 2: the UI seen but not selectable yet — the frames' places, a press beside every UI box.
+    if (uiMissing.handle(m)) {
+      if (m.type === 'studio:ui/missing' && m.at) renderPresence();
+      return;
+    }
     if (m.type === 'studio:placement/motion-press') return motionTool.press(m.key, m, m.touch, m.keyboard);
     if (m.type === 'studio:placement/selected') emit('selected', m.key);
     else if (m.type === 'studio:placement/items') emit('items', m.items);
@@ -35915,6 +36222,11 @@ function start(host            ) {
     }
     // "+ Draw a box" on (studio-code-keepout): Esc stops it first (the pick stays).
     if (!mod && k === 'escape' && keepOut.stopDraw()) return true;
+    // "This UI can't be selected yet" (studio-canvas-ui stage 2): Esc takes the line and the cross away first.
+    if (!mod && k === 'escape' && uiMissing.shown()) {
+      uiMissing.hide(true);
+      return true;
+    }
     // The timeline's keys (K sets a key; Delete / ⌘C / ⌘V / Space / ← → when the plate was the last thing pressed).
     if (timeline.onKey(e)) return true;
     if (mod && k === 'z') {
@@ -36142,6 +36454,10 @@ function start(host            ) {
   window.addEventListener('keydown', (e) => {
     const tag = (e.target                      )?.tagName;
     const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    // "This UI can't be selected yet" (studio-canvas-ui stage 2) goes with Esc wherever the focus is: a press in the game
+    // leaves the focus where it was (the ask box after a request, the editor's own pointer handling keeps it), and the
+    // line said Esc would take it away. The field's own Esc (it lets go of the focus) still happens.
+    if (e.key === 'Escape' && uiMissing.shown()) uiMissing.hide(true);
     if (typing && !(e.ctrlKey || e.metaKey)) return;
     // Typing in a field (the ask box, ⌘K's search, a number on the card, a rename): the field keeps ⌘Z, ⌘A, ⌘C, ⌘V,
     // ⌘X, ⌘Y and Delete for its own text (basics pass, 2026-10-18 — ⌘A used to select every object instead of the
@@ -36320,6 +36636,8 @@ function start(host            ) {
    */
   function renderMotionNote() {
     if (!noteReady) return;
+    // The UI layer's line about UI not selectable yet (ui-missing.ts): only while the UI is edited.
+    uiMissing.render(editing && !playing && editLayer === 'ui');
     const on = editing && !playing && editLayer === 'world' && tool === 'placement' && page === 'tool';
     const glow = motionNote.render(on ? noteOf(timeline.noteIn()) : null);
     for (const b of saveBtns) {
@@ -36615,6 +36933,7 @@ function start(host            ) {
       codes: () => uiWire.codes(),
       clash: () => uiWire.clash(),
       resetCodes: () => uiWire.resetCodes(),
+      found: () => uiMissing.found(),
       pose: (k) => uiModel.pose(k),
       setPose: (k, pose) => {
         const from = uiModel.pose(k);
@@ -36977,7 +37296,7 @@ function start(host            ) {
 
 __def(__exports, "start", () => start);
 };
-__defs[89] = function (__exports) {
+__defs[90] = function (__exports) {
 'use strict';
 // host-local.ts
 
@@ -37177,19 +37496,19 @@ function createLocalHost(base         = LOCAL_PATHS.api)             {
 
 __def(__exports, "createLocalHost", () => createLocalHost);
 };
-__defs[90] = function (__exports) {
+__defs[91] = function (__exports) {
 'use strict';
 // local.ts
 
 // Entry of studio-shell.js: the shell page served by the local server
 // (skills/arrange/bin/studio.mjs), talking to it through createLocalHost().
 // The browser-only web demo has its own entry (src/hosts/browser/main.ts).
-const { start } = __require(88);
-const { createLocalHost } = __require(89);
+const { start } = __require(89);
+const { createLocalHost } = __require(90);
 
 start(createLocalHost());
 
 
 };
-__require(90);
+__require(91);
 })();

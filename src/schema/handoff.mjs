@@ -228,7 +228,24 @@ export function normalizeRequestInput(input) {
   }
   // "ask" only: what a button said the words are for ('avoid': a keep-out area for `places`; 'to-code': the plan's step 4;
   // 'to-knob': ✦ Write into the rule — that way of `places` into the rule as a number of its own, studio-writeback).
-  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob')) out.intent = r.intent;
+  if (kind === 'ask' && (r.intent === 'avoid' || r.intent === 'to-code' || r.intent === 'to-knob' || r.intent === 'ui-code')) out.intent = r.intent;
+  // 'ui-code' (studio-canvas-ui stage 2, 2026-10-24: the line's "✦ Ask Claude to make this UI editable"): where the person
+  // pressed on the game's screen, the dotted frames the editor showed, and the picture round the press. Hints like
+  // `places`: a bad part is dropped, never an error — except a picture that is not a picture (the host writes it to a file).
+  if (out.intent === 'ui-code') {
+    const xy = (a) => Array.isArray(a) && a.length === 2 && a.every((v) => isFin(v) && Math.abs(v) < 1e6);
+    if (xy(r.pressed)) out.pressed = r.pressed.map((v) => Math.round(v));
+    if (Array.isArray(r.found)) {
+      const fs = r.found.slice(0, 24).filter((f) => f && Array.isArray(f.box) && f.box.length === 4 && f.box.every((v) => isFin(v) && Math.abs(v) < 1e6)
+        && (f.from === 'hud-canvas' || f.from === 'left-out')).map((f) => ({ box: f.box.map((v) => Math.round(v)), from: f.from }));
+      if (fs.length) out.found = fs;
+    }
+    if (r.shot !== undefined) {
+      const ok = typeof r.shot === 'string' && r.shot.length <= HANDOFF_LIMITS.maxShot && /^data:image\/(jpeg|png);base64,[A-Za-z0-9+/]+=*$/.test(r.shot);
+      if (!ok) errors.push(`"shot" must be a JPEG or PNG data URL of at most ${HANDOFF_LIMITS.maxShot} characters`);
+      else out.shot = r.shot;
+    }
+  }
   // "name" is always about objects. "ask" with no objects is about the whole
   // game (the ask strip with nothing picked: "make it night", "add enemies";
   // design-pass reviews 2026-10-16); it still needs words.

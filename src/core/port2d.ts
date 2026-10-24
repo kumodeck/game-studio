@@ -346,6 +346,14 @@ export function adapterFromPort2D(port: Port2D, _core: Core, win: Window = windo
         return null;
       }
     } : undefined,
+    // The game's UI the port leaves out (studio-canvas-ui stage 2: the UI layer's dotted frames, bridge/ui-found.ts).
+    leftOut: port.leftOut ? () => {
+      try {
+        return port.leftOut!() || [];
+      } catch {
+        return [];
+      }
+    } : undefined,
     async capture(key, { size }) {
       // The port's own thumbnail first; when it has none (null), crop the
       // object from the screen like ports without capture().

@@ -61,6 +61,12 @@ export interface PlacementPanelDeps {
    * absent) = "On screen" as before.
    */
   uiHead?(): HTMLElement | null;
+  /**
+   * studio-canvas-ui stage 2 (2026-10-24): the list's one line when it is empty on the UI layer of a game whose UI is
+   * drawn in its picture ("No selectable UI yet"); null = nothing (the world's empty list, as before). The why and the
+   * ✦ are said once, in the line over the ask field (ui-missing.ts), not here.
+   */
+  emptyNote?(): string | null;
   /** UI stages 2–3 (ui-card.ts): a UI element's look rows, under its offset and size. Absent = none. */
   uiLook?(key: string): HTMLElement[];
   /** UI stage 3 (ui-theme.ts): the Theme fold under the UI list; null = a game without theme variables. */
@@ -99,7 +105,7 @@ export interface PlacementPanelDeps {
    * ("crystal ×12") with a second, violet chip `tag` ("Keep-out areas"), and the field shows `ph` as its example.
    * null = the ordinary chip.
    */
-  askTopic?(): { chip: string; tag: string; ph: string } | null;
+  askTopic?(): { chip: string; tag?: string; ph: string; pic?: string; tip?: string } | null;
   /** The card's "Show in Library →": the Library with this pick's detail. Absent = no Library in this build. */
   showInLibrary?(): void;
   /** Ask the AI to name these objects (the "no name" warning). */
@@ -494,14 +500,17 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     askEl.classList.toggle('whole', whole);
     // A button's topic (a layout's keep-out areas): its own two chips and example, over the object's chip.
     const topic = answer ? null : d.askTopic?.() ?? null;
-    askTag.hidden = !topic;
+    askTag.hidden = !topic || !topic.tag;
+    askChip.classList.toggle('with-pic', !!topic?.pic);
     if (topic) {
       askEl.classList.remove('whole');
       askChip.hidden = false;
-      askChip.textContent = topic.chip;
-      askTag.textContent = topic.tag;
+      // A place on the game's screen (studio-canvas-ui stage 2: "Here (bottom left)"): its small picture before the words.
+      askChip.replaceChildren(...(topic.pic ? [h('img', { class: 'ask-chip-pic', src: topic.pic, alt: '', dataset: { part: 'ask-chip-pic' } })] : []), topic.chip);
+      if (topic.tip) askChip.title = topic.tip;
+      askTag.textContent = topic.tag ?? '';
       askInput.placeholder = topic.ph;
-      askInput.setAttribute('aria-label', `${topic.chip} · ${topic.tag}`);
+      askInput.setAttribute('aria-label', topic.tag ? `${topic.chip} · ${topic.tag}` : topic.chip);
     }
     // A round arrow, as in message apps: grey until there is something to send.
     setButton(askSend, 'send', d.t('ask.send'), false);
@@ -1123,7 +1132,11 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
   const renderListTools = () => {
     listTools.replaceChildren();
     const n = d.items().length;
-    if (!n) return;
+    if (!n) {
+      // The UI layer with nothing selectable yet: its head as usual ("On screen", or the screen's menu).
+      if (d.emptyNote?.()) listTools.append(d.uiHead?.() ?? h('span', { class: 'list-title', text: d.t('list.titleUi') }));
+      return;
+    }
     const on = d.multi();
     // Head: "Objects  13" ··· "Select" / "Done". The long how-to sentences
     // that sat here (Shift+click, box, ⌘A) are the button's tooltip; with
@@ -1160,6 +1173,11 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // picture arrived after the card (new copies, first selection).
     for (const [k, arr] of thumbs) thumbs.set(k, arr.filter((img) => img.isConnected && !list.contains(img)));
     dragging = null;
+    const empty = items.length ? null : d.emptyNote?.() ?? null;
+    if (empty) {
+      list.append(h('li', { class: 'muted list-empty', dataset: { part: 'ui-empty' }, text: empty }));
+      return;
+    }
     if (d.items().some(hasLayer)) {
       list.classList.add('by-layer');
       list.dataset.order = 'front-first';
