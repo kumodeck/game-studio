@@ -235,9 +235,9 @@ test('✦ Write into the rule: the request carries the way, every offset and eac
   assert.deepEqual(ra.place.offsets, [{ way: 'side', how: 'same', v: 1 }]);
   assert.deepEqual(ra.place.objects![1], { key: 'lamp-row-2', line: 1, rank: 0, offset: [1, 0, 0] });
   assert.equal(c.w.ruleAsk('lamp', 'side'), null);
-  assert.equal(translate('ja', 'offset.toKnob'), 'ルールに書き込む', 'the screen never says つまみ for the rule\'s numbers');
-  assert.equal(translate('en', 'offset.toKnob'), 'Write into the rule');
-  assert.equal(translate('ja', 'offset.draft', { name: '街灯', way: '横' }), '街灯の横のずらしを、ルールに書き込んで');
+  assert.equal(translate('ja', 'offset.toKnob'), '数字で調整できるようにする', 'the screen never says つまみ for the rule\'s numbers (studio-words-rule: the result)');
+  assert.equal(translate('en', 'offset.toKnob'), 'Make it adjustable with numbers');
+  assert.equal(translate('ja', 'offset.draft', { name: '街灯', way: '横' }), '街灯の横のずらしを、数字で調整できるようにして');
 });
 
 test('Add jitter from the card\'s ⋯: one ⌘Z, the way\'s own row with its seed, said in a line; not twice, not past eight', () => {

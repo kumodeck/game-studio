@@ -221,7 +221,7 @@ test('place.set --unpin "*": every one placed by hand back on the rule in one �
   assert.ok(r.results[0]!.ok, JSON.stringify(r.results));
   assert.deepEqual(e.store.get('hex'), { knobs: { gap: { v: 4, was: 6 } } }, 'the pins gone, the knob kept');
   assert.equal(e.undo.size, before + 1, 'one ⌘Z');
-  assert.equal(e.lines().at(-1), 'Claude が「六角形の列」を変えました: 手で置いた物 2 個をルールに戻す');
+  assert.equal(e.lines().at(-1), 'Claude が「六角形の列」を変えました: 手で置いた物 2 個を元の位置に戻す');
   // Nothing placed by hand any more: a loud answer, nothing changed.
   const again = await hands.run({ id: '3', ops: [{ do: 'place.set', id: 'hex', unpin: '*' }] });
   assert.equal(again.results[0]!.error, `codePlace('hex') has nothing placed by hand (every object follows the code already)`);

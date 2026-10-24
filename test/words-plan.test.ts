@@ -44,11 +44,14 @@ function shown(lang: Lang): Array<[string, string]> {
 // Japanese — the maker's word was the English "cue".
 const JA_RETIRED = ['場面', 'ワールド', 'オブジェクト', '写す', '床に落とす', '取り消し', '自動キー', 'キーフレーム', 'ほかにも',
   '繰り返し', '表示する行', 'ステージ', 'モーション', '保存してゲームへ', '（エディタの外のゲームも変わります）', 'コードで描いた形',
-  'まだどの物にも付いていません', '動き出し方', '配置に入れる'];
+  'まだどの物にも付いていません', '動き出し方', '配置に入れる',
+  // studio-words-rule (2026-10-24, the review's choice (a)): a thing to press says its result; the word rule only on tags and headings.
+  'ルールにする', '近いルールにして', 'ルールに戻す', 'ルールに書き込む', '元の配置'];
 const EN_RETIRED: RegExp[] = [/\bplacement\b/i, /\badapter\b/i, /\bclips?\b/i, /\bRows\b/, /\bTracks\b/, /\bcues?\b/i, /Auto key/i,
   /Held still/, /Make movable/, /Drop to floor/, /On Game Start/, /On Tap \/ Click/, /When Near/, /After Delay/, /On Key Press/,
   /After Previous Move/, /On Collision/, /On Signal/, /Set Up/, /\bAsk AI\b/, /Ask my AI/, /Drawn in code/, /Not on anything yet/,
-  /thing changed/, /Copy of/, /keyframe/i, /Put in layout/];
+  /thing changed/, /Copy of/, /keyframe/i, /Put in layout/,
+  /Turn into a (close )?rule/, /back to rule/i, /back on the rule/, /Write into the rule/];
 // Words handed to the AI as they are (the person copies or sends them): the adapter is the AI's word.
 const TO_THE_AI = new Set(['status.noAdapterHint', 'status.adapterError']);
 

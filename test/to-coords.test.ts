@@ -161,7 +161,7 @@ test('the shell: ⌥ = just this one by hand, told with Back to rule; marked Pla
   assert.equal(said.text, 'Placed Street lamps 3 by hand (the rest stay on the rule)');
   assert.equal(said.undo, true, '"⌘Z undoes it" after it');
   assert.equal(said.hand, true, 'the hand\'s line');
-  assert.deepEqual(said.acts, ['Back to rule']);
+  assert.deepEqual(said.acts, ['Revert']);
   const tag = s.w.listTag('lamp-row-3')!;
   assert.equal(tag.hand?.tag, 'By hand');
   assert.equal(s.w.listTag('lamp-row-2')!.hand, undefined, 'the others: the Rule tag only');

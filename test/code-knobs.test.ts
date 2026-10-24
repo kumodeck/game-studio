@@ -235,7 +235,7 @@ test('the screen says "rule", never "code", for a rule motion or layout (the wor
   assert.equal(translate('ja', 'rule.pointsDone', { name: 'らせん' }), 'らせんのルールを座標にしました');
   // studio-hand-marks (10/24): two words, "rule" and "placed by hand" (it was "Hand-placed" and its Japanese).
   assert.equal(translate('ja', 'rule.handTag'), '手で置いた');
-  assert.equal(translate('ja', 'rule.reset'), 'ルールに戻す');
+  assert.equal(translate('ja', 'rule.reset'), '元の位置に戻す');
   assert.equal(translate('en', 'rule.missing'), 'No motion rule found');
   assert.equal(translate('ja', 'rule.disableTip'), '一時停止（動きは残る）');
 });

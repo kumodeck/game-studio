@@ -56,10 +56,10 @@ const LINE = `(() => { const l = document.querySelector('.ai-line'); return l &&
 // studio-motion-next-2 (2026-10-24): the next step is the one line over the ask field now (motion-note.ts; the plate's .tl-next
 // is gone), and ✦ Ask's rows say the result. Its parts are read as test/studio-motion-next-2.browser.mjs reads them.
 const W = LANG === 'ja'
-  ? { made: /^(.+)ができました$/, rule: '数字で調整できるようにする', btn: 'ルールにする', menu: ['この動きを数字で調整できるようにする', 'この動きを直してもらう…', '別の動きを足してもらう…'],
-    kept: /^保存しました: (.+)/, in: /保存しました: (.+) · ゲームに入りました/, draft: '近いルールにして' }
-  : { made: /^(.+) is made$/, rule: 'Make it adjustable with numbers', btn: 'Turn into a rule', menu: ['Make this motion adjustable with numbers', 'Have this motion changed…', 'Have another motion added…'],
-    kept: /^Saved: (.+)/, in: /Saved: (.+) · In the game/, draft: 'Turn into a close rule' };
+  ? { made: /^(.+)ができました$/, rule: '数字で調整できるようにする', btn: '数字で調整できるようにする', menu: ['この動きを数字で調整できるようにする', 'この動きを直してもらう…', '別の動きを足してもらう…'],
+    kept: /^保存しました: (.+)/, in: /保存しました: (.+) · ゲームに入りました/, draft: '数字で調整できるようにして' }
+  : { made: /^(.+) is made$/, rule: 'Make it adjustable with numbers', btn: 'Make it adjustable with numbers', menu: ['Make this motion adjustable with numbers', 'Have this motion changed…', 'Have another motion added…'],
+    kept: /^Saved: (.+)/, in: /Saved: (.+) · In the game/, draft: 'Make it adjustable with numbers' };
 
 async function open(browser, theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-motion-next-'));

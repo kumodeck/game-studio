@@ -69,7 +69,7 @@ test('"All back to rule": every pin of the layout off in one ⌘Z, told with how
   assert.equal(s.model.places.get('crystal'), null, 'no pins left (and no empty entry)');
   assert.equal(s.undo.size, n + 1, 'one ⌘Z');
   assert.deepEqual(s.model.places.changedIds(), ['crystal'], 'one Save count');
-  assert.equal(s.told.at(-1)!.text, 'crystalの手で置いた物 2 個をルールに戻しました');
+  assert.equal(s.told.at(-1)!.text, 'crystalの手で置いた物 2 個を元の位置に戻しました');
   assert.equal(s.told.at(-1)!.hand, false);
   assert.equal(s.w.unpinAll('crystal'), false, 'none placed by hand: nothing to do');
   assert.equal(s.undo.size, n + 1);
@@ -98,7 +98,7 @@ test('the list: the hand one\'s tag and its way back; "Back to rule" from the li
   const tag = s.w.listTag('crystal-5')!;
   assert.equal(tag.tag, 'ルール');
   assert.equal(tag.hand?.tag, '手で置いた');
-  assert.equal(tag.hand?.reset, 'ルールに戻す');
+  assert.equal(tag.hand?.reset, '元の位置に戻す');
   assert.equal(s.w.listTag('crystal-6')!.hand, undefined);
   tag.hand!.run();
   assert.deepEqual(s.w.handKeys('crystal'), []);
@@ -122,20 +122,20 @@ test('two words: "rule" and "placed by hand" — the retired ones are gone from 
     assert.doesNotMatch(all, /手置き|並び|Hand-placed/, `the game page's words (${lang})`);
   }
   // The table of the hand-marks plan §6.
-  assert.equal(translate('ja', 'rule.reset'), 'ルールに戻す');
+  assert.equal(translate('ja', 'rule.reset'), '元の位置に戻す');
   assert.equal(translate('ja', 'rule.handTag'), '手で置いた');
   assert.equal(translate('ja', 'rule.hands', { n: 2 }), '手で置いた物 2 個');
-  assert.equal(translate('ja', 'rule.handsAll'), '全部ルールに戻す');
+  assert.equal(translate('ja', 'rule.handsAll'), '全部元の位置に戻す');
   assert.equal(translate('ja', 'rule.layout'), 'ルール');
   assert.equal(translate('ja', 'keepout.hand'), '手で描いた');
   assert.equal(translate('ja', 'rule.pinnedDone', { obj: 'クリスタル 9' }), 'クリスタル 9 を手で置きました（ほかはルールのまま）');
-  assert.equal(translate('en', 'rule.reset'), 'Back to rule');
+  assert.equal(translate('en', 'rule.reset'), 'Revert');
   assert.equal(translate('en', 'rule.handTag'), 'By hand');
   assert.equal(translate('en', 'rule.hands', { n: 2 }), '2 placed by hand');
-  assert.equal(translate('en', 'rule.handsAll'), 'All back to rule');
+  assert.equal(translate('en', 'rule.handsAll'), 'Revert all');
   assert.equal(translate('en', 'keepout.hand'), 'Drawn by hand');
-  assert.equal(translate('en', 'rule.handsDone', { n: 1, name: 'crystal' }), '1 object of crystal placed by hand is back on the rule');
-  assert.equal(translate('en', 'rule.handsDone', { n: 2, name: 'crystal' }), 'All 2 objects of crystal placed by hand are back on the rule');
+  assert.equal(translate('en', 'rule.handsDone', { n: 1, name: 'crystal' }), 'Reverted 1 object of crystal placed by hand');
+  assert.equal(translate('en', 'rule.handsDone', { n: 2, name: 'crystal' }), 'Reverted all 2 objects of crystal placed by hand');
 });
 
 test('colour: sand for the hand in both themes; the hand\'s state is never orange (orange = the pick and Save)', () => {

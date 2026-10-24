@@ -63,11 +63,11 @@ const W = LANG === 'ja'
   ? { changed: (m) => `${m}を変えました`, made: (m) => `${m}ができました`, save: '保存するとゲームに入ります', rec: '記録中 · 終わったら ● を押す', rule: '数字で調整できるようにする',
     other: (m) => `保存していない動き: ${m}`, kept: /^保存しました: (.+)/,
     menu: ['この動きを数字で調整できるようにする', 'この動きを直してもらう…', '別の動きを足してもらう…'], subs: ['速さ・大きさなど', '例：もっとゆっくり・高く跳ねる', '例：近づいたら回る'],
-    drafts: ['近いルールにして', 'この動きを直して:', '別の動きを足して:'], saveA: '保存' }
+    drafts: ['数字で調整できるようにして', 'この動きを直して:', '別の動きを足して:'], saveA: '保存' }
   : { changed: (m) => `${m} changed`, made: (m) => `${m} is made`, save: 'Save puts it in the game', rec: 'Recording · press ● when you’re done', rule: 'Make it adjustable with numbers',
     other: (m) => `Not saved: ${m}`, kept: /^Saved: (.+)/,
     menu: ['Make this motion adjustable with numbers', 'Have this motion changed…', 'Have another motion added…'], subs: ['speed, size and so on', 'e.g. slower, bounce higher', 'e.g. spin when you get close'],
-    drafts: ['Turn into a close rule', 'Change this motion:', 'Add another motion:'], saveA: 'Save' };
+    drafts: ['Make it adjustable with numbers', 'Change this motion:', 'Add another motion:'], saveA: 'Save' };
 
 async function open(browser, theme) {
   const root = mkdtempSync(join(tmpdir(), 'studio-motion-next-2-'));

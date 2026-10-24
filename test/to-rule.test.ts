@@ -213,10 +213,10 @@ test('the words: "rule", never "code" on screen; the glossary\'s (chosen on 10/2
     assert.doesNotMatch(translate('en', k, vars), /\bcode\b/i, `en ${k}`);
     assert.doesNotMatch(translate('ja', k, vars), /コード/, `ja ${k}`);
   }
-  assert.equal(translate('ja', 'toRule.place'), 'ルールにする', 'the ✦ is the spark icon before it (studio-motion-next: 「ルール化する」から)');
-  assert.equal(translate('ja', 'toRule.motion'), 'ルールにする…');
-  assert.equal(translate('en', 'toRule.place'), 'Turn into a rule');
-  assert.equal(translate('ja', 'toRule.compare'), '元の配置と比べる');
+  assert.equal(translate('ja', 'toRule.place'), '数字で調整できるようにする', 'the ✦ is the spark icon before it (studio-words-rule: the result, not 「ルールにする」)');
+  assert.equal(translate('ja', 'toRule.motion'), 'この動きを数字で調整できるようにする');
+  assert.equal(translate('en', 'toRule.place'), 'Make it adjustable with numbers');
+  assert.equal(translate('ja', 'toRule.compare'), '元の位置と比べる');
   assert.equal(translate('en', 'toRule.compare'), 'Compare with original');
   assert.equal(translate('ja', 'toRule.maxPlace', vars), '最大のずれ: lamp-3（0.6 m）');
   assert.equal(translate('en', 'toRule.maxPlace', vars), 'Max deviation: lamp-3 (0.6 m)');

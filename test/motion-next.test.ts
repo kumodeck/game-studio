@@ -81,7 +81,7 @@ test('✦ Turn into a rule on the line: a motion of points; pressed, it asks lik
 
 test('the words: "rule" and "with numbers" (never "knob"), the receipt names what got in', () => {
   const vars = { ai: 'Claude', Ai: 'Claude', name: '街灯 5 の動き' };
-  assert.equal(translate('ja', 'toRule.place'), 'ルールにする');
+  assert.equal(translate('ja', 'toRule.place'), '数字で調整できるようにする');
   for (const k of ['tl.ruleTip', 'tl.askMenuTip']) {
     assert.doesNotMatch(translate('ja', k, vars), /つまみ|ルール化|コード/, `ja ${k}`);
     assert.doesNotMatch(translate('en', k, vars), /\bknob|\bcode\b/i, `en ${k}`);

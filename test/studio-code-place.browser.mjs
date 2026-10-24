@@ -561,8 +561,8 @@ async function toRule(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const T = LANG === 'ja'
-    ? { btn: 'ルールにする', draft: '近いルールにして', compare: '元の配置と比べる', compareMotion: '元の動きと比べる', max: '最大のずれ: lamp-3（0.6 m）', menu: 'ルールにする…', lit: '最大のずれ', motion: '動きのルール' }
-    : { btn: 'Turn into a rule', draft: 'Turn into a close rule', compare: 'Compare with original', compareMotion: 'Compare with original', max: 'Max deviation: lamp-3 (0.6 m)', menu: 'Turn into a rule…', lit: 'Max deviation', motion: 'Rule motion' };
+    ? { btn: '数字で調整できるようにする', draft: '数字で調整できるようにして', compare: '元の位置と比べる', compareMotion: '元の動きと比べる', max: '最大のずれ: lamp-3（0.6 m）', menu: 'この動きを数字で調整できるようにする', lit: '最大のずれ', motion: '動きのルール' }
+    : { btn: 'Make it adjustable with numbers', draft: 'Make it adjustable with numbers', compare: 'Compare with original', compareMotion: 'Compare with original', max: 'Max deviation: lamp-3 (0.6 m)', menu: 'Make this motion adjustable with numbers', lit: 'Max deviation', motion: 'Rule motion' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
     const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `4-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
@@ -932,10 +932,10 @@ async function toCoords(theme) {
   const browser = await launch();
   const C = LANG === 'ja'
     ? { note: '動かすと間が変わる', noteWay: '動かすと間・道からの距離が変わる', side: '横の位置はルールで決まっています', up: '高さ +', turn: '向き ', chipSide: '横 +',
-      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯の横のずらしを、ルールに書き込んで', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す',
+      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯の横のずらしを、数字で調整できるようにして', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: '元の位置に戻す',
       hand: '手で置いた', keys: '街灯はルールで並んでいます', group: '街灯はルールで並んでいるので、まとめては動きません', gap: '間' }
     : { note: 'Drag to adjust Gap', noteWay: 'Drag to adjust Gap, From the road ·', side: 'Sideways position is set by the rule', up: 'Height +', turn: 'Turn ', chipSide: 'Sideways +',
-      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Write the Sideways offset of Street lamps into the rule', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Back to rule',
+      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Make the Sideways offset of Street lamps adjustable with numbers', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Revert',
       hand: 'By hand', keys: 'Street lamps is laid out by a rule', group: 'Street lamps is laid out by a rule, so it doesn’t move as a group', gap: 'Gap' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
@@ -1141,8 +1141,8 @@ async function handMarks(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const H = LANG === 'ja'
-    ? { done: 'を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す', tag: '手で置いた', hands2: '手で置いた物 2 個', all: '全部ルールに戻す', allDone: '結晶の手で置いた物 2 個をルールに戻しました', outside: '結晶のルールの外', unpinAll: '手で置いた物 2 個をルールに戻す' }
-    : { done: 'by hand (the rest stay on the rule)', reset: 'Back to rule', tag: 'By hand', hands2: '2 placed by hand', all: 'All back to rule', allDone: 'All 2 objects of crystal placed by hand are back on the rule', outside: 'Outside the crystal rule', unpinAll: '2 placed by hand back to rule' };
+    ? { done: 'を手で置きました（ほかはルールのまま）', reset: '元の位置に戻す', tag: '手で置いた', hands2: '手で置いた物 2 個', all: '全部元の位置に戻す', allDone: '結晶の手で置いた物 2 個を元の位置に戻しました', outside: '結晶のルールの外', unpinAll: '手で置いた物 2 個を元の位置に戻す' }
+    : { done: 'by hand (the rest stay on the rule)', reset: 'Revert', tag: 'By hand', hands2: '2 placed by hand', all: 'Revert all', allDone: 'Reverted all 2 objects of crystal placed by hand', outside: 'Outside the crystal rule', unpinAll: 'reverted 2 placed by hand' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
     const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `h-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
@@ -1335,8 +1335,8 @@ async function offsets(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const O = LANG === 'ja'
-    ? { note: '（ほかの向きは全部が付いてくる）', chip: '横 +1.0 m · 全部', same: '全部同じ', zig: 'ジグザグ', ramp: 'だんだん', one: 'この 1 個だけ', rowSame: '横 · 全部同じ', rowZig: '横 · ジグザグの幅', rowRamp: '横 · だんだん 1 個ごと', oneDone: '街灯 5 を手で置きました', ask: '街灯の横のずらしを、ルールに書き込んで', count: '本数（片側）' }
-    : { note: '(other ways move them all)', chip: 'Sideways +1.0 m · all', same: 'All the same', zig: 'Zigzag', ramp: 'Ramp', one: 'Just this one', rowSame: 'Sideways · All the same', rowZig: 'Sideways · Zigzag width', rowRamp: 'Sideways · Ramp, each', oneDone: 'Placed Street lamps 5 by hand', ask: 'Write the Sideways offset of Street lamps into the rule', count: 'Count (each side)' };
+    ? { note: '（ほかの向きは全部が付いてくる）', chip: '横 +1.0 m · 全部', same: '全部同じ', zig: 'ジグザグ', ramp: 'だんだん', one: 'この 1 個だけ', rowSame: '横 · 全部同じ', rowZig: '横 · ジグザグの幅', rowRamp: '横 · だんだん 1 個ごと', oneDone: '街灯 5 を手で置きました', ask: '街灯の横のずらしを、数字で調整できるようにして', count: '本数（片側）' }
+    : { note: '(other ways move them all)', chip: 'Sideways +1.0 m · all', same: 'All the same', zig: 'Zigzag', ramp: 'Ramp', one: 'Just this one', rowSame: 'Sideways · All the same', rowZig: 'Sideways · Zigzag width', rowRamp: 'Sideways · Ramp, each', oneDone: 'Placed Street lamps 5 by hand', ask: 'Make the Sideways offset of Street lamps adjustable with numbers', count: 'Count (each side)' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
     const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `o-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
@@ -1645,10 +1645,10 @@ async function writeback(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const B = LANG === 'ja'
-    ? { ask: 'ルールに書き込む', draft: '街灯の横のずらしを、ルールに書き込んで', chip: '街灯（ルール）', tag: '横 · 全部同じ 1 m', side: '道からの距離',
+    ? { ask: '数字で調整できるようにする', draft: '街灯の横のずらしを、数字で調整できるようにして', chip: '街灯（ルール）', tag: '横 · 全部同じ 1 m', side: '道からの距離',
       knobLine: 'Claude が「街灯」に「道からの距離」を足しました（今は 6.6 m）', fold: 'Claude が「街灯」の変更をルールに書き込みました', gap: 'いちばんずれた所: ',
       jitter: 'ゆらぎを足す（横）', jitterRow: '横 · ゆらぎ 最大', jitterDone: '街灯に横のゆらぎを足しました', reroll: 'ばらつきを変える', first: '道からの距離を変える' }
-    : { ask: 'Write into the rule', draft: 'Write the Sideways offset of Street lamps into the rule', chip: 'Street lamps (rule)', tag: 'Sideways · All the same 1 m', side: 'From the road',
+    : { ask: 'Make it adjustable with numbers', draft: 'Make the Sideways offset of Street lamps adjustable with numbers', chip: 'Street lamps (rule)', tag: 'Sideways · All the same 1 m', side: 'From the road',
       knobLine: 'Claude added “From the road” to “Street lamps” (now 6.6 m)', fold: 'Claude wrote your changes to “Street lamps” into its rule', gap: 'Farthest off: ',
       jitter: 'Add jitter (Sideways)', jitterRow: 'Sideways · Jitter, up to', jitterDone: 'Added Sideways jitter to Street lamps', reroll: 'Shuffle', first: 'Change From the road' };
   const CLI = join(PKG, 'skills/arrange/bin/studio.mjs');
