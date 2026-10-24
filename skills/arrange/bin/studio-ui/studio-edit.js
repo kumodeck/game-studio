@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.64 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.65 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -18238,6 +18238,8 @@ function createTimelineView(d                  )               {
   };
   /** A key's point in the scene, and its handle `side` (null at an end). */
   const keyW = (s       , i        ) => s.keys[i] .v.map((v, j) => v + (s.base[j] ?? 0));
+  /** Making, and point `i` is where the object stands now (under it: the last step's end at the time line). */
+  const standsOn = (s       , i        ) => !!s.making && !!s.now && !!s.keys[i] && s.keys[i] .v.every((v, j) => Math.abs(v - (s.now [j] ?? 0)) < 1e-3);
   const handleW = (s       , i        , side              ) => {
     const h = (handlesOf(s.keys, i)                                                 )[side];
     return h ? keyW(s, i).map((v, j) => v + (h[j] ?? 0)) : null;
@@ -18384,8 +18386,11 @@ function createTimelineView(d                  )               {
       label.setAttribute('y', (p[1] - 9).toFixed(1));
       label.textContent = `${t.toFixed(1)}s`;
       svg.append(label);
-      // The hit area is bigger than the dot: 32 px across with a mouse, 44 with a finger.
-      const hit = circle(p, coarse ? 22 : 16, 'transparent');
+      // The hit area is bigger than the dot: 32 px across with a mouse, 44 with a finger — but while making, the point
+      // where the object stands (the last step's end, under the object) takes its dot and a little round it only (20 /
+      // 28 px; the dot is 14–17 px with its ring): a press on the dot is the point (studio-fix-0164, onDown), a press on
+      // the object off it is still the next step (studio-motion-move), with more of the object left for that.
+      const hit = circle(p, standsOn(s, i) ? (coarse ? 14 : 10) : coarse ? 22 : 16, 'transparent');
       hit.setAttribute('class', `hit${drag?.i === i ? ' on' : ''}`);
       hit.setAttribute('data-point', String(i));
       hit.setAttribute('role', 'button');
@@ -18666,10 +18671,14 @@ function createTimelineView(d                  )               {
     if (at.point === undefined || at.point < 0) return;
     const k = shown.keys[at.point];
     if (!k) return;
-    // Making a motion step by step (studio-motion-move, 2026-10-23): the point where the object stands now is under the
-    // object, so a press on the object caught the point — the second drag moved the first step's end again instead of
-    // making the next one ("only one point is made"). Then the press goes on to the object; the other points still drag.
-    if (shown.making && shown.now && k.v.every((v, i) => Math.abs(v - (shown .now [i] ?? 0)) < 1e-3)) return;
+    // The point first, also where the object stands while making (studio-fix-0164, 2026-10-25). Before, from
+    // studio-motion-move (2026-10-23), a press on that point went on to the object: the point is under it, and the
+    // second drag on the object moved the first step's end again instead of making the next one ("only one point is
+    // made"). But then the path's end could not be pressed at all while making — filming the X clips on v0.1.64, a
+    // Shift-drag on Lantern Cove's rowboat's end point (to lift its path) turned the camera, a drag took the boat; the
+    // brief: "while making (and while the motion is picked) the point is pressed before the object". So the point takes
+    // the press, and that point's hit is its dot only while making (draw, standsOn): the object off the dot is still the
+    // next step (test/studio-motion-end-point.browser.mjs; studio-motion-move.browser.mjs presses the thing below its dot).
     take(e);
     begin(e, keyW(shown, at.point), { i: at.point, start: k.v.slice() });
   };

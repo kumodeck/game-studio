@@ -39,9 +39,17 @@
 //   edges    examples/three-hud (HTML UI): the score dragged to the top right — the same line and words while held, and
 //            the file's ui.score has from top-right / at (what the AI's CSS keeps it to on Save)
 //
-//   node test/studio-canvas-ui.browser.mjs [--only one|missing|screens|phaser|pixi|theme|edges] [--shots <dir>] [--lang ja,en]
+// studio-fix-0164 (2026-10-25: found while filming the X clips of v0.1.64):
+//   asked    examples/three-canvas-hud as it is: ✦ on a dotted frame, sent; the AI's part as the arrange skill says
+//            (received → working → the HUD through codeUi() → ui.code → done), the editor reads the game again; then
+//            JUMP picked and its card's State: Pressed pressed with the mouse → the card is drawn again on Pressed with
+//            the pressed Fill row (it stayed on Normal with no Fill row: only the list's row pressed again drew it), and
+//            the Fill typed there draws the pressed look pink
+//
+//   node test/studio-canvas-ui.browser.mjs [--only one|missing|screens|phaser|pixi|theme|edges|asked] [--shots <dir>] [--lang ja,en]
 // Exit 1 on failure.
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -55,7 +63,7 @@ const args = process.argv.slice(2);
 const opt = (name) => (args.includes(name) ? args[args.indexOf(name) + 1] : null);
 const SHOTS = opt('--shots') ? resolve(opt('--shots')) : null;
 const LANGS = (opt('--lang') || 'ja,en').split(',');
-const ONLY = opt('--only') ? opt('--only').split(',') : ['one', 'missing', 'screens', 'phaser', 'pixi', 'theme', 'edges'];
+const ONLY = opt('--only') ? opt('--only').split(',') : ['one', 'missing', 'screens', 'phaser', 'pixi', 'theme', 'edges', 'asked'];
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const WIN = `document.querySelector('iframe').contentWindow`;
@@ -794,6 +802,88 @@ async function edges(lang) {
   }
 }
 
+// ---------------------------------------------------------------- studio-fix-0164
+async function asked(lang) {
+  console.log(`${lang} dark — asked with ✦, delivered, then State: Pressed`);
+  const J = lang === 'ja';
+  const g = await open(lang, 'examples/three-canvas-hud');
+  const { page } = g;
+  const CLI = join(PKG, 'skills/arrange/bin/studio.mjs');
+  const status = (...a) => {
+    const r = spawnSync(process.execPath, [CLI, g.root, '--status', ...a], { encoding: 'utf8' });
+    assert.equal(r.status, 0, `--status ${a[0]}: ${r.stderr}`);
+  };
+  try {
+    await page.waitFor(`!!${DBG} && studioShell.items().length > 0`, 45000);
+    await sleep(2000);
+    await run('Q1. ✦ on a dotted frame, sent; the AI rewrites the HUD, ui.code, done: the editor reads the game again, the four listed', async () => {
+      await toUi(page);
+      const f = await frameBox(page);
+      const fr = (await framesOf(page))[0];
+      assert.ok(fr, 'a dotted frame');
+      await page.click(f.left + fr.x + fr.w / 2, f.top + fr.y + fr.h / 2);
+      await sleep(500);
+      await page.eval(`document.querySelector('[data-action=ui-missing-ask]').click()`);
+      await sleep(500);
+      assert.equal(await page.eval(`document.querySelector('[data-part=ask] .ask-input').value`), J ? 'この UI を編集できるようにして' : 'Make this UI editable');
+      await page.eval(`document.querySelector('[data-part=ask] .ask-send').click()`);
+      let req = null;
+      for (let i = 0; i < 40 && !req; i++) {
+        await sleep(200);
+        req = readdirOf(join(g.root, '.studio/requests')).find((n) => n.includes('-ask-') && n.endsWith('.json')) ?? null;
+      }
+      assert.ok(req, 'the ask is sent');
+      const id = req.replace(/\.json$/, '');
+      // The AI's part as skills/arrange/SKILL.md "UI drawn in the canvas" says (the film's stand-in AI did the same):
+      // received, working, the HUD through codeUi(), ui.code, done.
+      status('received', '--request', id);
+      await sleep(300);
+      status('working', '--request', id, '--note', 'Making the HUD editable');
+      await sleep(300);
+      copyFileSync(join(PKG, 'test/canvas-ui/game.js'), join(g.root, 'game.js'));
+      const r = await g.ai([{ do: 'ui.code', id: 'score,hp-bar,jump,minimap' }]);
+      assert.equal(r.results?.[0]?.ok, true, `ui.code: ${JSON.stringify(r)}`);
+      await page.waitFor(`studioShell.items().length === 4`, 15000);
+      // The page as it is now: a new one (the editor reads the game again after done) does not carry this mark.
+      await page.eval(`(${WIN}.__fix0164 = 1, 1)`);
+      status('done', '--request', id, '--changed', '0', '--note', J ? 'スコア・体力・JUMP・ミニマップをエディタで動かせるようにしました' : 'I made the score, the health bar, the JUMP button and the minimap movable in the editor');
+      const again = await page.waitFor(`!${WIN}?.__fix0164 && !!${DBG} && studioShell.items().length > 0`, 20000).then(() => true, () => false);
+      console.log(`    (after done: ${again ? 'the game read again' : 'the same page'})`);
+      await sleep(1500);
+      if ((await page.eval(`${DBG}.layer()`)) !== 'ui') await toUi(page);
+      await page.waitFor(`${DBG}.layer() === 'ui' && studioShell.items().length === 4`, 8000);
+      assert.equal(await page.eval(`studioShell.items().map((i) => i.key).join(' ')`), 'score hp-bar minimap jump');
+    });
+    await run('Q2. JUMP picked in the game, State: Pressed pressed: the card is on Pressed with the pressed Fill row; Fill pink draws it pink', async () => {
+      const m = await middleOf(page, 'jump');
+      // As a person (and the film): in the game where it is drawn, else its row when something of the editor covers it.
+      if (await page.eval(`document.elementFromPoint(${m.x}, ${m.y})?.tagName === 'IFRAME'`)) await page.click(m.x, m.y);
+      else await page.eval(`document.querySelector('li.obj[data-key="jump"]').click()`);
+      await page.waitFor(`studioShell.selected() === 'jump'`, 3000);
+      await sleep(600);
+      const at = JSON.parse(await page.eval(`(() => { const b = document.querySelector('[data-part=ui-state] [data-state=active]'); if (!b) return 'null'; const r = b.getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
+      assert.ok(at, 'the card has State');
+      await page.click(at.x, at.y);
+      await sleep(600);
+      assert.equal(await page.eval(`${ENTRY('jump')}.live.state`), 'active', 'the game shows JUMP pressed');
+      const card = JSON.parse(await page.eval(`JSON.stringify({ states: [...document.querySelectorAll('[data-part=ui-state] button')].map((b) => b.dataset.state + ':' + b.getAttribute('aria-checked')),
+        fill: !!document.querySelector('input[data-part="@active.background-text"]') })`));
+      assert.deepEqual(card.states, ['normal:false', 'hover:false', 'active:true', 'disabled:false'], `the card's State: ${card.states}`);
+      assert.equal(card.fill, true, 'the pressed Fill row');
+      // The mouse's press gave the button the focus (Chrome): it stays on Pressed in the rows drawn again.
+      assert.equal(await page.eval(`document.activeElement?.closest('[data-part=ui-state]') ? document.activeElement.dataset.state : null`), 'active', 'the focus on Pressed again');
+      const f = await frameBox(page);
+      const cx = m.x - f.left, cy = m.y - f.top;
+      await page.eval(`(() => { const i = document.querySelector('input[data-part="@active.background-text"]'); i.focus(); i.value = '#ff8fb1'; i.dispatchEvent(new Event('change')); i.blur(); })()`);
+      await sleep(500);
+      colourNear(await hudPx(page, cx - 20, cy - 20), '#ff8fb1', 'pressed, pink');
+      if (SHOTS) writeFileSync(join(SHOTS, `asked-${lang}.png`), await page.screenshot());
+    });
+  } finally {
+    await g.close();
+  }
+}
+
 for (const lang of LANGS) {
   if (ONLY.includes('one')) await one(lang);
   if (ONLY.includes('missing')) await missing(lang);
@@ -802,6 +892,7 @@ for (const lang of LANGS) {
   if (ONLY.includes('pixi')) await pixi(lang);
   if (ONLY.includes('theme')) await theme(lang);
   if (ONLY.includes('edges')) await edges(lang);
+  if (ONLY.includes('asked')) await asked(lang);
 }
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.64 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.65 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -30777,6 +30777,13 @@ const { icon } = __require(21);
 
 const STATES                        = [null, 'hover', 'active', 'disabled'];
 
+/** A selector for the same button in rows drawn again: its tag and every data-* it has (null = it has none). */
+const sameButton = (b             )                => {
+  const ds = Object.entries(b.dataset);
+  if (!ds.length) return null;
+  return 'button' + ds.map(([k, v]) => `[data-${k.replace(/[A-Z]/g, (c) => '-' + c.toLowerCase())}="${CSS.escape(v ?? '')}"]`).join('');
+};
+
 function createUiCard(d            ) {
   let el                     = null;
   let forKey                = null;
@@ -30870,13 +30877,25 @@ function createUiCard(d            ) {
     /**
      * New props came: draw the rows again in place — unless a field of them is being typed in (the typing wins; the
      * rows are drawn when it is done) or the colour picker is open.
+     *
+     * Only an <input> holds the rows back (a text field, the colour swatch whose picker is open). A button of the card
+     * does not (studio-fix-0164, 2026-10-25): Chrome gives a button the focus when the mouse presses it, so State:
+     * Pressed pressed with the mouse kept the focus in the card and its own props (state "active") were never drawn —
+     * the game showed JUMP pressed, the card stayed on Normal with no pressed Fill row until the list's row was pressed
+     * again (found filming the X clips of v0.1.64). The tests pressed it with .click(), which gives no focus, so they
+     * never saw it (test/studio-canvas-ui.browser.mjs `asked` presses it with the mouse). The same held for a sample's
+     * chip and ↺. The button with the focus is found again in the new rows by its data-* (state / sample / action +
+     * path), so a keyboard's Tab goes on from it.
      */
     refresh(key        ) {
       if (!el || !el.isConnected || forKey !== key) return false;
-      if (el.contains(document.activeElement)) return true;
+      const a = document.activeElement;
+      if (a instanceof HTMLInputElement && el.contains(a)) return true;
+      const again = a instanceof HTMLButtonElement && el.contains(a) ? sameButton(a) : null;
       const old = el;
       const [next] = render(key);
       old.replaceWith(next );
+      if (again) (next .querySelector(again)                      )?.focus({ preventScroll: true });
       return true;
     },
   };
