@@ -146,7 +146,7 @@ test('place.code --replace: where the hand lamps stood is read BEFORE the game i
   const r = await createAiHands(e.d).run({ id: '1', by: 'claude', ops: [{ do: 'place.code', id: 'lamp-row', replace: LAMPS.map((x) => x.key) }] });
   assert.ok(r.results[0]!.ok, r.results[0]!.error);
   assert.match(r.results[0]!.said!, /the largest gap is lamp-3 ↔ lamp-row-3, 0\.6 m \(6 of 6 compared\)$/);
-  assert.equal(e.lines[0], 'Claude が 6 個をルールの並べ方「街灯の列」にしました（6 個 · 本数 6, 間 6 m）· 最大のずれ: lamp-3（0.6 m）');
+  assert.equal(e.lines[0], 'Claude が 6 個をルール「街灯の列」にしました（6 個 · 本数 6, 間 6 m）· 最大のずれ: lamp-3（0.6 m）');
   assert.deepEqual(e.store.get('lamp-row'), { from: LAMPS.map((x) => x.key) });
   assert.equal(e.undo.size, 1, 'one ⌘Z brings the hand lamps back');
   const s = e.swaps[0] as { kind: string; id: string; spots: HandSpot[]; gap: { key: string; n: number } };

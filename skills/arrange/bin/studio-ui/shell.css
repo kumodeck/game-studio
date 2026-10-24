@@ -31,6 +31,10 @@
                         do not read alike;
         --ai   #8b7cff  the AI's hand: what its change touched, the ask spark,
                         the light that runs round the input while it works;
+                        and a rule in the game (its rings, tag and knobs);
+      one state colour, never pressed (studio-hand-marks, 2026-10-24):
+        --studio-hand  #d8bf8f  sand: a rule's object placed by hand outside its rule
+                        (its rings and tags in the game, its tag on the card and in the list);
       one green dot (the AI wrote back) and red only on Delete. Axis letters
       are grey: a third, fourth and fifth colour said nothing the letter did not.
    3. CORNERS — inner = outer − gap, so corners nest. A plate is 18 (phone 22),
@@ -74,6 +78,12 @@
   --you-soft: rgba(255, 107, 26, .14); --you-text: #ffb48a;
   --you-fg: #ffffff;   /* words on a filled --you (the Save presses, rule 2's exception): white in both themes */
   --ai: #8b7cff; --ai-soft: rgba(139, 124, 255, .16); --ai-text: #c1b8ff;
+  /* Placed by hand (studio-hand-marks, 2026-10-24; the hand-marks plan §5): a rule's object put
+     outside its rule with ⌥ — its rings and tags in the game, its tag on the card and in the list, the line that tells it.
+     A state, not a warning and not a press: sand, low in colour, away from violet (the rule) and the games' neons. WHY
+     not orange (to coords had it): orange is the outline of what you picked and the Save press, so a hand-placed one in
+     orange read as "something broke" and its numbers looked like buttons (a play-test note of 10/24, v0.1.53). */
+  --studio-hand: #d8bf8f; --studio-hand-text: #ead6b0; --studio-hand-soft: rgba(216, 191, 143, .13);
   --live: #30d158;
   --danger: #ff453a;
   /* Recording (the timeline's auto key, studio-timeline 2026-10-22): rule 2's second exception, see the timeline section. */
@@ -111,6 +121,8 @@
   /* The same two colours; text on their soft tint a step darker to read on white. */
   --you-soft: rgba(255, 107, 26, .12); --you-text: #c2410c;
   --ai-soft: rgba(139, 124, 255, .14); --ai-text: #5b4bd6;
+  /* Sand a step darker to read on white (the same hue as dark's #d8bf8f). */
+  --studio-hand: #b8955a; --studio-hand-text: #7a5a22; --studio-hand-soft: rgba(184, 149, 90, .16);
   --live: #1f9d55;
   --danger: #d70015;
   --rec: #ff3b30; --rec-soft: rgba(255, 59, 48, .14);
@@ -1911,24 +1923,53 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .rule-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .rule-foot .rule-hand { padding: 2px 8px; border-radius: 6px; background: var(--raise-2); font-size: var(--fs-s); }
 .rule-nth { font-size: var(--fs-s); }
-.rule-pinned { display: grid; gap: 6px; justify-items: start; padding: 8px; border-radius: 8px; background: var(--you-soft); color: var(--you-text); box-shadow: inset 0 0 0 1px rgba(255, 107, 26, .35); font-size: var(--fs-s); }
-.rule-pinned .link-btn { padding: 2px 8px; border-radius: 6px; background: var(--raise-2); color: var(--text); }
-/* The one placed by hand: its numbers are its place, in the hand's colour (the plan: "orange = coordinates"). */
-.card:has(.rule-pinned) .f-cells .num input { color: var(--you-text); }
+/* studio-hand-marks (2026-10-24; the hand-marks plan §3–§5, a play-test note of that day on
+   v0.1.53: "the orange frame looks like a warning; its numbers are orange too, so the button and the numbers blur").
+   One object placed by hand outside its rule: a calm grey surface (a state, not a warning), the sand tag
+   [✋ Placed by hand] with "outside the crystal rule" under it, and "Back to rule" an ordinary button on the right. Its
+   numbers stay white like every number (a value; the button is told apart by its look). Before (to coords): an orange
+   frame and orange numbers. */
+.rule-pinned { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 8px; background: var(--raise); font-size: var(--fs-s); }
+.rule-pinned-l { display: grid; gap: 4px; justify-items: start; flex: 1; min-width: 0; }
+.rule-pinned-l .muted { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rule-pinned > .ko-inside { flex-basis: 100%; margin: 0; }
+.rule-pinned:has(> .ko-inside) { flex-wrap: wrap; }
+.rule-back { flex: none; min-height: 24px; padding: 0 10px; border-radius: 6px; background: var(--raise-2); color: var(--text); font-size: var(--fs-s); font-weight: 600; }
+.rule-back:hover { background: var(--raise-3); }
 li.obj .rule-tag { margin-left: 4px; flex: none; }
-/* studio-to-coords (2026-10-24): one object put by hand apart from its rule (⌥) — the hand's orange mark "Hand-placed",
-   on the card, on its row and (with a count) on its layout's heading, and "Reset to rule" beside it on its row. */
-.hand-tag { height: 18px; padding: 0 6px; background: var(--you-soft); color: var(--you-text); font-size: 10px; }
+/* The sand tag: the hand, then "Placed by hand" (the card; a row not picked) or the count (the rule's heading, "✋ 2").
+   A thin sand edge on its tint so it reads as a tag on the glass and on the desk alike. */
+.hand-tag { display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px; background: var(--studio-hand-soft); color: var(--studio-hand-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--studio-hand) 40%, transparent); font-size: 10px; }
+/* A thin line at this size: at 11 px with the usual 1.6 the fingers ran together (the first pictures). */
+.hand-tag svg.icon { width: 12px; height: 12px; stroke-width: 1.25px; }
 li.obj .hand-tag { margin-left: 4px; flex: none; }
 li.obj .hand-mark { display: inline-flex; align-items: center; gap: 2px; flex: none; min-width: 0; }
 li.obj .hand-reset { min-height: 20px; padding: 0 4px; font-size: 10px; color: var(--text-2); }
 li.obj .hand-reset:hover { color: var(--text); text-decoration: underline; }
-.rule-pinned { grid-template-columns: auto 1fr; align-items: center; }
-.rule-pinned > .link-btn { grid-column: 1 / -1; }
-/* The news card's pressable words after a line (code-place-wire told: "Reset to rule", "✦ Ask Claude: …"). */
-.toast .toast-act { min-height: 20px; padding: 0 2px; color: var(--you-text); font-weight: 600; }
-.toast .toast-act:hover { text-decoration: underline; }
-.toast .toast-act.ai { color: var(--ai-text); }
+/* The picked row: the hand alone and "Back to rule" (the row is too narrow for both words); a row not picked: the tag's
+   words, no button. CSS, not a redraw: picking another row only marks the rows (placement-panel.ts markRows). */
+li.obj:not([aria-selected="true"]) .hand-mark .hand-reset { display: none; }
+li.obj[aria-selected="true"] .hand-mark .hand-tag > span { display: none; }
+li.obj[aria-selected="true"] .hand-mark .hand-tag { padding: 0 4px; }
+/* Under the rule's knobs: "✋ 2 placed by hand · [All back to rule]" — the count lights those objects in the game while
+   the mouse is on it and picks them when pressed; the button takes every one of the rule's pins off (one ⌘Z). */
+.rule-hands { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.rule-hands-n { display: inline-flex; align-items: center; gap: 4px; min-width: 0; min-height: 24px; padding: 0 6px 0 4px; border-radius: 6px; color: var(--studio-hand-text); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; }
+.rule-hands-n:hover:not(:disabled) { background: var(--studio-hand-soft); text-decoration: none; }
+.rule-hands-n svg.icon { width: 14px; height: 14px; stroke-width: 1.4px; }
+.rule-hands .rule-back { font-weight: 500; }
+/* The news card's pressable words after a line (code-place-wire told: "Back to rule", "✦ Ask Claude: …"): white and
+   underlined, ✦ in the AI's violet. They were orange (to coords); orange is the pick's outline and Save only now
+   (studio-hand-marks, 2026-10-24). */
+.toast .toast-act { min-height: 20px; padding: 0 2px; color: var(--text); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.toast .toast-act.ai { color: var(--ai-text); text-decoration: none; }
+.toast .toast-act.ai:hover { text-decoration: underline; }
+/* Placed by hand (studio-hand-marks; the hand-marks plan §2): the hand at its head and its words in sand, then the way
+   back and the undo key last — "✋ Placed Crystal 9 by hand (the rest stay on the rule) · Back to rule · ⌘Z". */
+.toast.hand { color: var(--studio-hand-text); }
+.toast.hand > svg.icon { width: 14px; height: 14px; margin-right: 4px; vertical-align: -2px; stroke-width: 1.4px; }
+.toast .toast-tail { color: var(--text-2); }
 /* Phone / side window: the same parts in the sheet; the knobs' names a little wider (as the numbers' labels, .fields). */
 .shell[data-layout="phone"] .knob { grid-template-columns: 56px minmax(0, 1fr); }
 .shell[data-layout="phone"] .knob-box { max-width: none; }

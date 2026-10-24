@@ -368,7 +368,14 @@ export function createAiHands(d: HandsDeps) {
           e.pins = { ...(e.pins ?? {}), [op.pin.key]: { p: op.pin.p.slice(), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) } };
           parts.push(d.t('hands.place.pin', { obj: name(op.pin.key) }));
         }
-        if (op.unpin) {
+        if (op.unpin === '*') {
+          // Every one placed by hand back on the rule (studio-hand-marks; the card's "All back to rule"): one ⌘Z.
+          if (e.hand) return { error: `codePlace('${op.id}') is converted to coordinates (hand: true): --hand false puts it back on the code` };
+          const n = Object.keys(e.pins ?? {}).filter((k) => info.keys.includes(k)).length || Object.keys(e.pins ?? {}).length;
+          if (!n) return { error: `codePlace('${op.id}') has nothing placed by hand (every object follows the code already)` };
+          delete e.pins;
+          parts.push(d.t('hands.place.unpinAll', { n }));
+        } else if (op.unpin) {
           if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not placed by hand (it follows the code already)` };
           delete e.pins[op.unpin];
           parts.push(d.t('hands.place.unpin', { obj: name(op.unpin) }));

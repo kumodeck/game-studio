@@ -1059,8 +1059,11 @@ export type ShellToBridge =
    * The violet rings and dotted line of the code layouts `ids` (the picked object's and the one under the mouse): where
    * the rule puts each of its objects, an empty ring where one is placed by hand. `sel` = the picked object, `places` =
    * the level's `places` of the draft (which ones are put by hand). [] = none.
+   * studio-hand-marks (2026-10-24): `places` is always the whole of it while editing (the small hand tags over every object
+   * placed by hand show with nothing picked; a pin it did not have spreads its ring), and `lit` = objects the shell lights
+   * (the card's "✋ 2 placed by hand" under the mouse): their sand rings bright.
    */
-  | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace>; compare?: Record<string, PlaceCompareMarks> }
+  | { type: 'studio:place/guide'; ids: string[]; sel: string | null; places?: Record<string, PlacementPlace>; compare?: Record<string, PlaceCompareMarks>; lit?: string[] }
   /**
    * studio-code-keepout (2026-10-24; the plan's step 3): the keep-out areas of the picked object's rule layout `id`
    * painted on the ground (red hatching; a box's edge orange with its corners to drag, a code condition's violet and

@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.54 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.55 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -4682,8 +4682,11 @@ const MSG_PREFIX = 'studio:';
                                                                                                                         
                                                                                                                         
                                                                                
+                                                                                                                            
+                                                                                                                           
+                                                                                
      
-                                                                                                                                                           
+                                                                                                                                                                           
      
                                                                                                                     
                                                                                                                      
@@ -12459,6 +12462,15 @@ __defs[35] = function (__exports) {
 //                 make a pin as before: the same drag gave "the whole row changes" one way and "this one leaves the
 //                 rule" the other, without ⌥, and nobody saw it leave.
 //   the line      the one line under the strip says, before a touch, which of the two a drag will do.
+//   placed by hand  studio-hand-marks (2026-10-24; the hand-marks plan §1, a play-test note of that day on v0.1.53: "on the
+//                 scene I can't tell which ones I placed by hand; nothing happens when one leaves its rule"). A rule's object put by hand (its pin) is sand, never orange (orange = what is picked, and
+//                 Save): its layout shown (picked, under the mouse, a list row pointed at) → a sand ring where it stands,
+//                 the tag "✋ Placed by hand" over it, the violet hollow ring where the rule would put it (where Back to rule
+//                 takes it) and a thin sand dotted line between. Otherwise only a small hand tag over its head, so the
+//                 question is answered before anything is picked (the rule's own rings stay off then: the game would be
+//                 covered in rings, and the hand-placed ones are few). Playing: nothing (frame() stops, clear() empties).
+//                 The moment one leaves its rule (a pin the page did not have — ⌥, the AI's pin, an undo of Back to rule)
+//                 its ring goes violet → sand and spreads once (0.4 s; `fx`, a layer of its own that draw() never clears).
 //   place/guide `compare`  ✦ Turn into a rule (studio-code-torule, 2026-10-24): where the hand-placed objects the
 //                 layout replaced stood, until Save — an orange dot each (the hand's colour) and a thin line to where
 //                 the rule's object of that number stands now, and over the farthest one the chip "lamp-3 · 0.6 m".
@@ -12470,10 +12482,28 @@ __defs[35] = function (__exports) {
 // WHY SVG in a shadow root, as timeline-path.ts: the same look in every engine, out of reach of the game's CSS.
                                                                                                                                            
 const { codePose, knobValues, relayCodePlace } = __require(20);
+const { nativeSetTimeout } = __require(0);
 const { kindOf } = __require(34);
 
 const VIOLET = '#a78bfa';
 const YOU = '#ff6b1a';
+// Placed by hand (studio-hand-marks): the shell's --studio-hand / --studio-hand-text (shell.css), here because the game
+// page has no shell CSS. Sand: a state, low in colour, away from violet and the games' neons.
+const SAND = '#d8bf8f';
+const SAND_TEXT = '#ead6b0';
+// The hand of the tags: shell/icons.ts PATHS.hand (20 × 20, stroked), copied — the game page's bundle has no shell icons.
+const HAND_PATHS = ['M7 10V5.25a1.25 1.25 0 0 1 2.5 0V9', 'M9.5 8.5V4.25a1.25 1.25 0 0 1 2.5 0V9',
+  'M12 8.75V5.5a1.25 1.25 0 0 1 2.5 0V11a5.5 5.5 0 0 1-5.5 5.5h-.3a4.5 4.5 0 0 1-3.6-1.8L3.3 12.2a1.3 1.3 0 0 1 2-1.6L7 12'];
+/** The pins of each layout's entry that `next` has and `was` did not (not a layout placed by hand as a whole). */
+function freshPins(was                                , next                                )           {
+  const out           = [];
+  for (const [id, e] of Object.entries(next)) {
+    if (e?.hand) continue;
+    const old = was[id]?.hand ? {} : was[id]?.pins ?? {};
+    for (const k of Object.keys(e?.pins ?? {})) if (!(k in old)) out.push(k);
+  }
+  return out;
+}
 
                                       
 /** A layout as the loader keeps it on globalThis (Symbol.for('game-studio.codePlaces')): plain fields only are read. */
@@ -12493,6 +12523,9 @@ const YOU = '#ff6b1a';
 // layout's name goes ("Drag to adjust Gap · ⌥-drag to move one"), and with a finger the ⌥ part does (no ⌥ key there).
 // studio-to-coords (2026-10-24): a way with no knob says so ("Height is set by the rule"), never "moving one places it
 // individually" — without ⌥ a rule's object no longer leaves its rule. The shell's i18n.ts rule.held.* say the same.
+// studio-hand-marks (2026-10-24; the hand-marks plan §6): two words only — "rule" and "placed by hand" ("By hand" on a
+// tag). Before, the Japanese said "rule", "row" and "hand-put" for one thing, and English "Hand-placed" (a play test found
+// four words for one thing).
 const PLACE_WORDS                
                                                                                                                   
                                                                                   
@@ -12504,18 +12537,18 @@ const PLACE_WORDS
     chipAlone: ' · ⌥ for just this one',
     fixed: { along: 'Position along the row is set by the rule', side: 'Sideways position is set by the rule', move: 'Position is set by the rule',
       up: 'Height is set by the rule', turn: 'Angle is set by the rule', size: 'Size is set by the rule', group: 'Objects placed by a rule don’t move as a group' },
-    pinned: (name) => `Hand-placed: just this one (${name})`,
-    hand: 'Hand-placed',
+    pinned: (name) => `By hand: outside the ${name} rule`,
+    hand: 'By hand',
   },
   ja: {
-    head: (name, n) => `${name} ×${n}（ルールの並び）: `,
+    head: (name, n) => `${name} ×${n}（ルール）: `,
     drag: (labels) => `動かすと${labels.join('・')}が変わる`,
     alone: ' · ⌥+ドラッグで 1 個だけ',
     chipAlone: ' · ⌥ でこの 1 個だけ',
-    fixed: { along: '並びに沿った位置はルールで決まっています', side: '横の位置はルールで決まっています', move: '場所はルールで決まっています',
+    fixed: { along: '列に沿った位置はルールで決まっています', side: '横の位置はルールで決まっています', move: '場所はルールで決まっています',
       up: '高さはルールで決まっています', turn: '向きはルールで決まっています', size: '大きさはルールで決まっています', group: 'ルールで並んだ物はまとめて動かせません' },
-    pinned: (name) => `手置き: この 1 個だけ（${name}）`,
-    hand: '手置き',
+    pinned: (name) => `手で置いた: ${name}のルールの外`,
+    hand: '手で置いた',
   },
 };
 /** Narrower than this (css px), the line under the strip leaves the layout's name out (it was cut at 420 / 390). */
@@ -12693,6 +12726,13 @@ function moveWay(spots                        , i        , miss          , line 
   return along >= side ? 'along' : 'side';
 }
 
+/** What draw() puts on screen, and in which order (LAYER: bottom first — the rule's, then the hand's, the tags on top). */
+                                                                                                              
+                                                                                                                         
+const LAYER                           = { line: 0, old: 1, gap: 1, ring: 2, 'hand-line': 3, 'hand-ring': 4, was: 5, chip: 6, mini: 7, tag: 8 };
+/** About a text's width at 10 px bold: a kana / kanji is twice as wide as a Latin letter (a Japanese name's chip). */
+const textWidth = (t        ) => [...t].reduce((n, ch) => n + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 10.5 : 6.4), 0);
+
                                     
            
                            
@@ -12750,18 +12790,31 @@ function createCodePlaceView(d                   )                {
   const style = doc.createElement('style');
   style.textContent = `.root { position: fixed; inset: 0; pointer-events: none; z-index: 2147483645; }
 svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; }`;
+text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; fill: #fff; }
+text.hand { fill: ${SAND_TEXT}; }
+/* The moment one leaves its rule: violet → sand, spreading once (0.4 s). */
+.pulse { transform-box: fill-box; transform-origin: center; animation: hand-pulse .4s cubic-bezier(.2, .8, .2, 1) forwards; }
+@keyframes hand-pulse { 0% { stroke: ${VIOLET}; transform: scale(1); opacity: 1; } 55% { stroke: ${SAND}; } 100% { stroke: ${SAND}; transform: scale(1.7); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation-duration: .01s; } }`;
   const root = doc.createElement('div');
   root.className = 'root';
   const NS = 'http://www.w3.org/2000/svg';
   const svg = doc.createElementNS(NS, 'svg')                 ;
-  root.append(svg);
+  // The spreading ring of the moment one leaves its rule: its own layer, so draw() redrawing `svg` does not cut it short.
+  const fx = doc.createElementNS(NS, 'svg')                 ;
+  root.append(svg, fx);
   shadow.append(style, root);
   let mounted = false;
 
   // The draft's places (the shell's, with every guide / layout message): the pins, by hand, the knobs turned.
   let places                                 = {};
   let guide                                        = { ids: [], sel: null };
+  // Objects the shell lights (the card's "✋ 2 placed by hand" under the mouse, a row pointed at): their sand rings bright.
+  let lit           = [];
+  // The draft's places have come once (the first ones are the file's: their pins did not "just leave" the rule).
+  let seen = false;
+  // How many times a ring spread (the browser test reads it: the ring is gone 0.4 s later).
+  let pulses = 0;
   // ✦ Turn into a rule (studio-code-torule): the hand-placed objects each layout replaced (the shell's, until Save).
   let compare                                    = {};
   // The layout of the object under the mouse (no button down): its rings too, before a press — "a layout's object tells
@@ -12850,6 +12903,67 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     return out;
   }
 
+  const mount = () => {
+    if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
+  };
+  /** A ring on the ground round `c` in screen points (3D: 24 points of a circle; 2D: an ellipse on the screen). */
+  function ringPts(c          , r        )                                 {
+    const a = d.adapter();
+    if (!a.toScreen) return null;
+    if (a.dim !== '3d') {
+      const s = a.toScreen(c);
+      return s ? Array.from({ length: 25 }, (_, j) => [s[0] + r * Math.cos((j / 24) * 2 * Math.PI), s[1] + r * 0.4 * Math.sin((j / 24) * 2 * Math.PI)]                    ) : null;
+    }
+    const out                          = [];
+    for (let j = 0; j <= 24; j++) {
+      const t = (j / 24) * 2 * Math.PI;
+      const s = a.toScreen([c[0]  + r * Math.cos(t), c[1] , c[2]  + r * Math.sin(t)]);
+      if (!s) return null;
+      out.push(s);
+    }
+    return out;
+  }
+  function pathEl(pts                         , stroke        , width        , dash         , close = false)                 {
+    const el = doc.createElementNS(NS, 'path');
+    el.setAttribute('d', pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join('') + (close ? 'Z' : ''));
+    el.setAttribute('fill', 'none');
+    el.setAttribute('stroke', stroke);
+    el.setAttribute('stroke-width', String(width));
+    el.setAttribute('stroke-linecap', 'round');
+    if (dash) el.setAttribute('stroke-dasharray', dash);
+    return el;
+  }
+  /** A hand tag's plate: the dark glass with a thin sand edge (a state, not a warning: never filled with colour). */
+  function tagRect(x        , y        , w        , part        )                 {
+    const r = doc.createElementNS(NS, 'rect');
+    r.setAttribute('x', x.toFixed(1));
+    r.setAttribute('y', y.toFixed(1));
+    r.setAttribute('width', String(w));
+    r.setAttribute('height', '16');
+    r.setAttribute('rx', '5');
+    r.setAttribute('fill', 'rgba(28,28,30,.86)');
+    r.setAttribute('stroke', SAND);
+    r.setAttribute('stroke-width', '1');
+    r.setAttribute('data-part', part);
+    return r;
+  }
+  /** The hand, 12 px, its top left at (x, y); a thin line (1.3 px on screen: thicker, the fingers ran together). */
+  function handIcon(x        , y        )              {
+    const g = doc.createElementNS(NS, 'g');
+    g.setAttribute('transform', `translate(${x.toFixed(1)} ${y.toFixed(1)}) scale(.6)`);
+    for (const dd of HAND_PATHS) {
+      const el = doc.createElementNS(NS, 'path');
+      el.setAttribute('d', dd);
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', SAND);
+      el.setAttribute('stroke-width', '2.2');
+      el.setAttribute('stroke-linecap', 'round');
+      el.setAttribute('stroke-linejoin', 'round');
+      g.append(el);
+    }
+    return g;
+  }
+
   const draw = () => {
     const a = d.adapter();
     if (hoverAt) {
@@ -12866,28 +12980,27 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     }
     const ids = hoverId && !guide.ids.includes(hoverId) ? [...guide.ids, hoverId] : guide.ids;
     const shown = ids.map((id) => list().get(id)).filter((p)             => !!p && !entryOf(p.id).hand && !!p.spots);
-    if (!shown.length || !a.toScreen) {
+    // The objects placed by hand of every other layout (studio-hand-marks: "which ones did I place by hand?" before a pick).
+    const minis           = [];
+    for (const p of list().values()) {
+      if (shown.includes(p)) continue;
+      const e = entryOf(p.id);
+      if (!e.hand) for (const k of Object.keys(e.pins ?? {})) if (p.keys?.includes(k)) minis.push(k);
+    }
+    if ((!shown.length && !minis.length) || !a.toScreen) {
       if (svg.firstChild) svg.replaceChildren();
       drawn = '';
       return;
     }
     const three = a.dim === '3d';
-    // A ring on the ground round `c` (3D: 24 points of a circle; 2D: an ellipse on the screen).
-    const ringAt = (c          , r        )                                 => {
-      if (!three) {
-        const s = a.toScreen (c);
-        return s ? Array.from({ length: 25 }, (_, j) => [s[0] + r * Math.cos((j / 24) * 2 * Math.PI), s[1] + r * 0.4 * Math.sin((j / 24) * 2 * Math.PI)]                    ) : null;
-      }
-      const out                          = [];
-      for (let j = 0; j <= 24; j++) {
-        const t = (j / 24) * 2 * Math.PI;
-        const s = a.toScreen ([c[0]  + r * Math.cos(t), c[1] , c[2]  + r * Math.sin(t)]);
-        if (!s) return null;
-        out.push(s);
-      }
-      return out;
-    };
-    const parts                                                                                                                                                                      = [];
+    const ringAt = (c          , r        ) => ringPts(c, r);
+    const words = PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en;
+    const parts         = [];
+    // Placed by hand, of the layouts not shown: the small hand tag over each (no words: the shown layout's say them).
+    for (const k of minis) {
+      const an = a.anchor(k);
+      if (an?.visible) parts.push({ kind: 'mini', pts: [[an.center[0], (an.rect ? an.rect.y : an.center[1] - 20) - 8]] });
+    }
     for (const p of shown) {
       const spots = p.spots ;
       const centres                                 = [];
@@ -12899,12 +13012,21 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         const c = toScene(p, q).map((v, j) => v + (ring.foot[j] ?? 0));
         const pts = ringAt(c, ring.r);
         const pin = pinned(p, key);
-        if (pts) parts.push({ kind: 'ring', pts, dash: pin, on: key === guide.sel });
-        centres.push(a.toScreen (c));
-        // A pinned one: its "Hand" tag over it (where it stands now).
+        // A pinned one's ring here is the violet hollow (dashed) one: where the rule would put it — where Back to rule
+        // takes it, seen before it is pressed (the plan's map, rule 6).
+        if (pts) parts.push({ kind: 'ring', pts, dash: pin, on: key === guide.sel && !pin });
+        const sRule = a.toScreen (c);
+        centres.push(sRule);
+        // Placed by hand: a sand ring where it stands now, the thin sand dotted line from the rule's ring to it, and the
+        // tag "✋ Placed by hand" over it.
         if (pin && has) {
           const an = a.anchor(key);
-          if (an?.visible) parts.push({ kind: 'tag', pts: [[an.center[0], (an.rect ? an.rect.y : an.center[1] - 20) - 8]], text: (PLACE_WORDS[d.lang()] ?? PLACE_WORDS.en).hand });
+          const now = an ? toScene(p, an.pose.p).map((v, j) => v + (ring.foot[j] ?? 0)) : null;
+          const sNow = now ? a.toScreen (now) : null;
+          if (sNow && sRule && Math.hypot(sNow[0] - sRule[0], sNow[1] - sRule[1]) > 6) parts.push({ kind: 'hand-line', pts: [sRule, sNow] });
+          const cur = now ? ringAt(now, ring.r) : null;
+          if (cur) parts.push({ kind: 'hand-ring', pts: cur, on: lit.includes(key) || key === guide.sel });
+          if (an?.visible) parts.push({ kind: 'tag', pts: [[an.center[0], (an.rect ? an.rect.y : an.center[1] - 20) - 8]], text: words.hand });
         }
       });
       // A row: the rings joined in order by a dotted line (a scatter is not a line: no line).
@@ -12951,22 +13073,19 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
     const sig = JSON.stringify(parts);
     if (sig === drawn) return;
     drawn = sig;
-    if (!mounted && doc.body) (doc.body.append(host), (mounted = true));
+    mount();
     svg.replaceChildren();
-    const path = (pts                         , stroke        , width        , dash         , close = false) => {
-      const el = doc.createElementNS(NS, 'path');
-      el.setAttribute('d', pts.map((q, i) => `${i ? 'L' : 'M'}${q[0].toFixed(1)} ${q[1].toFixed(1)}`).join('') + (close ? 'Z' : ''));
-      el.setAttribute('fill', 'none');
-      el.setAttribute('stroke', stroke);
-      el.setAttribute('stroke-width', String(width));
-      el.setAttribute('stroke-linecap', 'round');
-      if (dash) el.setAttribute('stroke-dasharray', dash);
+    const path = (pts                         , stroke        , width        , dash         , close = false, part         ) => {
+      const el = pathEl(pts, stroke, width, dash, close);
+      if (part) el.setAttribute('data-part', part);
       svg.append(el);
     };
-    for (const x of parts) {
+    // Bottom to top: the rule's lines and rings, then the hand's line and ring over them, the tags over everything.
+    for (const x of parts.slice().sort((p, q) => LAYER[p.kind] - LAYER[q.kind])) {
       if (x.kind === 'line') (path(x.pts, 'rgba(0,0,0,.35)', 4), path(x.pts, VIOLET, 1.6, '4 5'));
       else if (x.kind === 'old') path(x.pts, 'rgba(255,255,255,.55)', 1.2, '3 4', x.pts.length > 2);
       else if (x.kind === 'gap') (path(x.pts, 'rgba(0,0,0,.35)', 3), path(x.pts, YOU, 1.2));
+      else if (x.kind === 'hand-line') (path(x.pts, 'rgba(0,0,0,.35)', 3), path(x.pts, SAND, 1.2, '2 4', false, 'hand-line'));
       else if (x.kind === 'was') {
         const [cx, cy] = x.pts[0] ;
         const c = doc.createElementNS(NS, 'circle');
@@ -12981,11 +13100,29 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
       }
       else if (x.kind === 'ring') {
         path(x.pts, 'rgba(0,0,0,.35)', 4, undefined, true);
-        path(x.pts, x.on ? '#c4b5fd' : VIOLET, x.on ? 2.2 : 1.6, x.dash ? '4 4' : undefined, true);
-      } else if ((x.kind === 'tag' || x.kind === 'chip') && x.text) {
-        // About the text's width at 10 px bold: a kana / kanji is twice as wide as a Latin letter (a Japanese name's chip).
-        const w = 10 + [...x.text].reduce((n, ch) => n + (/[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 10.5 : 6.4), 0);
-        // A chip with a side sits beside its point (8 px off), else centred on it (a tag over its object).
+        path(x.pts, x.on ? '#c4b5fd' : VIOLET, x.on ? 2.2 : 1.6, x.dash ? '4 4' : undefined, true, x.dash ? 'rule-spot' : undefined);
+      } else if (x.kind === 'hand-ring') {
+        // Lit (its count on the card under the mouse, or it is the picked one): brighter, with a soft halo.
+        if (x.on) path(x.pts, 'rgba(216,191,143,.32)', 7, undefined, true);
+        path(x.pts, 'rgba(0,0,0,.35)', 4, undefined, true);
+        path(x.pts, SAND, x.on ? 2.6 : 1.8, undefined, true, x.on ? 'hand-ring-lit' : 'hand-ring');
+      } else if (x.kind === 'mini') {
+        // The small hand tag (sand edge, the hand only): 20 × 16, centred over its object.
+        const [cx, cy] = x.pts[0] ;
+        svg.append(tagRect(cx - 10, cy - 9, 20, 'hand-mini'), handIcon(cx - 6, cy - 7));
+      } else if (x.kind === 'tag' && x.text) {
+        // "✋ Placed by hand" over its object: the hand, then the words in sand on the dark glass.
+        const w = 10 + 13 + textWidth(x.text);
+        const cx = x.pts[0] [0], cy = x.pts[0] [1];
+        const tx = doc.createElementNS(NS, 'text');
+        tx.setAttribute('x', (cx - w / 2 + 18).toFixed(1));
+        tx.setAttribute('y', (cy + 3).toFixed(1));
+        tx.setAttribute('class', 'hand');
+        tx.textContent = x.text;
+        svg.append(tagRect(cx - w / 2, cy - 9, w, 'hand-tag'), handIcon(cx - w / 2 + 4, cy - 7), tx);
+      } else if (x.kind === 'chip' && x.text) {
+        const w = 10 + textWidth(x.text);
+        // A chip sits beside its point (8 px off), on its side.
         const cx = x.pts[0] [0] + (x.side ? x.side * (w / 2 + 8) : 0);
         const cy = x.pts[0] [1];
         const r = doc.createElementNS(NS, 'rect');
@@ -12995,15 +13132,50 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
         r.setAttribute('height', '16');
         r.setAttribute('rx', '4');
         r.setAttribute('fill', YOU);
+        r.setAttribute('data-part', 'place-gap-chip');
         const tx = doc.createElementNS(NS, 'text');
         tx.setAttribute('x', (cx - w / 2 + 5).toFixed(1));
         tx.setAttribute('y', (cy + 3).toFixed(1));
         tx.textContent = x.text;
-        if (x.kind === 'chip') r.setAttribute('data-part', 'place-gap-chip');
         svg.append(r, tx);
       }
     }
   };
+
+  /**
+   * The moment `keys` left their rule (studio-hand-marks): a ring at each one's foot that turns violet → sand and spreads
+   * once (0.4 s), on `fx` — then gone. The sand ring that stays is draw()'s.
+   */
+  function pulse(keys          ) {
+    const a = d.adapter();
+    if (!a.toScreen || !keys.length) return;
+    mount();
+    for (const key of keys) {
+      const p = layoutOf(key);
+      const pose = p ? a.anchor(key)?.pose : null;
+      if (!p || !pose) continue;
+      const ring = ringOf(p, key);
+      const pts = ringPts(toScene(p, pose.p).map((v, j) => v + (ring.foot[j] ?? 0)), ring.r);
+      if (!pts) continue;
+      const el = pathEl(pts, VIOLET, 2.4, undefined, true);
+      el.setAttribute('class', 'pulse');
+      el.setAttribute('data-part', 'hand-pulse');
+      fx.append(el);
+      // Gone when it has spread. The studio's own timer: the window's setTimeout waits while the game is held (Edit holds
+      // it — core/play-timers.ts), so the ring stayed for good (the first browser run: two paths left on the gate).
+      el.addEventListener('animationend', () => el.remove());
+      nativeSetTimeout(() => el.remove(), 600);
+      pulses++;
+    }
+    host.dataset.handPulses = String(pulses);
+  }
+  /** The draft's places from the shell: the pins it did not have before spread their ring (not the first places). */
+  function takePlaces(next                                )           {
+    const fresh = seen ? freshPins(places, next) : [];
+    places = structuredClone(next);
+    seen = true;
+    return fresh;
+  }
 
   // The mouse over the game (never taken: the game's own listeners and input.ts see the same move).
   win.addEventListener('pointermove', (e) => {
@@ -13022,22 +13194,32 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   return {
     handle(msg) {
       if (msg.type === 'studio:place/layout') {
-        places = structuredClone(msg.places ?? {});
+        const fresh = takePlaces(msg.places ?? {});
         relay(msg.ids ?? [...list().keys()]);
+        // After the relayout: each new one stands where it was put by hand, its ring spreads there.
+        pulse(fresh);
       } else if (msg.type === 'studio:place/guide') {
         guide = { ids: msg.ids.slice(), sel: msg.sel };
-        if (msg.places) places = structuredClone(msg.places);
+        lit = (msg.lit ?? []).slice(0, 50);
+        const fresh = msg.places ? takePlaces(msg.places) : [];
         compare = structuredClone(msg.compare ?? {});
         drawn = '';
         d.markDirty();
+        pulse(fresh);
       }
     },
     frame: draw,
     clear() {
+      // Out of editing (▶ Play) or off the world layer: nothing of the rule's or the hand's stays on the game (frame()
+      // stops until editing comes back, and draws again then).
       guide = { ids: [], sel: null };
+      lit = [];
+      hoverId = null;
       drag = null;
       moving = null;
-      draw();
+      drawn = '';
+      if (svg.firstChild) svg.replaceChildren();
+      fx.replaceChildren();
     },
     note(key, tool) {
       const p = layoutOf(key);
@@ -13174,6 +13356,7 @@ text { font: 700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-
   };
 }
 
+__def(__exports, "freshPins", () => freshPins);
 __def(__exports, "PLACE_WORDS", () => PLACE_WORDS);
 __def(__exports, "NOTE_FULL_PX", () => NOTE_FULL_PX);
 __def(__exports, "placeNote", () => placeNote);

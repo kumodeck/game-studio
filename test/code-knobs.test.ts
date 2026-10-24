@@ -233,14 +233,15 @@ test('the screen says "rule", never "code", for a rule motion or layout (the wor
   assert.equal(translate('en', 'rule.points'), 'Convert to coordinates');
   assert.equal(translate('en', 'rule.individually'), 'Convert to coordinates');
   assert.equal(translate('ja', 'rule.pointsDone', { name: 'らせん' }), 'らせんのルールを座標にしました');
-  assert.equal(translate('ja', 'rule.handTag'), '手置き');
+  // studio-hand-marks (10/24): two words, "rule" and "placed by hand" (it was "Hand-placed" and its Japanese).
+  assert.equal(translate('ja', 'rule.handTag'), '手で置いた');
   assert.equal(translate('ja', 'rule.reset'), 'ルールに戻す');
   assert.equal(translate('en', 'rule.missing'), 'No motion rule found');
   assert.equal(translate('ja', 'rule.disableTip'), '一時停止（動きは残る）');
 });
 
 test('the line under the strip: the words chosen on 10/24; shorter in a narrow window, no ⌥ with a finger', () => {
-  assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: false, touch: false }), '六角形 ×4（ルールの並び）: 動かすと間が変わる · ⌥+ドラッグで 1 個だけ');
+  assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: false, touch: false }), '六角形 ×4（ルール）: 動かすと間が変わる · ⌥+ドラッグで 1 個だけ');
   assert.equal(placeNote('en', 'hex', 4, 'Gap', { narrow: false, touch: false }), 'hex ×4 (rule): Drag to adjust Gap · ⌥-drag to move one');
   assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: true, touch: false }), '動かすと間が変わる · ⌥+ドラッグで 1 個だけ');
   assert.equal(placeNote('ja', '六角形', 4, '間', { narrow: true, touch: true }), '動かすと間が変わる');

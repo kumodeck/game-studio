@@ -174,7 +174,7 @@ test('place.code: a game page without the layout yet is read again first; one it
   const r = await hands.run({ id: '1', by: 'claude', ops: [{ do: 'place.code', id: 'hex' }] });
   assert.equal(e.reloads(), 1, 'read again once, without asking the person');
   assert.deepEqual(r.results.map((x) => [x.ok, x.said]), [[true, 'showed codePlace(\'hex\') (4 objects) in the editor — nothing to write: the code places it']]);
-  assert.deepEqual(e.lines(), ['Claude がルールの並べ方「六角形の列」を出しました（4 個 · 個数 4, 間 6 m） (no undo)']);
+  assert.deepEqual(e.lines(), ['Claude がルール「六角形の列」を出しました（4 個 · 個数 4, 間 6 m） (no undo)']);
   const r2 = await hands.run({ id: '2', ops: [{ do: 'place.code', id: 'lamp' }] });
   assert.equal(r2.results[0]!.error, "the game has no codePlace('lamp') (it has: 'hex')");
 });
@@ -206,6 +206,26 @@ test('place.set knobs / pin, place.avoid — one ⌘Z for the job; a knob back o
     `"pillar-1" is not one of codePlace('hex')'s objects (hex-1, hex-2, hex-3, hex-4)`,
     `the game has no codeAvoid('lane') (it has: 'road', 'near-player')`,
   ]);
+});
+
+test('place.set --unpin "*": every one placed by hand back on the rule in one ⌘Z (the card\'s "All back to rule")', async () => {
+  const e = codeEditor();
+  const hands = createAiHands(e.d);
+  await hands.run({ id: '1', ops: [
+    { do: 'place.set', id: 'hex', knobs: { gap: 4 } },
+    { do: 'place.set', id: 'hex', pin: { key: 'hex-2', p: [1, 0.95, -9] } },
+    { do: 'place.set', id: 'hex', pin: { key: 'hex-3', p: [-3.1, 0.95, -19] } },
+  ] });
+  const before = e.undo.size;
+  const r = await hands.run({ id: '2', by: 'claude', ops: [{ do: 'place.set', id: 'hex', unpin: '*' }] });
+  assert.ok(r.results[0]!.ok, JSON.stringify(r.results));
+  assert.deepEqual(e.store.get('hex'), { knobs: { gap: { v: 4, was: 6 } } }, 'the pins gone, the knob kept');
+  assert.equal(e.undo.size, before + 1, 'one ⌘Z');
+  assert.equal(e.lines().at(-1), 'Claude が「六角形の列」を変えました: 手で置いた物 2 個をルールに戻す');
+  // Nothing placed by hand any more: a loud answer, nothing changed.
+  const again = await hands.run({ id: '3', ops: [{ do: 'place.set', id: 'hex', unpin: '*' }] });
+  assert.equal(again.results[0]!.error, `codePlace('hex') has nothing placed by hand (every object follows the code already)`);
+  assert.equal(e.undo.size, before + 1);
 });
 
 test('motion.code: the Library gets { name, code } (one motion per code), on the object starting with the game; motion.set knobs / off', async () => {

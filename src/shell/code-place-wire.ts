@@ -21,6 +21,17 @@
 // studio-code-torule (2026-10-24, need 3 — the other way round): after the AI swapped a layout in for hand-placed
 // objects (✦ Turn into a rule), the card's Layout has "◉ Compare with original" and "Max deviation: lamp-3 (0.6 m)",
 // and the guide sends where those hand objects stood (orange dots and thin lines in the game) — until Save.
+//
+// studio-hand-marks (2026-10-24; the hand-marks plan, a play-test note of that day on v0.1.53:
+// "I can't tell which ones I placed by hand; nothing happens when one leaves; rule / row / manual / hand; the orange frame
+// looks like a warning; I can't put them all back"). Two words — "rule" and "placed by hand" — and sand, never orange:
+//   - the card of one placed by hand: a grey surface with [✋ Placed by hand] "outside the crystal rule" and Back to
+//     rule, its numbers white, and the rule's block under them (its knobs, how many are placed by hand)
+//   - the rule's block: "✋ 2 placed by hand · [All back to rule]" (the count lights them in the game and picks them;
+//     the button takes every pin off: one ⌘Z, Save · 1)
+//   - the list: [✋ 2] on the rule's heading, [✋ Placed by hand] on a row (picked: [✋] and Back to rule)
+//   - the moment one leaves: "✋ Placed Crystal 9 by hand (the rest stay on the rule) · Back to rule · ⌘Z" (`told`'s
+//     hand form) while its ring spreads violet → sand in the game (bridge/code-place.ts)
 import type { CodePlaceInfo, Dim, PlaceCompareMarks, PlacementPlace, PlaceWay, Pose, ShellToBridge } from '../contract.ts';
 import { h } from './dom.ts';
 import { knobEl, knobNumber } from './knob.ts';
@@ -50,11 +61,21 @@ export interface CodePlaceWireDeps {
   changed(card: boolean): void;
   /**
    * The line over the ask field ("Converted the hex rule to coordinates · ⌘Z undoes it"); `actions` = pressable words
-   * after it ("Reset to rule", "✦ Ask Claude: …"). `undo` false = the line has no "⌘Z undoes it" (nothing was done).
+   * after it ("Back to rule", "✦ Ask Claude: …"). `undo` false = the line has no "⌘Z undoes it" (nothing was done).
+   * `hand` (studio-hand-marks) = one placed by hand: the hand at its head, sand words, then the actions, then the undo key.
    */
-  told(text: string, actions?: Array<{ label: string; run(): void }>, undo?: boolean): void;
+  told(text: string, actions?: Array<{ label: string; run(): void }>, undo?: boolean, hand?: boolean): void;
   /** The object's name as the list says it ("Street lamps 3"). */
   name?(key: string): string;
+  /**
+   * Light these objects in the game (the card's "✋ 2 placed by hand" under the mouse: their outlines and sand rings);
+   * null = back to what the card lights (studio-hand-marks). Absent = nothing.
+   */
+  light?(keys: string[] | null): void;
+  /** Pick these objects (the card's count pressed: the ones placed by hand). */
+  pick?(keys: string[]): void;
+  /** The hand drawn as the editor's icons are (shell/icons.ts icon('hand')); absent = none (the unit tests). */
+  icon?(name: 'hand'): Element;
   /** ✦: put these words in the chat box for what is picked (nothing is sent). */
   ask?(draft: string): void;
   /** A finger is the pointer (no ⌥ key: the words leave it out). */
@@ -82,9 +103,10 @@ export interface CodePlaceWire {
   layoutOf(key: string): CodePlaceInfo | null;
   /**
    * The card's Layout block for `key`: `numbers` false = it takes the place of Position / Rotation / Size (the rule
-   * decides them); true = the object's own numbers stay (one put by hand, or the layout placed individually).
+   * decides them); true = the object's own numbers stay (one put by hand, or the layout placed individually). `after` =
+   * under the numbers (one placed by hand: its rule's block, studio-hand-marks).
    */
-  card(key: string): { els: HTMLElement[]; numbers: boolean } | null;
+  card(key: string): { els: HTMLElement[]; numbers: boolean; after?: HTMLElement[] } | null;
   /**
    * A move / turn / resize of a layout's object (the game's echo). true = taken (not a move of the object): with ⌥
    * (`alone`), or one already by hand, its pin; else it goes back where the rule puts it, with why (`press`: the tool).
@@ -111,13 +133,17 @@ export interface CodePlaceWire {
   rows(key: string): Array<{ id: string; label: string; run(): void }>;
   /** "Convert to coordinates" (the card's button): every object of layout `id` put by hand where it stands (one ⌘Z). */
   individually(id: string): void;
+  /** "All back to rule" (studio-hand-marks): every pin of layout `id` off (one ⌘Z, one Save count). false = it had none. */
+  unpinAll(id: string): boolean;
+  /** The objects of layout `id` placed by hand (pins of numbers it has now). */
+  handKeys(id: string): string[];
   /** The mouse over these objects' list rows / the card (main.ts hover): their layouts' rings too. [] = it left. */
   hover(keys: string[]): void;
   /** "hex Gap → 4 m" for each knob turned since the last Save (the Save receipt). */
   savedWords(): string[];
   /**
-   * The list's heading tag for a layout's objects ("Rule"), and the group they share; `hand` = this one is put by hand
-   * apart from its rule (its mark "Hand-placed" and "Reset to rule").
+   * The list's heading tag for a layout's objects ("Rule"), and the group they share; `hand` = this one is placed by hand
+   * outside its rule (its tag "Placed by hand" and "Back to rule").
    */
   listTag(key: string): { group: string; tag: string; tip: string; hand?: { tag: string; tip: string; reset: string; run(): void } } | null;
   /**
@@ -181,7 +207,10 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     const draft = t(`rule.draft.${way}`, { name: p.name });
     d.told(`${why}${alone}`, d.ask ? [{ label: t('rule.heldAsk', { draft }), run: () => d.ask!(draft) }] : [], false);
   }
-  /** A pose as `key`'s pin (one ⌘Z), told when it is the first time this one leaves its rule (⌥). */
+  /**
+   * A pose as `key`'s pin (one ⌘Z), told when it is the first time this one leaves its rule (⌥): "✋ Placed Crystal 9 by
+   * hand (the rest stay on the rule) · Back to rule · ⌘Z" — the order the play test of 10/24 asked for (the way back before the key).
+   */
   function pin(p: CodePlaceInfo, key: string, pose: Pose) {
     const e = entry(p.id);
     const first = !e.hand && !e.pins?.[key];
@@ -189,8 +218,40 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
     if (first) d.told(t('rule.pinnedDone', { obj: nameOf(key) }), [{ label: t('rule.reset'), run: () => {
       const q = d.list().find((x) => x.id === p.id);
       if (q && entry(q.id).pins?.[key]) unpin(q, key);
-    } }]);
+    } }], true, true);
   }
+  /** The objects of `p` placed by hand: pins of numbers the rule has now (none for a layout converted to coordinates). */
+  const handKeys = (p: CodePlaceInfo): string[] => (entry(p.id).hand ? [] : Object.keys(entry(p.id).pins ?? {}).filter((k) => p.keys.includes(k)));
+  /**
+   * "All back to rule" (studio-hand-marks; the hand-marks plan §3): every pin of the layout off — the unused ones of numbers
+   * the rule no longer has too — one ⌘Z, one Save count, told "All 2 objects of crystal placed by hand are back on the rule".
+   */
+  function unpinAll(p: CodePlaceInfo): boolean {
+    const e = entry(p.id);
+    const n = handKeys(p).length;
+    if (e.hand || !e.pins || !Object.keys(e.pins).length) return false;
+    const rest: PlacementPlace = { ...e };
+    delete rest.pins;
+    d.commit(p.id, d.store().get(p.id), rest);
+    d.told(t('rule.handsDone', { name: p.name, n: n || Object.keys(e.pins).length }));
+    return true;
+  }
+  /**
+   * The rule block's last line (studio-hand-marks): "✋ 2 placed by hand · [All back to rule]". The count under the mouse
+   * lights those objects in the game (their outline and sand ring); pressed, it picks them. None placed by hand: nothing.
+   */
+  function handsLine(p: CodePlaceInfo): HTMLElement | null {
+    const keys = handKeys(p);
+    if (!keys.length) return null;
+    const n = h('button', { type: 'button', class: 'link-btn rule-hands-n', title: t('rule.handsTip'), dataset: { part: 'rule-hands-n', action: 'rule-hands-pick' },
+      onpointerenter: (e: PointerEvent) => e.pointerType === 'mouse' && d.light?.(keys),
+      onpointerleave: (e: PointerEvent) => e.pointerType === 'mouse' && d.light?.(null),
+      onclick: () => d.pick?.(keys) }, d.icon?.('hand') ?? null, t('rule.hands', { n: keys.length }));
+    const all = h('button', { type: 'button', class: 'rule-back', title: t('rule.handsAllTip'), dataset: { part: 'rule-hands-all', action: 'rule-hands-all' }, onclick: () => unpinAll(p) }, t('rule.handsAll'));
+    return h('div', { class: 'rule-hands', dataset: { part: 'rule-hands' } }, n, all);
+  }
+  /** The sand tag "✋ Placed by hand" (the card; the list builds its own from listTag). */
+  const handTag = () => h('span', { class: 'pill hand-tag', title: t('rule.handTip'), dataset: { part: 'rule-hand-tag' } }, d.icon?.('hand') ?? null, h('span', { text: t('rule.handTag') }));
   const PRESS_WAY: Record<'move' | 'rotate' | 'lift' | 'scale', PlaceWay> = { move: 'move', rotate: 'turn', lift: 'up', scale: 'size' };
   const knobNow = (p: CodePlaceInfo, name: string) => entry(p.id).knobs?.[name]?.v ?? p.knobs[name]!.v;
 
@@ -202,15 +263,25 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
   function guide(force = false) {
     d.guided?.(force);
     const keys = [...(d.group().length > 1 ? d.group() : d.selected() ? [d.selected()!] : []), ...hovered];
-    const ids = d.editing() ? [...new Set(keys.map((k) => layoutOf(k)?.id).filter((x): x is string => !!x))] : [];
-    const places = ids.length ? d.store().result() ?? {} : {};
+    const on = d.editing();
+    const ids = on ? [...new Set(keys.map((k) => layoutOf(k)?.id).filter((x): x is string => !!x))] : [];
+    // The whole draft's places while editing, picked or not (studio-hand-marks): the game page puts the small hand tag
+    // over every object placed by hand, and spreads the ring of a pin it did not have. Before, nothing picked sent {}.
+    const places = on ? d.store().result() ?? {} : {};
     const sel = d.selected();
     const compare = compareMarks(ids);
-    const sig = JSON.stringify([ids, sel, ids.map((id) => places[id] ?? null), compare]);
+    // Lit: the objects placed by hand among those the mouse is on (the card's count, their rows).
+    const lit = hovered.filter((k) => {
+      const p = layoutOf(k);
+      return !!p && !!entry(p.id).pins?.[k];
+    });
+    const sig = JSON.stringify([ids, sel, places, compare, lit]);
     if (sig === guideSig && !force) return;
-    if (!ids.length && !guideSig) return;
-    guideSig = ids.length ? sig : '';
-    d.send({ type: 'studio:place/guide', ids, sel, places, ...(Object.keys(compare).length ? { compare } : {}) });
+    if (!ids.length && !guideSig && !Object.keys(places).length) return;
+    guideSig = ids.length || Object.keys(places).length ? sig : '';
+    // Not editing: no places at all (the page keeps the ones it has — an empty {} would read as every pin taken off,
+    // and coming back each one would "leave its rule" again).
+    d.send({ type: 'studio:place/guide', ids, sel, ...(on ? { places } : {}), ...(Object.keys(compare).length ? { compare } : {}), ...(lit.length ? { lit } : {}) });
   }
   /** The guide's orange marks (✦ Turn into a rule): for each shown layout with a swap to compare, where its hand objects stood. */
   function compareMarks(ids: string[]): Record<string, PlaceCompareMarks> {
@@ -244,13 +315,16 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       g ? h('p', { class: 'rule-gap', dataset: { part: 'rule-gap' }, text: t('toRule.maxPlace', { obj: g.label, gap: gapText(g.d, d.dim(), unit) }) }) : null);
   }
 
-  /** The Layout block: "Layout  Line · 4  [Rule]", the knobs, "Convert to coordinates" and "No. 2". */
+  /**
+   * The rule's block: "Rule  Line · 4", the knobs, "✋ 2 placed by hand · [All back to rule]", "Convert to coordinates"
+   * and "No. 2". studio-hand-marks: its heading is "Rule" (it was "Layout" with a [Rule] tag beside it — the same word
+   * twice now, so the tag went; its tip is on the heading). The list keeps its [Rule] tag.
+   */
   function layoutBlock(p: CodePlaceInfo, key: string): HTMLElement {
     const kind = p.kind ? t(`rule.kind.${p.kind}`) : p.name;
-    const head = h('div', { class: 'rule-head' },
+    const head = h('div', { class: 'rule-head', title: t('rule.tagTip') },
       h('span', { class: 'f-l', text: t('rule.layout') }),
-      h('strong', { class: 'rule-what', title: p.name, text: t('rule.layoutWhat', { kind, n: p.keys.length }) }),
-      h('span', { class: 'pill rule-tag', title: t('rule.tagTip'), text: t('rule.tag') }));
+      h('strong', { class: 'rule-what', title: p.name, text: t('rule.layoutWhat', { kind, n: p.keys.length }) }));
     const knobs = Object.entries(p.knobs).map(([name, k]) => knobEl({
       label: k.label, unit: unit(k.unit), v: knobNow(p, name), min: k.min, max: k.max, step: k.step, tip: t('rule.knobTip'), part: `rule-knob-${name}`,
       set: (v, end) => {
@@ -267,7 +341,7 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       h('button', { type: 'button', class: 'link-btn rule-hand', title: t('rule.individuallyTip', { n: p.keys.length }), dataset: { action: 'rule-individually', part: 'rule-individually' },
         onclick: () => individually(p) }, t('rule.individually')),
       h('span', { class: 'muted rule-nth', text: t('rule.nth', { n: nth(p, key) }) }));
-    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), compareBlock(p), foot,
+    return h('div', { class: 'rule-block', dataset: { part: 'rule-layout', id: p.id } }, head, h('div', { class: 'rule-knobs' }, ...knobs), compareBlock(p), handsLine(p), foot,
       unused ? h('p', { class: 'muted note-line', text: t('rule.unusedPins', { n: unused }) }) : null);
   }
 
@@ -294,11 +368,14 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const e = entry(p.id);
       if (e.hand) return { els: [], numbers: true };
       if (e.pins?.[key]) {
-        // Just this one put by hand: the rule's other objects stay; its own numbers are its place (orange, the hand).
-        // Its mark "Hand-placed" (the list's too, studio-to-coords) and the way back.
-        const back = h('button', { type: 'button', class: 'link-btn', title: t('rule.resetTip'), dataset: { action: 'rule-reset', part: 'rule-reset' }, onclick: () => unpin(p, key) }, t('rule.reset'));
+        // Just this one placed by hand: the rule's other objects stay; its own numbers are its place (white, as every
+        // number). On a calm grey surface its sand tag "✋ Placed by hand", "outside the crystal rule" and Back to rule
+        // (an ordinary button) — and, under the numbers, its rule's block (the knobs, how many are placed by hand, All
+        // back to rule). studio-hand-marks; before: an orange frame "Manually overridden" with orange numbers.
+        const back = h('button', { type: 'button', class: 'rule-back', title: t('rule.resetTip'), dataset: { action: 'rule-reset', part: 'rule-reset' }, onclick: () => unpin(p, key) }, t('rule.reset'));
         return { els: [h('div', { class: 'rule-pinned', dataset: { part: 'rule-pinned' } },
-          h('span', { class: 'pill hand-tag', title: t('rule.handTip'), dataset: { part: 'rule-hand-tag' }, text: t('rule.handTag') }), h('span', { text: t('rule.pinned') }), back)], numbers: true };
+          h('div', { class: 'rule-pinned-l' }, handTag(), h('span', { class: 'muted', text: t('rule.pinned', { name: p.name }) })), back)],
+          numbers: true, after: [layoutBlock(p, key)] };
       }
       return { els: [layoutBlock(p, key)], numbers: false };
     },
@@ -372,6 +449,14 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const p = d.list().find((x) => x.id === id);
       if (p) individually(p);
     },
+    unpinAll(id) {
+      const p = d.list().find((x) => x.id === id);
+      return !!p && unpinAll(p);
+    },
+    handKeys(id) {
+      const p = d.list().find((x) => x.id === id);
+      return p ? handKeys(p) : [];
+    },
     hover(keys) {
       hovered = keys.slice(0, 50);
       guide();
@@ -427,13 +512,16 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       // ⌥ took some out of their rule together: said as for one ("Placed Street lamps 2, Street lamps 3 by hand"), with
       // the way back for all of them (studio-to-coords: never out of a rule without being told).
       if (first.length) {
-        const names = first.slice(0, 3).map((x) => nameOf(x.key)).join(', ') + (first.length > 3 ? ` +${first.length - 3}` : '');
+        // Several of one rule: "Placed 3 of crystal by hand" (the hand-marks plan §2); of several rules, their names.
+        const one = first.every((x) => x.id === first[0]!.id) ? d.list().find((y) => y.id === first[0]!.id) : null;
+        const names = first.length > 1 && one ? t('rule.pinnedMany', { name: one.name, n: first.length })
+          : first.slice(0, 3).map((x) => nameOf(x.key)).join(', ') + (first.length > 3 ? ` +${first.length - 3}` : '');
         d.told(t(first.length > 1 ? 'rule.pinnedDoneMany' : 'rule.pinnedDone', { obj: names }), [{ label: t('rule.reset'), run: () => {
           for (const x of first) {
             const q = d.list().find((y) => y.id === x.id);
             if (q && entry(q.id).pins?.[x.key]) unpin(q, x.key);
           }
-        } }]);
+        } }], true, true);
       }
       return { rest, changes };
     },
@@ -441,8 +529,8 @@ export function createCodePlaceWire(d: CodePlaceWireDeps): CodePlaceWire {
       const p = layoutOf(key);
       if (!p || entry(p.id).hand) return null;
       const tag = { group: `rule:${p.id}`, tag: t('rule.tag'), tip: t('rule.tagTip') };
-      // Put by hand apart from its rule (⌥): its mark and the way back, in the list too (studio-to-coords — "a lamp left
-      // floating in the row, and nobody notices").
+      // Placed by hand outside its rule (⌥): its tag and the way back, in the list too (studio-to-coords — "a lamp left
+      // floating in the row, and nobody notices"; studio-hand-marks: "Placed by hand", the heading "✋ 2").
       return entry(p.id).pins?.[key]
         ? { ...tag, hand: { tag: t('rule.handTag'), tip: t('rule.handTip'), reset: t('rule.reset'), run: () => unpin(p, key) } }
         : tag;

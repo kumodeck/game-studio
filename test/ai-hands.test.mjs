@@ -345,6 +345,24 @@ test('no editor open: place.code --replace, place.set pin / unpin, place.avoid c
   assert.deepEqual(l.places.map((x) => x.id), ['hex']);
 });
 
+test('no editor open: place.set --unpin "*" takes every pin of the layout off (studio-hand-marks: "All back to rule")', () => {
+  const p = apply(BASE(), [
+    { do: 'place.set', id: 'hex', pin: { key: 'hex-2', p: [1, 0.95, -9] } },
+    { do: 'place.set', id: 'hex', pin: { key: 'hex-3', p: [-3.1, 0.95, -19] } },
+    { do: 'place.avoid', id: 'hex', code: 'road', off: true },
+  ]);
+  const q = apply(p.file, [{ do: 'place.set', id: 'hex', unpin: '*' }]);
+  assert.ok(q.results[0].ok, JSON.stringify(q.results));
+  assert.deepEqual(q.file.places.hex, { avoid: [{ code: 'road', off: true }] }, 'the pins gone, the rest kept');
+  assert.match(q.results[0].said, /every object placed by hand back on the formula/);
+  // The flag form: --unpin '*' is the text "*" (never a glob, never JSON).
+  assert.equal(handsInput({ do: 'place.set', doFields: { id: 'hex', unpin: '*' } }).unpin, '*');
+  // Loud answers: none placed by hand; a layout converted to coordinates; a key that is no key.
+  assert.match(applyHandsToFile(q.file, ops([{ do: 'place.set', id: 'hex', unpin: '*' }])).results[0].error, /has nothing placed by hand/);
+  assert.match(applyHandsToFile({ ...BASE(), places: { hex: { hand: true, pins: { 'hex-1': { p: [0, 0, 0] } } } } }, ops([{ do: 'place.set', id: 'hex', unpin: '*' }])).results[0].error, /converted to coordinates/);
+  assert.match(readHandsInput({ do: 'place.set', id: 'hex', unpin: '**' }).errors[0], /or "\*" for all of them/);
+});
+
 test('the flags of the new ops: --code, --knobs as JSON, --replace with a list, --hand false', () => {
   assert.deepEqual(handsInput({ do: 'place.set', doFields: { id: 'hex', knobs: { gap: 4 } } }), { do: 'place.set', id: 'hex', knobs: { gap: 4 } });
   const r = spawnSync(process.execPath, [CLI, game('flags'), '--do', 'place.code', '--id', 'lamp-row', '--replace', '["lamp-1"]'], { encoding: 'utf8', env: { ...process.env, CLAUDECODE: '1' } });

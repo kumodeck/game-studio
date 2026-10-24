@@ -40,11 +40,20 @@
 //           Reset to rule puts it back; an arrow key and the whole row dragged keep it too. The row SKILL.md asks for now
 //           (`drag: { along, side, up }`): sideways = its distance from the road, Height = its height, for all of them.
 //           Never a pin without ⌥, never an object entry.
+//   hands   (the first theme; studio-hand-marks, 2026-10-24 — a play-test note of that day on v0.1.53: "I can't tell which ones
+//           I placed by hand; nothing happens when one leaves its rule; the words differ; the orange frame looks like a
+//           warning; I can't put them all back") twelve crystals scattered by a rule: ⌥-drag two → the moment each leaves,
+//           its ring spreads violet → sand, the sand ring, "✋ Placed by hand", the violet hollow ring where the rule would
+//           put it and the dotted line, and the hand's line "… · Back to rule · ⌘Z" → a rule crystal's card "✋ 2 placed by
+//           hand · All back to rule", the list's [✋ 2] → the hand one's card (grey, white numbers, its rule's block
+//           under them) → the count under the mouse lights both → nothing picked: a small hand tag over each → Save, All
+//           back to rule: none, Save · 1 → ⌘Z: two → the AI's place.set --unpin '*' and ⌘Z → ▶ Play: no mark at all.
 // Pictures (`--shots <dir>`): 2-<lang>-<theme>-<step>.png (the plan's step-2 pictures), 3-… (step 3), 4-… (step 4),
-// c-<lang>-<theme>-<step>.png (to coords).
-// `--before`: only the first keep-out picture (run with the previous version's UI: `--ui <dir>`).
+// c-<lang>-<theme>-<step>.png (to coords), h-<lang>-<theme>-<step>.png (hand marks).
+// `--before`: only the first keep-out picture, and the hand marks' "before" pictures (run with the previous version's UI:
+// `--ui <dir>`).
 //
-//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords] [--shots <dir>] [--before]
+//   node test/studio-code-place.browser.mjs [--lang en|ja] [--themes dark,light] [--width 1280] [--only layout,motion,plain,keepout,torule,coords,hands] [--shots <dir>] [--before]
 // Exit 1 on a failure.
 import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,12 +76,12 @@ const LANG = take('--lang', 'ja');
 const THEMES = take('--themes', 'dark,light').split(',').filter((x) => x === 'dark' || x === 'light');
 const WIDTH = Number(take('--width', '1280'));
 const PHONE = WIDTH < 500;
-const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords').split(',');
+const ONLY = take('--only', 'layout,motion,plain,keepout,torule,coords,hands').split(',');
 const BEFORE = args.includes('--before');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const W = LANG === 'ja'
-  ? { saved: '間 → 4 m', layout: '並べ方', line: '直線 · 4 個', tag: 'ルール', gap: '間', note: '動かすと間が変わる', pinned: 'この 1 個だけ手で置いています', handTag: '手置き', hand: '座標にする', motion: '動きのルール', radius: '半径', points: '座標にする', pointsDone: 'らせんのルールを座標にしました', repeat: 'くり返し', off: '一時停止' }
-  : { saved: 'Gap → 4 m', layout: 'Layout', line: 'Line · 4', tag: 'Rule', gap: 'Gap', note: 'Drag to adjust Gap', pinned: 'Manually overridden', handTag: 'Hand-placed', hand: 'Convert to coordinates', motion: 'Rule motion', radius: 'Radius', points: 'Convert to coordinates', pointsDone: 'Converted the Spiral rule to coordinates', repeat: 'Repeat', off: 'Disable' };
+  ? { saved: '間 → 4 m', layout: 'ルール', line: '直線 · 4 個', tag: 'ルール', gap: '間', note: '動かすと間が変わる', pinned: '六角形のルールの外', handTag: '手で置いた', hand: '座標にする', motion: '動きのルール', radius: '半径', points: '座標にする', pointsDone: 'らせんのルールを座標にしました', repeat: 'くり返し', off: '一時停止' }
+  : { saved: 'Gap → 4 m', layout: 'Rule', line: 'Line · 4', tag: 'Rule', gap: 'Gap', note: 'Drag to adjust Gap', pinned: 'Outside the hex rule', handTag: 'By hand', hand: 'Convert to coordinates', motion: 'Rule motion', radius: 'Radius', points: 'Convert to coordinates', pointsDone: 'Converted the Spiral rule to coordinates', repeat: 'Repeat', off: 'Disable' };
 
 let failed = 0;
 const check = (ok, what) => {
@@ -106,8 +115,8 @@ const MOTION_FILE = { version: 1, tool: 'placement', dim: '3d', space: 'local', 
 
 // Step 3: crystals scattered by a rule that keeps off the road; a second condition (near the player's start) for the AI.
 const W3 = LANG === 'ja'
-  ? { title: '置かない所', road: '道の上', rule: 'ルール', hand: '手', chip: '置かない所', crystal: '結晶', near: 'プレイヤーから', out: '個が外へ', skipped: '個は置ける所がありません', inside: '置かない所の中です', box: '四角 1', ask: 'プレイヤーから 5 m 以内には置かない' }
-  : { title: 'Keep-out areas', road: 'On the road', rule: 'Rule', hand: 'Hand', chip: 'Keep-out areas', crystal: 'crystal', near: 'From the player', out: 'moved out', skipped: 'no place to go', inside: 'Inside a keep-out area', box: 'Box 1', ask: 'not within 5 m of the player' };
+  ? { title: '置かない所', road: '道の上', rule: 'ルール', hand: '手で描いた', chip: '置かない所', crystal: '結晶', near: 'プレイヤーから', out: '個が外へ', skipped: '個は置ける所がありません', inside: '置かない所の中です', box: '四角 1', ask: 'プレイヤーから 5 m 以内には置かない' }
+  : { title: 'Keep-out areas', road: 'On the road', rule: 'Rule', hand: 'Drawn by hand', chip: 'Keep-out areas', crystal: 'crystal', near: 'From the player', out: 'moved out', skipped: 'no place to go', inside: 'Inside a keep-out area', box: 'Box 1', ask: 'not within 5 m of the player' };
 const KEEPOUT = `
     // Twelve crystals scattered over the field, never on the road (the AI's codePlace and codeAvoid; SKILL.md "Code layouts").
     codePlace('crystal', {
@@ -869,11 +878,11 @@ async function toCoords(theme) {
   const browser = await launch();
   const C = LANG === 'ja'
     ? { note: '動かすと間が変わる', noteWay: '動かすと間・道からの距離が変わる', side: '横の位置はルールで決まっています', up: '高さはルールで決まっています', turn: '向きはルールで決まっています',
-      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯を横にも動かせるようにして', pinned: '街灯 3 だけ手で置きました', reset: 'ルールに戻す',
-      hand: '手置き', keys: '街灯はルールで並んでいます', group: '街灯はルールで並んでいるので、まとめては動きません', gap: '間' }
+      heldSide: '街灯の横の位置はルールで決まっています · ⌥+ドラッグでこの 1 個だけ', ask: '✦', draft: '街灯を横にも動かせるようにして', pinned: '街灯 3 を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す',
+      hand: '手で置いた', keys: '街灯はルールで並んでいます', group: '街灯はルールで並んでいるので、まとめては動きません', gap: '間' }
     : { note: 'Drag to adjust Gap', noteWay: 'Drag to adjust Gap, From the road ·', side: 'Sideways position is set by the rule', up: 'Height is set by the rule', turn: 'Angle is set by the rule',
-      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Let me move Street lamps sideways too', pinned: 'Placed Street lamps 3 by hand (just this one)', reset: 'Reset to rule',
-      hand: 'Hand-placed', keys: 'Street lamps is laid out by a rule', group: 'Street lamps is laid out by a rule, so it doesn’t move as a group', gap: 'Gap' };
+      heldSide: 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one', ask: '✦', draft: 'Let me move Street lamps sideways too', pinned: 'Placed Street lamps 3 by hand (the rest stay on the rule)', reset: 'Back to rule',
+      hand: 'By hand', keys: 'Street lamps is laid out by a rule', group: 'Street lamps is laid out by a rule, so it doesn’t move as a group', gap: 'Gap' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
     const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `c-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
@@ -1050,12 +1059,204 @@ async function toCoords(theme) {
   }
 }
 
+// studio-hand-marks (2026-10-24): the crystals of step 3, two of them placed by hand with ⌥. See the head of this file.
+async function handMarks(theme) {
+  console.log(`${LANG} ${theme} ${WIDTH} hands`);
+  const root = makeGame(theme, 'keepout');
+  const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
+  const browser = await launch();
+  const H = LANG === 'ja'
+    ? { done: 'を手で置きました（ほかはルールのまま）', reset: 'ルールに戻す', tag: '手で置いた', hands2: '手で置いた物 2 個', all: '全部ルールに戻す', allDone: '結晶の手で置いた物 2 個をルールに戻しました', outside: '結晶のルールの外', unpinAll: '手で置いた物 2 個をルールに戻す' }
+    : { done: 'by hand (the rest stay on the rule)', reset: 'Back to rule', tag: 'By hand', hands2: '2 placed by hand', all: 'All back to rule', allDone: 'All 2 objects of crystal placed by hand are back on the rule', outside: 'Outside the crystal rule', unpinAll: '2 placed by hand back to rule' };
+  try {
+    const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });
+    const shot = async (what) => SHOTS && writeFileSync(join(SHOTS, `h-${LANG}-${theme}${PHONE ? '-phone' : ''}-${what}.png`), await page.screenshot());
+    const ai = (ops) => askEditor({ origin: srv.origin, stopToken: srv.stopToken }, ops, 'claude');
+    const pins = async () => ((await ai([{ do: 'list' }])).results?.[0]?.list?.places?.find((p) => p.id === 'crystal')?.pins ?? []).slice().sort();
+    const card = () => page.eval(`document.querySelector('[data-part=card]')?.innerText ?? ''`);
+    const saveN = () => page.eval(`document.querySelector('[data-part=save]')?.textContent ?? ''`);
+    const toast = () => page.eval(`document.querySelector('.toast.on')?.textContent ?? ''`);
+    // A line with no pressable words may sit in the ask field instead of the news card (main.ts newsInBar).
+    const told = () => page.eval(`[...document.querySelectorAll('.ai-line, .ask-news:not([hidden]), .toast.on')].map((e) => e.textContent).join(' | ')`);
+    const CP = `${GW}.document.querySelector('[data-studio-code-place]')?.shadowRoot`;
+    const cp = (sel) => page.eval(`${CP}?.querySelectorAll(${JSON.stringify(sel)}).length ?? 0`);
+    const pulses = () => page.eval(`Number(${GW}.document.querySelector('[data-studio-code-place]')?.dataset.handPulses ?? 0)`);
+    const spots = async () => JSON.parse(await page.eval(`JSON.stringify([...${GW}[Symbol.for('game-studio.codePlaces')].get('crystal').objs].map((o) => [Math.round(o.position.x * 100) / 100, Math.round(o.position.z * 100) / 100]))`));
+    const at = async (key) => JSON.parse(await page.eval(`(() => { const f = document.querySelector('iframe.game:not(.leaving)'); const r = f.getBoundingClientRect();
+      const a = ${DBG}.anchor(${JSON.stringify(key)}); return a ? JSON.stringify({ x: r.left + a.center[0], y: r.top + a.center[1] }) : 'null'; })()`));
+    const key = async (k, modifiers = 0, code = k) => {
+      await page.send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+      await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, modifiers, windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+    };
+    const undoKey = async () => (await page.eval(`document.activeElement?.blur()`), await key('z', 4, 'KeyZ'), await sleep(800));
+    /** A mouse drag with modifiers (1 = ⌥). The press must land on the game (not the card). */
+    const drag = async (a, b, modifiers = 0) => {
+      check(await page.eval(`document.elementFromPoint(${a.x}, ${a.y})?.tagName === 'IFRAME'`), `the press at ${Math.round(a.x)},${Math.round(a.y)} is on the game`);
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y, modifiers });
+      await page.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1, modifiers });
+      for (let i = 1; i <= 12; i++) (await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x + ((b.x - a.x) * i) / 12, y: a.y + ((b.y - a.y) * i) / 12, button: 'left', buttons: 1, modifiers }), await sleep(30));
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, modifiers });
+    };
+    const pick = async (k) => {
+      await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+      await page.eval(`studioShell.actions.select(${JSON.stringify(k)})`);
+      await sleep(800);
+    };
+    await page.goto(srv.url);
+    await page.waitFor(`document.querySelectorAll('.obj').length > 0 && !!${GW}?.__gameStudio?._debug && !!${GW}[Symbol.for('game-studio.codePlaces')]?.get('crystal')?.objs?.length`, 90000);
+    await sleep(1500);
+
+    // Three crystals well inside the game (the card sits over its top right, the strip under the picked one), nearest first:
+    // A and B to place by hand, C to stay on the rule.
+    const frame = JSON.parse(await page.eval(`JSON.stringify(document.querySelector('iframe.game:not(.leaving)').getBoundingClientRect())`));
+    const seen = [];
+    for (let i = 1; i <= 12; i++) {
+      const s = await at(`crystal-${i}`);
+      if (s && s.x > frame.left + 60 && s.x < frame.left + frame.width * 0.6 && s.y > frame.top + 90 && s.y < frame.top + frame.height * 0.72) seen.push({ k: `crystal-${i}`, s });
+    }
+    seen.sort((p, q) => q.s.y - p.s.y);
+    check(seen.length >= 3, `three crystals in the open (${seen.map((x) => x.k).join(', ')})`);
+    const [A, B, C] = seen.map((x) => x.k);
+    const r0 = await spots();
+    /** ⌥-drag `k` 70 px left and a little down (its pin), with the press on it. */
+    const alone = async (k) => {
+      await pick(k);
+      const a = await at(k);
+      await drag(a, { x: a.x - 70, y: a.y + 18 }, 1);
+      await sleep(150);
+    };
+
+    if (BEFORE) {
+      // The same moves on the version before (to coords' orange "Hand-placed"): what the play test saw.
+      await alone(A);
+      await sleep(250);
+      await shot('0-before-alone');
+      await alone(B);
+      await sleep(700);
+      await pick(C);
+      await shot('0-before-rule');
+      await pick(A);
+      await shot('0-before-hand-card');
+      await page.eval(`studioShell.actions.select(null)`);
+      await sleep(800);
+      await shot('0-before-none');
+      check((await pins()).length === 2, `before: two by hand (${JSON.stringify(await pins())})`);
+      return;
+    }
+
+    // ---- 1. ⌥-drag A: its ring spreads violet → sand, the sand ring, the tag, where the rule would put it; the line ----
+    await alone(A);
+    check((await pulses()) === 1, `the ring spread once (${await pulses()})`);
+    await sleep(250);
+    const t1 = await toast();
+    check(t1.includes(H.done) && t1.includes(H.reset), `the line: "${t1}"`);
+    check(await page.eval(`(() => { const t = document.querySelector('.toast.on'); return !!t && t.classList.contains('hand') && t.firstElementChild?.matches('svg.icon-hand') && t.lastElementChild?.classList.contains('toast-tail') && !!t.lastElementChild.textContent; })()`),
+      '…the hand at its head, sand words, the undo key last');
+    check(await page.eval(`(() => { const c = getComputedStyle(document.querySelector('.toast.on')).color; return c !== 'rgb(255, 180, 138)' && c !== 'rgb(255, 107, 26)'; })()`), 'not orange');
+    check((await cp('[data-part^=hand-ring]')) === 1 && (await cp('[data-part=hand-tag]')) === 1 && (await cp('[data-part=rule-spot]')) === 1 && (await cp('[data-part=hand-line]')) === 1,
+      `the scene: sand ring ${await cp('[data-part^=hand-ring]')}, tag ${await cp('[data-part=hand-tag]')}, the rule's hollow ring ${await cp('[data-part=rule-spot]')}, dotted line ${await cp('[data-part=hand-line]')}`);
+    check(JSON.stringify(await pins()) === JSON.stringify([A]), `${A} by hand (${JSON.stringify(await pins())})`);
+    const r1 = await spots();
+    check(r1.filter((q, i) => JSON.stringify(q) !== JSON.stringify(r0[i])).length === 1, 'the rest stay on the rule');
+    await shot('1-alone');
+
+    // ---- 2. B too ----
+    await alone(B);
+    check((await pulses()) === 2, `B's ring spread (${await pulses()})`);
+    await sleep(700);
+    check(JSON.stringify(await pins()) === JSON.stringify([A, B].sort()), `two by hand (${JSON.stringify(await pins())})`);
+
+    // ---- 3. a rule crystal: "✋ 2 placed by hand · All back to rule"; the list's [✋ 2]; both marked in the scene ----
+    await pick(C);
+    const c3 = await card();
+    check(c3.includes(H.hands2) && c3.includes(H.all), `the rule's card: "${c3.replace(/\n/g, ' / ').slice(0, 200)}"`);
+    check(await page.eval(`!!document.querySelector('li.obj [data-part=list-hand-tag][data-n="2"]')`), `the list's heading [✋ 2] ("${await page.eval(`document.querySelector('li.obj [data-part=list-hand-tag][data-n]')?.textContent ?? ''`)}")`);
+    check((await page.eval(`[...document.querySelectorAll('li.obj.sub [data-part=list-hand-tag]')].map((e) => e.textContent).join('|')`)) === `${H.tag}|${H.tag}`, 'the two rows: [✋ Placed by hand]');
+    check((await cp('[data-part^=hand-ring]')) === 2 && (await cp('[data-part=hand-tag]')) === 2 && (await cp('[data-part=hand-mini]')) === 0, `the scene: two sand rings and tags (${await cp('[data-part^=hand-ring]')}, ${await cp('[data-part=hand-tag]')})`);
+    await shot('3-rule-card');
+
+    // ---- 4. A's card: grey, its tag and Back to rule, white numbers, its rule's block under them ----
+    await pick(A);
+    const c4 = await card();
+    check(c4.includes(H.tag) && c4.includes(H.outside) && c4.includes(H.reset) && c4.includes(H.hands2), `the hand one's card: "${c4.replace(/\n/g, ' / ').slice(0, 200)}"`);
+    const look = JSON.parse(await page.eval(`(() => { const q = (s) => document.querySelector('[data-part=card] ' + s); const n = q('.f-cells .num input'); const f = q('.fields'); const r = q('[data-part=rule-layout]');
+      return JSON.stringify({ num: n ? getComputedStyle(n).color : '', box: getComputedStyle(q('[data-part=rule-pinned]')).backgroundColor, after: !!(f && r && (f.compareDocumentPosition(r) & 4)) }); })()`));
+    check(look.num === 'rgb(245, 245, 247)', `its numbers white (${look.num})`);
+    check(!/255, 107, 26/.test(look.box), `a calm grey surface, not orange (${look.box})`);
+    check(look.after, 'its rule\'s block under its numbers');
+    await shot('4-hand-card');
+
+    // ---- 5. the count under the mouse lights both in the game ----
+    const nb = JSON.parse(await page.eval(`(() => { const r = document.querySelector('[data-part=card] [data-part=rule-hands-n]').getBoundingClientRect(); return JSON.stringify({ x: r.left + r.width / 2, y: r.top + r.height / 2 }); })()`));
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nb.x - 30, y: nb.y });
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: nb.x, y: nb.y });
+    await sleep(600);
+    check((await cp('[data-part=hand-ring-lit]')) === 2, `lit: ${await cp('[data-part=hand-ring-lit]')} of 2`);
+    await shot('5-lit');
+
+    // ---- 6. nothing picked: a small hand tag over each, no rings ----
+    await page.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 5, y: 5 });
+    await page.eval(`studioShell.actions.select(null)`);
+    await sleep(900);
+    check((await cp('[data-part=hand-mini]')) === 2 && (await cp('[data-part^=hand-ring]')) === 0 && (await cp('[data-part=hand-tag]')) === 0, `nothing picked: ${await cp('[data-part=hand-mini]')} small hand tags, no rings`);
+    await shot('6-none');
+
+    // ---- 7. Save, then All back to rule: none (one ⌘Z, Save · 1) ----
+    await page.eval(`document.querySelector('[data-part=save]')?.click()`);
+    await sleep(1500);
+    const saved = JSON.parse(readFileSync(join(root, 'placement.json'), 'utf8'));
+    check(Object.keys(saved.places?.crystal?.pins ?? {}).sort().join() === [A, B].sort().join(), `saved: ${JSON.stringify(Object.keys(saved.places?.crystal?.pins ?? {}))}`);
+    await pick(C);
+    check(await page.eval(`(() => { const b = document.querySelector('[data-part=card] [data-part=rule-hands-all]'); b?.click(); return !!b; })()`), `the "${H.all}" button`);
+    await sleep(900);
+    check((await pins()).length === 0, `none by hand (${JSON.stringify(await pins())})`);
+    check(!(await card()).includes(H.hands2) && !(await page.eval(`!!document.querySelector('[data-part=list-hand-tag]')`)), 'the card and the list: nothing placed by hand');
+    check((await cp('[data-part^=hand-ring]')) === 0 && (await cp('[data-part=hand-mini]')) === 0, 'the scene: no sand');
+    check((await told()).includes(H.allDone), `the line: "${await told()}"`);
+    check(/1/.test(await saveN()), `Save · 1 ("${await saveN()}")`);
+    const r7 = await spots();
+    check(JSON.stringify(r7) === JSON.stringify(r0), 'every crystal where the rule puts it');
+    await shot('7-all-back');
+
+    // ---- 8. ⌘Z: the two again ----
+    await undoKey();
+    check(JSON.stringify(await pins()) === JSON.stringify([A, B].sort()), `⌘Z: two by hand again (${JSON.stringify(await pins())})`);
+    await sleep(300);
+    check((await card()).includes(H.hands2), 'the card: 2 again');
+    await shot('8-undo');
+
+    // ---- 9. the AI's place.set --unpin '*', and ⌘Z ----
+    const r9 = await ai([{ do: 'place.set', id: 'crystal', unpin: '*' }]);
+    check(r9.results?.[0]?.ok && (await pins()).length === 0, `the AI's --unpin '*': ${JSON.stringify(r9.results?.[0])}`);
+    check(String(r9.results?.[0]?.said ?? '').length > 0, `its line: "${r9.results?.[0]?.said}"`);
+    await undoKey();
+    check((await pins()).length === 2, `⌘Z: two again (${JSON.stringify(await pins())})`);
+
+    // ---- 10. ▶ Play: no mark at all; back to editing: the small tags again ----
+    await page.eval(`studioShell.actions.select(null)`);
+    await sleep(600);
+    await page.eval(`document.querySelector('.top-actions .play')?.click()`);
+    await sleep(600);
+    if (await page.eval(`!!document.querySelector('[data-action=guard-discard]')?.offsetParent`)) await page.eval(`document.querySelector('[data-action=guard-discard]').click()`);
+    await sleep(1800);
+    check((await page.eval(`${CP}?.querySelectorAll('[data-part^=hand], [data-part=rule-spot], path').length ?? 0`)) === 0, 'playing: no ring, tag or line');
+    await shot('9-playing');
+    await page.eval(`document.querySelector('.top-actions .play')?.click()`);
+    await page.waitFor(`(${CP}?.querySelectorAll('[data-part=hand-mini]').length ?? 0) === 2`, 15000).catch(() => null);
+    check((await cp('[data-part=hand-mini]')) === 2, `editing again: the small hand tags (${await cp('[data-part=hand-mini]')})`);
+  } finally {
+    await browser.close();
+    await srv.close();
+  }
+}
+
 for (const [i, theme] of THEMES.entries()) {
   if (ONLY.includes('layout') || ONLY.includes('motion')) await run(theme, i === 0);
   if (i === 0 && ONLY.includes('plain')) await plain(theme);
   if (ONLY.includes('keepout')) await keepout(theme);
   if (i === 0 && ONLY.includes('torule')) await toRule(theme);
   if (i === 0 && ONLY.includes('coords')) await toCoords(theme);
+  if (i === 0 && ONLY.includes('hands')) await handMarks(theme);
 }
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

@@ -140,8 +140,10 @@ function readHandsOp(op, at, errors) {
     if (!ok) fail('"pin" must be { "key": "hex-3", "p": [x, y, z], "r"?: angle, "s"?: size } (one of the layout\'s objects, put by hand)');
     else out.pin = structuredClone(pn);
   }
+  // "*" (studio-hand-marks, 2026-10-24): every one of the layout's objects placed by hand, back on the rule — the card's
+  // "All back to rule".
   if (has('unpin')) {
-    if (typeof op.unpin !== 'string' || !KEY_RE.test(op.unpin)) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3")');
+    if (typeof op.unpin !== 'string' || (op.unpin !== '*' && !KEY_RE.test(op.unpin))) fail('"unpin" must be the key of one of the layout\'s objects ("hex-3"), or "*" for all of them');
     else out.unpin = op.unpin;
   }
   if (has('box')) {
@@ -420,7 +422,7 @@ export function handsSaid(op, x = {}) {
     }
     case 'place.code': return op.replace ? `put codePlace('${op.id}') in place of ${op.replace.join(', ')} (hidden until your code stops making them)${x.keys ? `: ${x.keys} objects` : ''}`
       : `showed codePlace('${op.id}')${x.keys !== undefined ? ` (${x.keys} objects)` : ''} in the editor — nothing to write: the code places it`;
-    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : ''].filter(Boolean).join(', ')}`;
+    case 'place.set': return `set codePlace('${op.id}'): ${[op.knobs ? handsKnobWords(op.knobs) : '', op.pin ? `${op.pin.key} by hand at [${op.pin.p.join(', ')}]` : '', op.unpin === '*' ? 'every object placed by hand back on the formula' : op.unpin ? `${op.unpin} back on the formula` : '', op.hand !== undefined ? (op.hand ? 'every object by hand' : 'back on the formula') : ''].filter(Boolean).join(', ')}`;
     case 'place.avoid': return op.remove !== undefined ? `took keep-out area ${JSON.stringify(op.remove)} off codePlace('${op.id}')`
       : `${x.changed ? 'changed' : 'added'} the keep-out area ${op.code ? `codeAvoid('${op.code}')` : `box at [${op.box.p.join(', ')}]`} on codePlace('${op.id}')${op.knobs ? ` (${handsKnobWords(op.knobs)})` : ''}${op.off !== undefined ? (op.off ? ', switched off' : ', switched on') : ''}`;
     case 'object.move': return `moved ${op.key} to [${(x.pose?.p ?? op.to ?? []).join(', ')}]`;
@@ -724,7 +726,11 @@ function handsFilePlace(w, op, dim) {
       const r3 = (v) => Math.round(v * (n === 3 ? 1000 : 10)) / (n === 3 ? 1000 : 10);
       (e.pins ||= {})[op.pin.key] = { p: op.pin.p.map(r3), ...(op.pin.r !== undefined ? { r: op.pin.r } : {}), ...(op.pin.s !== undefined ? { s: op.pin.s } : {}) };
     }
-    if (op.unpin) {
+    if (op.unpin === '*') {
+      if (e.hand) return { error: `codePlace('${op.id}') is converted to coordinates (hand: true): --hand false puts it back on the formula` };
+      if (!e.pins || !Object.keys(e.pins).length) return { error: `codePlace('${op.id}') has nothing placed by hand (every object follows the formula already)` };
+      delete e.pins;
+    } else if (op.unpin) {
       if (!e.pins?.[op.unpin]) return { error: `${op.unpin} is not put by hand (it follows the formula already)` };
       delete e.pins[op.unpin];
       if (!Object.keys(e.pins).length) delete e.pins;

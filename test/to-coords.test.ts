@@ -97,7 +97,7 @@ function shell() {
   const model = new PlacementModel();
   const undo = new UndoStack();
   const sent: Array<{ type: string; ids?: string[] }> = [];
-  const told: Array<{ text: string; acts: string[]; undo: boolean; run: Array<() => void> }> = [];
+  const told: Array<{ text: string; acts: string[]; undo: boolean; hand?: boolean; run: Array<() => void> }> = [];
   const asked: string[] = [];
   const info: CodePlaceInfo = { id: 'lamp-row', name: 'Street lamps', keys: ['lamp-row-1', 'lamp-row-2', 'lamp-row-3'], skipped: [], knobs: { gap: { v: 8, label: 'Gap', unit: 'm' } }, drag: 'gap', avoid: [], kind: 'line' };
   const items: Item[] = info.keys.map((k, i) => ({ key: k, label: `Street lamps ${i + 1}`, kinds: ['mesh'], pose: { p: [4.8, 0, -6 - 8 * i] }, movable: true, rotatable: true, scalable: true } as unknown as Item));
@@ -111,7 +111,7 @@ function shell() {
   const w = createCodePlaceWire({
     t: (k, v) => translate('en', k, { ai: 'Claude', ...v }), list: () => [info], store: () => model.places, codePoses: (p) => model.codePoses(p), pose: (k) => model.pose(k), dim: () => '3d',
     send: (m) => sent.push(m as never), commit, changed: () => {}, selected: () => 'lamp-row-3', group: () => [], editing: () => true,
-    told: (text, actions, u = true) => told.push({ text, acts: (actions ?? []).map((a) => a.label), undo: u, run: (actions ?? []).map((a) => () => a.run()) }),
+    told: (text, actions, u = true, hand = false) => told.push({ text, acts: (actions ?? []).map((a) => a.label), undo: u, hand, run: (actions ?? []).map((a) => () => a.run()) }),
     name: (k) => items.find((i) => i.key === k)?.label ?? k, ask: (draft) => asked.push(draft),
   });
   return { model, undo, w, sent, told, asked };
@@ -137,23 +137,25 @@ test('the shell: without ⌥ a rule\'s object never leaves its rule — put back
   assert.equal(s.told.at(-1)!.text, 'Street lamps: sideways position is set by the rule · ⌥-drag to move just this one');
 });
 
-test('the shell: ⌥ = just this one by hand, told with Reset to rule; marked Hand-placed on the card and in the list', () => {
+test('the shell: ⌥ = just this one by hand, told with Back to rule; marked Placed by hand on the card and in the list', () => {
   const s = shell();
   s.w.moved('lamp-row-3', { p: [7, 0, -22] }, true, true, 'move');
   assert.deepEqual(s.model.places.get('lamp-row')?.pins, { 'lamp-row-3': { p: [7, 0, -22] } });
   const said = s.told.at(-1)!;
-  assert.equal(said.text, 'Placed Street lamps 3 by hand (just this one)');
+  // studio-hand-marks: the words of the hand-marks plan §2, in the hand's form (sand, the hand, the undo key last).
+  assert.equal(said.text, 'Placed Street lamps 3 by hand (the rest stay on the rule)');
   assert.equal(said.undo, true, '"⌘Z undoes it" after it');
-  assert.deepEqual(said.acts, ['Reset to rule']);
+  assert.equal(said.hand, true, 'the hand\'s line');
+  assert.deepEqual(said.acts, ['Back to rule']);
   const tag = s.w.listTag('lamp-row-3')!;
-  assert.equal(tag.hand?.tag, 'Hand-placed');
+  assert.equal(tag.hand?.tag, 'By hand');
   assert.equal(s.w.listTag('lamp-row-2')!.hand, undefined, 'the others: the Rule tag only');
   // Already by hand: its moves are its pin, without ⌥ and without being told again.
   const n = s.told.length;
   s.w.moved('lamp-row-3', { p: [7.5, 0, -22] }, true, false, 'move');
   assert.deepEqual(s.model.places.get('lamp-row')?.pins?.['lamp-row-3'], { p: [7.5, 0, -22] });
   assert.equal(s.told.length, n);
-  // Reset to rule (the line's word): back in its rule, one more undo step.
+  // Back to rule (the line's word): back in its rule, one more undo step.
   said.run[0]!();
   assert.deepEqual(s.model.places.get('lamp-row')?.pins ?? {}, {});
   assert.equal(s.undo.size, 3);
@@ -198,7 +200,7 @@ test('the words: "Convert to coordinates" for a rule motion and a rule layout; i
   assert.equal(translate('ja', 'rule.individuallyDone', { name: '街灯', n: 12 }), '街灯のルールを座標にしました');
   assert.equal(translate('ja', 'hands.undo', { text: translate('ja', 'rule.pointsDone', { name: 'らせん' }), key: '⌘Z' }), 'らせんのルールを座標にしました · ⌘Z で戻せます', 'the brief\'s line');
   assert.match(translate('ja', 'rule.noKeys', { name: 'らせん' }), /座標にする/);
-  assert.equal(translate('ja', 'rule.pinnedDone', { obj: '街灯 3' }), '街灯 3 だけ手で置きました');
+  assert.equal(translate('ja', 'rule.pinnedDone', { obj: '街灯 3' }), '街灯 3 を手で置きました（ほかはルールのまま）');
 });
 
 test('a rule motion\'s points are offsets from where the object stands (relative: the path goes with the object)', () => {
@@ -234,12 +236,12 @@ test('the AI\'s object.move / turn / scale / ground on a rule\'s object: refused
   assert.equal(r2.results[0]!.ok, true, 'one put by hand already moves');
 });
 
-test('the shell: ⌥ with several picked puts each by hand together, told once with Reset to rule for all', () => {
+test('the shell: ⌥ with several picked puts each by hand together, told once with Back to rule for all', () => {
   const s = shell();
   const r = s.w.groupMoved([{ key: 'lamp-row-1', pose: { p: [6, 0, -6] }, from: { p: [4.8, 0, -6] } }, { key: 'lamp-row-2', pose: { p: [6, 0, -14] }, from: { p: [4.8, 0, -14] } }], true, true);
   assert.equal(r.changes.length, 1, 'one change of the layout (the same undo step as the others\' moves)');
   const said = s.told.at(-1)!;
-  assert.equal(said.text, 'Placed Street lamps 1, Street lamps 2 by hand, apart from their rule');
+  assert.equal(said.text, 'Placed 2 of Street lamps by hand', 'several of one rule: its name and how many (the hand-marks plan §2)');
   said.run[0]!();
-  assert.deepEqual(s.model.places.get('lamp-row')?.pins ?? {}, {}, 'Reset to rule: both back');
+  assert.deepEqual(s.model.places.get('lamp-row')?.pins ?? {}, {}, 'Back to rule: both back');
 });

@@ -10,7 +10,7 @@ description: Select, move, turn and resize things in your game, look around, use
 
 Click something in your game and drag it. That’s most of it. This page covers the rest: the tools under a selected object, the camera, the menus, the Library and Save.
 
-The editor has three parts: the column on the left (**Scene** and **Library**), the game in the middle, and one box at the bottom for your AI. Two colors mean one thing each: **orange is your hand** (what you selected), **violet is your AI’s hand** (what its last change touched).
+The editor has three parts: the column on the left (**Scene** and **Library**), the game in the middle, and one box at the bottom for your AI. Two colors mean one thing each: **orange is your hand** (what you selected), **violet is your AI’s hand** (what its last change touched). A third, a quiet **sand**, marks a thing you placed by hand outside its rule (see below).
 
 ## Select
 
@@ -164,20 +164,22 @@ When it isn’t, the line says what happened: **Kept as a note for Claude. Nothi
 
 ## Things laid out by a rule
 
-When your AI lays things out by a rule (“four hexagons in a row, 6 m apart”, “scatter crystals on the field”), the list shows them under one name with the tag **Rule**, and a press on one shows the card’s **Layout** where its position was: **Line · 4** (or **Scatter · 12**), with the rule’s numbers as knobs, like **Count** and **Gap**. Things you placed yourself stay as they are: their numbers are their place.
+When your AI lays things out by a rule (“four hexagons in a row, 6 m apart”, “scatter crystals on the field”), the list shows them under one name with the tag **Rule**, and a press on one shows the card’s **Rule** where its position was: **Line · 4** (or **Scatter · 12**), with the rule’s numbers as knobs, like **Count** and **Gap**. Things you placed yourself stay as they are: their numbers are their place.
 
 - **Turn a knob** (drag it left or right, or press it and type), **or just drag one of them** in the game: the rule’s number changes, the others follow and they stay a rule. While you drag, a small label says it: **Gap 4 → 2.5 m**. Violet rings show where the rule puts each one (point at one in the game to see them before you press), and the line under the tool strip says what a drag will do.
 - **They stay a rule, however you move them.** A way the rule has no number for doesn’t move: drag a street lamp away from the road when the rule only has **Gap**, or lift it, or turn it, and it stays where it is while a small label says why — **Sideways position is set by the rule · ⌥ for just this one**. When you let go, the line above the chat box says it again, with **✦ Ask Claude: “Let me move Street lamps sideways too”**: your AI gives the rule a number for that way. (A rule with a number for each way — along the road, away from it, up — changes it for all of them, whichever way you drag.)
-- **Hold <kbd>⌥</kbd> while you drag** to move just that one: the line says **Placed Street lamps 3 by hand (just this one) · ⌘Z undoes it · Reset to rule**, and it is marked **Hand-placed** on its card and in the list, with **Reset to rule** beside it. The rest stays on the rule. Nothing else takes one out of its rule: arrow keys, or moving several together, leave a rule’s things where it puts them.
+- **Hold <kbd>⌥</kbd> while you drag** to move just that one: its ring turns from violet to sand, and the line says **Placed Street lamps 3 by hand (the rest stay on the rule) · Back to rule · ⌘Z**. The rest stays on the rule. Nothing else takes one out of its rule: arrow keys, or moving several together, leave a rule’s things where it puts them.
+- **What you placed by hand shows before you press anything**: a small hand tag over each one in the game. Select (or point at) any of that rule’s things and each one placed by hand gets a sand ring, the tag **By hand**, and a violet hollow ring where the rule would put it, with a thin dotted line between — that is where **Back to rule** takes it. Its card says **By hand · Outside the Street lamps rule** with **Back to rule**; its numbers stay white like any number, and its rule’s knobs are under them.
+- **Put them all back at once**: the rule’s part of the card says **✋ 2 placed by hand · All back to rule** (point at the count to light them in the game, press it to select them). One <kbd>⌘</kbd><kbd>Z</kbd> brings them back. In the list, the rule’s heading shows **✋ 2**, and each one **By hand**.
 - **Convert to coordinates** turns the rule into coordinates: every one of them becomes an ordinary thing at its own position, which you move one by one.
 
 ![A lamp of the row dragged away from the road: it stays, and the line says “Street lamps: sideways position is set by the rule · ⌥-drag to move just this one · ✦ Ask Claude”](media/rule-held.webp)
 
-![⌥ and a drag up: just that lamp, marked “Hand-placed” on its card and in the list, and “Reset to rule”](media/rule-hand.webp)
+![⌥ and a drag up: just that lamp, placed by hand — its card and the list say so, with “Back to rule”](media/rule-hand.webp)
 
 Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save, your AI writes the new numbers into the game’s code (**Saved: hex Gap → 4 m**).
 
-![A hexagon of a row dragged toward the camera: violet rings, “Gap 4 → 2.5 m”, and the card’s Layout with Count and Gap](media/rule-layout.webp)
+![A hexagon of a row dragged toward the camera: violet rings, “Gap 4 → 2.5 m”, and the card’s Rule with Count and Gap](media/rule-layout.webp)
 
 ### Turn things you placed into a rule
 
@@ -191,12 +193,12 @@ Put a row of street lamps down one by one, and now you would rather tune it as a
 
 ### Keep-out areas
 
-Under a layout's knobs, **Keep-out areas** lists where that layout puts nothing. The game shows each one on the ground in red hatching: a box you drew has an orange edge, an area your game's rule decides (“On the road”) a violet dashed one.
+Under a layout's knobs, **Keep-out areas** lists where that layout puts nothing. The game shows each one on the ground in red hatching: a box you drew (**Drawn by hand**) has an orange edge, an area your game's rule decides (“On the road”, **Rule**) a violet dashed one.
 
 - **+ Draw a box**, then drag on the ground (one finger on a phone; <kbd>Esc</kbd> stops). The things of that layout step out of the box while you draw, and the line says how many moved. Drag its corners to resize it (<kbd>Shift</kbd>: its height), its middle to move it.
 - **✦ Describe with text** puts the layout and **Keep-out areas** in the box for your AI: say it in your words, “not within 5 m of the player”. Your AI turns it into a rule in the game and adds it to the list (the new row glows violet). A number in it, like **5 m**, is a knob: in the list, or the ◇ on its edge in the game.
 - The switch turns one off (it stays in the list); **×** removes a box or an area your AI added. **⋯ Also for** adds the same area to another layout: an area only ever acts on the layout it is listed under.
-- What you placed yourself is never moved by an area: **Manually overridden** says **Inside a keep-out area** when it stands in one. When an area leaves no room, the list says **1 of 12 has no place to go**, and a red × shows where it would have gone.
+- What you placed yourself is never moved by an area: its card says **Inside a keep-out area** under **By hand** when it stands in one. When an area leaves no room, the list says **1 of 12 has no place to go**, and a red × shows where it would have gone.
 
 ![Crystals scattered by a rule: a box drawn by hand (orange), “On the road” and “From the player 6 m within” (violet), and the card’s Keep-out areas](media/keep-out.webp)
 

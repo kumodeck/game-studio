@@ -149,12 +149,14 @@ export interface PlacementPanelDeps {
    * An object a code layout of the game put (studio-code-knobs, 2026-10-24; code-place-wire.ts): the card's Layout block
    * (the rule's kind and count, its knobs, "Convert to coordinates") — `numbers` false = in place of Position / Rotation /
    * Size, which the rule decides; true = above the object's own numbers (one put by hand). null / absent = an ordinary object.
+   * `after` = under the numbers (studio-hand-marks: one placed by hand has its rule's block there).
    */
-  layout?: (key: string) => { els: HTMLElement[]; numbers: boolean } | null;
+  layout?: (key: string) => { els: HTMLElement[]; numbers: boolean; after?: HTMLElement[] } | null;
   /**
    * The list: a code layout's objects under one heading with its tag ("hex ×4 [Rule]"). null / absent = as before.
-   * `hand` (studio-to-coords, 2026-10-24): this one is put by hand apart from its rule (⌥) — its row's mark "Hand-placed"
-   * and "Reset to rule", and a count of them on the heading, so a lamp left out of its row is seen with the row folded.
+   * `hand` (studio-to-coords, 2026-10-24): this one is placed by hand outside its rule (⌥) — its row's tag "Placed by hand"
+   * (studio-hand-marks: picked, the hand alone and "Back to rule"), and "✋ 2" on the heading, so a lamp left out of its
+   * row is seen with the row folded.
    */
   ruleTag?: (key: string) => { group: string; tag: string; tip: string; hand?: { tag: string; tip: string; reset: string; run(): void } } | null;
   /** The card's ⋯ rows for a code layout's object ("Convert to coordinates", "Reset to rule"). [] / absent = none. */
@@ -864,6 +866,8 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
     // (design.md §5: 2D has the same file shape, its card comes next); never for a UI element.
     if (d.motion && dim === '3d' && !it.kinds.includes('ui')) fields.append(...d.motion(key));
     fine.append(fields);
+    // One placed by hand (studio-hand-marks): its rule's block under its numbers (the knobs, "✋ 2 placed by hand").
+    if (rule?.after) fine.append(...rule.after);
     // A UI element's text, size, colours, states and sample values (UI stages 2–3): under its numbers, in the same fold.
     if (d.uiLook && it.kinds.includes('ui')) fine.append(...d.uiLook(key));
     if (it.scalable && typeof it.defaultScale === 'number') {
@@ -1179,15 +1183,18 @@ export function createPlacementPanel(d: PlacementPanelDeps): PlacementPanel {
       }
     }
     /**
-     * The mark of objects put by hand apart from their rule (studio-to-coords): on a heading "Hand-placed 1" (how many of
-     * its objects), on an object's own row "Hand-placed" and "Reset to rule".
+     * The tag of objects placed by hand outside their rule (studio-to-coords; studio-hand-marks, the hand-marks plan §4): on
+     * a heading "✋ 2" (how many of its objects), on an object's own row "✋ Placed by hand" — picked, "✋" and "Back to
+     * rule" (the row is too narrow for both words; CSS swaps them, so a pick that only marks the rows swaps them too).
      */
     const handMark = (members: Item[], own = false): HTMLElement | null => {
       const hs = members.map((m) => hands.get(m.key)).filter((x): x is NonNullable<typeof x> => !!x);
       if (!hs.length) return null;
       const w = hs[0]!;
-      const pill = h('span', { class: 'pill hand-tag', title: w.tip, dataset: { part: 'list-hand-tag' }, text: own || members.length === 1 ? w.tag : `${w.tag} ${hs.length}` });
-      if (!own && members.length > 1) return pill;
+      const heading = !own && members.length > 1;
+      const pill = h('span', { class: 'pill hand-tag', title: w.tip, dataset: { part: 'list-hand-tag', ...(heading ? { n: String(hs.length) } : {}) } },
+        icon('hand'), h('span', { text: heading ? String(hs.length) : w.tag }));
+      if (heading) return pill;
       const back = h('button', { type: 'button', class: 'link-btn hand-reset', dataset: { part: 'list-rule-reset' }, title: w.tip, onclick: (e: Event) => {
         e.stopPropagation();
         w.run();

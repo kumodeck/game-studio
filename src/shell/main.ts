@@ -1281,13 +1281,29 @@ export function start(host: StudioHost) {
       if (card) placementPanel.render();
       renderButtons();
     },
-    // studio-to-coords: with pressable words after it ("Reset to rule", "✦ Ask Claude: …"); `undo` false = nothing was
-    // done (a rule kept its object still), so no "⌘Z undoes it".
-    told: (text, actions, undo = true) => showToast(!undo ? text : phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), actions?.length ? 9000 : 6000, actions),
+    // studio-to-coords: with pressable words after it ("Back to rule", "✦ Ask Claude: …"); `undo` false = nothing was
+    // done (a rule kept its object still), so no "⌘Z undoes it". `hand` (studio-hand-marks): one placed by hand — the hand
+    // at its head, sand words, the way back, then the undo key alone ("… · Back to rule · ⌘Z", the play test's order).
+    told: (text, actions, undo = true, hand = false) => hand
+      ? showToast(text, 9000, actions, { hand: true, tail: undo ? (phone() ? t('btn.undo') : keyOf('undo', isMac())) : undefined })
+      : showToast(!undo ? text : phone() ? t('hands.undoTouch', { text }) : t('hands.undo', { text, key: keyOf('undo', isMac()) }), actions?.length ? 9000 : 6000, actions),
     name: (k) => {
       const it = worldItems.find((i) => i.key === k);
       return it ? displayName(it, t) : k;
     },
+    // The card's "✋ 2 placed by hand" under the mouse lights them (as a list row does); off it, back to the card's own.
+    light: (keys) => {
+      if (!editing) return;
+      const ks = keys ?? (group.length > 1 ? group.slice() : selected ? [selected] : []);
+      send({ type: 'studio:placement/hover', keys: ks });
+      codePlaces.hover(ks);
+    },
+    pick: (keys) => {
+      const ks = keys.filter((k) => worldItems.some((i) => i.key === k));
+      if (ks.length === 1) selectObject(ks[0]!, true);
+      else if (ks.length) selectMany(ks, ks[0]!);
+    },
+    icon: (name) => icon(name),
     ask: (draft) => focusAsk(draft),
     touch: () => phone() || !!window.matchMedia?.('(pointer: coarse)').matches,
     selected: () => (editLayer === 'world' ? selected : null),
@@ -1334,7 +1350,10 @@ export function start(host: StudioHost) {
     if (keepOutAsk && (editLayer !== 'world' || selected !== keepOutAsk.key || !codePlaces.layoutOf(keepOutAsk.key))) keepOutAsk = null;
     return keepOutAsk;
   };
-  /** The card's rule block for `k`: the layout's (code-place-wire.ts), then its keep-out areas / "Inside a keep-out area". */
+  /**
+   * The card's rule block for `k`: the layout's (code-place-wire.ts), then its keep-out areas / "Inside a keep-out area";
+   * one placed by hand has its rule's block under its numbers (`after`).
+   */
   function ruleCard(k: string) {
     const c = codePlaces.card(k);
     if (!c) return null;
@@ -4950,21 +4969,28 @@ export function start(host: StudioHost) {
    * pressable words after it ("Reset to rule", "✦ Ask Claude: …") — always in the news card (the field's line is not
    * pressable).
    */
-  function showToast(text: string, ms = 3500, actions?: Array<{ label: string; run(): void }>) {
+  /**
+   * A line in the news card. `actions` = pressable words after it. `o.hand` (studio-hand-marks) = about one placed by hand:
+   * the hand at its head and sand words; `o.tail` = words after the actions (the undo key: "… · Back to rule · ⌘Z").
+   */
+  function showToast(text: string, ms = 3500, actions?: Array<{ label: string; run(): void }>, o: { hand?: boolean; tail?: string } = {}) {
     toast = text;
     clearTimeout(toastTimer);
     hideNews();
-    if (!actions?.length && newsInBar(text)) {
+    toastEl.classList.toggle('hand', !!o.hand);
+    if (!actions?.length && !o.hand && newsInBar(text)) {
       toastEl.classList.remove('on');
       toastTimer = window.setTimeout(hideNews, ms);
       return;
     }
     toastEl.textContent = toast;
-    // ✦ (asking the AI) in the AI's violet, the rest in the hand's orange (the colours' one rule).
+    if (o.hand) toastEl.prepend(icon('hand'));
+    // ✦ (asking the AI) in the AI's violet, the rest white and underlined (orange is the pick and Save only).
     for (const a of actions ?? []) toastEl.append(' · ', h('button', { type: 'button', class: `link-btn toast-act${a.label.startsWith('✦') ? ' ai' : ''}`, dataset: { part: 'toast-act' }, onclick: () => {
       toastEl.classList.remove('on');
       a.run();
     } }, a.label));
+    if (o.tail) toastEl.append(' · ', h('span', { class: 'toast-tail', text: o.tail }));
     toastEl.classList.add('on');
     toastTimer = window.setTimeout(() => toastEl.classList.remove('on'), ms);
   }
