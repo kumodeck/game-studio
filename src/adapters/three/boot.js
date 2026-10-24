@@ -54,6 +54,14 @@
     editOnLoad: editOnLoad,
     waitingForReady: false,
     held: false,           // true while the game's frame callbacks are held
+    // true once the game was held the first time, for any reason (its first frame, ready(), the 8 s safety net, or the
+    // editor's own begin()). Every hold of the FIRST look — ready(), the first render, the 8 s / 1.5 s timers — is a
+    // once-only thing, like core/time.ts `firstDone`: after it only the editor holds and lets go (begin / end).
+    // WHY (studio-fix-reload-play, 2026-10-24): the timers fired whenever they came. On a page in ▶ Play (the editor's
+    // end() had let go) the 8 s net of a game that calls waitForReady() and never ready() (test/neon-run) held the game
+    // again: its picture stopped (0 frames in 3 s) until the next Edit. After the game was read again (--do
+    // editor.reload, a code layout's numbers, the AI's change) a person presses Play → Edit → Play within those 8 s.
+    heldOnce: false,
     gameRendered: false,
     selfRender: 0,         // >0 while the editor itself is calling renderer.render (not a game render)
     readyCamera: null,     // camera handed to studio.ready({ camera }) — used when the game was held before rendering
@@ -195,6 +203,8 @@
       if (state.held) { emit('game-render-skipped', scene); return; }
       // The rest of the frame that only placed the camera (see below): post-processing of a picture nobody sees.
       if (state.placed) return;
+      // The editor already held the game and let it go (▶ Play): this draw is the player's, not the first look's.
+      if (state.holdAfterCamera && state.heldOnce) state.holdAfterCamera = null;
       if (state.holdAfterCamera && camera === state.holdAfterCamera) {
         // The one frame ready({ camera }) lets run exists to let the game's frame code PLACE its camera; the
         // picture itself is thrown away (the editor draws its own at once). So the camera's own draw is skipped,
@@ -218,7 +228,8 @@
       if (camera) seenCameras.add(camera);
       if (!state.gameRendered) {
         state.gameRendered = true;
-        if (state.editOnLoad && (!state.waitingForReady || state.holdAfterRender)) queueMicrotask(function () { hold(state.holdAfterRender ? 'ready' : 'first-frame'); });
+        // Not after the first hold: a game that first draws in ▶ Play (the editor began before it drew) keeps running.
+        if (state.editOnLoad && !state.heldOnce && (!state.waitingForReady || state.holdAfterRender)) queueMicrotask(function () { hold(state.holdAfterRender ? 'ready' : 'first-frame'); });
       }
       return r;
     };
@@ -252,6 +263,7 @@
   function hold(reason) {
     if (state.held) return;
     state.held = true;
+    state.heldOnce = true;
     emit('hold', reason || 'manual');
   }
 
@@ -341,7 +353,8 @@
   api.waitForReady = function () {
     if (!state.editOnLoad || state.held) return;
     state.waitingForReady = true;
-    nativeTimeout(function () { if (state.waitingForReady) { state.waitingForReady = false; hold('ready-timeout'); } }, 8000);
+    // Only if nothing held the game yet (heldOnce above): in ▶ Play this net stopped the game's picture.
+    nativeTimeout(function () { if (state.waitingForReady) { state.waitingForReady = false; if (!state.heldOnce) hold('ready-timeout'); } }, 8000);
   };
   /**
    * The initial layout is final. In edit-on-load mode the game is held here. A no-op otherwise.
@@ -351,7 +364,9 @@
   api.ready = function (opts) {
     state.waitingForReady = false;
     if (opts && opts.camera) state.readyCamera = opts.camera;
-    if (state.editOnLoad) {
+    // Once the game was held (heldOnce: the editor began already), ready() holds nothing more: called in ▶ Play (a game
+    // whose loading ends late) it stopped the game the person was playing.
+    if (state.editOnLoad && !state.heldOnce) {
       if (opts && opts.camera && !seenCameras.has(opts.camera)) {
         // The game's camera has not drawn yet (ready() before the game loop starts, as the starters do). Let the
         // game run ONE frame first (since the speed pass its draw with that camera is skipped: wrapRender), then hold — with every object put back where it was right now
@@ -364,7 +379,9 @@
         // that waits for a click to start drawing), hold anyway after 1.5 s.
         snapLayout();
         state.holdAfterCamera = opts.camera;
-        nativeTimeout(function () { if (state.holdAfterCamera) { state.holdAfterCamera = null; putBackLayout(); hold('ready'); } }, 1500);
+        // heldOnce: the editor held the game before this (its begin()): nothing to hold, and the layout must not go
+        // back under a game in ▶ Play.
+        nativeTimeout(function () { if (state.holdAfterCamera) { state.holdAfterCamera = null; if (state.heldOnce) return; putBackLayout(); hold('ready'); } }, 1500);
       } else if (state.gameRendered || state.readyCamera) hold('ready');
       else state.holdAfterRender = true;
     }

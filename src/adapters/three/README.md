@@ -13,6 +13,8 @@ Purpose: the three.js adapter — lets the editor find, select and move objects 
 
 Builds without the devtools hook: the game calls `studio.attach({ scene, renderer, camera })`.
 Games whose start layout needs async work call `studio.waitForReady()` early and `studio.ready({ camera })` when done.
+The hold for the editor's first look happens once per page (`heldOnce` in boot.js): a `ready()` that comes late, or the
+8 s safety net of a game that never calls it, does not hold a game the editor already let go (▶ Play in the same page).
 
 ## Author marks (all optional)
 
