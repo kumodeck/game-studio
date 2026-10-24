@@ -29,7 +29,8 @@
 //   __studio/<id>/tools.js      the sample's .studio/tools.js (or empty)
 //   games/<id>/…                the starter's files (what `--starter` copies); HTML pages get the tags above
 //                               and their import map pointed at vendor/
-//   vendor/<pkg>@<ver>/…        the CDN modules the samples import, copied (only the files used)
+//   vendor/<pkg>@<ver>/…        the CDN modules the samples import, copied (only the files used); three.js is
+//                               vendor/three@187dev-d19352c/ (THREE_DEV below; --three-npm for npm three@0.186.1)
 //   docs/, docs/ja/             the public docs, English and Japanese (docs/site/, built by build-docs.mjs; decided
 //                               2026-10-22: "put the docs on the demo site, English first, Japanese too")
 //
@@ -79,6 +80,33 @@ for (let i = 2; i < process.argv.length; i++) {
   SAMPLES.push(s);
 }
 const CDN = /^https:\/\/cdn\.jsdelivr\.net\/npm\/((?:@[^/]+\/)?[^/@]+@[^/]+)\/(.*)$/;
+
+// three.js r187dev in the demo (2026-10-24: a three.js WebGPU game got lighter with r187dev, and three.js's author
+// says "You have to use 187dev to avoid slow downs."). GitHub mrdoob/three.js `dev` at the commit below, REVISION
+// '187dev'. Measured on the demo's samples (WebGL, headless Chrome on Apple GPU): the same 60 fps and CPU as r186, and
+// the same picture; kept for the slow-downs the author means.
+// WHY only the demo's copy, and the samples' import maps stay on npm three@0.186.1: r187dev is not on npm (npm's latest
+// is 0.186.1 on 2026-10-24), and the starters are also what `--starter` copies into a person's own folder, where a
+// GitHub dev commit would be a strange thing to pin. The demo copies its modules anyway (no CDN at run time), so here
+// each three@0.186.1 file is taken from that commit instead, into vendor/three@187dev-d19352c/.
+// WHY build/three.module.js and not .min.js: the repository has no minified module build (jsDelivr's .min.js of a
+// GitHub file is made by jsDelivr on the fly); the host compresses it on the way (≈ +60 KB gzip over the min).
+// --three-npm builds with npm three@0.186.1 as before (for comparing the two).
+const THREE_DEV = process.argv.includes('--three-npm') ? null : {
+  npm: 'three@0.186.1',
+  commit: 'd19352c32771390db47bfb8c28684b3049e031f6',
+  dir: 'three@187dev-d19352c',
+};
+/** The folder in vendor/ and the file in it for a jsDelivr npm URL's package@version and path. */
+const vendorOf = (pkgAt, path) => THREE_DEV && pkgAt === THREE_DEV.npm
+  ? `${THREE_DEV.dir}/${path.replace(/^build\/(three\.(?:module|core))\.min\.js$/, 'build/$1.js')}`
+  : `${pkgAt}/${path}`;
+/** Where a file is fetched from: the npm URL, or the same file of the r187dev commit on GitHub (through jsDelivr). */
+const sourceOf = (url) => {
+  const c = CDN.exec(url);
+  if (!THREE_DEV || !c || c[1] !== THREE_DEV.npm) return url;
+  return `https://cdn.jsdelivr.net/gh/mrdoob/three.js@${THREE_DEV.commit}/${vendorOf(c[1], c[2]).slice(THREE_DEV.dir.length + 1)}`;
+};
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -179,7 +207,7 @@ for (const s of SAMPLES) {
         if (!c) continue;
         importMap[k] = v;
         if (!v.endsWith('/')) vendorWanted.add(v);
-        map.imports[k] = `${up}vendor/${c[1]}/${c[2]}`;
+        map.imports[k] = `${up}vendor/${vendorOf(c[1], c[2])}`;
       }
       return `<script type="importmap">\n    ${JSON.stringify(map)}\n  </script>`;
     });
@@ -230,8 +258,9 @@ while (queue.length) {
   done.add(url);
   const c = CDN.exec(url);
   if (!c) throw new Error(`not a jsDelivr npm URL: ${url}`);
-  const text = await fetchCached(url);
-  write(`vendor/${c[1]}/${c[2]}`, text);
+  const text = await fetchCached(sourceOf(url));
+  if (THREE_DEV && c[1] === THREE_DEV.npm && !/REVISION\s*=\s*['"]187dev['"]/.test(text) && /REVISION\s*=/.test(text)) throw new Error(`${sourceOf(url)} is not r187dev`);
+  write(`vendor/${vendorOf(c[1], c[2])}`, text);
   for (const spec of importsOf(text)) {
     if (spec.startsWith('.')) queue.push(new URL(spec, url).href);
     else if (/^https?:/.test(spec)) throw new Error(`${url} imports ${spec} (absolute URL)`);

@@ -69,7 +69,18 @@
       background: rgba(17,17,17,.72); color: #fff; font-size: 13px; transition: opacity .3s ease; }
     .stage iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; opacity: 0; transition: opacity .4s ease; background: var(--sunk); }
     .stage.ready iframe { opacity: 1; }
-    .stage.ready > img.poster, .stage.ready .loading { opacity: 0; pointer-events: none; }
+    /* visibility too, after the fade (2026-10-24, the "heavy on the front page" pass): the picture and the pill under a
+       drawn editor are then out of the picture altogether, not drawn at 0 % over and over. */
+    .stage.ready > img.poster, .stage.ready .loading { opacity: 0; pointer-events: none; visibility: hidden; transition: opacity .4s ease, visibility 0s linear .4s; }
+    /* Out of sight (lp.js, .away): the editor in the frame stops drawing; it goes on where it was when it comes back. */
+    .stage.away iframe { content-visibility: hidden; }
+    /* ?frame=0 (lp.js): the picture and a button that opens the editor on its own page, no frame. */
+    .stage .open { display: none; }
+    .stage.picture .loading { display: none; }
+    .stage.picture .open { display: inline-block; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 11px 20px;
+      border-radius: 999px; background: var(--accent); color: #fff; font-weight: 600; font-size: 15px; text-decoration: none; box-shadow: var(--shadow); }
+    .stage.picture .open:hover, .stage.picture .open:focus-visible { filter: brightness(1.06); }
+    .stage.picture + .stage-foot .hint { visibility: hidden; }
     .stage.active { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
     .stage-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
     .hint::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); opacity: .5; margin-right: 8px; vertical-align: 1px; }
@@ -151,6 +162,7 @@
       <div class="stage" id="stage">
         <img class="poster" id="poster" alt="" />
         <div class="loading" id="loading"></div>
+        <a class="open" id="open"></a>
       </div>
       <div class="stage-foot">
         <span class="hint" id="hint" aria-live="polite"></span>

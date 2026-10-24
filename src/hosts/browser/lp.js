@@ -12,10 +12,22 @@
 //   the editor used to eat it, so the lighthouse got selected only on the second click). The editor tells this page it
 //   is in use (embed.ts, MSG_USED); after that it has the keys (and keeps arrows / Space / Page Down from scrolling this
 //   page), and a click anywhere outside it gives the page back (MSG_IDLE: the wheel is the page's again).
+// - Out of sight, it stops drawing (2026-10-24, play test: "heavy on this page, light on its own page"):
+//   once the stage is off screen the frame gets `content-visibility: hidden` (.stage.away in index.html), and when it
+//   comes back it goes on where it was (same page, same selection, no reload). WHY content-visibility and not
+//   visibility / display: measured in headless Chrome (ANGLE Metal), a same-origin frame that is scrolled away, or
+//   visibility: hidden, or display: none, keeps every requestAnimationFrame running at 60 a second (the editor's loop
+//   and its game page's); only content-visibility: hidden stops them (60 → 0), and taking it off brings them back.
+//   WHY not a message to the editor to pause: this page stays out of the editor's own code (the frame's page is the
+//   same editor as the full-size one).
+// - ?frame=0 (2026-10-24): no frame at all on a wide screen either — the sample's picture with "Open the editor", which
+//   opens it on its own page (the phone's way, on a PC). For comparing the two ways; the default is the frame.
 // - Switching samples swaps the frame's page; saves are per sample and kept in this browser, shared with the full-size
 //   editor (same site), so "Open full size" shows the same work.
 (function () {
-  var q = new URLSearchParams(location.search).get('lang');
+  var params = new URLSearchParams(location.search);
+  var q = params.get('lang');
+  var noFrame = params.get('frame') === '0';
   var ja = q ? q === 'ja' : /^ja/i.test(navigator.language || '');
   var T = window.DEMO_LIST_TEXT[ja ? 'ja' : 'en'];
   var langQ = q ? '&lang=' + encodeURIComponent(q) : '';
@@ -30,10 +42,12 @@
   if (ja) $('docs').href = 'docs/ja/';
   $('repo').textContent = T.repoLink;
   $('copy').textContent = T.copy;
+  $('open').textContent = T.open;
 
   // 768, the brief's line between a phone and the rest (index.html's media query uses the same number).
   var wide = window.matchMedia('(min-width: 768px)');
   var stage = $('stage');
+  if (noFrame) stage.classList.add('picture');
   var frame = null; // the editor's iframe, made when the stage is first seen (wide screens only)
   var seen = false;
   var current = null; // the sample shown in the frame
@@ -91,6 +105,7 @@
     current = g;
     document.querySelectorAll('a.sample').forEach(function (a) { a.setAttribute('aria-selected', String(a.dataset.game === g.id)); });
     $('full').href = editorUrl(g, false);
+    $('open').href = editorUrl(g, false);
     if (g.thumb) $('poster').src = g.thumb;
     if (changed && frame) {
       setActive(false);
@@ -102,7 +117,7 @@
 
   // Make the frame when the stage has been seen on a wide screen; on a phone never (no iframe in the page at all).
   function load() {
-    if (frame || !seen || !wide.matches || !current) return;
+    if (frame || noFrame || !seen || !wide.matches || !current) return;
     frame = document.createElement('iframe');
     frame.title = T.tryTitle;
     frame.allow = 'autoplay; fullscreen; gamepad';
@@ -116,6 +131,11 @@
       seen = true;
       load();
     }, { threshold: 0.25 }).observe(stage);
+    // Out of sight → stop drawing (see the top). 200 px of margin: it is going again before it scrolls back in.
+    new IntersectionObserver(function (entries) {
+      var e = entries[entries.length - 1];
+      stage.classList.toggle('away', !e.isIntersecting);
+    }, { rootMargin: '200px 0px' }).observe(stage);
   } else {
     seen = true;
   }
