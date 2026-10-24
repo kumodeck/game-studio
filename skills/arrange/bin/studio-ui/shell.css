@@ -1541,6 +1541,25 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .tl-ask { height: var(--h); padding: 0 12px 0 10px; gap: 6px; border-radius: var(--r); background: var(--ai-soft); color: var(--ai-text); font-weight: 600; white-space: nowrap; }
 .tl-ask .icon { width: 13px; height: 13px; color: var(--ai-text); }
 .tl-ask:hover:not(:disabled) { background: var(--ai-soft); filter: brightness(1.15); }
+.tl-ask > .icon:last-child:not(:first-child) { width: 11px; height: 11px; margin-left: -2px; opacity: .8; }
+/* studio-motion-next (2026-10-24; a hands-on review: "✦ Turn into a rule is in the row's ⋯ — I can't find it"): on the line beside
+   Preview / Repeat / When. The AI's violet (rule 2) but quiet — words and ✦, no fill — so ✦ Ask AI stays the one filled
+   violet button; the fill comes on hover. */
+.tl-rule-btn { height: var(--h); padding: 0 10px 0 8px; gap: 6px; border-radius: var(--r); color: var(--ai-text); font-weight: 600; white-space: nowrap; margin-left: 4px; }
+.tl-rule-btn .icon { width: 13px; height: 13px; color: var(--ai-text); }
+.tl-rule-btn:hover { background: var(--ai-soft); }
+/* Narrow (a phone, the side window): not on the line — a third row there pushed the rows off a plate already 3/4 of the
+   screen (studio-timeline-line: "two rows at most"). The next-step line's ✦ and ✦ AI's menu have it. */
+.timeline.narrow .tl-head > .tl-rule-btn { display: none; }
+/* The next step once a motion is made (studio-motion-next): one line under the line, the text's own colour (a fact, not a
+   warning), ✓ then the words; the rule part a violet text button. Wraps on a phone, never "…". */
+.tl-next { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; padding: 0 12px 6px; font-size: var(--fs-s); color: var(--text); line-height: 1.35; }
+.tl-next[hidden] { display: none; }
+.tl-next > .icon { width: 13px; height: 13px; flex: none; color: var(--text-2); }
+.tl-next-dot { color: var(--text-3, var(--text-2)); }
+.tl-next-rule { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; margin: 0 -6px; border-radius: var(--r); color: var(--ai-text); font-weight: 600; font-size: inherit; }
+.tl-next-rule .icon { width: 12px; height: 12px; }
+.tl-next-rule:hover { background: var(--ai-soft); }
 /* ⋯'s panel (timeline-more.ts): fixed over the page, above the ⋯ (the plate clips what is inside it). One label column,
    then the controls; rows wrap inside on a phone. */
 .tl-more { position: fixed; z-index: 60; padding: 6px 12px 8px; border-radius: 14px; background: var(--glass-thick, var(--glass)); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);

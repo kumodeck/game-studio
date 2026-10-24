@@ -22,6 +22,7 @@ import { bend, insertAt, pointKind, setKind, toggleCorner, type PointKind } from
 import { asOrdinary, asScene, joinClip, likeScene, sceneMembers, trackOrder as sceneOrder, withOrder, withTrack, withoutTrack } from './scene-motion.ts';
 import { libOf, type MotionLibrary } from './motion-library.ts';
 import { motionCardRow, type MotionCardDeps } from './motion-card.ts';
+import type { MenuEntry } from './context-menu.ts';
 import type { MotionStore } from './motion-model.ts';
 import { sameMotion as sameFile } from './motion-model.ts';
 
@@ -94,7 +95,12 @@ export interface TimelineDeps {
    * studio-motion-panel (a review of 2026-10-22): ✦ Ask AI on a motion — the shell puts the "object · motion" chip in the chat box
    * and the cursor there (`name` = the clip's name on screen, `use` = its Library motion). Absent = no AI here: no button.
    */
-  ask?(key: string, motion: { name: string; use: string }): void;
+  ask?(key: string, motion: { name: string; use: string }, draft?: string): void;
+  /**
+   * studio-motion-next (2026-10-24): a menu under `at` (the line's ✦ Ask AI) — the shell's right-click menu, the same plate
+   * as the card's ⋯. Absent = ✦ Ask AI asks at once, with no menu.
+   */
+  menu?(at: HTMLElement, entries: MenuEntry[]): void;
   /**
    * The game page's rule motions (codeMotion; studio-code-knobs, 2026-10-24): their knobs with the code's numbers, their
    * round. [] / absent = not said yet (a page opening, a game without any). A rule motion's strip, line and ◇ read them.
@@ -216,6 +222,13 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
    * Its own one line says the next step, so the first-time three steps ("1 Pick a moment on the ruler…") stay away.
    */
   let making: { key: string; shown: boolean; from: number } | null = null;
+  /**
+   * studio-motion-next (2026-10-24; a hands-on review): the object whose motion was just made —
+   * Done / Esc after making, or ● Rec motion turned off with a motion on the plate. The plate says the next step under the
+   * line ("✓ gate’s motion is made · Save puts it in the game · ✦ Turn it into a rule…") until Save, another object,
+   * making again, ● Rec motion on again, or ✦ Turn into a rule pressed.
+   */
+  let nextKey: string | null = null;
   /**
    * "Fine-tune" open (the rows of the old ⋯, in the plate beside the timeline): set by hand this session, else null =
    * as remembered (FINE_KEY, then FINE_SEEN). WHY read each time and not once here: the game's ui prefs come from the
@@ -790,6 +803,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     const key = head();
     // Another object shown (picked, or a scene opened): making on the one before has ended.
     if (making && key !== making.key) making = null;
+    if (nextKey && key !== nextKey) nextKey = null;
     const c = key ? clipOf(key) : null;
     const qs = cues();
     const eases = new Set<MotionEase>();
@@ -830,6 +844,10 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       attached: fresh && fresh.key === key && c && (c.use ?? c.name) === fresh.name ? fresh.name : null,
       making: making && making.key === key ? (making.shown ? 'more' : 'drag') : null,
       made: madeKey && madeKey === key && c ? Math.max(0, ...CHANNELS.flatMap((ch) => (c.keys[ch] ?? []).map((k) => k.t))) : null,
+      // studio-motion-next: ✦ Turn into a rule on the line — the card menu's condition (motion-card.ts motionMenu): points
+      // to make a rule of (two or more places), not a rule already.
+      canRule: !!d.toRule && !!c && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2,
+      next: nextKey && nextKey === key && c ? { name: c.name } : null,
       // (studio-motion-line, 2026-10-23: the first-time three steps, `coach`, are gone — the line says the next step.)
       fine: fineNow(),
       slim,
@@ -1116,6 +1134,7 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     auto = true;
     making = { key, shown: false, from: 0 };
     madeKey = null;
+    nextKey = null;
     if (fresh) (clearTimeout(fresh.timer), (fresh = null));
     time = 1;
     if (!open) setOpen(true);
@@ -1148,6 +1167,8 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
   function endMaking(): boolean {
     if (!making) return false;
     if (!making.shown) time = 0;
+    // Something was made (studio-motion-next): the next step under the line.
+    else if (clipOf(making.key)) nextKey = making.key;
     making = null;
     refresh();
     panel.render();
@@ -1311,6 +1332,15 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
     },
     auto(on) {
       auto = on;
+      // studio-motion-next: ● Rec motion off with a motion on the plate = "I'm done making it": the next step under the line.
+      // Making ends with it (making is moving with the auto key; off, the next move would move the place, not add a point).
+      if (!on && making) {
+        if (!making.shown) time = 0;
+        making = null;
+      }
+      const k = head();
+      const c = k ? clipOf(k) : null;
+      nextKey = !on && k && c && CHANNELS.some((ch) => (c.keys[ch]?.length ?? 0) >= 2) ? k : null;
       sendRec();
       panel.render();
     },
@@ -1483,7 +1513,35 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
       if (on && open && d.narrow() && key) d.send({ type: 'studio:core/view', view: { action: 'reveal', key } });
     },
     ...(d.ask ? { ask: () => askAbout(head()) } : {}),
+    // studio-motion-next: ✦ Ask AI by what is asked (a menu), and the line's ✦ Turn into a rule.
+    ...(d.ask && d.menu ? { askMenu: (at: HTMLElement) => askMenu(at) } : {}),
+    ...(d.toRule ? { toRule: () => toRuleOf(head()) } : {}),
   });
+  /**
+   * ✦ Ask AI's menu (studio-motion-next, 2026-10-24; a hands-on review: "split ✦ Ask Claude by what is asked — this motion as a rule /
+   * a new motion / anything"). Each row only puts a draft in the chat box with this motion's chip (nothing is sent). "Turn
+   * this motion into a rule" only where the line's ✦ Turn into a rule is (a motion of points).
+   */
+  function askMenu(at: HTMLElement) {
+    const key = head();
+    const c = key ? clipOf(key) : null;
+    if (!key || !c || !d.ask) return;
+    const m = { name: c.name, use: c.use ?? c.name };
+    const rule = !!d.toRule && !ruleFor(c) && (c.keys?.p?.length ?? 0) >= 2;
+    d.menu?.(at, [
+      ...(rule ? [{ id: 'tl-ask-rule', label: d.t('tl.askMenu.rule'), ai: true, run: () => toRuleOf(key) }] : []),
+      { id: 'tl-ask-new', label: d.t('tl.askMenu.new'), ai: true, run: () => d.ask?.(key, m, d.t('tl.askMenu.newDraft')) },
+      { id: 'tl-ask-free', label: d.t('tl.askMenu.free'), ai: true, run: () => askAbout(key) },
+    ]);
+  }
+  /** ✦ Turn into a rule on `key`'s motion on screen (the line's button, the next-step line, ✦ Ask AI's menu). */
+  function toRuleOf(key: string | null) {
+    const c = key ? clipOf(key) : null;
+    if (!key || !c) return;
+    nextKey = null;
+    d.toRule?.(key, { name: c.name, use: c.use ?? c.name });
+    panel.render();
+  }
   /** ✦ Ask AI about `key`'s motion on screen (the line's button, the card's Motion ▾): the shell's chat box takes it from here. */
   function askAbout(key: string | null) {
     const c = key ? clipOf(key) : null;
@@ -1799,6 +1857,12 @@ export function createTimeline(d: TimelineDeps, makePanel: typeof createTimeline
      */
     compared() {
       sendPath(true);
+      if (shown()) panel.render();
+    },
+    /** Saved (studio-motion-next): the next-step line ("Save puts it in the game") has done its job. */
+    saved() {
+      if (!nextKey) return;
+      nextKey = null;
       if (shown()) panel.render();
     },
     /** The game page is new (reload, back from Play, another level): it shows places; send the poses again. */

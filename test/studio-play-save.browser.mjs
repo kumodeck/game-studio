@@ -2,7 +2,8 @@
 // browser: the real local server, the built editor, test/neon-run and the stand-in AI (test/ai-feel/fake-agent.mjs).
 //
 //   save   (the AI watching) move gate, ship, ring, orb and a hex → Save: "Saved: moved gate · moved ship · moved ring
-//          · 2 more" + "Claude is putting it in the code…" → the AI is done: "✓ In the game (5)" with ▶ Play.
+//          · 2 more" + "Claude is putting it in the code…" → the AI is done: "✓ Saved: moved gate · moved ship · moved ring
+//          · 2 more · In the game" with ▶ Play (studio-motion-next, 2026-10-24: the names, not "In the game (5)").
 //   noai   (nobody watching) the same Save: "Saved. Claude puts it in the code when it opens" — never "putting it in".
 //   play   a move not saved → ▶ Play: the window is the title and three buttons, no line about the AI → Try without
 //          saving → the corner has ONE button, "❚❚ Pause and talk P" (no ✦ mark) → P: "Paused · Claude sees this
@@ -141,7 +142,7 @@ try {
       const inGame = await g.until(`/${ja ? 'ゲームに入りました' : 'In the game'}/.test(${LINE})`, 20000);
       line = await g.page.eval(LINE);
       await g.shot('save-2-in');
-      check(inGame && (ja ? /ゲームに入りました（5 個）/.test(line) : /In the game \(5\)/.test(line)), `done: in the game, with the count ("${line}")`);
+      check(inGame && (ja ? /保存しました: .*ほか 2 · ゲームに入りました/.test(line) : /Saved: .*· 2 more · In the game/.test(line)), `done: in the game, by name ("${line}")`);
       check(await g.page.eval(`!!document.querySelector('.ai-line [data-action=ai-play]')`), 'done: ▶ Play on the line');
     } finally {
       await g.close();

@@ -205,6 +205,21 @@ const en = {
   'tl.askShort': 'AI',
   'tl.ask': 'Ask {ai}',
   'tl.askTip': 'Ask {ai} about “{name}” in the chat box below',
+  // studio-motion-next (2026-10-24; a hands-on review: "after making a
+  // motion I can't tell what to press next" — ✦ Ask, the box, Save). ✦ Ask is a menu now, by what is asked; each row
+  // only puts a draft in the box below (nothing is sent until the person sends).
+  'tl.askMenuTip': 'Ask {ai}: turn it into a rule, make a new motion, or anything else',
+  'tl.askMenu.rule': 'Turn this motion into a rule',
+  'tl.askMenu.new': 'Make a new motion for me',
+  'tl.askMenu.free': 'Ask anything',
+  'tl.askMenu.newDraft': 'Make another, new motion: ',
+  // The line's "✦ Turn into a rule" (the words of toRule.place): beside Preview / Repeat / When, for a motion of points.
+  'tl.ruleTip': 'Ask {ai} for a close rule (a wave, up and down, a circle, a spiral) in place of this motion, to adjust it with numbers. The box below gets a draft; you send it',
+  // The next step, once a motion is made (● Rec motion turned off, or Done): one line under the line. "Save" is the top
+  // bar's button; the rule part is a button (the same as the line's ✦ Turn into a rule). Never "knob" on screen
+  // (the glossary: a hands-on review did not know the word) — "with numbers".
+  'tl.next.made': '{name} is made · Save puts it in the game',
+  'tl.next.rule': 'Turn it into a rule to adjust it with numbers',
   'tl.when.orMore': '+{n} more',
   'tl.when.orMoreTip': 'Other ways it starts (in Fine-tune)',
   'tl.when.also': 'Trigger',
@@ -666,7 +681,11 @@ const en = {
   'save.more': '{n} more',
   'save.changes': '{n:1 change|# changes}',
   'save.putting': '{Ai} is putting it in the code…',
-  'save.in': 'In the game ({n})',
+  // Once the AI has it in (studio-motion-next, 2026-10-24; a hands-on review: "show what Save means — 'Saved: Street lamp 5's
+  // motion · In the game'"): what was kept, by name, and that it is in. It was "In the game ({n})" — a count, no names.
+  'save.in': 'Saved: {list} · In the game',
+  // The same, as the chip beside the ask field (the timeline open): the result first, so a cut keeps it.
+  'save.inShort': 'In the game: {list}',
   'save.later': 'Saved. {Ai} puts it in the code when it opens',
   'ops.manyShort': '{n} selected',
   'pal.title': 'Ask {ai} or search actions',
@@ -1265,6 +1284,14 @@ const ja: Partial<Record<Key, string>> = {
   'tl.askShort': 'AI',
   'tl.ask': '{ai}に頼む',
   'tl.askTip': '下のチャットの欄で「{name}」について {ai}に頼む',
+  'tl.askMenuTip': '{ai}に頼む: ルールにする・新しい動きを作る・自由に',
+  'tl.askMenu.rule': 'この動きをルールにする',
+  'tl.askMenu.new': '新しい動きを作ってもらう',
+  'tl.askMenu.free': '自由に頼む',
+  'tl.askMenu.newDraft': '別の新しい動きを作って: ',
+  'tl.ruleTip': 'この動きに近いルール（波・上下・円・らせん）を {ai}に作ってもらい、入れ替えます。数字で調整できるようになります。下の欄に下書きが入ります（送るのはあなた）',
+  'tl.next.made': '{name}ができました · 保存するとゲームに入ります',
+  'tl.next.rule': 'ルールにすると、数字で調整できます',
   'tl.when.orMore': 'ほか {n}',
   'tl.when.orMoreTip': 'ほかのきっかけ（細かく調整の中）',
   'tl.when.also': 'きっかけ',
@@ -1650,8 +1677,8 @@ const ja: Partial<Record<Key, string>> = {
   'save.more': 'ほか {n}',
   'save.changes': '変更 {n} 個',
   'save.putting': '{ai}がコードに入れています…',
-  // The same counter as guard.title and ai.doneN (the mock said tsu; it reads badly past 9).
-  'save.in': 'ゲームに入りました（{n} 個）',
+  'save.in': '保存しました: {list} · ゲームに入りました',
+  'save.inShort': 'ゲームに入りました: {list}',
   'save.later': '保存しました。{ai}が開いたら、コードに入れます',
   'ops.manyShort': '{n} 個を選択',
   'pal.title': '{ai}に頼むか、操作を探す',
@@ -2005,9 +2032,10 @@ const ja: Partial<Record<Key, string>> = {
   'rule.missingTip': 'ゲームに「{name}」のルールがもうありません。{ai} に頼めます',
   'rule.edit': '動きのルール「{name}」を変えています',
   'rule.saved': '{name}の{knob} → {v}',
-  'toRule.place': 'ルール化する',
+  // studio-motion-next (2026-10-24): the review's own words for it, the same verb form as rule.points ("to coordinates").
+  'toRule.place': 'ルールにする',
   'toRule.placeTip': 'この {n} 個に近いルール（列・格子・円・ランダム）を {ai} に作ってもらい、入れ替えます。下の欄に下書きが入ります（送るのはあなた）',
-  'toRule.motion': 'ルール化する…',
+  'toRule.motion': 'ルールにする…',
   'toRule.draft': '近いルールにして',
   'toRule.compare': '元の配置と比べる',
   'toRule.compareMotion': '元の動きと比べる',

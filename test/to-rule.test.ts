@@ -213,8 +213,8 @@ test('the words: "rule", never "code" on screen; the glossary\'s (chosen on 10/2
     assert.doesNotMatch(translate('en', k, vars), /\bcode\b/i, `en ${k}`);
     assert.doesNotMatch(translate('ja', k, vars), /コード/, `ja ${k}`);
   }
-  assert.equal(translate('ja', 'toRule.place'), 'ルール化する', 'the ✦ is the spark icon before it');
-  assert.equal(translate('ja', 'toRule.motion'), 'ルール化する…');
+  assert.equal(translate('ja', 'toRule.place'), 'ルールにする', 'the ✦ is the spark icon before it (studio-motion-next: 「ルール化する」から)');
+  assert.equal(translate('ja', 'toRule.motion'), 'ルールにする…');
   assert.equal(translate('en', 'toRule.place'), 'Turn into a rule');
   assert.equal(translate('ja', 'toRule.compare'), '元の配置と比べる');
   assert.equal(translate('en', 'toRule.compare'), 'Compare with original');

@@ -2,7 +2,8 @@
 // what a press on it means. No state of its own beyond a drag in progress: timeline-wire.ts owns the state and gives
 // a fresh `view()` each render; every press goes back as one call on `act`.
 //
-//   ▶ Preview  Repeat [Once ▾] · When does it move? [When game starts ▾] ▷      [Fine-tune] ✦ Ask AI ⌄
+//   ▶ Preview  Repeat [Once ▾] · When does it move? [When game starts ▾] ▷  ✦ Turn into a rule   [Fine-tune] ✦ Ask AI ▾ ⌄
+//   ✓ gate’s motion is made · Save puts it in the game · ✦ Turn it into a rule to adjust it with numbers  ← once made
 //   2 selected   Pace [Smooth (slow start & stop) ▾]   Path [Smooth curve ▾]   🗑 Delete   ← only while keys are picked
 //        0s    1s    2s    3s    4s                     ← the ruler: press / drag = the time (scrub)
 //   ⠿ ▾ rowboat · Row   ◇─────────◇──────◇          +  ← one row per object (its keys at any property); ⠿ = drag the
@@ -160,6 +161,18 @@ export interface TimelineView {
      * "Compare with original" and, on, "Max deviation 0.1 m (1.2 s)" (`gap`: the editor's measure; null = not measured).
      */
     compare?: { on: boolean; gap: string | null; at: string | null } | null } | null;
+  /**
+   * studio-motion-next (2026-10-24; a hands-on review: "✦ Turn into a rule is inside the row's ⋯ /
+   * right-click — I can't find it"): the focused motion of points can be turned into a rule — the line has "✦ Turn into a
+   * rule" beside Preview / Repeat / When. false: a rule motion already, under two points, no AI here.
+   */
+  canRule?: boolean;
+  /**
+   * The next step, once a motion is made (studio-motion-next; ● Rec motion turned off, or Done after making): one line
+   * under the line — "✓ gate’s motion is made · Save puts it in the game · ✦ Turn it into a rule…". `name` = the motion's
+   * name on screen. null = not now (Save, another object, making again, ✦ pressed).
+   */
+  next?: { name: string } | null;
 }
 
 export interface TimelineActs {
@@ -224,6 +237,13 @@ export interface TimelineActs {
    * Absent = no AI here (the web demo): no button.
    */
   ask?(): void;
+  /**
+   * studio-motion-next: ✦ Ask AI opens a menu by what is asked — "Turn this motion into a rule / Make a new motion for me /
+   * Ask anything" (`at` = the button, the menu goes under it). Absent = the button asks at once (`ask`).
+   */
+  askMenu?(at: HTMLElement): void;
+  /** studio-motion-next: the line's "✦ Turn into a rule" (and the next-step line's): the card menu's ✦ Turn into a rule…. */
+  toRule?(): void;
   t(key: string, vars?: Record<string, string | number>): string;
 }
 
@@ -253,7 +273,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
   const body = h('div', { class: 'tl-body' }, h('div', { class: 'tl-names-col' }, rulerPad, names), track);
   // (studio-motion-flow's first-time three steps, .tl-coach, are gone — studio-motion-line: the line says the next step.)
   const main = h('div', { class: 'tl-main' }, fineEl, h('div', { class: 'tl-right' }, selRow, body));
-  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, main);
+  // studio-motion-next: the next step once a motion is made, under the line (full width: the line has no room for it, and
+  // it stays when the plate is folded to the line — slim — since it is what to do now).
+  const nextEl = h('div', { class: 'tl-next', role: 'status', hidden: true, dataset: { part: 'tl-next' } });
+  const el = h('section', { class: 'timeline', tabindex: '-1', 'aria-label': t('tl.title'), dataset: { part: 'timeline' } }, head, nextEl, main);
   // The narrow order is on (a phone, the side window, or a plate too narrow for the line: render() measures).
   let tightNow = false;
 
@@ -295,6 +318,10 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     // the length is where the last point stands on the ruler (studio-no-sentence: seconds in one place only), and
     // ● Rec motion is in Fine-tune — making a motion turns it on by itself.)
     items.push(...whenItems(v));
+    // ✦ Turn into a rule (studio-motion-next): in the same row as Preview / Repeat / When — it was only in the row's ⋯ and
+    // right-click, where a hands-on review did not find it. Not while making (the line is the step then) nor for a rule motion.
+    if (c && v.canRule && act.toRule && v.making !== 'more') items.push(h('button', { type: 'button', class: 'tl-rule-btn', title: t('tl.ruleTip'),
+      dataset: { action: 'tl-to-rule', part: 'tl-to-rule' }, onclick: () => act.toRule!() }, icon('spark'), h('span', { class: 'tl-rule-w', text: t('toRule.place') })));
     items.push(h('span', { class: 'tl-gap' }));
     // ✦ Turn into a rule (studio-code-torule): the comparison with the points it replaced, at the line's right end.
     if (c && v.rule?.compare) items.push(compareItem(v.rule.compare));
@@ -308,9 +335,14 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     if (c) {
       // ✦ Ask AI (a review of 2026-10-22: "a press puts the motion's and the object's names in the AI chat box, and you talk there"):
       // the chat box below gets the "object · motion" chip and the cursor; the words are the person's, nothing is sent yet.
-      if (act.ask) items.push(h('button', { type: 'button', class: 'tl-ask', title: t('tl.askTip', { name: `${v.rows.find((r) => r.key === v.focus)?.label ?? v.focus} · ${c.name}` }),
+      // studio-motion-next (a hands-on review, 10/24: "✦ Ask Claude" read as "make my motion a rule" too): a menu by what is asked —
+      // Turn this motion into a rule / Make a new motion for me / Ask anything; each only puts a draft in the box.
+      const menu = !!act.askMenu;
+      if (act.ask) items.push(h('button', { type: 'button', class: 'tl-ask', title: menu ? t('tl.askMenuTip') : t('tl.askTip', { name: `${v.rows.find((r) => r.key === v.focus)?.label ?? v.focus} · ${c.name}` }),
+        ...(menu ? { 'aria-haspopup': 'menu' } : {}),
         // Narrow (studio-ui-lead2): "✦ AI" — a phone's light screen showed a pale square with nothing readable in it.
-        dataset: { action: 'tl-ask', part: 'tl-ask' }, onclick: () => act.ask!() }, icon('spark'), h('span', { class: 'tl-ask-w', text: t('tl.ask') }), h('span', { class: 'tl-ask-s', 'aria-hidden': 'true', text: t('tl.askShort') })));
+        dataset: { action: 'tl-ask', part: 'tl-ask' }, onclick: (e: Event) => (menu ? act.askMenu!(e.currentTarget as HTMLElement) : act.ask!()) },
+        icon('spark'), h('span', { class: 'tl-ask-w', text: t('tl.ask') }), h('span', { class: 'tl-ask-s', 'aria-hidden': 'true', text: t('tl.askShort') }), ...(menu ? [icon('chevronDown')] : [])));
     }
     items.push(h('button', { type: 'button', class: 'icon-btn tl-fold', dataset: { action: 'tl-fold' }, title: t('tl.fold'), 'aria-label': t('tl.fold'), onclick: () => (linkPop.hide(), act.fold()) }, icon('chevronDown')));
     // Narrow: the end of the first row (▶ and Repeat); the "when", Fine-tune, ✦ and ⌄ start a new one (shell.css).
@@ -1036,6 +1068,7 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
       }
     }
     renderFine(v);
+    renderNext(v);
     if (had) (inMore ? fineEl : el).querySelector<HTMLSelectElement>(`select[data-part="${had}"]`)?.focus({ preventScroll: true });
     renderSel(v);
     // A scene (studio-timeline-2) says what it is — one motion, this many objects — over the rows it names. Said once
@@ -1058,6 +1091,23 @@ export function createTimelinePanel(view: () => TimelineView, act: TimelineActs)
     }
     renderRuler(v);
     place(v);
+  }
+
+  /**
+   * The next step once a motion is made (studio-motion-next, 2026-10-24; a hands-on review: "after making a motion there are three
+   * things to press — ✦ Ask Claude, the box, Save — and I can't tell which"): "✓ gate’s motion is made · Save puts it in
+   * the game · ✦ Turn it into a rule to adjust it with numbers". Save is the top bar's (one Save, save-loud.ts); the rule
+   * part is a button, the same as the line's ✦ Turn into a rule. Its words never say "knob" (the glossary: a hands-on review did not
+   * know the word).
+   */
+  function renderNext(v: TimelineView) {
+    const n = v.clip && v.next && !v.making ? v.next : null;
+    nextEl.hidden = !n;
+    if (!n) return void nextEl.replaceChildren();
+    nextEl.replaceChildren(icon('check'), h('span', { class: 'tl-next-w', dataset: { part: 'tl-next-made' }, text: t('tl.next.made', { name: n.name }) }),
+      ...(v.canRule && act.toRule ? [h('span', { class: 'tl-next-dot', 'aria-hidden': 'true', text: '·' }),
+        h('button', { type: 'button', class: 'tl-next-rule', title: t('tl.ruleTip'), dataset: { action: 'tl-next-rule', part: 'tl-next-rule' }, onclick: () => act.toRule!() },
+          icon('spark'), h('span', { text: t('tl.next.rule') }))] : []));
   }
 
   // The line's first part (▶, or the "drag it" words with no motion yet): ⌄ below it = the line wrapped.

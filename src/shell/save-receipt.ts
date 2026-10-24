@@ -5,7 +5,7 @@
 // WHAT was kept or WHETHER it got into the game. Now the same line (right over the ask field, where the AI's replies
 // already are) says it with the objects' own names:
 //   pressed       "Saved: moved gate · gate’s motion · ship’s motion"   + "Claude is putting it in the code…"
-//   AI finished   "✓ In the game (3)" [▶ Play]                          + "Undo AI change · More in Claude"
+//   AI finished   "✓ Saved: gate’s motion · In the game" [▶ Play]      + "Undo AI change · More in Claude"
 //   no AI there   "Saved. Claude puts it in the code when it opens"     (a fact, not a promise; "How to open" stays the
 //                                                                         presence words under it — one, not two)
 // More than 3 names: the first 3 and "2 more" (the line is one line, on a phone too).
@@ -48,6 +48,13 @@ export interface Receipt {
   sub: string;
   /** "In the game": the ▶ Play button at the end of the line (not while already playing). */
   play?: boolean;
+  /**
+   * The words of the chip beside the ask field (main.ts tuckAiLine: the timeline open on PC, a 220 px chip) — the result
+   * first, so a cut keeps it: "In the game: gate’s motion". studio-motion-next (2026-10-24): the head grew the names
+   * ("Saved: gate’s motion · In the game") and the chip cut it to "Saved: gate’s mot…", the part that said it got in lost.
+   * Absent = the head.
+   */
+  short?: string;
 }
 
 export interface ReceiptInput {
@@ -76,8 +83,10 @@ export function receipt(i: ReceiptInput): Receipt | null {
       // Nobody can pick it up now: the fact. What was kept stays under it (proof the Save happened).
       return { head: t('save.later', vars), sub: savedList(i.things, i.total, t) };
     case 'done':
-      // The count is what the person saved (Save · N), not the AI's own count of changed objects: "the 3 I saved are in".
-      return { head: t('save.in', { n: Math.max(1, i.total) }), sub: '', play: true };
+      // What the person saved (Save · N), by the same names as when it was pressed, and that it is in — not the AI's own
+      // count of changed objects: "the 3 I saved are in". studio-motion-next (2026-10-24; a hands-on review: "show what Save means:
+      // 'Saved: Street lamp 5's motion · In the game'"): it was "✓ In the game (3)", a count with no names.
+      return { head: t('save.in', { list: savedList(i.things, i.total, t) }), sub: '', play: true, short: t('save.inShort', { list: savedList(i.things, i.total, t) }) };
     default:
       return null;
   }

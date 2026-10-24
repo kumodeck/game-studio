@@ -48,7 +48,7 @@ Select something with a motion, then press its **Motion** line on the card or th
 
 ![The timeline under the game, with the boat’s points and its path](media/timeline.webp)
 
-Its top is one line: **▶ Preview** (or <kbd>Space</kbd>), **Repeat** (*[Once ▾]*), **When does it move?**, then **Fine-tune**, **✦ Ask Claude** (your AI’s name) and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows: ▶ is its icon there). Under it is always the timeline itself: the ruler, the rows and their points. The motion’s name is at the left of its row, next to the object’s.
+Its top is one line: **▶ Preview** (or <kbd>Space</kbd>), **Repeat** (*[Once ▾]*), **When does it move?**, **✦ Turn into a rule** on a motion of points, then **Fine-tune**, **✦ Ask Claude** (your AI’s name; it opens a menu — Turn this motion into a rule / Make a new motion for me / Ask anything — and each only puts a draft in the chat box) and **⌄** to fold it. Nothing on it is ever cut short, at any width (a narrow one takes two rows: ▶ is its icon there). Under it is always the timeline itself: the ruler, the rows and their points. The motion’s name is at the left of its row, next to the object’s.
 
 - The **ruler** is time. Drag on it to see that moment; the red line shows it in seconds. The motion lasts up to its last point; the ruler is shaded after that. <kbd>←</kbd> <kbd>→</kbd> move 0.1 s (<kbd>Shift</kbd> for 1 s).
 - The rows are the **selected object** (with several selected, each of them), and the objects you [link](#linking-several-things-in-one-motion) to it. Open a row to see **Position**, **Angle** and **Size** on their own rows.
@@ -178,7 +178,7 @@ Each change is one <kbd>⌘</kbd><kbd>Z</kbd> and counts on **Save**; after Save
 
 ### Turn a motion you made into a rule
 
-On a motion made of points, the **⋯** of its line on the card (or a right-click on that line) has **✦ Turn into a rule…**. The chat box gets **Turn into a close rule**; send it, and your AI writes the nearest rule motion (a wave, a bob, a circle, a spiral) in its place — the same name, on the same things, starting at the same moment.
+On a motion made of points, the timeline's top line (the row of **▶ Preview**, **Repeat** and **When does it move?**) has **✦ Turn into a rule** (so do the **⋯** of its line on the card or a right-click on that line, **✦ Turn into a rule…**, and **✦ Ask Claude**'s menu, **Turn this motion into a rule**). Once a motion is made, the timeline says the next step: "**… is made · Save puts it in the game · ✦ Turn it into a rule to adjust it with numbers**". The chat box gets **Turn into a close rule**; send it, and your AI writes the nearest rule motion (a wave, a bob, a circle, a spiral) in its place — the same name, on the same things, starting at the same moment.
 
 - **How close it came is measured by the editor**: the top line says **Max deviation 0.1 m** (and when, **at 0.8 s**, in its tooltip when the line is short of room). The strip glows, with small orange marks on its lower edge where your points were; in the game the path has orange dots for your points beside the violet line. **Compare with original** hides them.
 - One <kbd>⌘</kbd><kbd>Z</kbd> gives you your points back. The comparison stays until **Save**.

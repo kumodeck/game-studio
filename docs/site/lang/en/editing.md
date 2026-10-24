@@ -224,7 +224,7 @@ Click **Save** (or <kbd>⌘</kbd><kbd>S</kbd>). The line over the ask box says w
 ![After Save: Saved: moved hex-1 · moved ring · moved orb · 2 more, and Claude is putting it in the code](media/save-receipt.webp)
 
 - **Saved: moved gate · gate’s motion · …** with **Claude is putting it in the code…** under it. More than three things: the first three and **2 more**.
-- **✓ In the game (5)** when your AI is done, with **▶ Play** to try it and **Undo AI change**.
+- **✓ Saved: moved gate · … · In the game** when your AI is done (the same names as when you pressed it), with **▶ Play** to try it and **Undo AI change**.
 - If your AI isn’t open: **Saved. Claude puts it in the code when it opens**. Nothing is lost; the words under the ask box say how to open it.
 
 ### What Save does

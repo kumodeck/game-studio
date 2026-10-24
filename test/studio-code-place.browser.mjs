@@ -552,7 +552,7 @@ async function toRule(theme) {
   const srv = await startStudioServer({ root, kumo: { home: join(root, '.no-kumo-home'), env: {} }, uiDir: UI, log: () => {}, env: {} });
   const browser = await launch();
   const T = LANG === 'ja'
-    ? { btn: 'ルール化する', draft: '近いルールにして', compare: '元の配置と比べる', compareMotion: '元の動きと比べる', max: '最大のずれ: lamp-3（0.6 m）', menu: 'ルール化する…', lit: '最大のずれ', motion: '動きのルール' }
+    ? { btn: 'ルールにする', draft: '近いルールにして', compare: '元の配置と比べる', compareMotion: '元の動きと比べる', max: '最大のずれ: lamp-3（0.6 m）', menu: 'ルールにする…', lit: '最大のずれ', motion: '動きのルール' }
     : { btn: 'Turn into a rule', draft: 'Turn into a close rule', compare: 'Compare with original', compareMotion: 'Compare with original', max: 'Max deviation: lamp-3 (0.6 m)', menu: 'Turn into a rule…', lit: 'Max deviation', motion: 'Rule motion' };
   try {
     const page = await newPage(browser, { width: WIDTH, height: PHONE ? 844 : 800, mobile: PHONE, cdnCache: process.env.STUDIO_CDN_CACHE });

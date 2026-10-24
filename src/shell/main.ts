@@ -327,7 +327,16 @@ export function start(host: StudioHost) {
     seen: (id) => hintSeen(id),
     markSeen: (id) => markHint(id),
     // ✦ Ask AI on a motion (studio-motion-panel, motion-ask.ts): the chat box with the "object · motion" chip.
-    ask: host.offline ? undefined : (k, m) => askMotion(k, m),
+    ask: host.offline ? undefined : (k, m, draft) => askMotion(k, m, draft),
+    // studio-motion-next (2026-10-24): ✦ Ask AI's menu — the right-click menu's plate, ABOVE the button (the plate is at
+    // the window's foot), right edges together as the card's ⋯ menu.
+    menu: (at, entries) => {
+      const r = at.getBoundingClientRect();
+      ctxMenu.show(entries, r.right, r.top - 4, { place: 'timeline', label: t('tl.askMenuTip', aiVars()) });
+      const m = ctxMenu.el.getBoundingClientRect();
+      ctxMenu.el.style.left = `${Math.max(8, Math.round(r.right - m.width))}px`;
+      ctxMenu.el.style.top = `${Math.max(8, Math.round(r.top - m.height - 4))}px`;
+    },
     // ✦ Turn into a rule… (studio-code-torule): the same chip, the draft "Turn into a close rule", the request's intent.
     toRule: host.offline ? undefined : (k, m) => {
       askMotion(k, m, t('toRule.draft'));
@@ -2904,6 +2913,8 @@ export function start(host: StudioHost) {
     if (rc) {
       if (ph === 'done') aiLine.classList.add('saved-in');
       two(rc.head, rc.sub);
+      // The chip's words when the line is tucked beside the field (tuckAiLine; studio-motion-next: the result first).
+      if (rc.short) aiLine.querySelector<HTMLElement>('.ai-head')!.dataset.short = rc.short;
       if (ph === 'done') aiLine.querySelector('.ai-head')?.prepend(icon('check'));
       if (rc.play && !playing) link('ai-play', 'play', t('btn.play'), () => void togglePlay());
       if (ph === 'done' && lastChange && host.undoAi && !playing) link('ai-undo', 'undo', t('ai.undo'), () => void undoAiChange(false));
@@ -3047,7 +3058,8 @@ export function start(host: StudioHost) {
     if (!tuck) return;
     const box = placementPanel.askEl;
     if (aiTuck.parentElement !== box) box.insertBefore(aiTuck, box.querySelector('.ask-input'));
-    const head = aiLine.querySelector('.ai-head')?.textContent?.trim() || aiLine.textContent?.trim() || '';
+    const headEl = aiLine.querySelector<HTMLElement>('.ai-head');
+    const head = headEl?.dataset.short || headEl?.textContent?.trim() || aiLine.textContent?.trim() || '';
     if (aiTuck.dataset.text !== head) {
       aiTuck.dataset.text = head;
       aiTuck.replaceChildren(h('span', { class: 'ai-tuck-dot', 'aria-hidden': 'true' }), ...(ph === 'done' ? [icon('check')] : []), h('span', { class: 'ai-tuck-w', text: head }));
@@ -4202,6 +4214,8 @@ export function start(host: StudioHost) {
       savedOnce = true;
       saveDoneUntil = Date.now() + SAVE_DONE_MS;
     }
+    // studio-motion-next: the timeline's next-step line ("Save puts it in the game") has done its job.
+    if (!errors.length) timeline.saved();
     if (!errors.length) emit('saved', null);
     renderButtons();
     return !errors.length;

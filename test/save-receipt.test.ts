@@ -38,8 +38,11 @@ test('pressed → putting it in the code → in the game; nobody there → the f
   const r = (phase: string, lang: 'en' | 'ja' = 'en') => receipt({ phase, things: gate, total: 2, vars: vars(lang), t: lang === 'en' ? en : ja });
   assert.deepEqual(r('seen'), { head: 'Saved: moved gate · gate’s motion', sub: 'Claude is putting it in the code…' });
   assert.deepEqual(r('working', 'ja'), { head: '保存しました: gate を動かした · gate’s motion', sub: 'Claude がコードに入れています…' });
-  assert.deepEqual(r('done'), { head: 'In the game (2)', sub: '', play: true });
-  assert.equal(r('done', 'ja')?.head, 'ゲームに入りました（2 個）');
+  // studio-motion-next (a hands-on review, 10/24): in the game, by the same names as when it was pressed.
+  assert.deepEqual(r('done'), { head: 'Saved: moved gate · gate’s motion · In the game', sub: '', play: true, short: 'In the game: moved gate · gate’s motion' });
+  assert.equal(r('done', 'ja')?.short, 'ゲームに入りました: gate を動かした · gate’s motion', 'the chip beside the field: the result first');
+  assert.equal(r('done', 'ja')?.head, '保存しました: gate を動かした · gate’s motion · ゲームに入りました');
+  assert.equal(receipt({ phase: 'done', things: [{ kind: 'motion', name: '街灯 5 の動き' }], total: 1, vars: vars('ja'), t: ja })?.head, '保存しました: 街灯 5 の動き · ゲームに入りました');
   assert.deepEqual(r('away'), { head: 'Saved. Claude puts it in the code when it opens', sub: 'moved gate · gate’s motion' });
   assert.equal(r('nudge', 'ja')?.head, '保存しました。Claude が開いたら、コードに入れます');
   // Not a promise while nobody is there: no "putting it in", no "in the game".

@@ -145,7 +145,8 @@ async function run(size, theme) {
       // Plan step 4 (studio-motion-line, 2026-10-23): ▶ Preview · Repeat [▾] (the sentence until studio-no-sentence) · "When does it move?" ▾ ▷ · Fine-tune ✦ ⌄ —
       // the time readout and ● Rec motion left the line (the red line's cap, the ruler's last point, Fine-tune).
       // A phone's ⌄ is over the rows (the names column's head, studio-fix-0142 ⑬), not on the line.
-      const want = ['tl-play', 'tl-rep', 'tl-sep', 'tl-lbl', 'tl-starts', 'tl-try-this', 'tl-fine-btn', 'tl-ask', ...(size.mobile ? [] : ['tl-fold'])];
+      // studio-motion-next (2026-10-24): ✦ Turn into a rule after "when" (a motion of points; hidden in the narrow order).
+      const want = ['tl-play', 'tl-rep', 'tl-sep', 'tl-lbl', 'tl-starts', 'tl-try-this', 'tl-to-rule', 'tl-fine-btn', 'tl-ask', ...(size.mobile ? [] : ['tl-fold'])];
       check(JSON.stringify(parts1.filter((p) => p !== 'tl-try-this')) === JSON.stringify(want.filter((p) => p !== 'tl-try-this')), `${tag}: the line is ▶ · Repeat · "when" · Fine-tune ✦ ⌄ — no motion menu, no "attached", no Point / Keys (${parts1.join(' · ')})`);
       const lbl = await text('[data-part=tl-head] .tl-when-lbl');
       const ringed = await j(`JSON.stringify(!!document.querySelector('[data-part=tl-head] .tl-starts.ask'))`);
