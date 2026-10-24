@@ -15,10 +15,15 @@ import type { Item, SelfCheckId, SelfCheckResult } from '../contract.ts';
 /** The checks that move the sample and read it back (bridge/selfcheck.ts MOVING_CHECKS). */
 const MOVING = new Set<SelfCheckId>(['pose-roundtrip', 'screen-changes', 'anchor-follows', 'restored']);
 
-/** The failed check to show (its `check.<id>` line), or null = no line. `items` = the world's list now. */
-export function checkNoteId(check: SelfCheckResult | null, items: readonly Pick<Item, 'key' | 'held' | 'backdrop'>[]): SelfCheckId | null {
+/**
+ * The failed check to show (its `check.<id>` line), or null = no line. `items` = the world's list now. `blank` = a New
+ * level is on screen (studio-fix-0146, 2026-10-24): it hides everything but the ground, so "Nothing in this game can be
+ * selected yet" (has-objects) is the level being empty, not the game — on Lantern Cove, whose sea is not listed, the
+ * blank Level 2 said it over the Library's "Not in this level". Not shown then.
+ */
+export function checkNoteId(check: SelfCheckResult | null, items: readonly Pick<Item, 'key' | 'held' | 'backdrop'>[], blank = false): SelfCheckId | null {
   if (!check || check.ok) return null;
-  const failed = check.checks.filter((c) => !c.ok && !c.skipped);
+  const failed = check.checks.filter((c) => !c.ok && !c.skipped && !(blank && c.id === 'has-objects'));
   const it = check.sample ? items.find((i) => i.key === check.sample) : undefined;
   // The game moves it, it is the ground / sky, or it is gone from the list: the move test says nothing about the editor.
   const gameOwn = !!check.sample && items.length > 0 && (!it || it.held === 'game' || it.held === 'ground' || !!it.backdrop);

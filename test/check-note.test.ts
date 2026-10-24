@@ -27,3 +27,11 @@ test('no line when the move test hit what the game moves, the ground / sky, or a
 test('a check that does not move anything is still shown then', () => {
   assert.equal(checkNoteId(failed('hex-1', 'keys-valid', 'screen-changes'), [{ key: 'hex-1', held: 'game' }]), 'keys-valid');
 });
+
+// studio-fix-0146 (2026-10-24): a New level on Lantern Cove (its sea is not listed) has nothing in its list, and the
+// top said "Nothing in this game can be selected yet" over the Library's "Not in this level". The level is empty, not the game.
+test('a blank level with nothing listed does not say the game has nothing to select', () => {
+  const none: SelfCheckResult = { ok: false, kind: 'three', checks: [{ id: 'adapter-found', ok: true }, { id: 'has-objects', ok: false }] };
+  assert.equal(checkNoteId(none, [], true), null, 'a blank level');
+  assert.equal(checkNoteId(none, []), 'has-objects', 'an ordinary page still says it');
+});

@@ -555,6 +555,8 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
     const list = showFiles ? filterRows(rows, filter) : [];
     // The objects first (what is in the game), then the files they are made from: one grid ("one Library").
     const objs = showsObjects() ? objects!.tiles(filter.q.trim().toLowerCase()) : null;
+    // Not in this level (studio-fix-0146): the game's objects a New level hides, to put in it by hand.
+    const away = objs && !objects!.band() ? objects!.absentTiles?.(filter.q.trim().toLowerCase()) ?? null : null;
     const mots = showsMotions() ? motions!.tiles(filter.q.trim().toLowerCase()) : null;
     // "0 files" above "No assets yet" says the same thing twice, and above "Reading the folder…"
     // it reads as a wrong answer ("0 files" + "Reading the folder…" in the play test of 2026-10-17).
@@ -604,6 +606,7 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
         return e;
       };
       if (objs.n) grid.append(head(L('headObjects', { n: objs.n }), 'objects'), ...objs.tiles);
+      if (away?.n) grid.append(head(L('headAbsent', { n: away.n }), 'absent'), ...away.tiles);
       if (mots?.n) grid.append(head(L('headMotions', { n: mots.n }), 'motions'), ...mots.tiles);
       const q = filter.q.trim();
       if (!objs.n && !mots?.n && !list.length && !aiWork.length && q && loaded) {
@@ -626,9 +629,14 @@ export function mountLibrary(root: El, deps: LibraryDeps): LibraryTool {
       }
     } else if (objs) {
       grid.append(...objs.tiles);
+      if (away?.n) {
+        const e = h('h3', 'gsl-group', L('headAbsent', { n: away.n }));
+        e.dataset.group = 'absent';
+        grid.append(e, ...away.tiles);
+      }
       if (mots) grid.append(...mots.tiles);
       if (!showFiles) {
-        if (!objs.tiles.length) grid.append(h('div', 'gsl-empty', objects!.count() ? L('emptyObjects') : L('noObjectsYet')));
+        if (!objs.tiles.length && !away?.n) grid.append(h('div', 'gsl-empty', objects!.count() ? L('emptyObjects') : L('noObjectsYet')));
         return;
       }
       // Nothing at all for this search: one line for both halves.

@@ -714,6 +714,9 @@ const en = {
   'shelf.using': 'used by {n:1 object|# objects}',
   'shelf.clearFile': 'Show all objects',
   'shelf.placed': 'Placed in the game',
+  // studio-fix-0146: the Library's "Not in this level" tiles (a New level hides the game's other things).
+  'shelf.absentAct': '+ Put in this level',
+  'shelf.absentTip': 'Not in this level. Click, or drag it onto Scene, to put it here',
   'shelf.source': 'Asset',
   'shelf.noSource': 'No asset',
   'shelf.showInGame': 'Show in the scene →',
@@ -1482,6 +1485,8 @@ const ja: Partial<Record<Key, string>> = {
   'shelf.using': 'を使っている物 {n}',
   'shelf.clearFile': 'すべての物を見る',
   'shelf.placed': 'ゲームに置いた物',
+  'shelf.absentAct': '+ このレベルに置く',
+  'shelf.absentTip': 'このレベルに無い物。クリックするか「シーン」へドラッグすると、このレベルに置けます',
   'shelf.source': '元の素材',
   'shelf.noSource': '素材なし',
   'shelf.showInGame': 'シーンで見る →',

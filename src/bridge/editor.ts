@@ -838,7 +838,7 @@ export function createEditor(deps: EditorDeps): Editor {
    * right under a low camera, and the sea-stack copy stood in front of it, covering ~45 % of the view and the
    * lighthouse, with its strip off screen (review 2, photo 11).
    */
-  const toView = (fresh: Array<{ key: string; from: string }>): boolean => {
+  const toView = (fresh: Array<{ key: string; from: string }>, beside = true): boolean => {
     const keys = fresh.map((f) => f.key);
     const g = beginGroup(adapter, keys, keys[0]!);
     if (!g) return false;
@@ -863,7 +863,7 @@ export function createEditor(deps: EditorDeps): Editor {
     };
     // 1. Beside the original.
     const W0 = ga?.rect?.w ?? 0;
-    if (ga && ga.visible && ga.rect && W0 > 0) {
+    if (beside && ga && ga.visible && ga.rect && W0 > 0) {
       const toMiddle = ga.center[0] <= W / 2 ? 1 : -1;
       const gap = Math.max(8, W0 * 0.1);
       for (const dir of [toMiddle, -toMiddle]) {
@@ -1379,11 +1379,24 @@ export function createEditor(deps: EditorDeps): Editor {
           postSelected();
           break;
         }
-        case 'studio:placement/restore':
+        case 'studio:placement/restore': {
           closeStepRun();
-          if (edits.restoreKeys(msg.keys).length) dirtyFrame = true;
+          const back = edits.restoreKeys(msg.keys);
+          if (back.length) dirtyFrame = true;
+          // A blank level's Library put these in the level (studio-fix-0146): into view, like "Add to scene", and picked.
+          // `beside` off: "beside the original" would be beside itself. The place is told back (set: a place, not a
+          // gesture — the shell already made the undo step), so the level's file keeps it where it was put.
+          if (msg.at === 'view' && back.length) {
+            toView(back.map((key) => ({ key, from: key })), false);
+            for (const key of back) {
+              const pose = adapter.anchor(key)?.pose;
+              if (pose) post({ type: 'studio:placement/moved', key, pose, set: true });
+            }
+          }
           refreshItems();
+          if (msg.at === 'view' && back.length) selectMany(back, back[back.length - 1]!);
           break;
+        }
         case 'studio:placement/pose': {
           // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
           // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.

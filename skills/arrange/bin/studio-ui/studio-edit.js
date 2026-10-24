@@ -1,4 +1,4 @@
-/* KUMODeck Game Studio 0.1.45 — MIT License — built file, edit src/ instead */
+/* KUMODeck Game Studio 0.1.46 — MIT License — built file, edit src/ instead */
 (() => {
 const __defs = [];
 const __cache = [];
@@ -3531,7 +3531,12 @@ function fitThreeAdapter(raw     , canvas                   )                {
     toScreen(p) {
       const cam = raw.view.camera;
       if (!cam) return null;
-      cam.updateMatrixWorld?.(true);
+      // The camera alone (and its parents), not what hangs on it (studio-fix-0146, 2026-10-24): updateMatrixWorld(true)
+      // also updates its children, and a game's AudioListener on the camera (Lantern Cove's) then ramps its Web Audio
+      // values on every call — the timeline's path asks for 100+ points a frame, and ▶ with the pick fell to ~42 frames
+      // a second (60 with nothing picked; 2.6 s of 3 s in linearRampToValueAtTime). Older three builds: as before.
+      if (typeof cam.updateWorldMatrix === 'function') cam.updateWorldMatrix(true, false);
+      else cam.updateMatrixWorld?.(true);
       const c = project(viewProjOf(cam), [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0]);
       if (!(c[3] > 0)) return null;
       const r = rect();
@@ -4609,7 +4614,12 @@ const MSG_PREFIX = 'studio:';
                                                                                                             
                                                                    
                                                        
-                                                        
+     
+                                                                                                                      
+                                                                                                                     
+                                                                                                               
+     
+                                                                     
                                                                                                                       
                                                                                  
      
@@ -5780,6 +5790,12 @@ const RESULT_FILES                         = {
                              
                                                                                                              
                                                         
+     
+                                                                                                                      
+                                                                                                                     
+                                                                                           
+     
+                                                               
                                                                                                               
                                                     
                                                                                                             
@@ -10539,6 +10555,8 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 `;
 
 let scratch                           = null;
+/** What each ring canvas shows now (ring() skips the drawing when it would draw the same again). */
+const drawn = new WeakMap                                                                                                                 ();
 /** How a ring is drawn: `line` px wide (2 = the AI's), `tint` = the share of `color` laid over the object (0 = none). */
                             
                
@@ -10554,12 +10572,18 @@ function ring(doc          , el                   , o         , color        , s
   const dpr = doc.defaultView?.devicePixelRatio || 1;
   const W = Math.max(1, Math.ceil(o.w * dpr));
   const H = Math.max(1, Math.ceil(o.h * dpr));
-  if (el.width !== W) el.width = W;
-  if (el.height !== H) el.height = H;
   el.style.left = `${o.x}px`;
   el.style.top = `${o.y}px`;
   el.style.width = `${o.w}px`;
   el.style.height = `${o.h}px`;
+  // The same picture as last time (the same mask, only slid: input.ts shapeOf while an object moves, ▶ on the timeline):
+  // only the place above changes. WHY (studio-fix-0146, 2026-10-24): the ring was drawn again on every frame — 2 × 16
+  // stamps of the mask, a halo and a tint — and with the pick kept during ▶ the preview fell to about 20 frames a second.
+  const was = drawn.get(el);
+  if (was && was.mask === o.mask && was.W === W && was.H === H && was.color === color && was.line === style.line && was.tint === style.tint) return;
+  drawn.set(el, { mask: o.mask, W, H, color, line: style.line, tint: style.tint });
+  if (el.width !== W) el.width = W;
+  if (el.height !== H) el.height = H;
   const g = el.getContext('2d');
   if (!g) return;
   g.globalCompositeOperation = 'source-over';
@@ -11504,6 +11528,39 @@ __def(__exports, "firstToTouch", () => firstToTouch);
 };
 __defs[33] = function (__exports) {
 'use strict';
+// outline-slide.ts
+
+// The pick's outline, slid instead of measured again (studio-fix-0146, 2026-10-24). Pure, so it is unit-tested
+// (test/outline-slide.test.ts); input.ts shapeOf uses it.
+//
+// The outline's shape (adapter.silhouette: three renders of the game and a read-back) was measured on every frame a
+// picked object moved, and handles.ts ring() drew the ring again on every frame. A thing that only slides keeps its
+// shape on screen, so the last one is moved by the boxes' shift instead. (Looked at for x-motion-0145's ▶ at ~20
+// frames a second with a pick; that one's main cause was the timeline path's toScreen, adapters/three/index.ts.)
+
+/**
+ * How boxes moved from `was` to `now` (the same objects in the same order): the shift of their middles, and `sized` =
+ * every box kept its size and moved by that same shift (within 1.5 px), so a shape measured on `was` is still right
+ * when slid by it (input.ts shapeOf). null = not the same number of boxes.
+ */
+function slideOf(was                                                       , now                                                       )                                                    {
+  if (!was.length || was.length !== now.length) return null;
+  const mid = (r                                                ) => [r.x + r.w / 2, r.y + r.h / 2]         ;
+  const [ax, ay] = mid(was[0] ), [bx, by] = mid(now[0] );
+  const dx = bx - ax, dy = by - ay;
+  const tol = 1.5;
+  const sized = now.every((r, i) => {
+    const w = was[i] ;
+    const [px, py] = mid(w), [qx, qy] = mid(r);
+    return Math.abs(r.w - w.w) <= tol && Math.abs(r.h - w.h) <= tol && Math.abs(qx - px - dx) <= tol && Math.abs(qy - py - dy) <= tol;
+  });
+  return { dx, dy, sized };
+}
+
+__def(__exports, "slideOf", () => slideOf);
+};
+__defs[34] = function (__exports) {
+'use strict';
 // input.ts
 
 // Pointer, wheel and key input in the game page while editing, plus the
@@ -11604,6 +11661,7 @@ const { createRiseButtons } = __require(31);
 const { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent } = __require(32);
 const { canLift, offWhy } = __require(26);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale } = __require(27);
+const { slideOf } = __require(33);
 
                             
                          
@@ -12989,28 +13047,53 @@ function attachInput(deps           )              {
   // The outlines: the shape from adapter.silhouette when it has one (three),
   // drawn again only when something it depends on changed and at most every
   // 40 ms (it costs extra renders); a rounded box per object otherwise.
-  const shapes = { you: { sig: '', at: 0, shape: null                   }, ai: { sig: '', at: 0, shape: null                   }, hover: { sig: '', at: 0, shape: null                   } };
+  // Slid, not measured (studio-fix-0146, 2026-10-24): when only the boxes moved (the same objects, the same camera,
+  // each box the same size within 1.5 px and shifted by the same amount; outline-slide.ts) the last shape is used
+  // again, moved by that shift — a thing the timeline slides, a drag across the ground. Measured again when a box
+  // changes size (a turn, a scale, nearer the camera), at most every 40 ms as before. Found while looking for why ▶
+  // on the timeline fell to ~20 frames a second with a pick (x-motion-0145); the main cause was elsewhere (the path's
+  // toScreen, adapters/three/index.ts), but each measure is three renders and a read-back, so a slide skips it.
+  // Tried too: not measuring at all while ▶ plays (the last shape stretched onto the new box) — no faster once the
+  // path was fixed (60 frames a second either way), and the ring lagged a turning boat: dropped.
+                                                            
+                                                                                                                                  
+  const blankShape = ()        => ({ sig: '', at: 0, shape: null, base: null, keys: '', view: '', rects: [] });
+  const shapes = { you: blankShape(), ai: blankShape(), hover: blankShape() };
   let aiKeys           = [];
   let hoverKeys           = [];
   let aiLabel                = null;
   const shapeOf = (which                        , keys          , rects                                                       ) => {
     const c = shapes[which];
     if (!adapter.silhouette || !keys.length) {
-      c.sig = '';
-      c.shape = null;
+      shapes[which] = blankShape();
       return null;
     }
-    const sig = keys.join('\n') + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + JSON.stringify(adapter.view.state());
-    const now = nativeNow();
-    if (sig !== c.sig && now - c.at > 40) {
-      try {
-        c.shape = adapter.silhouette(keys);
-      } catch {
-        c.shape = null;
-      }
+    const keySig = keys.join('\n');
+    const view = JSON.stringify(adapter.view.state());
+    const sig = keySig + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + view;
+    if (sig === c.sig) return c.shape;
+    // The shift of the boxes since the shape was measured (null = other objects, another camera, other boxes).
+    const same = !!c.base && c.keys === keySig && c.view === view && rects.length > 0 && rects.length === c.rects.length;
+    const slide = same ? slideOf(c.rects, rects) : null;
+    if (slide && slide.sized) {
+      c.shape = { ...c.base , x: c.base .x + slide.dx, y: c.base .y + slide.dy };
       c.sig = sig;
-      c.at = now;
-    } else if (sig !== c.sig) markDirty(); // come back next frame for the late update
+      return c.shape;
+    }
+    const now = nativeNow();
+    if (now - c.at > 40) {
+      let shape                 = null;
+      try {
+        shape = adapter.silhouette(keys);
+      } catch {
+        shape = null;
+      }
+      Object.assign(c, { shape, base: shape, sig, at: now, keys: keySig, view, rects: rects.map((r) => ({ ...r })) });
+    } else {
+      // Too soon to measure: the last shape slid by the boxes' middles, and back next frame for the real one.
+      if (slide) c.shape = { ...c.base , x: c.base .x + slide.dx, y: c.base .y + slide.dy };
+      markDirty();
+    }
     return c.shape;
   };
   const rectsOf = (keys          ) => {
@@ -13193,7 +13276,7 @@ __def(__exports, "screenShareOf", () => screenShareOf);
 __def(__exports, "tappableAt", () => tappableAt);
 __def(__exports, "attachInput", () => attachInput);
 };
-__defs[34] = function (__exports) {
+__defs[35] = function (__exports) {
 'use strict';
 // observe.ts
 
@@ -13251,7 +13334,7 @@ function drivenBetween(before        , after        , dim     )                 
 __def(__exports, "WATCH_MS", () => WATCH_MS);
 __def(__exports, "drivenBetween", () => drivenBetween);
 };
-__defs[35] = function (__exports) {
+__defs[36] = function (__exports) {
 'use strict';
 // timeline-path.ts
 
@@ -13924,7 +14007,7 @@ function createTimelineView(d                  )               {
 
 __def(__exports, "createTimelineView", () => createTimelineView);
 };
-__defs[36] = function (__exports) {
+__defs[37] = function (__exports) {
 'use strict';
 // ui-extras.ts
 
@@ -14436,7 +14519,7 @@ function createUiExtras(deps              )           {
 __def(__exports, "hexColor", () => hexColor);
 __def(__exports, "createUiExtras", () => createUiExtras);
 };
-__defs[37] = function (__exports) {
+__defs[38] = function (__exports) {
 'use strict';
 // ../shell/layers.ts
 
@@ -14575,7 +14658,7 @@ __def(__exports, "dropTarget", () => dropTarget);
 __def(__exports, "orderOfLayer", () => orderOfLayer);
 __def(__exports, "layerBlocks", () => layerBlocks);
 };
-__defs[38] = function (__exports) {
+__defs[39] = function (__exports) {
 'use strict';
 // ../shell/pose-compare.ts
 
@@ -14628,7 +14711,7 @@ function samePose(a                  , b                  , dim     )          {
 __def(__exports, "roundPose", () => roundPose);
 __def(__exports, "samePose", () => samePose);
 };
-__defs[39] = function (__exports) {
+__defs[40] = function (__exports) {
 'use strict';
 // ../shell/timeline-model.ts
 
@@ -14999,7 +15082,7 @@ __def(__exports, "legacyOffsets", () => legacyOffsets);
 __def(__exports, "libCounted", () => libCounted);
 __def(__exports, "stretchClip", () => stretchClip);
 };
-__defs[40] = function (__exports) {
+__defs[41] = function (__exports) {
 'use strict';
 // play-arrange.ts
 
@@ -15024,9 +15107,9 @@ __defs[40] = function (__exports) {
 // The UI (`ui`) goes through the loader's own placeUi() (shared with the editor's UI layer), which sets the same
 // offset again rather than adding to it.
                                                                                    
-const { hasLayer, orderOfLayer } = __require(37);
-const { samePose } = __require(38);
-const { compose, legacyOffsets } = __require(39);
+const { hasLayer, orderOfLayer } = __require(38);
+const { samePose } = __require(39);
+const { compose, legacyOffsets } = __require(40);
 const { motionRunner, resolveClip } = __require(20);
 
                                                                                                                                   
@@ -15215,7 +15298,7 @@ function moveInPlay(a               , file                 , win                
 __def(__exports, "arrangeInPlay", () => arrangeInPlay);
 __def(__exports, "moveInPlay", () => moveInPlay);
 };
-__defs[41] = function (__exports) {
+__defs[42] = function (__exports) {
 'use strict';
 // play-switch.ts
 
@@ -15266,7 +15349,7 @@ __defs[41] = function (__exports) {
                                                           
                                              
                                           
-const { moveInPlay } = __require(40);
+const { moveInPlay } = __require(41);
                                                    
 
                                  
@@ -15424,7 +15507,7 @@ function createPlaySwitch(d                )             {
 __def(__exports, "loaderPlay", () => loaderPlay);
 __def(__exports, "createPlaySwitch", () => createPlaySwitch);
 };
-__defs[42] = function (__exports) {
+__defs[43] = function (__exports) {
 'use strict';
 // seen.ts
 
@@ -15508,7 +15591,7 @@ __def(__exports, "seenEnough", () => seenEnough);
 __def(__exports, "minPickPx", () => minPickPx);
 __def(__exports, "tooSmall", () => tooSmall);
 };
-__defs[43] = function (__exports) {
+__defs[44] = function (__exports) {
 'use strict';
 // editor.ts
 
@@ -15522,16 +15605,16 @@ const { withRules } = __require(24);
 const { withEdits } = __require(25);
 const { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, groupShift } = __require(27);
 const { createToolHost } = __require(28);
-const { attachInput, tappableAt } = __require(33);
+const { attachInput, tappableAt } = __require(34);
                                                   
 const { firstToTouch, stepDetent } = __require(32);
 const { createHoldState, withHold } = __require(26);
-const { drivenBetween, WATCH_MS } = __require(34);
+const { drivenBetween, WATCH_MS } = __require(35);
 const { runSelfCheck, SECOND_LOOK_MS, worthASecondLook } = __require(23);
-const { createTimelineView } = __require(35);
-const { createUiExtras } = __require(36);
-const { loaderPlay } = __require(41);
-const { seenEnough, tooSmall } = __require(42);
+const { createTimelineView } = __require(36);
+const { createUiExtras } = __require(37);
+const { loaderPlay } = __require(42);
+const { seenEnough, tooSmall } = __require(43);
 
                              
                                                                                                                      
@@ -16352,7 +16435,7 @@ function createEditor(deps            )         {
    * right under a low camera, and the sea-stack copy stood in front of it, covering ~45 % of the view and the
    * lighthouse, with its strip off screen (review 2, photo 11).
    */
-  const toView = (fresh                                      )          => {
+  const toView = (fresh                                      , beside = true)          => {
     const keys = fresh.map((f) => f.key);
     const g = beginGroup(adapter, keys, keys[0] );
     if (!g) return false;
@@ -16377,7 +16460,7 @@ function createEditor(deps            )         {
     };
     // 1. Beside the original.
     const W0 = ga?.rect?.w ?? 0;
-    if (ga && ga.visible && ga.rect && W0 > 0) {
+    if (beside && ga && ga.visible && ga.rect && W0 > 0) {
       const toMiddle = ga.center[0] <= W / 2 ? 1 : -1;
       const gap = Math.max(8, W0 * 0.1);
       for (const dir of [toMiddle, -toMiddle]) {
@@ -16893,11 +16976,24 @@ function createEditor(deps            )         {
           postSelected();
           break;
         }
-        case 'studio:placement/restore':
+        case 'studio:placement/restore': {
           closeStepRun();
-          if (edits.restoreKeys(msg.keys).length) dirtyFrame = true;
+          const back = edits.restoreKeys(msg.keys);
+          if (back.length) dirtyFrame = true;
+          // A blank level's Library put these in the level (studio-fix-0146): into view, like "Add to scene", and picked.
+          // `beside` off: "beside the original" would be beside itself. The place is told back (set: a place, not a
+          // gesture — the shell already made the undo step), so the level's file keeps it where it was put.
+          if (msg.at === 'view' && back.length) {
+            toView(back.map((key) => ({ key, from: key })), false);
+            for (const key of back) {
+              const pose = adapter.anchor(key)?.pose;
+              if (pose) post({ type: 'studio:placement/moved', key, pose, set: true });
+            }
+          }
           refreshItems();
+          if (msg.at === 'view' && back.length) selectMany(back, back[back.length - 1] );
           break;
+        }
         case 'studio:placement/pose': {
           // Meant for the layer not being edited (the UI's saved places pushed while the world is edited): set there,
           // quietly — the shell already knows the pose, and its `moved` handler speaks for the current layer.
@@ -16964,7 +17060,7 @@ function createEditor(deps            )         {
 
 __def(__exports, "createEditor", () => createEditor);
 };
-__defs[44] = function (__exports) {
+__defs[45] = function (__exports) {
 'use strict';
 // ../shell/line-fade.ts
 
@@ -17027,7 +17123,7 @@ __def(__exports, "lineFades", () => lineFades);
 __def(__exports, "lineStayMs", () => lineStayMs);
 __def(__exports, "lineKey", () => lineKey);
 };
-__defs[45] = function (__exports) {
+__defs[46] = function (__exports) {
 'use strict';
 // ../shell/icons.ts
 
@@ -17210,7 +17306,7 @@ function setButton(b                   , name               , label        , sho
 __def(__exports, "icon", () => icon);
 __def(__exports, "setButton", () => setButton);
 };
-__defs[46] = function (__exports) {
+__defs[47] = function (__exports) {
 'use strict';
 // play-shot.ts
 
@@ -17422,7 +17518,7 @@ function shootPage(win     , skip                          )                {
 __def(__exports, "SHOT_W", () => SHOT_W);
 __def(__exports, "shootPage", () => shootPage);
 };
-__defs[47] = function (__exports) {
+__defs[48] = function (__exports) {
 'use strict';
 // play-pause.ts
 
@@ -17561,7 +17657,7 @@ function createPauseHold(win                            , parts            )    
 __def(__exports, "isPauseKey", () => isPauseKey);
 __def(__exports, "createPauseHold", () => createPauseHold);
 };
-__defs[48] = function (__exports) {
+__defs[49] = function (__exports) {
 'use strict';
 // play-chat.ts
 
@@ -17581,7 +17677,7 @@ __defs[48] = function (__exports) {
 // Lives in play-ask.ts's shadow root and top layer, so it draws over a full-screen game and the game's CSS cannot
 // reach it. No colour but the AI's violet, as everywhere in the editor.
                                                
-const { icon } = __require(45);
+const { icon } = __require(46);
 
                            
                     
@@ -17918,7 +18014,7 @@ __def(__exports, "chatOnLine", () => chatOnLine);
 __def(__exports, "CHAT_CSS", () => CHAT_CSS);
 __def(__exports, "createChat", () => createChat);
 };
-__defs[49] = function (__exports) {
+__defs[50] = function (__exports) {
 'use strict';
 // play-move.ts
 
@@ -17953,8 +18049,8 @@ __defs[49] = function (__exports) {
 const { UI } = __require(13);
                                              
                                                     
-const { createEditor } = __require(43);
-const { drivenBetween } = __require(34);
+const { createEditor } = __require(44);
+const { drivenBetween } = __require(35);
 const { nativeSetTimeout } = __require(0);
 
 /** One pose as observe.ts compares them (it reads only key and pose). */
@@ -18319,7 +18415,7 @@ __def(__exports, "MOVE_CSS", () => MOVE_CSS);
 __def(__exports, "createPlayMove", () => createPlayMove);
 __def(__exports, "defaultHandlePx", () => defaultHandlePx);
 };
-__defs[50] = function (__exports) {
+__defs[51] = function (__exports) {
 'use strict';
 // play-ask.ts
 
@@ -18345,12 +18441,12 @@ __defs[50] = function (__exports) {
 // Nothing here runs unless the editor says an AI can get the request (play/on): the offline web demo shows nothing.
                                                                                                                                          
 const { isStudioMessage } = __require(13);
-const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(44);
-const { icon } = __require(45);
-const { shootPage } = __require(46);
-const { createPauseHold, isPauseKey } = __require(47);
-const { CHAT_CSS, createChat } = __require(48);
-const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(49);
+const { LINE_FADE_MS, LINE_GRACE_MS, lineStayMs } = __require(45);
+const { icon } = __require(46);
+const { shootPage } = __require(47);
+const { createPauseHold, isPauseKey } = __require(48);
+const { CHAT_CSS, createChat } = __require(49);
+const { createPlayMove, defaultHandlePx, MOVE_CSS } = __require(50);
                                              
                                                     
 const { nativeSetTimeout, nativeClearTimeout } = __require(0);
@@ -19295,7 +19391,7 @@ __def(__exports, "isAskKey", () => isAskKey);
 __def(__exports, "near2D", () => near2D);
 __def(__exports, "startPlayAsk", () => startPlayAsk);
 };
-__defs[51] = function (__exports) {
+__defs[52] = function (__exports) {
 'use strict';
 // levels.ts
 
@@ -19350,7 +19446,7 @@ function pickLevel(list         , href        , inFrame         )               
 __def(__exports, "cleanLevels", () => cleanLevels);
 __def(__exports, "pickLevel", () => pickLevel);
 };
-__defs[52] = function (__exports) {
+__defs[53] = function (__exports) {
 'use strict';
 // early-press.ts
 
@@ -19432,7 +19528,7 @@ function watchEarlyTaps(win        )            {
 
 __def(__exports, "watchEarlyTaps", () => watchEarlyTaps);
 };
-__defs[53] = function (__exports) {
+__defs[54] = function (__exports) {
 'use strict';
 // bridge.ts
 
@@ -19448,13 +19544,13 @@ const { installPlayClock } = __require(18);
 const { adapterFromPort2D } = __require(19);
 const { findDomUi, uiAdapterFromPort } = __require(22);
 const { runSelfCheck } = __require(23);
-const { createEditor } = __require(43);
-const { startPlayAsk } = __require(50);
-const { createPlaySwitch } = __require(41);
-const { arrangeInPlay, moveInPlay } = __require(40);
+const { createEditor } = __require(44);
+const { startPlayAsk } = __require(51);
+const { createPlaySwitch } = __require(42);
+const { arrangeInPlay, moveInPlay } = __require(41);
 const { applyPlacement, placementForLevel } = __require(20);
-const { pickLevel } = __require(51);
-const { watchEarlyTaps } = __require(52);
+const { pickLevel } = __require(52);
+const { watchEarlyTaps } = __require(53);
                                                     
 const { nativeSetTimeout } = __require(0);
 
@@ -19887,7 +19983,7 @@ function startBridge(opts               )       {
 __def(__exports, "readEditParams", () => readEditParams);
 __def(__exports, "startBridge", () => startBridge);
 };
-__defs[54] = function (__exports) {
+__defs[55] = function (__exports) {
 'use strict';
 // main.ts
 
@@ -19906,11 +20002,11 @@ __require(0);
 // the three.js adapter: it installs __THREE_DEVTOOLS__ and wraps rAF/render.
 __require(1);
 const { threeProbe } = __require(12);
-const { startBridge } = __require(53);
+const { startBridge } = __require(54);
 
 startBridge({ builtins: [threeProbe] });
 
 
 };
-__require(54);
+__require(55);
 })();

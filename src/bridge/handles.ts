@@ -480,6 +480,8 @@ button:hover .more, button.on .more, .more.open { opacity: 1; }
 `;
 
 let scratch: HTMLCanvasElement | null = null;
+/** What each ring canvas shows now (ring() skips the drawing when it would draw the same again). */
+const drawn = new WeakMap<HTMLCanvasElement, { mask: HTMLCanvasElement; W: number; H: number; color: string; line: number; tint: number }>();
 /** How a ring is drawn: `line` px wide (2 = the AI's), `tint` = the share of `color` laid over the object (0 = none). */
 export interface RingStyle {
   line: number;
@@ -495,12 +497,18 @@ function ring(doc: Document, el: HTMLCanvasElement, o: Outline, color: string, s
   const dpr = doc.defaultView?.devicePixelRatio || 1;
   const W = Math.max(1, Math.ceil(o.w * dpr));
   const H = Math.max(1, Math.ceil(o.h * dpr));
-  if (el.width !== W) el.width = W;
-  if (el.height !== H) el.height = H;
   el.style.left = `${o.x}px`;
   el.style.top = `${o.y}px`;
   el.style.width = `${o.w}px`;
   el.style.height = `${o.h}px`;
+  // The same picture as last time (the same mask, only slid: input.ts shapeOf while an object moves, ▶ on the timeline):
+  // only the place above changes. WHY (studio-fix-0146, 2026-10-24): the ring was drawn again on every frame — 2 × 16
+  // stamps of the mask, a halo and a tint — and with the pick kept during ▶ the preview fell to about 20 frames a second.
+  const was = drawn.get(el);
+  if (was && was.mask === o.mask && was.W === W && was.H === H && was.color === color && was.line === style.line && was.tint === style.tint) return;
+  drawn.set(el, { mask: o.mask, W, H, color, line: style.line, tint: style.tint });
+  if (el.width !== W) el.width = W;
+  if (el.height !== H) el.height = H;
   const g = el.getContext('2d');
   if (!g) return;
   g.globalCompositeOperation = 'source-over';

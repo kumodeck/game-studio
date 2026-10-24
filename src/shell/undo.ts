@@ -16,6 +16,12 @@ export type Change =
   | { kind: 'add'; key: string; from: string; pose: Pose }
   /** An object was deleted: undo puts it back. */
   | { kind: 'remove'; key: string }
+  /**
+   * A game object that was not in this level put in it from the Library (studio-fix-0146, 2026-10-24: a New level
+   * hides everything but the ground; its Library lists those things as "Not in this level"). The inverse of 'remove':
+   * undo takes it out of the level again, redo puts it back.
+   */
+  | { kind: 'place'; key: string }
   /** Its motion changed (motion-gui, 2026-10-22): the card's menu, speed, + / −, or a path point dragged. null = none. */
   | { kind: 'motion'; key: string; from: Motion | null; to: Motion | null }
   /** A Library motion made, changed or deleted (studio-motion-triggers, 2026-10-22): `key` is its name. null = none. */

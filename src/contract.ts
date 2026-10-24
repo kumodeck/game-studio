@@ -1008,7 +1008,12 @@ export type ShellToBridge =
   | { type: 'studio:placement/copy'; items: Array<{ key: string; from: string; pose?: Pose }>; at?: 'view' }
   /** Delete objects from the picture (undo: placement/restore). */
   | { type: 'studio:placement/remove'; keys: string[] }
-  | { type: 'studio:placement/restore'; keys: string[] }
+  /**
+   * Show deleted objects again (undo of a delete). `at: 'view'` (studio-fix-0146, 2026-10-24: a blank level's Library
+   * puts a thing that is not in this level into it): they go to the middle of what the person sees, as the Library's
+   * "Add to scene" copies do, become the selection, and their new places come back as placement/moved (`set`).
+   */
+  | { type: 'studio:placement/restore'; keys: string[]; at?: 'view' }
   /** `layer` (UI stage 1): set it on that layer even when the other one is being edited (saved UI places on open). */
   | { type: 'studio:placement/pose'; key: string; pose: Pose; layer?: EditLayer }
   /**
@@ -2179,6 +2184,12 @@ export interface LibraryObjects {
   band(): HTMLElement | null;
   /** The tiles for this search and filter (one per kind group, "pine ×3") and how many objects they hold. */
   tiles(q: string): { tiles: HTMLElement[]; n: number };
+  /**
+   * Optional (studio-fix-0146, 2026-10-24): the game's objects that are not in the level on screen (a New level hides
+   * everything but the ground), as tiles the Library puts under their own heading ("Not in this level · n"): a press
+   * or a drop on the Scene row puts one in this level. Shells without levels leave it out.
+   */
+  absentTiles?(q: string): { tiles: HTMLElement[]; n: number };
   /** The picked objects' detail and which ones they are (to tell a new pick), or null with nothing picked. */
   detail(): { el: HTMLElement; key: string } | null;
   /** Pick one object here (a name in a file's detail), without leaving the Library or moving the camera. */

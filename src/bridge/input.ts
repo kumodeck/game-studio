@@ -96,6 +96,7 @@ import { createRiseButtons, type RiseDir } from './rise.ts';
 import { BREAK_PX, BREAK_PX_TOUCH, firstToTouch, freeHeld, liftDetent, type DetentState } from './snap.ts';
 import { canLift, offWhy, type OffWhy } from './hold.ts';
 import { beginGroup, groupAnchor, groupLift, groupMove, groupPoses, groupRotate, groupScale, type GroupSession } from './group.ts';
+import { slideOf } from './outline-slide.ts';
 
 export interface InputDeps {
   adapter: StudioAdapter;
@@ -1481,28 +1482,53 @@ export function attachInput(deps: InputDeps): InputHandle {
   // The outlines: the shape from adapter.silhouette when it has one (three),
   // drawn again only when something it depends on changed and at most every
   // 40 ms (it costs extra renders); a rounded box per object otherwise.
-  const shapes = { you: { sig: '', at: 0, shape: null as Outline | null }, ai: { sig: '', at: 0, shape: null as Outline | null }, hover: { sig: '', at: 0, shape: null as Outline | null } };
+  // Slid, not measured (studio-fix-0146, 2026-10-24): when only the boxes moved (the same objects, the same camera,
+  // each box the same size within 1.5 px and shifted by the same amount; outline-slide.ts) the last shape is used
+  // again, moved by that shift — a thing the timeline slides, a drag across the ground. Measured again when a box
+  // changes size (a turn, a scale, nearer the camera), at most every 40 ms as before. Found while looking for why ▶
+  // on the timeline fell to ~20 frames a second with a pick (x-motion-0145); the main cause was elsewhere (the path's
+  // toScreen, adapters/three/index.ts), but each measure is three renders and a read-back, so a slide skips it.
+  // Tried too: not measuring at all while ▶ plays (the last shape stretched onto the new box) — no faster once the
+  // path was fixed (60 frames a second either way), and the ring lagged a turning boat: dropped.
+  type Box = { x: number; y: number; w: number; h: number };
+  type Shape = { sig: string; at: number; shape: Outline | null; base: Outline | null; keys: string; view: string; rects: Box[] };
+  const blankShape = (): Shape => ({ sig: '', at: 0, shape: null, base: null, keys: '', view: '', rects: [] });
+  const shapes = { you: blankShape(), ai: blankShape(), hover: blankShape() };
   let aiKeys: string[] = [];
   let hoverKeys: string[] = [];
   let aiLabel: string | null = null;
   const shapeOf = (which: 'you' | 'ai' | 'hover', keys: string[], rects: Array<{ x: number; y: number; w: number; h: number }>) => {
     const c = shapes[which];
     if (!adapter.silhouette || !keys.length) {
-      c.sig = '';
-      c.shape = null;
+      shapes[which] = blankShape();
       return null;
     }
-    const sig = keys.join('\n') + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + JSON.stringify(adapter.view.state());
-    const now = nativeNow();
-    if (sig !== c.sig && now - c.at > 40) {
-      try {
-        c.shape = adapter.silhouette(keys);
-      } catch {
-        c.shape = null;
-      }
+    const keySig = keys.join('\n');
+    const view = JSON.stringify(adapter.view.state());
+    const sig = keySig + '|' + rects.map((r) => `${Math.round(r.x)},${Math.round(r.y)},${Math.round(r.w)},${Math.round(r.h)}`).join(';') + '|' + view;
+    if (sig === c.sig) return c.shape;
+    // The shift of the boxes since the shape was measured (null = other objects, another camera, other boxes).
+    const same = !!c.base && c.keys === keySig && c.view === view && rects.length > 0 && rects.length === c.rects.length;
+    const slide = same ? slideOf(c.rects, rects) : null;
+    if (slide && slide.sized) {
+      c.shape = { ...c.base!, x: c.base!.x + slide.dx, y: c.base!.y + slide.dy };
       c.sig = sig;
-      c.at = now;
-    } else if (sig !== c.sig) markDirty(); // come back next frame for the late update
+      return c.shape;
+    }
+    const now = nativeNow();
+    if (now - c.at > 40) {
+      let shape: Outline | null = null;
+      try {
+        shape = adapter.silhouette(keys);
+      } catch {
+        shape = null;
+      }
+      Object.assign(c, { shape, base: shape, sig, at: now, keys: keySig, view, rects: rects.map((r) => ({ ...r })) });
+    } else {
+      // Too soon to measure: the last shape slid by the boxes' middles, and back next frame for the real one.
+      if (slide) c.shape = { ...c.base!, x: c.base!.x + slide.dx, y: c.base!.y + slide.dy };
+      markDirty();
+    }
     return c.shape;
   };
   const rectsOf = (keys: string[]) => {

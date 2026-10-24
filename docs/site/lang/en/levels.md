@@ -29,6 +29,8 @@ The menu has:
 - **Rename…**: type the new name in place. <kbd>Enter</kbd> keeps it, <kbd>Esc</kbd> cancels.
 - **Move up** and **Move down**: change the order.
 - **Delete level**: you go to the level next to it. If the level is in your game’s code, your AI asks you once before it takes it out.
+- **Put things in a blank level**: the Library lists your game’s other things under **Not in this level** (a dashed frame). Click one, or drag it onto **Scene**, and it appears in the middle of your view, in this level only.
+
 After **New level** or **Duplicate**, one line at the top says “Level 4 made. ⌘Z to undo.” Changed your mind? Press <kbd>⌘</kbd><kbd>Z</kbd> (on a phone, **Undo** on that line). To make the new level different, change things by hand, or tell your AI in the box at the bottom what it should be.
 
 Each of these counts as one change on **Save · N**. When you save, your AI adds the new levels, names and order to the game.

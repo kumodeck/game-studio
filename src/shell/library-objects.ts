@@ -69,6 +69,10 @@ export interface LibraryObjectsDeps {
   addToScene(): void;
   /** "Ask your AI…": the cursor in the ask box (its chip names the pick). Absent = no AI here (the web demo). */
   askAi?(): void;
+  /** The game's objects not in the level on screen (main.ts absentItems; studio-fix-0146). Absent = none. */
+  absent?(): Item[];
+  /** Put these of absent() in the level on screen (a press on their tile; a drop on the Scene row goes through main.ts). */
+  placeHere?(keys: string[]): void;
 }
 
 /** The drag type of an object's tile (dropped on the Scene row = "Add to scene"); the data is the tile's first key. */
@@ -221,6 +225,53 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
     return { tiles: out, n: items.length };
   }
 
+  /**
+   * "Not in this level" (studio-fix-0146, 2026-10-24; x-motion-0145: a New level kept only the ground, and the Library
+   * offered nothing else, so a level could not be built by hand). One tile per kind, as above, drawn apart from the
+   * objects in the level: a dashed frame, the picture faded, "+ Put in this level" under the name (shell.css
+   * .lib-absent). A press puts ONE of the kind in (the next press the next one: "pine ×3" counts down), in the middle
+   * of the view, picked — what "Add to scene" does for a thing that is here. Dragged onto the Scene row: the same.
+   * No pick and no detail: the thing is not in the level, there is nothing to select yet.
+   */
+  function absentTiles(q: string): { tiles: HTMLElement[]; n: number } {
+    const list = (d.absent?.() || []).filter((it) => match(it, q));
+    const groups = new Map<string, Item[]>();
+    for (const it of list) {
+      const g = it.group || `key:${it.key}`;
+      const arr = groups.get(g) || [];
+      arr.push(it);
+      groups.set(g, arr);
+    }
+    const out: HTMLElement[] = [];
+    for (const [g, members] of groups) {
+      const first = members[0]!;
+      const many = members.length > 1;
+      const name = many ? kindName(members) : displayName(first, d.t);
+      const thumb = h('div', { class: 'gsl-thumb' }, thumbImg(first.key), many ? h('span', { class: 'shelf-many', text: `×${members.length}` }) : null);
+      const tile = h('div', { class: 'gsl-tile lib-object lib-absent', role: 'button', tabindex: 0,
+        dataset: { key: first.key, kind: 'absent', part: 'absent-tile', ...(many ? { group: g } : {}) }, title: `${name} · ${d.t('shelf.absentTip')}` },
+      thumb, h('span', { class: `gsl-name${first.unstable && !many ? ' unnamed' : ''}`, text: name }),
+      h('span', { class: 'gsl-meta' }, h('span', { class: 'shelf-absent', text: d.t('shelf.absentAct') })));
+      tile.draggable = true;
+      tile.addEventListener('dragstart', (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.setData(DRAG_OBJECT, first.key);
+        e.dataTransfer.effectAllowed = 'copy';
+      });
+      const put = () => d.placeHere?.([first.key]);
+      tile.addEventListener('click', put);
+      tile.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          put();
+        }
+      });
+      out.push(tile);
+    }
+    return { tiles: out, n: list.length };
+  }
+
   /** The numbers read the way the card shows them: "X 3.5  Y 0.0  Z 17.0" (3D metres) / "X 120  Y 80" (2D pixels). */
   const where = (p: Pose) => {
     const v = d.dim() === '3d' ? p.p.map((n) => n.toFixed(1)) : p.p.slice(0, 2).map((n) => String(Math.round(n)));
@@ -309,6 +360,7 @@ export function createLibraryObjects(d: LibraryObjectsDeps): LibraryObjectsPart 
         } }));
     },
     tiles,
+    absentTiles,
     detail,
     select(key) {
       pickHook(false);

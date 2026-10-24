@@ -364,3 +364,42 @@ test('a game without levels: New level makes Level 1 from what is on screen and 
   assert.ok(lv.unstart(null), '⌘Z: back to one level');
   assert.equal(lv.active, false);
 });
+
+// studio-fix-0146 (2026-10-24; x-motion-0145: "a New level keeps only the ground, and the Library offers nothing else —
+// Build it by hand could only be filmed on a Duplicate"). The Library lists the hidden things as "Not in this level"
+// and puts one in (main.ts placeHere: unremove, then the bridge shows it in the middle of the view and tells its place).
+test('a thing put in a blank level from the Library stays in it: one change, written at its place, not hidden again', () => {
+  const it = (key: string, p: number[], extra: Partial<Item> = {}): Item => ({ key, label: key, kinds: ['mesh'], rotatable: true, scalable: true, pose: { p }, ...extra });
+  const page = () => [it('road', [0, 0, -50], { backdrop: true }), it('hex-1', [-2.5, 0.95, -2]), it('ring', [-3.2, 2.2, -14])];
+  const keep = (i: Item) => !!i.backdrop || i.held === 'ground';
+  const m = new PlacementModel();
+  m.restore({ version: 1, tool: 'placement', dim: '3d', space: 'local', objects: {} });
+  m.blankKeep = keep;
+  m.setItems(page(), '3d');
+  assert.deepEqual(m.takeFileEdits().removes.sort(), ['hex-1', 'ring']);
+  // The tile's press: back in the level, then the bridge's place in the middle of the view (placement/moved, set).
+  m.unremove('hex-1');
+  m.moved('hex-1', { p: [0, 0.95, -8] });
+  assert.equal(m.dirty(), 1, 'one change on Save · n');
+  const out = m.result();
+  assert.ok(!out.removed!.some((r) => r.key === 'hex-1'), 'out of the level’s deletions');
+  assert.deepEqual(out.objects['hex-1']!.p, [0, 0.95, -8], 'at its new place');
+  assert.ok(out.removed!.some((r) => r.key === 'ring'), 'the others stay out');
+  // The level opened again (another level and back, Play → Edit, the AI's reload): a fresh model from the level's file.
+  const back = new PlacementModel();
+  back.restore(out);
+  back.blankKeep = keep;
+  back.setItems(page(), '3d');
+  const again = back.takeFileEdits().removes;
+  assert.ok(!again.includes('hex-1') && again.includes('ring'), `still in the level (${again.join(', ')})`);
+  // The Levels side: the level's world part carries it into placement.json, and only this level.
+  const lv = new Levels();
+  lv.load(file());
+  lv.fromGame(CODE, 'cave');
+  const id = lv.blank({ objects: {} }, (n) => `Level ${n}`);
+  lv.current = id;
+  const composed = lv.compose(out);
+  const mine = composed.levels!.find((l) => l.id === id)!;
+  assert.ok(mine.objects?.['hex-1'] && mine.blank === true);
+  assert.ok(composed.levels!.filter((l) => l.id !== id).every((l) => !l.objects?.['hex-1']), 'no other level gets it');
+});

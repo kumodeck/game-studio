@@ -98,7 +98,12 @@ export function fitThreeAdapter(raw: Raw, canvas: HTMLCanvasElement): StudioAdap
     toScreen(p) {
       const cam = raw.view.camera;
       if (!cam) return null;
-      cam.updateMatrixWorld?.(true);
+      // The camera alone (and its parents), not what hangs on it (studio-fix-0146, 2026-10-24): updateMatrixWorld(true)
+      // also updates its children, and a game's AudioListener on the camera (Lantern Cove's) then ramps its Web Audio
+      // values on every call — the timeline's path asks for 100+ points a frame, and ▶ with the pick fell to ~42 frames
+      // a second (60 with nothing picked; 2.6 s of 3 s in linearRampToValueAtTime). Older three builds: as before.
+      if (typeof cam.updateWorldMatrix === 'function') cam.updateWorldMatrix(true, false);
+      else cam.updateMatrixWorld?.(true);
       const c = project(viewProjOf(cam), [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0]);
       if (!(c[3] > 0)) return null;
       const r = rect();

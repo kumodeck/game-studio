@@ -191,6 +191,23 @@ export function start(host: StudioHost) {
   // answer (placement/added) brings the Scene up with them picked.
   let filePick: string[] = [];
   const addingToScene = new Set<string>();
+  /**
+   * The game objects each code level's page listed (studio-fix-0146, 2026-10-24), by the code level it builds
+   * (levels.build; '' = a game without levels yet): key → the last Item seen. WHY: a New level hides every object but
+   * the ground (PlacementModel.blankKeep), and a hidden object leaves the game's list, so the Library had nothing to
+   * place there — "Build it by hand" could only be filmed on a Duplicate (x-motion-0145). The Library lists what is
+   * here but not in the list ("Not in this level", absentItems) and a click or a drop puts it in (placeHere). By the
+   * code level, not one map: two levels share keys ("tree-1" in Meadow and in Summit are different trees), and a
+   * New level is built from the one it was made from, so its page has the same keys as that one.
+   */
+  const seenByBuild = new Map<string, Map<string, Item>>();
+  const buildNow = () => (levels.active ? levels.build(levels.current) : '');
+  function rememberItems(list: Item[]) {
+    const b = buildNow();
+    let m = seenByBuild.get(b);
+    if (!m) seenByBuild.set(b, (m = new Map()));
+    for (const it of list) if (!it.copyOf && !it.ghost) m.set(it.key, it);
+  }
   let check: SelfCheckResult | null = null;
   // ?tool=library opens on the Library (studio.mjs --tool library).
   let tool: ToolId = new URLSearchParams(location.search).get('tool') === 'library' ? 'library' : 'placement';
@@ -1013,6 +1030,8 @@ export function start(host: StudioHost) {
     if (type === DRAG_OBJECT) {
       // The dropped tile's kind, picked or not (a drag is about what is in the hand).
       if (items.some((i) => i.key === v && copyable(i))) addToScene([v]);
+      // A "Not in this level" tile (studio-fix-0146): it goes into this level.
+      else if (v) placeHere([v]);
     } else if (v) {
       const p = libraryPickedFiles();
       fileUse.add?.(p.includes(v) ? p : [v]);
@@ -1286,6 +1305,8 @@ export function start(host: StudioHost) {
     nameDraft: host.offline ? undefined : (keys) => nameDraft(keys),
     changed: () => renderShelf(),
     addToScene: () => addToScene(),
+    absent: () => absentItems(),
+    placeHere: (keys) => placeHere(keys),
     // The cursor in the ask box: its chip already names the pick (the web demo has no ask box).
     askAi: host.offline ? undefined : () => focusAsk(),
   });
@@ -1432,6 +1453,41 @@ export function start(host: StudioHost) {
       renderAll(true);
     }
     for (const k of copySelection(one, 'view')) addingToScene.add(k);
+  }
+
+  /**
+   * The Library's "Not in this level" (studio-fix-0146): game objects this level's page has but does not show — a New
+   * level hid them (blankKeep), or the person deleted them here — in the order the game listed them. Only in a game with
+   * levels and on the world layer: "not in this level" means nothing in a game with one level, where a deleted thing is
+   * simply deleted (⌘Z brings it back).
+   */
+  function absentItems(): Item[] {
+    if (!levels.active || editLayer !== 'world' || !editing) return [];
+    const here = new Set(worldItems.map((i) => i.key));
+    return [...(seenByBuild.get(buildNow())?.values() || [])].filter((it) => !here.has(it.key) && worldModel.isRemoved(it.key) && !worldModel.isCopy(it.key));
+  }
+  /**
+   * Put these "Not in this level" objects in the level on screen (a click on the tile, or a drop on the Scene row): shown
+   * again in the middle of the view (the bridge, placement/restore at 'view'), picked, one undo step, one change per
+   * object on "Save · n". Save writes them out of the level's `removed` and at their new place (`objects`), so the AI
+   * keeps them in this level only — the other levels' files are not touched (the same rule as any edit of a level).
+   */
+  function placeHere(keys: string[]) {
+    const absent = new Map(absentItems().map((i) => [i.key, i]));
+    const list = keys.filter((k) => absent.has(k));
+    if (!list.length) return;
+    if (tool !== 'placement' || page !== 'tool' || (phone() && sheetOpen)) {
+      tool = 'placement';
+      page = 'tool';
+      if (phone()) sheetOpen = false;
+      renderAll(true);
+    }
+    for (const k of list) worldModel.unremove(k);
+    undo.push({ changes: list.map((k) => ({ kind: 'place' as const, key: k })) });
+    send({ type: 'studio:placement/restore', keys: list, at: 'view' });
+    // namesOf reads the game's list, which has not got them back yet: the name from the remembered Item.
+    showToast(t('lib.added', { name: list.length === 1 ? displayName(absent.get(list[0]!)!, t) : t('undo.n', { n: list.length }) }), 2500);
+    renderButtons();
   }
 
   /** The Scene's "Show in Library →" (card, menu, ⌘K): the Library with the pick's detail, the camera untouched. */
@@ -2091,7 +2147,16 @@ export function start(host: StudioHost) {
       } else if (c.kind === 'motion' || c.kind === 'motion-lib' || c.kind === 'motion-rename') timeline.apply(c, dir);
       else if (c.kind === 'ui-set' || c.kind === 'ui-theme') uiWire.apply(c, dir);
       else if (c.kind === 'name') worldModel.rename(c.key, dir === 'undo' ? c.from : c.to);
-      else if ((c.kind === 'add') === (dir === 'redo')) {
+      // Put in this level from the Library (placeHere): undo hides it again, redo shows it again.
+      else if (c.kind === 'place') {
+        if (dir === 'undo') {
+          model.remove(c.key);
+          removes.push(c.key);
+        } else {
+          model.unremove(c.key);
+          restores.push(c.key);
+        }
+      } else if ((c.kind === 'add') === (dir === 'redo')) {
         // redo of a copy, undo of a deletion: the object comes back
         if (c.kind === 'add') {
           model.addCopy(c.key, c.from, c.pose);
@@ -2113,7 +2178,7 @@ export function start(host: StudioHost) {
       keepSoon();
     }
     // What came back is selected; what went away is not.
-    const gone = new Set(list.filter((c) => (c.kind === 'add') !== (dir === 'redo') && (c.kind === 'add' || c.kind === 'remove')).map((c) => c.key));
+    const gone = new Set(list.filter((c) => ((c.kind === 'add') !== (dir === 'redo') && (c.kind === 'add' || c.kind === 'remove')) || (c.kind === 'place' && dir === 'undo')).map((c) => c.key));
     if (group.some((k) => gone.has(k)) || (selected && gone.has(selected))) {
       group = group.filter((k) => !gone.has(k));
       selected = group.length ? group[group.length - 1]! : null;
@@ -3223,6 +3288,7 @@ export function start(host: StudioHost) {
           break;
         }
         worldItems = m.items;
+        rememberItems(m.items);
         // The world's list while the shell has just switched to the UI (sent before the bridge got the switch): kept
         // in the world's model only.
         if (editLayer === 'ui') {
@@ -4088,6 +4154,8 @@ export function start(host: StudioHost) {
     const id = started ? levels.start(worldModel.result(), t('level.first'), blank)
       : blank ? levels.blank(blank.world, blank.name) : levels.copy(worldModel.result());
     if (!id) return;
+    // The game's one level now has an id: what its page listed is that level's (seenByBuild, the Library's "Not in this level").
+    if (started && seenByBuild.has('') && levels.list[0]) seenByBuild.set(levels.build(levels.list[0].id), seenByBuild.get('')!);
     await goLevel(id);
     if (levels.current !== id) return;
     levelMade = { id, name: levels.labelOf(id), back: started ? '' : back, started, single, model: before };
@@ -4570,7 +4638,7 @@ export function start(host: StudioHost) {
       // (`render()`, `setPose`, `set()`…) are words for the AI: they go to it through host.reportCheck (local:
       // .studio/check.md) and are never shown here. test/i18n-words.test.mjs keeps code words out of these lines.
       // Not when the move test hit something the game moves itself, the ground / sky, or a hidden object (check-note.ts).
-      const first = checkNoteId(check, worldItems);
+      const first = checkNoteId(check, worldItems, levels.isBlank());
       if (first) line('note', `${t('check.' + first)} ${t('status.checkFail')}`);
     }
     status.hidden = !status.childNodes.length;

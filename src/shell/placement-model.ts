@@ -195,7 +195,9 @@ export class PlacementModel {
     for (const it of items) {
       if (this.blankSeen.has(it.key)) continue;
       this.blankSeen.add(it.key);
-      if (keep(it) || it.copyOf || this.copyFrom.has(it.key) || this.removed.has(it.key)) continue;
+      // fileEntries: placed in this level by the person (the Library's "Not in this level" tiles, studio-fix-0146) —
+      // the place is written as its entry, so a later page of the level shows it instead of hiding it again.
+      if (keep(it) || it.copyOf || this.copyFrom.has(it.key) || this.removed.has(it.key) || this.fileEntries.has(it.key)) continue;
       this.remove(it.key);
       this.savedRemoved.add(it.key);
       this.fileEdits.removes.push(it.key);
@@ -558,7 +560,9 @@ export class PlacementModel {
     }
     for (const k of this.savedCopies.keys()) if (!this.live.has(k)) n++;
     for (const k of this.removed) if (!this.savedRemoved.has(k)) n++;
-    for (const k of this.savedRemoved) if (!this.removed.has(k)) n++;
+    // Back in (undo of a saved deletion, or put in a blank level from the Library) and moved too: one thing changed,
+    // already counted with the moves above (studio-fix-0146: a thing put in counted 2 on "Save · n").
+    for (const k of this.savedRemoved) if (!this.removed.has(k) && samePose(this.current.get(k), this.saved.get(k), this.dim)) n++;
     return n + this.orderDirty().length + this.motion.changedKeys().length;
   }
 

@@ -912,6 +912,15 @@ button.shelf-file.to:hover { background: var(--raise-2); }
 .lib-object .gsl-thumb img, .lib-object-detail .gsl-thumb img { inset: 8%; width: 84%; height: 84%; }
 .lib-object .gsl-thumb:has(img[data-tone="light"]), .lib-object-detail .gsl-thumb:has(img[data-tone="light"]) { background: #8d9199; }
 .lib-object .gsl-name.unnamed { color: var(--text-2); font-style: italic; }
+/* "Not in this level" (studio-fix-0146, 2026-10-24): the game's things a New level hides, to put in by hand. Told
+   apart from what is in the level without a colour (orange stays "what you picked"): a dashed frame round the picture,
+   the picture faded, and "+ Put in this level" in the meta line's grey. Hover / focus: the picture comes back. */
+.lib-absent .gsl-thumb { outline: 1.5px dashed var(--text-3); outline-offset: -1.5px; }
+.lib-absent .gsl-thumb img { opacity: .45; }
+.lib-absent:hover .gsl-thumb img, .lib-absent:focus-visible .gsl-thumb img { opacity: .85; }
+.lib-absent .gsl-name { color: var(--text-2); }
+.shelf-absent { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--raise); color: var(--text-2); font-size: var(--fs-s); font-weight: 600; white-space: nowrap; }
+.lib-absent:hover .shelf-absent { color: var(--text); background: var(--raise-2); }
 .shelf-many { position: absolute; right: 6px; bottom: 6px; padding: 1px 7px; border-radius: 999px; background: var(--raise-3); color: var(--text); font-size: var(--fs-s); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* "planks.jpg used by 3 ×": the Library narrowed by a file's "Show just these objects". */
 .assets-page .gsl-count:has(.shelf-band) { color: var(--text); }

@@ -216,6 +216,7 @@ const en = {
   // The grid's headings on All (studio-library-shelf, 2026-10-23; the UI plan 5 #1): objects, motions and assets each under
   // their own head with its count (an object counts once per copy: hex ×4 = 4), the same count as All and the left column.
   headObjects: 'Objects · {n}',
+  headAbsent: 'Not in this level · {n}',
   headMotions: 'Motions · {n}',
   headAssets: 'Assets · {n}',
   // The one drop place under "Assets · 0" (nothing to show yet).
@@ -262,6 +263,7 @@ const ja: Partial<Record<StringKey, string>> = {
   more: 'ほか',
   countObjects: '物 {n}',
   headObjects: '物 · {n}',
+  headAbsent: 'このレベルに無い物 · {n}',
   headMotions: '動き · {n}',
   headAssets: '素材 · {n}',
   dropAssets: '画像・3D・音のファイルをここに落とす',
